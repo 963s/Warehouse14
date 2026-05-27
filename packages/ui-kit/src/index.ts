@@ -1,0 +1,33 @@
+/**
+ * @warehouse14/ui-kit — public surface.
+ *
+ * Six brand primitives ship in Phase 2 Day 2:
+ *   Button, ParchmentCard, RomanIndex (+ toRoman), Seal, DiamondRule, MagnifierIcon
+ *
+ * Day 3 adds: StatTile, MoneyAmount, LedgerEntry.
+ * Day 5 adds: PinPad, Toast, ToastContainer, ErrorBoundary.
+ */
+
+export { Button, type ButtonProps } from './components/Button.js';
+export { ParchmentCard, type ParchmentCardProps } from './components/ParchmentCard.js';
+export { RomanIndex, type RomanIndexProps, toRoman } from './components/RomanIndex.js';
+export { Seal, type SealProps } from './components/Seal.js';
+export { DiamondRule, type DiamondRuleProps } from './components/DiamondRule.js';
+export { MagnifierIcon, type MagnifierIconProps } from './components/MagnifierIcon.js';
+
+// Day 3 primitives
+export { StatTile, type StatTileProps } from './components/StatTile.js';
+export { MoneyAmount, type MoneyAmountProps } from './components/MoneyAmount.js';
+export { LedgerEntry, type LedgerEntryProps } from './components/LedgerEntry.js';
+
+// Day 5 primitives — Operational Foundations
+export { PinPad, type PinPadProps } from './components/PinPad.js';
+export { Toast, type ToastProps, type ToastShape, type ToastTone } from './components/Toast.js';
+export {
+  ToastContainer,
+  type ToastContainerProps,
+} from './components/ToastContainer.js';
+export {
+  ErrorBoundary,
+  type ErrorBoundaryProps,
+} from './components/ErrorBoundary.js';

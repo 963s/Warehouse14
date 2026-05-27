@@ -1,0 +1,56 @@
+[package]
+name = "warehouse14-tauri-pos"
+version = "0.1.0"
+description = "Warehouse14 cashier-floor POS (Tauri 2 shell)"
+edition = "2021"
+publish = false
+rust-version = "1.75"
+
+[lib]
+name = "warehouse14_tauri_pos_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# ── Tauri core + officially-supported plugins ────────────────────────
+# V1 only needs `shell` (for `open_pdf_preview`). Settings persistence
+# happens client-side via localStorage + the audit-logged API, keeping
+# the native footprint small. `store` + `dialog` plugins land in V1.1
+# if the operator asks for a "Speichern unter…" file picker.
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+# Auto-update from GitHub Releases (Day-15 release automation).
+# The public key lives in tauri.conf.json plugins.updater.pubkey; the
+# matching private key (TAURI_SIGNING_PRIVATE_KEY) is held only in
+# GitHub Actions secrets — never committed.
+tauri-plugin-updater = "2"
+# Lets the React side restart the process after applying an update —
+# required for the auto-install flow on Windows + macOS.
+tauri-plugin-process = "2"
+
+# ── Serde + JSON for every IPC payload ───────────────────────────────
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+
+# ── Async runtime + network ──────────────────────────────────────────
+# `rustls-tls` keeps us off OpenSSL — easier cross-compile, smaller binary.
+tokio = { version = "1", features = ["net", "time", "io-util", "rt-multi-thread", "macros", "process"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+
+# ── Time + base64 + QR ───────────────────────────────────────────────
+chrono = { version = "0.4", features = ["serde"] }
+base64 = "0.22"
+qrcode = "0.14"
+
+# ── Image processing (Mandate 1) ─────────────────────────────────────
+image = { version = "0.25", default-features = false, features = ["webp", "jpeg", "png"] }
+webp = "0.3"
+
+# ── PDF generation (Mandate 3-B) ─────────────────────────────────────
+printpdf = "0.7"
+
+# ── Mock-mode RNG for fail-rate injection ────────────────────────────
+fastrand = "2"

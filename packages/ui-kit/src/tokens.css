@@ -1,0 +1,124 @@
+/**
+ * Warehouse14 design tokens — single source for every UI.
+ *
+ * Imported once at the top of any app's entry stylesheet:
+ *   @import "@warehouse14/ui-kit/styles.css";
+ *
+ * Rules (memory.md §10):
+ *   • No colour outside the --w14-* palette.
+ *   • No radius outside (0, 4px, 6px).
+ *   • Dark mode toggled by adding `data-theme="dark"` to <html>.
+ *
+ * Any addition here requires a matching update to memory.md §10.2-§10.4.
+ */
+
+:root,
+:root[data-theme="light"] {
+  /* ─── Parchment surfaces ───────────────────────────────────────── */
+  --w14-parchment:   #F1ECE0;
+  --w14-parchment-2: #EAE4D5;
+  --w14-parchment-3: #DED6C2;
+
+  /* ─── Ink (text + strokes) ─────────────────────────────────────── */
+  --w14-ink:         #0F0F0F;
+  --w14-ink-aged:    #3A332B;
+  --w14-ink-faded:   #736A5C;
+  --w14-rule:        #1C1814;
+
+  /* ─── Accent palette (illuminated initials — use sparingly) ────── */
+  --w14-gold:        #A8853E;
+  --w14-gold-soft:   #C4A56E;
+  --w14-wax-red:     #8C2E2C;
+  --w14-wax-red-soft:#B95A56;
+  --w14-verdigris:   #3E605C;
+
+  /* ─── Scrims + utility ─────────────────────────────────────────── */
+  --w14-overlay:     rgba(15, 15, 15, 0.80);
+  --w14-focus-ring:  #A8853E;
+
+  /* ─── Typography stack (loaded by @font-face — see typography.css) */
+  --w14-font-display: 'Cormorant Garamond', 'Times New Roman', serif;
+  --w14-font-body:    'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --w14-font-mono:    'JetBrains Mono', 'Menlo', 'Consolas', monospace;
+
+  /* ─── Grid + radii + shadow ────────────────────────────────────── */
+  --w14-unit: 4px;
+  --w14-radius-sharp: 0px;      /* receipt-like surfaces */
+  --w14-radius-button: 4px;
+  --w14-radius-card: 6px;
+  --w14-shadow-card: 0 1px 0 var(--w14-rule);
+  --w14-shadow-modal: 0 4px 24px rgba(15, 15, 15, 0.20);
+
+  /* ─── Motion ──────────────────────────────────────────────────── */
+  --w14-ease-curator: cubic-bezier(0.16, 1, 0.30, 1); /* drawer slide */
+  --w14-dur-short: 120ms;
+  --w14-dur-medium: 220ms;
+  --w14-dur-long: 380ms;
+}
+
+:root[data-theme="dark"] {
+  /* Midnight-vellum — invert with same accent hues. */
+  --w14-parchment:   #1A1614;
+  --w14-parchment-2: #221C18;
+  --w14-parchment-3: #2A231D;
+
+  --w14-ink:         #E6DFCB;
+  --w14-ink-aged:    #C7BFA9;
+  --w14-ink-faded:   #8E8676;
+  --w14-rule:        #5C5347;
+
+  --w14-overlay:     rgba(0, 0, 0, 0.80);
+}
+
+/* ────────────────────────────────────────────────────────────────────
+ * Base reset — parchment background everywhere, ink text, font defaults
+ * ──────────────────────────────────────────────────────────────────── */
+html, body {
+  background-color: var(--w14-parchment);
+  color: var(--w14-ink);
+  font-family: var(--w14-font-body);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Tabular figures everywhere we render money / hashes / SKUs. */
+.w14-tabular {
+  font-feature-settings: "tnum";
+  font-variant-numeric: tabular-nums;
+}
+
+/* Small-caps tracking — the §10.3 convention. */
+.w14-smallcaps {
+  font-variant: all-small-caps;
+  letter-spacing: 0.08em;
+}
+
+/* Marbled paper noise overlay (svg encoded). */
+.w14-paper-noise {
+  position: relative;
+  isolation: isolate;
+}
+.w14-paper-noise::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.04;
+  background-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 200px 200px;
+  z-index: -1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}

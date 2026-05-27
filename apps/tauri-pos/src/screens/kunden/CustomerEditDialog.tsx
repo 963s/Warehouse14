@@ -1,0 +1,244 @@
+/**
+ * CustomerEditDialog — PII edit form (Day 10).
+ *
+ * Calls `PUT /api/customers/:id`. The server enforces step-up when
+ * `kyc_verified_at IS NOT NULL` — the `wrapWithStepUp` interceptor opens
+ * the brand StepUpModal transparently and retries the request. This
+ * dialog never needs to ask for PIN explicitly.
+ *
+ * Validation: each editable field is mirrored client-side with the same
+ * shape the route accepts. Submit is enabled only when at least one
+ * field has been changed (no point in PUT-ing a no-op — the server
+ * would 400 anyway, but client-side gating saves a roundtrip).
+ */
+
+import { useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+
+import {
+  ApiError,
+  customersApi,
+  type CustomerDetail,
+  type CustomerUpdateBody,
+} from '@warehouse14/api-client';
+import {
+  Button,
+  DiamondRule,
+  ParchmentCard,
+} from '@warehouse14/ui-kit';
+
+import { useApiClient } from '../../lib/api-context.js';
+import { useToastStore } from '../../state/toast-store.js';
+
+export interface CustomerEditDialogProps {
+  open: boolean;
+  customer: CustomerDetail;
+  onClose: () => void;
+}
+
+export function CustomerEditDialog({ open, customer, onClose }: CustomerEditDialogProps): JSX.Element | null {
+  const api = useApiClient();
+  const qc = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+
+  const [fullName, setFullName] = useState<string>(customer.fullName);
+  const [dateOfBirth, setDateOfBirth] = useState<string>(customer.dateOfBirth ?? '');
+  const [email, setEmail] = useState<string>(customer.email ?? '');
+  const [phone, setPhone] = useState<string>(customer.phone ?? '');
+  const [address, setAddress] = useState<string>(customer.address ?? '');
+  const [notes, setNotes] = useState<string>(customer.notes ?? '');
+  const [submitting, setSubmitting] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Reset when dialog opens for a different customer.
+  useEffect(() => {
+    if (!open) return;
+    setFullName(customer.fullName);
+    setDateOfBirth(customer.dateOfBirth ?? '');
+    setEmail(customer.email ?? '');
+    setPhone(customer.phone ?? '');
+    setAddress(customer.address ?? '');
+    setNotes(customer.notes ?? '');
+    setSubmitting(false);
+    setError(null);
+  }, [open, customer]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (ev: KeyboardEvent): void => {
+      if (ev.key === 'Escape' && !submitting) {
+        ev.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose, submitting]);
+
+  // Build diff body — only fields that actually changed.
+  const buildBody = (): CustomerUpdateBody => {
+    const body: CustomerUpdateBody = {};
+    const trimOrNull = (v: string): string | null => (v.trim().length === 0 ? null : v.trim());
+
+    if (fullName.trim() !== customer.fullName) body.fullName = fullName.trim();
+    if ((dateOfBirth.trim() || null) !== customer.dateOfBirth) body.dateOfBirth = trimOrNull(dateOfBirth);
+    if ((email.trim() || null) !== customer.email) body.email = trimOrNull(email);
+    if ((phone.trim() || null) !== customer.phone) body.phone = trimOrNull(phone);
+    if ((address.trim() || null) !== customer.address) body.address = trimOrNull(address);
+    if ((notes.trim() || null) !== customer.notes) body.notes = trimOrNull(notes);
+    return body;
+  };
+
+  const hasDiff = Object.keys(buildBody()).length > 0;
+  const canSubmit = hasDiff && fullName.trim().length >= 2 && !submitting;
+  const kycVerified = customer.kycVerifiedAt !== null;
+
+  const submit = async (): Promise<void> => {
+    if (!canSubmit) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const result = await customersApi.update(api, customer.id, buildBody());
+      addToast({
+        tone: 'success',
+        title: 'Kundendaten gespeichert',
+        body: `${result.changedFields.length} Feld${result.changedFields.length === 1 ? '' : 'er'} geändert${result.stepUpEnforced ? ' · PIN bestätigt' : ''}.`,
+      });
+      await qc.invalidateQueries({ queryKey: ['customers', customer.id] });
+      await qc.invalidateQueries({ queryKey: ['customers', 'list'] });
+      onClose();
+    } catch (err) {
+      if (err instanceof ApiError) {
+        if (err.code === 'STEP_UP_REQUIRED') {
+          setError('PIN-Bestätigung wurde abgebrochen.');
+        } else if (err.code === 'CONFLICT') {
+          setError('E-Mail oder Telefon bereits einem anderen Kunden zugewiesen.');
+        } else if (err.code === 'VALIDATION_ERROR') {
+          setError(err.message);
+        } else {
+          setError(err.message);
+        }
+      } else {
+        setError('Verbindung gestört — bitte erneut versuchen.');
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (!open) return null;
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Kundendaten bearbeiten"
+      onClick={() => { if (!submitting) onClose(); }}
+      style={{
+        position: 'fixed', inset: 0, backgroundColor: 'var(--w14-overlay)',
+        zIndex: 1050, display: 'grid', placeItems: 'center', padding: 24,
+      }}
+    >
+      <ParchmentCard
+        padding="lg"
+        onClick={(ev) => ev.stopPropagation()}
+        style={{ width: 'min(560px, 100%)', boxShadow: 'var(--w14-shadow-modal)' }}
+      >
+        <h2 style={{ margin: 0, fontFamily: 'var(--w14-font-display)', fontWeight: 500, fontSize: '1.4rem', textAlign: 'center' }}>
+          Kundendaten bearbeiten
+        </h2>
+        <p style={{ margin: '4px 0 0', textAlign: 'center', fontFamily: 'var(--w14-font-display)', fontStyle: 'italic', fontSize: '0.85rem', color: 'var(--w14-ink-faded)' }}>
+          {customer.fullName}
+          {' · '}
+          <span className="w14-tabular" style={{ fontFamily: 'var(--w14-font-mono)' }}>{customer.customerNumber}</span>
+        </p>
+
+        {kycVerified && (
+          <p style={{ margin: '12px 0 0', textAlign: 'center', fontFamily: 'var(--w14-font-display)', fontStyle: 'italic', fontSize: '0.82rem', color: 'var(--w14-ink-aged)' }}>
+            KYC ist bestätigt — Änderungen erfordern PIN-Bestätigung.
+          </p>
+        )}
+
+        <DiamondRule label="Daten" />
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <Field label="Vollständiger Name" value={fullName} onChange={setFullName} required colSpan={2} />
+          <Field label="Geburtsdatum (TT.MM.JJJJ)" value={dateOfBirth} onChange={setDateOfBirth} mono />
+          <Field label="E-Mail" value={email} onChange={setEmail} type="email" />
+          <Field label="Telefon" value={phone} onChange={setPhone} mono />
+          <Field label="Adresse" value={address} onChange={setAddress} multiline colSpan={2} />
+          <Field label="Notizen (z. B. Personalausweis-Nr.)" value={notes} onChange={setNotes} multiline colSpan={2} />
+        </div>
+
+        {error && (
+          <p role="alert" style={{ color: 'var(--w14-wax-red)', margin: '14px 0 0', fontSize: '0.92rem', textAlign: 'center' }}>
+            {error}
+          </p>
+        )}
+
+        <div style={{ marginTop: 22, display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+          <Button variant="ghost" onClick={onClose} disabled={submitting}>
+            Abbrechen
+          </Button>
+          <Button variant="primary" onClick={() => void submit()} disabled={!canSubmit}>
+            {submitting ? 'Speichert…' : hasDiff ? 'Speichern' : 'Keine Änderung'}
+          </Button>
+        </div>
+      </ParchmentCard>
+    </div>
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+  required = false,
+  mono = false,
+  multiline = false,
+  type = 'text',
+  colSpan,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  required?: boolean;
+  mono?: boolean;
+  multiline?: boolean;
+  type?: 'text' | 'email' | 'tel';
+  colSpan?: number;
+}): JSX.Element {
+  const containerStyle: React.CSSProperties = colSpan ? { gridColumn: `span ${colSpan}` } : {};
+  return (
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 4, ...containerStyle }}>
+      <span className="w14-smallcaps" style={{ color: 'var(--w14-ink-faded)', fontSize: '0.72rem', letterSpacing: '0.08em' }}>
+        {label}{required && <span style={{ color: 'var(--w14-wax-red)' }}> *</span>}
+      </span>
+      {multiline ? (
+        <textarea
+          value={value}
+          onChange={(ev) => onChange(ev.target.value)}
+          rows={2}
+          style={{
+            border: 'none', outline: 'none', borderBottom: '2px solid var(--w14-rule)',
+            background: 'transparent', padding: '6px 4px', resize: 'vertical',
+            fontFamily: 'var(--w14-font-body)', fontSize: '0.92rem', color: 'var(--w14-ink)',
+          }}
+        />
+      ) : (
+        <input
+          type={type}
+          value={value}
+          spellCheck={false}
+          onChange={(ev) => onChange(ev.target.value)}
+          style={{
+            border: 'none', outline: 'none', borderBottom: '2px solid var(--w14-rule)',
+            background: 'transparent', padding: '6px 4px',
+            fontFamily: mono ? 'var(--w14-font-mono)' : 'var(--w14-font-body)',
+            fontSize: '0.92rem', color: 'var(--w14-ink)',
+          }}
+        />
+      )}
+    </label>
+  );
+}

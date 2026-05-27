@@ -1,0 +1,76 @@
+/**
+ * TypeBox schemas for GET /api/customers (search + list).
+ *
+ * Day-8 additive. The frozen Day-17 customers route ships only by-id reads;
+ * a search endpoint is added here to power the Day-8 Ankauf customer-lookup
+ * UX and the future Tier-1 Kunden surface (Day 10).
+ *
+ * Projection deliberately omits encrypted PII columns we don't need at list
+ * time. Email + phone are exposed only via blind-index match (the query
+ * succeeds or fails — we never decrypt the columns of non-matched rows).
+ * Full name IS decrypted for matched rows (the operator needs it to confirm
+ * "yes this is the customer in front of me"). Decrypt happens inside the
+ * `withPii` envelope — same key-management discipline as the by-id route.
+ */
+
+import { Type, type Static } from '@sinclair/typebox';
+
+export const CustomerListQuery = Type.Object({
+  /**
+   * Free-text query. The route attempts THREE match strategies:
+   *   1. exact `email_blind_index = blind_index(q)` if `q` contains `@`
+   *   2. exact `phone_blind_index = blind_index(q)` if `q` matches `/^[+\d\s().-]{5,}$/`
+   *   3. ILIKE on decrypted full_name (last resort; PII decrypt cost paid once)
+   * Order: indexed matches first, fuzzy second.
+   */
+  q: Type.Optional(Type.String({ minLength: 1, maxLength: 128 })),
+
+  /** Only customers with KYC verified — useful for the Ankauf high-value flow filter. */
+  kycVerifiedOnly: Type.Optional(Type.Boolean()),
+
+  /** Only customers NOT marked as sanctions or banned. */
+  excludeBlocked: Type.Optional(Type.Boolean()),
+
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50, default: 20 })),
+  offset: Type.Optional(Type.Integer({ minimum: 0, default: 0 })),
+});
+export type CustomerListQuery = Static<typeof CustomerListQuery>;
+
+export const CustomerListRow = Type.Object({
+  id: Type.String({ format: 'uuid' }),
+  customerNumber: Type.String(),
+  /** Decrypted under withPii — never persisted client-side. */
+  fullName: Type.String(),
+  /** Status of legal-document KYC (Day-7 enum). */
+  kycStatus: Type.Union([
+    Type.Literal('NOT_REQUIRED'),
+    Type.Literal('PENDING'),
+    Type.Literal('COMPLETED'),
+    Type.Literal('EXPIRED'),
+    Type.Literal('FAILED'),
+  ]),
+  /** Owner's eyeball-verification timestamp (Day-26 column). */
+  kycVerifiedAt: Type.Union([Type.String({ format: 'date-time' }), Type.Null()]),
+  /** Operator-set business-trust level (Day-26 enum). */
+  trustLevel: Type.Union([
+    Type.Literal('NEW'),
+    Type.Literal('VERIFIED'),
+    Type.Literal('VIP'),
+    Type.Literal('SUSPICIOUS'),
+    Type.Literal('BANNED'),
+  ]),
+  sanctionsMatch: Type.Boolean(),
+  cumulativeAnkaufEur: Type.String(),
+  cumulativeSpendEur: Type.String(),
+  createdAt: Type.String({ format: 'date-time' }),
+});
+export type CustomerListRow = Static<typeof CustomerListRow>;
+
+export const CustomerListResponse = Type.Object({
+  items: Type.Array(CustomerListRow),
+  total: Type.Integer({ minimum: 0 }),
+  limit: Type.Integer({ minimum: 1 }),
+  offset: Type.Integer({ minimum: 0 }),
+  hasMore: Type.Boolean(),
+});
+export type CustomerListResponse = Static<typeof CustomerListResponse>;
