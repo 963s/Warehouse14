@@ -130,12 +130,31 @@ export const MetalRate = Type.Object({
 });
 
 export const MetalRatesResponse = Type.Object({
-  /** Ankauf safety margin applied (0.10 = 10%). Phase A3 makes this Owner-editable. */
+  /** Ankauf safety margin applied (0.10 = 10%). Owner-editable (Phase A3). */
   safetyMarginPct: Type.Number(),
   /** Averaging window in days (10). */
   windowDays: Type.Integer(),
   rates: Type.Array(MetalRate),
 });
+
+// ────────────────────────────────────────────────────────────────────────
+// PATCH /api/metal-prices/margin — Owner sets the Ankauf safety margin
+// ────────────────────────────────────────────────────────────────────────
+
+export const MarginBody = Type.Object({
+  /** Safety margin as a fraction: 0.12 = 12%. Range [0, 0.50] (max 50% discount). */
+  marginPct: Type.Number({
+    minimum: 0,
+    maximum: 0.5,
+    description: 'Ankauf safety margin fraction. 0.10 = 10%. Buy rate = avg10d × (1 − marginPct).',
+  }),
+});
+
+export const MarginResponse = Type.Object({
+  marginPct: Type.Number(),
+});
+
+export type TMarginBody = Static<typeof MarginBody>;
 
 // ────────────────────────────────────────────────────────────────────────
 // GET /api/products/:id/valuation

@@ -28,7 +28,14 @@ import { Type } from '@sinclair/typebox';
 import { and, asc, count, desc, sql as drizzleSql, eq } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 
-import { METAL_KIND, type MetalKind, auditLog, metalPrices } from '@warehouse14/db/schema';
+import type { AppDb } from '@warehouse14/db/client';
+import {
+  METAL_KIND,
+  type MetalKind,
+  auditLog,
+  metalPrices,
+  systemSettings,
+} from '@warehouse14/db/schema';
 import { Money } from '@warehouse14/domain';
 
 import { requireAuth, requireOwnerStepUp, requireRole } from '../lib/auth-policy.js';
@@ -37,22 +44,45 @@ import {
   CurrentMetalPricesResponse,
   ManualOverrideBody,
   ManualOverrideResponse,
+  MarginBody,
+  MarginResponse,
   MetalPriceHistoryQuery,
   MetalPriceHistoryResponse,
   MetalRatesResponse,
   ProductValuationParams,
   ProductValuationResponse,
   type TManualOverrideBody,
+  type TMarginBody,
   type TMetalPriceHistoryQuery,
   type TProductValuationParams,
 } from '../schemas/metal-prices.js';
 
 /**
- * Ankauf safety margin (ADR Epic A). Hardcoded for Phase A2; Phase A3 moves
- * this to system_settings (`pricing.ankauf_safety_margin_pct`, Owner-editable).
+ * Ankauf safety margin (ADR Epic A). The live value lives in system_settings
+ * under `MARGIN_KEY` (Owner-editable via PATCH /margin, Phase A3); this is the
+ * fallback used when the key is absent or malformed.
  */
-const ANKAUF_SAFETY_MARGIN_PCT = 0.1;
+const MARGIN_KEY = 'pricing.ankauf_safety_margin_pct';
+const DEFAULT_ANKAUF_SAFETY_MARGIN_PCT = 0.1;
+const MARGIN_MIN = 0;
+const MARGIN_MAX = 0.5;
 const AVG_WINDOW_DAYS = 10;
+
+/**
+ * Read the Ankauf safety margin from system_settings. Returns the default when
+ * the key is missing or the stored value is out of the accepted [0, 0.5] range.
+ */
+async function readAnkaufMarginPct(db: AppDb): Promise<number> {
+  const rows = await db
+    .select({ value: systemSettings.value })
+    .from(systemSettings)
+    .where(eq(systemSettings.key, MARGIN_KEY))
+    .limit(1);
+  const v = rows[0]?.value;
+  return typeof v === 'number' && Number.isFinite(v) && v >= MARGIN_MIN && v <= MARGIN_MAX
+    ? v
+    : DEFAULT_ANKAUF_SAFETY_MARGIN_PCT;
+}
 
 class ProductNotFoundError extends DomainError {
   public readonly httpStatus = 404;
@@ -158,6 +188,9 @@ const metalPricesRoutes: FastifyPluginAsync = async (app) => {
       requireAuth(req);
       requireRole(req, 'ADMIN', 'CASHIER');
 
+      // Owner-configured safety margin (system_settings), default 0.10.
+      const safetyMarginPct = await readAnkaufMarginPct(app.db);
+
       // One round-trip: compute current / 10d-avg / Ankauf for all 4 metals via
       // the SQL helpers so rounding matches every other read of the same value.
       const rows = await app.db.execute<{
@@ -172,7 +205,7 @@ const metalPricesRoutes: FastifyPluginAsync = async (app) => {
         metal_price_avg_eur_per_gram(m.metal, ${AVG_WINDOW_DAYS}::int)      AS avg10d,
         ROUND(
           metal_price_avg_eur_per_gram(m.metal, ${AVG_WINDOW_DAYS}::int)
-            * (1 - ${String(ANKAUF_SAFETY_MARGIN_PCT)}::numeric),
+            * (1 - ${String(safetyMarginPct)}::numeric),
           4
         )                                                                  AS ankauf
       FROM (VALUES ('gold'), ('silver'), ('platinum'), ('palladium')) AS m(metal)`);
@@ -197,10 +230,58 @@ const metalPricesRoutes: FastifyPluginAsync = async (app) => {
       });
 
       return reply.status(200).send({
-        safetyMarginPct: ANKAUF_SAFETY_MARGIN_PCT,
+        safetyMarginPct,
         windowDays: AVG_WINDOW_DAYS,
         rates,
       });
+    },
+  );
+
+  // ────────────────────────────────────────────────────────────────────
+  // PATCH /api/metal-prices/margin — Owner sets the Ankauf safety margin
+  // ────────────────────────────────────────────────────────────────────
+  app.patch<{ Body: TMarginBody }>(
+    '/api/metal-prices/margin',
+    {
+      schema: {
+        tags: ['metal-prices'],
+        summary: 'Set the Ankauf safety margin (Owner-only + step-up).',
+        description:
+          'Upserts system_settings.pricing.ankauf_safety_margin_pct. marginPct is a ' +
+          'fraction in [0, 0.50] (0.12 = 12%). Out-of-range values are rejected (400). ' +
+          'The change is audited via the system_settings AFTER-write trigger.',
+        body: MarginBody,
+        response: {
+          200: MarginResponse,
+          400: ErrorResponse,
+          401: ErrorResponse,
+          403: ErrorResponse,
+        },
+      },
+    },
+    async (req, reply) => {
+      requireAuth(req); // narrows req.actor
+      requireOwnerStepUp(req); // Owner role + valid step-up token
+
+      const { marginPct } = req.body;
+
+      // Upsert: app holds INSERT (default privilege) + column UPDATE on
+      // system_settings. The key is also seeded in migration 0034, so this is
+      // normally an UPDATE. updated_at is set by the BEFORE-UPDATE trigger.
+      await app.db
+        .insert(systemSettings)
+        .values({
+          key: MARGIN_KEY,
+          value: marginPct,
+          description: 'Ankauf safety margin as a fraction (0.10 = 10%). Owner-editable.',
+          updatedByUserId: req.actor.id,
+        })
+        .onConflictDoUpdate({
+          target: systemSettings.key,
+          set: { value: marginPct, updatedByUserId: req.actor.id },
+        });
+
+      return reply.status(200).send({ marginPct });
     },
   );
 
