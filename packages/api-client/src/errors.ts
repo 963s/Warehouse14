@@ -46,3 +46,28 @@ export class ApiNetworkError extends Error {
     this.cause = cause;
   }
 }
+
+/**
+ * Thrown by `circuitBreakerMiddleware` when an endpoint's failure rate has
+ * exceeded the configured threshold and we're inside the cooldown window.
+ *
+ * Deliberately NOT an `ApiError` subclass: there's no real HTTP response and
+ * no real status code. The UI should surface a degraded-service banner
+ * ("Cloud-API momentan nicht erreichbar — versuche in {N}s wieder") rather
+ * than the generic API error toast.
+ *
+ * The retry middleware MUST NOT retry this error — see middleware/retry.ts.
+ */
+export class ApiCircuitOpenError extends Error {
+  public readonly bucket: string;
+  public readonly openedAt: number;
+  public readonly retryAfterMs: number;
+
+  constructor(bucket: string, openedAt: number, retryAfterMs: number) {
+    super(`circuit open for ${bucket} (retry after ${retryAfterMs}ms)`);
+    this.name = 'ApiCircuitOpenError';
+    this.bucket = bucket;
+    this.openedAt = openedAt;
+    this.retryAfterMs = retryAfterMs;
+  }
+}

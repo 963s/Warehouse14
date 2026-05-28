@@ -105,6 +105,19 @@ const EnvSchema = Type.Object({
     description:
       'Token Meta uses during webhook subscription handshake (GET /api/webhooks/whatsapp?hub.verify_token=...).',
   }),
+  WHATSAPP_PHONE_NUMBER_ID: Type.String({
+    default: '',
+    description:
+      'Meta phone-number id used in the Send route. POST is targeted at '
+      + 'https://graph.facebook.com/v20.0/${WHATSAPP_PHONE_NUMBER_ID}/messages. '
+      + 'Empty in dev → the route stores the message as status="queued".',
+  }),
+  WHATSAPP_ACCESS_TOKEN: Type.String({
+    default: '',
+    description:
+      'Meta Cloud API access token (Bearer). Required alongside '
+      + 'WHATSAPP_PHONE_NUMBER_ID for live sends. Empty in dev → queued only.',
+  }),
 });
 
 export type Env = Static<typeof EnvSchema>;

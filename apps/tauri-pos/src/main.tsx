@@ -21,16 +21,18 @@ const queryClient = new QueryClient({
   },
 });
 
-const apiBaseUrl =
-  (import.meta as unknown as { env: { VITE_API_BASE_URL?: string } }).env
-    .VITE_API_BASE_URL ?? 'http://localhost:3001';
+const env = (import.meta as unknown as {
+  env: { VITE_API_BASE_URL?: string; VITE_DEV_DEVICE_FINGERPRINT?: string };
+}).env;
+const apiBaseUrl = env.VITE_API_BASE_URL ?? 'http://localhost:3001';
+const devDeviceFingerprint = env.VITE_DEV_DEVICE_FINGERPRINT ?? '';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('#root element missing in index.html');
 
 createRoot(root).render(
   <StrictMode>
-    <ApiClientProvider baseUrl={apiBaseUrl}>
+    <ApiClientProvider baseUrl={apiBaseUrl} devDeviceFingerprint={devDeviceFingerprint}>
       <QueryClientProvider client={queryClient}>
         <App />
       </QueryClientProvider>

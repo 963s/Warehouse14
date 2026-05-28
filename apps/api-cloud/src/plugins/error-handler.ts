@@ -31,6 +31,7 @@ export type ApiErrorCode =
   | 'PRODUCT_NOT_RESERVABLE'
   | 'DEVICE_NOT_AUTHORIZED'
   | 'RATE_LIMITED'
+  | 'EXTERNAL_SERVICE_FAILED'
   | 'INTERNAL_ERROR';
 
 interface ApiErrorBody {
@@ -91,6 +92,7 @@ const codeToHttp: Record<ApiErrorCode, number> = {
   PRODUCT_NOT_RESERVABLE: 409,
   DEVICE_NOT_AUTHORIZED: 403,
   RATE_LIMITED: 429,
+  EXTERNAL_SERVICE_FAILED: 502,
   INTERNAL_ERROR: 500,
 };
 

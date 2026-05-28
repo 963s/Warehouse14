@@ -83,9 +83,11 @@ CREATE TABLE IF NOT EXISTS staff_working_hours (
     CHECK (effective_until IS NULL OR effective_until >= effective_from)
 );
 
+-- PG 17: index predicates must be IMMUTABLE; now() is STABLE. The original
+-- predicate filtered out historical rows but the same selectivity is reached
+-- via a query-time filter — the index here just gets all rows.
 CREATE INDEX IF NOT EXISTS staff_working_hours_user_weekday_idx
-  ON staff_working_hours (user_id, weekday)
-  WHERE effective_until IS NULL OR effective_until >= (now() AT TIME ZONE 'Europe/Berlin')::date;
+  ON staff_working_hours (user_id, weekday);
 
 COMMENT ON TABLE staff_working_hours IS
   'Per-staff weekly schedule. Times are LOCAL (Europe/Berlin). The capacity model uses '
@@ -136,9 +138,10 @@ CREATE TABLE IF NOT EXISTS appointments (
   starts_at                           TIMESTAMPTZ         NOT NULL,
   duration_minutes                    INTEGER             NOT NULL
                                                           CHECK (duration_minutes > 0 AND duration_minutes <= 480),
-  ends_at                             TIMESTAMPTZ         GENERATED ALWAYS AS
-                                                            (starts_at + make_interval(mins => duration_minutes))
-                                                          STORED,
+  -- PG 17: timestamptz + interval is STABLE (DST-aware) so it can't anchor a
+  -- generated-stored column. We compute ends_at via a BEFORE INSERT/UPDATE
+  -- trigger (defined below) instead.
+  ends_at                             TIMESTAMPTZ         NOT NULL,
 
   -- People
   customer_id                         UUID                REFERENCES customers(id),
@@ -200,6 +203,20 @@ CREATE INDEX IF NOT EXISTS appointments_business_day_idx
 CREATE INDEX IF NOT EXISTS appointments_active_window_idx
   ON appointments (starts_at, ends_at)
   WHERE status NOT IN ('CANCELLED', 'NO_SHOW', 'RESCHEDULED');
+
+-- Compute ends_at = starts_at + duration_minutes (replaces the GENERATED
+-- column above, which can't be IMMUTABLE under PG 17 strict).
+CREATE OR REPLACE FUNCTION appointments_compute_ends_at() RETURNS TRIGGER
+  LANGUAGE plpgsql AS $$
+BEGIN
+  NEW.ends_at := NEW.starts_at + NEW.duration_minutes * INTERVAL '1 minute';
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_appointments_ends_at
+  BEFORE INSERT OR UPDATE OF starts_at, duration_minutes ON appointments
+  FOR EACH ROW EXECUTE FUNCTION appointments_compute_ends_at();
 
 CREATE TRIGGER trg_appointments_updated_at
   BEFORE UPDATE ON appointments

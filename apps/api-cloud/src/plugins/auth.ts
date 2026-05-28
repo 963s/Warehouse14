@@ -22,7 +22,10 @@
 
 import fastifyPlugin from 'fastify-plugin';
 import { betterAuth } from 'better-auth';
+import pg from 'pg';
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
+
+const { Pool } = pg;
 
 import type { Env } from '../config/env.js';
 import { loadActorBySession } from '../lib/actor.js';
@@ -49,16 +52,12 @@ const authPlugin: FastifyPluginAsync<AuthPluginOpts> = async (app, opts) => {
   // two_factors via plugin).
   // ──────────────────────────────────────────────────────────────────────
 
+  // better-auth 1.3.x removed the string-based dialect shorthand and now
+  // requires either a Kysely Dialect instance, a Drizzle adapter, or a node-pg
+  // Pool. The pg Pool is the smallest dependency add and is what better-auth's
+  // current docs recommend.
   const auth = betterAuth({
-    database: {
-      // Kysely-style config — connects via pg URL using the app role.
-      // The drizzle-orm dialect is intentionally NOT used here; doing so
-      // would force a peer-dep upgrade (better-auth 1.3.x requires
-      // drizzle-orm ^0.36 which we have, but the Kysely path is simpler).
-      dialect: 'postgres' as const,
-      type: 'postgres' as const,
-      connectionString: opts.env.DATABASE_URL,
-    } as never, // better-auth's database config type is loose; trust it.
+    database: new Pool({ connectionString: opts.env.DATABASE_URL }),
     emailAndPassword: {
       enabled: true,
       autoSignIn: true,

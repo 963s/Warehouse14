@@ -191,6 +191,22 @@ export interface ProductDetail {
    * Flip via `productsApi.update(id, { isPublishedToWeb: true|false })`.
    */
   isPublishedToWeb: boolean;
+  /**
+   * Current eBay listing state. NULL means the row was never enrolled.
+   * Mutated via `ebayApi.transition(id, { toState })`.
+   */
+  ebayState:
+    | 'ENTWURF'
+    | 'GEPRUEFT'
+    | 'ONLINE'
+    | 'VERKAUFT'
+    | 'BEZAHLT'
+    | 'VERPACKT'
+    | 'VERSENDET'
+    | 'REKLAMIERT'
+    | 'RETOURNIERT'
+    | null;
+  ebayStateChangedAt: string | null;
   parentProductId: string | null;
   locationStorageUnit: string | null;
   locationDrawer: string | null;

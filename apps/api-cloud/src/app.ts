@@ -70,6 +70,7 @@ import shiftsRoutes from './routes/shifts.js';
 import voucherRoutes from './routes/vouchers.js';
 import inventorySessionsRoutes from './routes/inventory-sessions.js';
 import whatsappWebhookRoutes from './routes/webhooks-whatsapp.js';
+import whatsappInboxRoutes from './routes/whatsapp-inbox.js';
 // Day 22 — Konvolut + Appraisals
 import appraisalRoutes from './routes/appraisals.js';
 // Day 23 — Edelmetall-Kursmodul
@@ -87,6 +88,7 @@ import { mcpServer } from './mcp/index.js';
 import photosRoutes from './routes/photos.js';
 import productsEbayRoutes from './routes/products-ebay.js';
 import dashboardRoutes from './routes/dashboard.js';
+import ledgerRoutes from './routes/ledger.js';
 
 export interface BuildAppOpts {
   env: Env;
@@ -204,6 +206,7 @@ export async function buildApp(opts: BuildAppOpts): Promise<FastifyInstance> {
   await app.register(inventorySessionsRoutes);
   await app.register(transactionsReturn, { env: opts.env });
   await app.register(whatsappWebhookRoutes, { env: opts.env });
+  await app.register(whatsappInboxRoutes, { env: opts.env });
   // ── Day 22: Konvolut + Appraisals ────────────────────────────────
   await app.register(appraisalRoutes);
   // ── Day 23: Edelmetall-Kursmodul ─────────────────────────────────
@@ -218,6 +221,7 @@ export async function buildApp(opts: BuildAppOpts): Promise<FastifyInstance> {
   await app.register(photosRoutes);
   await app.register(productsEbayRoutes);
   await app.register(dashboardRoutes);
+  await app.register(ledgerRoutes);
   // ── Phase 2.A: storefront catalog + MCP (memory.md §20) ──────────
   // Public read-only catalog endpoints. The path prefix
   // `/api/storefront/` is in PUBLIC_PREFIXES (lib/public-routes.ts),

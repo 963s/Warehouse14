@@ -74,7 +74,7 @@ const mtlsPlugin: FastifyPluginAsync<MtlsPluginOpts> = async (app, opts) => {
       .where(
         and(
           eq(devices.certSerial, fingerprint),
-          eq(devices.status, dsql`'ACTIVE'::device_status`),
+          eq(devices.status, dsql`'active'::device_status`),
           gt(devices.certExpiresAt, dsql`now()`),
         ),
       )

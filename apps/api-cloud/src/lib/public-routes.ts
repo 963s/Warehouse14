@@ -38,6 +38,11 @@ export const AUTHENTICATED_PATHS_UNDER_PUBLIC_PREFIX: ReadonlySet<string> = new 
   '/api/auth/session',
   '/api/auth/sign-out',
   '/api/auth/step-up',
+  // PIN login needs the mTLS preHandler to populate req.deviceId so it can
+  // resolve which user is paired with this terminal. The route itself does
+  // not call requireAuth (the actor doesn't exist yet) but it does require
+  // the device fingerprint to be loaded.
+  '/api/auth/pin-login',
 ]);
 
 /**

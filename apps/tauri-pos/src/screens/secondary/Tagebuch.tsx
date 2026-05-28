@@ -1,10 +1,409 @@
-import { PlaceholderSurface } from '../_shared/PlaceholderSurface.js';
+/**
+ * Tagebuch — Tier-2 full-screen ledger viewer (Phase 2 Day 8).
+ *
+ * Top bar: event-type dropdown + date range + actor input + live SSE toggle.
+ * Body: chronological list (newest first) of ledger_events rows. Each
+ * row expands to show its JSON payload and SHA-256 row hash.
+ *
+ * The "Live" toggle subscribes to the Werkstatt ledger-feed-store so any
+ * new event lands at the top while the user is on this screen.
+ */
+
+import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+
+import {
+  isAlertEvent,
+  ledgerQueryApi,
+  type LedgerEventType,
+  type LedgerListQuery,
+  type LedgerListRow,
+} from '@warehouse14/api-client';
+import { DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
+
+import { useApiClient } from '../../lib/api-context.js';
+import { selectEvents, useLedgerFeed } from '../../state/ledger-feed-store.js';
+
+const EVENT_TYPE_GROUPS: ReadonlyArray<{ label: string; values: readonly LedgerEventType[] }> = [
+  {
+    label: 'Transaktionen',
+    values: ['transaction.finalized', 'transaction.stornoed', 'transaction.returned'],
+  },
+  {
+    label: 'Inventar',
+    values: ['product.reserved', 'product.released', 'product.sold', 'product.archived'],
+  },
+  {
+    label: 'Schichten / Kasse',
+    values: ['shift.opened', 'shift.closed_with_variance', 'cash.movement_recorded'],
+  },
+  {
+    label: 'Kunden',
+    values: ['customer.kyc_verified', 'customer.trust_changed'],
+  },
+  {
+    label: 'Sonstiges',
+    values: [
+      'metal_price.recorded',
+      'metal_price.manual_override',
+      'belegtext.published',
+      'appraisal.accepted',
+      'appraisal.rejected',
+    ],
+  },
+  {
+    label: 'Alarme',
+    values: [
+      'alert.suspicious_aml_flagged',
+      'alert.worker_job_dead_letter',
+      'alert.hash_chain_verification_failed',
+      'alert.anomaly_detected',
+      'alert.ebay_sale_conflict',
+      'alert.ebay_double_sale_attempt',
+      'alert.customer_marked_suspicious',
+      'alert.customer_banned',
+    ],
+  },
+];
 
 export function Tagebuch(): JSX.Element {
+  const api = useApiClient();
+
+  const [eventType, setEventType] = useState<string>('');
+  const [actorUserId, setActorUserId] = useState<string>('');
+  const [fromBusinessDay, setFromBusinessDay] = useState<string>('');
+  const [toBusinessDay, setToBusinessDay] = useState<string>('');
+  const [liveOn, setLiveOn] = useState<boolean>(true);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+
+  const query: LedgerListQuery = {
+    limit: 200,
+    ...(eventType ? { eventType } : {}),
+    ...(actorUserId.trim() ? { actorUserId: actorUserId.trim() } : {}),
+    ...(fromBusinessDay ? { fromBusinessDay } : {}),
+    ...(toBusinessDay ? { toBusinessDay } : {}),
+  };
+
+  const listQ = useQuery({
+    queryKey: ['ledger', 'list', query],
+    queryFn: () => ledgerQueryApi.list(api, query),
+    staleTime: 10_000,
+  });
+
+  const liveEvents = useLedgerFeed(selectEvents);
+
+  const merged = useMemo(() => {
+    const base = listQ.data?.items ?? [];
+    if (!liveOn) return base;
+    // De-dupe live events against the paged result by id; live first.
+    const seen = new Set(base.map((r) => r.id));
+    const overlay: LedgerListRow[] = [];
+    for (const ev of liveEvents) {
+      if (seen.has(ev.id)) continue;
+      if (eventType && ev.event_type !== eventType) continue;
+      if (actorUserId.trim() && ev.actor_user_id !== actorUserId.trim()) continue;
+      overlay.push({
+        id: ev.id,
+        eventType: ev.event_type,
+        entityTable: ev.entity_table,
+        entityId: ev.entity_id,
+        actorUserId: ev.actor_user_id,
+        deviceId: ev.device_id,
+        payload: ev.payload,
+        rowHashHex: '',
+        createdAt: ev.created_at,
+      });
+    }
+    return [...overlay, ...base];
+  }, [listQ.data, liveEvents, liveOn, eventType, actorUserId]);
+
   return (
-    <PlaceholderSurface
-      title="Tagebuch"
-      motto="Die vollständige Chronik der Hash-Kette."
-    />
+    <section
+      aria-label="Tagebuch"
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        minHeight: 0,
+        padding: 18,
+        gap: 12,
+      }}
+    >
+      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <h1
+          style={{
+            margin: 0,
+            fontFamily: 'var(--w14-font-display)',
+            fontWeight: 500,
+            fontSize: '1.6rem',
+          }}
+        >
+          Tagebuch
+        </h1>
+        <label
+          className="w14-smallcaps"
+          style={{
+            fontSize: '0.74rem',
+            letterSpacing: '0.08em',
+            color: liveOn ? 'var(--w14-gold)' : 'var(--w14-ink-faded)',
+            display: 'flex',
+            gap: 6,
+            alignItems: 'center',
+            cursor: 'pointer',
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={liveOn}
+            onChange={(e) => setLiveOn(e.target.checked)}
+            style={{ accentColor: 'var(--w14-gold)' }}
+          />
+          Live-Stream
+        </label>
+      </header>
+
+      {/* Filter bar */}
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 10,
+          padding: 10,
+          background: 'var(--w14-parchment-2)',
+          border: '1px solid var(--w14-rule)',
+          borderRadius: 'var(--w14-radius-card)',
+        }}
+      >
+        <FilterField label="Ereignis-Typ">
+          <select
+            value={eventType}
+            onChange={(e) => setEventType(e.target.value)}
+            style={{ ...inputStyle, minWidth: 220 }}
+          >
+            <option value="">— alle —</option>
+            {EVENT_TYPE_GROUPS.map((g) => (
+              <optgroup key={g.label} label={g.label}>
+                {g.values.map((v) => (
+                  <option key={v} value={v}>
+                    {v}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        </FilterField>
+        <FilterField label="Von">
+          <input
+            type="date"
+            value={fromBusinessDay}
+            onChange={(e) => setFromBusinessDay(e.target.value)}
+            style={inputStyle}
+          />
+        </FilterField>
+        <FilterField label="Bis">
+          <input
+            type="date"
+            value={toBusinessDay}
+            onChange={(e) => setToBusinessDay(e.target.value)}
+            style={inputStyle}
+          />
+        </FilterField>
+        <FilterField label="Actor-UUID">
+          <input
+            type="text"
+            value={actorUserId}
+            onChange={(e) => setActorUserId(e.target.value)}
+            placeholder="00000000-…"
+            spellCheck={false}
+            style={{ ...inputStyle, fontFamily: 'var(--w14-font-mono)', minWidth: 220 }}
+          />
+        </FilterField>
+      </div>
+
+      <DiamondRule />
+
+      {/* Results */}
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {listQ.isLoading ? (
+          <ListSkeleton />
+        ) : listQ.isError ? (
+          <ParchmentCard padding="md" style={{ border: '1px solid var(--w14-wax-red)' }}>
+            <p role="alert" style={{ margin: 0, color: 'var(--w14-wax-red)' }}>
+              Tagebuch konnte nicht geladen werden.
+            </p>
+          </ParchmentCard>
+        ) : merged.length === 0 ? (
+          <ParchmentCard padding="md" style={{ textAlign: 'center' }}>
+            <p style={{ margin: 0, fontStyle: 'italic', color: 'var(--w14-ink-faded)' }}>
+              Keine Einträge im gewählten Zeitraum.
+            </p>
+          </ParchmentCard>
+        ) : (
+          merged.map((row) => (
+            <EventRow
+              key={row.id}
+              row={row}
+              expanded={expandedId === row.id}
+              onToggle={() => setExpandedId(expandedId === row.id ? null : row.id)}
+            />
+          ))
+        )}
+      </div>
+    </section>
   );
 }
+
+function EventRow({
+  row,
+  expanded,
+  onToggle,
+}: {
+  row: LedgerListRow;
+  expanded: boolean;
+  onToggle: () => void;
+}): JSX.Element {
+  const isAlert = isAlertEvent({ event_type: row.eventType });
+  return (
+    <ParchmentCard
+      padding="sm"
+      onClick={onToggle}
+      style={{
+        cursor: 'pointer',
+        borderLeft: isAlert ? '3px solid var(--w14-wax-red)' : '3px solid var(--w14-rule)',
+        background: expanded ? 'var(--w14-parchment-2)' : 'var(--w14-parchment-1)',
+      }}
+    >
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '140px 1fr 220px',
+          gap: 12,
+          alignItems: 'baseline',
+          fontFamily: 'var(--w14-font-mono)',
+          fontSize: '0.78rem',
+        }}
+      >
+        <span className="w14-tabular" style={{ color: 'var(--w14-ink-faded)' }}>
+          #{row.id.toString().padStart(6, '0')}
+        </span>
+        <span
+          style={{
+            color: isAlert ? 'var(--w14-wax-red)' : 'var(--w14-ink-aged)',
+            fontWeight: isAlert ? 600 : 400,
+          }}
+        >
+          {row.eventType}
+        </span>
+        <span className="w14-tabular" style={{ color: 'var(--w14-ink-faded)', textAlign: 'right' }}>
+          {new Date(row.createdAt).toLocaleString('de-DE')}
+        </span>
+      </div>
+      <div
+        className="w14-tabular"
+        style={{
+          marginTop: 4,
+          fontFamily: 'var(--w14-font-mono)',
+          fontSize: '0.7rem',
+          color: 'var(--w14-ink-faded)',
+        }}
+      >
+        {row.entityTable}/{row.entityId.slice(0, 8)}
+        {row.actorUserId && ` · von ${row.actorUserId.slice(0, 8)}`}
+      </div>
+
+      {expanded && (
+        <div style={{ marginTop: 10 }}>
+          <pre
+            style={{
+              margin: 0,
+              padding: 10,
+              background: 'var(--w14-parchment)',
+              border: '1px solid var(--w14-rule)',
+              borderRadius: 4,
+              fontFamily: 'var(--w14-font-mono)',
+              fontSize: '0.72rem',
+              color: 'var(--w14-ink-aged)',
+              maxHeight: 240,
+              overflow: 'auto',
+            }}
+          >
+            {JSON.stringify(row.payload, null, 2)}
+          </pre>
+          {row.rowHashHex && (
+            <small
+              className="w14-tabular"
+              style={{
+                display: 'block',
+                marginTop: 4,
+                fontFamily: 'var(--w14-font-mono)',
+                fontSize: '0.66rem',
+                color: 'var(--w14-ink-faded)',
+                wordBreak: 'break-all',
+              }}
+            >
+              row_hash: {row.rowHashHex}
+            </small>
+          )}
+        </div>
+      )}
+    </ParchmentCard>
+  );
+}
+
+function FilterField({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}): JSX.Element {
+  return (
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <span
+        className="w14-smallcaps"
+        style={{
+          fontSize: '0.7rem',
+          letterSpacing: '0.08em',
+          color: 'var(--w14-ink-aged)',
+        }}
+      >
+        {label}
+      </span>
+      {children}
+    </label>
+  );
+}
+
+function ListSkeleton(): JSX.Element {
+  return (
+    <>
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div
+          key={i}
+          aria-hidden
+          style={{
+            height: 48,
+            borderRadius: 'var(--w14-radius-card)',
+            background:
+              'linear-gradient(90deg, var(--w14-parchment-2), var(--w14-parchment-3), var(--w14-parchment-2))',
+            backgroundSize: '200% 100%',
+            animation: 'w14-skel 1.6s ease-in-out infinite',
+            opacity: 1 - i * 0.1,
+          }}
+        />
+      ))}
+      <style>{`@keyframes w14-skel { 0%,100%{background-position:0% 50%;} 50%{background-position:100% 50%;} }`}</style>
+    </>
+  );
+}
+
+const inputStyle: React.CSSProperties = {
+  padding: '6px 8px',
+  border: '1px solid var(--w14-rule)',
+  borderRadius: 4,
+  backgroundColor: 'var(--w14-parchment)',
+  fontFamily: 'var(--w14-font-body)',
+  fontSize: '0.86rem',
+  color: 'var(--w14-ink)',
+  outline: 'none',
+};

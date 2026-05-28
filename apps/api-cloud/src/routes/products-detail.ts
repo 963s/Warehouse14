@@ -101,6 +101,23 @@ const ProductDetail = Type.Object({
    * when `status='AVAILABLE'`. FALSE hides instantly.
    */
   isPublishedToWeb: Type.Boolean(),
+  /**
+   * Current eBay listing state. NULL means the row was never enrolled in
+   * the eBay workflow. Mutated only via PATCH /api/products/:id/ebay-state.
+   */
+  ebayState: Type.Union([
+    Type.Literal('ENTWURF'),
+    Type.Literal('GEPRUEFT'),
+    Type.Literal('ONLINE'),
+    Type.Literal('VERKAUFT'),
+    Type.Literal('BEZAHLT'),
+    Type.Literal('VERPACKT'),
+    Type.Literal('VERSENDET'),
+    Type.Literal('REKLAMIERT'),
+    Type.Literal('RETOURNIERT'),
+    Type.Null(),
+  ]),
+  ebayStateChangedAt: Type.Union([Type.String({ format: 'date-time' }), Type.Null()]),
   parentProductId: Type.Union([Type.String({ format: 'uuid' }), Type.Null()]),
   locationStorageUnit: Type.Union([Type.String(), Type.Null()]),
   locationDrawer: Type.Union([Type.String(), Type.Null()]),
@@ -203,6 +220,8 @@ const productsDetailRoute: FastifyPluginAsync = async (app) => {
       listedOnEbay: row.listedOnEbay,
       // Phase 2.A / Day-14: storefront publication gate.
       isPublishedToWeb: row.isPublishedToWeb,
+      ebayState: row.ebayState,
+      ebayStateChangedAt: row.ebayStateChangedAt ? row.ebayStateChangedAt.toISOString() : null,
       parentProductId: row.parentProductId,
       locationStorageUnit: row.locationStorageUnit,
       locationDrawer: row.locationDrawer,

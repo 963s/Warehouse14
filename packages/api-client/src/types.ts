@@ -20,6 +20,7 @@ export type ApiErrorCode =
   | 'PRODUCT_NOT_RESERVABLE'
   | 'DEVICE_NOT_AUTHORIZED'
   | 'RATE_LIMITED'
+  | 'EXTERNAL_SERVICE_FAILED'
   | 'INTERNAL_ERROR';
 
 export interface RequestOptions {
@@ -29,6 +30,12 @@ export interface RequestOptions {
   timeoutMs?: number;
   /** Additional headers — merged with the client defaults. */
   headers?: Record<string, string>;
+  /**
+   * Stable route label for telemetry, e.g. `/ankauf/:id` (so telemetry can
+   * group attempts on the same logical endpoint even when the URL contains
+   * IDs). If omitted, telemetry falls back to the raw path.
+   */
+  routeTemplate?: string;
 }
 
 export interface ApiClientConfig {
@@ -40,4 +47,16 @@ export interface ApiClientConfig {
   credentials?: RequestCredentials;
   /** Extra default headers, e.g. `{ 'X-Dev-Device-Fingerprint': '…' }` in dev. */
   defaultHeaders?: Record<string, string>;
+  /**
+   * Middleware chain. Outermost first; the terminal `fetch` runs after the
+   * last entry. Order is load-bearing — see ADR-0042 + ADR-0043 in
+   * `docs/architecture/adr/`. Omit for a raw client (used by the session
+   * probe and by integration tests that want deterministic terminal
+   * behaviour without retries/dedup).
+   *
+   * Imported as `Middleware` from `./middleware.js` — kept untyped here to
+   * avoid a circular import; consumers should use the const factory exported
+   * from `apps/tauri-pos/src/lib/api-context.tsx` (`productionMiddlewares`).
+   */
+  middlewares?: readonly import('./middleware.js').Middleware[];
 }

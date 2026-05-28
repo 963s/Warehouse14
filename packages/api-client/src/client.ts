@@ -2,9 +2,32 @@
  * The thin `request()` helper + the `ApiClient` carrier object every domain
  * cluster consumes. Domain methods receive an `ApiClient` and call
  * `client.request(...)` — they never see `fetch` directly.
+ *
+ * As of ADR-0042/0043, `request()` drives a middleware chain. The public
+ * surface is unchanged — every existing call site (auth-pin, products,
+ * customers, transactions, ankauf, photos, ebay, dashboard, …) works
+ * without edits.
+ *
+ * Layering (innermost → outermost):
+ *   terminal fetch  →  user-supplied middlewares (in order)  →  caller
+ *
+ * Timeout + abort composition lives in the public `request()` entrypoint,
+ * NOT inside the terminal — this way every middleware sees the already-
+ * composed signal and can short-circuit cleanly when the caller aborts.
+ * The composeSignals helper also fixes the prior listener leak (see
+ * internal/abort.ts).
  */
 
 import { ApiError, ApiNetworkError } from './errors.js';
+import { composeSignals, TimeoutError } from './internal/abort.js';
+import {
+  compose,
+  type HttpMethod,
+  type Middleware,
+  type MiddlewareRequest,
+  type MiddlewareResponse,
+  type Next,
+} from './middleware.js';
 import type { ApiClientConfig, ApiErrorCode, RequestOptions } from './types.js';
 
 export interface ApiClient {
@@ -15,7 +38,7 @@ export interface ApiClient {
    * `ApiNetworkError`. 204 / empty bodies return `undefined`.
    */
   request<T>(
-    method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
+    method: HttpMethod,
     path: string,
     body?: unknown,
     opts?: RequestOptions,
@@ -34,24 +57,22 @@ interface ErrorEnvelope {
 export function createApiClient(config: ApiClientConfig): ApiClient {
   const baseUrl = config.baseUrl.replace(/\/+$/, '');
   const defaultTimeout = config.timeoutMs ?? 15_000;
+  const middlewares: readonly Middleware[] = config.middlewares ?? [];
+
+  const terminal: Next = createTerminal(config);
+  const chain: Next = compose(middlewares, terminal);
 
   async function request<T>(
-    method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
+    method: HttpMethod,
     path: string,
     body?: unknown,
     opts: RequestOptions = {},
   ): Promise<T> {
     const url = `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
-    const controller = new AbortController();
-    const timer = setTimeout(
-      () => controller.abort(new Error('request timeout')),
+    const { signal, cleanup } = composeSignals(
+      opts.signal,
       opts.timeoutMs ?? defaultTimeout,
     );
-    // Chain the caller's signal — abort if either fires.
-    if (opts.signal) {
-      if (opts.signal.aborted) controller.abort(opts.signal.reason);
-      opts.signal.addEventListener('abort', () => controller.abort(opts.signal!.reason));
-    }
 
     const headers: Record<string, string> = {
       'Accept': 'application/json',
@@ -62,23 +83,57 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
       headers['Content-Type'] = 'application/json';
     }
 
+    const req: MiddlewareRequest = {
+      method,
+      url,
+      path,
+      headers,
+      body,
+      signal,
+      meta: {
+        attempt: 1,
+        startedAt: performance.now(),
+        ...(opts.routeTemplate !== undefined ? { routeTemplate: opts.routeTemplate } : {}),
+      },
+    };
+
+    try {
+      const res = await chain(req);
+      return res.data as T;
+    } finally {
+      cleanup();
+    }
+  }
+
+  return { baseUrl, request };
+}
+
+function createTerminal(config: ApiClientConfig): Next {
+  return async (req: MiddlewareRequest): Promise<MiddlewareResponse> => {
     let res: Response;
     try {
-      res = await fetch(url, {
-        method,
-        headers,
+      res = await fetch(req.url, {
+        method: req.method,
+        headers: req.headers,
         credentials: config.credentials ?? 'include',
-        signal: controller.signal,
-        body: body !== undefined ? JSON.stringify(body) : null,
+        signal: req.signal,
+        body: req.body !== undefined ? JSON.stringify(req.body) : null,
       });
     } catch (err) {
+      // Distinguish timeout from generic network/abort so UX can react
+      // differently. The retry middleware also uses this distinction.
+      if (req.signal.aborted && req.signal.reason instanceof TimeoutError) {
+        throw new ApiNetworkError(req.signal.reason.message, req.signal.reason);
+      }
       throw new ApiNetworkError(
         err instanceof Error ? err.message : 'unknown network failure',
         err,
       );
-    } finally {
-      clearTimeout(timer);
     }
+
+    const requestId = res.headers.get('x-request-id');
+    const traceId = req.meta.traceId ?? null;
+    const retryAfterMs = parseRetryAfter(res.headers.get('retry-after'));
 
     // No body case (204, HEAD-like).
     if (res.status === 204 || res.headers.get('Content-Length') === '0') {
@@ -87,10 +142,11 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
           code: mapHttpStatus(res.status),
           message: `HTTP ${res.status} (no body)`,
           httpStatus: res.status,
-          requestId: res.headers.get('x-request-id'),
+          requestId,
+          details: retryAfterMs !== undefined ? { retryAfterMs } : undefined,
         });
       }
-      return undefined as T;
+      return { data: undefined, status: res.status, headers: res.headers, requestId, traceId };
     }
 
     const text = await res.text();
@@ -102,27 +158,40 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
         code: 'INTERNAL_ERROR',
         message: `non-JSON body (HTTP ${res.status})`,
         httpStatus: res.status,
-        requestId: res.headers.get('x-request-id'),
+        requestId,
         details: { text: text.slice(0, 200) },
       });
     }
 
     if (!res.ok) {
       const envelope = parsed as Partial<ErrorEnvelope>;
-      const err = envelope?.error;
+      const e = envelope?.error;
       throw new ApiError({
-        code: err?.code ?? mapHttpStatus(res.status),
-        message: err?.message ?? `HTTP ${res.status}`,
+        code: e?.code ?? mapHttpStatus(res.status),
+        message: e?.message ?? `HTTP ${res.status}`,
         httpStatus: res.status,
-        requestId: err?.requestId ?? res.headers.get('x-request-id'),
-        details: err?.details,
+        requestId: e?.requestId ?? requestId,
+        details: mergeRetryAfter(e?.details, retryAfterMs),
       });
     }
 
-    return parsed as T;
-  }
+    return { data: parsed, status: res.status, headers: res.headers, requestId, traceId };
+  };
+}
 
-  return { baseUrl, request };
+function parseRetryAfter(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+  const date = Date.parse(value);
+  if (Number.isFinite(date)) return Math.max(0, date - Date.now());
+  return undefined;
+}
+
+function mergeRetryAfter(details: unknown, retryAfterMs: number | undefined): unknown {
+  if (retryAfterMs === undefined) return details;
+  if (details && typeof details === 'object') return { ...details, retryAfterMs };
+  return { retryAfterMs };
 }
 
 function mapHttpStatus(status: number): ApiErrorCode {

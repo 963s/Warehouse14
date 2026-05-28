@@ -74,6 +74,7 @@ import { Belegtexte } from '../../screens/secondary/Belegtexte.js';
 import { Tagebuch } from '../../screens/secondary/Tagebuch.js';
 import { Dokumente } from '../../screens/secondary/Dokumente.js';
 import { Einstellungen } from '../../screens/secondary/Einstellungen.js';
+import { WhatsApp } from '../../screens/secondary/WhatsApp.js';
 
 export const SURFACES: readonly SurfaceDescriptor[] = [
   // ── Tier 1 — 8 chips, frequency-ordered ─────────────────────────────
@@ -206,6 +207,14 @@ export const SURFACES: readonly SurfaceDescriptor[] = [
     tier: 'secondary',
     component: Einstellungen,
     searchAliases: ['settings', 'preferences', 'drucker', 'gerät'],
+  },
+  {
+    path: '/whatsapp',
+    label: 'WhatsApp',
+    description: 'Eingehende Nachrichten triagieren und Antworten senden.',
+    tier: 'secondary',
+    component: WhatsApp,
+    searchAliases: ['whatsapp', 'wa', 'meta', 'chat', 'nachricht', 'inbox'],
   },
 ] as const;
 

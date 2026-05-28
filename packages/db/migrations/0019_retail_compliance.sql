@@ -122,6 +122,14 @@ DO $$ BEGIN
   END IF;
 END$$;
 
+-- PG limitation (all versions): a new enum value added via ALTER TYPE ADD
+-- VALUE cannot be used in a CHECK constraint within the same transaction.
+-- Split the migration here: commit the ADD VALUE, then start a fresh tx
+-- for the rest. The split is transparent to the user — re-running the
+-- migration is still idempotent thanks to the IF NOT EXISTS guards.
+COMMIT;
+BEGIN;
+
 -- ═════════════════════════════════════════════════════════════════════════
 -- 3. shifts — per-cashier-per-device cash session
 -- ═════════════════════════════════════════════════════════════════════════

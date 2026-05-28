@@ -286,12 +286,12 @@ async function seedDevDeviceAndOwner(sql: Sql, fingerprint: string): Promise<voi
         now(),
         now() + ${`${CERT_VALIDITY_DAYS} days`}::interval,
         ${userId},
-        'ACTIVE'::device_status
+        'active'::device_status
       )
       ON CONFLICT (cert_serial) DO UPDATE SET
         cert_expires_at = EXCLUDED.cert_expires_at,
         paired_by_user_id = EXCLUDED.paired_by_user_id,
-        status = 'ACTIVE'::device_status`;
+        status = 'active'::device_status`;
     log('seed', `  ✓ upserted dev device with fingerprint ${fingerprint.slice(0, 16)}…`);
   });
 }
