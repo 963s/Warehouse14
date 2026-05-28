@@ -25,7 +25,7 @@
  * string-interpolated) and far easier to audit.
  */
 
-import { Type, type Static } from '@sinclair/typebox';
+import { type Static, Type } from '@sinclair/typebox';
 import { sql } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 
@@ -44,7 +44,7 @@ import type { Env } from '../config/env.js';
 const WHATSAPP_OUTBOUND_STATUSES = ['queued', 'sent', 'delivered', 'read', 'failed'] as const;
 type WhatsAppOutboundStatus = (typeof WHATSAPP_OUTBOUND_STATUSES)[number];
 import { requireAuth, requireRole } from '../lib/auth-policy.js';
-import { DomainError, type ApiErrorCode } from '../plugins/error-handler.js';
+import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 
 // ════════════════════════════════════════════════════════════════════════
 // Typed errors
@@ -106,9 +106,7 @@ const ThreadListResponse = Type.Object({
   items: Type.Array(ThreadListItem),
 });
 
-const OutboundStatusSchema = Type.Union(
-  WHATSAPP_OUTBOUND_STATUSES.map((s) => Type.Literal(s)),
-);
+const OutboundStatusSchema = Type.Union(WHATSAPP_OUTBOUND_STATUSES.map((s) => Type.Literal(s)));
 
 const ThreadMessage = Type.Object({
   id: Type.String(),
@@ -173,30 +171,33 @@ const whatsappInboxRoutes: FastifyPluginAsync<WhatsAppInboxOpts> = async (app, o
   // ──────────────────────────────────────────────────────────────────────
   // GET /api/whatsapp/threads
   // ──────────────────────────────────────────────────────────────────────
-  app.get('/api/whatsapp/threads', {
-    schema: {
-      tags: ['whatsapp'],
-      summary: 'List WhatsApp conversations grouped by phone (most recent first).',
-      response: { 200: ThreadListResponse, 401: ErrorResponse, 403: ErrorResponse },
+  app.get(
+    '/api/whatsapp/threads',
+    {
+      schema: {
+        tags: ['whatsapp'],
+        summary: 'List WhatsApp conversations grouped by phone (most recent first).',
+        response: { 200: ThreadListResponse, 401: ErrorResponse, 403: ErrorResponse },
+      },
     },
-  }, async (req, reply) => {
-    requireAuth(req);
-    requireRole(req, 'ADMIN');
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'ADMIN');
 
-    // Single SQL: combine inbound + outbound, group by phone, take the
-    // most-recent message per phone via window function, surface the
-    // resolved customer name through the request-scoped PII key.
-    const rows = await app.withPii(async (txAny) => {
-      const tx = txAny as typeof app.db;
-      const result = await tx.execute<{
-        phone: string;
-        linked_customer_id: string | null;
-        linked_customer_full_name: string | null;
-        last_message_preview: string;
-        last_message_at: string;
-        last_message_direction: 'inbound' | 'outbound';
-        unread_count: string;
-      }>(sql`
+      // Single SQL: combine inbound + outbound, group by phone, take the
+      // most-recent message per phone via window function, surface the
+      // resolved customer name through the request-scoped PII key.
+      const rows = await app.withPii(async (txAny) => {
+        const tx = txAny as unknown as typeof app.db;
+        const result = await tx.execute<{
+          phone: string;
+          linked_customer_id: string | null;
+          linked_customer_full_name: string | null;
+          last_message_preview: string;
+          last_message_at: string;
+          last_message_direction: 'inbound' | 'outbound';
+          unread_count: string;
+        }>(sql`
         WITH all_messages AS (
           SELECT
             from_phone AS phone,
@@ -241,62 +242,66 @@ const whatsappInboxRoutes: FastifyPluginAsync<WhatsAppInboxOpts> = async (app, o
         ORDER BY r.ts DESC
         LIMIT 200
       `);
-      // postgres-js returns the underlying RowList; cast to plain array.
-      return result as unknown as Array<{
-        phone: string;
-        linked_customer_id: string | null;
-        linked_customer_full_name: string | null;
-        last_message_preview: string;
-        last_message_at: string;
-        last_message_direction: 'inbound' | 'outbound';
-        unread_count: string;
-      }>;
-    });
+        // postgres-js returns the underlying RowList; cast to plain array.
+        return result as unknown as Array<{
+          phone: string;
+          linked_customer_id: string | null;
+          linked_customer_full_name: string | null;
+          last_message_preview: string;
+          last_message_at: string;
+          last_message_direction: 'inbound' | 'outbound';
+          unread_count: string;
+        }>;
+      });
 
-    const items = rows.map((r) => ({
-      phone: r.phone,
-      linkedCustomerId: r.linked_customer_id,
-      linkedCustomerName: r.linked_customer_full_name,
-      lastMessagePreview: r.last_message_preview,
-      lastMessageAt: r.last_message_at,
-      lastMessageDirection: r.last_message_direction,
-      unreadCount: Number(r.unread_count ?? 0),
-    }));
+      const items = rows.map((r) => ({
+        phone: r.phone,
+        linkedCustomerId: r.linked_customer_id,
+        linkedCustomerName: r.linked_customer_full_name,
+        lastMessagePreview: r.last_message_preview,
+        lastMessageAt: r.last_message_at,
+        lastMessageDirection: r.last_message_direction,
+        unreadCount: Number(r.unread_count ?? 0),
+      }));
 
-    return reply.status(200).send({ items });
-  });
+      return reply.status(200).send({ items });
+    },
+  );
 
   // ──────────────────────────────────────────────────────────────────────
   // GET /api/whatsapp/threads/:phone
   // ──────────────────────────────────────────────────────────────────────
-  app.get<{ Params: TPhoneParams }>('/api/whatsapp/threads/:phone', {
-    schema: {
-      tags: ['whatsapp'],
-      summary: 'Interleaved timeline (inbound + outbound) for one phone.',
-      params: PhoneParams,
-      response: {
-        200: ThreadDetailResponse,
-        401: ErrorResponse,
-        403: ErrorResponse,
+  app.get<{ Params: TPhoneParams }>(
+    '/api/whatsapp/threads/:phone',
+    {
+      schema: {
+        tags: ['whatsapp'],
+        summary: 'Interleaved timeline (inbound + outbound) for one phone.',
+        params: PhoneParams,
+        response: {
+          200: ThreadDetailResponse,
+          401: ErrorResponse,
+          403: ErrorResponse,
+        },
       },
     },
-  }, async (req, reply) => {
-    requireAuth(req);
-    requireRole(req, 'ADMIN');
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'ADMIN');
 
-    const phone = req.params.phone;
+      const phone = req.params.phone;
 
-    const detail = await app.withPii(async (txAny) => {
-      const tx = txAny as typeof app.db;
-      const messageRows = (await tx.execute<{
-        id: string;
-        direction: 'inbound' | 'outbound';
-        body: string;
-        ts: string;
-        status: WhatsAppOutboundStatus | null;
-        handled_at: string | null;
-        linked_customer_id: string | null;
-      }>(sql`
+      const detail = await app.withPii(async (txAny) => {
+        const tx = txAny as unknown as typeof app.db;
+        const messageRows = (await tx.execute<{
+          id: string;
+          direction: 'inbound' | 'outbound';
+          body: string;
+          ts: string;
+          status: WhatsAppOutboundStatus | null;
+          handled_at: string | null;
+          linked_customer_id: string | null;
+        }>(sql`
         SELECT
           id::text AS id,
           'inbound'::text AS direction,
@@ -321,135 +326,137 @@ const whatsappInboxRoutes: FastifyPluginAsync<WhatsAppInboxOpts> = async (app, o
         ORDER BY ts ASC
         LIMIT 1000
       `)) as unknown as Array<{
-        id: string;
-        direction: 'inbound' | 'outbound';
-        body: string;
-        ts: string;
-        status: WhatsAppOutboundStatus | null;
-        handled_at: string | null;
-        linked_customer_id: string | null;
-      }>;
+          id: string;
+          direction: 'inbound' | 'outbound';
+          body: string;
+          ts: string;
+          status: WhatsAppOutboundStatus | null;
+          handled_at: string | null;
+          linked_customer_id: string | null;
+        }>;
 
-      // Resolve linked customer name (first non-null link wins; this is a
-      // single-operator app, so the operator's intent is unambiguous).
-      let linkedCustomerId: string | null = null;
-      for (const m of messageRows) {
-        if (m.linked_customer_id) {
-          linkedCustomerId = m.linked_customer_id;
-          break;
+        // Resolve linked customer name (first non-null link wins; this is a
+        // single-operator app, so the operator's intent is unambiguous).
+        let linkedCustomerId: string | null = null;
+        for (const m of messageRows) {
+          if (m.linked_customer_id) {
+            linkedCustomerId = m.linked_customer_id;
+            break;
+          }
         }
-      }
 
-      let linkedCustomerName: string | null = null;
-      if (linkedCustomerId) {
-        const nameRows = (await tx.execute<{ full_name: string | null }>(sql`
+        let linkedCustomerName: string | null = null;
+        if (linkedCustomerId) {
+          const nameRows = (await tx.execute<{ full_name: string | null }>(sql`
           SELECT decrypt_pii(full_name_encrypted) AS full_name
           FROM customers
           WHERE id = ${linkedCustomerId}::uuid
           LIMIT 1
         `)) as unknown as Array<{ full_name: string | null }>;
-        linkedCustomerName = nameRows[0]?.full_name ?? null;
-      }
+          linkedCustomerName = nameRows[0]?.full_name ?? null;
+        }
 
-      return { messageRows, linkedCustomerId, linkedCustomerName };
-    });
+        return { messageRows, linkedCustomerId, linkedCustomerName };
+      });
 
-    const messages = detail.messageRows.map((r) => ({
-      id: r.id,
-      direction: r.direction,
-      body: r.body ?? '',
-      timestamp: r.ts,
-      status: r.status,
-      handledAt: r.handled_at,
-    }));
+      const messages = detail.messageRows.map((r) => ({
+        id: r.id,
+        direction: r.direction,
+        body: r.body ?? '',
+        timestamp: r.ts,
+        status: r.status,
+        handledAt: r.handled_at,
+      }));
 
-    return reply.status(200).send({
-      phone,
-      linkedCustomerId: detail.linkedCustomerId,
-      linkedCustomerName: detail.linkedCustomerName,
-      messages,
-    });
-  });
+      return reply.status(200).send({
+        phone,
+        linkedCustomerId: detail.linkedCustomerId,
+        linkedCustomerName: detail.linkedCustomerName,
+        messages,
+      });
+    },
+  );
 
   // ──────────────────────────────────────────────────────────────────────
   // POST /api/whatsapp/send
   // ──────────────────────────────────────────────────────────────────────
-  app.post<{ Body: TSendBody }>('/api/whatsapp/send', {
-    schema: {
-      tags: ['whatsapp'],
-      summary: 'Send an outbound WhatsApp reply (or queue if env not configured).',
-      description:
-        'If WHATSAPP_PHONE_NUMBER_ID + WHATSAPP_ACCESS_TOKEN are set, POSTs '
-        + 'to Meta Cloud API v20.0 with a 10 s timeout. Stores the row '
-        + 'either way. Provider errors are translated to a generic '
-        + 'EXTERNAL_SERVICE_FAILED — never surfaced raw.',
-      body: SendBody,
-      response: {
-        200: SendResponse,
-        400: ErrorResponse,
-        401: ErrorResponse,
-        403: ErrorResponse,
-        502: ErrorResponse,
+  app.post<{ Body: TSendBody }>(
+    '/api/whatsapp/send',
+    {
+      schema: {
+        tags: ['whatsapp'],
+        summary: 'Send an outbound WhatsApp reply (or queue if env not configured).',
+        description:
+          'If WHATSAPP_PHONE_NUMBER_ID + WHATSAPP_ACCESS_TOKEN are set, POSTs ' +
+          'to Meta Cloud API v20.0 with a 10 s timeout. Stores the row ' +
+          'either way. Provider errors are translated to a generic ' +
+          'EXTERNAL_SERVICE_FAILED — never surfaced raw.',
+        body: SendBody,
+        response: {
+          200: SendResponse,
+          400: ErrorResponse,
+          401: ErrorResponse,
+          403: ErrorResponse,
+          502: ErrorResponse,
+        },
       },
     },
-  }, async (req, reply) => {
-    requireAuth(req);
-    requireRole(req, 'ADMIN');
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'ADMIN');
 
-    const body = req.body;
-    const actorId = req.actor.id;
-    const liveSendEnabled =
-      opts.env.WHATSAPP_PHONE_NUMBER_ID.length > 0
-      && opts.env.WHATSAPP_ACCESS_TOKEN.length > 0;
+      const body = req.body;
+      const actorId = req.actor.id;
+      const liveSendEnabled =
+        opts.env.WHATSAPP_PHONE_NUMBER_ID.length > 0 && opts.env.WHATSAPP_ACCESS_TOKEN.length > 0;
 
-    let status: WhatsAppOutboundStatus = 'queued';
-    let providerMessageId: string | null = null;
-    let providerError: unknown = null;
-    let providerErrorCode: string | null = null;
+      let status: WhatsAppOutboundStatus = 'queued';
+      let providerMessageId: string | null = null;
+      let providerError: unknown = null;
+      let providerErrorCode: string | null = null;
 
-    if (liveSendEnabled) {
-      try {
-        const sendArgs: MetaSendArgs = {
-          phoneNumberId: opts.env.WHATSAPP_PHONE_NUMBER_ID,
-          accessToken: opts.env.WHATSAPP_ACCESS_TOKEN,
-          toPhone: body.toPhone,
-          messageBody: body.body,
-        };
-        if (body.templateName !== undefined) sendArgs.templateName = body.templateName;
-        if (body.templateParams !== undefined) sendArgs.templateParams = body.templateParams;
-        const result = await sendToMeta(sendArgs);
-        status = 'sent';
-        providerMessageId = result.messageId;
-      } catch (err) {
-        const detail = err instanceof Error ? err.message : String(err);
-        const providerCode = err instanceof MetaApiError ? err.providerCode : null;
-        providerError = err instanceof MetaApiError ? err.providerEnvelope : { message: detail };
-        providerErrorCode = providerCode;
-        status = 'failed';
-        req.log.warn(
-          { err, providerCode, toPhone: body.toPhone },
-          'whatsapp send: provider rejected',
-        );
+      if (liveSendEnabled) {
+        try {
+          const sendArgs: MetaSendArgs = {
+            phoneNumberId: opts.env.WHATSAPP_PHONE_NUMBER_ID,
+            accessToken: opts.env.WHATSAPP_ACCESS_TOKEN,
+            toPhone: body.toPhone,
+            messageBody: body.body,
+          };
+          if (body.templateName !== undefined) sendArgs.templateName = body.templateName;
+          if (body.templateParams !== undefined) sendArgs.templateParams = body.templateParams;
+          const result = await sendToMeta(sendArgs);
+          status = 'sent';
+          providerMessageId = result.messageId;
+        } catch (err) {
+          const detail = err instanceof Error ? err.message : String(err);
+          const providerCode = err instanceof MetaApiError ? err.providerCode : null;
+          providerError = err instanceof MetaApiError ? err.providerEnvelope : { message: detail };
+          providerErrorCode = providerCode;
+          status = 'failed';
+          req.log.warn(
+            { err, providerCode, toPhone: body.toPhone },
+            'whatsapp send: provider rejected',
+          );
+        }
       }
-    }
 
-    // Stringify the JSONB columns up-front so the SQL has plain string
-    // params (no nested drizzleSql conditionals → no realm trouble).
-    const templateParamsJson: string | null = body.templateParams
-      ? JSON.stringify(body.templateParams)
-      : null;
-    const providerErrorJson: string | null = status === 'failed'
-      ? JSON.stringify(providerError)
-      : null;
+      // Stringify the JSONB columns up-front so the SQL has plain string
+      // params (no nested drizzleSql conditionals → no realm trouble).
+      const templateParamsJson: string | null = body.templateParams
+        ? JSON.stringify(body.templateParams)
+        : null;
+      const providerErrorJson: string | null =
+        status === 'failed' ? JSON.stringify(providerError) : null;
 
-    const insertedRows = (await app.db.execute<{
-      id: string;
-      to_phone: string;
-      body: string;
-      status: WhatsAppOutboundStatus;
-      provider_message_id: string | null;
-      sent_at: string;
-    }>(sql`
+      const insertedRows = (await app.db.execute<{
+        id: string;
+        to_phone: string;
+        body: string;
+        status: WhatsAppOutboundStatus;
+        provider_message_id: string | null;
+        sent_at: string;
+      }>(sql`
       INSERT INTO whatsapp_outbound_messages
         (to_phone, body, template_name, template_params, status,
          provider_message_id, provider_error, sent_by_user_id)
@@ -465,33 +472,31 @@ const whatsappInboxRoutes: FastifyPluginAsync<WhatsAppInboxOpts> = async (app, o
       RETURNING id::text AS id, to_phone, body, status::text AS status,
                 provider_message_id, sent_at::text AS sent_at
     `)) as unknown as Array<{
-      id: string;
-      to_phone: string;
-      body: string;
-      status: WhatsAppOutboundStatus;
-      provider_message_id: string | null;
-      sent_at: string;
-    }>;
+        id: string;
+        to_phone: string;
+        body: string;
+        status: WhatsAppOutboundStatus;
+        provider_message_id: string | null;
+        sent_at: string;
+      }>;
 
-    const row = insertedRows[0];
-    if (!row) throw new Error('whatsapp_outbound_messages INSERT returned no row');
+      const row = insertedRows[0];
+      if (!row) throw new Error('whatsapp_outbound_messages INSERT returned no row');
 
-    if (status === 'failed') {
-      throw new WhatsAppProviderError(
-        'WhatsApp-Anbieter hat abgelehnt.',
-        providerErrorCode,
-      );
-    }
+      if (status === 'failed') {
+        throw new WhatsAppProviderError('WhatsApp-Anbieter hat abgelehnt.', providerErrorCode);
+      }
 
-    return reply.status(200).send({
-      id: row.id,
-      toPhone: row.to_phone,
-      body: row.body,
-      status: row.status,
-      providerMessageId: row.provider_message_id,
-      sentAt: row.sent_at,
-    });
-  });
+      return reply.status(200).send({
+        id: row.id,
+        toPhone: row.to_phone,
+        body: row.body,
+        status: row.status,
+        providerMessageId: row.provider_message_id,
+        sentAt: row.sent_at,
+      });
+    },
+  );
 
   // ──────────────────────────────────────────────────────────────────────
   // PATCH /api/whatsapp/messages/:id/handled
@@ -663,7 +668,10 @@ async function sendToMeta(args: MetaSendArgs): Promise<MetaSendResult> {
         };
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(new Error('whatsapp send timeout')), WHATSAPP_SEND_TIMEOUT_MS);
+  const timer = setTimeout(
+    () => controller.abort(new Error('whatsapp send timeout')),
+    WHATSAPP_SEND_TIMEOUT_MS,
+  );
 
   let res: Response;
   try {
@@ -678,11 +686,9 @@ async function sendToMeta(args: MetaSendArgs): Promise<MetaSendResult> {
       signal: controller.signal,
     });
   } catch (err) {
-    throw new MetaApiError(
-      err instanceof Error ? err.message : 'meta fetch failed',
-      null,
-      { message: err instanceof Error ? err.message : String(err) },
-    );
+    throw new MetaApiError(err instanceof Error ? err.message : 'meta fetch failed', null, {
+      message: err instanceof Error ? err.message : String(err),
+    });
   } finally {
     clearTimeout(timer);
   }

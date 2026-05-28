@@ -9,7 +9,7 @@
  * Metal precision is NUMERIC(15,4); valuation totals are NUMERIC(18,2).
  */
 
-import { Type, type Static } from '@sinclair/typebox';
+import { type Static, Type } from '@sinclair/typebox';
 
 import { DecimalString } from './money.js';
 
@@ -107,6 +107,34 @@ export const ManualOverrideResponse = Type.Object({
   source: Type.Literal('MANUAL'),
   validFrom: Type.String({ format: 'date-time' }),
   previousPricePerGramEur: Type.Union([PricePerGramString, Type.Null()]),
+});
+
+// ────────────────────────────────────────────────────────────────────────
+// GET /api/metal-prices/rates — per-metal pricing (current + 10d avg + Ankauf)
+// ────────────────────────────────────────────────────────────────────────
+
+export const MetalRate = Type.Object({
+  metal: METAL_ENUM,
+  /** CURRENT row price per gram. NULL when no row exists yet. */
+  currentPricePerGramEur: Type.Union([PricePerGramString, Type.Null()]),
+  /** Time-weighted 10-day average. NULL when no in-window coverage. */
+  avg10dPricePerGramEur: Type.Union([PricePerGramString, Type.Null()]),
+  /** Ankauf (buy) rate = avg10d × (1 − safetyMarginPct). NULL when avg is NULL. */
+  ankaufRatePerGramEur: Type.Union([PricePerGramString, Type.Null()]),
+  /**
+   * Verkauf (sell) melt baseline per gram = current spot. The full item-level
+   * suggested ask (Schmelzwert + Sammleraufschlag) is per-product — see
+   * GET /api/products/:id/valuation.
+   */
+  verkaufBasePerGramEur: Type.Union([PricePerGramString, Type.Null()]),
+});
+
+export const MetalRatesResponse = Type.Object({
+  /** Ankauf safety margin applied (0.10 = 10%). Phase A3 makes this Owner-editable. */
+  safetyMarginPct: Type.Number(),
+  /** Averaging window in days (10). */
+  windowDays: Type.Integer(),
+  rates: Type.Array(MetalRate),
 });
 
 // ────────────────────────────────────────────────────────────────────────
