@@ -29,6 +29,10 @@ tauri-plugin-updater = "2"
 # Lets the React side restart the process after applying an update —
 # required for the auto-install flow on Windows + macOS.
 tauri-plugin-process = "2"
+# ADR-0044 Phase 3 — local SQLite outbox for offline mutation durability.
+# Migrations are registered in lib.rs and applied on startup; the JS side
+# talks to it via @tauri-apps/plugin-sql (TauriSqlOutboxStore).
+tauri-plugin-sql = { version = "2", features = ["sqlite"] }
 
 # ── Serde + JSON for every IPC payload ───────────────────────────────
 serde = { version = "1", features = ["derive"] }

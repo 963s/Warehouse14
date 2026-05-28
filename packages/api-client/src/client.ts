@@ -19,14 +19,14 @@
  */
 
 import { ApiError, ApiNetworkError } from './errors.js';
-import { composeSignals, TimeoutError } from './internal/abort.js';
+import { TimeoutError, composeSignals } from './internal/abort.js';
 import {
-  compose,
   type HttpMethod,
   type Middleware,
   type MiddlewareRequest,
   type MiddlewareResponse,
   type Next,
+  compose,
 } from './middleware.js';
 import type { ApiClientConfig, ApiErrorCode, RequestOptions } from './types.js';
 
@@ -37,12 +37,7 @@ export interface ApiClient {
    * `ApiError` (with the stable `code`); network failures throw
    * `ApiNetworkError`. 204 / empty bodies return `undefined`.
    */
-  request<T>(
-    method: HttpMethod,
-    path: string,
-    body?: unknown,
-    opts?: RequestOptions,
-  ): Promise<T>;
+  request<T>(method: HttpMethod, path: string, body?: unknown, opts?: RequestOptions): Promise<T>;
 }
 
 interface ErrorEnvelope {
@@ -69,13 +64,10 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
     opts: RequestOptions = {},
   ): Promise<T> {
     const url = `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
-    const { signal, cleanup } = composeSignals(
-      opts.signal,
-      opts.timeoutMs ?? defaultTimeout,
-    );
+    const { signal, cleanup } = composeSignals(opts.signal, opts.timeoutMs ?? defaultTimeout);
 
     const headers: Record<string, string> = {
-      'Accept': 'application/json',
+      Accept: 'application/json',
       ...config.defaultHeaders,
       ...opts.headers,
     };
@@ -94,6 +86,7 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
         attempt: 1,
         startedAt: performance.now(),
         ...(opts.routeTemplate !== undefined ? { routeTemplate: opts.routeTemplate } : {}),
+        ...(opts.custom !== undefined ? { custom: opts.custom } : {}),
       },
     };
 

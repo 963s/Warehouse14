@@ -71,3 +71,64 @@ export class ApiCircuitOpenError extends Error {
     this.retryAfterMs = retryAfterMs;
   }
 }
+
+/**
+ * Thrown by `offlineQueueMiddleware` (ADR-0044 §8) when a mutation could not
+ * reach the cloud and has instead been durably persisted to the local
+ * outbox for later replay.
+ *
+ * Semantically this is a **success** from the UI's point of view: the
+ * operator's intent is safe and will sync. The catching screen should
+ * advance its optimistic state and render a calm "Im Offline-Modus
+ * gespeichert — Synchronisierung läuft" badge, NOT an error toast.
+ *
+ * `cause` carries the underlying transport failure (`ApiNetworkError` or
+ * `ApiCircuitOpenError`) when the enqueue happened after a failed attempt;
+ * it is `undefined` when the device was already known-offline at send time.
+ */
+export class ApiOfflineQueuedError extends Error {
+  public readonly idempotencyKey: string;
+  public readonly enqueuedAt: number;
+  public override readonly cause: unknown;
+
+  constructor(idempotencyKey: string, enqueuedAt: number, cause?: unknown) {
+    super(`mutation queued offline (idempotency-key ${idempotencyKey})`);
+    this.name = 'ApiOfflineQueuedError';
+    this.idempotencyKey = idempotencyKey;
+    this.enqueuedAt = enqueuedAt;
+    this.cause = cause;
+  }
+}
+
+/**
+ * Raised by the outbox replay loop (ADR-0044 §6/§8) when a replayed mutation
+ * diverges from server state and CANNOT be auto-resolved — e.g. a Storno
+ * against an already-closed Tagesabschluss (`CLOSING_DAY_FINALIZED`), an
+ * Ankauf whose metal price moved beyond tolerance (`STATE_DIVERGED`/`CONFLICT`),
+ * the same idempotency key replayed with a different body, or a customer
+ * sanctioned during the offline window (`SANCTIONS_BLOCK`).
+ *
+ * This HALTS the queue at the offending row. Per ADR-0044 §8 it is NOT thrown
+ * back to the original caller (who already received `ApiOfflineQueuedError`
+ * and moved on) — the replay loop surfaces it via an event so the Owner can
+ * resolve it in the Compliance Inbox (ADR-0045).
+ */
+export class ApiOutboxConflictError extends Error {
+  public readonly idempotencyKey: string;
+  /** The backend `ApiErrorCode` (or `'UNKNOWN'`) that classified this halt. */
+  public readonly serverCode: string;
+  public readonly serverDetails: unknown;
+
+  constructor(opts: {
+    idempotencyKey: string;
+    serverCode: string;
+    serverDetails?: unknown;
+    message?: string;
+  }) {
+    super(opts.message ?? `outbox replay conflict (${opts.serverCode}) for ${opts.idempotencyKey}`);
+    this.name = 'ApiOutboxConflictError';
+    this.idempotencyKey = opts.idempotencyKey;
+    this.serverCode = opts.serverCode;
+    this.serverDetails = opts.serverDetails;
+  }
+}

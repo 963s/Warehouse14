@@ -62,6 +62,21 @@ export {
   type StepUpReason,
   type StepUpToken,
 } from './middleware/step-up.js';
+export {
+  FISCAL_PATH_PREFIXES,
+  isGobdRelevantPath,
+  offlineQueueMiddleware,
+  type OfflineQueueDependencies,
+  type OutboxRecord,
+  type OutboxStatus,
+  type OutboxStore,
+} from './middleware/offline-queue.js';
+export {
+  drainOutbox,
+  type ReplayDependencies,
+  type ReplayOutcome,
+} from './middleware/offline-replay.js';
+export { uuidv7 } from './internal/uuidv7.js';
 
 // Per-domain method clusters + their request/response types
 export {

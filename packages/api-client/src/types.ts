@@ -36,6 +36,14 @@ export interface RequestOptions {
    * IDs). If omitted, telemetry falls back to the raw path.
    */
   routeTemplate?: string;
+  /**
+   * Seed for `meta.custom` — the cross-cutting channel middlewares read.
+   * Recognized keys: `skipStepUp`, `skipOfflineQueue`, `idempotencyKey`,
+   * `idempotent`, `gobdRelevant`. Used by the session probe (`skipStepUp`)
+   * and by the outbox replay loop (`skipOfflineQueue` + `skipStepUp` +
+   * `idempotencyKey`) to drive requests through the chain without recursion.
+   */
+  custom?: Record<string, unknown>;
 }
 
 export interface ApiClientConfig {

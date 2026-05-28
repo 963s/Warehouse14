@@ -12,11 +12,28 @@ mod mock;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // ADR-0044 Phase 3 — forward-only outbox migrations, applied on startup
+    // before any UI mounts. NEVER edit a shipped migration (§25a UStG bars a
+    // destructive rollback on financial-record tables); add 0002+ instead.
+    let outbox_migrations = vec![tauri_plugin_sql::Migration {
+        version: 1,
+        description: "create offline outbox tables",
+        sql: include_str!("../migrations/0001_outbox.sql"),
+        kind: tauri_plugin_sql::MigrationKind::Up,
+    }];
+
     tauri::Builder::default()
         // Plugins — order doesn't matter, registration is idempotent.
         // V1 only needs `shell` (for the PDF preview opener); store +
         // dialog land in V1.1 if the operator asks for a save dialog.
         .plugin(tauri_plugin_shell::init())
+        // ADR-0044 — local SQLite outbox. Path is relative to the app data
+        // dir; the JS TauriSqlOutboxStore loads the same `sqlite:warehouse14.db`.
+        .plugin(
+            tauri_plugin_sql::Builder::default()
+                .add_migrations("sqlite:warehouse14.db", outbox_migrations)
+                .build(),
+        )
         // Auto-update plugin reads tauri.conf.json plugins.updater.*
         // (endpoint URL + minisign public key). The frontend calls
         // `check()` + `download_and_install()` via @tauri-apps/plugin-updater.

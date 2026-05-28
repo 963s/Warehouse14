@@ -16,21 +16,49 @@
  * response on the probe path does NOT open the PIN modal.
  */
 
-import { createContext, useContext, useMemo, type ReactNode } from 'react';
+import { type ReactNode, createContext, useContext, useMemo } from 'react';
 
 import {
+  type ApiClient,
+  type Middleware,
   circuitBreakerMiddleware,
   createApiClient,
   inflightDedupMiddleware,
+  isGobdRelevantPath,
+  offlineQueueMiddleware,
   retryMiddleware,
   stepUpMiddleware,
   telemetryMiddleware,
-  type ApiClient,
-  type Middleware,
+  uuidv7,
 } from '@warehouse14/api-client';
 
+import { TauriSqlOutboxStore } from './outbox-store.js';
 import { stepUpService } from './stepUpService.js';
 import { telemetrySink } from './telemetrySink.js';
+
+/**
+ * Stable per-install device id, embedded in every outbox row so a future
+ * multi-till deployment can disambiguate idempotency keys (ADR-0044 §4).
+ * In production mTLS carries the authoritative device identity; this id is
+ * the client-side correlation handle, persisted once and reused.
+ */
+const DEVICE_ID_KEY = 'w14.device-id';
+function resolveDeviceId(): string {
+  if (typeof localStorage === 'undefined') return 'unknown-device';
+  let id = localStorage.getItem(DEVICE_ID_KEY);
+  if (!id) {
+    id = uuidv7();
+    localStorage.setItem(DEVICE_ID_KEY, id);
+  }
+  return id;
+}
+
+/**
+ * One durable outbox per app process (lazy-connects on first enqueue).
+ * Exported so the replay controller (`offline-replay.ts`) shares the SAME
+ * instance the middleware enqueues into.
+ */
+export const outboxStore = new TauriSqlOutboxStore();
 
 const ApiClientContext = createContext<ApiClient | null>(null);
 
@@ -40,16 +68,24 @@ const ApiClientContext = createContext<ApiClient | null>(null);
  *
  * Outermost → innermost:
  *   step-up    UX replay on STEP_UP_REQUIRED (single shot, opens PIN modal)
+ *   offline    Phase 3: durable enqueue on network/circuit failure (ADR-0044)
  *   retry      infra retry on idempotent + retryable (excludes STEP_UP_REQUIRED, CIRCUIT_OPEN)
  *   telemetry  per-attempt audit; logs even CIRCUIT_OPEN refusals (GoBD)
  *   circuit    per-bucket health; fast-fails inside cooldown
  *   dedup      coalesces concurrent identical GETs
  *
- * Phase 3 adds `offlineQueueMiddleware` between step-up and retry — see
- * ADR-0044.
+ * offline-queue sits at position 2 (after step-up, before retry) so it
+ * catches both ApiNetworkError and ApiCircuitOpenError before retry burns
+ * its budget on unreachable infra (ADR-0044 §3).
  */
 export const productionMiddlewares: readonly Middleware[] = [
   stepUpMiddleware(stepUpService),
+  offlineQueueMiddleware({
+    store: outboxStore,
+    isOnline: () => (typeof navigator !== 'undefined' ? navigator.onLine : true),
+    deviceId: resolveDeviceId(),
+    classifyGobdRelevant: (path) => isGobdRelevantPath(path),
+  }),
   retryMiddleware(),
   telemetryMiddleware({ sink: telemetrySink }),
   circuitBreakerMiddleware(),

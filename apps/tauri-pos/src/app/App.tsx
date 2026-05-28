@@ -19,12 +19,13 @@ import { useEffect } from 'react';
 import { ErrorBoundary } from '@warehouse14/ui-kit';
 
 import { useSessionProbe } from '../hooks/useSessionProbe.js';
+import { useOfflineReplay } from '../lib/offline-replay.js';
 import { PinLogin } from '../screens/PinLogin.js';
 import { useLedgerFeed } from '../state/ledger-feed-store.js';
 import { useSessionStore } from '../state/session-store.js';
 import { useToastStore } from '../state/toast-store.js';
-import { AppRouter } from './router.js';
 import { Splash } from './chrome/Splash.js';
+import { AppRouter } from './router.js';
 
 export function App(): JSX.Element {
   // Fire the cold-start probe; mutates the session-store status.
@@ -33,6 +34,11 @@ export function App(): JSX.Element {
   const status = useSessionStore((s) => s.status);
   const clearLedger = useLedgerFeed((s) => s.clear);
   const clearToasts = useToastStore((s) => s.clear);
+
+  // Phase 3 (ADR-0044): drain the offline outbox once authenticated. The hook
+  // attaches connectivity listeners + runs a startup sweep; the DB connection
+  // lazy-loads on first drain, never blocking React mount.
+  useOfflineReplay(status === 'authenticated');
 
   // Defence-in-depth: any departure from 'authenticated' tears down the
   // in-memory caches that should never outlive a session.
