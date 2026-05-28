@@ -14,15 +14,13 @@
  * `runner.runOnce(jobName)` directly.
  */
 
-import Fastify, { type FastifyInstance } from 'fastify';
 import fastifySensible from '@fastify/sensible';
+import Fastify, { type FastifyInstance } from 'fastify';
 import type { Sql } from 'postgres';
 
-import { connectWorker, type WorkerDb } from '@warehouse14/db/client';
+import { type WorkerDb, connectWorker } from '@warehouse14/db/client';
 
 import type { Env } from './config/env.js';
-import { createMetrics, type WorkerMetrics } from './lib/metrics.js';
-import { JobRunner } from './lib/job-runner.js';
 import {
   anomalyWatchdogJob,
   chainVerifierJob,
@@ -32,6 +30,9 @@ import {
   sessionsCleanupJob,
   storefrontCartSweeperJob,
 } from './jobs/index.js';
+import { createMetalPriceProvider } from './jobs/providers/index.js';
+import { JobRunner } from './lib/job-runner.js';
+import { type WorkerMetrics, createMetrics } from './lib/metrics.js';
 
 export interface BuildWorkerOpts {
   env: Env;
@@ -105,7 +106,16 @@ export async function buildWorker(opts: BuildWorkerOpts): Promise<WorkerHandle> 
   runner.register(chainVerifierJob);
   runner.register(sessionsCleanupJob);
   runner.register(anomalyWatchdogJob);
-  runner.register(lbmaPricesJob({ url: opts.env.LBMA_PRICES_URL }));
+  runner.register(
+    lbmaPricesJob({
+      provider: createMetalPriceProvider({
+        provider: opts.env.METAL_PRICE_PROVIDER,
+        apiKey: opts.env.METAL_PRICE_API_KEY,
+        jsonUrl: opts.env.LBMA_PRICES_URL,
+      }),
+      nodeEnv: opts.env.NODE_ENV,
+    }),
+  );
   runner.register(dsfinvkDailyExportJob);
   // Day 20: B2C cart expiry — releases 15-min STOREFRONT soft locks.
   runner.register(storefrontCartSweeperJob);
@@ -125,8 +135,12 @@ export async function buildWorker(opts: BuildWorkerOpts): Promise<WorkerHandle> 
     try {
       await workerSql`SELECT 1`;
       dbStatus = 'up';
-    } catch { /* up=false */ }
-    return reply.status(200).send({ ok: true, db: dbStatus, version: '0.1.0', timestamp: new Date().toISOString() });
+    } catch {
+      /* up=false */
+    }
+    return reply
+      .status(200)
+      .send({ ok: true, db: dbStatus, version: '0.1.0', timestamp: new Date().toISOString() });
   });
 
   httpServer.get('/metrics', async (_req, reply) => {
