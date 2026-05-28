@@ -1,9 +1,11 @@
 /**
  * Metal-prices domain client — Edelmetall-Kursmodul (Day 23).
  *
- *   current()                 — GET  /api/metal-prices/current
- *   history(query)            — GET  /api/metal-prices/history
- *   override(body)            — POST /api/metal-prices       (Owner + step-up)
+ *   current()                 — GET   /api/metal-prices/current
+ *   history(query)            — GET   /api/metal-prices/history
+ *   rates()                   — GET   /api/metal-prices/rates
+ *   override(body)            — POST  /api/metal-prices         (Owner + step-up)
+ *   updateMargin(body)        — PATCH /api/metal-prices/margin  (Owner + step-up)
  *
  * Prices on the wire are JSON-safe NUMERIC(15,4) decimal strings.
  */
@@ -71,6 +73,36 @@ export interface ManualOverrideResponse {
   previousPricePerGramEur: string | null;
 }
 
+/** One metal's pricing row from GET /api/metal-prices/rates. */
+export interface MetalRate {
+  metal: MetalKind;
+  /** Current spot per gram (melt). null when no row yet. */
+  currentPricePerGramEur: string | null;
+  /** Time-weighted 10-day average per gram. null when no in-window coverage. */
+  avg10dPricePerGramEur: string | null;
+  /** Buy rate = avg10d × (1 − safetyMarginPct). null when avg is null. */
+  ankaufRatePerGramEur: string | null;
+  /** Sell melt baseline per gram (= current spot). null when no row yet. */
+  verkaufBasePerGramEur: string | null;
+}
+
+export interface MetalRatesResponse {
+  /** Ankauf safety margin fraction in effect (0.10 = 10%). */
+  safetyMarginPct: number;
+  /** Averaging window in days (10). */
+  windowDays: number;
+  rates: MetalRate[];
+}
+
+export interface UpdateMarginBody {
+  /** Safety margin fraction in [0, 0.5]. 0.12 = 12%. */
+  marginPct: number;
+}
+
+export interface UpdateMarginResponse {
+  marginPct: number;
+}
+
 function buildQuery(q: MetalPriceHistoryQuery): string {
   const parts: string[] = [];
   for (const [k, v] of Object.entries(q)) {
@@ -93,7 +125,13 @@ export const metalPricesApi = {
       `/api/metal-prices/history${buildQuery(query)}`,
     );
   },
+  rates(client: ApiClient): Promise<MetalRatesResponse> {
+    return client.request<MetalRatesResponse>('GET', '/api/metal-prices/rates');
+  },
   override(client: ApiClient, body: ManualOverrideBody): Promise<ManualOverrideResponse> {
     return client.request<ManualOverrideResponse>('POST', '/api/metal-prices', body);
+  },
+  updateMargin(client: ApiClient, body: UpdateMarginBody): Promise<UpdateMarginResponse> {
+    return client.request<UpdateMarginResponse>('PATCH', '/api/metal-prices/margin', body);
   },
 };

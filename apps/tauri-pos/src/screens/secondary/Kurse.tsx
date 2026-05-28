@@ -10,17 +10,19 @@
  * both the `current` and the `history` queries.
  */
 
-import { useMemo, useState } from 'react';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
 
 import {
   ApiError,
-  METAL_KIND_ORDER,
-  metalPricesApi,
   type CurrentMetalPrice,
+  METAL_KIND_ORDER,
   type ManualOverrideBody,
   type MetalKind,
   type MetalPriceHistoryRow,
+  type MetalRate,
+  type UpdateMarginBody,
+  metalPricesApi,
 } from '@warehouse14/api-client';
 import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 
@@ -53,6 +55,13 @@ export function Kurse(): JSX.Element {
     staleTime: 60_000,
   });
 
+  // Rates: current + time-weighted 10-day average + Ankauf buy rate per metal.
+  const ratesQ = useQuery({
+    queryKey: ['metal-prices', 'rates'],
+    queryFn: () => metalPricesApi.rates(api),
+    staleTime: 60_000,
+  });
+
   // Four parallel history queries, one per metal — 30 days of context for sparklines.
   const historyQs = useQueries({
     queries: METAL_KIND_ORDER.map((metal) => ({
@@ -63,6 +72,9 @@ export function Kurse(): JSX.Element {
   });
 
   const [overrideOpen, setOverrideOpen] = useState<MetalKind | null>(null);
+  const [marginOpen, setMarginOpen] = useState(false);
+
+  const safetyMarginPct = ratesQ.data?.safetyMarginPct ?? null;
 
   return (
     <section
@@ -88,12 +100,20 @@ export function Kurse(): JSX.Element {
         >
           Edelmetallkursraum
         </h1>
-        <span
-          className="w14-smallcaps"
-          style={{ color: 'var(--w14-ink-faded)', fontSize: '0.78rem', letterSpacing: '0.1em' }}
-        >
-          {currentQ.isFetching ? 'aktualisiert…' : 'live'}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          {isAdmin && (
+            <Button variant="ghost" size="md" onClick={() => setMarginOpen(true)}>
+              Sicherheitsmarge
+              {safetyMarginPct !== null ? ` · ${formatPct(safetyMarginPct)}` : ''}
+            </Button>
+          )}
+          <span
+            className="w14-smallcaps"
+            style={{ color: 'var(--w14-ink-faded)', fontSize: '0.78rem', letterSpacing: '0.1em' }}
+          >
+            {currentQ.isFetching || ratesQ.isFetching ? 'aktualisiert…' : 'live'}
+          </span>
+        </div>
       </header>
 
       <DiamondRule />
@@ -108,11 +128,14 @@ export function Kurse(): JSX.Element {
         {METAL_KIND_ORDER.map((metal, i) => {
           const current = currentQ.data?.prices.find((p) => p.metal === metal);
           const history = historyQs[i]?.data?.items ?? [];
+          const rate = ratesQ.data?.rates.find((r) => r.metal === metal);
           return (
             <PriceTile
               key={metal}
               metal={metal}
               current={current}
+              rate={rate}
+              safetyMarginPct={safetyMarginPct}
               history={history}
               loading={currentQ.isLoading || historyQs[i]?.isLoading === true}
               isAdmin={isAdmin}
@@ -131,6 +154,10 @@ export function Kurse(): JSX.Element {
           onClose={() => setOverrideOpen(null)}
         />
       )}
+
+      {marginOpen && (
+        <MarginModal currentMarginPct={safetyMarginPct} onClose={() => setMarginOpen(false)} />
+      )}
     </section>
   );
 }
@@ -142,6 +169,8 @@ export function Kurse(): JSX.Element {
 function PriceTile({
   metal,
   current,
+  rate,
+  safetyMarginPct,
   history,
   loading,
   isAdmin,
@@ -149,6 +178,8 @@ function PriceTile({
 }: {
   metal: MetalKind;
   current: CurrentMetalPrice | undefined;
+  rate: MetalRate | undefined;
+  safetyMarginPct: number | null;
   history: MetalPriceHistoryRow[];
   loading: boolean;
   isAdmin: boolean;
@@ -160,8 +191,8 @@ function PriceTile({
   // is "yesterday" for delta purposes. The history is ordered DESC.
   const delta = useMemo(() => {
     if (history.length < 2 || !current?.pricePerGramEur) return null;
-    const prev = parseFloat(history[1]!.pricePerGramEur);
-    const now = parseFloat(current.pricePerGramEur);
+    const prev = Number.parseFloat(history[1]!.pricePerGramEur);
+    const now = Number.parseFloat(current.pricePerGramEur);
     if (!Number.isFinite(prev) || !Number.isFinite(now) || prev === 0) return null;
     return { abs: now - prev, pct: ((now - prev) / prev) * 100 };
   }, [history, current]);
@@ -227,7 +258,8 @@ function PriceTile({
               color: 'var(--w14-ink)',
             }}
           >
-            {formatPrice(current.pricePerGramEur!)} <span style={{ fontSize: '0.92rem', color: 'var(--w14-ink-faded)' }}>€/g</span>
+            {formatPrice(current.pricePerGramEur!)}{' '}
+            <span style={{ fontSize: '0.92rem', color: 'var(--w14-ink-faded)' }}>€/g</span>
           </div>
 
           {delta && <DeltaRow delta={delta} />}
@@ -244,7 +276,9 @@ function PriceTile({
             zuletzt {current.fetchedAt ? new Date(current.fetchedAt).toLocaleString('de-DE') : '—'}
           </p>
 
-          <Sparkline history={history} accent={accent} />
+          <RatesBlock rate={rate} safetyMarginPct={safetyMarginPct} />
+
+          <Sparkline history={history} accent={accent} avg={rate?.avg10dPricePerGramEur ?? null} />
         </>
       )}
 
@@ -273,10 +307,65 @@ function DeltaRow({ delta }: { delta: { abs: number; pct: number } }): JSX.Eleme
       }}
     >
       {sign}
-      {Math.abs(delta.abs).toFixed(4)} €  ·  {sign}
+      {Math.abs(delta.abs).toFixed(4)} € · {sign}
       {Math.abs(delta.pct).toFixed(2)} %
     </div>
   );
+}
+
+function RatesBlock({
+  rate,
+  safetyMarginPct,
+}: {
+  rate: MetalRate | undefined;
+  safetyMarginPct: number | null;
+}): JSX.Element | null {
+  if (!rate) return null;
+  const spot = rate.verkaufBasePerGramEur ?? rate.currentPricePerGramEur;
+  const ankaufLabel =
+    safetyMarginPct !== null ? `Ankauf-Kurs (−${formatPct(safetyMarginPct)})` : 'Ankauf-Kurs';
+  return (
+    <div style={{ marginTop: 12, display: 'grid', gap: 4 }}>
+      <RateRow label="Spot-Kurs (Verkauf)" value={spot} />
+      <RateRow label={ankaufLabel} value={rate.ankaufRatePerGramEur} tone="wax" />
+      <RateRow label="10-Tage-Mittel" value={rate.avg10dPricePerGramEur} muted />
+    </div>
+  );
+}
+
+function RateRow({
+  label,
+  value,
+  tone,
+  muted,
+}: {
+  label: string;
+  value: string | null;
+  tone?: 'wax';
+  muted?: boolean;
+}): JSX.Element {
+  const color =
+    tone === 'wax' ? 'var(--w14-wax-red)' : muted ? 'var(--w14-ink-faded)' : 'var(--w14-ink)';
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+      <span
+        className="w14-smallcaps"
+        style={{ color: 'var(--w14-ink-faded)', letterSpacing: '0.06em', fontSize: '0.74rem' }}
+      >
+        {label}
+      </span>
+      <span
+        className="w14-tabular"
+        style={{ fontFamily: 'var(--w14-font-mono)', fontSize: '0.86rem', color }}
+      >
+        {value !== null ? `${formatPrice(value)} €/g` : '—'}
+      </span>
+    </div>
+  );
+}
+
+function formatPct(frac: number): string {
+  return `${(frac * 100).toLocaleString('de-DE', { maximumFractionDigits: 2 })} %`;
 }
 
 function SourceBadge({ source }: { source: string }): JSX.Element {
@@ -300,37 +389,56 @@ function SourceBadge({ source }: { source: string }): JSX.Element {
 function Sparkline({
   history,
   accent,
+  avg,
 }: {
   history: MetalPriceHistoryRow[];
   accent: string;
+  avg?: string | null;
 }): JSX.Element | null {
   if (history.length < 2) return null;
 
   // History is DESC; we want ASC for x-axis time-order.
   const ordered = [...history].reverse();
-  const values = ordered.map((r) => parseFloat(r.pricePerGramEur)).filter(Number.isFinite);
+  const values = ordered.map((r) => Number.parseFloat(r.pricePerGramEur)).filter(Number.isFinite);
   if (values.length < 2) return null;
 
-  const min = Math.min(...values);
-  const max = Math.max(...values);
+  const avgNum = avg != null ? Number.parseFloat(avg) : Number.NaN;
+  const hasAvg = Number.isFinite(avgNum);
+
+  // Include the average in the domain so its line is always on-canvas.
+  const domain = hasAvg ? [...values, avgNum] : values;
+  const min = Math.min(...domain);
+  const max = Math.max(...domain);
   const range = max - min || 1;
 
   const W = 260;
   const H = 56;
   const step = values.length > 1 ? W / (values.length - 1) : W;
+  const yOf = (v: number): number => H - ((v - min) / range) * (H - 4) - 2;
 
-  const points = values
-    .map((v, i) => `${(i * step).toFixed(1)},${(H - ((v - min) / range) * (H - 4) - 2).toFixed(1)}`)
-    .join(' ');
+  const points = values.map((v, i) => `${(i * step).toFixed(1)},${yOf(v).toFixed(1)}`).join(' ');
+  const avgY = hasAvg ? yOf(avgNum) : null;
 
   return (
     <svg
-      aria-hidden
       viewBox={`0 0 ${W} ${H}`}
       width="100%"
       height={H}
       style={{ marginTop: 12, display: 'block' }}
     >
+      <title>30-Tage-Verlauf{hasAvg ? ' mit 10-Tage-Mittel (gestrichelt)' : ''}</title>
+      {avgY !== null && (
+        <line
+          x1={0}
+          x2={W}
+          y1={avgY.toFixed(1)}
+          y2={avgY.toFixed(1)}
+          stroke="var(--w14-ink-faded)"
+          strokeWidth={1}
+          strokeDasharray="3 3"
+          opacity={0.7}
+        />
+      )}
       <polyline
         fill="none"
         stroke={accent}
@@ -344,7 +452,7 @@ function Sparkline({
 }
 
 function formatPrice(s: string): string {
-  const n = parseFloat(s);
+  const n = Number.parseFloat(s);
   if (!Number.isFinite(n)) return s;
   return n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
 }
@@ -371,7 +479,11 @@ function ManualOverrideModal({
   const override = useMutation({
     mutationFn: (body: ManualOverrideBody) => metalPricesApi.override(api, body),
     onSuccess: async () => {
-      addToast({ tone: 'success', title: 'Override gespeichert', body: `${METAL_LABEL[metal]} aktualisiert` });
+      addToast({
+        tone: 'success',
+        title: 'Override gespeichert',
+        body: `${METAL_LABEL[metal]} aktualisiert`,
+      });
       await qc.invalidateQueries({ queryKey: ['metal-prices'] });
       onClose();
     },
@@ -491,3 +603,127 @@ const inputStyle: React.CSSProperties = {
   color: 'var(--w14-ink)',
   outline: 'none',
 };
+
+// ════════════════════════════════════════════════════════════════════════
+// Safety-Margin Modal (Owner / step-up)
+// ════════════════════════════════════════════════════════════════════════
+
+function MarginModal({
+  currentMarginPct,
+  onClose,
+}: {
+  currentMarginPct: number | null;
+  onClose: () => void;
+}): JSX.Element {
+  const api = useApiClient();
+  const qc = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  // The field edits a PERCENT (e.g. 10); the API stores a fraction (0.10).
+  const [pctStr, setPctStr] = useState<string>(
+    currentMarginPct !== null ? String(Number((currentMarginPct * 100).toFixed(2))) : '10',
+  );
+
+  const update = useMutation({
+    mutationFn: (body: UpdateMarginBody) => metalPricesApi.updateMargin(api, body),
+    onSuccess: async () => {
+      addToast({ tone: 'success', title: 'Sicherheitsmarge gespeichert' });
+      await qc.invalidateQueries({ queryKey: ['metal-prices', 'rates'] });
+      onClose();
+    },
+    onError: (err: unknown) => {
+      addToast({
+        tone: 'alert',
+        title: 'Speichern fehlgeschlagen',
+        body: err instanceof ApiError ? err.message : 'Bitte erneut versuchen.',
+      });
+    },
+  });
+
+  const pctNum = Number(pctStr.replace(',', '.'));
+  const valid = Number.isFinite(pctNum) && pctNum >= 0 && pctNum <= 50;
+
+  return (
+    // biome-ignore lint/a11y/useSemanticElements: backdrop overlay uses role="dialog" to match the existing modal pattern in this screen
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Sicherheitsmarge"
+      tabIndex={-1}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(20, 16, 10, 0.55)',
+        display: 'grid',
+        placeItems: 'center',
+        padding: 24,
+        zIndex: 100,
+      }}
+      onClick={onClose}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') onClose();
+      }}
+    >
+      <ParchmentCard
+        padding="lg"
+        onClick={(e) => e.stopPropagation()}
+        style={{ width: 'min(440px, 100%)' }}
+      >
+        <h2
+          style={{
+            margin: 0,
+            fontFamily: 'var(--w14-font-display)',
+            fontWeight: 500,
+            fontSize: '1.3rem',
+          }}
+        >
+          Sicherheitsmarge (Ankauf)
+        </h2>
+        <DiamondRule />
+
+        <p style={{ margin: '8px 0 0', fontSize: '0.84rem', color: 'var(--w14-ink-aged)' }}>
+          Ankauf-Kurs = 10-Tage-Mittel × (1 − Marge). Bereich 0–50 %.
+        </p>
+
+        <label
+          htmlFor="w14-margin-pct"
+          className="w14-smallcaps"
+          style={{
+            display: 'block',
+            color: 'var(--w14-ink-aged)',
+            fontSize: '0.78rem',
+            letterSpacing: '0.08em',
+            marginTop: 12,
+          }}
+        >
+          Marge · %
+        </label>
+        <input
+          id="w14-margin-pct"
+          value={pctStr}
+          onChange={(e) => setPctStr(e.target.value)}
+          placeholder="10"
+          inputMode="decimal"
+          style={{ ...inputStyle, fontFamily: 'var(--w14-font-mono)' }}
+        />
+        {!valid && (
+          <p style={{ margin: '6px 0 0', fontSize: '0.76rem', color: 'var(--w14-wax-red)' }}>
+            Bitte einen Wert zwischen 0 und 50 eingeben.
+          </p>
+        )}
+
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 16 }}>
+          <Button variant="ghost" onClick={onClose} disabled={update.isPending}>
+            Abbrechen
+          </Button>
+          <Button
+            variant="primary"
+            disabled={!valid || update.isPending}
+            onClick={() => update.mutate({ marginPct: pctNum / 100 })}
+          >
+            {update.isPending ? 'Speichert…' : 'Übernehmen'}
+          </Button>
+        </div>
+      </ParchmentCard>
+    </div>
+  );
+}
