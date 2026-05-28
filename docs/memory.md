@@ -25,8 +25,8 @@
 - **Primary domain:** **warehouse14.de** (registered by Basel)
 - **Repo / npm scope:** `@warehouse14/*` (developer-facing namespace)
 - **Domain:** Hybrid Cloud/Desktop ERP & POS for **gold, rare coins, and antiques** retail
-- **Location:** **Weil am Rhein, Germany** — *Dreiländereck* (DE / CH / FR border region)
-  - **Implication:** strong cross-border cash flow → mandates Smurfing Detection middleware (see §3)
+- **Location:** **Schorndorf, Germany (73614)**
+  - **Implication:** Local German dealer compliance, mandates Smurfing Detection middleware (see §3)
 - **Market scope:** single shop initially; multi-location-ready via better-auth org plugin
 - **Compliance scope:** GoBD, KassenSichV, DSFinV-K, DATEV, GwG, §25a/§25c UStG, §259 StGB (Hehlerei), DSGVO
 
@@ -151,7 +151,7 @@ The `Money` value object (`packages/domain`) keeps **full precision through all 
 
 ### GwG — Anti-Money-Laundering (stricter-than-law policy)
 
-Because Weil am Rhein sits at the DE/CH/FR border, cash-equivalent traffic is unusually high. The shop adopts a **stricter-than-statutory** policy to defend against §259 StGB (Hehlerei / receiving stolen goods).
+The shop adopts a **stricter-than-statutory** policy to defend against §259 StGB (Hehlerei / receiving stolen goods).
 
 | Direction | Operation              | Anonymous threshold (LAW) | Our policy             |
 |-----------|------------------------|---------------------------|------------------------|
@@ -331,7 +331,7 @@ The Red Team Audit identified 6 **critical** gaps (fixed in migration `0013_secu
 9. **I-9 DSFinV-K CSV builder.** Day-18 `dsfinvk_daily_export` is a SCAFFOLD that inserts the `dsfinvk_exports` row in state=GENERATING. Phase 1 builds `@warehouse14/dsfinvk` package implementing the full BMF DSFinV-K v2.0 CSV bundle (16 CSV files + index.xml + sign hash), uploads to R2, flips the row to GENERATED, and optionally sends the email to the Steuerberater.
 10. **I-10 Customer advance deposits (Anzahlungen).** § 13 Abs. 1 Nr. 1a UStG requires VAT on advance payments. V1 ships without this; add `customer_credits (id, customer_id, balance_eur, created_at)` + ledger of `customer_credit_movements`. Tax: VAT recognised at deposit time for the agreed sale (single-purpose) vs at delivery (multi-purpose).
 11. **I-11 DATEV-CSV bookkeeping export.** Steuerberater wants DATEV-format (SKR03/SKR04) export alongside DSFinV-K. Phase 1.5 picks the format + builds the export.
-12. **I-12 Currency exchange / Sortenkasse.** Weil am Rhein is on CH/FR border. V1 records only EUR; Phase 1.5 adds `fx_rates` snapshot + transaction-level `paid_currency` column for the rare CHF cash payment.
+12. **I-12 Currency exchange / Sortenkasse.** Schorndorf is in Germany. V1 records only EUR; Phase 1.5 adds `fx_rates` snapshot + transaction-level `paid_currency` column for the rare foreign cash payment.
 13. **I-13 Loyalty cards / Stammkundenkarte.** Standard retail feature; non-fiscal but high UX value. Schema: `loyalty_cards (customer_id, card_number, tier, points_balance)` + a customer-history page.
 14. **I-14 Digital signature on Ankauf.** § 259 StGB Hehlerei defense improves with a signed customer declaration. Phase 1.5: Tauri POS captures a touchscreen signature + customer ID photo; bundle into the Ankauf transaction's audit record.
 15. **I-15 Reservation lay-by (Reservierung mit Anzahlung).** Customer puts €500 down on a watch + collects in 2 weeks. Hybrid of payment_intent + product reservation with extended TTL + Anzahlung VAT treatment.

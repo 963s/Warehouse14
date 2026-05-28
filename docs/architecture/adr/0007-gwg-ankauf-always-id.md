@@ -8,7 +8,7 @@
 
 The Geldwäschegesetz (GwG) sets a **€2,000 threshold** above which dealers in precious metals and similar high-value goods must record customer identity for cash transactions. Below the threshold, anonymous purchases (*Tafelgeschäft*) are legally permissible.
 
-Warehouse14 operates in **Weil am Rhein**, sitting at the Dreiländereck (DE/CH/FR border). Foot traffic includes a non-trivial number of cross-border, cash-carrying customers. Two structural risks follow:
+Warehouse14 operates in **Schorndorf, Germany (73614)**. Two structural risks follow:
 
 1. **§259 StGB (Hehlerei / receiving stolen goods):** If Warehouse14 accepts gold or coins that turn out to be stolen, the shop's own legal exposure depends substantially on the documentation trail. Anonymous accepts above any value — even at €100 — leave the shop unable to prove good faith.
 2. **Structuring / Smurfing:** Customers can deliberately keep transactions just under €2,000 to evade ID requirements. Detection middleware is mandatory (see `memory.md` §3).
