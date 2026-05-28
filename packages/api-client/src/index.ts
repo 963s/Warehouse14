@@ -267,6 +267,10 @@ export {
   type MetalPriceHistoryResponse,
   type MetalPriceHistoryRow,
   type MetalPriceSource,
+  type MetalRate,
+  type MetalRatesResponse,
+  type UpdateMarginBody,
+  type UpdateMarginResponse,
 } from './domains/metal-prices.js';
 export {
   ebayApi,
