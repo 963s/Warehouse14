@@ -66,6 +66,12 @@ const EnvSchema = Type.Object({
     description:
       'HTTP endpoint returning {goldEur, silverEur, platinumEur} JSON. Used by METAL_PRICE_PROVIDER=json_url.',
   }),
+
+  /** eBay Trading API token for the `ebay_sync` reconciler. Empty → mock EndItem. */
+  EBAY_API_TOKEN: Type.String({
+    default: '',
+    description: 'eBay Trading API user token used by ebay_sync to call EndItem. Empty → mock.',
+  }),
 });
 
 export type Env = Static<typeof EnvSchema>;

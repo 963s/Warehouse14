@@ -11,23 +11,25 @@
  * The list URL carries `?id=` so refreshes and toasts can deep-link.
  */
 
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
-  ApiError,
   ALLOWED_TASK_TRANSITIONS,
-  tasksApi,
+  ApiError,
   type ListTasksQuery,
   type TaskPriority,
   type TaskRow,
   type TaskStatus,
+  tasksApi,
 } from '@warehouse14/api-client';
 import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
 import { useToastStore } from '../../state/toast-store.js';
+
+import { ShippingLabelButton } from './ShippingLabelButton.js';
 
 // ────────────────────────────────────────────────────────────────────────
 // Filter chips
@@ -239,7 +241,9 @@ function TaskListPanel({
           borderRadius: 'var(--w14-radius-card)',
         }}
       >
-        <span aria-hidden style={{ color: 'var(--w14-gold)', fontSize: '1rem' }}>✦</span>
+        <span aria-hidden style={{ color: 'var(--w14-gold)', fontSize: '1rem' }}>
+          ✦
+        </span>
         <input
           type="text"
           value={draft}
@@ -281,7 +285,11 @@ function TaskListPanel({
               onClick={() => onPriorityChange(c.value)}
             />
           ))}
-          <FilterChip label="Nur meine" active={mineOnly} onClick={() => onMineOnlyChange(!mineOnly)} />
+          <FilterChip
+            label="Nur meine"
+            active={mineOnly}
+            onClick={() => onMineOnlyChange(!mineOnly)}
+          />
         </FilterChipRow>
       </div>
 
@@ -491,7 +499,11 @@ function TaskDetail({ taskId }: { taskId: string }): JSX.Element {
               <PriorityDot priority={task.priority} />
               <span
                 className="w14-smallcaps"
-                style={{ color: 'var(--w14-ink-faded)', letterSpacing: '0.08em', fontSize: '0.78rem' }}
+                style={{
+                  color: 'var(--w14-ink-faded)',
+                  letterSpacing: '0.08em',
+                  fontSize: '0.78rem',
+                }}
               >
                 {STATUS_LABEL[task.status]} · {task.priority}
               </span>
@@ -535,6 +547,12 @@ function TaskDetail({ taskId }: { taskId: string }): JSX.Element {
           >
             {task.description}
           </p>
+        )}
+
+        {task.relatedEntityTable === 'transactions' && task.relatedEntityId && (
+          <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
+            <ShippingLabelButton transactionId={task.relatedEntityId} />
+          </div>
         )}
 
         {task.cancellationReason && (

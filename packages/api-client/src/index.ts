@@ -77,6 +77,11 @@ export {
   type ReplayOutcome,
 } from './middleware/offline-replay.js';
 export { uuidv7 } from './internal/uuidv7.js';
+export {
+  shippingApi,
+  type DhlLabelRequest,
+  type DhlLabelResponse,
+} from './domains/shipping.js';
 
 // Per-domain method clusters + their request/response types
 export {

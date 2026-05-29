@@ -9,7 +9,7 @@
  * the typed `Env` only exposes vetted fields, narrowing the API surface.
  */
 
-import { Type, type Static } from '@sinclair/typebox';
+import { type Static, Type } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
 
 const NodeEnv = Type.Union(
@@ -36,11 +36,15 @@ const EnvSchema = Type.Object({
   NODE_ENV: NodeEnv,
   PORT: Type.Integer({ minimum: 1, maximum: 65535, default: 3000 }),
   LOG_LEVEL: LogLevel,
-  DATABASE_URL: Type.String({ minLength: 1, description: 'postgres:// connection string for the warehouse14_app role' }),
+  DATABASE_URL: Type.String({
+    minLength: 1,
+    description: 'postgres:// connection string for the warehouse14_app role',
+  }),
   DB_POOL_MAX: Type.Integer({ minimum: 1, maximum: 200, default: 10 }),
   WAREHOUSE14_PII_KEY: Type.String({
     minLength: 16,
-    description: 'Key for pgcrypto pgp_sym_encrypt — injected per request via SET LOCAL warehouse14.pii_key',
+    description:
+      'Key for pgcrypto pgp_sym_encrypt — injected per request via SET LOCAL warehouse14.pii_key',
   }),
   TRUSTED_ORIGINS: Type.String({
     default: '',
@@ -57,13 +61,20 @@ const EnvSchema = Type.Object({
   // R2 is S3-compatible; the AWS SDK speaks to it via a custom endpoint.
   // Empty defaults so dev/test can boot without R2 wired; the photo route
   // refuses if any are unset.
-  R2_ACCOUNT_ID: Type.String({ default: '', description: 'Cloudflare account ID for R2 endpoint construction.' }),
-  R2_BUCKET: Type.String({ default: '', description: 'R2 bucket name (e.g. warehouse14-products).' }),
+  R2_ACCOUNT_ID: Type.String({
+    default: '',
+    description: 'Cloudflare account ID for R2 endpoint construction.',
+  }),
+  R2_BUCKET: Type.String({
+    default: '',
+    description: 'R2 bucket name (e.g. warehouse14-products).',
+  }),
   R2_ACCESS_KEY_ID: Type.String({ default: '', description: 'R2 API token access key id.' }),
   R2_SECRET_ACCESS_KEY: Type.String({ default: '', description: 'R2 API token secret.' }),
   R2_PUBLIC_URL_BASE: Type.String({
     default: '',
-    description: 'Public-facing CDN base URL for served R2 objects (e.g. https://media.warehouse14.de).',
+    description:
+      'Public-facing CDN base URL for served R2 objects (e.g. https://media.warehouse14.de).',
   }),
   // ── Stripe (Day 19) — primary online payment provider ─────────────────
   // V1 amendment to memory.md #31 (Mollie primary): Basel overrode 2026-05-25
@@ -73,7 +84,8 @@ const EnvSchema = Type.Object({
   // when actually invoked.
   STRIPE_SECRET_KEY: Type.String({
     default: '',
-    description: 'Stripe API secret key (sk_test_… or sk_live_…). Used for /checkout PaymentIntent creation.',
+    description:
+      'Stripe API secret key (sk_test_… or sk_live_…). Used for /checkout PaymentIntent creation.',
   }),
   STRIPE_WEBHOOK_SECRET: Type.String({
     default: '',
@@ -91,7 +103,8 @@ const EnvSchema = Type.Object({
   }),
   STRIPE_API_VERSION: Type.String({
     default: '2024-12-18.acacia',
-    description: 'Pinned Stripe API version to avoid surprise schema changes (Stripe documents version-on-write).',
+    description:
+      'Pinned Stripe API version to avoid surprise schema changes (Stripe documents version-on-write).',
   }),
   // ── WhatsApp Cloud API (Day 21) ──────────────────────────────────────
   // Empty defaults are OK in dev/test; the webhook route refuses if invoked.
@@ -108,15 +121,30 @@ const EnvSchema = Type.Object({
   WHATSAPP_PHONE_NUMBER_ID: Type.String({
     default: '',
     description:
-      'Meta phone-number id used in the Send route. POST is targeted at '
-      + 'https://graph.facebook.com/v20.0/${WHATSAPP_PHONE_NUMBER_ID}/messages. '
-      + 'Empty in dev → the route stores the message as status="queued".',
+      'Meta phone-number id used in the Send route. POST is targeted at ' +
+      'https://graph.facebook.com/v20.0/${WHATSAPP_PHONE_NUMBER_ID}/messages. ' +
+      'Empty in dev → the route stores the message as status="queued".',
   }),
   WHATSAPP_ACCESS_TOKEN: Type.String({
     default: '',
     description:
-      'Meta Cloud API access token (Bearer). Required alongside '
-      + 'WHATSAPP_PHONE_NUMBER_ID for live sends. Empty in dev → queued only.',
+      'Meta Cloud API access token (Bearer). Required alongside ' +
+      'WHATSAPP_PHONE_NUMBER_ID for live sends. Empty in dev → queued only.',
+  }),
+  // ── DHL Versenden / Shipping label API (Epic D) ──────────────────────
+  // Empty defaults are OK in dev/test → the DHL client falls back to a
+  // deterministic mock label so the flow works without sandbox credentials.
+  DHL_API_USER: Type.String({
+    default: '',
+    description: 'DHL Geschäftskundenversand (GKP) API username. Empty → mock label.',
+  }),
+  DHL_API_SIGNATURE: Type.String({
+    default: '',
+    description: 'DHL API signature/password for the GKP user. Empty → mock label.',
+  }),
+  DHL_API_EKP: Type.String({
+    default: '',
+    description: 'DHL EKP (Einlieferungskundennummer / billing number) used in label requests.',
   }),
 });
 
@@ -141,7 +169,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   const candidate = Value.Default(EnvSchema, coerced);
   const errors = [...Value.Errors(EnvSchema, candidate)];
   if (errors.length > 0) {
-    const lines = errors.map(e => `  ${e.path || '/'} — ${e.message}`).join('\n');
+    const lines = errors.map((e) => `  ${e.path || '/'} — ${e.message}`).join('\n');
     throw new Error(`Invalid environment configuration:\n${lines}`);
   }
 
@@ -152,7 +180,9 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
  * Convenience: `parseOrigins(env)` → string[] for CORS plugin / better-auth.
  */
 export function parseOrigins(env: Env): string[] {
-  return env.TRUSTED_ORIGINS.split(',').map(s => s.trim()).filter(s => s.length > 0);
+  return env.TRUSTED_ORIGINS.split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
 }
 
 /**
@@ -180,15 +210,15 @@ export function assertAppRoleInDatabaseUrl(env: Env): void {
   if (!match) {
     throw new Error(
       'DATABASE_URL does not have the expected `postgres://user:pass@host/db` shape. ' +
-      'Refusing to start (audit fix A-2).',
+        'Refusing to start (audit fix A-2).',
     );
   }
   const user = decodeURIComponent(match[1]!);
   if (user !== 'warehouse14_app') {
     throw new Error(
       `DATABASE_URL points at role "${user}" — expected "warehouse14_app". ` +
-      'The API runtime MUST use the least-privileged role. ' +
-      'Refusing to start (audit fix A-2).',
+        'The API runtime MUST use the least-privileged role. ' +
+        'Refusing to start (audit fix A-2).',
     );
   }
 }

@@ -22,73 +22,74 @@
  *  11. routes             — after every decorator is in place.
  */
 
-import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
 import fastifyCookie from '@fastify/cookie';
 import fastifySensible from '@fastify/sensible';
+import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
 import type { Sql } from 'postgres';
 
 import type { AppDb } from '@warehouse14/db/client';
 
 import type { Env } from './config/env.js';
+import { mcpServer } from './mcp/index.js';
 import authPlugin from './plugins/auth.js';
 import dbPlugin from './plugins/db.js';
 import errorHandlerPlugin from './plugins/error-handler.js';
 import metricsPlugin from './plugins/metrics.js';
 import mtlsPlugin from './plugins/mtls.js';
 import piiPlugin from './plugins/pii.js';
-import requestContextPlugin from './plugins/request-context.js';
-import swaggerPlugin from './plugins/swagger.js';
 import rateLimitPlugin from './plugins/rate-limit.js';
+import requestContextPlugin from './plugins/request-context.js';
 import securityHeadersPlugin from './plugins/security-headers.js';
-import healthRoute from './routes/health.js';
+import storefrontSessionPlugin from './plugins/storefront-session.js';
+import swaggerPlugin from './plugins/swagger.js';
+// Day 22 — Konvolut + Appraisals
+import appraisalRoutes from './routes/appraisals.js';
 import authPinRoutes from './routes/auth-pin.js';
 import authSessionRoutes from './routes/auth-session.js';
-import customersRoutes from './routes/customers.js';
-import customersListRoute from './routes/customers-list.js';
+import belegtextRoutes from './routes/belegtext.js';
 import categoriesRoutes from './routes/categories.js';
 import customerKycDocumentsRoute from './routes/customer-kyc-documents.js';
-import productCategoriesRoute from './routes/product-categories.js';
+// Day 26 — Backend Finale: Customer Trust + Belegtext
+import customerTrustRoutes from './routes/customer-trust.js';
 import customerUpdateRoute from './routes/customer-update.js';
-import photoUploadUrlRoute from './routes/photo-upload-url.js';
+import customersListRoute from './routes/customers-list.js';
+import customersRoutes from './routes/customers.js';
+import dashboardRoutes from './routes/dashboard.js';
+import documentsRoutes from './routes/documents.js';
+import healthRoute from './routes/health.js';
 import inventoryAdjustmentRoute from './routes/inventory-adjustment.js';
 import inventoryRelease from './routes/inventory-release.js';
 import inventoryReserve from './routes/inventory-reserve.js';
-import productsListRoute from './routes/products-list.js';
+import inventorySessionsRoutes from './routes/inventory-sessions.js';
+import ledgerRoutes from './routes/ledger.js';
+// Day 23 — Edelmetall-Kursmodul
+import metalPricesRoutes from './routes/metal-prices.js';
+import photoUploadUrlRoute from './routes/photo-upload-url.js';
+// Phase 2 Day 2 — closes the Day-24 route gap + dashboard aggregator
+import photosRoutes from './routes/photos.js';
+import productCategoriesRoute from './routes/product-categories.js';
 import productsDetailRoute from './routes/products-detail.js';
+import productsEbayRoutes from './routes/products-ebay.js';
+import productsListRoute from './routes/products-list.js';
 import productsRoutes from './routes/products.js';
+// Day 21 — Retail Core
+import shiftsRoutes from './routes/shifts.js';
+import shippingRoutes from './routes/shipping.js';
 import sseLedger from './routes/sse-ledger.js';
 import storefrontAuthRoutes from './routes/storefront-auth.js';
 import storefrontCartRoutes from './routes/storefront-cart.js';
-import storefrontSessionPlugin from './plugins/storefront-session.js';
+// Phase 2.A — Storefront catalog (public read-only) + MCP server
+import storefrontCatalogRoutes from './routes/storefront-catalog.js';
 import storefrontWebhookRoutes from './routes/storefront-webhook.js';
+// Day 25 — Single-Operator Assistance
+import tasksRoutes from './routes/tasks.js';
 import transactionsAnkauf from './routes/transactions-ankauf.js';
 import transactionsFinalize from './routes/transactions-finalize.js';
 import transactionsReturn from './routes/transactions-return.js';
 import transactionsStorno from './routes/transactions-storno.js';
-// Day 21 — Retail Core
-import shiftsRoutes from './routes/shifts.js';
 import voucherRoutes from './routes/vouchers.js';
-import inventorySessionsRoutes from './routes/inventory-sessions.js';
 import whatsappWebhookRoutes from './routes/webhooks-whatsapp.js';
 import whatsappInboxRoutes from './routes/whatsapp-inbox.js';
-// Day 22 — Konvolut + Appraisals
-import appraisalRoutes from './routes/appraisals.js';
-// Day 23 — Edelmetall-Kursmodul
-import metalPricesRoutes from './routes/metal-prices.js';
-// Day 25 — Single-Operator Assistance
-import tasksRoutes from './routes/tasks.js';
-import documentsRoutes from './routes/documents.js';
-// Day 26 — Backend Finale: Customer Trust + Belegtext
-import customerTrustRoutes from './routes/customer-trust.js';
-import belegtextRoutes from './routes/belegtext.js';
-// Phase 2.A — Storefront catalog (public read-only) + MCP server
-import storefrontCatalogRoutes from './routes/storefront-catalog.js';
-import { mcpServer } from './mcp/index.js';
-// Phase 2 Day 2 — closes the Day-24 route gap + dashboard aggregator
-import photosRoutes from './routes/photos.js';
-import productsEbayRoutes from './routes/products-ebay.js';
-import dashboardRoutes from './routes/dashboard.js';
-import ledgerRoutes from './routes/ledger.js';
 
 export interface BuildAppOpts {
   env: Env;
@@ -220,6 +221,7 @@ export async function buildApp(opts: BuildAppOpts): Promise<FastifyInstance> {
   // ── Phase 2 Day 2: photo + eBay state machine + dashboard ────────
   await app.register(photosRoutes);
   await app.register(productsEbayRoutes);
+  await app.register(shippingRoutes, { env: opts.env });
   await app.register(dashboardRoutes);
   await app.register(ledgerRoutes);
   // ── Phase 2.A: storefront catalog + MCP (memory.md §20) ──────────
