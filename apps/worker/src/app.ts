@@ -25,6 +25,7 @@ import {
   anomalyWatchdogJob,
   chainVerifierJob,
   dsfinvkDailyExportJob,
+  ebaySyncJob,
   lbmaPricesJob,
   reservationSweeperJob,
   sessionsCleanupJob,
@@ -119,6 +120,8 @@ export async function buildWorker(opts: BuildWorkerOpts): Promise<WorkerHandle> 
   runner.register(dsfinvkDailyExportJob);
   // Day 20: B2C cart expiry — releases 15-min STOREFRONT soft locks.
   runner.register(storefrontCartSweeperJob);
+  // Epic D: end eBay listings for items sold at the retail counter.
+  runner.register(ebaySyncJob({ token: opts.env.EBAY_API_TOKEN }));
 
   // Tiny Fastify for /metrics + /health.
   const httpServer = Fastify({
