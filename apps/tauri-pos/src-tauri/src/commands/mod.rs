@@ -15,6 +15,7 @@
 //! never touches real hardware.
 
 pub mod image;
+pub mod kyc;
 pub mod pdf;
 pub mod system;
 pub mod thermal;

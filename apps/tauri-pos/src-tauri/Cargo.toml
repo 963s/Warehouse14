@@ -58,3 +58,12 @@ printpdf = "0.7"
 
 # ── Mock-mode RNG for fail-rate injection ────────────────────────────
 fastrand = "2"
+
+# ── Epic C — encrypted local KYC vault (GwG / GDPR) ──────────────────
+# AES-256-GCM at-rest encryption for ID scans; the 32-byte master key lives
+# in the OS keyring (never on disk). `zeroize` wipes key material after use.
+aes-gcm = "0.10"
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
+sha2 = "0.10"
+zeroize = "1"
+uuid = { version = "1", features = ["v4"] }

@@ -13,29 +13,18 @@
  * One slow query doesn't block the others.
  */
 
-import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
 
-import {
-  customersApi,
-  type CustomerDetail,
-} from '@warehouse14/api-client';
-import {
-  Button,
-  DiamondRule,
-  MoneyAmount,
-  ParchmentCard,
-  Seal,
-} from '@warehouse14/ui-kit';
+import { type CustomerDetail, customersApi } from '@warehouse14/api-client';
+import { Button, DiamondRule, MoneyAmount, ParchmentCard, Seal } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
 
 import { CustomerEditDialog } from './CustomerEditDialog.js';
+import { CustomerAnkaufHistory, CustomerSalesHistory } from './CustomerHistoryPanels.js';
 import { CustomerTrustDialog } from './CustomerTrustDialog.js';
-import {
-  CustomerAnkaufHistory,
-  CustomerSalesHistory,
-} from './CustomerHistoryPanels.js';
+import { KycCaptureModal } from './KycCaptureModal.js';
 
 export interface CustomerDetailPanelProps {
   customerId: string | null;
@@ -67,6 +56,7 @@ function DetailLoaded({ customerId }: { customerId: string }): JSX.Element {
 function CustomerCard({ detail }: { detail: CustomerDetail }): JSX.Element {
   const [editOpen, setEditOpen] = useState<boolean>(false);
   const [trustOpen, setTrustOpen] = useState<boolean>(false);
+  const [kycOpen, setKycOpen] = useState<boolean>(false);
   const blocked = detail.sanctionsMatch || detail.trustLevel === 'BANNED';
   const kycVerified = detail.kycVerifiedAt !== null;
 
@@ -89,10 +79,26 @@ function CustomerCard({ detail }: { detail: CustomerDetail }): JSX.Element {
           padding="md"
           style={{ border: '2px solid var(--w14-wax-red)', background: 'var(--w14-parchment-3)' }}
         >
-          <p style={{ margin: 0, color: 'var(--w14-wax-red)', fontFamily: 'var(--w14-font-display)', fontWeight: 500, fontSize: '1rem' }}>
+          <p
+            style={{
+              margin: 0,
+              color: 'var(--w14-wax-red)',
+              fontFamily: 'var(--w14-font-display)',
+              fontWeight: 500,
+              fontSize: '1rem',
+            }}
+          >
             Geschäft mit diesem Kunden gesperrt.
           </p>
-          <p style={{ margin: '6px 0 0', color: 'var(--w14-ink-faded)', fontFamily: 'var(--w14-font-display)', fontStyle: 'italic', fontSize: '0.85rem' }}>
+          <p
+            style={{
+              margin: '6px 0 0',
+              color: 'var(--w14-ink-faded)',
+              fontFamily: 'var(--w14-font-display)',
+              fontStyle: 'italic',
+              fontSize: '0.85rem',
+            }}
+          >
             {detail.sanctionsMatch
               ? 'Sanktionslisten-Treffer — EU-Verordnung.'
               : 'Vom Inhaber gesperrt — Trust = BANNED.'}
@@ -102,9 +108,23 @@ function CustomerCard({ detail }: { detail: CustomerDetail }): JSX.Element {
 
       {/* Header */}
       <ParchmentCard padding="lg">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 14 }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            gap: 14,
+          }}
+        >
           <div style={{ minWidth: 0 }}>
-            <h1 style={{ margin: 0, fontFamily: 'var(--w14-font-display)', fontWeight: 500, fontSize: '1.6rem' }}>
+            <h1
+              style={{
+                margin: 0,
+                fontFamily: 'var(--w14-font-display)',
+                fontWeight: 500,
+                fontSize: '1.6rem',
+              }}
+            >
               {detail.fullName}
             </h1>
             <p
@@ -116,7 +136,9 @@ function CustomerCard({ detail }: { detail: CustomerDetail }): JSX.Element {
                 color: 'var(--w14-ink-faded)',
               }}
             >
-              {detail.customerNumber}{' · seit '}{new Date(detail.createdAt).toLocaleDateString('de-DE')}
+              {detail.customerNumber}
+              {' · seit '}
+              {new Date(detail.createdAt).toLocaleDateString('de-DE')}
             </p>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
@@ -141,7 +163,12 @@ function CustomerCard({ detail }: { detail: CustomerDetail }): JSX.Element {
         </DataGrid>
 
         <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
-          <Button variant="primary" size="md" onClick={() => setEditOpen(true)} disabled={detail.sanctionsMatch}>
+          <Button
+            variant="primary"
+            size="md"
+            onClick={() => setEditOpen(true)}
+            disabled={detail.sanctionsMatch}
+          >
             Bearbeiten
           </Button>
         </div>
@@ -153,18 +180,28 @@ function CustomerCard({ detail }: { detail: CustomerDetail }): JSX.Element {
         <DataGrid>
           <DataRow
             label="KYC-Status"
-            value={kycVerified
-              ? `bestätigt ${detail.kycVerifiedAt ? new Date(detail.kycVerifiedAt).toLocaleString('de-DE') : ''}`
-              : 'noch nicht bestätigt'}
+            value={
+              kycVerified
+                ? `bestätigt ${detail.kycVerifiedAt ? new Date(detail.kycVerifiedAt).toLocaleString('de-DE') : ''}`
+                : 'noch nicht bestätigt'
+            }
             tone={kycVerified ? 'gold' : 'faded'}
           />
           <DataRow
             label="KYC-Eingang"
-            value={detail.kycCompletedAt ? new Date(detail.kycCompletedAt).toLocaleString('de-DE') : '—'}
+            value={
+              detail.kycCompletedAt ? new Date(detail.kycCompletedAt).toLocaleString('de-DE') : '—'
+            }
             mono
           />
-          <DataRow label="Bisherige Ankäufe" valueElement={<MoneyAmount valueEur={detail.cumulativeAnkaufEur} />} />
-          <DataRow label="Bisherige Käufe" valueElement={<MoneyAmount valueEur={detail.cumulativeSpendEur} />} />
+          <DataRow
+            label="Bisherige Ankäufe"
+            valueElement={<MoneyAmount valueEur={detail.cumulativeAnkaufEur} />}
+          />
+          <DataRow
+            label="Bisherige Käufe"
+            valueElement={<MoneyAmount valueEur={detail.cumulativeSpendEur} />}
+          />
           {detail.cumulativeDebtEur !== '0.00' && (
             <DataRow
               label="Offene Schuld"
@@ -173,22 +210,20 @@ function CustomerCard({ detail }: { detail: CustomerDetail }): JSX.Element {
             />
           )}
         </DataGrid>
+        <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
+          <Button variant="ghost" size="md" onClick={() => setKycOpen(true)}>
+            Ausweis erfassen
+          </Button>
+        </div>
       </ParchmentCard>
 
       {/* History */}
       <CustomerAnkaufHistory customerId={detail.id} />
       <CustomerSalesHistory customerId={detail.id} />
 
-      <CustomerEditDialog
-        open={editOpen}
-        customer={detail}
-        onClose={() => setEditOpen(false)}
-      />
-      <CustomerTrustDialog
-        open={trustOpen}
-        customer={detail}
-        onClose={() => setTrustOpen(false)}
-      />
+      <CustomerEditDialog open={editOpen} customer={detail} onClose={() => setEditOpen(false)} />
+      <CustomerTrustDialog open={trustOpen} customer={detail} onClose={() => setTrustOpen(false)} />
+      {kycOpen && <KycCaptureModal customerId={detail.id} onClose={() => setKycOpen(false)} />}
     </section>
   );
 }
@@ -202,7 +237,14 @@ function EmptyDetailPlaceholder(): JSX.Element {
     <div style={{ display: 'grid', placeItems: 'center', padding: 48 }}>
       <ParchmentCard padding="lg" style={{ textAlign: 'center', maxWidth: 440 }}>
         <Seal size="md" tone="faded" label="7" />
-        <h2 style={{ fontFamily: 'var(--w14-font-display)', fontWeight: 500, margin: '14px 0 4px', fontSize: '1.4rem' }}>
+        <h2
+          style={{
+            fontFamily: 'var(--w14-font-display)',
+            fontWeight: 500,
+            margin: '14px 0 4px',
+            fontSize: '1.4rem',
+          }}
+        >
           Kein Kunde ausgewählt
         </h2>
         <DiamondRule />
@@ -328,34 +370,49 @@ function TrustChip({
   };
   if (sanctions) {
     return (
-      <span className="w14-smallcaps" style={{ ...base, color: 'var(--w14-wax-red)', borderColor: 'var(--w14-wax-red)' }}>
+      <span
+        className="w14-smallcaps"
+        style={{ ...base, color: 'var(--w14-wax-red)', borderColor: 'var(--w14-wax-red)' }}
+      >
         Sanktion
       </span>
     );
   }
   if (trust === 'BANNED' || trust === 'SUSPICIOUS') {
     return (
-      <span className="w14-smallcaps" style={{ ...base, color: 'var(--w14-wax-red)', borderColor: 'var(--w14-wax-red)' }}>
+      <span
+        className="w14-smallcaps"
+        style={{ ...base, color: 'var(--w14-wax-red)', borderColor: 'var(--w14-wax-red)' }}
+      >
         {trust === 'BANNED' ? 'gesperrt' : 'beobachten'}
       </span>
     );
   }
   if (trust === 'VIP') {
     return (
-      <span className="w14-smallcaps" style={{ ...base, color: 'var(--w14-gold)', borderColor: 'var(--w14-gold)' }}>
+      <span
+        className="w14-smallcaps"
+        style={{ ...base, color: 'var(--w14-gold)', borderColor: 'var(--w14-gold)' }}
+      >
         ◆◆ VIP
       </span>
     );
   }
   if (kycVerified || trust === 'VERIFIED') {
     return (
-      <span className="w14-smallcaps" style={{ ...base, color: 'var(--w14-gold)', borderColor: 'var(--w14-gold)' }}>
+      <span
+        className="w14-smallcaps"
+        style={{ ...base, color: 'var(--w14-gold)', borderColor: 'var(--w14-gold)' }}
+      >
         KYC bestätigt
       </span>
     );
   }
   return (
-    <span className="w14-smallcaps" style={{ ...base, color: 'var(--w14-ink-faded)', borderColor: 'var(--w14-rule)' }}>
+    <span
+      className="w14-smallcaps"
+      style={{ ...base, color: 'var(--w14-ink-faded)', borderColor: 'var(--w14-rule)' }}
+    >
       ohne KYC
     </span>
   );

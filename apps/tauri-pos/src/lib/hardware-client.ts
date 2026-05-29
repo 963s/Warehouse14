@@ -363,6 +363,42 @@ export const systemClient = {
 };
 
 // ────────────────────────────────────────────────────────────────────────
+// Epic C — encrypted local KYC vault (GwG / GDPR)
+// ────────────────────────────────────────────────────────────────────────
+
+export type KycDocType = 'AUSWEIS' | 'REISEPASS' | 'AUFENTHALTSTITEL' | 'SONSTIGES';
+
+export interface KycEncryptResult {
+  /** Absolute path to the encrypted `.enc` vault file — persist on the record. */
+  path: string;
+  /** Hex SHA-256 of the original (plaintext) document bytes. */
+  sha256: string;
+}
+
+/**
+ * Encrypt an ID scan and store it in the local vault. The bytes never leave
+ * the till unencrypted; the AES-256-GCM master key lives in the OS keyring.
+ * Returns the opaque vault path + integrity hash to store against the customer.
+ */
+export async function encryptAndSaveKycDocument(
+  fileBytes: Uint8Array,
+  customerId: string,
+  docType: KycDocType,
+): Promise<KycEncryptResult> {
+  return invoke<KycEncryptResult>('encrypt_and_save_kyc_document', {
+    fileBytes: Array.from(fileBytes),
+    customerId,
+    docType,
+  });
+}
+
+/** Decrypt a vault file back to bytes (e.g. to render a preview). */
+export async function decryptAndLoadKycDocument(filePath: string): Promise<Uint8Array> {
+  const bytes = await invoke<number[]>('decrypt_and_load_kyc_document', { filePath });
+  return new Uint8Array(bytes);
+}
+
+// ────────────────────────────────────────────────────────────────────────
 // Tauri probe — useful to short-circuit hardware calls when the React app
 // is being rendered outside Tauri (Vitest, Storybook).
 // ────────────────────────────────────────────────────────────────────────
