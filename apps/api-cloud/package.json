@@ -12,7 +12,8 @@
     "dev": "pnpm run dev:bootstrap && tsx watch src/server.ts",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests --exclude '**/tests/integration/**'",
+    "test:integration": "vitest run tests/integration",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "clean": "rm -rf dist .tsbuildinfo coverage"
