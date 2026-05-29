@@ -11,13 +11,13 @@
   },
   "scripts": {
     "dev": "turbo dev",
-    "build": "turbo build",
-    "test": "turbo test",
+    "build": "pnpm --filter @warehouse14/db build && pnpm -r build",
+    "test": "pnpm -r test",
     "lint": "node scripts/lint-added.mjs",
     "lint:all": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
-    "typecheck": "turbo typecheck",
+    "typecheck": "pnpm --filter @warehouse14/db build && pnpm -r build && pnpm -r typecheck",
     "clean": "turbo clean && rm -rf node_modules"
   },
   "devDependencies": {
