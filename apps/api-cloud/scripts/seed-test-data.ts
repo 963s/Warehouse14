@@ -317,7 +317,7 @@ async function seedCategories(sql: Sql): Promise<Map<string, Uuid>> {
       slugToId.set(cat.slug, existing[0].id);
       continue;
     }
-    // biome-ignore lint/style/noNonNullAssertion: the loop `continue`s above when parentSlug is absent.
+    // biome-ignore lint/style/noNonNullAssertion: seed data; a missing parent is handled by the next guard.
     const parentId = slugToId.get(cat.parentSlug!);
     if (!parentId) {
       log('categories', `  ✗ skip ${cat.slug} — parent ${cat.parentSlug} not found`);
@@ -975,7 +975,7 @@ const CUSTOMERS: SeedCustomer[] = [
 async function seedCustomers(sql: Sql, ownerUserId: Uuid): Promise<void> {
   const piiKey = process.env.WAREHOUSE14_PII_KEY;
   if (!piiKey || piiKey.length < 16) {
-    log('customers', `  ✗ skip — WAREHOUSE14_PII_KEY missing or too short`);
+    log('customers', '  ✗ skip — WAREHOUSE14_PII_KEY missing or too short');
     return;
   }
 
@@ -1404,7 +1404,9 @@ async function main(): Promise<void> {
     if (owner.length === 0) {
       fatal('Owner user basel@warehouse14.local not found — run dev-bootstrap first');
     }
+    // biome-ignore lint/style/noNonNullAssertion: guarded by the owner.length check above (fatal exits otherwise).
     const ownerUserId = owner[0]!.id;
+    // biome-ignore lint/style/noNonNullAssertion: same owner.length guard.
     log('owner', `  using ${owner[0]!.email} (${ownerUserId.slice(0, 8)}…)`);
 
     await seedTaxTreatmentCodes(sql);
