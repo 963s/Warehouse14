@@ -1,0 +1,12 @@
+{
+  "extends": "@warehouse14/config/tsconfig/react-app.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    },
+    "types": ["vite/client"]
+  },
+  "include": ["src", "vite.config.ts"],
+  "exclude": ["dist", "node_modules", "src-tauri/target"]
+}

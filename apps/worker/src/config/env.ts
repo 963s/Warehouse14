@@ -82,6 +82,26 @@ const EnvSchema = Type.Object({
     default: '',
     description: 'Fiskaly DSFinV-K API secret (Basic auth password). Empty → push skipped.',
   }),
+  // ── Fiskaly SIGN DE V2 TSS — used by tse_archive_exporter (#I-2) ─────
+  // Empty TSS id → the daily archive job records FAILED("fiskaly not
+  // configured") and skips; it never blocks the worker.
+  FISKALY_TSS_ID: Type.String({
+    default: '',
+    description: 'Fiskaly TSS (technical security system) id for the §10 daily TSE export.',
+  }),
+  // ── Cloudflare R2 — the §10 TSE archive TAR lands here ──────────────
+  // Empty → the archive job records FAILED (no upload target); the app boots.
+  R2_ACCOUNT_ID: Type.String({
+    default: '',
+    description: 'Cloudflare account id for the R2 endpoint.',
+  }),
+  R2_BUCKET: Type.String({ default: '', description: 'R2 bucket for TSE archives + media.' }),
+  R2_ACCESS_KEY_ID: Type.String({ default: '', description: 'R2 API token access key id.' }),
+  R2_SECRET_ACCESS_KEY: Type.String({ default: '', description: 'R2 API token secret.' }),
+  R2_PUBLIC_URL_BASE: Type.String({
+    default: '',
+    description: 'Public CDN base for served R2 objects.',
+  }),
 });
 
 export type Env = Static<typeof EnvSchema>;

@@ -58,6 +58,7 @@ import {
 
 import type { Env } from '../config/env.js';
 import { requireAuth, requireRole, requireStepUp } from '../lib/auth-policy.js';
+import { runSmurfingDetection } from '../lib/smurfing.js';
 import { totalExceedsStepUpThreshold, validateTransactionMath } from '../lib/transaction-math.js';
 import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 import {
@@ -368,6 +369,34 @@ const transactionsFinalize: FastifyPluginAsync<TransactionsFinalizeOpts> = async
           }
           throw err;
         });
+
+      // ──────────────────────────────────────────────────────────────────
+      // 4. GwG smurfing detection (V1) — non-blocking AML alert (memory.md §3).
+      //
+      // Runs AFTER the finalize transaction commits, so a detection error can
+      // NEVER roll back a valid fiscal record. On a structuring hit it emits the
+      // critical `alert.smurfing_detected` ledger event (DND-bypass, memory.md
+      // #45) + an audit_log entry — both through the append-only emit helpers.
+      // The rolling window is anchored on the transaction's own finalized_at
+      // (offline-replay safe), not now(). ANKAUF-only in V1 (the §259 risk).
+      // ──────────────────────────────────────────────────────────────────
+      if (body.direction === 'ANKAUF' && body.customerId) {
+        try {
+          await runSmurfingDetection(app.db, {
+            transactionId: outcome.id,
+            customerId: body.customerId,
+            direction: body.direction,
+            totalEur: body.totalEur,
+            occurredAt: outcome.finalizedAt,
+            actorUserId: req.actor.id,
+            deviceId,
+            ipAddress: req.ip ?? null,
+          });
+        } catch (err) {
+          // Detection is advisory — never fail the sale on its account.
+          req.log.error({ err }, 'smurfing detection failed (non-blocking)');
+        }
+      }
 
       return {
         id: outcome.id,

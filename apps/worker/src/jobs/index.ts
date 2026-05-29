@@ -20,3 +20,5 @@ export { storefrontCartSweeperJob } from './storefront-cart-sweeper.js';
 export { intakeSweepJob } from './intake-sweep.js';
 export { appointmentNoShowDetectorJob } from './appointment-no-show-detector.js';
 export { appointmentNotificationsJob } from './appointment-notifications.js';
+export { tseArchiveExporterJob } from './tse-archive-exporter.js';
+export { gdprCleanupJob } from './gdpr-cleanup.js';

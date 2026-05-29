@@ -1,0 +1,10 @@
+# Tauri build artifacts
+src-tauri/target/
+src-tauri/gen/
+
+# Vite
+dist/
+.vite/
+
+# TS
+.tsbuildinfo

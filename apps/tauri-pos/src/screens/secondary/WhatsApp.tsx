@@ -276,6 +276,7 @@ function ConversationPane({ phone }: { phone: string | null }): JSX.Element {
   const scrollerRef = useRef<HTMLDivElement | null>(null);
 
   // Reset draft + optimistic queue when the thread changes.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: setState setters are stable; reset is intentionally keyed on phone only.
   useEffect(() => {
     setDraft('');
     setOptimistic([]);
@@ -283,6 +284,7 @@ function ConversationPane({ phone }: { phone: string | null }): JSX.Element {
 
   const threadQ = useQuery({
     queryKey: phone ? threadKey(phone) : ['whatsapp', 'thread', '__none__'],
+    // biome-ignore lint/style/noNonNullAssertion: query is `enabled` only when phone !== null.
     queryFn: () => whatsappApi.getThread(api, phone!),
     staleTime: 5_000,
     enabled: phone !== null,
@@ -304,6 +306,7 @@ function ConversationPane({ phone }: { phone: string | null }): JSX.Element {
     ];
   }, [threadQ.data, optimistic]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: auto-scroll intentionally fires on message count only.
   useEffect(() => {
     const el = scrollerRef.current;
     if (!el) return;
@@ -311,6 +314,7 @@ function ConversationPane({ phone }: { phone: string | null }): JSX.Element {
   }, [messages.length]);
 
   const send = useMutation({
+    // biome-ignore lint/style/noNonNullAssertion: send is only invoked from a thread with a selected phone.
     mutationFn: (body: string) => whatsappApi.send(api, { toPhone: phone!, body }),
     onMutate: (body) => {
       const tempId = `optimistic-${Date.now()}`;
@@ -1005,6 +1009,7 @@ function ListSkeleton({ rows }: { rows: number }): JSX.Element {
     <>
       {Array.from({ length: rows }).map((_, i) => (
         <div
+          // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton placeholders have no stable id.
           key={i}
           aria-hidden
           style={{
@@ -1018,7 +1023,11 @@ function ListSkeleton({ rows }: { rows: number }): JSX.Element {
           }}
         />
       ))}
-      <style>{`@keyframes w14-skel { 0%,100%{background-position:0% 50%;} 50%{background-position:100% 50%;} }`}</style>
+      <style>
+        {
+          '@keyframes w14-skel { 0%,100%{background-position:0% 50%;} 50%{background-position:100% 50%;} }'
+        }
+      </style>
     </>
   );
 }
