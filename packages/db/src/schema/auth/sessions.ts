@@ -16,8 +16,17 @@
  *    rarely UPDATEs sessions — typically just inserts and deletes.)
  */
 
-import { check, index, inet, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import {
+  check,
+  index,
+  inet,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 
 import { primaryKey, timestamps } from '../_shared/columns.js';
 import { devices } from './devices.js';
@@ -47,7 +56,7 @@ export const sessions = pgTable(
 
     ...timestamps(),
   },
-  table => ({
+  (table) => ({
     tokenUq: uniqueIndex('sessions_token_uq').on(table.token),
     userIdIdx: index('sessions_user_id_idx').on(table.userId),
     expiresAtIdx: index('sessions_expires_at_idx').on(table.expiresAt),

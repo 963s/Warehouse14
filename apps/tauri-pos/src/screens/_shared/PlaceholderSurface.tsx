@@ -32,10 +32,7 @@ export function PlaceholderSurface({
         padding: 32,
       }}
     >
-      <ParchmentCard
-        padding="lg"
-        style={{ width: 'min(640px, 100%)', textAlign: 'center' }}
-      >
+      <ParchmentCard padding="lg" style={{ width: 'min(640px, 100%)', textAlign: 'center' }}>
         <Seal size="lg" tone="faded" label={digit !== undefined ? String(digit) : '14'} />
         <h1
           style={{

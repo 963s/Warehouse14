@@ -31,7 +31,7 @@
  */
 
 import { Type } from '@sinclair/typebox';
-import { and, eq, sql as drizzleSql } from 'drizzle-orm';
+import { and, sql as drizzleSql, eq } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 
 import {
@@ -44,8 +44,8 @@ import {
   transactions,
 } from '@warehouse14/db/schema';
 
-import { DomainError, type ApiErrorCode } from '../plugins/error-handler.js';
 import { requireAuth, requireOwner, requireRole, requireStepUp } from '../lib/auth-policy.js';
+import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 import { DecimalString } from '../schemas/money.js';
 
 class AppraisalNotFoundError extends DomainError {
@@ -79,26 +79,41 @@ const ErrorResponse = Type.Object({
 // ────────────────────────────────────────────────────────────────────────
 
 const ItemTypeEnum = Type.Union([
-  Type.Literal('gold_jewelry'), Type.Literal('gold_coin'), Type.Literal('gold_bar'),
-  Type.Literal('silver_jewelry'), Type.Literal('silver_coin'), Type.Literal('silver_bar'),
-  Type.Literal('platinum_jewelry'), Type.Literal('platinum_coin'), Type.Literal('platinum_bar'),
-  Type.Literal('antique'), Type.Literal('watch'), Type.Literal('other'),
+  Type.Literal('gold_jewelry'),
+  Type.Literal('gold_coin'),
+  Type.Literal('gold_bar'),
+  Type.Literal('silver_jewelry'),
+  Type.Literal('silver_coin'),
+  Type.Literal('silver_bar'),
+  Type.Literal('platinum_jewelry'),
+  Type.Literal('platinum_coin'),
+  Type.Literal('platinum_bar'),
+  Type.Literal('antique'),
+  Type.Literal('watch'),
+  Type.Literal('other'),
 ]);
 
 const ConditionEnum = Type.Union([
-  Type.Literal('NEW'), Type.Literal('USED_EXCELLENT'),
-  Type.Literal('USED_GOOD'), Type.Literal('USED_FAIR'),
-  Type.Literal('ANTIQUE_RESTORED'), Type.Literal('ANTIQUE_AS_FOUND'),
+  Type.Literal('NEW'),
+  Type.Literal('USED_EXCELLENT'),
+  Type.Literal('USED_GOOD'),
+  Type.Literal('USED_FAIR'),
+  Type.Literal('ANTIQUE_RESTORED'),
+  Type.Literal('ANTIQUE_AS_FOUND'),
 ]);
 
 const AppraisalItemInput = Type.Object({
   name: Type.String({ minLength: 1, maxLength: 256 }),
   description: Type.Optional(Type.String({ maxLength: 4096 })),
   itemType: ItemTypeEnum,
-  metal: Type.Optional(Type.Union([
-    Type.Literal('gold'), Type.Literal('silver'),
-    Type.Literal('platinum'), Type.Literal('palladium'),
-  ])),
+  metal: Type.Optional(
+    Type.Union([
+      Type.Literal('gold'),
+      Type.Literal('silver'),
+      Type.Literal('platinum'),
+      Type.Literal('palladium'),
+    ]),
+  ),
   karatCode: Type.Optional(Type.String({ maxLength: 16 })),
   finenessDecimal: Type.Optional(Type.String({ pattern: '^0?\\.\\d{1,4}$|^1\\.0{0,4}$' })),
   weightGrams: Type.Optional(Type.String({ pattern: '^\\d{1,6}(\\.\\d{1,4})?$' })),
@@ -123,8 +138,11 @@ const AppraisalView = Type.Object({
   customerId: Type.String({ format: 'uuid' }),
   appraisedByUserId: Type.String({ format: 'uuid' }),
   status: Type.Union([
-    Type.Literal('DRAFT'), Type.Literal('COMPLETED'),
-    Type.Literal('ACCEPTED'), Type.Literal('REJECTED'), Type.Literal('EXPIRED'),
+    Type.Literal('DRAFT'),
+    Type.Literal('COMPLETED'),
+    Type.Literal('ACCEPTED'),
+    Type.Literal('REJECTED'),
+    Type.Literal('EXPIRED'),
   ]),
   totalAppraisedEur: DecimalString,
   totalOfferedEur: Type.Union([DecimalString, Type.Null()]),
@@ -162,7 +180,9 @@ function fromCents(cents: bigint): string {
 
 const appraisalRoutes: FastifyPluginAsync = async (app) => {
   /** Load + render a full appraisal view (header + items + sorted by sequence). */
-  async function viewById(id: string): Promise<import('@sinclair/typebox').Static<typeof AppraisalView>> {
+  async function viewById(
+    id: string,
+  ): Promise<import('@sinclair/typebox').Static<typeof AppraisalView>> {
     const [a] = await app.db.select().from(appraisals).where(eq(appraisals.id, id)).limit(1);
     if (!a) throw new AppraisalNotFoundError(`Appraisal ${id} not found.`);
     const items = await app.db
@@ -215,7 +235,8 @@ const appraisalRoutes: FastifyPluginAsync = async (app) => {
       SELECT COALESCE(SUM(individual_appraised_eur), 0)::text AS sum
         FROM appraisal_items WHERE appraisal_id = ${appraisalId}
     `);
-    await tx.update(appraisals)
+    await tx
+      .update(appraisals)
       .set({ totalAppraisedEur: row!.sum ?? '0.00' })
       .where(eq(appraisals.id, appraisalId));
   }
@@ -235,18 +256,26 @@ const appraisalRoutes: FastifyPluginAsync = async (app) => {
           notes: Type.Optional(Type.String({ maxLength: 4096 })),
           customerExpectationEur: Type.Optional(DecimalString),
         }),
-        response: { 201: AppraisalView, 401: ErrorResponse, 403: ErrorResponse, 404: ErrorResponse },
+        response: {
+          201: AppraisalView,
+          401: ErrorResponse,
+          403: ErrorResponse,
+          404: ErrorResponse,
+        },
       },
     },
     async (req, reply) => {
       requireAuth(req);
       requireRole(req, 'CASHIER', 'ADMIN');
-      const [a] = await app.db.insert(appraisals).values({
-        customerId: req.body.customerId,
-        appraisedByUserId: req.actor.id,
-        notes: req.body.notes ?? null,
-        customerExpectationEur: req.body.customerExpectationEur ?? null,
-      }).returning({ id: appraisals.id });
+      const [a] = await app.db
+        .insert(appraisals)
+        .values({
+          customerId: req.body.customerId,
+          appraisedByUserId: req.actor.id,
+          notes: req.body.notes ?? null,
+          customerExpectationEur: req.body.customerExpectationEur ?? null,
+        })
+        .returning({ id: appraisals.id });
       if (!a) throw new Error('appraisal insert returned no row');
       return reply.status(201).send(await viewById(a.id));
     },
@@ -256,24 +285,31 @@ const appraisalRoutes: FastifyPluginAsync = async (app) => {
   // GET /api/appraisals/:id
   // ════════════════════════════════════════════════════════════════════
 
-  app.get<{ Params: { id: string } }>('/api/appraisals/:id', {
-    schema: {
-      tags: ['appraisals'],
-      summary: 'Get full appraisal view (JSON; PDF deferred to Phase 1.5).',
-      params: Type.Object({ id: Type.String({ format: 'uuid' }) }),
-      response: { 200: AppraisalView, 401: ErrorResponse, 404: ErrorResponse },
+  app.get<{ Params: { id: string } }>(
+    '/api/appraisals/:id',
+    {
+      schema: {
+        tags: ['appraisals'],
+        summary: 'Get full appraisal view (JSON; PDF deferred to Phase 1.5).',
+        params: Type.Object({ id: Type.String({ format: 'uuid' }) }),
+        response: { 200: AppraisalView, 401: ErrorResponse, 404: ErrorResponse },
+      },
     },
-  }, async (req, reply) => {
-    requireAuth(req);
-    requireRole(req, 'CASHIER', 'ADMIN', 'READONLY');
-    return reply.status(200).send(await viewById(req.params.id));
-  });
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'CASHIER', 'ADMIN', 'READONLY');
+      return reply.status(200).send(await viewById(req.params.id));
+    },
+  );
 
   // ════════════════════════════════════════════════════════════════════
   // POST /api/appraisals/:id/items
   // ════════════════════════════════════════════════════════════════════
 
-  app.post<{ Params: { id: string }; Body: import('@sinclair/typebox').Static<typeof AppraisalItemInput> }>(
+  app.post<{
+    Params: { id: string };
+    Body: import('@sinclair/typebox').Static<typeof AppraisalItemInput>;
+  }>(
     '/api/appraisals/:id/items',
     {
       schema: {
@@ -283,7 +319,9 @@ const appraisalRoutes: FastifyPluginAsync = async (app) => {
         body: AppraisalItemInput,
         response: {
           200: AppraisalView,
-          401: ErrorResponse, 404: ErrorResponse, 409: ErrorResponse,
+          401: ErrorResponse,
+          404: ErrorResponse,
+          409: ErrorResponse,
         },
       },
     },
@@ -292,8 +330,11 @@ const appraisalRoutes: FastifyPluginAsync = async (app) => {
       requireRole(req, 'CASHIER', 'ADMIN');
 
       await app.db.transaction(async (tx) => {
-        const [a] = await tx.select({ id: appraisals.id, status: appraisals.status })
-          .from(appraisals).where(eq(appraisals.id, req.params.id)).limit(1);
+        const [a] = await tx
+          .select({ id: appraisals.id, status: appraisals.status })
+          .from(appraisals)
+          .where(eq(appraisals.id, req.params.id))
+          .limit(1);
         if (!a) throw new AppraisalNotFoundError(`Appraisal ${req.params.id} not found.`);
         if (a.status !== 'DRAFT') {
           throw new AppraisalConflictError(`Appraisal is ${a.status}; cannot modify items.`);
@@ -342,7 +383,12 @@ const appraisalRoutes: FastifyPluginAsync = async (app) => {
           id: Type.String({ format: 'uuid' }),
           itemId: Type.String({ format: 'uuid' }),
         }),
-        response: { 200: AppraisalView, 401: ErrorResponse, 404: ErrorResponse, 409: ErrorResponse },
+        response: {
+          200: AppraisalView,
+          401: ErrorResponse,
+          404: ErrorResponse,
+          409: ErrorResponse,
+        },
       },
     },
     async (req, reply) => {
@@ -350,14 +396,23 @@ const appraisalRoutes: FastifyPluginAsync = async (app) => {
       requireRole(req, 'CASHIER', 'ADMIN');
 
       await app.db.transaction(async (tx) => {
-        const [a] = await tx.select({ id: appraisals.id, status: appraisals.status })
-          .from(appraisals).where(eq(appraisals.id, req.params.id)).limit(1);
+        const [a] = await tx
+          .select({ id: appraisals.id, status: appraisals.status })
+          .from(appraisals)
+          .where(eq(appraisals.id, req.params.id))
+          .limit(1);
         if (!a) throw new AppraisalNotFoundError(`Appraisal ${req.params.id} not found.`);
         if (a.status !== 'DRAFT') {
           throw new AppraisalConflictError(`Appraisal is ${a.status}; cannot remove items.`);
         }
-        const res = await tx.delete(appraisalItems)
-          .where(and(eq(appraisalItems.id, req.params.itemId), eq(appraisalItems.appraisalId, req.params.id)));
+        const res = await tx
+          .delete(appraisalItems)
+          .where(
+            and(
+              eq(appraisalItems.id, req.params.itemId),
+              eq(appraisalItems.appraisalId, req.params.id),
+            ),
+          );
         // `res` from postgres-js doesn't expose row count uniformly; we tolerate "no-op delete".
         await recomputeTotalAppraised(tx as typeof app.db, req.params.id);
         void res;
@@ -378,7 +433,12 @@ const appraisalRoutes: FastifyPluginAsync = async (app) => {
         summary: 'Lock items + set total_offered_eur. DRAFT → COMPLETED.',
         params: Type.Object({ id: Type.String({ format: 'uuid' }) }),
         body: Type.Object({ totalOfferedEur: DecimalString }),
-        response: { 200: AppraisalView, 401: ErrorResponse, 404: ErrorResponse, 409: ErrorResponse },
+        response: {
+          200: AppraisalView,
+          401: ErrorResponse,
+          404: ErrorResponse,
+          409: ErrorResponse,
+        },
       },
     },
     async (req, reply) => {
@@ -386,7 +446,11 @@ const appraisalRoutes: FastifyPluginAsync = async (app) => {
       requireRole(req, 'CASHIER', 'ADMIN');
 
       await app.db.transaction(async (tx) => {
-        const [a] = await tx.select().from(appraisals).where(eq(appraisals.id, req.params.id)).limit(1);
+        const [a] = await tx
+          .select()
+          .from(appraisals)
+          .where(eq(appraisals.id, req.params.id))
+          .limit(1);
         if (!a) throw new AppraisalNotFoundError(`Appraisal ${req.params.id} not found.`);
         if (a.status !== 'DRAFT') {
           throw new AppraisalConflictError(`Appraisal is ${a.status}; cannot complete.`);
@@ -395,14 +459,19 @@ const appraisalRoutes: FastifyPluginAsync = async (app) => {
           SELECT COUNT(*)::text AS c FROM appraisal_items WHERE appraisal_id = ${req.params.id}
         `);
         const c = countRows[0]?.c ?? '0';
-        if (parseInt(c, 10) === 0) {
-          throw new AppraisalValidationError('Cannot complete an empty appraisal — add at least one item.');
+        if (Number.parseInt(c, 10) === 0) {
+          throw new AppraisalValidationError(
+            'Cannot complete an empty appraisal — add at least one item.',
+          );
         }
-        await tx.update(appraisals).set({
-          status: 'COMPLETED',
-          totalOfferedEur: req.body.totalOfferedEur,
-          completedAt: new Date(),
-        }).where(eq(appraisals.id, req.params.id));
+        await tx
+          .update(appraisals)
+          .set({
+            status: 'COMPLETED',
+            totalOfferedEur: req.body.totalOfferedEur,
+            completedAt: new Date(),
+          })
+          .where(eq(appraisals.id, req.params.id));
       });
       return reply.status(200).send(await viewById(req.params.id));
     },
@@ -419,17 +488,23 @@ const appraisalRoutes: FastifyPluginAsync = async (app) => {
         tags: ['appraisals'],
         summary: 'Owner accepts: creates Ankauf + child products with pro-rata cost allocation.',
         description:
-          'Mandatory PIN step-up + Owner-only. The route runs the pro-rata-by-appraisal '
-          + 'algorithm (memory.md #68) so each spawned child product carries an acquisition_cost '
-          + 'that sums exactly to appraisals.total_offered_eur (last child absorbs rounding remainder).',
+          'Mandatory PIN step-up + Owner-only. The route runs the pro-rata-by-appraisal ' +
+          'algorithm (memory.md #68) so each spawned child product carries an acquisition_cost ' +
+          'that sums exactly to appraisals.total_offered_eur (last child absorbs rounding remainder).',
         params: Type.Object({ id: Type.String({ format: 'uuid' }) }),
-        response: { 200: AppraisalView, 401: ErrorResponse, 403: ErrorResponse, 404: ErrorResponse, 409: ErrorResponse },
+        response: {
+          200: AppraisalView,
+          401: ErrorResponse,
+          403: ErrorResponse,
+          404: ErrorResponse,
+          409: ErrorResponse,
+        },
       },
     },
     async (req, reply) => {
       requireAuth(req);
-      requireOwner(req);            // ONLY the Owner can finalise Ankauf decisions
-      requireStepUp(req);           // mandatory PIN
+      requireOwner(req); // ONLY the Owner can finalise Ankauf decisions
+      requireStepUp(req); // mandatory PIN
       // The Owner DOES need a paired device (mTLS) — Ankauf is fiscal.
       const deviceId = req.deviceId;
       if (!deviceId) {
@@ -437,16 +512,24 @@ const appraisalRoutes: FastifyPluginAsync = async (app) => {
       }
 
       await app.db.transaction(async (tx) => {
-        const [a] = await tx.select().from(appraisals).where(eq(appraisals.id, req.params.id)).limit(1);
+        const [a] = await tx
+          .select()
+          .from(appraisals)
+          .where(eq(appraisals.id, req.params.id))
+          .limit(1);
         if (!a) throw new AppraisalNotFoundError(`Appraisal ${req.params.id} not found.`);
         if (a.status !== 'COMPLETED') {
-          throw new AppraisalConflictError(`Appraisal is ${a.status}; only COMPLETED can be accepted.`);
+          throw new AppraisalConflictError(
+            `Appraisal is ${a.status}; only COMPLETED can be accepted.`,
+          );
         }
         if (!a.totalOfferedEur) {
           throw new AppraisalValidationError('total_offered_eur is missing on the appraisal.');
         }
 
-        const items = await tx.select().from(appraisalItems)
+        const items = await tx
+          .select()
+          .from(appraisalItems)
           .where(eq(appraisalItems.appraisalId, a.id))
           .orderBy(appraisalItems.sequenceInLot);
         if (items.length === 0) {
@@ -460,9 +543,7 @@ const appraisalRoutes: FastifyPluginAsync = async (app) => {
           0n,
         );
         if (totalAppraisedCents <= 0n) {
-          throw new AppraisalValidationError(
-            'Total appraised value is zero — cannot allocate.',
-          );
+          throw new AppraisalValidationError('Total appraised value is zero — cannot allocate.');
         }
 
         const allocations: bigint[] = new Array(items.length).fill(0n);
@@ -487,32 +568,38 @@ const appraisalRoutes: FastifyPluginAsync = async (app) => {
         // 2. Create the Ankauf transaction. For Ankauf direction, taxes:
         //    Ankauf carries NO VAT (we buy from a private person, §25a "Erwerb").
         //    subtotal = total, vat = 0.
-        const [ankaufTx] = await tx.insert(transactions).values({
-          direction: 'ANKAUF',
-          customerId: a.customerId,
-          deviceId,
-          cashierUserId: req.actor.id,
-          subtotalEur: a.totalOfferedEur,
-          vatEur: '0.00',
-          totalEur: a.totalOfferedEur,
-          taxTreatmentCode: 'MARGIN_25A',  // Erwerb that will later trigger §25a on sale
-          notesInternal: `[appraisal:${a.id}] accepted by Owner ${req.actor.id}`,
-        }).returning({ id: transactions.id });
+        const [ankaufTx] = await tx
+          .insert(transactions)
+          .values({
+            direction: 'ANKAUF',
+            customerId: a.customerId,
+            deviceId,
+            cashierUserId: req.actor.id,
+            subtotalEur: a.totalOfferedEur,
+            vatEur: '0.00',
+            totalEur: a.totalOfferedEur,
+            taxTreatmentCode: 'MARGIN_25A', // Erwerb that will later trigger §25a on sale
+            notesInternal: `[appraisal:${a.id}] accepted by Owner ${req.actor.id}`,
+          })
+          .returning({ id: transactions.id });
         if (!ankaufTx) throw new Error('ankauf insert returned no row');
 
         // 3. Create parent product (lot header). Status DRAFT until photo workflow done.
         const lotName = `Konvolut ${a.id.slice(0, 8)} (${items.length} Stk.)`;
-        const [parent] = await tx.insert(products).values({
-          sku: `LOT-${a.id.slice(0, 12)}`,
-          status: 'DRAFT',
-          taxTreatmentCode: 'MARGIN_25A',
-          itemType: 'other',
-          acquisitionCostEur: a.totalOfferedEur,
-          listPriceEur: a.totalOfferedEur,  // operator updates per child later
-          name: lotName,
-          isCommission: false,
-          acquiredFromCustomerId: a.customerId,
-        }).returning({ id: products.id });
+        const [parent] = await tx
+          .insert(products)
+          .values({
+            sku: `LOT-${a.id.slice(0, 12)}`,
+            status: 'DRAFT',
+            taxTreatmentCode: 'MARGIN_25A',
+            itemType: 'other',
+            acquisitionCostEur: a.totalOfferedEur,
+            listPriceEur: a.totalOfferedEur, // operator updates per child later
+            name: lotName,
+            isCommission: false,
+            acquiredFromCustomerId: a.customerId,
+          })
+          .returning({ id: products.id });
         if (!parent) throw new Error('parent product insert returned no row');
 
         // 4. Create children with allocated costs + link to appraisal_items + photos.
@@ -521,36 +608,41 @@ const appraisalRoutes: FastifyPluginAsync = async (app) => {
           const item = items[i]!;
           const alloc = allocations[i]!;
           const allocStr = fromCents(alloc);
-          const [child] = await tx.insert(products).values({
-            sku: `LOT-${a.id.slice(0, 12)}-${String(i + 1).padStart(3, '0')}`,
-            status: 'DRAFT',
-            taxTreatmentCode: 'MARGIN_25A',
-            itemType: item.itemType,
-            metal: item.metal,
-            karatCode: item.karatCode,
-            finenessDecimal: item.finenessDecimal,
-            weightGrams: item.weightGrams,
-            hallmarkStamps: item.hallmarkStamps,
-            acquisitionCostEur: allocStr,
-            listPriceEur: item.individualAppraisedEur,  // initial guess = our appraised market value
-            name: item.name,
-            descriptionDe: item.description,
-            condition: item.condition ?? 'USED_GOOD',
-            isCommission: false,
-            acquiredFromCustomerId: a.customerId,
-            parentProductId: parent.id,
-          }).returning({ id: products.id });
+          const [child] = await tx
+            .insert(products)
+            .values({
+              sku: `LOT-${a.id.slice(0, 12)}-${String(i + 1).padStart(3, '0')}`,
+              status: 'DRAFT',
+              taxTreatmentCode: 'MARGIN_25A',
+              itemType: item.itemType,
+              metal: item.metal,
+              karatCode: item.karatCode,
+              finenessDecimal: item.finenessDecimal,
+              weightGrams: item.weightGrams,
+              hallmarkStamps: item.hallmarkStamps,
+              acquisitionCostEur: allocStr,
+              listPriceEur: item.individualAppraisedEur, // initial guess = our appraised market value
+              name: item.name,
+              descriptionDe: item.description,
+              condition: item.condition ?? 'USED_GOOD',
+              isCommission: false,
+              acquiredFromCustomerId: a.customerId,
+              parentProductId: parent.id,
+            })
+            .returning({ id: products.id });
           if (!child) throw new Error('child product insert returned no row');
 
           // Copy photos.
           if (item.photoR2Keys.length > 0) {
-            await tx.insert(productPhotos).values(item.photoR2Keys.map((key, idx) => ({
-              productId: child.id,
-              r2Key: key,
-              displayOrder: idx,
-              isPrimary: idx === 0,
-              source: 'admin_upload' as const,
-            })));
+            await tx.insert(productPhotos).values(
+              item.photoR2Keys.map((key, idx) => ({
+                productId: child.id,
+                r2Key: key,
+                displayOrder: idx,
+                isPrimary: idx === 0,
+                source: 'admin_upload' as const,
+              })),
+            );
           }
           itemUpdates.push({ itemId: item.id, productId: child.id });
         }
@@ -585,17 +677,21 @@ const appraisalRoutes: FastifyPluginAsync = async (app) => {
 
         // 5. Link items back to spawned products.
         for (const u of itemUpdates) {
-          await tx.update(appraisalItems)
+          await tx
+            .update(appraisalItems)
             .set({ productId: u.productId })
             .where(eq(appraisalItems.id, u.itemId));
         }
 
         // 6. Flip appraisal → ACCEPTED.
-        await tx.update(appraisals).set({
-          status: 'ACCEPTED',
-          ankaufTransactionId: ankaufTx.id,
-          acceptedAt: new Date(),
-        }).where(eq(appraisals.id, a.id));
+        await tx
+          .update(appraisals)
+          .set({
+            status: 'ACCEPTED',
+            ankaufTransactionId: ankaufTx.id,
+            acceptedAt: new Date(),
+          })
+          .where(eq(appraisals.id, a.id));
 
         // 7. Emit a ledger event for the SSE feed + audit.
         await tx.execute(drizzleSql`
@@ -625,7 +721,12 @@ const appraisalRoutes: FastifyPluginAsync = async (app) => {
         summary: 'Reject the appraisal (customer or owner declined).',
         params: Type.Object({ id: Type.String({ format: 'uuid' }) }),
         body: Type.Object({ reason: Type.String({ minLength: 4, maxLength: 1024 }) }),
-        response: { 200: AppraisalView, 401: ErrorResponse, 404: ErrorResponse, 409: ErrorResponse },
+        response: {
+          200: AppraisalView,
+          401: ErrorResponse,
+          404: ErrorResponse,
+          409: ErrorResponse,
+        },
       },
     },
     async (req, reply) => {
@@ -633,21 +734,29 @@ const appraisalRoutes: FastifyPluginAsync = async (app) => {
       requireRole(req, 'ADMIN');
 
       await app.db.transaction(async (tx) => {
-        const [a] = await tx.select({ status: appraisals.status })
-          .from(appraisals).where(eq(appraisals.id, req.params.id)).limit(1);
+        const [a] = await tx
+          .select({ status: appraisals.status })
+          .from(appraisals)
+          .where(eq(appraisals.id, req.params.id))
+          .limit(1);
         if (!a) throw new AppraisalNotFoundError(`Appraisal ${req.params.id} not found.`);
         if (a.status === 'ACCEPTED') {
-          throw new AppraisalConflictError('Cannot reject an ACCEPTED appraisal — use return/storno instead.');
+          throw new AppraisalConflictError(
+            'Cannot reject an ACCEPTED appraisal — use return/storno instead.',
+          );
         }
         if (a.status === 'REJECTED') {
           throw new AppraisalConflictError('Appraisal is already REJECTED.');
         }
-        await tx.update(appraisals).set({
-          status: 'REJECTED',
-          rejectedAt: new Date(),
-          rejectionReason: req.body.reason,
-          completedAt: drizzleSql`COALESCE(${appraisals.completedAt}, now())` as never,
-        }).where(eq(appraisals.id, req.params.id));
+        await tx
+          .update(appraisals)
+          .set({
+            status: 'REJECTED',
+            rejectedAt: new Date(),
+            rejectionReason: req.body.reason,
+            completedAt: drizzleSql`COALESCE(${appraisals.completedAt}, now())` as never,
+          })
+          .where(eq(appraisals.id, req.params.id));
       });
       return reply.status(200).send(await viewById(req.params.id));
     },

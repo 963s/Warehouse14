@@ -6,22 +6,16 @@
  * COMPLETED shows "Kunde nimmt an" + "Ablehnen".
  */
 
-import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 
 import {
   ApiError,
-  appraisalsApi,
   type AppraisalItemView,
   type AppraisalView,
+  appraisalsApi,
 } from '@warehouse14/api-client';
-import {
-  Button,
-  DiamondRule,
-  MoneyAmount,
-  ParchmentCard,
-  RomanIndex,
-} from '@warehouse14/ui-kit';
+import { Button, DiamondRule, MoneyAmount, ParchmentCard, RomanIndex } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
 import { useToastStore } from '../../state/toast-store.js';
@@ -109,15 +103,36 @@ export function AppraisalItemsList({
       }}
     >
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <h2 style={{ margin: 0, fontFamily: 'var(--w14-font-display)', fontWeight: 500, fontSize: '1.4rem' }}>
+        <h2
+          style={{
+            margin: 0,
+            fontFamily: 'var(--w14-font-display)',
+            fontWeight: 500,
+            fontSize: '1.4rem',
+          }}
+        >
           Konvolut
         </h2>
-        <span className="w14-smallcaps" style={{ color: 'var(--w14-ink-faded)', letterSpacing: '0.08em', fontSize: '0.78rem' }}>
-          {appraisal.items.length === 0 ? 'leer' : `${appraisal.items.length} Stück${appraisal.items.length === 1 ? '' : 'e'}`}
+        <span
+          className="w14-smallcaps"
+          style={{ color: 'var(--w14-ink-faded)', letterSpacing: '0.08em', fontSize: '0.78rem' }}
+        >
+          {appraisal.items.length === 0
+            ? 'leer'
+            : `${appraisal.items.length} Stück${appraisal.items.length === 1 ? '' : 'e'}`}
         </span>
       </header>
 
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 10,
+        }}
+      >
         {appraisal.items.length === 0 ? (
           <EmptyList />
         ) : (
@@ -134,16 +149,36 @@ export function AppraisalItemsList({
 
       <ParchmentCard padding="md" style={{ flexShrink: 0 }}>
         <DiamondRule label="Summe der Einzelschätzungen" />
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '8px 0' }}>
-          <span className="w14-smallcaps" style={{ color: 'var(--w14-ink-aged)', letterSpacing: '0.08em', fontSize: '0.95rem' }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'baseline',
+            padding: '8px 0',
+          }}
+        >
+          <span
+            className="w14-smallcaps"
+            style={{ color: 'var(--w14-ink-aged)', letterSpacing: '0.08em', fontSize: '0.95rem' }}
+          >
             Gesamt
           </span>
           <MoneyAmount valueEur={totalAppraisedEur} emphasis />
         </div>
 
         {appraisal.totalOfferedEur && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '4px 0' }}>
-            <span className="w14-smallcaps" style={{ color: 'var(--w14-gold)', letterSpacing: '0.08em', fontSize: '0.88rem' }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'baseline',
+              padding: '4px 0',
+            }}
+          >
+            <span
+              className="w14-smallcaps"
+              style={{ color: 'var(--w14-gold)', letterSpacing: '0.08em', fontSize: '0.88rem' }}
+            >
               Angebotswert (verhandelt)
             </span>
             <MoneyAmount valueEur={appraisal.totalOfferedEur} emphasis />
@@ -198,23 +233,57 @@ function ItemRow({
   onRemove: () => void;
 }): JSX.Element {
   return (
-    <ParchmentCard padding="md" style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 12, alignItems: 'start' }}>
+    <ParchmentCard
+      padding="md"
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'auto 1fr auto',
+        gap: 12,
+        alignItems: 'start',
+      }}
+    >
       <RomanIndex value={item.sequenceInLot} tone="gold" />
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontFamily: 'var(--w14-font-display)', fontWeight: 500, fontSize: '1rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <div
+          style={{
+            fontFamily: 'var(--w14-font-display)',
+            fontWeight: 500,
+            fontSize: '1rem',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
           {item.name}
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', marginTop: 4 }}>
-          <span className="w14-smallcaps" style={{ color: 'var(--w14-ink-faded)', fontSize: '0.72rem', letterSpacing: '0.08em' }}>
+          <span
+            className="w14-smallcaps"
+            style={{ color: 'var(--w14-ink-faded)', fontSize: '0.72rem', letterSpacing: '0.08em' }}
+          >
             {ITEM_TYPE_LABEL[item.itemType] ?? item.itemType}
           </span>
           {item.weightGrams && (
-            <span className="w14-tabular" style={{ fontFamily: 'var(--w14-font-mono)', fontSize: '0.78rem', color: 'var(--w14-ink-faded)' }}>
+            <span
+              className="w14-tabular"
+              style={{
+                fontFamily: 'var(--w14-font-mono)',
+                fontSize: '0.78rem',
+                color: 'var(--w14-ink-faded)',
+              }}
+            >
               {item.weightGrams} g
             </span>
           )}
           {item.finenessDecimal && (
-            <span className="w14-tabular" style={{ fontFamily: 'var(--w14-font-mono)', fontSize: '0.78rem', color: 'var(--w14-ink-faded)' }}>
+            <span
+              className="w14-tabular"
+              style={{
+                fontFamily: 'var(--w14-font-mono)',
+                fontSize: '0.78rem',
+                color: 'var(--w14-ink-faded)',
+              }}
+            >
               {item.finenessDecimal}
             </span>
           )}
@@ -249,9 +318,20 @@ function ItemRow({
 
 function EmptyList(): JSX.Element {
   return (
-    <div style={{ flex: 1, display: 'grid', placeItems: 'center', padding: 24, textAlign: 'center' }}>
-      <p style={{ margin: 0, color: 'var(--w14-ink-faded)', fontFamily: 'var(--w14-font-display)', fontStyle: 'italic', fontSize: '0.92rem' }}>
-        Noch keine Stücke erfasst.<br />
+    <div
+      style={{ flex: 1, display: 'grid', placeItems: 'center', padding: 24, textAlign: 'center' }}
+    >
+      <p
+        style={{
+          margin: 0,
+          color: 'var(--w14-ink-faded)',
+          fontFamily: 'var(--w14-font-display)',
+          fontStyle: 'italic',
+          fontSize: '0.92rem',
+        }}
+      >
+        Noch keine Stücke erfasst.
+        <br />
         Beginnen Sie rechts mit dem ersten Stück.
       </p>
     </div>
@@ -279,10 +359,17 @@ function CompleteDialog({
     <div
       role="dialog"
       aria-modal="true"
-      onClick={() => { if (!completing) onCancel(); }}
+      onClick={() => {
+        if (!completing) onCancel();
+      }}
       style={{
-        position: 'fixed', inset: 0, backgroundColor: 'var(--w14-overlay)',
-        zIndex: 1050, display: 'grid', placeItems: 'center', padding: 24,
+        position: 'fixed',
+        inset: 0,
+        backgroundColor: 'var(--w14-overlay)',
+        zIndex: 1050,
+        display: 'grid',
+        placeItems: 'center',
+        padding: 24,
       }}
     >
       <ParchmentCard
@@ -290,15 +377,35 @@ function CompleteDialog({
         onClick={(ev) => ev.stopPropagation()}
         style={{ width: 'min(460px, 100%)' }}
       >
-        <h2 style={{ margin: 0, fontFamily: 'var(--w14-font-display)', fontWeight: 500, fontSize: '1.4rem', textAlign: 'center' }}>
+        <h2
+          style={{
+            margin: 0,
+            fontFamily: 'var(--w14-font-display)',
+            fontWeight: 500,
+            fontSize: '1.4rem',
+            textAlign: 'center',
+          }}
+        >
           Angebot festlegen
         </h2>
-        <p style={{ margin: '6px 0 0', textAlign: 'center', color: 'var(--w14-ink-faded)', fontFamily: 'var(--w14-font-display)', fontStyle: 'italic', fontSize: '0.88rem' }}>
+        <p
+          style={{
+            margin: '6px 0 0',
+            textAlign: 'center',
+            color: 'var(--w14-ink-faded)',
+            fontFamily: 'var(--w14-font-display)',
+            fontStyle: 'italic',
+            fontSize: '0.88rem',
+          }}
+        >
           Schätzung: <MoneyAmount valueEur={totalAppraised} />
         </p>
         <DiamondRule label="Angebot an den Kunden" />
         <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <span className="w14-smallcaps" style={{ color: 'var(--w14-ink-faded)', fontSize: '0.74rem', letterSpacing: '0.08em' }}>
+          <span
+            className="w14-smallcaps"
+            style={{ color: 'var(--w14-ink-faded)', fontSize: '0.74rem', letterSpacing: '0.08em' }}
+          >
             Lump-Sum-Angebot (€)
           </span>
           <input
@@ -309,7 +416,8 @@ function CompleteDialog({
             placeholder="z. B. 12500.00"
             autoFocus
             style={{
-              border: 'none', outline: 'none',
+              border: 'none',
+              outline: 'none',
               borderBottom: '2px solid var(--w14-rule)',
               background: 'transparent',
               padding: '8px 4px',
@@ -320,12 +428,22 @@ function CompleteDialog({
           />
         </label>
         {error && (
-          <p role="alert" style={{ color: 'var(--w14-wax-red)', margin: '14px 0 0', fontSize: '0.92rem', textAlign: 'center' }}>
+          <p
+            role="alert"
+            style={{
+              color: 'var(--w14-wax-red)',
+              margin: '14px 0 0',
+              fontSize: '0.92rem',
+              textAlign: 'center',
+            }}
+          >
             {error}
           </p>
         )}
         <div style={{ marginTop: 22, display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-          <Button variant="ghost" onClick={onCancel} disabled={completing}>Abbrechen</Button>
+          <Button variant="ghost" onClick={onCancel} disabled={completing}>
+            Abbrechen
+          </Button>
           <Button variant="primary" onClick={onConfirm} disabled={completing}>
             {completing ? 'Bestätigt…' : 'Angebot bestätigen'}
           </Button>

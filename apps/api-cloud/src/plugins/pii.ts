@@ -15,10 +15,10 @@
  * via `currentPiiKey()`).
  */
 
-import fastifyPlugin from 'fastify-plugin';
 import type { FastifyPluginAsync } from 'fastify';
+import fastifyPlugin from 'fastify-plugin';
 
-import { withPii, type PiiTx } from '../lib/pii.js';
+import { type PiiTx, withPii } from '../lib/pii.js';
 
 declare module 'fastify' {
   interface FastifyInstance {

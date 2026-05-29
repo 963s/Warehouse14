@@ -52,7 +52,7 @@ export async function withPiiKey<T>(
   piiKey: string,
   fn: (tx: DbTransaction) => Promise<T>,
 ): Promise<T> {
-  return await db.transaction(async tx => {
+  return await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT set_config('warehouse14.pii_key', ${piiKey}, true)`);
     return await fn(tx);
   });

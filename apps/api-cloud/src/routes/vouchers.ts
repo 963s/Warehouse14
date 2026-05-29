@@ -14,15 +14,15 @@
  * Code generation: cryptographically random 16 uppercase alphanumeric chars.
  */
 
+import { randomBytes } from 'node:crypto';
 import { Type } from '@sinclair/typebox';
 import { eq } from 'drizzle-orm';
-import { randomBytes } from 'node:crypto';
 import type { FastifyPluginAsync } from 'fastify';
 
 import { voucherRedemptions, vouchers } from '@warehouse14/db/schema';
 
-import { DomainError, type ApiErrorCode } from '../plugins/error-handler.js';
 import { requireAuth, requireRole } from '../lib/auth-policy.js';
+import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 import { DecimalString } from '../schemas/money.js';
 
 class VoucherNotFoundError extends DomainError {
@@ -66,8 +66,10 @@ const VoucherView = Type.Object({
   issuedValueEur: DecimalString,
   currentBalanceEur: DecimalString,
   status: Type.Union([
-    Type.Literal('ACTIVE'), Type.Literal('REDEEMED'),
-    Type.Literal('EXPIRED'), Type.Literal('REVOKED'),
+    Type.Literal('ACTIVE'),
+    Type.Literal('REDEEMED'),
+    Type.Literal('EXPIRED'),
+    Type.Literal('REVOKED'),
   ]),
   expiresAt: Type.Union([Type.String({ format: 'date-time' }), Type.Null()]),
 });
@@ -86,65 +88,40 @@ const voucherRoutes: FastifyPluginAsync = async (app) => {
       expiresAt?: string;
       notes?: string;
     };
-  }>('/api/vouchers', {
-    schema: {
-      tags: ['vouchers'],
-      summary: 'Issue a gift voucher (Gutschein) — SINGLE_PURPOSE requires a tax code.',
-      body: Type.Object({
-        voucherType: Type.Union([Type.Literal('SINGLE_PURPOSE'), Type.Literal('MULTI_PURPOSE')]),
-        issuedValueEur: DecimalString,
-        issuanceTaxTreatmentCode: Type.Optional(Type.String()),
-        issuedToCustomerId: Type.Optional(Type.String({ format: 'uuid' })),
-        expiresAt: Type.Optional(Type.String({ format: 'date-time' })),
-        notes: Type.Optional(Type.String({ maxLength: 1024 })),
-      }),
-      response: { 201: VoucherView, 400: ErrorResponse, 401: ErrorResponse, 403: ErrorResponse },
+  }>(
+    '/api/vouchers',
+    {
+      schema: {
+        tags: ['vouchers'],
+        summary: 'Issue a gift voucher (Gutschein) — SINGLE_PURPOSE requires a tax code.',
+        body: Type.Object({
+          voucherType: Type.Union([Type.Literal('SINGLE_PURPOSE'), Type.Literal('MULTI_PURPOSE')]),
+          issuedValueEur: DecimalString,
+          issuanceTaxTreatmentCode: Type.Optional(Type.String()),
+          issuedToCustomerId: Type.Optional(Type.String({ format: 'uuid' })),
+          expiresAt: Type.Optional(Type.String({ format: 'date-time' })),
+          notes: Type.Optional(Type.String({ maxLength: 1024 })),
+        }),
+        response: { 201: VoucherView, 400: ErrorResponse, 401: ErrorResponse, 403: ErrorResponse },
+      },
     },
-  }, async (req, reply) => {
-    requireAuth(req);
-    requireRole(req, 'CASHIER', 'ADMIN');
-    const b = req.body;
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'CASHIER', 'ADMIN');
+      const b = req.body;
 
-    if (b.voucherType === 'SINGLE_PURPOSE' && !b.issuanceTaxTreatmentCode) {
-      throw new VoucherValidationError(
-        'SINGLE_PURPOSE vouchers require an issuanceTaxTreatmentCode (§ 3 Abs. 14 UStG).',
-      );
-    }
+      if (b.voucherType === 'SINGLE_PURPOSE' && !b.issuanceTaxTreatmentCode) {
+        throw new VoucherValidationError(
+          'SINGLE_PURPOSE vouchers require an issuanceTaxTreatmentCode (§ 3 Abs. 14 UStG).',
+        );
+      }
 
-    const code = generateCode();
-    try {
-      const [v] = await app.db
-        .insert(vouchers)
-        .values({
-          code,
-          voucherType: b.voucherType,
-          issuedValueEur: b.issuedValueEur,
-          currentBalanceEur: b.issuedValueEur,
-          issuanceTaxTreatmentCode: b.issuanceTaxTreatmentCode ?? null,
-          issuedToCustomerId: b.issuedToCustomerId ?? null,
-          expiresAt: b.expiresAt ? new Date(b.expiresAt) : null,
-          notes: b.notes ?? null,
-        })
-        .returning();
-      if (!v) throw new Error('voucher insert returned no row');
-      return reply.status(201).send({
-        id: v.id,
-        code: v.code,
-        voucherType: v.voucherType,
-        issuedValueEur: v.issuedValueEur,
-        currentBalanceEur: v.currentBalanceEur,
-        status: v.status,
-        expiresAt: v.expiresAt ? v.expiresAt.toISOString() : null,
-      });
-    } catch (err) {
-      const msg = (err as Error).message ?? '';
-      if (msg.includes('vouchers_code')) {
-        // exceedingly rare collision — try once more
-        const retryCode = generateCode();
+      const code = generateCode();
+      try {
         const [v] = await app.db
           .insert(vouchers)
           .values({
-            code: retryCode,
+            code,
             voucherType: b.voucherType,
             issuedValueEur: b.issuedValueEur,
             currentBalanceEur: b.issuedValueEur,
@@ -154,50 +131,83 @@ const voucherRoutes: FastifyPluginAsync = async (app) => {
             notes: b.notes ?? null,
           })
           .returning();
+        if (!v) throw new Error('voucher insert returned no row');
         return reply.status(201).send({
-          id: v!.id,
-          code: v!.code,
-          voucherType: v!.voucherType,
-          issuedValueEur: v!.issuedValueEur,
-          currentBalanceEur: v!.currentBalanceEur,
-          status: v!.status,
-          expiresAt: v!.expiresAt ? v!.expiresAt.toISOString() : null,
+          id: v.id,
+          code: v.code,
+          voucherType: v.voucherType,
+          issuedValueEur: v.issuedValueEur,
+          currentBalanceEur: v.currentBalanceEur,
+          status: v.status,
+          expiresAt: v.expiresAt ? v.expiresAt.toISOString() : null,
         });
+      } catch (err) {
+        const msg = (err as Error).message ?? '';
+        if (msg.includes('vouchers_code')) {
+          // exceedingly rare collision — try once more
+          const retryCode = generateCode();
+          const [v] = await app.db
+            .insert(vouchers)
+            .values({
+              code: retryCode,
+              voucherType: b.voucherType,
+              issuedValueEur: b.issuedValueEur,
+              currentBalanceEur: b.issuedValueEur,
+              issuanceTaxTreatmentCode: b.issuanceTaxTreatmentCode ?? null,
+              issuedToCustomerId: b.issuedToCustomerId ?? null,
+              expiresAt: b.expiresAt ? new Date(b.expiresAt) : null,
+              notes: b.notes ?? null,
+            })
+            .returning();
+          return reply.status(201).send({
+            id: v!.id,
+            code: v!.code,
+            voucherType: v!.voucherType,
+            issuedValueEur: v!.issuedValueEur,
+            currentBalanceEur: v!.currentBalanceEur,
+            status: v!.status,
+            expiresAt: v!.expiresAt ? v!.expiresAt.toISOString() : null,
+          });
+        }
+        throw err;
       }
-      throw err;
-    }
-  });
+    },
+  );
 
   // ════════════════════════════════════════════════════════════════════
   // GET /api/vouchers/:code — balance lookup
   // ════════════════════════════════════════════════════════════════════
 
-  app.get<{ Params: { code: string } }>('/api/vouchers/:code', {
-    schema: {
-      tags: ['vouchers'],
-      summary: 'Look up a voucher by its public code.',
-      params: Type.Object({ code: Type.String({ pattern: '^[A-Z0-9]{8,32}$' }) }),
-      response: { 200: VoucherView, 401: ErrorResponse, 404: ErrorResponse },
+  app.get<{ Params: { code: string } }>(
+    '/api/vouchers/:code',
+    {
+      schema: {
+        tags: ['vouchers'],
+        summary: 'Look up a voucher by its public code.',
+        params: Type.Object({ code: Type.String({ pattern: '^[A-Z0-9]{8,32}$' }) }),
+        response: { 200: VoucherView, 401: ErrorResponse, 404: ErrorResponse },
+      },
     },
-  }, async (req, reply) => {
-    requireAuth(req);
-    requireRole(req, 'CASHIER', 'ADMIN');
-    const [v] = await app.db
-      .select()
-      .from(vouchers)
-      .where(eq(vouchers.code, req.params.code))
-      .limit(1);
-    if (!v) throw new VoucherNotFoundError(`Voucher ${req.params.code} not found.`);
-    return reply.status(200).send({
-      id: v.id,
-      code: v.code,
-      voucherType: v.voucherType,
-      issuedValueEur: v.issuedValueEur,
-      currentBalanceEur: v.currentBalanceEur,
-      status: v.status,
-      expiresAt: v.expiresAt ? v.expiresAt.toISOString() : null,
-    });
-  });
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'CASHIER', 'ADMIN');
+      const [v] = await app.db
+        .select()
+        .from(vouchers)
+        .where(eq(vouchers.code, req.params.code))
+        .limit(1);
+      if (!v) throw new VoucherNotFoundError(`Voucher ${req.params.code} not found.`);
+      return reply.status(200).send({
+        id: v.id,
+        code: v.code,
+        voucherType: v.voucherType,
+        issuedValueEur: v.issuedValueEur,
+        currentBalanceEur: v.currentBalanceEur,
+        status: v.status,
+        expiresAt: v.expiresAt ? v.expiresAt.toISOString() : null,
+      });
+    },
+  );
 
   // ════════════════════════════════════════════════════════════════════
   // POST /api/vouchers/:code/redeem — apply to a transaction
@@ -206,75 +216,85 @@ const voucherRoutes: FastifyPluginAsync = async (app) => {
   app.post<{
     Params: { code: string };
     Body: { transactionId: string; amountEur: string };
-  }>('/api/vouchers/:code/redeem', {
-    schema: {
-      tags: ['vouchers'],
-      summary: 'Redeem voucher balance against a transaction. Decrements current_balance_eur.',
-      params: Type.Object({ code: Type.String({ pattern: '^[A-Z0-9]{8,32}$' }) }),
-      body: Type.Object({
-        transactionId: Type.String({ format: 'uuid' }),
-        amountEur: DecimalString,
-      }),
-      response: {
-        200: Type.Object({
-          redemptionId: Type.String({ format: 'uuid' }),
-          newBalanceEur: DecimalString,
-          newStatus: Type.String(),
+  }>(
+    '/api/vouchers/:code/redeem',
+    {
+      schema: {
+        tags: ['vouchers'],
+        summary: 'Redeem voucher balance against a transaction. Decrements current_balance_eur.',
+        params: Type.Object({ code: Type.String({ pattern: '^[A-Z0-9]{8,32}$' }) }),
+        body: Type.Object({
+          transactionId: Type.String({ format: 'uuid' }),
+          amountEur: DecimalString,
         }),
-        404: ErrorResponse, 409: ErrorResponse, 400: ErrorResponse,
+        response: {
+          200: Type.Object({
+            redemptionId: Type.String({ format: 'uuid' }),
+            newBalanceEur: DecimalString,
+            newStatus: Type.String(),
+          }),
+          404: ErrorResponse,
+          409: ErrorResponse,
+          400: ErrorResponse,
+        },
       },
     },
-  }, async (req, reply) => {
-    requireAuth(req);
-    requireRole(req, 'CASHIER', 'ADMIN');
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'CASHIER', 'ADMIN');
 
-    const result = await app.db.transaction(async (tx) => {
-      const [v] = await tx
-        .select()
-        .from(vouchers)
-        .where(eq(vouchers.code, req.params.code))
-        .limit(1);
-      if (!v) throw new VoucherNotFoundError(`Voucher ${req.params.code} not found.`);
-      if (v.status !== 'ACTIVE') {
-        throw new VoucherConflictError(`Voucher status is ${v.status}; cannot redeem.`);
-      }
-      if (v.expiresAt && v.expiresAt < new Date()) {
-        // Mark EXPIRED + refuse.
-        await tx.update(vouchers).set({ status: 'EXPIRED' }).where(eq(vouchers.id, v.id));
-        throw new VoucherConflictError('Voucher has expired.');
-      }
+      const result = await app.db.transaction(async (tx) => {
+        const [v] = await tx
+          .select()
+          .from(vouchers)
+          .where(eq(vouchers.code, req.params.code))
+          .limit(1);
+        if (!v) throw new VoucherNotFoundError(`Voucher ${req.params.code} not found.`);
+        if (v.status !== 'ACTIVE') {
+          throw new VoucherConflictError(`Voucher status is ${v.status}; cannot redeem.`);
+        }
+        if (v.expiresAt && v.expiresAt < new Date()) {
+          // Mark EXPIRED + refuse.
+          await tx.update(vouchers).set({ status: 'EXPIRED' }).where(eq(vouchers.id, v.id));
+          throw new VoucherConflictError('Voucher has expired.');
+        }
 
-      // Decimal-safe balance check.
-      const cents = (x: string): bigint => {
-        const [whole, frac = '00'] = x.split('.');
-        return BigInt(whole!) * 100n + BigInt(((frac ?? '00').padEnd(2, '0').slice(0, 2)));
-      };
-      const balanceCents = cents(v.currentBalanceEur);
-      const requestCents = cents(req.body.amountEur);
-      if (requestCents <= 0n || requestCents > balanceCents) {
-        throw new VoucherValidationError(
-          `Redemption amount ${req.body.amountEur} exceeds available balance ${v.currentBalanceEur}.`,
-        );
-      }
-      const newBalanceCents = balanceCents - requestCents;
-      const newBalanceEur = `${newBalanceCents / 100n}.${String(newBalanceCents % 100n).padStart(2, '0')}`;
-      const newStatus = newBalanceCents === 0n ? 'REDEEMED' as const : v.status;
+        // Decimal-safe balance check.
+        const cents = (x: string): bigint => {
+          const [whole, frac = '00'] = x.split('.');
+          return BigInt(whole!) * 100n + BigInt((frac ?? '00').padEnd(2, '0').slice(0, 2));
+        };
+        const balanceCents = cents(v.currentBalanceEur);
+        const requestCents = cents(req.body.amountEur);
+        if (requestCents <= 0n || requestCents > balanceCents) {
+          throw new VoucherValidationError(
+            `Redemption amount ${req.body.amountEur} exceeds available balance ${v.currentBalanceEur}.`,
+          );
+        }
+        const newBalanceCents = balanceCents - requestCents;
+        const newBalanceEur = `${newBalanceCents / 100n}.${String(newBalanceCents % 100n).padStart(2, '0')}`;
+        const newStatus = newBalanceCents === 0n ? ('REDEEMED' as const) : v.status;
 
-      const [red] = await tx.insert(voucherRedemptions).values({
-        voucherId: v.id,
-        transactionId: req.body.transactionId,
-        amountEur: req.body.amountEur,
-      }).returning({ id: voucherRedemptions.id });
-      if (!red) throw new Error('redemption insert returned no row');
+        const [red] = await tx
+          .insert(voucherRedemptions)
+          .values({
+            voucherId: v.id,
+            transactionId: req.body.transactionId,
+            amountEur: req.body.amountEur,
+          })
+          .returning({ id: voucherRedemptions.id });
+        if (!red) throw new Error('redemption insert returned no row');
 
-      await tx.update(vouchers)
-        .set({ currentBalanceEur: newBalanceEur, status: newStatus })
-        .where(eq(vouchers.id, v.id));
+        await tx
+          .update(vouchers)
+          .set({ currentBalanceEur: newBalanceEur, status: newStatus })
+          .where(eq(vouchers.id, v.id));
 
-      return { redemptionId: red.id, newBalanceEur, newStatus };
-    });
-    return reply.status(200).send(result);
-  });
+        return { redemptionId: red.id, newBalanceEur, newStatus };
+      });
+      return reply.status(200).send(result);
+    },
+  );
 };
 
 export default voucherRoutes;

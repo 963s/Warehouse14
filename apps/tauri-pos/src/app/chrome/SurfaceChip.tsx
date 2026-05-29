@@ -39,9 +39,7 @@ export function SurfaceChip({
     background: 'transparent',
     cursor: 'pointer',
     color: active ? 'var(--w14-ink-aged)' : 'var(--w14-ink-faded)',
-    borderBottom: active
-      ? '2px solid var(--w14-gold)'
-      : '2px solid transparent',
+    borderBottom: active ? '2px solid var(--w14-gold)' : '2px solid transparent',
     transition:
       'border-color var(--w14-dur-short) var(--w14-ease-curator),' +
       ' color var(--w14-dur-short) var(--w14-ease-curator)',
@@ -71,8 +69,7 @@ export function SurfaceChip({
       onClick={onActivate}
       onMouseEnter={(ev) => {
         if (active) return;
-        (ev.currentTarget as HTMLButtonElement).style.borderBottomColor =
-          'var(--w14-gold-soft)';
+        (ev.currentTarget as HTMLButtonElement).style.borderBottomColor = 'var(--w14-gold-soft)';
         (ev.currentTarget as HTMLButtonElement).style.color = 'var(--w14-ink-aged)';
       }}
       onMouseLeave={(ev) => {
@@ -84,7 +81,9 @@ export function SurfaceChip({
       style={containerStyle}
     >
       <span style={digitStyle}>{digit}</span>
-      <span aria-hidden style={{ opacity: 0.45 }}>·</span>
+      <span aria-hidden style={{ opacity: 0.45 }}>
+        ·
+      </span>
       <span style={labelStyle}>{label}</span>
     </button>
   );

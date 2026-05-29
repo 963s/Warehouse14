@@ -19,7 +19,7 @@
  * amount. No "small storno" loophole.
  */
 
-import { Type, type Static } from '@sinclair/typebox';
+import { type Static, Type } from '@sinclair/typebox';
 
 import { SignedDecimalString } from './money.js';
 import { TransactionDirection } from './transaction.js';

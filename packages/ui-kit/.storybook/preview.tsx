@@ -4,8 +4,8 @@
  * dark via the Themes panel (@storybook/addon-themes).
  */
 
-import type { Preview } from '@storybook/react';
 import { withThemeByDataAttribute } from '@storybook/addon-themes';
+import type { Preview } from '@storybook/react';
 
 import '../src/styles.css';
 

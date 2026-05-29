@@ -28,7 +28,7 @@
  */
 
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
 
 import type {
   AnkaufCondition,
@@ -170,13 +170,10 @@ export const useAnkaufCartStore = create<AnkaufCartState>()(
 
       updateItem: (tempId, patch) =>
         set((s) => ({
-          items: s.items.map((it) =>
-            it.tempId === tempId ? { ...it, ...patch } : it,
-          ),
+          items: s.items.map((it) => (it.tempId === tempId ? { ...it, ...patch } : it)),
         })),
 
-      removeItem: (tempId) =>
-        set((s) => ({ items: s.items.filter((it) => it.tempId !== tempId) })),
+      removeItem: (tempId) => set((s) => ({ items: s.items.filter((it) => it.tempId !== tempId) })),
 
       clearItems: () => set({ items: [] }),
 

@@ -11,13 +11,13 @@
  * is impossible by construction: different cookie name, different plugin.
  */
 
-import { eq, sql as drizzleSql } from 'drizzle-orm';
+import { sql as drizzleSql, eq } from 'drizzle-orm';
 import type { FastifyRequest } from 'fastify';
 
 import type { AppDb } from '@warehouse14/db/client';
-import { shoppers, shopperSessions } from '@warehouse14/db/schema';
+import { shopperSessions, shoppers } from '@warehouse14/db/schema';
 
-import { DomainError, type ApiErrorCode } from '../plugins/error-handler.js';
+import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 
 /** The shape attached to `req.shopper`. Mirrors `Actor` for ergonomics. */
 export interface Shopper {

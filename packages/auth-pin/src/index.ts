@@ -28,17 +28,48 @@ import { hash, verify } from '@node-rs/argon2';
  */
 const WEAK_PIN_BLACKLIST: ReadonlySet<string> = new Set([
   // All same digit (10 values)
-  '0000', '1111', '2222', '3333', '4444', '5555', '6666', '7777', '8888', '9999',
+  '0000',
+  '1111',
+  '2222',
+  '3333',
+  '4444',
+  '5555',
+  '6666',
+  '7777',
+  '8888',
+  '9999',
   // Sequential ascending (7 values)
-  '0123', '1234', '2345', '3456', '4567', '5678', '6789',
+  '0123',
+  '1234',
+  '2345',
+  '3456',
+  '4567',
+  '5678',
+  '6789',
   // Sequential descending (7 values)
-  '9876', '8765', '7654', '6543', '5432', '4321', '3210',
+  '9876',
+  '8765',
+  '7654',
+  '6543',
+  '5432',
+  '4321',
+  '3210',
   // Common-leak top-N — duplicates removed (Set tolerates them but the
   // pre-audit line read as un-reviewed). Source: DataGenetics 2012 + HIBP.
   // '1004' is the Korean street-slang for "angel" — extremely common.
   // '0007' is James Bond. Both kept once.
-  '1004', '2580', '0852', '1212', '6969', '1313', '8520', '1010', '1122', '5683',
-  '0007', '2000',
+  '1004',
+  '2580',
+  '0852',
+  '1212',
+  '6969',
+  '1313',
+  '8520',
+  '1010',
+  '1122',
+  '5683',
+  '0007',
+  '2000',
 ]);
 
 export type PinValidationError =
@@ -245,5 +276,3 @@ export const PasswordPolicy = {
 /** Alias for clarity — shoppers hash passwords, not PINs. */
 export const hashPassword = hashPin;
 export const verifyPassword = verifyPin;
-
-

@@ -23,15 +23,15 @@
  * `/api/auth/*`) skip the check entirely.
  */
 
-import fastifyPlugin from 'fastify-plugin';
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
+import fastifyPlugin from 'fastify-plugin';
 
-import type { Env } from '../config/env.js';
 import { devices } from '@warehouse14/db/schema';
-import { and, eq, gt, sql as dsql } from 'drizzle-orm';
+import { and, sql as dsql, eq, gt } from 'drizzle-orm';
+import type { Env } from '../config/env.js';
 
-import { DomainError, type ApiErrorCode } from './error-handler.js';
 import { isPublicRoute } from '../lib/public-routes.js';
+import { type ApiErrorCode, DomainError } from './error-handler.js';
 
 export interface MtlsPluginOpts {
   env: Env;

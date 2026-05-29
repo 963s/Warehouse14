@@ -6,8 +6,8 @@
  *   MULTI_PURPOSE  = VAT at redemption (generic value)
  */
 
-import { check, index, numeric, pgEnum, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import { check, index, numeric, pgEnum, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
 import { customers } from '../customers/customers.js';
 import { taxTreatmentCodes } from '../reference/taxTreatmentCodes.js';
@@ -24,7 +24,9 @@ export const vouchers = pgTable(
     voucherType: voucherType('voucher_type').notNull(),
     issuedValueEur: numeric('issued_value_eur', { precision: 18, scale: 2 }).notNull(),
     currentBalanceEur: numeric('current_balance_eur', { precision: 18, scale: 2 }).notNull(),
-    issuanceTaxTreatmentCode: text('issuance_tax_treatment_code').references(() => taxTreatmentCodes.code),
+    issuanceTaxTreatmentCode: text('issuance_tax_treatment_code').references(
+      () => taxTreatmentCodes.code,
+    ),
     issuedToCustomerId: uuid('issued_to_customer_id').references(() => customers.id),
     issuedByTransactionId: uuid('issued_by_transaction_id').references(() => transactions.id),
     expiresAt: timestamp('expires_at', { withTimezone: true }),
@@ -46,10 +48,7 @@ export const vouchers = pgTable(
       'vouchers_single_purpose_has_tax',
       sql`${table.voucherType} <> 'SINGLE_PURPOSE' OR ${table.issuanceTaxTreatmentCode} IS NOT NULL`,
     ),
-    codeFormat: check(
-      'vouchers_code_format',
-      sql`${table.code} ~ '^[A-Z0-9]{8,32}$'`,
-    ),
+    codeFormat: check('vouchers_code_format', sql`${table.code} ~ '^[A-Z0-9]{8,32}$'`),
   }),
 );
 
@@ -60,8 +59,12 @@ export const voucherRedemptions = pgTable(
   'voucher_redemptions',
   {
     id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-    voucherId: uuid('voucher_id').notNull().references(() => vouchers.id),
-    transactionId: uuid('transaction_id').notNull().references(() => transactions.id),
+    voucherId: uuid('voucher_id')
+      .notNull()
+      .references(() => vouchers.id),
+    transactionId: uuid('transaction_id')
+      .notNull()
+      .references(() => transactions.id),
     amountEur: numeric('amount_eur', { precision: 18, scale: 2 }).notNull(),
     redeemedAt: timestamp('redeemed_at', { withTimezone: true }).notNull().default(sql`now()`),
   },

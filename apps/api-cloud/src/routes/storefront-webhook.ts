@@ -21,23 +21,28 @@
  */
 
 import { Type } from '@sinclair/typebox';
-import { and, eq, sql as drizzleSql } from 'drizzle-orm';
+import { and, sql as drizzleSql, eq } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 
 import {
-  finalize as inventoryFinalize,
-  release as inventoryRelease,
-  ReservationOwnershipError,
-} from '@warehouse14/inventory-lock';
-import {
-  carts, cartItems, paymentIntents, products,
-  transactions, transactionItems, transactionPayments,
+  cartItems,
+  carts,
+  paymentIntents,
+  products,
+  transactionItems,
+  transactionPayments,
+  transactions,
   webhookEvents,
 } from '@warehouse14/db/schema';
+import {
+  ReservationOwnershipError,
+  finalize as inventoryFinalize,
+  release as inventoryRelease,
+} from '@warehouse14/inventory-lock';
 
 import type { Env } from '../config/env.js';
-import { DomainError, type ApiErrorCode } from '../plugins/error-handler.js';
 import { verifyStripeSignature } from '../lib/stripe-signature.js';
+import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 import { WebhookAck } from '../schemas/storefront.js';
 
 class WebhookBadSignatureError extends DomainError {
@@ -102,102 +107,112 @@ const storefrontWebhookRoutes: FastifyPluginAsync<StorefrontWebhookOpts> = async
     },
   );
 
-  app.post('/api/webhooks/stripe', {
-    schema: {
-      tags: ['webhooks'],
-      summary: 'Stripe webhook endpoint — HMAC-verified + idempotent.',
-      description:
-        'Receives Stripe webhook deliveries. Verifies the Stripe-Signature ' +
-        'header against the raw request body using the configured webhook ' +
-        'secret. On payment_intent.succeeded, converts the linked cart into ' +
-        'a fiscal transaction with sales_channel=WEB.',
-      response: {
-        200: WebhookAck,
-        400: ErrorResponse,
-        500: ErrorResponse,
+  app.post(
+    '/api/webhooks/stripe',
+    {
+      schema: {
+        tags: ['webhooks'],
+        summary: 'Stripe webhook endpoint — HMAC-verified + idempotent.',
+        description:
+          'Receives Stripe webhook deliveries. Verifies the Stripe-Signature ' +
+          'header against the raw request body using the configured webhook ' +
+          'secret. On payment_intent.succeeded, converts the linked cart into ' +
+          'a fiscal transaction with sales_channel=WEB.',
+        response: {
+          200: WebhookAck,
+          400: ErrorResponse,
+          500: ErrorResponse,
+        },
       },
     },
-  }, async (req, reply) => {
-    // 0. Refuse if not configured — surfacing this loudly beats a silent fail.
-    if (!opts.env.STRIPE_WEBHOOK_SECRET) {
-      throw new WebhookConfigError('Stripe webhook secret not configured.');
-    }
-
-    // 1. Read the RAW body as a string. Our content-type parser kept it intact.
-    const rawBody = typeof req.body === 'string' ? req.body : '';
-    const sigHeader = req.headers['stripe-signature'];
-    if (typeof sigHeader !== 'string' || sigHeader.length === 0) {
-      throw new WebhookBadSignatureError('Missing Stripe-Signature header.');
-    }
-
-    // 2. HMAC verification — the hard red line.
-    const verification = verifyStripeSignature({
-      rawBody,
-      header: sigHeader,
-      secret: opts.env.STRIPE_WEBHOOK_SECRET,
-      toleranceSeconds: opts.env.STRIPE_WEBHOOK_TOLERANCE_SECONDS,
-    });
-    if (!verification.ok) {
-      // Stripe explicitly recommends NOT logging the secret. Log the failure code only.
-      req.log.warn({ failure: verification.failure }, 'stripe webhook signature rejected');
-      throw new WebhookBadSignatureError(`Stripe-Signature rejected: ${verification.failure.code}`);
-    }
-
-    // 3. Parse the body (now that we know it came from Stripe).
-    let event: StripeEvent;
-    try {
-      const parsed = JSON.parse(rawBody);
-      if (!isStripeEvent(parsed)) {
-        throw new Error('Event JSON did not match expected shape.');
+    async (req, reply) => {
+      // 0. Refuse if not configured — surfacing this loudly beats a silent fail.
+      if (!opts.env.STRIPE_WEBHOOK_SECRET) {
+        throw new WebhookConfigError('Stripe webhook secret not configured.');
       }
-      event = parsed;
-    } catch (err) {
-      req.log.warn({ err }, 'stripe webhook JSON parse failed (signature verified)');
-      throw new WebhookBadSignatureError('Verified Stripe-Signature but payload is not a JSON event.');
-    }
 
-    // 4. Idempotency via webhook_events UNIQUE. First delivery wins.
-    let isIdempotent = false;
-    try {
-      await app.db.insert(webhookEvents).values({
-        provider: 'STRIPE',
-        providerEventId: event.id,
-        eventType: event.type,
-        rawBody: rawBody.slice(0, 64 * 1024),  // capped 64 KiB defensively
-        payload: event as unknown,
-        signatureVerified: true,
+      // 1. Read the RAW body as a string. Our content-type parser kept it intact.
+      const rawBody = typeof req.body === 'string' ? req.body : '';
+      const sigHeader = req.headers['stripe-signature'];
+      if (typeof sigHeader !== 'string' || sigHeader.length === 0) {
+        throw new WebhookBadSignatureError('Missing Stripe-Signature header.');
+      }
+
+      // 2. HMAC verification — the hard red line.
+      const verification = verifyStripeSignature({
+        rawBody,
+        header: sigHeader,
+        secret: opts.env.STRIPE_WEBHOOK_SECRET,
+        toleranceSeconds: opts.env.STRIPE_WEBHOOK_TOLERANCE_SECONDS,
       });
-    } catch (err) {
-      const msg = (err as Error).message ?? '';
-      if (msg.includes('webhook_events_provider_event_uq')) {
-        isIdempotent = true;
-        return reply.status(200).send({ received: true, idempotent: true, eventId: event.id });
+      if (!verification.ok) {
+        // Stripe explicitly recommends NOT logging the secret. Log the failure code only.
+        req.log.warn({ failure: verification.failure }, 'stripe webhook signature rejected');
+        throw new WebhookBadSignatureError(
+          `Stripe-Signature rejected: ${verification.failure.code}`,
+        );
       }
-      throw err;
-    }
 
-    // 5. Dispatch on event.type. We react to the three events that move
-    //    money/state — everything else is recorded as evidence and ack'd.
-    if (event.type === 'payment_intent.succeeded') {
-      await handlePaymentIntentSucceeded(app, opts, event.data.object.id);
-    } else if (
-      event.type === 'payment_intent.payment_failed' ||
-      event.type === 'payment_intent.canceled'
-    ) {
-      await handlePaymentIntentFailed(app, event.data.object.id, event.type);
-    }
-    // Other event types stay recorded in webhook_events for forensics — they
-    // don't move state. Phase 1.5 wires worker reconciliation for edge cases
-    // (charge.refunded, charge.dispute.created, etc.).
+      // 3. Parse the body (now that we know it came from Stripe).
+      let event: StripeEvent;
+      try {
+        const parsed = JSON.parse(rawBody);
+        if (!isStripeEvent(parsed)) {
+          throw new Error('Event JSON did not match expected shape.');
+        }
+        event = parsed;
+      } catch (err) {
+        req.log.warn({ err }, 'stripe webhook JSON parse failed (signature verified)');
+        throw new WebhookBadSignatureError(
+          'Verified Stripe-Signature but payload is not a JSON event.',
+        );
+      }
 
-    // Mark the row as processed regardless — we recorded what we saw.
-    await app.db.execute(drizzleSql`
+      // 4. Idempotency via webhook_events UNIQUE. First delivery wins.
+      let isIdempotent = false;
+      try {
+        await app.db.insert(webhookEvents).values({
+          provider: 'STRIPE',
+          providerEventId: event.id,
+          eventType: event.type,
+          rawBody: rawBody.slice(0, 64 * 1024), // capped 64 KiB defensively
+          payload: event as unknown,
+          signatureVerified: true,
+        });
+      } catch (err) {
+        const msg = (err as Error).message ?? '';
+        if (msg.includes('webhook_events_provider_event_uq')) {
+          isIdempotent = true;
+          return reply.status(200).send({ received: true, idempotent: true, eventId: event.id });
+        }
+        throw err;
+      }
+
+      // 5. Dispatch on event.type. We react to the three events that move
+      //    money/state — everything else is recorded as evidence and ack'd.
+      if (event.type === 'payment_intent.succeeded') {
+        await handlePaymentIntentSucceeded(app, opts, event.data.object.id);
+      } else if (
+        event.type === 'payment_intent.payment_failed' ||
+        event.type === 'payment_intent.canceled'
+      ) {
+        await handlePaymentIntentFailed(app, event.data.object.id, event.type);
+      }
+      // Other event types stay recorded in webhook_events for forensics — they
+      // don't move state. Phase 1.5 wires worker reconciliation for edge cases
+      // (charge.refunded, charge.dispute.created, etc.).
+
+      // Mark the row as processed regardless — we recorded what we saw.
+      await app.db.execute(drizzleSql`
       UPDATE webhook_events SET processed_at = now()
        WHERE provider = 'STRIPE' AND provider_event_id = ${event.id}
     `);
 
-    return reply.status(200).send({ received: true, idempotent: isIdempotent, eventId: event.id });
-  });
+      return reply
+        .status(200)
+        .send({ received: true, idempotent: isIdempotent, eventId: event.id });
+    },
+  );
 };
 
 /**
@@ -230,13 +245,18 @@ async function handlePaymentIntentSucceeded(
         status: paymentIntents.status,
       })
       .from(paymentIntents)
-      .where(and(
-        eq(paymentIntents.provider, 'STRIPE'),
-        eq(paymentIntents.providerIntentId, providerIntentId),
-      ))
+      .where(
+        and(
+          eq(paymentIntents.provider, 'STRIPE'),
+          eq(paymentIntents.providerIntentId, providerIntentId),
+        ),
+      )
       .limit(1);
     if (!pi) {
-      app.log.warn({ providerIntentId }, 'stripe webhook: unknown PaymentIntent — orphan, ignoring');
+      app.log.warn(
+        { providerIntentId },
+        'stripe webhook: unknown PaymentIntent — orphan, ignoring',
+      );
       return;
     }
     if (pi.status === 'SUCCEEDED') {
@@ -335,7 +355,8 @@ async function handlePaymentIntentSucceeded(
       const product = productMap.get(item.productId);
       if (!product) throw new Error(`product ${item.productId} disappeared`);
       const [whole, frac = '00'] = String(item.unitPriceEur).split('.') as [string, string?];
-      const lineTotalCents = BigInt(whole) * 100n + BigInt(((frac ?? '00').padEnd(2, '0').slice(0, 2)));
+      const lineTotalCents =
+        BigInt(whole) * 100n + BigInt((frac ?? '00').padEnd(2, '0').slice(0, 2));
       // 19% VAT (V1 conservative default; real classifier is Phase 1.5).
       const lineVatCents = (lineTotalCents * 19n) / 119n;
       const lineSubtotalCents = lineTotalCents - lineVatCents;
@@ -352,7 +373,8 @@ async function handlePaymentIntentSucceeded(
       });
     }
 
-    const fmt = (cents: bigint): string => `${cents / 100n}.${String(cents % 100n).padStart(2, '0')}`;
+    const fmt = (cents: bigint): string =>
+      `${cents / 100n}.${String(cents % 100n).padStart(2, '0')}`;
 
     // 3. INSERT the transaction header.
     //    For online sales we use the customer associated with the shopper.
@@ -364,7 +386,9 @@ async function handlePaymentIntentSucceeded(
       SELECT id FROM users WHERE is_owner = TRUE LIMIT 1
     `);
     if (!systemUser) {
-      throw new Error('online sales require an Owner user to record cashier_user_id (memory.md #65)');
+      throw new Error(
+        'online sales require an Owner user to record cashier_user_id (memory.md #65)',
+      );
     }
 
     // We need a device_id too (NOT NULL). For online: use any active server
@@ -423,32 +447,37 @@ async function handlePaymentIntentSucceeded(
 
     const taxTreatmentCode = itemSnapshots[0]?.taxTreatmentCode ?? 'STANDARD_19';
 
-    const [tx0] = await tx.insert(transactions).values({
-      direction: 'VERKAUF',
-      customerId: shopperRow.customer_id,
-      deviceId: systemDevice.id,
-      cashierUserId: systemUser.id,
-      subtotalEur: fmt(subtotalCents),
-      vatEur: fmt(vatCents),
-      totalEur: fmt(totalCents),
-      taxTreatmentCode,
-      salesChannel: 'WEB',
-      shippingStatus: 'PENDING',
-      shippingAddressEncrypted: drizzleSql`encrypt_pii(${shippingJson})` as never,
-    }).returning({ id: transactions.id });
+    const [tx0] = await tx
+      .insert(transactions)
+      .values({
+        direction: 'VERKAUF',
+        customerId: shopperRow.customer_id,
+        deviceId: systemDevice.id,
+        cashierUserId: systemUser.id,
+        subtotalEur: fmt(subtotalCents),
+        vatEur: fmt(vatCents),
+        totalEur: fmt(totalCents),
+        taxTreatmentCode,
+        salesChannel: 'WEB',
+        shippingStatus: 'PENDING',
+        shippingAddressEncrypted: drizzleSql`encrypt_pii(${shippingJson})` as never,
+      })
+      .returning({ id: transactions.id });
     if (!tx0) throw new Error('transaction insert returned no row');
 
     // 4. INSERT line items.
-    await tx.insert(transactionItems).values(itemSnapshots.map((s, idx) => ({
-      transactionId: tx0.id,
-      productId: s.productId,
-      lineSubtotalEur: fmt(s.lineSubtotalCents),
-      lineVatEur: fmt(s.lineVatCents),
-      lineTotalEur: fmt(s.lineTotalCents),
-      appliedTaxTreatmentCode: s.taxTreatmentCode,
-      appliedVatRate: s.vatRate,
-      displayOrder: idx,
-    })));
+    await tx.insert(transactionItems).values(
+      itemSnapshots.map((s, idx) => ({
+        transactionId: tx0.id,
+        productId: s.productId,
+        lineSubtotalEur: fmt(s.lineSubtotalCents),
+        lineVatEur: fmt(s.lineVatCents),
+        lineTotalEur: fmt(s.lineTotalCents),
+        appliedTaxTreatmentCode: s.taxTreatmentCode,
+        appliedVatRate: s.vatRate,
+        displayOrder: idx,
+      })),
+    );
 
     // 5. INSERT payment.
     await tx.insert(transactionPayments).values({
@@ -498,27 +527,42 @@ async function handlePaymentIntentFailed(
         status: paymentIntents.status,
       })
       .from(paymentIntents)
-      .where(and(
-        eq(paymentIntents.provider, 'STRIPE'),
-        eq(paymentIntents.providerIntentId, providerIntentId),
-      ))
+      .where(
+        and(
+          eq(paymentIntents.provider, 'STRIPE'),
+          eq(paymentIntents.providerIntentId, providerIntentId),
+        ),
+      )
       .limit(1);
     if (!pi) {
-      app.log.warn({ providerIntentId, eventType }, 'stripe webhook (failed): unknown PaymentIntent');
+      app.log.warn(
+        { providerIntentId, eventType },
+        'stripe webhook (failed): unknown PaymentIntent',
+      );
       return;
     }
     if (pi.status === 'SUCCEEDED') {
-      app.log.warn({ providerIntentId }, 'stripe webhook (failed): intent already SUCCEEDED — ignoring late failure');
+      app.log.warn(
+        { providerIntentId },
+        'stripe webhook (failed): intent already SUCCEEDED — ignoring late failure',
+      );
       return;
     }
 
     const [cart] = await tx
-      .select({ id: carts.id, status: carts.status, reservationSessionId: carts.reservationSessionId })
+      .select({
+        id: carts.id,
+        status: carts.status,
+        reservationSessionId: carts.reservationSessionId,
+      })
       .from(carts)
       .where(eq(carts.id, pi.cartId))
       .limit(1);
     if (!cart || cart.status === 'CONVERTED') {
-      app.log.info({ cartId: pi.cartId }, 'stripe webhook (failed): cart unavailable for transition');
+      app.log.info(
+        { cartId: pi.cartId },
+        'stripe webhook (failed): cart unavailable for transition',
+      );
       return;
     }
     if (cart.status === 'ABANDONED') {
@@ -545,7 +589,10 @@ async function handlePaymentIntentFailed(
           if (err instanceof ReservationOwnershipError) {
             // Reservation was already released elsewhere (sweeper / manual
             // cancel) or expired — non-fatal for a failure/cancel webhook.
-            app.log.info({ productId: item.product_id }, 'stripe webhook: release no-op (already released/expired)');
+            app.log.info(
+              { productId: item.product_id },
+              'stripe webhook: release no-op (already released/expired)',
+            );
           } else {
             app.log.warn({ err, productId: item.product_id }, 'stripe webhook: release failed');
           }
@@ -554,10 +601,7 @@ async function handlePaymentIntentFailed(
     }
 
     // Flip cart → ABANDONED.
-    await tx
-      .update(carts)
-      .set({ status: 'ABANDONED' })
-      .where(eq(carts.id, cart.id));
+    await tx.update(carts).set({ status: 'ABANDONED' }).where(eq(carts.id, cart.id));
 
     // Mark the payment intent — FAILED for failures, CANCELED for cancellations.
     await tx

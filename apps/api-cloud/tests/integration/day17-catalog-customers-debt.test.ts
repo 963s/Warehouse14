@@ -24,17 +24,17 @@
  *   DB constraint trigger (audit fix #2) — covered at migration test level
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { readFile, readdir } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
+import { readFile, readdir } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import postgres, { type Sql } from 'postgres';
-import { drizzle } from 'drizzle-orm/postgres-js';
-import * as schema from '@warehouse14/db/schema';
 import type { AppDb } from '@warehouse14/db/client';
+import * as schema from '@warehouse14/db/schema';
+import { drizzle } from 'drizzle-orm/postgres-js';
 import type { FastifyInstance } from 'fastify';
+import postgres, { type Sql } from 'postgres';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildApp } from '../../src/app.js';
 import type { Env } from '../../src/config/env.js';
@@ -54,9 +54,7 @@ const INITDB_SQL = `
 `;
 
 async function applyAll(sqlClient: Sql): Promise<void> {
-  const files = (await readdir(MIGRATIONS_DIR))
-    .filter((n) => /^\d{4}_.+\.sql$/.test(n))
-    .sort();
+  const files = (await readdir(MIGRATIONS_DIR)).filter((n) => /^\d{4}_.+\.sql$/.test(n)).sort();
   for (const f of files) await sqlClient.unsafe(await readFile(join(MIGRATIONS_DIR, f), 'utf8'));
 }
 
@@ -86,21 +84,25 @@ describe('Day 17 — catalog + customers + debt + audit fixes', () => {
       .start();
 
     migratorSql = postgres({
-      host: container.getHost(), port: container.getPort(),
+      host: container.getHost(),
+      port: container.getPort(),
       database: 'warehouse14_test',
       username: 'warehouse14_migrator',
       password: 'warehouse14_migrator_test_pw',
-      max: 1, onnotice: () => {},
+      max: 1,
+      onnotice: () => {},
     });
     await applyAll(migratorSql);
     await migratorSql.unsafe(`ALTER ROLE warehouse14_app PASSWORD 'warehouse14_app_test_pw'`);
 
     appSql = postgres({
-      host: container.getHost(), port: container.getPort(),
+      host: container.getHost(),
+      port: container.getPort(),
       database: 'warehouse14_test',
       username: 'warehouse14_app',
       password: 'warehouse14_app_test_pw',
-      max: 5, onnotice: () => {},
+      max: 5,
+      onnotice: () => {},
     });
     appDb = drizzle(appSql, { schema });
 
@@ -206,7 +208,8 @@ describe('Day 17 — catalog + customers + debt + audit fixes', () => {
 
     it('ADMIN happy path — returns all 3 + pagination metadata', async () => {
       const res = await app.inject({
-        method: 'GET', url: '/api/products?limit=50',
+        method: 'GET',
+        url: '/api/products?limit=50',
         headers: headers(ownerToken),
       });
       expect(res.statusCode).toBe(200);
@@ -217,7 +220,8 @@ describe('Day 17 — catalog + customers + debt + audit fixes', () => {
 
     it('filter status=AVAILABLE excludes DRAFT', async () => {
       const res = await app.inject({
-        method: 'GET', url: '/api/products?status=AVAILABLE',
+        method: 'GET',
+        url: '/api/products?status=AVAILABLE',
         headers: headers(ownerToken),
       });
       expect(res.statusCode).toBe(200);
@@ -227,7 +231,8 @@ describe('Day 17 — catalog + customers + debt + audit fixes', () => {
 
     it('filter listedOnStorefront=true returns only storefront-listed', async () => {
       const res = await app.inject({
-        method: 'GET', url: '/api/products?listedOnStorefront=true',
+        method: 'GET',
+        url: '/api/products?listedOnStorefront=true',
         headers: headers(ownerToken),
       });
       expect(res.statusCode).toBe(200);
@@ -237,7 +242,8 @@ describe('Day 17 — catalog + customers + debt + audit fixes', () => {
 
     it('filter q (search) matches name substring', async () => {
       const res = await app.inject({
-        method: 'GET', url: '/api/products?q=eBay',
+        method: 'GET',
+        url: '/api/products?q=eBay',
         headers: headers(ownerToken),
       });
       expect(res.statusCode).toBe(200);
@@ -247,11 +253,13 @@ describe('Day 17 — catalog + customers + debt + audit fixes', () => {
 
     it('pagination limit=1 + offset=0 + offset=1', async () => {
       const a = await app.inject({
-        method: 'GET', url: '/api/products?limit=1&offset=0',
+        method: 'GET',
+        url: '/api/products?limit=1&offset=0',
         headers: headers(ownerToken),
       });
       const b = await app.inject({
-        method: 'GET', url: '/api/products?limit=1&offset=1',
+        method: 'GET',
+        url: '/api/products?limit=1&offset=1',
         headers: headers(ownerToken),
       });
       const outA = a.json() as { items: Array<{ id: string }>; hasMore: boolean };
@@ -264,7 +272,8 @@ describe('Day 17 — catalog + customers + debt + audit fixes', () => {
 
     it('no cookie → 401', async () => {
       const res = await app.inject({
-        method: 'GET', url: '/api/products',
+        method: 'GET',
+        url: '/api/products',
         headers: headers(null),
       });
       expect(res.statusCode).toBe(401);
@@ -278,7 +287,8 @@ describe('Day 17 — catalog + customers + debt + audit fixes', () => {
   describe('POST + GET /api/customers', () => {
     it('Owner creates + retrieves with decrypted PII; audit_log carries redacted fieldsSet', async () => {
       const create = await app.inject({
-        method: 'POST', url: '/api/customers',
+        method: 'POST',
+        url: '/api/customers',
         headers: headers(ownerToken),
         payload: {
           fullName: 'Hans Mustermann',
@@ -295,25 +305,37 @@ describe('Day 17 — catalog + customers + debt + audit fixes', () => {
 
       // Read back — PII must decrypt.
       const read = await app.inject({
-        method: 'GET', url: `/api/customers/${created.id}`,
+        method: 'GET',
+        url: `/api/customers/${created.id}`,
         headers: headers(ownerToken),
       });
       expect(read.statusCode).toBe(200);
-      const detail = read.json() as { fullName: string; email: string | null; phone: string | null; notes: string | null };
+      const detail = read.json() as {
+        fullName: string;
+        email: string | null;
+        phone: string | null;
+        notes: string | null;
+      };
       expect(detail.fullName).toBe('Hans Mustermann');
       expect(detail.email).toBe('hans@example.de');
       expect(detail.phone).toBe('+49 7621 123456');
       expect(detail.notes).toBe('Returning customer; prefers German.');
 
       // audit_log: no plaintext PII, only the field map.
-      const [audit] = await migratorSql<{ payload: { customerId: string; fieldsSet: Record<string, boolean> } }[]>`
+      const [audit] = await migratorSql<
+        { payload: { customerId: string; fieldsSet: Record<string, boolean> } }[]
+      >`
         SELECT payload FROM audit_log
          WHERE event_type = 'customer.created'
            AND (payload->>'customerId')::text = ${created.id}`;
       expect(audit).toBeDefined();
       expect(audit!.payload.fieldsSet).toEqual({
-        fullName: true, dateOfBirth: true, email: true, phone: true,
-        address: false, notes: true,
+        fullName: true,
+        dateOfBirth: true,
+        email: true,
+        phone: true,
+        address: false,
+        notes: true,
       });
       // Hard check: no plaintext leak.
       expect(JSON.stringify(audit!.payload)).not.toContain('Hans Mustermann');
@@ -322,7 +344,8 @@ describe('Day 17 — catalog + customers + debt + audit fixes', () => {
 
     it('CASHIER → 403', async () => {
       const res = await app.inject({
-        method: 'POST', url: '/api/customers',
+        method: 'POST',
+        url: '/api/customers',
         headers: headers(cashierToken),
         payload: { fullName: 'Should not work' },
       });
@@ -338,7 +361,8 @@ describe('Day 17 — catalog + customers + debt + audit fixes', () => {
     it('returns products acquired from that customer', async () => {
       // Seed a customer + 2 products from that customer.
       const create = await app.inject({
-        method: 'POST', url: '/api/customers',
+        method: 'POST',
+        url: '/api/customers',
         headers: headers(ownerToken),
         payload: { fullName: 'Seller A' },
       });
@@ -360,7 +384,8 @@ describe('Day 17 — catalog + customers + debt + audit fixes', () => {
                 ${customerId})`;
 
       const res = await app.inject({
-        method: 'GET', url: `/api/customers/${customerId}/products`,
+        method: 'GET',
+        url: `/api/customers/${customerId}/products`,
         headers: headers(ownerToken),
       });
       expect(res.statusCode).toBe(200);
@@ -377,7 +402,8 @@ describe('Day 17 — catalog + customers + debt + audit fixes', () => {
   describe('Audit fix #1 — marketingAttributes deep equality', () => {
     async function createProduct(): Promise<string> {
       const res = await app.inject({
-        method: 'POST', url: '/api/products',
+        method: 'POST',
+        url: '/api/products',
         headers: headers(ownerToken),
         payload: {
           sku: `SKU-${randomUUID()}`,
@@ -392,7 +418,10 @@ describe('Day 17 — catalog + customers + debt + audit fixes', () => {
           condition: 'USED_GOOD',
           isCommission: false,
           name: 'Deep-equality probe',
-          marketingAttributes: [{ key: 'origin', value: 'Italy' }, { key: 'style', value: 'modern' }],
+          marketingAttributes: [
+            { key: 'origin', value: 'Italy' },
+            { key: 'style', value: 'modern' },
+          ],
         },
       });
       return (res.json() as { id: string }).id;
@@ -401,12 +430,16 @@ describe('Day 17 — catalog + customers + debt + audit fixes', () => {
     it('PUT with identical marketingAttributes content → changedFields excludes marketingAttributes', async () => {
       const id = await createProduct();
       const res = await app.inject({
-        method: 'PUT', url: `/api/products/${id}`,
+        method: 'PUT',
+        url: `/api/products/${id}`,
         headers: headers(ownerToken),
         payload: {
           // Same content, different reference (JSON re-parsed by Ajv) — this
           // is the audit's bug scenario.
-          marketingAttributes: [{ key: 'origin', value: 'Italy' }, { key: 'style', value: 'modern' }],
+          marketingAttributes: [
+            { key: 'origin', value: 'Italy' },
+            { key: 'style', value: 'modern' },
+          ],
         },
       });
       expect(res.statusCode).toBe(200);
@@ -417,7 +450,8 @@ describe('Day 17 — catalog + customers + debt + audit fixes', () => {
     it('PUT with different marketingAttributes → changedFields includes marketingAttributes', async () => {
       const id = await createProduct();
       const res = await app.inject({
-        method: 'PUT', url: `/api/products/${id}`,
+        method: 'PUT',
+        url: `/api/products/${id}`,
         headers: headers(ownerToken),
         payload: {
           marketingAttributes: [{ key: 'origin', value: 'Switzerland' }],

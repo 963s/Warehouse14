@@ -20,13 +20,16 @@ export type BelegtextKind =
   | 'KLEINUNTERNEHMER_19'
   | 'ANKAUFBELEG_DECLARATION'
   | 'GENERIC_HEADER'
-  | 'GENERIC_FOOTER';
+  | 'GENERIC_FOOTER'
+  | 'REVERSE_CHARGE_13B';
 
 export type TaxTreatmentCode =
   | 'MARGIN_25A'
   | 'STANDARD_19'
   | 'REDUCED_7'
-  | 'INVESTMENT_GOLD_25C';
+  | 'INVESTMENT_GOLD_25C'
+  | 'MIXED'
+  | 'REVERSE_CHARGE_13B';
 
 export const BELEGTEXT_KIND_LABELS: Readonly<Record<BelegtextKind, string>> = {
   MARGIN_25A: 'Differenzbesteuerung (§25a)',
@@ -37,6 +40,7 @@ export const BELEGTEXT_KIND_LABELS: Readonly<Record<BelegtextKind, string>> = {
   ANKAUFBELEG_DECLARATION: 'Ankaufbeleg-Erklärung',
   GENERIC_HEADER: 'Beleg-Kopfzeile',
   GENERIC_FOOTER: 'Beleg-Fußzeile',
+  REVERSE_CHARGE_13B: 'Steuerschuldnerschaft des Leistungsempfängers (§13b)',
 };
 
 export interface BelegtextRow {

@@ -18,22 +18,22 @@
  *     a countdown; the front-end then routes the user to Full Login.
  */
 
-import { Type, type Static } from '@sinclair/typebox';
+import { randomUUID } from 'node:crypto';
+import { type Static, Type } from '@sinclair/typebox';
 import { and, eq, isNull } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
-import { randomUUID } from 'node:crypto';
 
 import {
-  PinPolicy,
   PIN_FAILED_THRESHOLD,
   PIN_LOCKOUT_MINUTES,
+  PinPolicy,
   decideAttemptOutcome,
   hashPin,
   verifyPin,
 } from '@warehouse14/auth-pin';
 import { auditLog, devices, sessions, users } from '@warehouse14/db/schema';
 
-import { PinLockedError, requireAuth, UnauthorizedError } from '../lib/auth-policy.js';
+import { PinLockedError, UnauthorizedError, requireAuth } from '../lib/auth-policy.js';
 
 // ────────────────────────────────────────────────────────────────────────
 // Shared schemas
@@ -127,7 +127,13 @@ async function loadPinUserState(
 // Audit emission — purely fire-and-include in the active transaction.
 async function emitAudit(
   app: import('fastify').FastifyInstance,
-  opts: { event: string; actorUserId: string | null; deviceId: string | null; ip: string | null; payload: Record<string, unknown> },
+  opts: {
+    event: string;
+    actorUserId: string | null;
+    deviceId: string | null;
+    ip: string | null;
+    payload: Record<string, unknown>;
+  },
 ): Promise<void> {
   await app.db.insert(auditLog).values({
     eventType: opts.event,
@@ -146,191 +152,206 @@ const authPinRoutes: FastifyPluginAsync = async (app) => {
   // ────────────────────────────────────────────────────────────────────
   // POST /api/auth/pin-login
   // ────────────────────────────────────────────────────────────────────
-  app.post('/api/auth/pin-login', {
-    schema: {
-      tags: ['auth'],
-      summary: 'Fast POS PIN login on a paired device (ADR-0022 §4b)',
-      body: PinBody,
-      response: { 200: PinLoginResponse },
+  app.post(
+    '/api/auth/pin-login',
+    {
+      schema: {
+        tags: ['auth'],
+        summary: 'Fast POS PIN login on a paired device (ADR-0022 §4b)',
+        body: PinBody,
+        response: { 200: PinLoginResponse },
+      },
     },
-  }, async (req, reply) => {
-    const { pin } = req.body as PinBody;
-    const ip = req.ip || null;
+    async (req, reply) => {
+      const { pin } = req.body as PinBody;
+      const ip = req.ip || null;
 
-    const candidate = await resolveCandidateUser(app, req.deviceId);
-    if (!candidate) {
-      throw new UnauthorizedError('PIN login requires a paired device');
-    }
-    const state = await loadPinUserState(app, candidate.userId);
-    if (!state || !state.posPinHash) {
-      throw new UnauthorizedError('PIN not set for this user');
-    }
+      const candidate = await resolveCandidateUser(app, req.deviceId);
+      if (!candidate) {
+        throw new UnauthorizedError('PIN login requires a paired device');
+      }
+      const state = await loadPinUserState(app, candidate.userId);
+      if (!state || !state.posPinHash) {
+        throw new UnauthorizedError('PIN not set for this user');
+      }
 
-    // Constant work first — verify PIN. The state machine then decides
-    // success / fail / lockout / already-locked.
-    const pinCorrect = await verifyPin(pin, state.posPinHash);
-    const decision = decideAttemptOutcome({
-      state: { failedAttempts: state.posPinFailedAttempts, lockedUntil: state.posPinLockedUntil },
-      now: new Date(),
-      pinCorrect,
-    });
-
-    // Atomic: state update + audit row in one transaction.
-    if (decision.kind === 'already_locked') {
-      await emitAudit(app, {
-        event: 'auth.pin_failed',
-        actorUserId: state.id,
-        deviceId: req.deviceId,
-        ip,
-        payload: { reason: 'already_locked', lockedUntil: decision.until.toISOString() },
+      // Constant work first — verify PIN. The state machine then decides
+      // success / fail / lockout / already-locked.
+      const pinCorrect = await verifyPin(pin, state.posPinHash);
+      const decision = decideAttemptOutcome({
+        state: { failedAttempts: state.posPinFailedAttempts, lockedUntil: state.posPinLockedUntil },
+        now: new Date(),
+        pinCorrect,
       });
-      throw new PinLockedError(decision.until);
-    }
 
-    await app.db.transaction(async (tx) => {
-      await tx.update(users)
-        .set({
-          posPinFailedAttempts: decision.newState.failedAttempts,
-          posPinLockedUntil: decision.newState.lockedUntil,
-        })
-        .where(eq(users.id, state.id));
+      // Atomic: state update + audit row in one transaction.
+      if (decision.kind === 'already_locked') {
+        await emitAudit(app, {
+          event: 'auth.pin_failed',
+          actorUserId: state.id,
+          deviceId: req.deviceId,
+          ip,
+          payload: { reason: 'already_locked', lockedUntil: decision.until.toISOString() },
+        });
+        throw new PinLockedError(decision.until);
+      }
 
-      const event =
-        decision.kind === 'success' ? 'auth.pin_login'
-        : decision.kind === 'failed_now_locked' ? 'auth.pin_locked'
-        : 'auth.pin_failed';
+      await app.db.transaction(async (tx) => {
+        await tx
+          .update(users)
+          .set({
+            posPinFailedAttempts: decision.newState.failedAttempts,
+            posPinLockedUntil: decision.newState.lockedUntil,
+          })
+          .where(eq(users.id, state.id));
 
-      await tx.insert(auditLog).values({
-        eventType: event,
-        actorUserId: state.id,
-        deviceId: req.deviceId,
+        const event =
+          decision.kind === 'success'
+            ? 'auth.pin_login'
+            : decision.kind === 'failed_now_locked'
+              ? 'auth.pin_locked'
+              : 'auth.pin_failed';
+
+        await tx.insert(auditLog).values({
+          eventType: event,
+          actorUserId: state.id,
+          deviceId: req.deviceId,
+          ipAddress: ip,
+          payload: {
+            decision: decision.kind,
+            failed_attempts: decision.newState.failedAttempts,
+            locked_until: decision.newState.lockedUntil?.toISOString() ?? null,
+            is_owner: state.isOwner,
+          },
+        });
+      });
+
+      if (decision.kind === 'failed_now_locked') {
+        // The lockout starts NOW. Surface it to the UI immediately.
+        throw new PinLockedError(decision.newState.lockedUntil!);
+      }
+      if (decision.kind === 'failed') {
+        throw new UnauthorizedError(
+          `Invalid PIN (${PIN_FAILED_THRESHOLD - decision.newState.failedAttempts} attempts remaining)`,
+        );
+      }
+
+      // Success — create a session. TTL depends on is_owner per ADR-0022 §2.
+      const ttlMs = state.isOwner
+        ? 30 * 24 * 60 * 60_000 // 30 days for Owner
+        : 8 * 60 * 60_000; // 8 hours for staff
+      const sessionId = randomUUID();
+      const token = randomUUID().replace(/-/g, '') + randomUUID().replace(/-/g, '');
+      const expiresAt = new Date(Date.now() + ttlMs);
+
+      await app.db.insert(sessions).values({
+        id: sessionId,
+        userId: state.id,
+        token,
+        expiresAt,
         ipAddress: ip,
-        payload: {
-          decision: decision.kind,
-          failed_attempts: decision.newState.failedAttempts,
-          locked_until: decision.newState.lockedUntil?.toISOString() ?? null,
-          is_owner: state.isOwner,
-        },
+        userAgent: (req.headers['user-agent'] as string | undefined) ?? null,
+        deviceId: req.deviceId,
+        lastPinStepUpAt: new Date(), // Fresh PIN = fresh step-up.
       });
-    });
 
-    if (decision.kind === 'failed_now_locked') {
-      // The lockout starts NOW. Surface it to the UI immediately.
-      throw new PinLockedError(decision.newState.lockedUntil!);
-    }
-    if (decision.kind === 'failed') {
-      throw new UnauthorizedError(
-        `Invalid PIN (${PIN_FAILED_THRESHOLD - decision.newState.failedAttempts} attempts remaining)`,
-      );
-    }
+      reply.setCookie('warehouse14.session', token, {
+        httpOnly: true,
+        secure: req.protocol === 'https',
+        sameSite: 'lax',
+        path: '/',
+        expires: expiresAt,
+      });
 
-    // Success — create a session. TTL depends on is_owner per ADR-0022 §2.
-    const ttlMs = state.isOwner
-      ? 30 * 24 * 60 * 60_000   // 30 days for Owner
-      : 8 * 60 * 60_000;        // 8 hours for staff
-    const sessionId = randomUUID();
-    const token = randomUUID().replace(/-/g, '') + randomUUID().replace(/-/g, '');
-    const expiresAt = new Date(Date.now() + ttlMs);
-
-    await app.db.insert(sessions).values({
-      id: sessionId,
-      userId: state.id,
-      token,
-      expiresAt,
-      ipAddress: ip,
-      userAgent: (req.headers['user-agent'] as string | undefined) ?? null,
-      deviceId: req.deviceId,
-      lastPinStepUpAt: new Date(),  // Fresh PIN = fresh step-up.
-    });
-
-    reply.setCookie('warehouse14.session', token, {
-      httpOnly: true,
-      secure: req.protocol === 'https',
-      sameSite: 'lax',
-      path: '/',
-      expires: expiresAt,
-    });
-
-    return {
-      ok: true as const,
-      sessionExpiresAt: expiresAt.toISOString(),
-      actor: { id: state.id, role: state.role, isOwner: state.isOwner },
-    };
-  });
+      return {
+        ok: true as const,
+        sessionExpiresAt: expiresAt.toISOString(),
+        actor: { id: state.id, role: state.role, isOwner: state.isOwner },
+      };
+    },
+  );
 
   // ────────────────────────────────────────────────────────────────────
   // POST /api/auth/step-up — re-confirm PIN for sensitive actions
   // ────────────────────────────────────────────────────────────────────
-  app.post('/api/auth/step-up', {
-    schema: {
-      tags: ['auth'],
-      summary: 'PIN step-up for sensitive actions (10-min window, ADR-0022 §4c)',
-      body: PinBody,
-      response: { 200: StepUpResponse },
+  app.post(
+    '/api/auth/step-up',
+    {
+      schema: {
+        tags: ['auth'],
+        summary: 'PIN step-up for sensitive actions (10-min window, ADR-0022 §4c)',
+        body: PinBody,
+        response: { 200: StepUpResponse },
+      },
     },
-  }, async (req) => {
-    requireAuth(req);
-    const { pin } = req.body as PinBody;
-    const ip = req.ip || null;
+    async (req) => {
+      requireAuth(req);
+      const { pin } = req.body as PinBody;
+      const ip = req.ip || null;
 
-    const state = await loadPinUserState(app, req.actor.id);
-    if (!state || !state.posPinHash) {
-      throw new UnauthorizedError('PIN not set for this user');
-    }
-
-    const pinCorrect = await verifyPin(pin, state.posPinHash);
-    const decision = decideAttemptOutcome({
-      state: { failedAttempts: state.posPinFailedAttempts, lockedUntil: state.posPinLockedUntil },
-      now: new Date(),
-      pinCorrect,
-    });
-
-    if (decision.kind === 'already_locked') {
-      throw new PinLockedError(decision.until);
-    }
-
-    const now = new Date();
-    await app.db.transaction(async (tx) => {
-      await tx.update(users)
-        .set({
-          posPinFailedAttempts: decision.newState.failedAttempts,
-          posPinLockedUntil: decision.newState.lockedUntil,
-        })
-        .where(eq(users.id, state.id));
-
-      if (decision.kind === 'success') {
-        await tx.update(sessions)
-          .set({ lastPinStepUpAt: now })
-          .where(eq(sessions.id, req.session.sessionId));
+      const state = await loadPinUserState(app, req.actor.id);
+      if (!state || !state.posPinHash) {
+        throw new UnauthorizedError('PIN not set for this user');
       }
 
-      await tx.insert(auditLog).values({
-        eventType:
-          decision.kind === 'success' ? 'auth.step_up_success'
-          : decision.kind === 'failed_now_locked' ? 'auth.pin_locked'
-          : 'auth.step_up_failed',
-        actorUserId: state.id,
-        deviceId: req.deviceId,
-        ipAddress: ip,
-        payload: {
-          session_id: req.session.sessionId,
-          decision: decision.kind,
-          failed_attempts: decision.newState.failedAttempts,
-        },
+      const pinCorrect = await verifyPin(pin, state.posPinHash);
+      const decision = decideAttemptOutcome({
+        state: { failedAttempts: state.posPinFailedAttempts, lockedUntil: state.posPinLockedUntil },
+        now: new Date(),
+        pinCorrect,
       });
-    });
 
-    if (decision.kind === 'failed_now_locked') {
-      throw new PinLockedError(decision.newState.lockedUntil!);
-    }
-    if (decision.kind === 'failed') {
-      throw new UnauthorizedError(
-        `Invalid PIN (${PIN_FAILED_THRESHOLD - decision.newState.failedAttempts} attempts remaining)`,
-      );
-    }
+      if (decision.kind === 'already_locked') {
+        throw new PinLockedError(decision.until);
+      }
 
-    return { ok: true as const, lastPinStepUpAt: now.toISOString() };
-  });
+      const now = new Date();
+      await app.db.transaction(async (tx) => {
+        await tx
+          .update(users)
+          .set({
+            posPinFailedAttempts: decision.newState.failedAttempts,
+            posPinLockedUntil: decision.newState.lockedUntil,
+          })
+          .where(eq(users.id, state.id));
+
+        if (decision.kind === 'success') {
+          await tx
+            .update(sessions)
+            .set({ lastPinStepUpAt: now })
+            .where(eq(sessions.id, req.session.sessionId));
+        }
+
+        await tx.insert(auditLog).values({
+          eventType:
+            decision.kind === 'success'
+              ? 'auth.step_up_success'
+              : decision.kind === 'failed_now_locked'
+                ? 'auth.pin_locked'
+                : 'auth.step_up_failed',
+          actorUserId: state.id,
+          deviceId: req.deviceId,
+          ipAddress: ip,
+          payload: {
+            session_id: req.session.sessionId,
+            decision: decision.kind,
+            failed_attempts: decision.newState.failedAttempts,
+          },
+        });
+      });
+
+      if (decision.kind === 'failed_now_locked') {
+        throw new PinLockedError(decision.newState.lockedUntil!);
+      }
+      if (decision.kind === 'failed') {
+        throw new UnauthorizedError(
+          `Invalid PIN (${PIN_FAILED_THRESHOLD - decision.newState.failedAttempts} attempts remaining)`,
+        );
+      }
+
+      return { ok: true as const, lastPinStepUpAt: now.toISOString() };
+    },
+  );
 
   // ────────────────────────────────────────────────────────────────────
   // POST /api/auth/pin/set — set or change PIN (requires Full Login session)
@@ -339,53 +360,60 @@ const authPinRoutes: FastifyPluginAsync = async (app) => {
   // already enforced email/password (+ TOTP if enabled) to issue it.
   // The CHECK constraint + the auth-pin policy enforce the rest.
   // ────────────────────────────────────────────────────────────────────
-  app.post('/api/auth/pin/set', {
-    schema: {
-      tags: ['auth'],
-      summary: 'Set or change the POS PIN for the authenticated user',
-      body: PinSetBody,
-      response: { 200: PinSetResponse },
+  app.post(
+    '/api/auth/pin/set',
+    {
+      schema: {
+        tags: ['auth'],
+        summary: 'Set or change the POS PIN for the authenticated user',
+        body: PinSetBody,
+        response: { 200: PinSetResponse },
+      },
     },
-  }, async (req) => {
-    requireAuth(req);
-    const { newPin } = req.body as Static<typeof PinSetBody>;
-    const ip = req.ip || null;
+    async (req) => {
+      requireAuth(req);
+      const { newPin } = req.body as Static<typeof PinSetBody>;
+      const ip = req.ip || null;
 
-    // Production enforces blacklist; tests/dev seeds may use 0000 via
-    // dev-bootstrap which inserts directly bypassing this route.
-    const isProd = process.env.NODE_ENV === 'production';
-    const err = PinPolicy.validate(newPin, { enforceBlacklist: isProd });
-    if (err) {
-      throw new UnauthorizedError(
-        err.code === 'BLACKLISTED' ? 'PIN is in the blacklist of common weak PINs' :
-        err.code === 'WRONG_LENGTH' ? 'PIN must be exactly 4 digits' :
-        'PIN must be all digits',
-      );
-    }
+      // Production enforces blacklist; tests/dev seeds may use 0000 via
+      // dev-bootstrap which inserts directly bypassing this route.
+      const isProd = process.env.NODE_ENV === 'production';
+      const err = PinPolicy.validate(newPin, { enforceBlacklist: isProd });
+      if (err) {
+        throw new UnauthorizedError(
+          err.code === 'BLACKLISTED'
+            ? 'PIN is in the blacklist of common weak PINs'
+            : err.code === 'WRONG_LENGTH'
+              ? 'PIN must be exactly 4 digits'
+              : 'PIN must be all digits',
+        );
+      }
 
-    const hash = await hashPin(newPin);
-    const now = new Date();
-    await app.db.transaction(async (tx) => {
-      await tx.update(users)
-        .set({
-          posPinHash: hash,
-          posPinSetAt: now,
-          posPinFailedAttempts: 0,
-          posPinLockedUntil: null,
-        })
-        .where(eq(users.id, req.actor!.id));
+      const hash = await hashPin(newPin);
+      const now = new Date();
+      await app.db.transaction(async (tx) => {
+        await tx
+          .update(users)
+          .set({
+            posPinHash: hash,
+            posPinSetAt: now,
+            posPinFailedAttempts: 0,
+            posPinLockedUntil: null,
+          })
+          .where(eq(users.id, req.actor!.id));
 
-      await tx.insert(auditLog).values({
-        eventType: 'pin.set',
-        actorUserId: req.actor!.id,
-        deviceId: req.deviceId,
-        ipAddress: ip,
-        payload: { lockout_minutes: PIN_LOCKOUT_MINUTES, threshold: PIN_FAILED_THRESHOLD },
+        await tx.insert(auditLog).values({
+          eventType: 'pin.set',
+          actorUserId: req.actor!.id,
+          deviceId: req.deviceId,
+          ipAddress: ip,
+          payload: { lockout_minutes: PIN_LOCKOUT_MINUTES, threshold: PIN_FAILED_THRESHOLD },
+        });
       });
-    });
 
-    return { ok: true as const, setAt: now.toISOString() };
-  });
+      return { ok: true as const, setAt: now.toISOString() };
+    },
+  );
 };
 
 export default authPinRoutes;

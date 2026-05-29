@@ -36,17 +36,17 @@
  * for monospace fields (slug, sku). Pulsing dot for LIVE status.
  */
 
-import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useMemo, useState } from 'react';
 
 import {
   ApiError,
+  type CategoryNode,
+  McpToolError,
+  type ProductDetail,
   categoriesApi,
   mcpApi,
-  McpToolError,
   productsApi,
-  type CategoryNode,
-  type ProductDetail,
 } from '@warehouse14/api-client';
 import { Button, DiamondRule } from '@warehouse14/ui-kit';
 
@@ -60,8 +60,7 @@ export interface WebSeoPanelProps {
 }
 
 // TanStack Query keys — exported so callers can invalidate after writes.
-export const productDetailQueryKey = (id: string): readonly unknown[] =>
-  ['products', 'detail', id];
+export const productDetailQueryKey = (id: string): readonly unknown[] => ['products', 'detail', id];
 export const categoriesTreeQueryKey: readonly unknown[] = ['categories', 'tree'];
 
 export function WebSeoPanel({ productId }: WebSeoPanelProps): JSX.Element {
@@ -192,7 +191,9 @@ export function WebSeoPanel({ productId }: WebSeoPanelProps): JSX.Element {
       setSeoDescriptionDraft(data.description);
       addToast({
         tone: 'success',
-        title: data.wrote ? 'KI-Text generiert + gespeichert' : 'KI-Text generiert (identisch zum aktuellen)',
+        title: data.wrote
+          ? 'KI-Text generiert + gespeichert'
+          : 'KI-Text generiert (identisch zum aktuellen)',
         body: `${data.description.length} Zeichen.`,
       });
       // The tool itself wrote the row; re-fetch detail for the truth.
@@ -235,7 +236,13 @@ export function WebSeoPanel({ productId }: WebSeoPanelProps): JSX.Element {
   if (detailLoading) {
     return (
       <section style={{ padding: 18 }}>
-        <p style={{ color: 'var(--w14-ink-faded)', textAlign: 'center', fontFamily: 'var(--w14-font-display)' }}>
+        <p
+          style={{
+            color: 'var(--w14-ink-faded)',
+            textAlign: 'center',
+            fontFamily: 'var(--w14-font-display)',
+          }}
+        >
           Lade Produktdetails…
         </p>
       </section>
@@ -262,7 +269,9 @@ export function WebSeoPanel({ productId }: WebSeoPanelProps): JSX.Element {
       {/* ── 1. Publication toggle ── */}
       <PublishToggle
         isLive={isLive}
-        publishedAt={detail.archivedAt ? null : null /* detail.publishedAt not on type yet — Phase 2.B I-29 */}
+        publishedAt={
+          detail.archivedAt ? null : null /* detail.publishedAt not on type yet — Phase 2.B I-29 */
+        }
         busy={publishToggle.isPending}
         onToggle={(next) => publishToggle.mutate(next)}
       />
@@ -317,10 +326,7 @@ export function WebSeoPanel({ productId }: WebSeoPanelProps): JSX.Element {
         <small style={hintStyle}>{seoTitleDraft.length}/256</small>
       </FieldGroup>
 
-      <FieldGroup
-        label="SEO-Beschreibung"
-        hint="≤ 160 Zeichen empfohlen für Google-Snippets."
-      >
+      <FieldGroup label="SEO-Beschreibung" hint="≤ 160 Zeichen empfohlen für Google-Snippets.">
         <textarea
           value={seoDescriptionDraft}
           onChange={(e) => setSeoDescriptionDraft(e.target.value)}
@@ -329,7 +335,14 @@ export function WebSeoPanel({ productId }: WebSeoPanelProps): JSX.Element {
           placeholder="Beschreibe das Stück so, wie ein Sammler sucht…"
           style={{ ...inputStyle, resize: 'vertical', fontFamily: 'var(--w14-font-body)' }}
         />
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+          }}
+        >
           <small style={hintStyle}>{seoDescriptionDraft.length} Zeichen</small>
           <AiGenerateButton
             disabled={!isAdmin || aiGenerate.isPending}
@@ -341,11 +354,7 @@ export function WebSeoPanel({ productId }: WebSeoPanelProps): JSX.Element {
       </FieldGroup>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
-        <Button
-          variant="primary"
-          onClick={() => saveSeo.mutate()}
-          disabled={saveSeo.isPending}
-        >
+        <Button variant="primary" onClick={() => saveSeo.mutate()} disabled={saveSeo.isPending}>
           {saveSeo.isPending ? 'Speichert…' : 'SEO-Daten speichern'}
         </Button>
       </div>
@@ -389,7 +398,9 @@ function PublishToggle({
             height: 12,
             borderRadius: 999,
             backgroundColor: isLive ? 'var(--w14-gold)' : 'var(--w14-rule)',
-            boxShadow: isLive ? '0 0 0 2px var(--w14-parchment-2), 0 0 12px var(--w14-gold-soft)' : 'none',
+            boxShadow: isLive
+              ? '0 0 0 2px var(--w14-parchment-2), 0 0 12px var(--w14-gold-soft)'
+              : 'none',
             animation: isLive ? 'w14-publish-pulse 2.2s ease-in-out infinite' : 'none',
           }}
         />

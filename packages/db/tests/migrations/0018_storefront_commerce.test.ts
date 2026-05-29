@@ -12,10 +12,15 @@
  *   • App role grants — narrow column UPDATEs
  */
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import postgres, { type Sql } from 'postgres';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { applyMigrations, setAppPasswordForTest, startTestDb, type TestDb } from '../helpers/testDb.js';
+import {
+  type TestDb,
+  applyMigrations,
+  setAppPasswordForTest,
+  startTestDb,
+} from '../helpers/testDb.js';
 
 const PII_KEY = 'test-pii-key-do-not-use-in-production-32b';
 
@@ -37,7 +42,8 @@ describe('migration 0018_storefront_commerce', () => {
       database: 'warehouse14_test',
       username: 'warehouse14_app',
       password: 'warehouse14_app_test_pw',
-      max: 3, onnotice: () => {},
+      max: 3,
+      onnotice: () => {},
     });
 
     const [c] = await migratorSql<{ id: string }[]>`
@@ -82,11 +88,17 @@ describe('migration 0018_storefront_commerce', () => {
 
   describe('enums', () => {
     it.each([
-      ['cart_status',           ['ACTIVE', 'CHECKOUT', 'ABANDONED', 'CONVERTED']],
-      ['payment_provider',      ['STRIPE', 'PAYPAL', 'MOLLIE']],
-      ['payment_intent_status', ['CREATED', 'PENDING', 'SUCCEEDED', 'FAILED', 'CANCELED', 'EXPIRED']],
-      ['sales_channel',         ['POS', 'WEB', 'EBAY', 'PHONE']],
-      ['shipping_status',       ['NOT_REQUIRED', 'PENDING', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'RETURNED']],
+      ['cart_status', ['ACTIVE', 'CHECKOUT', 'ABANDONED', 'CONVERTED']],
+      ['payment_provider', ['STRIPE', 'PAYPAL', 'MOLLIE']],
+      [
+        'payment_intent_status',
+        ['CREATED', 'PENDING', 'SUCCEEDED', 'FAILED', 'CANCELED', 'EXPIRED'],
+      ],
+      ['sales_channel', ['POS', 'WEB', 'EBAY', 'PHONE']],
+      [
+        'shipping_status',
+        ['NOT_REQUIRED', 'PENDING', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'RETURNED'],
+      ],
     ] as const)('enum %s has labels %j', async (enumName, expected) => {
       const rows = await migratorSql<{ enumlabel: string }[]>`
         SELECT enumlabel FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
@@ -158,9 +170,9 @@ describe('migration 0018_storefront_commerce', () => {
         RETURNING id`;
       const sid = await makeShopper({ customerId: c!.id });
       await migratorSql`INSERT INTO carts (shopper_id) VALUES (${sid})`;
-      await expect(
-        migratorSql`INSERT INTO carts (shopper_id) VALUES (${sid})`,
-      ).rejects.toThrow(/carts_one_active_per_shopper_uq/);
+      await expect(migratorSql`INSERT INTO carts (shopper_id) VALUES (${sid})`).rejects.toThrow(
+        /carts_one_active_per_shopper_uq/,
+      );
     });
 
     it('CHECKOUT without reservation evidence is refused', async () => {
@@ -250,9 +262,13 @@ describe('migration 0018_storefront_commerce', () => {
         SELECT encrypt_pii('pi-uq'), (now() + interval '5 years')::date FROM s
         RETURNING id`;
       const sid = await makeShopper({ customerId: c!.id });
-      const [a] = await migratorSql<{ id: string }[]>`INSERT INTO carts (shopper_id) VALUES (${sid}) RETURNING id`;
+      const [a] = await migratorSql<
+        { id: string }[]
+      >`INSERT INTO carts (shopper_id) VALUES (${sid}) RETURNING id`;
       await migratorSql`UPDATE carts SET status='ABANDONED'::cart_status WHERE id=${a!.id}`;
-      const [b] = await migratorSql<{ id: string }[]>`INSERT INTO carts (shopper_id) VALUES (${sid}) RETURNING id`;
+      const [b] = await migratorSql<
+        { id: string }[]
+      >`INSERT INTO carts (shopper_id) VALUES (${sid}) RETURNING id`;
       await migratorSql`
         INSERT INTO payment_intents (cart_id, provider, provider_intent_id, amount_eur)
         VALUES (${a!.id}, 'STRIPE'::payment_provider, 'pi_dup_1', '100.00')`;

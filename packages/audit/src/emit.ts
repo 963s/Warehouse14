@@ -15,7 +15,7 @@
 import type { AnyDb } from '@warehouse14/db';
 import { sql } from 'drizzle-orm';
 
-import type { EmittedEvent, EmitInput } from './types.js';
+import type { EmitInput, EmittedEvent } from './types.js';
 
 type Row = {
   id: string;

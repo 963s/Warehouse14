@@ -11,7 +11,7 @@
  */
 
 import { readFile, readdir } from 'node:fs/promises';
-import { join, resolve, dirname } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
@@ -64,11 +64,7 @@ export async function startTestDb(): Promise<TestDb> {
     .withDatabase('warehouse14_test')
     .withUsername('postgres')
     .withPassword('postgres_test_pw')
-    .withCommand([
-      'postgres',
-      '-c',
-      'shared_preload_libraries=pg_stat_statements',
-    ])
+    .withCommand(['postgres', '-c', 'shared_preload_libraries=pg_stat_statements'])
     .withCopyContentToContainer([
       {
         content: INITDB_SQL,
@@ -129,8 +125,8 @@ export async function startTestDb(): Promise<TestDb> {
 export async function applyMigrations(sql: Sql, upTo: number): Promise<void> {
   const all = await readdir(MIGRATIONS_DIR);
   const files = all
-    .filter(name => /^\d{4}_.+\.sql$/.test(name))
-    .filter(name => parseInt(name.slice(0, 4), 10) <= upTo)
+    .filter((name) => /^\d{4}_.+\.sql$/.test(name))
+    .filter((name) => Number.parseInt(name.slice(0, 4), 10) <= upTo)
     .sort();
   for (const file of files) {
     const sqlText = await readFile(join(MIGRATIONS_DIR, file), 'utf8');
@@ -144,7 +140,5 @@ export async function applyMigrations(sql: Sql, upTo: number): Promise<void> {
  * authenticate. Production uses Oracle Vault and is out of scope here.
  */
 export async function setAppPasswordForTest(migratorSql: Sql): Promise<void> {
-  await migratorSql.unsafe(
-    `ALTER ROLE warehouse14_app PASSWORD 'warehouse14_app_test_pw'`,
-  );
+  await migratorSql.unsafe(`ALTER ROLE warehouse14_app PASSWORD 'warehouse14_app_test_pw'`);
 }

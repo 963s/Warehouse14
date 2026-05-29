@@ -36,7 +36,9 @@ export type TaxTreatmentCode =
   | 'MARGIN_25A'
   | 'INVESTMENT_GOLD_25C'
   | 'STANDARD_19'
-  | 'REDUCED_7';
+  | 'REDUCED_7'
+  | 'MIXED'
+  | 'REVERSE_CHARGE_13B';
 
 // ────────────────────────────────────────────────────────────────────────
 // GET /api/products (list)
@@ -183,6 +185,7 @@ export interface ProductDetail {
   provenanceNotes: string | null;
   // ─── Channel flags ─────────────────────────────────────────────────
   isCommission: boolean;
+  acquiredFromCustomerId: string | null;
   listedOnStorefront: boolean;
   listedOnEbay: boolean;
   /**
@@ -310,22 +313,12 @@ function buildQuery(query: ProductListQuery): string {
 
 export const productsApi = {
   list(client: ApiClient, query: ProductListQuery = {}): Promise<ProductListResponse> {
-    return client.request<ProductListResponse>(
-      'GET',
-      `/api/products${buildQuery(query)}`,
-    );
+    return client.request<ProductListResponse>('GET', `/api/products${buildQuery(query)}`);
   },
   get(client: ApiClient, id: string): Promise<ProductDetail> {
-    return client.request<ProductDetail>(
-      'GET',
-      `/api/products/${encodeURIComponent(id)}`,
-    );
+    return client.request<ProductDetail>('GET', `/api/products/${encodeURIComponent(id)}`);
   },
-  update(
-    client: ApiClient,
-    id: string,
-    body: ProductUpdateBody,
-  ): Promise<ProductUpdateResponse> {
+  update(client: ApiClient, id: string, body: ProductUpdateBody): Promise<ProductUpdateResponse> {
     return client.request<ProductUpdateResponse>(
       'PUT',
       `/api/products/${encodeURIComponent(id)}`,

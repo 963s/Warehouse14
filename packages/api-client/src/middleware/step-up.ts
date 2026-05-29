@@ -21,7 +21,12 @@
  */
 
 import { ApiError } from '../errors.js';
-import type { HttpMethod, Middleware, MiddlewareRequest, MiddlewareResponse } from '../middleware.js';
+import type {
+  HttpMethod,
+  Middleware,
+  MiddlewareRequest,
+  MiddlewareResponse,
+} from '../middleware.js';
 
 export interface StepUpReason {
   readonly traceId: string;

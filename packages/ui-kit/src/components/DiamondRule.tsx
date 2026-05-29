@@ -63,7 +63,9 @@ export function DiamondRule({
           ◆ {label} ◆
         </span>
       ) : (
-        <span aria-hidden style={{ lineHeight: 1, fontSize: '0.9em' }}>◆</span>
+        <span aria-hidden style={{ lineHeight: 1, fontSize: '0.9em' }}>
+          ◆
+        </span>
       )}
       <span style={line} />
     </div>

@@ -20,10 +20,10 @@
  *   are public. Everything else demands an actor.
  */
 
-import fastifyPlugin from 'fastify-plugin';
 import { betterAuth } from 'better-auth';
-import pg from 'pg';
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
+import fastifyPlugin from 'fastify-plugin';
+import pg from 'pg';
 
 const { Pool } = pg;
 
@@ -68,7 +68,9 @@ const authPlugin: FastifyPluginAsync<AuthPluginOpts> = async (app, opts) => {
       expiresIn: 60 * 60 * 8,
       updateAge: 60 * 60 * 24, // refresh updatedAt at most daily
     },
-    trustedOrigins: opts.env.TRUSTED_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean),
+    trustedOrigins: opts.env.TRUSTED_ORIGINS.split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
     advanced: {
       cookies: {
         session_token: { name: 'warehouse14.session' },

@@ -16,7 +16,7 @@ import type { FastifyPluginAsync } from 'fastify';
 
 import { auditLog, sessions } from '@warehouse14/db/schema';
 
-import { requireAuth, UnauthorizedError } from '../lib/auth-policy.js';
+import { UnauthorizedError, requireAuth } from '../lib/auth-policy.js';
 
 // ────────────────────────────────────────────────────────────────────────
 // Response schemas
@@ -24,11 +24,7 @@ import { requireAuth, UnauthorizedError } from '../lib/auth-policy.js';
 
 const SessionActor = Type.Object({
   id: Type.String({ format: 'uuid' }),
-  role: Type.Union([
-    Type.Literal('ADMIN'),
-    Type.Literal('CASHIER'),
-    Type.Literal('READONLY'),
-  ]),
+  role: Type.Union([Type.Literal('ADMIN'), Type.Literal('CASHIER'), Type.Literal('READONLY')]),
   isOwner: Type.Boolean(),
 });
 
@@ -36,10 +32,7 @@ const SessionResponse = Type.Object({
   ok: Type.Literal(true),
   actor: SessionActor,
   /** Server time when the current PIN step-up was last refreshed (or null). */
-  lastPinStepUpAt: Type.Union([
-    Type.String({ format: 'date-time' }),
-    Type.Null(),
-  ]),
+  lastPinStepUpAt: Type.Union([Type.String({ format: 'date-time' }), Type.Null()]),
   /** When this session cookie expires. */
   expiresAt: Type.String({ format: 'date-time' }),
 });
@@ -69,27 +62,31 @@ const authSessionRoutes: FastifyPluginAsync = async (app) => {
   // client uses it for cold-start restore. Returns 401 when there is no
   // session (the standard requireAuth path).
   // ────────────────────────────────────────────────────────────────────
-  app.get('/api/auth/session', {
-    schema: {
-      tags: ['auth'],
-      summary: 'Return the current PIN session (cold-start restore).',
-      response: { 200: SessionResponse, 401: ErrorResponse },
-    },
-  }, async (req) => {
-    requireAuth(req);
-    return {
-      ok: true as const,
-      actor: {
-        id: req.actor.id,
-        role: req.actor.role,
-        isOwner: req.actor.isOwner,
+  app.get(
+    '/api/auth/session',
+    {
+      schema: {
+        tags: ['auth'],
+        summary: 'Return the current PIN session (cold-start restore).',
+        response: { 200: SessionResponse, 401: ErrorResponse },
       },
-      lastPinStepUpAt: req.session.lastPinStepUpAt
-        ? req.session.lastPinStepUpAt.toISOString()
-        : null,
-      expiresAt: req.session.sessionExpiresAt.toISOString(),
-    };
-  });
+    },
+    async (req) => {
+      requireAuth(req);
+      return {
+        ok: true as const,
+        actor: {
+          id: req.actor.id,
+          role: req.actor.role,
+          isOwner: req.actor.isOwner,
+        },
+        lastPinStepUpAt: req.session.lastPinStepUpAt
+          ? req.session.lastPinStepUpAt.toISOString()
+          : null,
+        expiresAt: req.session.sessionExpiresAt.toISOString(),
+      };
+    },
+  );
 
   // ────────────────────────────────────────────────────────────────────
   // POST /api/auth/sign-out
@@ -98,42 +95,46 @@ const authSessionRoutes: FastifyPluginAsync = async (app) => {
   // calling it without a session returns 401 (no harm done). Writes an
   // `auth.sign_out` audit row inside the same transaction as the delete.
   // ────────────────────────────────────────────────────────────────────
-  app.post('/api/auth/sign-out', {
-    schema: {
-      tags: ['auth'],
-      summary: 'Destroy the current PIN session.',
-      response: { 200: SignOutResponse, 401: ErrorResponse },
+  app.post(
+    '/api/auth/sign-out',
+    {
+      schema: {
+        tags: ['auth'],
+        summary: 'Destroy the current PIN session.',
+        response: { 200: SignOutResponse, 401: ErrorResponse },
+      },
     },
-  }, async (req, reply) => {
-    if (!req.session || !req.actor) {
-      throw new UnauthorizedError('No active session to sign out.');
-    }
-    const sessionId = req.session.sessionId;
-    const actorId = req.actor.id;
+    async (req, reply) => {
+      if (!req.session || !req.actor) {
+        throw new UnauthorizedError('No active session to sign out.');
+      }
+      const sessionId = req.session.sessionId;
+      const actorId = req.actor.id;
 
-    await app.db.transaction(async (tx) => {
-      await tx.delete(sessions).where(eq(sessions.id, sessionId));
-      await tx.insert(auditLog).values({
-        eventType: 'auth.sign_out',
-        actorUserId: actorId,
-        deviceId: req.deviceId ?? null,
-        ipAddress: req.ip ?? null,
-        userAgent: (req.headers['user-agent'] as string | undefined) ?? null,
-        payload: { sessionId },
+      await app.db.transaction(async (tx) => {
+        await tx.delete(sessions).where(eq(sessions.id, sessionId));
+        await tx.insert(auditLog).values({
+          eventType: 'auth.sign_out',
+          actorUserId: actorId,
+          deviceId: req.deviceId ?? null,
+          ipAddress: req.ip ?? null,
+          userAgent: (req.headers['user-agent'] as string | undefined) ?? null,
+          payload: { sessionId },
+        });
       });
-    });
 
-    // Clear the cookie. `clearCookie` mirrors the path + secure flags so
-    // the browser actually overwrites the existing cookie.
-    reply.clearCookie('warehouse14.session', {
-      path: '/',
-      httpOnly: true,
-      secure: req.protocol === 'https',
-      sameSite: 'lax',
-    });
+      // Clear the cookie. `clearCookie` mirrors the path + secure flags so
+      // the browser actually overwrites the existing cookie.
+      reply.clearCookie('warehouse14.session', {
+        path: '/',
+        httpOnly: true,
+        secure: req.protocol === 'https',
+        sameSite: 'lax',
+      });
 
-    return { ok: true as const };
-  });
+      return { ok: true as const };
+    },
+  );
 };
 
 export default authSessionRoutes;

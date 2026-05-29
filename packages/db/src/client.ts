@@ -20,7 +20,7 @@
  * (ADR-0001 #13) and for raw SQL where Drizzle's surface is too narrow.
  */
 
-import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
+import { type PostgresJsDatabase, drizzle } from 'drizzle-orm/postgres-js';
 import postgres, { type Sql } from 'postgres';
 import * as schema from './schema/index.js';
 
@@ -59,11 +59,7 @@ interface ResolvedUrl {
   max: number;
 }
 
-function buildUrl(
-  cfg: ConnectionConfig,
-  defaultUser: string,
-  defaultMax: number,
-): ResolvedUrl {
+function buildUrl(cfg: ConnectionConfig, defaultUser: string, defaultMax: number): ResolvedUrl {
   if (cfg.url) return { url: cfg.url, max: cfg.max ?? defaultMax };
   const host = cfg.host ?? 'localhost';
   const port = cfg.port ?? 5432;
@@ -98,10 +94,7 @@ export function connectApp(cfg: ConnectionConfig): { db: AppDb; sql: Sql } {
   const { url, max } = buildUrl(cfg, 'warehouse14_app', 10);
   const sql = postgres(url, {
     max,
-    connect_timeout: Math.max(
-      1,
-      Math.round((cfg.connectionTimeoutMs ?? 10_000) / 1000),
-    ),
+    connect_timeout: Math.max(1, Math.round((cfg.connectionTimeoutMs ?? 10_000) / 1000)),
     prepare: true,
     connection: {
       application_name: cfg.applicationName ?? 'warehouse14_app',
@@ -124,10 +117,7 @@ export function connectMigrator(cfg: ConnectionConfig): {
   const { url, max } = buildUrl(cfg, 'warehouse14_migrator', 1);
   const sql = postgres(url, {
     max,
-    connect_timeout: Math.max(
-      1,
-      Math.round((cfg.connectionTimeoutMs ?? 30_000) / 1000),
-    ),
+    connect_timeout: Math.max(1, Math.round((cfg.connectionTimeoutMs ?? 30_000) / 1000)),
     prepare: false, // DDL via prepared statements is fragile across PG versions
     connection: {
       application_name: cfg.applicationName ?? 'warehouse14_migrator',

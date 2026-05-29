@@ -47,12 +47,7 @@ import { eq, sql } from 'drizzle-orm';
 
 import { products } from '@warehouse14/db/schema';
 
-import type {
-  ToolHandler,
-  ToolInvocationContext,
-  ToolRegistration,
-  ToolResult,
-} from '../types.js';
+import type { ToolHandler, ToolInvocationContext, ToolRegistration, ToolResult } from '../types.js';
 
 // ────────────────────────────────────────────────────────────────────────
 // Argument schema
@@ -148,11 +143,13 @@ const handler: ToolHandler<ArgsShape> = async (
     // 4. Single-column UPDATE. The set object is built locale-side so
     //    Drizzle can't accidentally update the other locale.
     if (locale === 'de') {
-      await ctx.db.update(products)
+      await ctx.db
+        .update(products)
         .set({ seoDescription: generated })
         .where(eq(products.id, args.productId));
     } else {
-      await ctx.db.update(products)
+      await ctx.db
+        .update(products)
         .set({ seoDescriptionEn: generated })
         .where(eq(products.id, args.productId));
     }
@@ -222,10 +219,7 @@ async function runLlm(input: LlmInput): Promise<string> {
     input.catalogReference ? `Ref. ${input.catalogReference}` : null,
   ].filter((s): s is string => Boolean(s));
 
-  const lead =
-    input.locale === 'de'
-      ? `${input.name}.`
-      : `${input.name}.`;
+  const lead = input.locale === 'de' ? `${input.name}.` : `${input.name}.`;
   const facetSentence =
     facets.length > 0
       ? input.locale === 'de'

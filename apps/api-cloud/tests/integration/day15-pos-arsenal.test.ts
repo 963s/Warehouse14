@@ -24,17 +24,17 @@
  *            ✓ no cookie → 401 UNAUTHORIZED
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { readFile, readdir } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
+import { readFile, readdir } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import postgres, { type Sql } from 'postgres';
-import { drizzle } from 'drizzle-orm/postgres-js';
-import * as schema from '@warehouse14/db/schema';
 import type { AppDb } from '@warehouse14/db/client';
+import * as schema from '@warehouse14/db/schema';
+import { drizzle } from 'drizzle-orm/postgres-js';
 import type { FastifyInstance } from 'fastify';
+import postgres, { type Sql } from 'postgres';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildApp } from '../../src/app.js';
 import type { Env } from '../../src/config/env.js';
@@ -54,9 +54,7 @@ const INITDB_SQL = `
 `;
 
 async function applyAll(sqlClient: Sql): Promise<void> {
-  const files = (await readdir(MIGRATIONS_DIR))
-    .filter((n) => /^\d{4}_.+\.sql$/.test(n))
-    .sort();
+  const files = (await readdir(MIGRATIONS_DIR)).filter((n) => /^\d{4}_.+\.sql$/.test(n)).sort();
   for (const f of files) await sqlClient.unsafe(await readFile(join(MIGRATIONS_DIR, f), 'utf8'));
 }
 
@@ -90,21 +88,25 @@ describe('Day 15 — POS arsenal (reserve / release / storno)', () => {
       .start();
 
     migratorSql = postgres({
-      host: container.getHost(), port: container.getPort(),
+      host: container.getHost(),
+      port: container.getPort(),
       database: 'warehouse14_test',
       username: 'warehouse14_migrator',
       password: 'warehouse14_migrator_test_pw',
-      max: 1, onnotice: () => {},
+      max: 1,
+      onnotice: () => {},
     });
     await applyAll(migratorSql);
     await migratorSql.unsafe(`ALTER ROLE warehouse14_app PASSWORD 'warehouse14_app_test_pw'`);
 
     appSql = postgres({
-      host: container.getHost(), port: container.getPort(),
+      host: container.getHost(),
+      port: container.getPort(),
       database: 'warehouse14_test',
       username: 'warehouse14_app',
       password: 'warehouse14_app_test_pw',
-      max: 5, onnotice: () => {},
+      max: 5,
+      onnotice: () => {},
     });
     appDb = drizzle(appSql, { schema });
 
@@ -222,9 +224,9 @@ describe('Day 15 — POS arsenal (reserve / release / storno)', () => {
     totalEur: string;
   }> {
     const total = opts.totalEur ?? '150.00';
-    const totalNum = parseFloat(total);
+    const totalNum = Number.parseFloat(total);
     const margin = totalNum - 50;
-    const vat = Math.round((margin * 19) / 119 * 100) / 100;
+    const vat = Math.round(((margin * 19) / 119) * 100) / 100;
     const subtotal = Math.round((totalNum - vat) * 100) / 100;
 
     // First reserve + flip the product to RESERVED so finalize would have worked.
@@ -281,13 +283,15 @@ describe('Day 15 — POS arsenal (reserve / release / storno)', () => {
     it('product already reserved → 409 PRODUCT_NOT_RESERVABLE', async () => {
       // First reserve.
       await app.inject({
-        method: 'POST', url: '/api/inventory/reserve',
+        method: 'POST',
+        url: '/api/inventory/reserve',
         headers: headers(cashierTokenWithStepUp),
         payload: { productId, channel: 'POS', sessionId: randomUUID() },
       });
       // Second reserve attempt (different session).
       const res = await app.inject({
-        method: 'POST', url: '/api/inventory/reserve',
+        method: 'POST',
+        url: '/api/inventory/reserve',
         headers: headers(cashierTokenWithStepUp),
         payload: { productId, channel: 'POS', sessionId: randomUUID() },
       });
@@ -297,7 +301,8 @@ describe('Day 15 — POS arsenal (reserve / release / storno)', () => {
 
     it('no cookie → 401 UNAUTHORIZED', async () => {
       const res = await app.inject({
-        method: 'POST', url: '/api/inventory/reserve',
+        method: 'POST',
+        url: '/api/inventory/reserve',
         headers: headers(null),
         payload: { productId, channel: 'POS', sessionId: randomUUID() },
       });
@@ -306,7 +311,8 @@ describe('Day 15 — POS arsenal (reserve / release / storno)', () => {
 
     it('READONLY role → 403 FORBIDDEN', async () => {
       const res = await app.inject({
-        method: 'POST', url: '/api/inventory/reserve',
+        method: 'POST',
+        url: '/api/inventory/reserve',
         headers: headers(readonlyToken),
         payload: { productId, channel: 'POS', sessionId: randomUUID() },
       });
@@ -322,14 +328,16 @@ describe('Day 15 — POS arsenal (reserve / release / storno)', () => {
     it('happy path → product back to AVAILABLE', async () => {
       const sessionId = randomUUID();
       const r1 = await app.inject({
-        method: 'POST', url: '/api/inventory/reserve',
+        method: 'POST',
+        url: '/api/inventory/reserve',
         headers: headers(cashierTokenWithStepUp),
         payload: { productId, channel: 'POS', sessionId },
       });
       expect(r1.statusCode).toBe(200);
 
       const r2 = await app.inject({
-        method: 'POST', url: '/api/inventory/release',
+        method: 'POST',
+        url: '/api/inventory/release',
         headers: headers(cashierTokenWithStepUp),
         payload: { productId, sessionId, reason: 'pos_cart_cleared' },
       });
@@ -343,12 +351,14 @@ describe('Day 15 — POS arsenal (reserve / release / storno)', () => {
     it('wrong sessionId → 409 PRODUCT_NOT_RESERVABLE', async () => {
       const sessionId = randomUUID();
       await app.inject({
-        method: 'POST', url: '/api/inventory/reserve',
+        method: 'POST',
+        url: '/api/inventory/reserve',
         headers: headers(cashierTokenWithStepUp),
         payload: { productId, channel: 'POS', sessionId },
       });
       const r = await app.inject({
-        method: 'POST', url: '/api/inventory/release',
+        method: 'POST',
+        url: '/api/inventory/release',
         headers: headers(cashierTokenWithStepUp),
         payload: { productId, sessionId: randomUUID(), reason: 'pos_cart_cleared' },
       });
@@ -358,7 +368,8 @@ describe('Day 15 — POS arsenal (reserve / release / storno)', () => {
 
     it('no cookie → 401 UNAUTHORIZED', async () => {
       const r = await app.inject({
-        method: 'POST', url: '/api/inventory/release',
+        method: 'POST',
+        url: '/api/inventory/release',
         headers: headers(null),
         payload: { productId, sessionId: randomUUID(), reason: 'pos_cart_cleared' },
       });
@@ -382,7 +393,8 @@ describe('Day 15 — POS arsenal (reserve / release / storno)', () => {
       expect(before!.cumulative_spend_eur).toBe('150.00');
 
       const res = await app.inject({
-        method: 'POST', url: '/api/transactions/storno',
+        method: 'POST',
+        url: '/api/transactions/storno',
         headers: headers(cashierTokenWithStepUp),
         payload: {
           originalTransactionId: original.id,
@@ -391,8 +403,11 @@ describe('Day 15 — POS arsenal (reserve / release / storno)', () => {
       });
       expect(res.statusCode).toBe(200);
       const out = res.json() as {
-        id: string; stornoOfTransactionId: string; totalEur: string;
-        direction: string; ledgerEventId: number;
+        id: string;
+        stornoOfTransactionId: string;
+        totalEur: string;
+        direction: string;
+        ledgerEventId: number;
       };
       expect(out.stornoOfTransactionId).toBe(original.id);
       expect(out.totalEur).toBe('-150.00');
@@ -412,12 +427,15 @@ describe('Day 15 — POS arsenal (reserve / release / storno)', () => {
          WHERE entity_table = 'transactions'
            AND entity_id IN (${original.id}, ${out.id})
          ORDER BY id`;
-      expect(ledgerRows.map((r) => r.event_type)).toEqual(
-        ['transaction.finalized', 'transaction.stornoed'],
-      );
+      expect(ledgerRows.map((r) => r.event_type)).toEqual([
+        'transaction.finalized',
+        'transaction.stornoed',
+      ]);
 
       // audit_log carries the reason.
-      const [audit] = await migratorSql<{ event_type: string; payload: { reason: string; stornoId: string } }[]>`
+      const [audit] = await migratorSql<
+        { event_type: string; payload: { reason: string; stornoId: string } }[]
+      >`
         SELECT event_type, payload FROM audit_log
          WHERE event_type = 'transaction.stornoed_with_reason'
            AND (payload->>'stornoId')::text = ${out.id}`;
@@ -428,7 +446,8 @@ describe('Day 15 — POS arsenal (reserve / release / storno)', () => {
     it('NO step-up on cashier session → 403 STEP_UP_REQUIRED (Basel mandatory rule)', async () => {
       const original = await seedOriginalTransaction();
       const res = await app.inject({
-        method: 'POST', url: '/api/transactions/storno',
+        method: 'POST',
+        url: '/api/transactions/storno',
         headers: headers(cashierTokenNoStepUp),
         payload: { originalTransactionId: original.id, reason: 'No step-up means rejected' },
       });
@@ -439,14 +458,16 @@ describe('Day 15 — POS arsenal (reserve / release / storno)', () => {
     it('double storno of the same original → 409 CONFLICT', async () => {
       const original = await seedOriginalTransaction();
       const ok = await app.inject({
-        method: 'POST', url: '/api/transactions/storno',
+        method: 'POST',
+        url: '/api/transactions/storno',
         headers: headers(cashierTokenWithStepUp),
         payload: { originalTransactionId: original.id, reason: 'First storno is fine' },
       });
       expect(ok.statusCode).toBe(200);
 
       const dup = await app.inject({
-        method: 'POST', url: '/api/transactions/storno',
+        method: 'POST',
+        url: '/api/transactions/storno',
         headers: headers(cashierTokenWithStepUp),
         payload: { originalTransactionId: original.id, reason: 'This should be rejected outright' },
       });
@@ -457,7 +478,8 @@ describe('Day 15 — POS arsenal (reserve / release / storno)', () => {
     it('storno of a storno → 422 STORNO_OF_STORNO', async () => {
       const original = await seedOriginalTransaction();
       const first = await app.inject({
-        method: 'POST', url: '/api/transactions/storno',
+        method: 'POST',
+        url: '/api/transactions/storno',
         headers: headers(cashierTokenWithStepUp),
         payload: { originalTransactionId: original.id, reason: 'First storno legitimate' },
       });
@@ -465,7 +487,8 @@ describe('Day 15 — POS arsenal (reserve / release / storno)', () => {
       const firstId = (first.json() as { id: string }).id;
 
       const res = await app.inject({
-        method: 'POST', url: '/api/transactions/storno',
+        method: 'POST',
+        url: '/api/transactions/storno',
         headers: headers(cashierTokenWithStepUp),
         payload: { originalTransactionId: firstId, reason: 'Trying to storno a storno' },
       });
@@ -475,7 +498,8 @@ describe('Day 15 — POS arsenal (reserve / release / storno)', () => {
 
     it('unknown originalTransactionId → 404 NOT_FOUND', async () => {
       const res = await app.inject({
-        method: 'POST', url: '/api/transactions/storno',
+        method: 'POST',
+        url: '/api/transactions/storno',
         headers: headers(cashierTokenWithStepUp),
         payload: {
           originalTransactionId: '00000000-0000-0000-0000-000000000000',
@@ -489,7 +513,8 @@ describe('Day 15 — POS arsenal (reserve / release / storno)', () => {
     it('no cookie → 401 UNAUTHORIZED', async () => {
       const original = await seedOriginalTransaction();
       const res = await app.inject({
-        method: 'POST', url: '/api/transactions/storno',
+        method: 'POST',
+        url: '/api/transactions/storno',
         headers: headers(null),
         payload: { originalTransactionId: original.id, reason: 'No auth at all' },
       });

@@ -25,16 +25,16 @@
  * the system as a hostile reviewer would.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { readFile, readdir } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import postgres, { type Sql } from 'postgres';
-import { drizzle } from 'drizzle-orm/postgres-js';
-import { sql } from 'drizzle-orm';
-import * as schema from '@warehouse14/db/schema';
 import type { AppDb } from '@warehouse14/db/client';
+import * as schema from '@warehouse14/db/schema';
+import { sql } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import postgres, { type Sql } from 'postgres';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { withPii } from '../../src/lib/pii.js';
 import { runInRequestScope } from '../../src/lib/request-context.js';
@@ -55,9 +55,7 @@ const INITDB_SQL = `
 `;
 
 async function applyAllMigrations(sqlClient: Sql): Promise<void> {
-  const files = (await readdir(MIGRATIONS_DIR))
-    .filter((n) => /^\d{4}_.+\.sql$/.test(n))
-    .sort();
+  const files = (await readdir(MIGRATIONS_DIR)).filter((n) => /^\d{4}_.+\.sql$/.test(n)).sort();
   for (const f of files) {
     await sqlClient.unsafe(await readFile(join(MIGRATIONS_DIR, f), 'utf8'));
   }
@@ -129,7 +127,9 @@ describe('PII key teardown — Basel RED LINE invariant', () => {
   it('withPii decrypts inside its block AND the key is empty on the next query', async () => {
     const decrypted = await runInRequestScope(
       {
-        actorId: null, deviceId: null, requestId: 'test-req-1',
+        actorId: null,
+        deviceId: null,
+        requestId: 'test-req-1',
         piiKey: PII_KEY,
       },
       () =>
@@ -228,9 +228,9 @@ describe('PII key teardown — Basel RED LINE invariant', () => {
 
   it('withPii called outside a request scope throws (refuse-by-default)', async () => {
     // No runInRequestScope wrapper → currentPiiKey() must throw.
-    await expect(
-      withPii(appDb, async () => 'should-never-execute'),
-    ).rejects.toThrow(/outside a request scope/i);
+    await expect(withPii(appDb, async () => 'should-never-execute')).rejects.toThrow(
+      /outside a request scope/i,
+    );
   });
 
   // ────────────────────────────────────────────────────────────────────
@@ -248,7 +248,7 @@ describe('PII key teardown — Basel RED LINE invariant', () => {
       // Allow the constant defined in pii.ts which DOCUMENTS the forbidden form.
       if (f.endsWith('lib/pii.ts')) continue;
       expect(text.includes('SET warehouse14.pii_key')).toBe(false);
-      expect(text.includes('set_config(\'warehouse14.pii_key\', ')).toBe(false); // must use parameterized form
+      expect(text.includes("set_config('warehouse14.pii_key', ")).toBe(false); // must use parameterized form
     }
   });
 });

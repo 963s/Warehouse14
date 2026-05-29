@@ -12,6 +12,7 @@
  *   • The document itself (number, photo, type, validity range) is INSERT-once.
  */
 
+import { sql } from 'drizzle-orm';
 import {
   boolean,
   char,
@@ -25,7 +26,6 @@ import {
   timestamp,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { sql } from 'drizzle-orm';
 
 import { primaryKey, timestamps } from '../_shared/columns.js';
 import { devices } from '../auth/devices.js';
@@ -75,7 +75,7 @@ export const kycDocuments = pgTable(
 
     ...timestamps(),
   },
-  table => ({
+  (table) => ({
     customerIdIdx: index('kyc_documents_customer_id_idx').on(table.customerId),
     expiresOnIdx: index('kyc_documents_expires_on_idx').on(table.expiresOn),
     retentionIdx: index('kyc_documents_retention_idx').on(table.retentionUntil),

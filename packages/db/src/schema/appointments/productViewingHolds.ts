@@ -6,20 +6,24 @@
  * appointment_linked_products. NEVER deleted — released via release_at + reason.
  */
 
-import { check, index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import { check, index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
 import { primaryKey } from '../_shared/columns.js';
-import { appointments } from './appointments.js';
 import { customers } from '../customers/customers.js';
 import { products } from '../products/products.js';
+import { appointments } from './appointments.js';
 
 export const productViewingHolds = pgTable(
   'product_viewing_holds',
   {
     id: primaryKey(),
-    productId: uuid('product_id').notNull().references(() => products.id),
-    appointmentId: uuid('appointment_id').notNull().references(() => appointments.id),
+    productId: uuid('product_id')
+      .notNull()
+      .references(() => products.id),
+    appointmentId: uuid('appointment_id')
+      .notNull()
+      .references(() => appointments.id),
     customerId: uuid('customer_id').references(() => customers.id),
     holdStrength: text('hold_strength').notNull().default('SOFT'),
     holdStartsAt: timestamp('hold_starts_at', { withTimezone: true }).notNull(),
@@ -28,13 +32,16 @@ export const productViewingHolds = pgTable(
     releasedAt: timestamp('released_at', { withTimezone: true }),
     releasedReason: text('released_reason'),
   },
-  table => ({
+  (table) => ({
     activeIdx: index('product_viewing_holds_active_idx')
       .on(table.productId, table.holdExpiresAt)
       .where(sql`${table.releasedAt} IS NULL`),
     appointmentIdx: index('product_viewing_holds_appointment_idx').on(table.appointmentId),
 
-    range: check('product_viewing_holds_range', sql`${table.holdExpiresAt} > ${table.holdStartsAt}`),
+    range: check(
+      'product_viewing_holds_range',
+      sql`${table.holdExpiresAt} > ${table.holdStartsAt}`,
+    ),
     strengthDomain: check(
       'product_viewing_holds_strength_domain',
       sql`${table.holdStrength} IN ('SOFT', 'HARD')`,

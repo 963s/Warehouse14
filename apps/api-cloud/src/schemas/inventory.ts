@@ -9,7 +9,7 @@
  * forwards validated bodies into the package.
  */
 
-import { Type, type Static } from '@sinclair/typebox';
+import { type Static, Type } from '@sinclair/typebox';
 
 // ────────────────────────────────────────────────────────────────────────
 // Channel — Day 15 exposes POS only via this API. Storefront + eBay live

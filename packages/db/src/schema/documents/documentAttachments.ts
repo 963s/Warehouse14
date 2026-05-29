@@ -17,15 +17,15 @@
  * Soft-delete via archived_at — never hard-delete (evidentiary).
  */
 
-import { bigint, check, index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import { bigint, check, index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
 import { primaryKey } from '../_shared/columns.js';
 import { appraisals } from '../appraisals/index.js';
+import { users } from '../auth/users.js';
 import { customers } from '../customers/customers.js';
 import { products } from '../products/products.js';
 import { transactions } from '../transactions/transactions.js';
-import { users } from '../auth/users.js';
 import { documentCategory } from './enums.js';
 
 export const documentAttachments = pgTable(
@@ -82,10 +82,7 @@ export const documentAttachments = pgTable(
       'document_attachments_mime_type_length',
       sql`length(${table.mimeType}) BETWEEN 1 AND 255`,
     ),
-    sizePositive: check(
-      'document_attachments_size_positive',
-      sql`${table.sizeBytes} > 0`,
-    ),
+    sizePositive: check('document_attachments_size_positive', sql`${table.sizeBytes} > 0`),
     sha256Format: check(
       'document_attachments_sha256_format',
       sql`${table.sha256Hex} IS NULL OR length(${table.sha256Hex}) = 64`,

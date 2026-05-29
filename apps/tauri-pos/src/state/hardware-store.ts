@@ -31,6 +31,20 @@ export interface A4PrinterConfig {
   printerName: string;
 }
 
+export interface LabelPrinterConfig {
+  /** 'tcp' = network 9100 socket; 'system' = CUPS queue via lpr -o raw. */
+  mode: 'tcp' | 'system';
+  /** Network mode: printer IP. */
+  ip: string;
+  port: number; // typical 9100
+  /** System mode: OS print-queue name. */
+  printerName: string;
+  /** Command dialect the printer speaks. */
+  printerType: 'ZPL' | 'ESCPOS';
+  lastReachable: boolean | null;
+  lastCheckedAt: string | null;
+}
+
 export interface ZvtTerminalConfig {
   ip: string;
   port: number; // typical 20007
@@ -53,6 +67,7 @@ export interface TseFiskalyConfig {
 export interface HardwareConfig {
   thermal: ThermalConfig;
   a4: A4PrinterConfig;
+  label: LabelPrinterConfig;
   zvt: ZvtTerminalConfig;
   tse: TseFiskalyConfig;
 }
@@ -60,6 +75,15 @@ export interface HardwareConfig {
 const DEFAULT: HardwareConfig = {
   thermal: { ip: '', port: 9100, lastReachable: null, lastCheckedAt: null },
   a4: { printerName: '' },
+  label: {
+    mode: 'system',
+    ip: '',
+    port: 9100,
+    printerName: '',
+    printerType: 'ZPL',
+    lastReachable: null,
+    lastCheckedAt: null,
+  },
   zvt: { ip: '', port: 20007, lastReachable: null, lastCheckedAt: null },
   tse: {
     tssId: '',
@@ -77,6 +101,7 @@ interface HardwareState {
   loaded: boolean;
   setThermal: (patch: Partial<ThermalConfig>) => void;
   setA4: (patch: Partial<A4PrinterConfig>) => void;
+  setLabel: (patch: Partial<LabelPrinterConfig>) => void;
   setZvt: (patch: Partial<ZvtTerminalConfig>) => void;
   setTse: (patch: Partial<TseFiskalyConfig>) => void;
   hydrateFromLocal: () => void;
@@ -95,6 +120,11 @@ export const useHardwareStore = create<HardwareState>((set, get) => ({
   },
   setA4: (patch) => {
     const next = { ...get().config, a4: { ...get().config.a4, ...patch } };
+    persist(next);
+    set({ config: next });
+  },
+  setLabel: (patch) => {
+    const next = { ...get().config, label: { ...get().config.label, ...patch } };
     persist(next);
     set({ config: next });
   },
@@ -117,6 +147,7 @@ export const useHardwareStore = create<HardwareState>((set, get) => ({
         const merged: HardwareConfig = {
           thermal: { ...DEFAULT.thermal, ...(parsed.thermal ?? {}) },
           a4: { ...DEFAULT.a4, ...(parsed.a4 ?? {}) },
+          label: { ...DEFAULT.label, ...(parsed.label ?? {}) },
           zvt: { ...DEFAULT.zvt, ...(parsed.zvt ?? {}) },
           tse: { ...DEFAULT.tse, ...(parsed.tse ?? {}) },
         };

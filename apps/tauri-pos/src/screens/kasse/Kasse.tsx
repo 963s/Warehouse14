@@ -45,10 +45,7 @@ function KasseLoadingSplash(): JSX.Element {
         padding: 32,
       }}
     >
-      <ParchmentCard
-        padding="lg"
-        style={{ width: 'min(420px, 100%)', textAlign: 'center' }}
-      >
+      <ParchmentCard padding="lg" style={{ width: 'min(420px, 100%)', textAlign: 'center' }}>
         <Seal size="md" tone="faded" label="4" />
         <h2
           style={{

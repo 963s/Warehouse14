@@ -16,19 +16,19 @@
  *   ✓ client close → LISTEN connection released (pg_stat_activity check)
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { readFile, readdir } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
+import { readFile, readdir } from 'node:fs/promises';
+import { type IncomingMessage, request as httpRequest } from 'node:http';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { request as httpRequest, type IncomingMessage } from 'node:http';
 import { setTimeout as wait } from 'node:timers/promises';
+import { fileURLToPath } from 'node:url';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import postgres, { type Sql } from 'postgres';
-import { drizzle } from 'drizzle-orm/postgres-js';
-import * as schema from '@warehouse14/db/schema';
 import type { AppDb } from '@warehouse14/db/client';
+import * as schema from '@warehouse14/db/schema';
+import { drizzle } from 'drizzle-orm/postgres-js';
 import type { FastifyInstance } from 'fastify';
+import postgres, { type Sql } from 'postgres';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildApp } from '../../src/app.js';
 import type { Env } from '../../src/config/env.js';
@@ -48,9 +48,7 @@ const INITDB_SQL = `
 `;
 
 async function applyAll(sqlClient: Sql): Promise<void> {
-  const files = (await readdir(MIGRATIONS_DIR))
-    .filter((n) => /^\d{4}_.+\.sql$/.test(n))
-    .sort();
+  const files = (await readdir(MIGRATIONS_DIR)).filter((n) => /^\d{4}_.+\.sql$/.test(n)).sort();
   for (const f of files) await sqlClient.unsafe(await readFile(join(MIGRATIONS_DIR, f), 'utf8'));
 }
 
@@ -127,21 +125,25 @@ describe('GET /api/sse/ledger — Day 14 live stream', () => {
     dbPort = container.getPort();
 
     migratorSql = postgres({
-      host: dbHost, port: dbPort,
+      host: dbHost,
+      port: dbPort,
       database: 'warehouse14_test',
       username: 'warehouse14_migrator',
       password: 'warehouse14_migrator_test_pw',
-      max: 1, onnotice: () => {},
+      max: 1,
+      onnotice: () => {},
     });
     await applyAll(migratorSql);
     await migratorSql.unsafe(`ALTER ROLE warehouse14_app PASSWORD 'warehouse14_app_test_pw'`);
 
     appSql = postgres({
-      host: dbHost, port: dbPort,
+      host: dbHost,
+      port: dbPort,
       database: 'warehouse14_test',
       username: 'warehouse14_app',
       password: 'warehouse14_app_test_pw',
-      max: 5, onnotice: () => {},
+      max: 5,
+      onnotice: () => {},
     });
     appDb = drizzle(appSql, { schema });
 
@@ -170,7 +172,8 @@ describe('GET /api/sse/ledger — Day 14 live stream', () => {
     // Dedicated-connection factory points at the testcontainer.
     const dedicatedConnectionFactory = (): Sql =>
       postgres({
-        host: dbHost, port: dbPort,
+        host: dbHost,
+        port: dbPort,
         database: 'warehouse14_test',
         username: 'warehouse14_app',
         password: 'warehouse14_app_test_pw',
@@ -250,8 +253,11 @@ describe('GET /api/sse/ledger — Day 14 live stream', () => {
       if (opts.lastEventId) headers['last-event-id'] = opts.lastEventId;
 
       const r = httpRequest({
-        host: '127.0.0.1', port: serverPort,
-        path: '/api/sse/ledger', method: 'GET', headers,
+        host: '127.0.0.1',
+        port: serverPort,
+        path: '/api/sse/ledger',
+        method: 'GET',
+        headers,
       });
       const stream = new SseStream();
       r.on('response', (res) => {
@@ -328,10 +334,7 @@ describe('GET /api/sse/ledger — Day 14 live stream', () => {
     try {
       expect(res.statusCode).toBe(200);
       // Wait for connection + heartbeat to confirm we are LISTENing.
-      await waitFor(
-        () => stream.events.some((e) => e.comment?.startsWith('hb ') ?? false),
-        500,
-      );
+      await waitFor(() => stream.events.some((e) => e.comment?.startsWith('hb ') ?? false), 500);
 
       // Now insert a ledger row — the AFTER INSERT trigger fires pg_notify.
       const [row] = await migratorSql<{ id: string }[]>`
@@ -372,7 +375,7 @@ describe('GET /api/sse/ledger — Day 14 live stream', () => {
       insertedIds.push(String(row!.id));
     }
     // Reconnect with Last-Event-ID one BEFORE the first inserted id.
-    const sinceId = String(parseInt(insertedIds[0]!, 10) - 1);
+    const sinceId = String(Number.parseInt(insertedIds[0]!, 10) - 1);
 
     const { res, stream, close } = await openSse({
       cookie: `warehouse14.session=${adminSessionToken}`,
@@ -382,7 +385,8 @@ describe('GET /api/sse/ledger — Day 14 live stream', () => {
     try {
       expect(res.statusCode).toBe(200);
       const allReplayed = await waitFor(
-        () => insertedIds.every((id) => stream.events.some((e) => e.id === id && e.event === 'ledger')),
+        () =>
+          insertedIds.every((id) => stream.events.some((e) => e.id === id && e.event === 'ledger')),
         2_000,
       );
       expect(allReplayed).toBe(true);
@@ -400,7 +404,7 @@ describe('GET /api/sse/ledger — Day 14 live stream', () => {
     const baselineRow = await migratorSql<{ count: string }[]>`
       SELECT COUNT(*)::text AS count FROM pg_stat_activity
        WHERE application_name = 'warehouse14_test_sse'`;
-    const baseline = parseInt(baselineRow[0]!.count, 10);
+    const baseline = Number.parseInt(baselineRow[0]!.count, 10);
 
     const { res, close } = await openSse({
       cookie: `warehouse14.session=${adminSessionToken}`,
@@ -412,7 +416,7 @@ describe('GET /api/sse/ledger — Day 14 live stream', () => {
       const r = await migratorSql<{ count: string }[]>`
         SELECT COUNT(*)::text AS count FROM pg_stat_activity
          WHERE application_name = 'warehouse14_test_sse'`;
-      return parseInt(r[0]!.count, 10) > baseline;
+      return Number.parseInt(r[0]!.count, 10) > baseline;
     }, 1_000);
 
     close();
@@ -423,7 +427,7 @@ describe('GET /api/sse/ledger — Day 14 live stream', () => {
       const r = await migratorSql<{ count: string }[]>`
         SELECT COUNT(*)::text AS count FROM pg_stat_activity
          WHERE application_name = 'warehouse14_test_sse'`;
-      return parseInt(r[0]!.count, 10) <= baseline;
+      return Number.parseInt(r[0]!.count, 10) <= baseline;
     }, 5_000);
     expect(cleanedUp).toBe(true);
   });

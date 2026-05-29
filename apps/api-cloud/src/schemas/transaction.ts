@@ -15,7 +15,7 @@
  *     all money fields negated.
  */
 
-import { Type, type Static } from '@sinclair/typebox';
+import { type Static, Type } from '@sinclair/typebox';
 
 import { DecimalString, SignedDecimalString, VatRateString } from './money.js';
 
@@ -23,10 +23,9 @@ import { DecimalString, SignedDecimalString, VatRateString } from './money.js';
 // Enums (mirror the DB)
 // ────────────────────────────────────────────────────────────────────────
 
-export const TransactionDirection = Type.Union(
-  [Type.Literal('VERKAUF'), Type.Literal('ANKAUF')],
-  { description: 'VERKAUF = we sell to customer; ANKAUF = we buy from customer (ADR-0007).' },
-);
+export const TransactionDirection = Type.Union([Type.Literal('VERKAUF'), Type.Literal('ANKAUF')], {
+  description: 'VERKAUF = we sell to customer; ANKAUF = we buy from customer (ADR-0007).',
+});
 
 export const PaymentMethod = Type.Union(
   [
@@ -48,6 +47,8 @@ export const TaxTreatmentCode = Type.Union(
     Type.Literal('INVESTMENT_GOLD_25C'),
     Type.Literal('STANDARD_19'),
     Type.Literal('REDUCED_7'),
+    Type.Literal('MIXED'),
+    Type.Literal('REVERSE_CHARGE_13B'),
   ],
   { description: 'BMF tax treatment code (seeded in tax_treatment_codes — migration 0005).' },
 );
@@ -145,8 +146,7 @@ export const FinalizeBody = Type.Object({
    */
   idempotencyKey: Type.String({
     format: 'uuid',
-    description:
-      'Client-generated UUIDv4. Same key on every retry of the same logical sale.',
+    description: 'Client-generated UUIDv4. Same key on every retry of the same logical sale.',
   }),
 
   /**
@@ -172,7 +172,9 @@ export const FinalizeResponse = Type.Object({
   id: Type.String({ format: 'uuid' }),
   receiptLocator: Type.String(),
   finalizedAt: Type.String({ format: 'date-time' }),
-  ledgerEventId: Type.Integer({ description: 'monotonically-increasing id of the emitted ledger_events row.' }),
+  ledgerEventId: Type.Integer({
+    description: 'monotonically-increasing id of the emitted ledger_events row.',
+  }),
   direction: TransactionDirection,
   totalEur: SignedDecimalString,
   storno: Type.Boolean({ description: 'TRUE if this transaction reversed a prior one.' }),

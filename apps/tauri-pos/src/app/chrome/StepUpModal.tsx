@@ -16,13 +16,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { ApiError, authPin } from '@warehouse14/api-client';
-import {
-  DiamondRule,
-  ParchmentCard,
-  PinPad,
-  RomanIndex,
-  Seal,
-} from '@warehouse14/ui-kit';
+import { DiamondRule, ParchmentCard, PinPad, RomanIndex, Seal } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
 import { useSessionStore } from '../../state/session-store.js';

@@ -14,10 +14,10 @@
  * limits #2) — verification can stop at the most recent anchor.
  */
 
-import type { JobDefinition } from '../lib/job-runner.js';
 import { emit } from '@warehouse14/audit';
 import type { AppDb } from '@warehouse14/db/client';
 import { sql } from 'drizzle-orm';
+import type { JobDefinition } from '../lib/job-runner.js';
 
 export const chainVerifierJob: JobDefinition = {
   name: 'chain_verifier',

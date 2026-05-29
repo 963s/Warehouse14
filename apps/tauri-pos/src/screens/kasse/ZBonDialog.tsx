@@ -19,16 +19,11 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
-import { ApiError, shifts as shiftsApi, type ShiftView } from '@warehouse14/api-client';
-import {
-  Button,
-  DiamondRule,
-  MoneyAmount,
-  ParchmentCard,
-} from '@warehouse14/ui-kit';
+import { ApiError, type ShiftView, shifts as shiftsApi } from '@warehouse14/api-client';
+import { Button, DiamondRule, MoneyAmount, ParchmentCard } from '@warehouse14/ui-kit';
 
-import { useApiClient } from '../../lib/api-context.js';
 import { useCurrentShift } from '../../hooks/useCurrentShift.js';
+import { useApiClient } from '../../lib/api-context.js';
 import { useToastStore } from '../../state/toast-store.js';
 
 import { EuroInput } from './EuroInput.js';
@@ -81,9 +76,8 @@ export function ZBonDialog({ open, shiftId, onClose }: ZBonDialogProps): JSX.Ele
     setSubmitting(true);
     setError(null);
     try {
-      const body = notes.trim().length > 0
-        ? { blindCountEur, notes: notes.trim() }
-        : { blindCountEur };
+      const body =
+        notes.trim().length > 0 ? { blindCountEur, notes: notes.trim() } : { blindCountEur };
       // The api client is wrapped with wrapWithStepUp — if step-up is
       // required the brand StepUpModal opens, the operator enters PIN,
       // and this call resolves once /api/auth/step-up succeeds.
@@ -93,9 +87,10 @@ export function ZBonDialog({ open, shiftId, onClose }: ZBonDialogProps): JSX.Ele
       addToast({
         tone: varianceCents === 0n ? 'success' : 'alert',
         title: 'Z-Bon ausgegeben',
-        body: varianceCents === 0n
-          ? 'Schicht ohne Differenz geschlossen.'
-          : `Varianz: ${result.varianceEur} €`,
+        body:
+          varianceCents === 0n
+            ? 'Schicht ohne Differenz geschlossen.'
+            : `Varianz: ${result.varianceEur} €`,
       });
       await invalidateShiftScope();
     } catch (err) {
@@ -208,8 +203,8 @@ function BlindsturzInput({
           textAlign: 'center',
         }}
       >
-        Zählen Sie die Schublade jetzt körperlich. Geben Sie das Ergebnis ein,
-        bevor das System den erwarteten Betrag enthüllt.
+        Zählen Sie die Schublade jetzt körperlich. Geben Sie das Ergebnis ein, bevor das System den
+        erwarteten Betrag enthüllt.
       </p>
       <DiamondRule label="Gezählter Betrag" />
 
@@ -317,28 +312,13 @@ function ZBonResult({
         }}
       >
         <tbody>
-          <Row
-            label="Gezählt"
-            value={<MoneyAmount valueEur={shift.blindCountEur ?? '0'} />}
-          />
-          <Row
-            label="Erwartet"
-            value={<MoneyAmount valueEur={shift.systemExpectedEur ?? '0'} />}
-          />
-          <Row
-            label="Wechselgeld"
-            value={<MoneyAmount valueEur={shift.openingFloatEur} />}
-          />
+          <Row label="Gezählt" value={<MoneyAmount valueEur={shift.blindCountEur ?? '0'} />} />
+          <Row label="Erwartet" value={<MoneyAmount valueEur={shift.systemExpectedEur ?? '0'} />} />
+          <Row label="Wechselgeld" value={<MoneyAmount valueEur={shift.openingFloatEur} />} />
           <Row
             label="Varianz"
             valueColor={hasVariance ? 'var(--w14-wax-red)' : 'var(--w14-ink-aged)'}
-            value={
-              <MoneyAmount
-                valueEur={shift.varianceEur ?? '0'}
-                signed
-                emphasis
-              />
-            }
+            value={<MoneyAmount valueEur={shift.varianceEur ?? '0'} signed emphasis />}
           />
         </tbody>
       </table>
@@ -353,10 +333,7 @@ function ZBonResult({
           textAlign: 'center',
         }}
       >
-        Geschlossen{' '}
-        {shift.closedAt
-          ? new Date(shift.closedAt).toLocaleString('de-DE')
-          : ''}
+        Geschlossen {shift.closedAt ? new Date(shift.closedAt).toLocaleString('de-DE') : ''}
         {' · ID '}
         {shift.id.slice(0, 8)}…
       </p>

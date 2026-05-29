@@ -14,15 +14,20 @@
  *   9. Ledger event emission on every state change
  */
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres, { type Sql } from 'postgres';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { verifyChain } from '@warehouse14/audit';
 import type { AppDb } from '@warehouse14/db/client';
 import * as schema from '@warehouse14/db/schema';
 
-import { applyMigrations, setAppPasswordForTest, startTestDb, type TestDb } from '../helpers/testDb.js';
+import {
+  type TestDb,
+  applyMigrations,
+  setAppPasswordForTest,
+  startTestDb,
+} from '../helpers/testDb.js';
 
 describe('migration 0012_appointments — Smart Appointment System', () => {
   let testDb: TestDb;
@@ -79,8 +84,12 @@ describe('migration 0012_appointments — Smart Appointment System', () => {
     const status = opts.status ?? 'SCHEDULED';
     const dur = opts.durationMinutes ?? 45;
     // For statuses past SCHEDULED we need to provide the markers.
-    const checkedInAt = status === 'CHECKED_IN' || status === 'IN_PROGRESS' || status === 'COMPLETED' ? new Date() : null;
-    const inProgressStartedAt = status === 'IN_PROGRESS' || status === 'COMPLETED' ? new Date() : null;
+    const checkedInAt =
+      status === 'CHECKED_IN' || status === 'IN_PROGRESS' || status === 'COMPLETED'
+        ? new Date()
+        : null;
+    const inProgressStartedAt =
+      status === 'IN_PROGRESS' || status === 'COMPLETED' ? new Date() : null;
     const completedAt = status === 'COMPLETED' ? new Date() : null;
     const [a] = await migratorSql<{ id: string }[]>`
       INSERT INTO appointments (appointment_type, status, starts_at, duration_minutes,
@@ -127,7 +136,9 @@ describe('migration 0012_appointments — Smart Appointment System', () => {
       await seedWorkingHours(staffId);
 
       // Monday 2026-06-01, search the whole day.
-      const slots = await migratorSql<{ staff_user_id: string; slot_starts_at: Date; slot_ends_at: Date }[]>`
+      const slots = await migratorSql<
+        { staff_user_id: string; slot_starts_at: Date; slot_ends_at: Date }[]
+      >`
         SELECT * FROM available_slots(
           'VIEWING'::appointment_type, 45,
           '2026-06-01 00:00:00+00'::timestamptz,
@@ -164,7 +175,7 @@ describe('migration 0012_appointments — Smart Appointment System', () => {
           '2026-06-01 00:00:00+00'::timestamptz,
           '2026-06-02 00:00:00+00'::timestamptz,
           ${staffId}::uuid)`;
-      expect(parseInt(long[0]!.count)).toBeLessThan(parseInt(short[0]!.count));
+      expect(Number.parseInt(long[0]!.count)).toBeLessThan(Number.parseInt(short[0]!.count));
     });
   });
 
@@ -329,11 +340,13 @@ describe('migration 0012_appointments — Smart Appointment System', () => {
         VALUES (${apptId}, ${productId})`;
 
       // Hold must exist.
-      const holds = await migratorSql<{
-        hold_strength: string;
-        hold_starts_at: Date;
-        hold_expires_at: Date;
-      }[]>`
+      const holds = await migratorSql<
+        {
+          hold_strength: string;
+          hold_starts_at: Date;
+          hold_expires_at: Date;
+        }[]
+      >`
         SELECT hold_strength, hold_starts_at, hold_expires_at
           FROM product_viewing_holds
          WHERE product_id = ${productId} AND appointment_id = ${apptId}`;
@@ -403,7 +416,9 @@ describe('migration 0012_appointments — Smart Appointment System', () => {
       await appSql`UPDATE appointments SET status='IN_PROGRESS'::appointment_status, in_progress_started_at=now() WHERE id=${apptId}`;
       await appSql`UPDATE appointments SET status='COMPLETED'::appointment_status, completed_at=now() WHERE id=${apptId}`;
 
-      const [final] = await migratorSql<{ status: string }[]>`SELECT status FROM appointments WHERE id=${apptId}`;
+      const [final] = await migratorSql<
+        { status: string }[]
+      >`SELECT status FROM appointments WHERE id=${apptId}`;
       expect(final.status).toBe('COMPLETED');
     });
 
@@ -448,15 +463,18 @@ describe('migration 0012_appointments — Smart Appointment System', () => {
   // ────────────────────────────────────────────────────────────────────
 
   describe('app grants', () => {
-    it.each(['appointments', 'appointment_linked_products', 'product_viewing_holds',
-              'staff_working_hours', 'staff_time_off', 'shop_holidays'])(
-      '%s — app cannot DELETE',
-      async tbl => {
-        const [row] = await migratorSql<{ has: boolean }[]>`
+    it.each([
+      'appointments',
+      'appointment_linked_products',
+      'product_viewing_holds',
+      'staff_working_hours',
+      'staff_time_off',
+      'shop_holidays',
+    ])('%s — app cannot DELETE', async (tbl) => {
+      const [row] = await migratorSql<{ has: boolean }[]>`
           SELECT has_table_privilege('warehouse14_app', ${tbl}, 'DELETE') AS has`;
-        expect(row.has).toBe(false);
-      },
-    );
+      expect(row.has).toBe(false);
+    });
 
     it('app cannot UPDATE appointment_linked_products (INSERT only)', async () => {
       const [row] = await migratorSql<{ has: boolean }[]>`
@@ -484,7 +502,7 @@ describe('migration 0012_appointments — Smart Appointment System', () => {
         SELECT event_type FROM ledger_events
          WHERE entity_table = 'appointments' AND entity_id = ${apptId}
          ORDER BY id`;
-      expect(events.map(e => e.event_type)).toEqual([
+      expect(events.map((e) => e.event_type)).toEqual([
         'appointment.scheduled',
         'appointment.confirmed',
         'appointment.checked_in',
@@ -502,7 +520,7 @@ describe('migration 0012_appointments — Smart Appointment System', () => {
   describe('trigger ownership', () => {
     it.each(['create_viewing_hold_on_link', 'on_appointment_state_event'])(
       '%s is SECURITY DEFINER owned by warehouse14_security',
-      async fn => {
+      async (fn) => {
         const [row] = await migratorSql<{ owner: string; sec_def: boolean }[]>`
           SELECT pg_get_userbyid(proowner) AS owner, prosecdef AS sec_def
             FROM pg_proc WHERE proname = ${fn}`;

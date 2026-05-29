@@ -210,6 +210,51 @@ export const zvtClient = {
 };
 
 // ────────────────────────────────────────────────────────────────────────
+// Epic B — product sticker labels (ZPL / ESC-POS)
+// ────────────────────────────────────────────────────────────────────────
+
+export type LabelMode = 'tcp' | 'system';
+export type LabelPrinterType = 'ZPL' | 'ESCPOS';
+
+export interface LabelConfig {
+  mode: LabelMode;
+  ip?: string | undefined;
+  port?: number | undefined;
+  printerName?: string | undefined;
+  printerType: LabelPrinterType;
+}
+
+export interface LabelData {
+  sku: string;
+  productName: string;
+  weightGrams?: string | null;
+  karat?: string | null;
+  storageLocation?: string | null;
+}
+
+export const labelClient = {
+  /** Print a batch of sticker labels. Resolves with the number printed. */
+  print(config: LabelConfig, labels: LabelData[]): Promise<number> {
+    return invoke<number>('print_label', { config, labels });
+  },
+  /** Connection test — prints a single self-test sticker. */
+  test(config: LabelConfig): Promise<number> {
+    return invoke<number>('print_label', {
+      config,
+      labels: [
+        {
+          sku: 'W14-TEST-0000',
+          productName: 'Etikettentest',
+          weightGrams: null,
+          karat: null,
+          storageLocation: 'Gerätemanager',
+        } satisfies LabelData,
+      ],
+    });
+  },
+};
+
+// ────────────────────────────────────────────────────────────────────────
 // Mandate 3-A — ESC/POS thermal receipt
 // ────────────────────────────────────────────────────────────────────────
 
@@ -259,69 +304,10 @@ export const thermalClient = {
 // Mandate 3-B — A4 PDF
 // ────────────────────────────────────────────────────────────────────────
 
-export interface ShopInfo {
-  name: string;
-  addressLines: string[];
-  vatId: string;
-  taxId: string | null;
-  iban: string | null;
-  bic: string | null;
-  email: string | null;
-  phone: string | null;
-}
-
-export interface CustomerInfo {
-  name: string;
-  addressLines: string[];
-  customerNumber: string | null;
-  vatId: string | null;
-}
-
-export interface InvoiceItem {
-  description: string;
-  quantity: number;
-  unitPriceEur: string;
-  lineTotalEur: string;
-  taxTreatmentCode: string;
-  appliedVatRate: string;
-}
-
-export interface TaxBreakdownRow {
-  label: string;
-  baseEur: string;
-  vatEur: string;
-}
-
-export interface TseSignatureBlock {
-  signatureValue: string;
-  signatureCounter: string;
-  transactionNumber: string;
-  startedAt: string;
-  finishedAt: string;
-  qrPayload: string;
-}
-
-export interface PaymentInfo {
-  methodLabel: string;
-  totalEur: string;
-  reference: string | null;
-}
-
-export interface InvoiceData {
-  invoiceNumber: string;
-  invoiceDate: string;
-  dueDate: string | null;
-  shop: ShopInfo;
-  customer: CustomerInfo | null;
-  items: InvoiceItem[];
-  subtotalEur: string;
-  vatTotalEur: string;
-  grandTotalEur: string;
-  taxBreakdown: TaxBreakdownRow[];
-  payment: PaymentInfo;
-  tse: TseSignatureBlock;
-  footerNotes: string[];
-}
+// NOTE: invoice PDF generation moved to the native Typst backend. Build the
+// invoice and get bytes via the `useInvoicePdf` hook (src/hooks/useInvoicePdf.ts),
+// whose `InvoiceData` shape matches the current `generate_invoice_pdf` command.
+// `pdfClient` below keeps only the (PDF-shape-agnostic) print + preview helpers.
 
 export interface PrintA4Params {
   printerName: string;
@@ -333,10 +319,6 @@ export interface PdfPreviewResult {
 }
 
 export const pdfClient = {
-  async generate(data: InvoiceData): Promise<Uint8Array> {
-    const out = await invoke<number[]>('generate_invoice_pdf', { data });
-    return new Uint8Array(out);
-  },
   print(printerName: string, pdfBytes: Uint8Array): Promise<void> {
     return invoke('print_a4', {
       params: { printerName, pdfBytes: Array.from(pdfBytes) },

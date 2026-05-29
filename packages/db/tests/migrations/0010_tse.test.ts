@@ -10,15 +10,20 @@
  *   6. Ledger event emitted on every state change (chain extends)
  */
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres, { type Sql } from 'postgres';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { verifyChain } from '@warehouse14/audit';
 import type { AppDb } from '@warehouse14/db/client';
 import * as schema from '@warehouse14/db/schema';
 
-import { applyMigrations, setAppPasswordForTest, startTestDb, type TestDb } from '../helpers/testDb.js';
+import {
+  type TestDb,
+  applyMigrations,
+  setAppPasswordForTest,
+  startTestDb,
+} from '../helpers/testDb.js';
 
 describe('migration 0010_tse — Fiskaly state machine', () => {
   let testDb: TestDb;
@@ -47,7 +52,7 @@ describe('migration 0010_tse — Fiskaly state machine', () => {
   }
 
   /** Minimal TSE row with just the required NOT NULL Fiskaly identifiers. */
-  async function makeTse(transactionId: string, state: string = 'QUEUED_OFFLINE'): Promise<string> {
+  async function makeTse(transactionId: string, state = 'QUEUED_OFFLINE'): Promise<string> {
     const [row] = await migratorSql<{ id: string }[]>`
       INSERT INTO tse_transactions (transaction_id, state, fiskaly_tss_id, fiskaly_client_id, created_offline)
       VALUES (${transactionId}, ${state}::tse_state, gen_random_uuid(), gen_random_uuid(),
@@ -348,7 +353,11 @@ describe('migration 0010_tse — Fiskaly state machine', () => {
 
   describe('app-role grants', () => {
     it('app has SELECT + INSERT, NOT DELETE', async () => {
-      for (const [priv, expected] of [['SELECT', true], ['INSERT', true], ['DELETE', false]] as const) {
+      for (const [priv, expected] of [
+        ['SELECT', true],
+        ['INSERT', true],
+        ['DELETE', false],
+      ] as const) {
         const [row] = await migratorSql<{ has: boolean }[]>`
           SELECT has_table_privilege('warehouse14_app', 'tse_transactions', ${priv}) AS has`;
         expect(row.has, priv).toBe(expected);
@@ -381,9 +390,9 @@ describe('migration 0010_tse — Fiskaly state machine', () => {
     it('app CANNOT DELETE even when row exists', async () => {
       const trId = await makeTransaction();
       const tseId = await makeTse(trId);
-      await expect(
-        appSql`DELETE FROM tse_transactions WHERE id = ${tseId}`,
-      ).rejects.toThrow(/permission denied/i);
+      await expect(appSql`DELETE FROM tse_transactions WHERE id = ${tseId}`).rejects.toThrow(
+        /permission denied/i,
+      );
     });
   });
 
@@ -416,7 +425,7 @@ describe('migration 0010_tse — Fiskaly state machine', () => {
         SELECT event_type FROM ledger_events
          WHERE entity_table = 'tse_transactions' AND entity_id = ${tseId}
          ORDER BY id`;
-      expect(events.map(e => e.event_type)).toEqual([
+      expect(events.map((e) => e.event_type)).toEqual([
         'tse.queued_offline',
         'tse.active',
         'tse.finished',

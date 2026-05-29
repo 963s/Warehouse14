@@ -5,8 +5,19 @@
  * Landed in migration 0017.
  */
 
-import { bigint, bigserial, check, index, integer, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import {
+  bigint,
+  bigserial,
+  check,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from 'drizzle-orm/pg-core';
 
 import { users } from '../auth/users.js';
 import { workerJobRuns } from './workerJobRuns.js';
@@ -32,10 +43,7 @@ export const workerJobDlq = pgTable(
     ackedIdx: index('worker_job_dlq_acked_idx')
       .on(table.ackedAt.desc())
       .where(sql`${table.ackedAt} IS NOT NULL`),
-    failureCountPositive: check(
-      'worker_job_dlq_failure_count_pos',
-      sql`${table.failureCount} > 0`,
-    ),
+    failureCountPositive: check('worker_job_dlq_failure_count_pos', sql`${table.failureCount} > 0`),
     ackPair: check(
       'worker_job_dlq_ack_pair',
       sql`(${table.ackedAt} IS NULL) = (${table.ackedByUserId} IS NULL)`,

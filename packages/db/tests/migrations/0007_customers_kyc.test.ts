@@ -10,10 +10,15 @@
  *   • Helper function presence + EXECUTE grants
  */
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from 'postgres';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { applyMigrations, setAppPasswordForTest, startTestDb, type TestDb } from '../helpers/testDb.js';
+import {
+  type TestDb,
+  applyMigrations,
+  setAppPasswordForTest,
+  startTestDb,
+} from '../helpers/testDb.js';
 
 const PII_KEY = 'test-pii-key-do-not-use-in-production-32b';
 
@@ -22,14 +27,17 @@ describe('migration 0007_customers_kyc', () => {
   let migratorSql: Sql;
 
   /** Insert a minimum-viable customer with the given email/phone (encrypted + blind-indexed). */
-  async function makeCustomer(opts: {
-    name?: string;
-    email?: string | null;
-    phone?: string | null;
-  } = {}): Promise<string> {
+  async function makeCustomer(
+    opts: {
+      name?: string;
+      email?: string | null;
+      phone?: string | null;
+    } = {},
+  ): Promise<string> {
     const name = opts.name ?? 'Test Person';
     const email = opts.email === undefined ? `c-${crypto.randomUUID()}@x.test` : opts.email;
-    const phone = opts.phone === undefined ? `+49170${Math.floor(Math.random() * 1e7)}` : opts.phone;
+    const phone =
+      opts.phone === undefined ? `+49170${Math.floor(Math.random() * 1e7)}` : opts.phone;
 
     const [row] = await migratorSql<{ id: string }[]>`
       WITH set_key AS (
@@ -69,7 +77,7 @@ describe('migration 0007_customers_kyc', () => {
   // ────────────────────────────────────────────────────────────────────
 
   describe('structure', () => {
-    it.each(['customers', 'kyc_documents'])('table %s exists', async name => {
+    it.each(['customers', 'kyc_documents'])('table %s exists', async (name) => {
       const [row] = await migratorSql<{ exists: boolean }[]>`
         SELECT EXISTS (
           SELECT 1 FROM information_schema.tables
@@ -78,13 +86,16 @@ describe('migration 0007_customers_kyc', () => {
       expect(row.exists).toBe(true);
     });
 
-    it.each(['encrypt_pii', 'decrypt_pii', 'blind_index'])('helper function %s exists', async fn => {
-      const [row] = await migratorSql<{ exists: boolean }[]>`
+    it.each(['encrypt_pii', 'decrypt_pii', 'blind_index'])(
+      'helper function %s exists',
+      async (fn) => {
+        const [row] = await migratorSql<{ exists: boolean }[]>`
         SELECT EXISTS (
           SELECT 1 FROM pg_proc WHERE proname = ${fn}
         ) AS exists`;
-      expect(row.exists).toBe(true);
-    });
+        expect(row.exists).toBe(true);
+      },
+    );
 
     it('customer_number is auto-generated with CUST-YYYY-NNNNNN format', async () => {
       const id = await makeCustomer({ email: null, phone: null });
@@ -204,17 +215,20 @@ describe('migration 0007_customers_kyc', () => {
   // ────────────────────────────────────────────────────────────────────
 
   describe('app-role grants', () => {
-    it.each(['customers', 'kyc_documents'])('%s — app has SELECT + INSERT, NOT DELETE', async tbl => {
-      const [s] = await migratorSql<{ has: boolean }[]>`
+    it.each(['customers', 'kyc_documents'])(
+      '%s — app has SELECT + INSERT, NOT DELETE',
+      async (tbl) => {
+        const [s] = await migratorSql<{ has: boolean }[]>`
         SELECT has_table_privilege('warehouse14_app', ${tbl}, 'SELECT') AS has`;
-      const [i] = await migratorSql<{ has: boolean }[]>`
+        const [i] = await migratorSql<{ has: boolean }[]>`
         SELECT has_table_privilege('warehouse14_app', ${tbl}, 'INSERT') AS has`;
-      const [d] = await migratorSql<{ has: boolean }[]>`
+        const [d] = await migratorSql<{ has: boolean }[]>`
         SELECT has_table_privilege('warehouse14_app', ${tbl}, 'DELETE') AS has`;
-      expect(s.has).toBe(true);
-      expect(i.has).toBe(true);
-      expect(d.has).toBe(false);
-    });
+        expect(s.has).toBe(true);
+        expect(i.has).toBe(true);
+        expect(d.has).toBe(false);
+      },
+    );
 
     it.each([
       // Permitted UPDATE columns
@@ -231,9 +245,9 @@ describe('migration 0007_customers_kyc', () => {
       ['id', false],
       ['customer_number', false],
       ['shop_id', false],
-      ['date_of_birth_encrypted', false],   // DOB immutable after first capture
-      ['cumulative_spend_eur', false],      // trigger-only
-      ['cumulative_ankauf_eur', false],     // trigger-only
+      ['date_of_birth_encrypted', false], // DOB immutable after first capture
+      ['cumulative_spend_eur', false], // trigger-only
+      ['cumulative_ankauf_eur', false], // trigger-only
       ['created_at', false],
     ])('customers.%s app UPDATE → %s', async (column, expected) => {
       const [row] = await migratorSql<{ has: boolean }[]>`
@@ -266,7 +280,7 @@ describe('migration 0007_customers_kyc', () => {
 
     it.each(['encrypt_pii(text)', 'decrypt_pii(bytea)', 'blind_index(text)'])(
       'app has EXECUTE on %s',
-      async signature => {
+      async (signature) => {
         const [row] = await migratorSql<{ has: boolean }[]>`
           SELECT has_function_privilege('warehouse14_app', ${signature}, 'EXECUTE') AS has`;
         expect(row.has).toBe(true);
@@ -277,7 +291,9 @@ describe('migration 0007_customers_kyc', () => {
       const id = await makeCustomer();
       const appSql = testDb.appSql();
       try {
-        await expect(appSql`DELETE FROM customers WHERE id = ${id}`).rejects.toThrow(/permission denied/i);
+        await expect(appSql`DELETE FROM customers WHERE id = ${id}`).rejects.toThrow(
+          /permission denied/i,
+        );
       } finally {
         await appSql.end({ timeout: 5 });
       }
@@ -300,14 +316,16 @@ describe('migration 0007_customers_kyc', () => {
   // GDPR semantics — partial unique blind index allows post-purge re-signup
   // ────────────────────────────────────────────────────────────────────
 
-  describe('GDPR — soft-deleted customer doesn\'t block re-signup', () => {
+  describe("GDPR — soft-deleted customer doesn't block re-signup", () => {
     it('two ACTIVE customers with the same email_blind_index collide', async () => {
       const email = `dup-${crypto.randomUUID()}@x.test`;
       await makeCustomer({ email });
-      await expect(makeCustomer({ email })).rejects.toThrow(/customers_email_blind_index_active_uq/);
+      await expect(makeCustomer({ email })).rejects.toThrow(
+        /customers_email_blind_index_active_uq/,
+      );
     });
 
-    it('a soft-deleted customer\'s blind index does not block a new active customer', async () => {
+    it("a soft-deleted customer's blind index does not block a new active customer", async () => {
       const email = `resignup-${crypto.randomUUID()}@x.test`;
       const firstId = await makeCustomer({ email });
       await migratorSql`UPDATE customers SET soft_deleted_at = now() WHERE id = ${firstId}`;
@@ -356,7 +374,7 @@ describe('migration 0007_customers_kyc', () => {
         INSERT INTO users (email, name, role)
         VALUES (${`v-${crypto.randomUUID()}@x.test`}, 'Verifier', 'ADMIN'::user_role)
         RETURNING id
-      `.then(rows => rows[0]!.id);
+      `.then((rows) => rows[0]!.id);
 
       await expect(
         migratorSql`
@@ -382,7 +400,7 @@ describe('migration 0007_customers_kyc', () => {
         INSERT INTO users (email, name, role)
         VALUES (${`v2-${crypto.randomUUID()}@x.test`}, 'V', 'CASHIER'::user_role)
         RETURNING id
-      `.then(rows => rows[0]!.id);
+      `.then((rows) => rows[0]!.id);
 
       await expect(
         migratorSql`
@@ -422,7 +440,7 @@ describe('migration 0007_customers_kyc', () => {
         INSERT INTO users (email, name, role)
         VALUES (${`cashier-${crypto.randomUUID()}@x.test`}, 'Cashier', 'CASHIER'::user_role)
         RETURNING id
-      `.then(rows => rows[0]!.id);
+      `.then((rows) => rows[0]!.id);
 
       // Capture KYC document under the same encryption key.
       await migratorSql`
@@ -443,12 +461,14 @@ describe('migration 0007_customers_kyc', () => {
       `;
 
       // Now retrieve: find the customer by phone (no decryption), then decrypt the document number.
-      const [row] = await migratorSql<{
-        customer_number: string;
-        name: string;
-        doc_number: string;
-        confidence: string;
-      }[]>`
+      const [row] = await migratorSql<
+        {
+          customer_number: string;
+          name: string;
+          doc_number: string;
+          confidence: string;
+        }[]
+      >`
         WITH s AS (SELECT set_config('warehouse14.pii_key', ${PII_KEY}, true))
         SELECT c.customer_number,
                decrypt_pii(c.full_name_encrypted)        AS name,

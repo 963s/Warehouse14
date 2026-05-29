@@ -14,7 +14,7 @@
  */
 
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
 
 interface BewertungState {
   /** Server-side appraisal id; null = no active appraisal. */

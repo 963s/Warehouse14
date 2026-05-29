@@ -10,15 +10,10 @@
 import { useCallback, useState } from 'react';
 
 import { ApiError, shifts as shiftsApi } from '@warehouse14/api-client';
-import {
-  Button,
-  DiamondRule,
-  ParchmentCard,
-  Seal,
-} from '@warehouse14/ui-kit';
+import { Button, DiamondRule, ParchmentCard, Seal } from '@warehouse14/ui-kit';
 
-import { useApiClient } from '../../lib/api-context.js';
 import { useCurrentShift } from '../../hooks/useCurrentShift.js';
+import { useApiClient } from '../../lib/api-context.js';
 import { useToastStore } from '../../state/toast-store.js';
 
 import { EuroInput } from './EuroInput.js';
@@ -40,9 +35,8 @@ export function ShiftOpenPanel(): JSX.Element {
     setSubmitting(true);
     setError(null);
     try {
-      const body = notes.trim().length > 0
-        ? { openingFloatEur, notes: notes.trim() }
-        : { openingFloatEur };
+      const body =
+        notes.trim().length > 0 ? { openingFloatEur, notes: notes.trim() } : { openingFloatEur };
       const opened = await shiftsApi.open(api, body);
       addToast({
         tone: 'success',
@@ -76,10 +70,7 @@ export function ShiftOpenPanel(): JSX.Element {
         padding: 32,
       }}
     >
-      <ParchmentCard
-        padding="lg"
-        style={{ width: 'min(520px, 100%)', textAlign: 'center' }}
-      >
+      <ParchmentCard padding="lg" style={{ width: 'min(520px, 100%)', textAlign: 'center' }}>
         <Seal size="lg" tone="faded" label="4" />
         <h1
           style={{

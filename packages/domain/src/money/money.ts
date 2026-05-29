@@ -325,9 +325,7 @@ export class Money {
 
   #assertSameCurrency(other: Money): void {
     if (!this.#sameCurrency(other)) {
-      throw new MoneyError(
-        `Currency mismatch: ${this.#currency} vs ${other.#currency}`,
-      );
+      throw new MoneyError(`Currency mismatch: ${this.#currency} vs ${other.#currency}`);
     }
   }
 }

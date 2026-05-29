@@ -100,6 +100,28 @@ export {
   type DashboardSummary,
 } from './domains/dashboard.js';
 export {
+  appointments,
+  type AppointmentType,
+  type AppointmentStatus,
+  type AvailableSlot,
+  type AvailableSlotsQuery,
+  type AppointmentListItem,
+  type AppointmentListQuery,
+  type BookAppointmentRequest,
+  type AppointmentPatchStatus,
+  type RescheduleRequest,
+} from './domains/appointments.js';
+export {
+  intakeDrafts,
+  type IntakeDraftSummary,
+  type IntakeDraftDetail,
+  type IntakeDraftPatch,
+  type IntakePublishRequest,
+  type IntakePublishResponse,
+  type PublishTargets,
+  type IntakeLabelData,
+} from './domains/intake.js';
+export {
   isAlertEvent,
   parseLedgerEvent,
   shouldInvalidateDashboard,

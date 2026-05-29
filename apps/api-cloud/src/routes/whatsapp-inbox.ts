@@ -44,6 +44,7 @@ import type { Env } from '../config/env.js';
 const WHATSAPP_OUTBOUND_STATUSES = ['queued', 'sent', 'delivered', 'read', 'failed'] as const;
 type WhatsAppOutboundStatus = (typeof WHATSAPP_OUTBOUND_STATUSES)[number];
 import { requireAuth, requireRole } from '../lib/auth-policy.js';
+import { MetaApiError, type MetaSendArgs, sendToMeta } from '../lib/meta-whatsapp.js';
 import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 
 // ════════════════════════════════════════════════════════════════════════
@@ -165,8 +166,6 @@ export interface WhatsAppInboxOpts {
   env: Env;
 }
 
-const WHATSAPP_SEND_TIMEOUT_MS = 10_000;
-
 const whatsappInboxRoutes: FastifyPluginAsync<WhatsAppInboxOpts> = async (app, opts) => {
   // ──────────────────────────────────────────────────────────────────────
   // GET /api/whatsapp/threads
@@ -202,7 +201,7 @@ const whatsappInboxRoutes: FastifyPluginAsync<WhatsAppInboxOpts> = async (app, o
           SELECT
             from_phone AS phone,
             received_at AS ts,
-            LEFT(COALESCE(raw_payload->'text'->>'body', '[' || message_type || ']'), 160) AS preview,
+            LEFT(COALESCE(decrypt_pii(body_encrypted), raw_payload->'text'->>'body', '[' || message_type || ']'), 160) AS preview,
             'inbound'::text AS direction,
             linked_customer_id,
             (handled_at IS NULL)::int AS is_unread
@@ -211,7 +210,7 @@ const whatsappInboxRoutes: FastifyPluginAsync<WhatsAppInboxOpts> = async (app, o
           SELECT
             to_phone AS phone,
             sent_at AS ts,
-            LEFT(body, 160) AS preview,
+            LEFT(COALESCE(decrypt_pii(body_encrypted), body), 160) AS preview,
             'outbound'::text AS direction,
             NULL::uuid AS linked_customer_id,
             0 AS is_unread
@@ -305,7 +304,7 @@ const whatsappInboxRoutes: FastifyPluginAsync<WhatsAppInboxOpts> = async (app, o
         SELECT
           id::text AS id,
           'inbound'::text AS direction,
-          COALESCE(raw_payload->'text'->>'body', '[' || message_type || ']') AS body,
+          COALESCE(decrypt_pii(body_encrypted), raw_payload->'text'->>'body', '[' || message_type || ']') AS body,
           received_at::text AS ts,
           NULL::text AS status,
           handled_at::text AS handled_at,
@@ -316,7 +315,7 @@ const whatsappInboxRoutes: FastifyPluginAsync<WhatsAppInboxOpts> = async (app, o
         SELECT
           id::text AS id,
           'outbound'::text AS direction,
-          body,
+          COALESCE(decrypt_pii(body_encrypted), body) AS body,
           sent_at::text AS ts,
           status::text AS status,
           NULL::text AS handled_at,
@@ -449,20 +448,26 @@ const whatsappInboxRoutes: FastifyPluginAsync<WhatsAppInboxOpts> = async (app, o
       const providerErrorJson: string | null =
         status === 'failed' ? JSON.stringify(providerError) : null;
 
-      const insertedRows = (await app.db.execute<{
-        id: string;
-        to_phone: string;
-        body: string;
-        status: WhatsAppOutboundStatus;
-        provider_message_id: string | null;
-        sent_at: string;
-      }>(sql`
+      // Wrapped in withPii so encrypt_pii() can stamp body_encrypted at rest
+      // (Epic E). The plaintext `body` column survives until a post-backfill
+      // migration drops it; reads prefer decrypt_pii(body_encrypted).
+      const insertedRows = await app.withPii(async (txAny) => {
+        const tx = txAny as unknown as typeof app.db;
+        return (await tx.execute<{
+          id: string;
+          to_phone: string;
+          body: string;
+          status: WhatsAppOutboundStatus;
+          provider_message_id: string | null;
+          sent_at: string;
+        }>(sql`
       INSERT INTO whatsapp_outbound_messages
-        (to_phone, body, template_name, template_params, status,
+        (to_phone, body, body_encrypted, template_name, template_params, status,
          provider_message_id, provider_error, sent_by_user_id)
       VALUES
         (${body.toPhone},
          ${body.body},
+         encrypt_pii(${body.body}),
          ${body.templateName ?? null},
          ${templateParamsJson}::jsonb,
          ${status},
@@ -472,16 +477,30 @@ const whatsappInboxRoutes: FastifyPluginAsync<WhatsAppInboxOpts> = async (app, o
       RETURNING id::text AS id, to_phone, body, status::text AS status,
                 provider_message_id, sent_at::text AS sent_at
     `)) as unknown as Array<{
-        id: string;
-        to_phone: string;
-        body: string;
-        status: WhatsAppOutboundStatus;
-        provider_message_id: string | null;
-        sent_at: string;
-      }>;
+          id: string;
+          to_phone: string;
+          body: string;
+          status: WhatsAppOutboundStatus;
+          provider_message_id: string | null;
+          sent_at: string;
+        }>;
+      });
 
       const row = insertedRows[0];
       if (!row) throw new Error('whatsapp_outbound_messages INSERT returned no row');
+
+      // Human takeover (Epic E): a manual cashier reply silences the bot for
+      // 12h. Best-effort — a cooldown write failure must not fail the send.
+      try {
+        await app.db.execute(sql`
+          INSERT INTO whatsapp_conversations (customer_phone_e164, ai_active, cooldown_until)
+          VALUES (${body.toPhone}, FALSE, now() + interval '12 hours')
+          ON CONFLICT (customer_phone_e164)
+          DO UPDATE SET ai_active = FALSE, cooldown_until = now() + interval '12 hours'
+        `);
+      } catch (err) {
+        req.log.warn({ err, toPhone: body.toPhone }, 'whatsapp send: cooldown upsert failed');
+      }
 
       if (status === 'failed') {
         throw new WhatsAppProviderError('WhatsApp-Anbieter hat abgelehnt.', providerErrorCode);
@@ -605,118 +624,5 @@ const whatsappInboxRoutes: FastifyPluginAsync<WhatsAppInboxOpts> = async (app, o
     },
   );
 };
-
-// ════════════════════════════════════════════════════════════════════════
-// Meta Cloud API helper
-// ════════════════════════════════════════════════════════════════════════
-
-class MetaApiError extends Error {
-  public readonly providerCode: string | null;
-  public readonly providerEnvelope: unknown;
-  public constructor(message: string, providerCode: string | null, envelope: unknown) {
-    super(message);
-    this.providerCode = providerCode;
-    this.providerEnvelope = envelope;
-  }
-}
-
-interface MetaSendArgs {
-  phoneNumberId: string;
-  accessToken: string;
-  toPhone: string;
-  messageBody: string;
-  templateName?: string;
-  templateParams?: Record<string, string>;
-}
-
-interface MetaSendResult {
-  messageId: string;
-}
-
-async function sendToMeta(args: MetaSendArgs): Promise<MetaSendResult> {
-  const url = `https://graph.facebook.com/v20.0/${encodeURIComponent(args.phoneNumberId)}/messages`;
-
-  const payload: Record<string, unknown> =
-    args.templateName !== undefined
-      ? {
-          messaging_product: 'whatsapp',
-          to: args.toPhone,
-          type: 'template',
-          template: {
-            name: args.templateName,
-            language: { code: 'de' },
-            ...(args.templateParams
-              ? {
-                  components: [
-                    {
-                      type: 'body',
-                      parameters: Object.entries(args.templateParams).map(([, value]) => ({
-                        type: 'text',
-                        text: value,
-                      })),
-                    },
-                  ],
-                }
-              : {}),
-          },
-        }
-      : {
-          messaging_product: 'whatsapp',
-          to: args.toPhone,
-          type: 'text',
-          text: { body: args.messageBody },
-        };
-
-  const controller = new AbortController();
-  const timer = setTimeout(
-    () => controller.abort(new Error('whatsapp send timeout')),
-    WHATSAPP_SEND_TIMEOUT_MS,
-  );
-
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${args.accessToken}`,
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-  } catch (err) {
-    throw new MetaApiError(err instanceof Error ? err.message : 'meta fetch failed', null, {
-      message: err instanceof Error ? err.message : String(err),
-    });
-  } finally {
-    clearTimeout(timer);
-  }
-
-  const text = await res.text();
-  let parsed: unknown;
-  try {
-    parsed = text.length === 0 ? {} : JSON.parse(text);
-  } catch {
-    parsed = { raw: text.slice(0, 500) };
-  }
-
-  if (!res.ok) {
-    const envelope = parsed as { error?: { code?: number; message?: string } };
-    const providerCode = envelope?.error?.code ? String(envelope.error.code) : String(res.status);
-    throw new MetaApiError(
-      envelope?.error?.message ?? `meta http ${res.status}`,
-      providerCode,
-      parsed,
-    );
-  }
-
-  const okEnvelope = parsed as { messages?: Array<{ id?: string }> };
-  const id = okEnvelope.messages?.[0]?.id;
-  if (!id) {
-    throw new MetaApiError('meta returned no message id', null, parsed);
-  }
-  return { messageId: id };
-}
 
 export default whatsappInboxRoutes;

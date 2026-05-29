@@ -10,8 +10,8 @@
  * no-op transition (from_state == to_state) is refused by CHECK.
  */
 
-import { bigserial, check, index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import { bigserial, check, index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
 import { users } from '../auth/users.js';
 import { photoWorkflowState } from './enums.js';

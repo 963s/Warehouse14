@@ -2,7 +2,5 @@
   "$schema": "https://json.schemastore.org/tsconfig",
   "display": "warehouse14 root reference",
   "files": [],
-  "references": [
-    { "path": "./packages/domain" }
-  ]
+  "references": [{ "path": "./packages/domain" }]
 }

@@ -13,11 +13,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 
-import {
-  DiamondRule,
-  MoneyAmount,
-  ParchmentCard,
-} from '@warehouse14/ui-kit';
+import { DiamondRule, MoneyAmount, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
 
@@ -78,7 +74,11 @@ export function CustomerAnkaufHistory({ customerId }: { customerId: string }): J
             >
               <span
                 className="w14-tabular"
-                style={{ fontFamily: 'var(--w14-font-mono)', fontSize: '0.78rem', color: 'var(--w14-ink-faded)' }}
+                style={{
+                  fontFamily: 'var(--w14-font-mono)',
+                  fontSize: '0.78rem',
+                  color: 'var(--w14-ink-faded)',
+                }}
               >
                 {row.sku}
               </span>
@@ -178,7 +178,14 @@ export function CustomerSalesHistory({ customerId }: { customerId: string }): JS
 
 function Skeleton(): JSX.Element {
   return (
-    <p style={{ margin: '6px 0 0', color: 'var(--w14-ink-faded)', fontStyle: 'italic', fontSize: '0.85rem' }}>
+    <p
+      style={{
+        margin: '6px 0 0',
+        color: 'var(--w14-ink-faded)',
+        fontStyle: 'italic',
+        fontSize: '0.85rem',
+      }}
+    >
       Lädt…
     </p>
   );

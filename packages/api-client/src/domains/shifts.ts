@@ -30,10 +30,7 @@ export interface OpenShiftRequest {
   notes?: string;
 }
 
-export type CashMovementDirection =
-  | 'INJECTION'
-  | 'BANK_DROP'
-  | 'SAFE_TRANSIT';
+export type CashMovementDirection = 'INJECTION' | 'BANK_DROP' | 'SAFE_TRANSIT';
 
 export interface CashMovementRequest {
   direction: CashMovementDirection;

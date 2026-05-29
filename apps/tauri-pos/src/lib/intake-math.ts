@@ -32,7 +32,7 @@ export function fromCents(cents: bigint): string {
 
 function roundHalfEven(num: bigint, den: bigint): bigint {
   if (den === 0n) throw new Error('roundHalfEven: division by zero');
-  const negative = (num < 0n) !== (den < 0n);
+  const negative = num < 0n !== den < 0n;
   const absNum = num < 0n ? -num : num;
   const absDen = den < 0n ? -den : den;
 
@@ -56,9 +56,7 @@ function roundHalfEven(num: bigint, den: bigint): bigint {
  * Sum line negotiated prices into a header total.
  * Returns bigint cents — caller converts via `fromCents` for display.
  */
-export function sumNegotiatedCents(
-  lines: readonly { negotiatedPriceEur: string }[],
-): bigint {
+export function sumNegotiatedCents(lines: readonly { negotiatedPriceEur: string }[]): bigint {
   let total = 0n;
   for (const l of lines) {
     total += toCents(l.negotiatedPriceEur);

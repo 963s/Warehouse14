@@ -6,8 +6,20 @@
  * a shopper row.
  */
 
-import { boolean, char, check, customType, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import {
+  boolean,
+  char,
+  check,
+  customType,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 
 import { customers } from '../customers/customers.js';
 
@@ -22,7 +34,10 @@ export const shoppers = pgTable(
   'shoppers',
   {
     id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-    customerId: uuid('customer_id').notNull().unique().references(() => customers.id),
+    customerId: uuid('customer_id')
+      .notNull()
+      .unique()
+      .references(() => customers.id),
 
     emailEncrypted: bytea('email_encrypted').notNull(),
     emailBlindIndex: bytea('email_blind_index').notNull(),

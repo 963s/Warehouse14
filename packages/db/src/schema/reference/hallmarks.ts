@@ -15,8 +15,17 @@
  * READ-ONLY for the app role (Basel Day-3 directive).
  */
 
-import { boolean, check, index, numeric, pgTable, smallint, text, unique } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import {
+  boolean,
+  check,
+  index,
+  numeric,
+  pgTable,
+  smallint,
+  text,
+  unique,
+} from 'drizzle-orm/pg-core';
 
 import { primaryKey, timestamps } from '../_shared/columns.js';
 
@@ -24,8 +33,8 @@ export const hallmarks = pgTable(
   'hallmarks',
   {
     id: primaryKey(),
-    stamp: text('stamp').notNull(),                                       // '333', '585', '925', etc.
-    metal: text('metal').notNull(),                                       // 'gold' | 'silver' | 'platinum' | 'palladium'
+    stamp: text('stamp').notNull(), // '333', '585', '925', etc.
+    metal: text('metal').notNull(), // 'gold' | 'silver' | 'platinum' | 'palladium'
     finenessPer1000: smallint('fineness_per_1000').notNull(),
     finenessDecimal: numeric('fineness_decimal', { precision: 5, scale: 4 }).notNull(),
     descriptionDe: text('description_de').notNull(),
@@ -33,7 +42,7 @@ export const hallmarks = pgTable(
     active: boolean('active').notNull().default(true),
     ...timestamps(),
   },
-  table => ({
+  (table) => ({
     metalStampUq: unique('hallmarks_metal_stamp_uq').on(table.metal, table.stamp),
     metalDomain: check(
       'hallmarks_metal_check',

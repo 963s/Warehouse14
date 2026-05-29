@@ -12,7 +12,7 @@
  * only owns the state transition + the event-log row.
  */
 
-import { Type, type Static } from '@sinclair/typebox';
+import { type Static, Type } from '@sinclair/typebox';
 
 const EBAY_STATE = Type.Union([
   Type.Literal('ENTWURF'),
@@ -100,16 +100,16 @@ export type TEbayHistoryQuery = Static<typeof EbayHistoryQuery>;
 
 export const ALLOWED_EBAY_TRANSITIONS: Readonly<Record<string, readonly string[]>> = {
   // From NULL (never listed) — start as ENTWURF.
-  __NULL__:       ['ENTWURF'],
-  ENTWURF:        ['GEPRUEFT'],
-  GEPRUEFT:       ['ONLINE', 'ENTWURF'],                     // step-back if review fails
-  ONLINE:         ['VERKAUFT', 'ENTWURF'],                   // de-list back to draft
-  VERKAUFT:       ['BEZAHLT', 'REKLAMIERT'],                 // happy path or dispute
-  BEZAHLT:        ['VERPACKT', 'REKLAMIERT'],
-  VERPACKT:       ['VERSENDET', 'REKLAMIERT'],
-  VERSENDET:      ['REKLAMIERT'],                            // terminal until claim
-  REKLAMIERT:     ['RETOURNIERT', 'VERSENDET'],              // resolve or re-ship
-  RETOURNIERT:    [],                                        // terminal
+  __NULL__: ['ENTWURF'],
+  ENTWURF: ['GEPRUEFT'],
+  GEPRUEFT: ['ONLINE', 'ENTWURF'], // step-back if review fails
+  ONLINE: ['VERKAUFT', 'ENTWURF'], // de-list back to draft
+  VERKAUFT: ['BEZAHLT', 'REKLAMIERT'], // happy path or dispute
+  BEZAHLT: ['VERPACKT', 'REKLAMIERT'],
+  VERPACKT: ['VERSENDET', 'REKLAMIERT'],
+  VERSENDET: ['REKLAMIERT'], // terminal until claim
+  REKLAMIERT: ['RETOURNIERT', 'VERSENDET'], // resolve or re-ship
+  RETOURNIERT: [], // terminal
 };
 
 /**
@@ -117,5 +117,8 @@ export const ALLOWED_EBAY_TRANSITIONS: Readonly<Record<string, readonly string[]
  * Used by the route to predict what `inventorySideEffect` will be.
  */
 export const EBAY_SOLD_CLUSTER: readonly string[] = [
-  'VERKAUFT', 'BEZAHLT', 'VERPACKT', 'VERSENDET',
+  'VERKAUFT',
+  'BEZAHLT',
+  'VERPACKT',
+  'VERSENDET',
 ];

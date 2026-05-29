@@ -72,7 +72,7 @@ export function LedgerEntry({
   const freshStyle: CSSProperties = fresh
     ? {
         animation: 'w14-fresh-fade 480ms var(--w14-ease-curator)',
-        backgroundColor: 'rgba(168, 133, 62, 0.06)', /* gold-soft @ 6% */
+        backgroundColor: 'rgba(168, 133, 62, 0.06)' /* gold-soft @ 6% */,
       }
     : {};
 

@@ -17,36 +17,36 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
-import {
-  Button,
-  DiamondRule,
-  ParchmentCard,
-  Seal,
-} from '@warehouse14/ui-kit';
+import { Button, DiamondRule, ParchmentCard, Seal } from '@warehouse14/ui-kit';
 
+import { HardwareStatusBadge } from '../../components/hardware/HardwareStatusBadge.js';
 import {
+  type LabelConfig,
+  type SystemPrinter,
+  type ThermalReceiptData,
   describeHardwareError,
   isHardwareError,
   isRunningInTauri,
+  labelClient,
   systemClient,
   thermalClient,
   tseClient,
   zvtClient,
-  type SystemPrinter,
-  type ThermalReceiptData,
 } from '../../lib/hardware-client.js';
 import {
-  useHardwareStore,
+  type LabelPrinterConfig,
   type ThermalConfig,
-  type ZvtTerminalConfig,
   type TseFiskalyConfig,
+  type ZvtTerminalConfig,
+  useHardwareStore,
 } from '../../state/hardware-store.js';
 import { useToastStore } from '../../state/toast-store.js';
-import { HardwareStatusBadge } from '../../components/hardware/HardwareStatusBadge.js';
 
 export function GeraeteManager(): JSX.Element {
   const hydrate = useHardwareStore((s) => s.hydrateFromLocal);
-  useEffect(() => { hydrate(); }, [hydrate]);
+  useEffect(() => {
+    hydrate();
+  }, [hydrate]);
 
   return (
     <section
@@ -61,18 +61,38 @@ export function GeraeteManager(): JSX.Element {
         overflow: 'auto',
       }}
     >
-      <header style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 14 }}>
+      <header
+        style={{
+          display: 'flex',
+          alignItems: 'baseline',
+          justifyContent: 'space-between',
+          gap: 14,
+        }}
+      >
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <Seal size="sm" tone="ink" label="◊" />
-          <h1 style={{ margin: 0, fontFamily: 'var(--w14-font-display)', fontWeight: 500, fontSize: '1.5rem' }}>
+          <h1
+            style={{
+              margin: 0,
+              fontFamily: 'var(--w14-font-display)',
+              fontWeight: 500,
+              fontSize: '1.5rem',
+            }}
+          >
             Hardware & Kasse
           </h1>
-          <span className="w14-smallcaps" style={{ color: 'var(--w14-ink-faded)', letterSpacing: '0.08em', fontSize: '0.78rem' }}>
+          <span
+            className="w14-smallcaps"
+            style={{ color: 'var(--w14-ink-faded)', letterSpacing: '0.08em', fontSize: '0.78rem' }}
+          >
             Drucker · Karten-Terminal · TSE
           </span>
         </div>
         {!isRunningInTauri() && (
-          <span className="w14-smallcaps" style={{ color: 'var(--w14-wax-red)', fontSize: '0.78rem' }}>
+          <span
+            className="w14-smallcaps"
+            style={{ color: 'var(--w14-wax-red)', fontSize: '0.78rem' }}
+          >
             Browser-Modus — Aktionen sind deaktiviert
           </span>
         )}
@@ -81,6 +101,7 @@ export function GeraeteManager(): JSX.Element {
 
       <ThermalSection />
       <A4Section />
+      <LabelSection />
       <ZvtSection />
       <TseSection />
     </section>
@@ -100,11 +121,17 @@ function ThermalSection(): JSX.Element {
   const [portDraft, setPortDraft] = useState(String(cfg.port));
 
   // Re-hydrate the drafts if the store changes externally.
-  useEffect(() => { setIpDraft(cfg.ip); setPortDraft(String(cfg.port)); }, [cfg.ip, cfg.port]);
+  useEffect(() => {
+    setIpDraft(cfg.ip);
+    setPortDraft(String(cfg.port));
+  }, [cfg.ip, cfg.port]);
 
-  const save = useCallback((patch: Partial<ThermalConfig>) => {
-    setThermal(patch);
-  }, [setThermal]);
+  const save = useCallback(
+    (patch: Partial<ThermalConfig>) => {
+      setThermal(patch);
+    },
+    [setThermal],
+  );
 
   const testConnection = useCallback(async () => {
     setBusy('test');
@@ -131,11 +158,12 @@ function ThermalSection(): JSX.Element {
   const printTestReceipt = useCallback(async () => {
     setBusy('print');
     try {
-      await thermalClient.print(
-        { ip: cfg.ip, port: cfg.port },
-        buildTestReceipt(),
-      );
-      addToast({ tone: 'success', title: 'Testbeleg gesendet', body: 'Bitte Drucker kontrollieren.' });
+      await thermalClient.print({ ip: cfg.ip, port: cfg.port }, buildTestReceipt());
+      addToast({
+        tone: 'success',
+        title: 'Testbeleg gesendet',
+        body: 'Bitte Drucker kontrollieren.',
+      });
     } catch (err) {
       addToast({
         tone: 'alert',
@@ -167,16 +195,30 @@ function ThermalSection(): JSX.Element {
         />
       </Row>
       <Row>
-        <Button variant="ghost" onClick={() => void testConnection()} disabled={busy !== null || !cfg.ip}>
+        <Button
+          variant="ghost"
+          onClick={() => void testConnection()}
+          disabled={busy !== null || !cfg.ip}
+        >
           {busy === 'test' ? 'Prüft…' : 'Verbindung prüfen'}
         </Button>
-        <Button variant="primary" onClick={() => void printTestReceipt()} disabled={busy !== null || !cfg.ip}>
+        <Button
+          variant="primary"
+          onClick={() => void printTestReceipt()}
+          disabled={busy !== null || !cfg.ip}
+        >
           {busy === 'print' ? 'Druckt…' : 'Testbeleg drucken'}
         </Button>
         <span style={{ flex: 1 }} />
         <HardwareStatusBadge
           tone={cfg.lastReachable === null ? 'pending' : cfg.lastReachable ? 'online' : 'offline'}
-          label={cfg.lastReachable === null ? 'Noch nicht geprüft' : cfg.lastReachable ? 'Drucker online' : 'Drucker offline'}
+          label={
+            cfg.lastReachable === null
+              ? 'Noch nicht geprüft'
+              : cfg.lastReachable
+                ? 'Drucker online'
+                : 'Drucker offline'
+          }
           lastCheckedAt={cfg.lastCheckedAt}
         />
       </Row>
@@ -212,7 +254,9 @@ function A4Section(): JSX.Element {
     }
   }, [addToast]);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
 
   return (
     <Card title="A4-Drucker (Rechnungen)">
@@ -258,6 +302,176 @@ function A4Section(): JSX.Element {
 }
 
 // ════════════════════════════════════════════════════════════════════════
+// 2b — Label printer (ZPL / ESC-POS)
+// ════════════════════════════════════════════════════════════════════════
+
+function LabelSection(): JSX.Element {
+  const cfg = useHardwareStore((s) => s.config.label);
+  const setLabel = useHardwareStore((s) => s.setLabel);
+  const addToast = useToastStore((s) => s.addToast);
+  const [printers, setPrinters] = useState<SystemPrinter[]>([]);
+  const [ipDraft, setIpDraft] = useState(cfg.ip);
+  const [portDraft, setPortDraft] = useState(String(cfg.port));
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setIpDraft(cfg.ip);
+    setPortDraft(String(cfg.port));
+  }, [cfg.ip, cfg.port]);
+
+  const refresh = useCallback(async () => {
+    if (!isRunningInTauri()) return;
+    try {
+      setPrinters(await systemClient.listPrinters());
+    } catch {
+      // Non-fatal — the operator can still type a name (n/a for label rolls).
+    }
+  }, []);
+  useEffect(() => {
+    if (cfg.mode === 'system') void refresh();
+  }, [cfg.mode, refresh]);
+
+  const save = useCallback((patch: Partial<LabelPrinterConfig>) => setLabel(patch), [setLabel]);
+
+  const test = useCallback(async () => {
+    setBusy(true);
+    try {
+      const config: LabelConfig = {
+        mode: cfg.mode,
+        ip: cfg.ip || undefined,
+        port: cfg.port,
+        printerName: cfg.printerName || undefined,
+        printerType: cfg.printerType,
+      };
+      await labelClient.test(config);
+      save({ lastReachable: true, lastCheckedAt: new Date().toISOString() });
+      addToast({
+        tone: 'success',
+        title: 'Testetikett gesendet',
+        body: 'Bitte Etikettendrucker kontrollieren.',
+      });
+    } catch (err) {
+      save({ lastReachable: false, lastCheckedAt: new Date().toISOString() });
+      addToast({
+        tone: 'alert',
+        title: 'Etikettendruck fehlgeschlagen',
+        body: isHardwareError(err) ? describeHardwareError(err) : String(err),
+      });
+    } finally {
+      setBusy(false);
+    }
+  }, [addToast, save, cfg.mode, cfg.ip, cfg.port, cfg.printerName, cfg.printerType]);
+
+  const testDisabled =
+    busy || (cfg.mode === 'system' ? cfg.printerName.length === 0 : cfg.ip.length === 0);
+
+  return (
+    <Card title="Etikettendrucker (ZPL / ESC-POS)">
+      <Row>
+        <label
+          htmlFor="label-mode"
+          className="w14-smallcaps"
+          style={{ letterSpacing: '0.08em', fontSize: '0.78rem', minWidth: 110 }}
+        >
+          Modus
+        </label>
+        <select
+          id="label-mode"
+          value={cfg.mode}
+          onChange={(e) => save({ mode: e.target.value as LabelPrinterConfig['mode'] })}
+          style={selectStyle()}
+        >
+          <option value="system">System-Warteschlange (CUPS)</option>
+          <option value="tcp">Netzwerk (TCP 9100)</option>
+        </select>
+        <label
+          htmlFor="label-type"
+          className="w14-smallcaps"
+          style={{ letterSpacing: '0.08em', fontSize: '0.78rem', minWidth: 70 }}
+        >
+          Format
+        </label>
+        <select
+          id="label-type"
+          value={cfg.printerType}
+          onChange={(e) =>
+            save({ printerType: e.target.value as LabelPrinterConfig['printerType'] })
+          }
+          style={selectStyle(140)}
+        >
+          <option value="ZPL">ZPL (Zebra)</option>
+          <option value="ESCPOS">ESC/POS</option>
+        </select>
+      </Row>
+
+      {cfg.mode === 'system' ? (
+        <Row>
+          <label
+            htmlFor="label-printer"
+            className="w14-smallcaps"
+            style={{ letterSpacing: '0.08em', fontSize: '0.78rem', minWidth: 110 }}
+          >
+            System-Drucker
+          </label>
+          <select
+            id="label-printer"
+            value={cfg.printerName}
+            onChange={(e) => save({ printerName: e.target.value })}
+            style={selectStyle()}
+          >
+            <option value="">— bitte wählen —</option>
+            {printers.map((p) => (
+              <option key={p.name} value={p.name}>
+                {p.name} ({p.status})
+              </option>
+            ))}
+          </select>
+          <Button variant="ghost" onClick={() => void refresh()}>
+            Aktualisieren
+          </Button>
+        </Row>
+      ) : (
+        <Row>
+          <LabelledInput
+            label="IP-Adresse"
+            value={ipDraft}
+            onChange={setIpDraft}
+            onBlur={() => save({ ip: ipDraft.trim() })}
+            placeholder="192.168.1.70"
+          />
+          <LabelledInput
+            label="Port"
+            value={portDraft}
+            onChange={setPortDraft}
+            onBlur={() => save({ port: Number(portDraft) || 9100 })}
+            placeholder="9100"
+            width={90}
+          />
+        </Row>
+      )}
+
+      <Row>
+        <Button variant="primary" onClick={() => void test()} disabled={testDisabled}>
+          {busy ? 'Druckt…' : 'Testetikett drucken'}
+        </Button>
+        <span style={{ flex: 1 }} />
+        <HardwareStatusBadge
+          tone={cfg.lastReachable === null ? 'pending' : cfg.lastReachable ? 'online' : 'offline'}
+          label={
+            cfg.lastReachable === null
+              ? 'Noch nicht geprüft'
+              : cfg.lastReachable
+                ? 'Drucker bereit'
+                : 'Druck fehlgeschlagen'
+          }
+          lastCheckedAt={cfg.lastCheckedAt}
+        />
+      </Row>
+    </Card>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════
 // 3 — ZVT Card Terminal
 // ════════════════════════════════════════════════════════════════════════
 
@@ -269,7 +483,10 @@ function ZvtSection(): JSX.Element {
   const [portDraft, setPortDraft] = useState(String(cfg.port));
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => { setIpDraft(cfg.ip); setPortDraft(String(cfg.port)); }, [cfg.ip, cfg.port]);
+  useEffect(() => {
+    setIpDraft(cfg.ip);
+    setPortDraft(String(cfg.port));
+  }, [cfg.ip, cfg.port]);
 
   const save = useCallback((patch: Partial<ZvtTerminalConfig>) => setZvt(patch), [setZvt]);
 
@@ -320,7 +537,13 @@ function ZvtSection(): JSX.Element {
         <span style={{ flex: 1 }} />
         <HardwareStatusBadge
           tone={cfg.lastReachable === null ? 'pending' : cfg.lastReachable ? 'online' : 'offline'}
-          label={cfg.lastReachable === null ? 'Noch nicht geprüft' : cfg.lastReachable ? 'Terminal bereit' : 'Terminal offline'}
+          label={
+            cfg.lastReachable === null
+              ? 'Noch nicht geprüft'
+              : cfg.lastReachable
+                ? 'Terminal bereit'
+                : 'Terminal offline'
+          }
           lastCheckedAt={cfg.lastCheckedAt}
         />
       </Row>
@@ -435,7 +658,9 @@ function TseSection(): JSX.Element {
           </>
         ) : (
           <>
-            <span style={{ flex: 1, fontFamily: 'var(--w14-font-mono)', color: 'var(--w14-ink-faded)' }}>
+            <span
+              style={{ flex: 1, fontFamily: 'var(--w14-font-mono)', color: 'var(--w14-ink-faded)' }}
+            >
               {cfg.apiKey ? '••••••••••••' : '— nicht gesetzt —'}
             </span>
             <Button variant="ghost" onClick={() => setEditingKey(true)}>
@@ -455,7 +680,13 @@ function TseSection(): JSX.Element {
         <span style={{ flex: 1 }} />
         <HardwareStatusBadge
           tone={cfg.lastReachable === null ? 'pending' : cfg.lastReachable ? 'online' : 'error'}
-          label={cfg.lastReachable === null ? 'Nicht konfiguriert' : cfg.lastReachable ? 'TSE aktiv' : 'TSE inaktiv'}
+          label={
+            cfg.lastReachable === null
+              ? 'Nicht konfiguriert'
+              : cfg.lastReachable
+                ? 'TSE aktiv'
+                : 'TSE inaktiv'
+          }
           lastCheckedAt={cfg.lastCheckedAt}
         />
       </Row>
@@ -537,6 +768,17 @@ function inputStyle(width?: number): React.CSSProperties {
     padding: '6px 10px',
     fontFamily: 'var(--w14-font-mono)',
     fontSize: '0.92rem',
+    backgroundColor: 'var(--w14-parchment-1)',
+    border: '1px solid var(--w14-rule)',
+    borderRadius: 4,
+  };
+}
+
+function selectStyle(width?: number): React.CSSProperties {
+  return {
+    width: width ?? 240,
+    padding: '6px 10px',
+    fontFamily: 'var(--w14-font-display)',
     backgroundColor: 'var(--w14-parchment-1)',
     border: '1px solid var(--w14-rule)',
     borderRadius: 4,

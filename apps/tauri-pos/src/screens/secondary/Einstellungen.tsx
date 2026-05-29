@@ -47,11 +47,12 @@ export function Einstellungen(): JSX.Element {
         >
           Einstellungen
         </h1>
-        <nav
-          aria-label="Tabs"
-          style={{ display: 'flex', gap: 6, marginLeft: 18 }}
-        >
-          <TabChip active={tab === 'hardware'} label="Hardware & Kasse" onClick={() => setTab('hardware')} />
+        <nav aria-label="Tabs" style={{ display: 'flex', gap: 6, marginLeft: 18 }}>
+          <TabChip
+            active={tab === 'hardware'}
+            label="Hardware & Kasse"
+            onClick={() => setTab('hardware')}
+          />
         </nav>
       </header>
 
@@ -59,9 +60,7 @@ export function Einstellungen(): JSX.Element {
         <DiamondRule />
       </div>
 
-      <div style={{ flex: 1, minHeight: 0 }}>
-        {tab === 'hardware' && <GeraeteManager />}
-      </div>
+      <div style={{ flex: 1, minHeight: 0 }}>{tab === 'hardware' && <GeraeteManager />}</div>
     </section>
   );
 }

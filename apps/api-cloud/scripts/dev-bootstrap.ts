@@ -32,11 +32,11 @@
  */
 
 import { execSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFile as fsReadFile, readdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readdir, readFile as fsReadFile } from 'node:fs/promises';
 // node-forge is CommonJS — Node 24's strict ESM resolver doesn't surface
 // every nested export as a named ESM symbol. Default-import the whole
 // module + destructure at runtime; this works on Node 18 / 20 / 22 / 24.
@@ -94,8 +94,10 @@ function ensurePostgresUp(): void {
     return;
   }
 
-  if (!existsSync(resolve(DOCKER_COMPOSE_DIR, 'docker-compose.yml')) &&
-      !existsSync(resolve(DOCKER_COMPOSE_DIR, 'compose.yml'))) {
+  if (
+    !existsSync(resolve(DOCKER_COMPOSE_DIR, 'docker-compose.yml')) &&
+    !existsSync(resolve(DOCKER_COMPOSE_DIR, 'compose.yml'))
+  ) {
     log('docker', `no compose file at ${DOCKER_COMPOSE_DIR} — skipping container start`);
     return;
   }
@@ -128,8 +130,15 @@ function ensurePostgresUp(): void {
     const ready = spawnSync(
       'docker',
       [
-        'compose', '-f', resolve(DOCKER_COMPOSE_DIR, 'docker-compose.yml'),
-        'exec', '-T', 'postgres', 'pg_isready', '-U', 'warehouse14_migrator',
+        'compose',
+        '-f',
+        resolve(DOCKER_COMPOSE_DIR, 'docker-compose.yml'),
+        'exec',
+        '-T',
+        'postgres',
+        'pg_isready',
+        '-U',
+        'warehouse14_migrator',
       ],
       { encoding: 'utf8' },
     );
@@ -184,7 +193,10 @@ function loadOrGenerateDevCert(): DevCert {
       const daysLeft = (cert.validity.notAfter.getTime() - Date.now()) / (24 * 60 * 60 * 1000);
       if (daysLeft > CERT_RENEW_BEFORE_DAYS) {
         const fp = computeCertFingerprint(cert);
-        log('cert', `using existing dev cert (expires in ${Math.round(daysLeft)} days, fp=${fp.slice(0, 16)}…)`);
+        log(
+          'cert',
+          `using existing dev cert (expires in ${Math.round(daysLeft)} days, fp=${fp.slice(0, 16)}…)`,
+        );
         return {
           certPem: readFileSync(certPath, 'utf8'),
           keyPem: readFileSync(keyPath, 'utf8'),
@@ -201,7 +213,7 @@ function loadOrGenerateDevCert(): DevCert {
   const keys = pki.rsa.generateKeyPair(2048);
   const cert = pki.createCertificate();
   cert.publicKey = keys.publicKey;
-  cert.serialNumber = '01' + Date.now().toString(16);
+  cert.serialNumber = `01${Date.now().toString(16)}`;
   cert.validity.notBefore = new Date();
   cert.validity.notAfter = new Date(Date.now() + CERT_VALIDITY_DAYS * 24 * 60 * 60_000);
 
@@ -261,9 +273,14 @@ async function seedDevDeviceAndOwner(sql: Sql, fingerprint: string): Promise<voi
           ${pinHash}, now()
         )
         RETURNING id`;
+      // biome-ignore lint/style/noNonNullAssertion: INSERT … RETURNING always yields one row.
       userId = inserted[0]!.id;
-      log('seed', `  ✓ created Owner user ${OWNER_EMAIL} (id=${userId.slice(0, 8)}…) with PIN ${OWNER_PIN}`);
+      log(
+        'seed',
+        `  ✓ created Owner user ${OWNER_EMAIL} (id=${userId.slice(0, 8)}…) with PIN ${OWNER_PIN}`,
+      );
     } else {
+      // biome-ignore lint/style/noNonNullAssertion: guarded by the existing.length check above.
       userId = existing[0]!.id;
       // Refresh PIN hash + clear any lockout from previous dev sessions.
       await tx`

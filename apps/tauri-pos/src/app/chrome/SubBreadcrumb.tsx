@@ -20,11 +20,7 @@ export interface SubBreadcrumbProps {
   trail?: ReactNode;
 }
 
-export function SubBreadcrumb({
-  digit,
-  label,
-  trail,
-}: SubBreadcrumbProps): JSX.Element {
+export function SubBreadcrumb({ digit, label, trail }: SubBreadcrumbProps): JSX.Element {
   const rowStyle: CSSProperties = {
     height: 32,
     padding: '0 20px',
@@ -55,13 +51,19 @@ export function SubBreadcrumb({
           {digit}
         </span>
       ) : (
-        <span aria-hidden style={{ opacity: 0.55 }}>◆</span>
+        <span aria-hidden style={{ opacity: 0.55 }}>
+          ◆
+        </span>
       )}
-      <span aria-hidden style={{ opacity: 0.45 }}>·</span>
+      <span aria-hidden style={{ opacity: 0.45 }}>
+        ·
+      </span>
       <span>{label}</span>
       {trail && (
         <>
-          <span aria-hidden style={{ opacity: 0.45 }}>·</span>
+          <span aria-hidden style={{ opacity: 0.45 }}>
+            ·
+          </span>
           <span>{trail}</span>
         </>
       )}

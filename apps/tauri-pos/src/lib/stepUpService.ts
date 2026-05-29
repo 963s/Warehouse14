@@ -15,11 +15,7 @@
  * decides whether to surface "abgebrochen" toast or to silently bail.
  */
 
-import type {
-  StepUpDependencies,
-  StepUpReason,
-  StepUpToken,
-} from '@warehouse14/api-client';
+import type { StepUpDependencies, StepUpReason, StepUpToken } from '@warehouse14/api-client';
 
 import { useStepUpStore } from '../state/step-up-store.js';
 

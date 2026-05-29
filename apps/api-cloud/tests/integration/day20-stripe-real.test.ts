@@ -15,17 +15,17 @@
  *   ✓ shipping_address_encrypted snapshot is readable via decrypt_pii
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { readFile, readdir } from 'node:fs/promises';
 import { createHmac, randomUUID } from 'node:crypto';
+import { readFile, readdir } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import postgres, { type Sql } from 'postgres';
-import { drizzle } from 'drizzle-orm/postgres-js';
-import * as schema from '@warehouse14/db/schema';
 import type { AppDb } from '@warehouse14/db/client';
+import * as schema from '@warehouse14/db/schema';
+import { drizzle } from 'drizzle-orm/postgres-js';
 import type { FastifyInstance } from 'fastify';
+import postgres, { type Sql } from 'postgres';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildApp } from '../../src/app.js';
 import type { Env } from '../../src/config/env.js';
@@ -51,9 +51,7 @@ const INITDB_SQL = `
 `;
 
 async function applyAll(sqlClient: Sql): Promise<void> {
-  const files = (await readdir(MIGRATIONS_DIR))
-    .filter((n) => /^\d{4}_.+\.sql$/.test(n))
-    .sort();
+  const files = (await readdir(MIGRATIONS_DIR)).filter((n) => /^\d{4}_.+\.sql$/.test(n)).sort();
   for (const f of files) await sqlClient.unsafe(await readFile(join(MIGRATIONS_DIR, f), 'utf8'));
 }
 
@@ -95,21 +93,25 @@ describe('Day 20 — Stripe testmode + full conversion pipeline', () => {
       .start();
 
     migratorSql = postgres({
-      host: container.getHost(), port: container.getPort(),
+      host: container.getHost(),
+      port: container.getPort(),
       database: 'warehouse14_test',
       username: 'warehouse14_migrator',
       password: 'warehouse14_migrator_test_pw',
-      max: 1, onnotice: () => {},
+      max: 1,
+      onnotice: () => {},
     });
     await applyAll(migratorSql);
     await migratorSql.unsafe(`ALTER ROLE warehouse14_app PASSWORD 'warehouse14_app_test_pw'`);
 
     appSql = postgres({
-      host: container.getHost(), port: container.getPort(),
+      host: container.getHost(),
+      port: container.getPort(),
       database: 'warehouse14_test',
       username: 'warehouse14_app',
       password: 'warehouse14_app_test_pw',
-      max: 5, onnotice: () => {},
+      max: 5,
+      onnotice: () => {},
     });
     appDb = drizzle(appSql, { schema });
 
@@ -125,8 +127,11 @@ describe('Day 20 — Stripe testmode + full conversion pipeline', () => {
       WAREHOUSE14_PII_KEY: PII_KEY,
       TRUSTED_ORIGINS: '',
       TRANSACTION_STEP_UP_THRESHOLD_EUR: '1000.00',
-      R2_ACCOUNT_ID: '', R2_BUCKET: '', R2_ACCESS_KEY_ID: '',
-      R2_SECRET_ACCESS_KEY: '', R2_PUBLIC_URL_BASE: '',
+      R2_ACCOUNT_ID: '',
+      R2_BUCKET: '',
+      R2_ACCESS_KEY_ID: '',
+      R2_SECRET_ACCESS_KEY: '',
+      R2_PUBLIC_URL_BASE: '',
       STRIPE_SECRET_KEY: HAS_LIVE_STRIPE ? STRIPE_LIVE_KEY : 'sk_test_dummy_unused',
       STRIPE_WEBHOOK_SECRET: STRIPE_WHSEC,
       STRIPE_WEBHOOK_TOLERANCE_SECONDS: 300,
@@ -167,10 +172,15 @@ describe('Day 20 — Stripe testmode + full conversion pipeline', () => {
     await migratorSql`DELETE FROM shoppers`;
   });
 
-  async function setupCartReady(): Promise<{ cookie: string; productId: string; shopperId: string }> {
+  async function setupCartReady(): Promise<{
+    cookie: string;
+    productId: string;
+    shopperId: string;
+  }> {
     const email = `pipe-${randomUUID()}@x.test`;
     const sign = await app.inject({
-      method: 'POST', url: '/api/storefront/auth/sign-up',
+      method: 'POST',
+      url: '/api/storefront/auth/sign-up',
       headers: { 'content-type': 'application/json' },
       payload: { email, password: 'CorrectHorseBattery42', fullName: 'Pipeline Tester' },
     });
@@ -188,7 +198,8 @@ describe('Day 20 — Stripe testmode + full conversion pipeline', () => {
       RETURNING id`;
 
     const add = await app.inject({
-      method: 'POST', url: '/api/storefront/cart/items',
+      method: 'POST',
+      url: '/api/storefront/cart/items',
       headers: { cookie, 'content-type': 'application/json' },
       payload: { productId: p!.id },
     });
@@ -198,7 +209,8 @@ describe('Day 20 — Stripe testmode + full conversion pipeline', () => {
 
   async function postCheckout(cookie: string) {
     return app.inject({
-      method: 'POST', url: '/api/storefront/cart/checkout',
+      method: 'POST',
+      url: '/api/storefront/cart/checkout',
       headers: { cookie, 'content-type': 'application/json' },
       payload: {
         shippingAddress: {
@@ -217,7 +229,11 @@ describe('Day 20 — Stripe testmode + full conversion pipeline', () => {
       const { cookie } = await setupCartReady();
       const res = await postCheckout(cookie);
       expect(res.statusCode).toBe(200);
-      const out = res.json() as { providerIntentId: string; clientSecret: string; amountEur: string };
+      const out = res.json() as {
+        providerIntentId: string;
+        clientSecret: string;
+        amountEur: string;
+      };
       expect(out.providerIntentId).toMatch(/^pi_/);
       expect(out.clientSecret).toMatch(/_secret_/);
       expect(out.amountEur).toBe('119.00');
@@ -284,13 +300,16 @@ describe('Day 20 — Stripe testmode + full conversion pipeline', () => {
       const sig = stripeSig(rawBody, STRIPE_WHSEC);
 
       const res = await app.inject({
-        method: 'POST', url: '/api/webhooks/stripe',
+        method: 'POST',
+        url: '/api/webhooks/stripe',
         headers: { 'content-type': 'application/json', 'stripe-signature': sig },
         payload: rawBody,
       });
       expect(res.statusCode).toBe(200);
 
-      const [cart] = await migratorSql<{ status: string; converted_to_transaction_id: string | null }[]>`
+      const [cart] = await migratorSql<
+        { status: string; converted_to_transaction_id: string | null }[]
+      >`
         SELECT status::text AS status, converted_to_transaction_id FROM carts WHERE id = ${cartId}`;
       expect(cart!.status).toBe('CONVERTED');
       expect(cart!.converted_to_transaction_id).not.toBeNull();
@@ -299,11 +318,13 @@ describe('Day 20 — Stripe testmode + full conversion pipeline', () => {
         SELECT status::text AS status FROM products WHERE id = ${productId}`;
       expect(product!.status).toBe('SOLD');
 
-      const [tx] = await migratorSql<{
-        sales_channel: string;
-        shipping_status: string;
-        total_eur: string;
-      }[]>`
+      const [tx] = await migratorSql<
+        {
+          sales_channel: string;
+          shipping_status: string;
+          total_eur: string;
+        }[]
+      >`
         SELECT sales_channel::text AS sales_channel,
                shipping_status::text AS shipping_status,
                total_eur::text AS total_eur
@@ -334,7 +355,8 @@ describe('Day 20 — Stripe testmode + full conversion pipeline', () => {
       const sig = stripeSig(rawBody, STRIPE_WHSEC);
 
       const res = await app.inject({
-        method: 'POST', url: '/api/webhooks/stripe',
+        method: 'POST',
+        url: '/api/webhooks/stripe',
         headers: { 'content-type': 'application/json', 'stripe-signature': sig },
         payload: rawBody,
       });
@@ -365,7 +387,8 @@ describe('Day 20 — Stripe testmode + full conversion pipeline', () => {
       const sig = stripeSig(rawBody, STRIPE_WHSEC);
 
       const res = await app.inject({
-        method: 'POST', url: '/api/webhooks/stripe',
+        method: 'POST',
+        url: '/api/webhooks/stripe',
         headers: { 'content-type': 'application/json', 'stripe-signature': sig },
         payload: rawBody,
       });

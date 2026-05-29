@@ -131,6 +131,24 @@ const EnvSchema = Type.Object({
       'Meta Cloud API access token (Bearer). Required alongside ' +
       'WHATSAPP_PHONE_NUMBER_ID for live sends. Empty in dev → queued only.',
   }),
+  // ── Meta socials (Instagram DMs + Facebook Messenger, Decision #48) ──
+  // Same Meta App as WhatsApp; a single webhook config fans out by `object`.
+  META_APP_SECRET: Type.String({
+    default: '',
+    description:
+      'Meta App Secret for the socials webhook X-Hub-Signature-256. Empty → ' +
+      'falls back to WHATSAPP_APP_SECRET (same Meta App).',
+  }),
+  META_SOCIALS_VERIFY_TOKEN: Type.String({
+    default: '',
+    description: 'Verify token for GET /api/webhooks/meta-socials subscription handshake.',
+  }),
+  META_PAGE_ACCESS_TOKEN: Type.String({
+    default: '',
+    description:
+      'Page-scoped access token used to send Messenger/Instagram replies via ' +
+      'graph.facebook.com/v20.0/me/messages. Empty in dev → replies are stored not sent.',
+  }),
   // ── DHL Versenden / Shipping label API (Epic D) ──────────────────────
   // Empty defaults are OK in dev/test → the DHL client falls back to a
   // deterministic mock label so the flow works without sandbox credentials.
@@ -145,6 +163,63 @@ const EnvSchema = Type.Object({
   DHL_API_EKP: Type.String({
     default: '',
     description: 'DHL EKP (Einlieferungskundennummer / billing number) used in label requests.',
+  }),
+  // ── Anthropic / WhatsApp AI bot (Epic E) ─────────────────────────────
+  // Empty default is OK in dev/test → the bot orchestrator is disabled and
+  // inbound messages are simply stored for operator triage.
+  ANTHROPIC_API_KEY: Type.String({
+    default: '',
+    description:
+      'Anthropic API key (Bearer) for the WhatsApp bot. Empty → the bot is ' +
+      'disabled; inbound messages are stored but not auto-answered.',
+  }),
+  // ── Telemetry (GlitchTip / Sentry-compatible) ────────────────────────
+  // Optional + fail-safe: empty → telemetry disabled, the app boots normally.
+  SENTRY_DSN: Type.Optional(Type.String({ default: '' })),
+  // ── Chatwoot omnichannel inbox (Decision #48) ────────────────────────
+  // Empty defaults → the Chatwoot webhook is inert; the app boots without it.
+  CHATWOOT_URL: Type.String({
+    default: '',
+    description: 'Base URL of the self-hosted Chatwoot (e.g. https://chat.warehouse14.de).',
+  }),
+  CHATWOOT_ACCOUNT_ID: Type.String({
+    default: '',
+    description: 'Chatwoot numeric account id (string form for the REST path).',
+  }),
+  CHATWOOT_BOT_TOKEN: Type.String({
+    default: '',
+    description: 'Chatwoot Agent Bot API access token (api_access_token header).',
+  }),
+  CHATWOOT_WEBHOOK_SECRET: Type.String({
+    default: '',
+    description: 'HMAC-SHA256 secret to verify Chatwoot webhook X-Hub-Signature-256.',
+  }),
+  // ── OpenSanctions screening (Epic J — GwG §10 PEP/EU/OFAC matching) ──
+  // Empty key → screening is skipped (route returns matched:false, skipped:true)
+  // so the app boots + checks out fine without the external service wired.
+  OPENSANCTIONS_API_KEY: Type.String({
+    default: '',
+    description:
+      'OpenSanctions hosted match API key (Authorization: ApiKey …). Empty → ' +
+      'screening is skipped; a transaction is never blocked by a missing key.',
+  }),
+  OPENSANCTIONS_SCORE_THRESHOLD: Type.String({
+    default: '0.7',
+    pattern: '^\\d+\\.\\d+$',
+    description:
+      'Match score (0.0–1.0) at/above which a customer counts as a sanctions hit. ' +
+      'Decimal string, e.g. "0.7". Tunable without code change.',
+  }),
+  // ── Fiskaly DSFinV-K (Epic K — year-end fiscal export) ───────────────
+  // Empty → the DSFinV-K push is skipped (logged "fiskaly not configured");
+  // the daily-closing flow is never blocked by a missing/erroring Fiskaly.
+  FISKALY_API_KEY: Type.String({
+    default: '',
+    description: 'Fiskaly DSFinV-K API key (Basic auth user). Empty → push skipped.',
+  }),
+  FISKALY_API_SECRET: Type.String({
+    default: '',
+    description: 'Fiskaly DSFinV-K API secret (Basic auth password). Empty → push skipped.',
   }),
 });
 
@@ -213,12 +288,11 @@ export function assertAppRoleInDatabaseUrl(env: Env): void {
         'Refusing to start (audit fix A-2).',
     );
   }
+  // biome-ignore lint/style/noNonNullAssertion: the regex above guarantees group 1 when matched.
   const user = decodeURIComponent(match[1]!);
   if (user !== 'warehouse14_app') {
     throw new Error(
-      `DATABASE_URL points at role "${user}" — expected "warehouse14_app". ` +
-        'The API runtime MUST use the least-privileged role. ' +
-        'Refusing to start (audit fix A-2).',
+      `DATABASE_URL points at role "${user}" — expected "warehouse14_app". The API runtime MUST use the least-privileged role. Refusing to start (audit fix A-2).`,
     );
   }
 }

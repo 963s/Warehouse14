@@ -4,18 +4,9 @@
 
 import { pgEnum } from 'drizzle-orm/pg-core';
 
-export const cartStatus = pgEnum('cart_status', [
-  'ACTIVE',
-  'CHECKOUT',
-  'ABANDONED',
-  'CONVERTED',
-]);
+export const cartStatus = pgEnum('cart_status', ['ACTIVE', 'CHECKOUT', 'ABANDONED', 'CONVERTED']);
 
-export const paymentProvider = pgEnum('payment_provider', [
-  'STRIPE',
-  'PAYPAL',
-  'MOLLIE',
-]);
+export const paymentProvider = pgEnum('payment_provider', ['STRIPE', 'PAYPAL', 'MOLLIE']);
 
 export const paymentIntentStatus = pgEnum('payment_intent_status', [
   'CREATED',
@@ -26,12 +17,7 @@ export const paymentIntentStatus = pgEnum('payment_intent_status', [
   'EXPIRED',
 ]);
 
-export const salesChannel = pgEnum('sales_channel', [
-  'POS',
-  'WEB',
-  'EBAY',
-  'PHONE',
-]);
+export const salesChannel = pgEnum('sales_channel', ['POS', 'WEB', 'EBAY', 'PHONE']);
 
 export const shippingStatus = pgEnum('shipping_status', [
   'NOT_REQUIRED',

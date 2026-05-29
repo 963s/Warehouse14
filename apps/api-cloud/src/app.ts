@@ -30,6 +30,7 @@ import type { Sql } from 'postgres';
 import type { AppDb } from '@warehouse14/db/client';
 
 import type { Env } from './config/env.js';
+import { initSentry } from './lib/sentry.js';
 import { mcpServer } from './mcp/index.js';
 import authPlugin from './plugins/auth.js';
 import dbPlugin from './plugins/db.js';
@@ -42,21 +43,26 @@ import requestContextPlugin from './plugins/request-context.js';
 import securityHeadersPlugin from './plugins/security-headers.js';
 import storefrontSessionPlugin from './plugins/storefront-session.js';
 import swaggerPlugin from './plugins/swagger.js';
+import appointmentsRoutes from './routes/appointments.js';
 // Day 22 — Konvolut + Appraisals
 import appraisalRoutes from './routes/appraisals.js';
 import authPinRoutes from './routes/auth-pin.js';
 import authSessionRoutes from './routes/auth-session.js';
 import belegtextRoutes from './routes/belegtext.js';
 import categoriesRoutes from './routes/categories.js';
+import closingExportRoute from './routes/closing-export.js';
 import customerKycDocumentsRoute from './routes/customer-kyc-documents.js';
 // Day 26 — Backend Finale: Customer Trust + Belegtext
 import customerTrustRoutes from './routes/customer-trust.js';
 import customerUpdateRoute from './routes/customer-update.js';
+import customersCheckSanctionsRoute from './routes/customers-check-sanctions.js';
 import customersListRoute from './routes/customers-list.js';
+import { customersVerifyVatRoute } from './routes/customers-verify-vat.js';
 import customersRoutes from './routes/customers.js';
 import dashboardRoutes from './routes/dashboard.js';
 import documentsRoutes from './routes/documents.js';
 import healthRoute from './routes/health.js';
+import intakeDraftsRoutes from './routes/intake-drafts.js';
 import inventoryAdjustmentRoute from './routes/inventory-adjustment.js';
 import inventoryRelease from './routes/inventory-release.js';
 import inventoryReserve from './routes/inventory-reserve.js';
@@ -88,6 +94,9 @@ import transactionsFinalize from './routes/transactions-finalize.js';
 import transactionsReturn from './routes/transactions-return.js';
 import transactionsStorno from './routes/transactions-storno.js';
 import voucherRoutes from './routes/vouchers.js';
+import chatwootWebhookRoutes from './routes/webhooks-chatwoot.js';
+import metaSocialsRoutes from './routes/webhooks-meta-socials.js';
+import whatsappIntakeRoutes from './routes/webhooks-whatsapp-intake.js';
 import whatsappWebhookRoutes from './routes/webhooks-whatsapp.js';
 import whatsappInboxRoutes from './routes/whatsapp-inbox.js';
 
@@ -112,6 +121,9 @@ export interface BuildAppOpts {
 }
 
 export async function buildApp(opts: BuildAppOpts): Promise<FastifyInstance> {
+  // Telemetry (GlitchTip/Sentry) — optional + fail-safe: a no-op when no DSN.
+  initSentry({ dsn: opts.env.SENTRY_DSN, environment: opts.env.NODE_ENV });
+
   const app = Fastify({
     logger: {
       level: opts.env.LOG_LEVEL,
@@ -191,6 +203,8 @@ export async function buildApp(opts: BuildAppOpts): Promise<FastifyInstance> {
   await app.register(customersRoutes);
   await app.register(customersListRoute);
   await app.register(customerUpdateRoute);
+  await app.register(customersVerifyVatRoute);
+  await app.register(customersCheckSanctionsRoute, { env: opts.env });
   await app.register(customerKycDocumentsRoute);
   await app.register(photoUploadUrlRoute, { env: opts.env });
   await app.register(transactionsFinalize, { env: opts.env });
@@ -207,7 +221,12 @@ export async function buildApp(opts: BuildAppOpts): Promise<FastifyInstance> {
   await app.register(inventorySessionsRoutes);
   await app.register(transactionsReturn, { env: opts.env });
   await app.register(whatsappWebhookRoutes, { env: opts.env });
+  await app.register(whatsappIntakeRoutes, { env: opts.env });
   await app.register(whatsappInboxRoutes, { env: opts.env });
+  await app.register(intakeDraftsRoutes, { env: opts.env });
+  await app.register(metaSocialsRoutes, { env: opts.env });
+  await app.register(chatwootWebhookRoutes, { env: opts.env });
+  await app.register(appointmentsRoutes, { env: opts.env });
   // ── Day 22: Konvolut + Appraisals ────────────────────────────────
   await app.register(appraisalRoutes);
   // ── Day 23: Edelmetall-Kursmodul ─────────────────────────────────
@@ -224,6 +243,8 @@ export async function buildApp(opts: BuildAppOpts): Promise<FastifyInstance> {
   await app.register(shippingRoutes, { env: opts.env });
   await app.register(dashboardRoutes);
   await app.register(ledgerRoutes);
+  // ── Epic K: DSFinV-K / DATEV fiscal exports ──────────────────────
+  await app.register(closingExportRoute);
   // ── Phase 2.A: storefront catalog + MCP (memory.md §20) ──────────
   // Public read-only catalog endpoints. The path prefix
   // `/api/storefront/` is in PUBLIC_PREFIXES (lib/public-routes.ts),

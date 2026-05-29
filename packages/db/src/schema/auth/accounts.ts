@@ -19,8 +19,8 @@
  * The account record persists as audit evidence of past authentication links.
  */
 
-import { check, index, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import { check, index, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
 
 import { primaryKey, timestamps } from '../_shared/columns.js';
 import { users } from './users.js';
@@ -48,11 +48,8 @@ export const accounts = pgTable(
 
     ...timestamps(),
   },
-  table => ({
-    providerAccountUq: unique('accounts_provider_account_uq').on(
-      table.providerId,
-      table.accountId,
-    ),
+  (table) => ({
+    providerAccountUq: unique('accounts_provider_account_uq').on(table.providerId, table.accountId),
     userIdIdx: index('accounts_user_id_idx').on(table.userId),
     credentialsOrOauth: check(
       'accounts_credentials_or_oauth',

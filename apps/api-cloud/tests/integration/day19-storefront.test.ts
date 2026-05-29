@@ -24,17 +24,17 @@
  *              ✓ valid sig + payment_intent.succeeded converts cart → CONVERTED + tx (sales_channel=WEB, shipping_status=PENDING)
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { readFile, readdir } from 'node:fs/promises';
 import { createHmac, randomUUID } from 'node:crypto';
+import { readFile, readdir } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import postgres, { type Sql } from 'postgres';
-import { drizzle } from 'drizzle-orm/postgres-js';
-import * as schema from '@warehouse14/db/schema';
 import type { AppDb } from '@warehouse14/db/client';
+import * as schema from '@warehouse14/db/schema';
+import { drizzle } from 'drizzle-orm/postgres-js';
 import type { FastifyInstance } from 'fastify';
+import postgres, { type Sql } from 'postgres';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildApp } from '../../src/app.js';
 import type { Env } from '../../src/config/env.js';
@@ -56,9 +56,7 @@ const INITDB_SQL = `
 `;
 
 async function applyAll(sqlClient: Sql): Promise<void> {
-  const files = (await readdir(MIGRATIONS_DIR))
-    .filter((n) => /^\d{4}_.+\.sql$/.test(n))
-    .sort();
+  const files = (await readdir(MIGRATIONS_DIR)).filter((n) => /^\d{4}_.+\.sql$/.test(n)).sort();
   for (const f of files) await sqlClient.unsafe(await readFile(join(MIGRATIONS_DIR, f), 'utf8'));
 }
 
@@ -102,21 +100,25 @@ describe('Day 19 — storefront commerce', () => {
       .start();
 
     migratorSql = postgres({
-      host: container.getHost(), port: container.getPort(),
+      host: container.getHost(),
+      port: container.getPort(),
       database: 'warehouse14_test',
       username: 'warehouse14_migrator',
       password: 'warehouse14_migrator_test_pw',
-      max: 1, onnotice: () => {},
+      max: 1,
+      onnotice: () => {},
     });
     await applyAll(migratorSql);
     await migratorSql.unsafe(`ALTER ROLE warehouse14_app PASSWORD 'warehouse14_app_test_pw'`);
 
     appSql = postgres({
-      host: container.getHost(), port: container.getPort(),
+      host: container.getHost(),
+      port: container.getPort(),
       database: 'warehouse14_test',
       username: 'warehouse14_app',
       password: 'warehouse14_app_test_pw',
-      max: 5, onnotice: () => {},
+      max: 5,
+      onnotice: () => {},
     });
     appDb = drizzle(appSql, { schema });
 
@@ -177,8 +179,10 @@ describe('Day 19 — storefront commerce', () => {
         url: '/api/storefront/auth/sign-up',
         headers: { 'content-type': 'application/json' },
         payload: {
-          email, password: 'CorrectHorseBattery42',
-          fullName: 'Test Shopper', preferredLanguage: 'de',
+          email,
+          password: 'CorrectHorseBattery42',
+          fullName: 'Test Shopper',
+          preferredLanguage: 'de',
         },
       });
       expect(res.statusCode).toBe(201);
@@ -196,11 +200,12 @@ describe('Day 19 — storefront commerce', () => {
 
     it('weak password (< 10 chars) → 400 VALIDATION_ERROR', async () => {
       const res = await app.inject({
-        method: 'POST', url: '/api/storefront/auth/sign-up',
+        method: 'POST',
+        url: '/api/storefront/auth/sign-up',
         headers: { 'content-type': 'application/json' },
         payload: {
           email: `weak-${randomUUID()}@x.test`,
-          password: 'short',  // 5 chars
+          password: 'short', // 5 chars
           fullName: 'X',
         },
       });
@@ -212,14 +217,16 @@ describe('Day 19 — storefront commerce', () => {
     it('duplicate active email → 409 CONFLICT', async () => {
       const email = `dup-${randomUUID()}@x.test`;
       const ok = await app.inject({
-        method: 'POST', url: '/api/storefront/auth/sign-up',
+        method: 'POST',
+        url: '/api/storefront/auth/sign-up',
         headers: { 'content-type': 'application/json' },
         payload: { email, password: 'CorrectHorseBattery42', fullName: 'A' },
       });
       expect(ok.statusCode).toBe(201);
 
       const dup = await app.inject({
-        method: 'POST', url: '/api/storefront/auth/sign-up',
+        method: 'POST',
+        url: '/api/storefront/auth/sign-up',
         headers: { 'content-type': 'application/json' },
         payload: { email, password: 'AnotherStrongPassword42', fullName: 'B' },
       });
@@ -230,7 +237,8 @@ describe('Day 19 — storefront commerce', () => {
     it('re-signup after soft-delete works (partial UNIQUE)', async () => {
       const email = `resign-${randomUUID()}@x.test`;
       const first = await app.inject({
-        method: 'POST', url: '/api/storefront/auth/sign-up',
+        method: 'POST',
+        url: '/api/storefront/auth/sign-up',
         headers: { 'content-type': 'application/json' },
         payload: { email, password: 'CorrectHorseBattery42', fullName: 'First' },
       });
@@ -240,7 +248,8 @@ describe('Day 19 — storefront commerce', () => {
 
       // Re-signup with same email — should succeed.
       const second = await app.inject({
-        method: 'POST', url: '/api/storefront/auth/sign-up',
+        method: 'POST',
+        url: '/api/storefront/auth/sign-up',
         headers: { 'content-type': 'application/json' },
         payload: { email, password: 'CorrectHorseBattery43', fullName: 'Second' },
       });
@@ -256,7 +265,8 @@ describe('Day 19 — storefront commerce', () => {
     async function newShopper(): Promise<string> {
       const email = `signin-${randomUUID()}@x.test`;
       const res = await app.inject({
-        method: 'POST', url: '/api/storefront/auth/sign-up',
+        method: 'POST',
+        url: '/api/storefront/auth/sign-up',
         headers: { 'content-type': 'application/json' },
         payload: { email, password: 'CorrectHorseBattery42', fullName: 'X' },
       });
@@ -269,7 +279,8 @@ describe('Day 19 — storefront commerce', () => {
       let last = 0;
       for (let i = 0; i < 5; i++) {
         const r = await app.inject({
-          method: 'POST', url: '/api/storefront/auth/sign-in',
+          method: 'POST',
+          url: '/api/storefront/auth/sign-in',
           headers: { 'content-type': 'application/json' },
           payload: { email, password: 'totally-wrong-password-but-long-enough' },
         });
@@ -280,7 +291,8 @@ describe('Day 19 — storefront commerce', () => {
 
       // Even a correct password is refused while locked.
       const lockedTry = await app.inject({
-        method: 'POST', url: '/api/storefront/auth/sign-in',
+        method: 'POST',
+        url: '/api/storefront/auth/sign-in',
         headers: { 'content-type': 'application/json' },
         payload: { email, password: 'CorrectHorseBattery42' },
       });
@@ -296,7 +308,8 @@ describe('Day 19 — storefront commerce', () => {
     async function signUpAndCookie(): Promise<{ shopperId: string; cookie: string }> {
       const email = `cart-${randomUUID()}@x.test`;
       const res = await app.inject({
-        method: 'POST', url: '/api/storefront/auth/sign-up',
+        method: 'POST',
+        url: '/api/storefront/auth/sign-up',
         headers: { 'content-type': 'application/json' },
         payload: { email, password: 'CorrectHorseBattery42', fullName: 'X' },
       });
@@ -320,7 +333,8 @@ describe('Day 19 — storefront commerce', () => {
     it('GET /api/storefront/cart creates active cart on first call', async () => {
       const { cookie } = await signUpAndCookie();
       const res = await app.inject({
-        method: 'GET', url: '/api/storefront/cart',
+        method: 'GET',
+        url: '/api/storefront/cart',
         headers: { cookie },
       });
       expect(res.statusCode).toBe(200);
@@ -333,7 +347,8 @@ describe('Day 19 — storefront commerce', () => {
       const { cookie } = await signUpAndCookie();
       const pid = await makeProduct({ listedOnStorefront: false });
       const res = await app.inject({
-        method: 'POST', url: '/api/storefront/cart/items',
+        method: 'POST',
+        url: '/api/storefront/cart/items',
         headers: { cookie, 'content-type': 'application/json' },
         payload: { productId: pid },
       });
@@ -345,13 +360,15 @@ describe('Day 19 — storefront commerce', () => {
       const { cookie } = await signUpAndCookie();
       const pid = await makeProduct();
       const r1 = await app.inject({
-        method: 'POST', url: '/api/storefront/cart/items',
+        method: 'POST',
+        url: '/api/storefront/cart/items',
         headers: { cookie, 'content-type': 'application/json' },
         payload: { productId: pid },
       });
       expect(r1.statusCode).toBe(200);
       const r2 = await app.inject({
-        method: 'POST', url: '/api/storefront/cart/items',
+        method: 'POST',
+        url: '/api/storefront/cart/items',
         headers: { cookie, 'content-type': 'application/json' },
         payload: { productId: pid },
       });
@@ -362,7 +379,8 @@ describe('Day 19 — storefront commerce', () => {
       const { cookie } = await signUpAndCookie();
       const pid = await makeProduct();
       const added = await app.inject({
-        method: 'POST', url: '/api/storefront/cart/items',
+        method: 'POST',
+        url: '/api/storefront/cart/items',
         headers: { cookie, 'content-type': 'application/json' },
         payload: { productId: pid },
       });
@@ -370,7 +388,8 @@ describe('Day 19 — storefront commerce', () => {
       expect(items.length).toBe(1);
 
       const deleted = await app.inject({
-        method: 'DELETE', url: `/api/storefront/cart/items/${items[0]!.id}`,
+        method: 'DELETE',
+        url: `/api/storefront/cart/items/${items[0]!.id}`,
         headers: { cookie },
       });
       expect(deleted.statusCode).toBe(200);
@@ -390,7 +409,10 @@ describe('Day 19 — storefront commerce', () => {
     };
 
     it('missing Stripe-Signature header → 400', async () => {
-      const r = await postWebhook(JSON.stringify({ id: 'evt_1', type: 'x', data: { object: { id: 'pi_x' } } }), null);
+      const r = await postWebhook(
+        JSON.stringify({ id: 'evt_1', type: 'x', data: { object: { id: 'pi_x' } } }),
+        null,
+      );
       expect(r.statusCode).toBe(400);
     });
 

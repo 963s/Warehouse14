@@ -11,8 +11,19 @@
  * Everything else is locked at INSERT.
  */
 
-import { boolean, check, customType, index, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import {
+  boolean,
+  check,
+  customType,
+  index,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 
 import { primaryKey, timestamps } from '../_shared/columns.js';
 import { devices } from '../auth/devices.js';
@@ -23,7 +34,9 @@ import { salesChannel, shippingStatus } from '../storefront/enums.js';
 import { transactionDirection } from './enums.js';
 
 const bytea = customType<{ data: Buffer; default: false }>({
-  dataType() { return 'bytea'; },
+  dataType() {
+    return 'bytea';
+  },
 });
 
 export const transactions = pgTable(
@@ -36,8 +49,12 @@ export const transactions = pgTable(
     stornoOfTransactionId: uuid('storno_of_transaction_id'),
 
     customerId: uuid('customer_id').references(() => customers.id),
-    deviceId: uuid('device_id').notNull().references(() => devices.id),
-    cashierUserId: uuid('cashier_user_id').notNull().references(() => users.id),
+    deviceId: uuid('device_id')
+      .notNull()
+      .references(() => devices.id),
+    cashierUserId: uuid('cashier_user_id')
+      .notNull()
+      .references(() => users.id),
 
     subtotalEur: numeric('subtotal_eur', { precision: 18, scale: 2 }).notNull(),
     vatEur: numeric('vat_eur', { precision: 18, scale: 2 }).notNull(),
@@ -81,10 +98,12 @@ export const transactions = pgTable(
 
     ...timestamps(),
   },
-  table => ({
+  (table) => ({
     receiptLocatorUq: uniqueIndex('transactions_receipt_locator_uq').on(table.receiptLocator),
 
-    businessDayIdx: index('transactions_business_day_idx').on(sql`berlin_business_day(${table.finalizedAt})`),
+    businessDayIdx: index('transactions_business_day_idx').on(
+      sql`berlin_business_day(${table.finalizedAt})`,
+    ),
     customerIdx: index('transactions_customer_idx')
       .on(table.customerId, table.finalizedAt.desc())
       .where(sql`${table.customerId} IS NOT NULL`),

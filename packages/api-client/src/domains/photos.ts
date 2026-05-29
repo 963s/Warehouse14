@@ -13,7 +13,12 @@
 
 import type { ApiClient } from '../client.js';
 
-export type PhotoSource = 'intake' | 'admin_upload' | 'storefront_user' | 'photographer' | 'phone_intake';
+export type PhotoSource =
+  | 'intake'
+  | 'admin_upload'
+  | 'storefront_user'
+  | 'photographer'
+  | 'phone_intake';
 export type PhotoWorkflowState =
   | 'FOTOGRAFIERT'
   | 'BEARBEITET'
@@ -76,15 +81,8 @@ export interface PhotoRow {
 // ────────────────────────────────────────────────────────────────────────
 
 export const photosApi = {
-  requestUploadUrl(
-    client: ApiClient,
-    body: PhotoUploadUrlBody,
-  ): Promise<PhotoUploadUrlResponse> {
-    return client.request<PhotoUploadUrlResponse>(
-      'POST',
-      '/api/photos/upload-url',
-      body,
-    );
+  requestUploadUrl(client: ApiClient, body: PhotoUploadUrlBody): Promise<PhotoUploadUrlResponse> {
+    return client.request<PhotoUploadUrlResponse>('POST', '/api/photos/upload-url', body);
   },
   register(client: ApiClient, body: PhotoRegisterBody): Promise<PhotoRow> {
     return client.request<PhotoRow>('POST', '/api/photos', body);

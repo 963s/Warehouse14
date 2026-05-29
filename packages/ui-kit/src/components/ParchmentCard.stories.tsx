@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react';
 
-import { ParchmentCard } from './ParchmentCard.js';
 import { DiamondRule } from './DiamondRule.js';
+import { ParchmentCard } from './ParchmentCard.js';
 import { Seal } from './Seal.js';
 
 const meta: Meta<typeof ParchmentCard> = {
@@ -21,9 +21,7 @@ export const Default: Story = {
           Werkstatt
         </h3>
         <DiamondRule label="Übersicht" />
-        <p style={{ marginTop: 0 }}>
-          Hier ruhen die offenen Aufgaben des Tages.
-        </p>
+        <p style={{ marginTop: 0 }}>Hier ruhen die offenen Aufgaben des Tages.</p>
       </>
     ),
   },

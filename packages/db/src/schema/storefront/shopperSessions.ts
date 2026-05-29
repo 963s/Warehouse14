@@ -5,8 +5,8 @@
  * different middleware, different TTLs (30-day rolling).
  */
 
-import { check, index, inet, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import { check, index, inet, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
 import { shoppers } from './shoppers.js';
 
@@ -14,7 +14,9 @@ export const shopperSessions = pgTable(
   'shopper_sessions',
   {
     id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-    shopperId: uuid('shopper_id').notNull().references(() => shoppers.id),
+    shopperId: uuid('shopper_id')
+      .notNull()
+      .references(() => shoppers.id),
     token: text('token').notNull().unique(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     ipAddress: inet('ip_address'),

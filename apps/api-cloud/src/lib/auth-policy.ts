@@ -11,7 +11,7 @@
 
 import type { FastifyRequest } from 'fastify';
 
-import { DomainError, type ApiErrorCode } from '../plugins/error-handler.js';
+import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 import type { Actor, ActorRole, ActorWithSession } from './actor.js';
 
 /** Default step-up freshness window for sensitive actions (ADR-0022 §4c + Basel directive). */

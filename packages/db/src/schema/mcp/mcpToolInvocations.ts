@@ -10,6 +10,7 @@
  * and the daily-spend report (worker job — Phase 1.5).
  */
 
+import { sql } from 'drizzle-orm';
 import {
   bigint,
   check,
@@ -22,7 +23,6 @@ import {
   timestamp,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { sql } from 'drizzle-orm';
 
 import { users } from '../auth/index.js';
 
@@ -71,9 +71,7 @@ export const mcpToolInvocations = pgTable(
     affectedEntityTable: text('affected_entity_table'),
     affectedEntityId: uuid('affected_entity_id'),
 
-    createdAt: timestamp('created_at', { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
     toolRecentIdx: index('mcp_tool_invocations_tool_recent_idx').on(

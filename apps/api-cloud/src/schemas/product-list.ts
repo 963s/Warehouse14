@@ -10,10 +10,10 @@
  * optimization; for single-shop volumes limit/offset is fine.
  */
 
-import { Type, type Static } from '@sinclair/typebox';
+import { type Static, Type } from '@sinclair/typebox';
 
 import { DecimalString } from './money.js';
-import { ProductCondition, ItemType } from './product.js';
+import { ItemType, ProductCondition } from './product.js';
 
 export const ProductStatus = Type.Union([
   Type.Literal('DRAFT'),
@@ -72,8 +72,11 @@ export const ProductListItem = Type.Object({
   condition: ProductCondition,
   itemType: ItemType,
   metal: Type.Union([
-    Type.Literal('gold'), Type.Literal('silver'),
-    Type.Literal('platinum'), Type.Literal('palladium'), Type.Null(),
+    Type.Literal('gold'),
+    Type.Literal('silver'),
+    Type.Literal('platinum'),
+    Type.Literal('palladium'),
+    Type.Null(),
   ]),
   weightGrams: Type.Union([DecimalString, Type.Null()]),
   listPriceEur: DecimalString,

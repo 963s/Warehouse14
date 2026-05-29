@@ -59,6 +59,11 @@ printpdf = "0.7"
 # ── Mock-mode RNG for fail-rate injection ────────────────────────────
 fastrand = "2"
 
+# ── USB digital scale over serial (MT-SICS) ──────────────────────────
+# NOTE: the goal said `serialport = "6"`, but the crate's latest is the 4.x
+# line (no v5/v6 exists on crates.io); "4" resolves to the current 4.9.x.
+serialport = "4"
+
 # ── Epic C — encrypted local KYC vault (GwG / GDPR) ──────────────────
 # AES-256-GCM at-rest encryption for ID scans; the 32-byte master key lives
 # in the OS keyring (never on disk). `zeroize` wipes key material after use.
@@ -67,3 +72,8 @@ keyring = { version = "3", features = ["apple-native", "windows-native", "sync-s
 sha2 = "0.10"
 zeroize = "1"
 uuid = { version = "1", features = ["v4"] }
+typst = "0.11"
+typst-pdf = "0.11"
+comemo = "0.4.0"
+typst-assets = { version = "0.11", features = ["fonts"] }
+mdns-sd = "0.20"

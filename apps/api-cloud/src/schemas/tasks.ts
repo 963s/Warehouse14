@@ -2,7 +2,7 @@
  * TypeBox schemas for the internal_tasks API surface (Day 25).
  */
 
-import { Type, type Static } from '@sinclair/typebox';
+import { type Static, Type } from '@sinclair/typebox';
 
 const TASK_PRIORITY = Type.Union([
   Type.Literal('LOW'),

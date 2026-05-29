@@ -21,13 +21,13 @@ import { useNavigate } from 'react-router-dom';
 
 import { DiamondRule, MagnifierIcon, ParchmentCard } from '@warehouse14/ui-kit';
 
+import { useRecents } from '../../state/recents-store.js';
 import {
   PRIMARY_SURFACES,
   SECONDARY_SURFACES,
-  findSurfaceByPath,
   type SurfaceDescriptor,
+  findSurfaceByPath,
 } from './surface-registry.js';
-import { useRecents } from '../../state/recents-store.js';
 
 export interface SpotlightProps {
   open: boolean;
@@ -192,8 +192,7 @@ export function Spotlight({ open, onClose }: SpotlightProps): JSX.Element | null
                 '1px solid var(--w14-gold)';
             }}
             onBlur={(ev) => {
-              (ev.currentTarget as HTMLInputElement).style.borderBottom =
-                '1px solid transparent';
+              (ev.currentTarget as HTMLInputElement).style.borderBottom = '1px solid transparent';
             }}
           />
           <span
@@ -281,7 +280,11 @@ function ResultList({
       {rows.map((row, i) => {
         const startsGroup = groupBoundaries.includes(i);
         return (
-          <li key={`${row.group}-${row.surface.path}`} role="option" aria-selected={i === activeIdx}>
+          <li
+            key={`${row.group}-${row.surface.path}`}
+            role="option"
+            aria-selected={i === activeIdx}
+          >
             {startsGroup && (
               <div style={{ padding: '8px 16px 2px' }}>
                 <GroupLabel group={row.group} />
@@ -301,11 +304,8 @@ function ResultList({
 }
 
 function GroupLabel({ group }: { group: ResultRow['group'] }): JSX.Element {
-  const label = group === 'zuletzt'
-    ? 'Zuletzt'
-    : group === 'karteikasten'
-      ? 'Karteikasten'
-      : 'Weitere';
+  const label =
+    group === 'zuletzt' ? 'Zuletzt' : group === 'karteikasten' ? 'Karteikasten' : 'Weitere';
   return (
     <div style={{ padding: '6px 0' }}>
       <DiamondRule label={label} />

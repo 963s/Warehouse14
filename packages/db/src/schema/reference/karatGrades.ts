@@ -13,30 +13,34 @@
  * READ-ONLY for the app role (Basel Day-3 directive).
  */
 
-import { boolean, check, index, numeric, pgTable, smallint, text, timestamp } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import {
+  boolean,
+  check,
+  index,
+  numeric,
+  pgTable,
+  smallint,
+  text,
+  timestamp,
+} from 'drizzle-orm/pg-core';
 
 export const karatGrades = pgTable(
   'karat_grades',
   {
-    code: text('code').primaryKey(),                                     // '8K', '14K', '18K', '22K', '24K'
-    karatValue: smallint('karat_value').notNull().unique(),               // 8, 14, 18, 22, 24
-    finenessPer1000: smallint('fineness_per_1000').notNull().unique(),    // 333, 585, 750, 916, 999
-    finenessDecimal: numeric('fineness_decimal', { precision: 5, scale: 4 })
-      .notNull()
-      .unique(),                                                          // 0.3330, 0.5850, 0.7500, 0.9160, 0.9990
-    hallmarkStamp: text('hallmark_stamp').notNull().unique(),             // '333', '585', etc.
+    code: text('code').primaryKey(), // '8K', '14K', '18K', '22K', '24K'
+    karatValue: smallint('karat_value').notNull().unique(), // 8, 14, 18, 22, 24
+    finenessPer1000: smallint('fineness_per_1000').notNull().unique(), // 333, 585, 750, 916, 999
+    finenessDecimal: numeric('fineness_decimal', { precision: 5, scale: 4 }).notNull().unique(), // 0.3330, 0.5850, 0.7500, 0.9160, 0.9990
+    hallmarkStamp: text('hallmark_stamp').notNull().unique(), // '333', '585', etc.
     displayLabelDe: text('display_label_de').notNull(),
     active: boolean('active').notNull().default(true),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  table => ({
+  (table) => ({
     codeFormat: check('karat_grades_code_format', sql`${table.code} ~ '^[0-9]{1,2}K$'`),
-    valueRange: check(
-      'karat_grades_value_range',
-      sql`${table.karatValue} BETWEEN 1 AND 24`,
-    ),
+    valueRange: check('karat_grades_value_range', sql`${table.karatValue} BETWEEN 1 AND 24`),
     finenessRange: check(
       'karat_grades_fineness_range',
       sql`${table.finenessPer1000} BETWEEN 1 AND 999`,

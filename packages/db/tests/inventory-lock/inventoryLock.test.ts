@@ -8,10 +8,12 @@
  * via the same connection model the runtime uses.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres, { type Sql } from 'postgres';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import type { AppDb } from '@warehouse14/db/client';
+import * as schema from '@warehouse14/db/schema';
 import {
   ReservationOwnershipError,
   autoReleaseExpired,
@@ -19,10 +21,13 @@ import {
   release,
   reserve,
 } from '@warehouse14/inventory-lock';
-import type { AppDb } from '@warehouse14/db/client';
-import * as schema from '@warehouse14/db/schema';
 
-import { applyMigrations, setAppPasswordForTest, startTestDb, type TestDb } from '../helpers/testDb.js';
+import {
+  type TestDb,
+  applyMigrations,
+  setAppPasswordForTest,
+  startTestDb,
+} from '../helpers/testDb.js';
 
 describe('@warehouse14/inventory-lock', () => {
   let testDb: TestDb;
@@ -56,7 +61,7 @@ describe('@warehouse14/inventory-lock', () => {
       database: 'warehouse14_test',
       username: 'warehouse14_app',
       password: 'warehouse14_app_test_pw',
-      max: 20,                                       // headroom for the race tests
+      max: 20, // headroom for the race tests
       onnotice: () => {},
     });
     appDb = drizzle(appSql, { schema });
@@ -84,18 +89,20 @@ describe('@warehouse14/inventory-lock', () => {
       );
       const results = await Promise.all(attempts);
 
-      const winners = results.filter(r => r !== null);
-      const losers = results.filter(r => r === null);
+      const winners = results.filter((r) => r !== null);
+      const losers = results.filter((r) => r === null);
 
       expect(winners).toHaveLength(1);
       expect(losers).toHaveLength(99);
 
       // The DB row reflects the winner's session.
-      const [row] = await migratorSql<{
-        status: string;
-        reserved_by_session_id: string;
-        reserved_by_channel: string;
-      }[]>`
+      const [row] = await migratorSql<
+        {
+          status: string;
+          reserved_by_session_id: string;
+          reserved_by_channel: string;
+        }[]
+      >`
         SELECT status, reserved_by_session_id, reserved_by_channel FROM products WHERE id = ${productId}
       `;
       expect(row.status).toBe('RESERVED');
@@ -109,10 +116,10 @@ describe('@warehouse14/inventory-lock', () => {
         INSERT INTO users (email, name, role)
         VALUES (${`race-${crypto.randomUUID()}@x.test`}, 'X', 'CASHIER'::user_role)
         RETURNING id
-      `.then(rows => rows[0]!.id);
+      `.then((rows) => rows[0]!.id);
 
       const channels = ['POS', 'STOREFRONT', 'EBAY', 'STOREFRONT', 'EBAY'] as const;
-      const attempts = channels.map(channel =>
+      const attempts = channels.map((channel) =>
         reserve(appDb, {
           productId,
           channel,
@@ -121,7 +128,7 @@ describe('@warehouse14/inventory-lock', () => {
         }),
       );
       const results = await Promise.all(attempts);
-      const winners = results.filter(r => r !== null);
+      const winners = results.filter((r) => r !== null);
       expect(winners).toHaveLength(1);
     });
 
@@ -153,7 +160,7 @@ describe('@warehouse14/inventory-lock', () => {
         INSERT INTO users (email, name, role)
         VALUES (${`pos-${crypto.randomUUID()}@x.test`}, 'X', 'CASHIER'::user_role)
         RETURNING id
-      `.then(rows => rows[0]!.id);
+      `.then((rows) => rows[0]!.id);
       const r = await reserve(appDb, {
         productId,
         channel: 'POS',
@@ -211,11 +218,13 @@ describe('@warehouse14/inventory-lock', () => {
         userId: null,
         reason: 'storefront_checkout_abandoned',
       });
-      const [row] = await migratorSql<{
-        status: string;
-        reserved_by_channel: string | null;
-        reserved_at: Date | null;
-      }[]>`
+      const [row] = await migratorSql<
+        {
+          status: string;
+          reserved_by_channel: string | null;
+          reserved_at: Date | null;
+        }[]
+      >`
         SELECT status, reserved_by_channel, reserved_at FROM products WHERE id = ${productId}
       `;
       expect(row.status).toBe('AVAILABLE');
@@ -233,7 +242,7 @@ describe('@warehouse14/inventory-lock', () => {
       await expect(
         release(appDb, {
           productId,
-          sessionId: crypto.randomUUID(),     // different session
+          sessionId: crypto.randomUUID(), // different session
           userId: null,
           reason: 'admin_manual_release',
         }),
@@ -309,7 +318,7 @@ describe('@warehouse14/inventory-lock', () => {
         INSERT INTO users (email, name, role)
         VALUES (${`pos2-${crypto.randomUUID()}@x.test`}, 'X', 'CASHIER'::user_role)
         RETURNING id
-      `.then(rows => rows[0]!.id);
+      `.then((rows) => rows[0]!.id);
       await reserve(appDb, {
         productId,
         channel: 'POS',

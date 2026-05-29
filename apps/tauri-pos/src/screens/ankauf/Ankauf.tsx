@@ -21,9 +21,9 @@ import { DiamondRule, ParchmentCard, Seal } from '@warehouse14/ui-kit';
 
 import { useCurrentShift } from '../../hooks/useCurrentShift.js';
 import {
-  useAnkaufCartStore,
   selectAnkaufCustomerId,
   selectAnkaufItems,
+  useAnkaufCartStore,
 } from '../../state/ankauf-cart-store.js';
 
 import { ShiftGuard } from '../_shared/ShiftGuard.js';
@@ -71,15 +71,9 @@ function AnkaufFloor(): JSX.Element {
       }}
     >
       <CustomerPanel />
-      <IntakeList
-        customerSelected={hasCustomer}
-        onOpenBezahlen={() => setBezahlenOpen(true)}
-      />
+      <IntakeList customerSelected={hasCustomer} onOpenBezahlen={() => setBezahlenOpen(true)} />
       {bezahlenOpen && hasCustomer && hasItems && (
-        <AnkaufBezahlenDialog
-          open={bezahlenOpen}
-          onClose={() => setBezahlenOpen(false)}
-        />
+        <AnkaufBezahlenDialog open={bezahlenOpen} onClose={() => setBezahlenOpen(false)} />
       )}
     </div>
   );
@@ -88,10 +82,7 @@ function AnkaufFloor(): JSX.Element {
 function AnkaufSplash(): JSX.Element {
   return (
     <div style={{ flex: 1, display: 'grid', placeItems: 'center', padding: 32 }}>
-      <ParchmentCard
-        padding="lg"
-        style={{ width: 'min(420px, 100%)', textAlign: 'center' }}
-      >
+      <ParchmentCard padding="lg" style={{ width: 'min(420px, 100%)', textAlign: 'center' }}>
         <Seal size="md" tone="faded" label="3" />
         <h2
           style={{

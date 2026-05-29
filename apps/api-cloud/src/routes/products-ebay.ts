@@ -16,27 +16,24 @@
  */
 
 import { Type } from '@sinclair/typebox';
-import { and, count, desc, eq, sql as drizzleSql } from 'drizzle-orm';
+import { and, count, desc, sql as drizzleSql, eq } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 
-import {
-  productEbayListingEvents,
-  products,
-} from '@warehouse14/db/schema';
+import { productEbayListingEvents, products } from '@warehouse14/db/schema';
 
 import { requireAuth, requireOwnerStepUp, requireRole } from '../lib/auth-policy.js';
-import { DomainError, type ApiErrorCode } from '../plugins/error-handler.js';
+import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 import {
   ALLOWED_EBAY_TRANSITIONS,
   EBAY_SOLD_CLUSTER,
   EbayHistoryQuery,
   EbayHistoryResponse,
   ProductIdParams,
-  TransitionEbayStateBody,
-  TransitionEbayStateResponse,
   type TEbayHistoryQuery,
   type TProductIdParams,
   type TTransitionEbayStateBody,
+  TransitionEbayStateBody,
+  TransitionEbayStateResponse,
 } from '../schemas/products-ebay.js';
 
 class ProductNotFoundError extends DomainError {
@@ -122,13 +119,18 @@ const productsEbayRoutes: FastifyPluginAsync = async (app) => {
 
         // Predict what the trigger will do (so the route response can echo
         // the side effect back to the operator UI without a second read).
-        let sideEffect: 'AUTO_RESERVED' | 'IDEMPOTENT_NO_OP' | 'CONFLICT_LOCAL_RESERVATION'
-          | 'CONFLICT_LOCAL_SOLD' | 'NONE' = 'NONE';
+        let sideEffect:
+          | 'AUTO_RESERVED'
+          | 'IDEMPOTENT_NO_OP'
+          | 'CONFLICT_LOCAL_RESERVATION'
+          | 'CONFLICT_LOCAL_SOLD'
+          | 'NONE' = 'NONE';
         const enteringSoldCluster =
           EBAY_SOLD_CLUSTER.includes(toState) && current.ebayState !== toState;
         if (enteringSoldCluster) {
           if (current.status === 'AVAILABLE') sideEffect = 'AUTO_RESERVED';
-          else if (current.status === 'RESERVED' && current.reservedByChannel === 'EBAY') sideEffect = 'IDEMPOTENT_NO_OP';
+          else if (current.status === 'RESERVED' && current.reservedByChannel === 'EBAY')
+            sideEffect = 'IDEMPOTENT_NO_OP';
           else if (current.status === 'RESERVED') sideEffect = 'CONFLICT_LOCAL_RESERVATION';
           else if (current.status === 'SOLD') sideEffect = 'CONFLICT_LOCAL_SOLD';
         }
@@ -184,7 +186,7 @@ const productsEbayRoutes: FastifyPluginAsync = async (app) => {
     {
       schema: {
         tags: ['products', 'ebay'],
-        summary: 'Paged append-only event log for a product\'s eBay state.',
+        summary: "Paged append-only event log for a product's eBay state.",
         params: ProductIdParams,
         querystring: EbayHistoryQuery,
         response: { 200: EbayHistoryResponse, 401: ErrorResponse, 403: ErrorResponse },

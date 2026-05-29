@@ -10,17 +10,24 @@
  *   • Step-up column lives on sessions
  */
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import postgres, { type Sql } from 'postgres';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { applyMigrations, setAppPasswordForTest, startTestDb, type TestDb } from '../helpers/testDb.js';
+import {
+  type TestDb,
+  applyMigrations,
+  setAppPasswordForTest,
+  startTestDb,
+} from '../helpers/testDb.js';
 
 describe('migration 0014_owner_and_pos_pin', () => {
   let testDb: TestDb;
   let migratorSql: Sql;
   let appSql: Sql;
 
-  async function makeUser(opts: { role?: 'ADMIN' | 'CASHIER' | 'READONLY'; isOwner?: boolean } = {}): Promise<string> {
+  async function makeUser(
+    opts: { role?: 'ADMIN' | 'CASHIER' | 'READONLY'; isOwner?: boolean } = {},
+  ): Promise<string> {
     const [u] = await migratorSql<{ id: string }[]>`
       INSERT INTO users (email, name, role, is_owner)
       VALUES (${`u-${crypto.randomUUID()}@x.test`}, 'X',
@@ -79,7 +86,7 @@ describe('migration 0014_owner_and_pos_pin', () => {
       for (let i = 0; i < 5; i++) await makeUser({ isOwner: false });
       const [{ count }] = await migratorSql<{ count: string }[]>`
         SELECT COUNT(*)::text AS count FROM users WHERE is_owner = FALSE`;
-      expect(parseInt(count, 10)).toBeGreaterThanOrEqual(5);
+      expect(Number.parseInt(count, 10)).toBeGreaterThanOrEqual(5);
     });
   });
 
@@ -124,7 +131,9 @@ describe('migration 0014_owner_and_pos_pin', () => {
   describe('users_pin_hash_set_together CHECK', () => {
     it('allows both NULL (no PIN yet)', async () => {
       const id = await makeUser();
-      const [row] = await migratorSql<{ pos_pin_hash: string | null; pos_pin_set_at: Date | null }[]>`
+      const [row] = await migratorSql<
+        { pos_pin_hash: string | null; pos_pin_set_at: Date | null }[]
+      >`
         SELECT pos_pin_hash, pos_pin_set_at FROM users WHERE id = ${id}`;
       expect(row!.pos_pin_hash).toBeNull();
       expect(row!.pos_pin_set_at).toBeNull();
@@ -200,9 +209,9 @@ describe('migration 0014_owner_and_pos_pin', () => {
     it('app CANNOT update is_owner', async () => {
       await migratorSql`DELETE FROM users WHERE is_owner = TRUE`;
       const id = await makeUser();
-      await expect(
-        appSql`UPDATE users SET is_owner = TRUE WHERE id = ${id}`,
-      ).rejects.toThrow(/permission denied/i);
+      await expect(appSql`UPDATE users SET is_owner = TRUE WHERE id = ${id}`).rejects.toThrow(
+        /permission denied/i,
+      );
     });
   });
 

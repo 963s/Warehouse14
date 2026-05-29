@@ -9,8 +9,8 @@
 
 import { sql } from 'drizzle-orm';
 
-import type { JobDefinition } from '../lib/job-runner.js';
 import { sessions } from '@warehouse14/db/schema';
+import type { JobDefinition } from '../lib/job-runner.js';
 
 export const sessionsCleanupJob: JobDefinition = {
   name: 'sessions_cleanup',

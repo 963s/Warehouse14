@@ -1,0 +1,28 @@
+{
+  "name": "@warehouse14/intake-pipeline",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Deterministic core of the AI Intake Pipeline (ADR-0015): tax-treatment classifier, override-command parser, grouping-window logic. No AI, no I/O — pure + property-tested.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf dist .tsbuildinfo"
+  },
+  "devDependencies": {
+    "@warehouse14/config": "workspace:*",
+    "typescript": "5.7.2",
+    "vitest": "2.1.8"
+  }
+}

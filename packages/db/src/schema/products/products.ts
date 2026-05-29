@@ -23,16 +23,34 @@
  * NEVER DELETE: full audit trail of inventory.
  */
 
-import { boolean, check, index, integer, jsonb, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import {
+  boolean,
+  check,
+  index,
+  integer,
+  jsonb,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 
-import { primaryKey, timestamps } from '../_shared/columns.js';
 import { vector } from '../_shared/columnTypes.js';
+import { primaryKey, timestamps } from '../_shared/columns.js';
 import { users } from '../auth/users.js';
 import { customers } from '../customers/customers.js';
 import { karatGrades } from '../reference/karatGrades.js';
 import { taxTreatmentCodes } from '../reference/taxTreatmentCodes.js';
-import { ebayListingState, itemType, productCondition, productStatus, reservationChannel } from './enums.js';
+import {
+  ebayListingState,
+  itemType,
+  productCondition,
+  productStatus,
+  reservationChannel,
+} from './enums.js';
 
 const embedding1536 = vector(1536);
 
@@ -105,10 +123,9 @@ export const products = pgTable(
      * NULL when either operand is NULL. NEVER settable directly — Postgres
      * rejects any INSERT/UPDATE that targets this column.
      */
-    feingewichtGrams: numeric('feingewicht_grams', { precision: 10, scale: 4 })
-      .generatedAlwaysAs(
-        sql`CASE WHEN weight_grams IS NULL OR fineness_decimal IS NULL THEN NULL ELSE weight_grams * fineness_decimal END`,
-      ),
+    feingewichtGrams: numeric('feingewicht_grams', { precision: 10, scale: 4 }).generatedAlwaysAs(
+      sql`CASE WHEN weight_grams IS NULL OR fineness_decimal IS NULL THEN NULL ELSE weight_grams * fineness_decimal END`,
+    ),
     /** Sammleraufschlag — operator-set premium over scrap value. NULL = "use list_price − schmelzwert". */
     collectorPremiumEur: numeric('collector_premium_eur', { precision: 18, scale: 2 }),
 
@@ -159,7 +176,7 @@ export const products = pgTable(
 
     ...timestamps(),
   },
-  table => ({
+  (table) => ({
     skuUq: uniqueIndex('products_sku_uq').on(table.sku),
     barcodeUq: uniqueIndex('products_barcode_uq').on(table.barcode),
 

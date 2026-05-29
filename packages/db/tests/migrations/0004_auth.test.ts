@@ -16,14 +16,14 @@
  *   6. Idempotency        — re-applying 0004 is safe
  */
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from 'postgres';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
+  type TestDb,
   applyMigrations,
   setAppPasswordForTest,
   startTestDb,
-  type TestDb,
 } from '../helpers/testDb.js';
 
 describe('migration 0004_auth', () => {
@@ -33,11 +33,13 @@ describe('migration 0004_auth', () => {
   // A few helpers used across the suite.
 
   /** Helper: create a known-good user as migrator, return its UUID. */
-  async function makeUser(opts: {
-    email?: string;
-    role?: 'ADMIN' | 'CASHIER' | 'READONLY';
-    name?: string;
-  } = {}): Promise<string> {
+  async function makeUser(
+    opts: {
+      email?: string;
+      role?: 'ADMIN' | 'CASHIER' | 'READONLY';
+      name?: string;
+    } = {},
+  ): Promise<string> {
     const email = opts.email ?? `u-${crypto.randomUUID()}@example.test`;
     const name = opts.name ?? 'Test User';
     const role = opts.role ?? 'ADMIN';
@@ -67,7 +69,7 @@ describe('migration 0004_auth', () => {
   describe('structure — tables, enums, FKs, indexes, triggers', () => {
     it.each(['users', 'devices', 'accounts', 'sessions', 'verifications', 'two_factors'])(
       'table %s exists',
-      async name => {
+      async (name) => {
         const [row] = await migratorSql<{ exists: boolean }[]>`
           SELECT EXISTS (
             SELECT 1 FROM information_schema.tables
@@ -90,7 +92,7 @@ describe('migration 0004_auth', () => {
          WHERE t.typname = ${typeName}
          ORDER BY e.enumsortorder
       `;
-      expect(rows.map(r => r.enumlabel)).toEqual([...expected]);
+      expect(rows.map((r) => r.enumlabel)).toEqual([...expected]);
     });
 
     it('users.email column is citext (case-insensitive)', async () => {
@@ -306,13 +308,27 @@ describe('migration 0004_auth', () => {
         SELECT has_table_privilege('warehouse14_app', 'devices', 'DELETE') AS has`;
       expect(d.has).toBe(false);
 
-      for (const col of ['status', 'last_seen_at', 'last_seen_ip', 'notes', 'hostname', 'updated_at']) {
+      for (const col of [
+        'status',
+        'last_seen_at',
+        'last_seen_ip',
+        'notes',
+        'hostname',
+        'updated_at',
+      ]) {
         const [row] = await migratorSql<{ has: boolean }[]>`
           SELECT has_column_privilege('warehouse14_app', 'devices', ${col}, 'UPDATE') AS has`;
         expect(row.has, `devices.${col} UPDATE permitted`).toBe(true);
       }
       // Identity / cert lifecycle columns: forbidden.
-      for (const col of ['cert_serial', 'cert_issued_at', 'cert_expires_at', 'paired_by_user_id', 'paired_at', 'device_class']) {
+      for (const col of [
+        'cert_serial',
+        'cert_issued_at',
+        'cert_expires_at',
+        'paired_by_user_id',
+        'paired_at',
+        'device_class',
+      ]) {
         const [row] = await migratorSql<{ has: boolean }[]>`
           SELECT has_column_privilege('warehouse14_app', 'devices', ${col}, 'UPDATE') AS has`;
         expect(row.has, `devices.${col} UPDATE forbidden`).toBe(false);
@@ -324,8 +340,16 @@ describe('migration 0004_auth', () => {
         SELECT has_table_privilege('warehouse14_app', 'accounts', 'DELETE') AS has`;
       expect(d.has).toBe(false);
 
-      for (const col of ['password', 'access_token', 'refresh_token', 'id_token',
-                         'access_token_expires_at', 'refresh_token_expires_at', 'scope', 'updated_at']) {
+      for (const col of [
+        'password',
+        'access_token',
+        'refresh_token',
+        'id_token',
+        'access_token_expires_at',
+        'refresh_token_expires_at',
+        'scope',
+        'updated_at',
+      ]) {
         const [row] = await migratorSql<{ has: boolean }[]>`
           SELECT has_column_privilege('warehouse14_app', 'accounts', ${col}, 'UPDATE') AS has`;
         expect(row.has, `accounts.${col} UPDATE permitted`).toBe(true);
@@ -351,9 +375,9 @@ describe('migration 0004_auth', () => {
           INSERT INTO users (email, name, role)
           VALUES (${email}, 'E2E', 'CASHIER'::user_role)
         `;
-        await expect(
-          appSql`DELETE FROM users WHERE email = ${email}::citext`,
-        ).rejects.toThrow(/permission denied/i);
+        await expect(appSql`DELETE FROM users WHERE email = ${email}::citext`).rejects.toThrow(
+          /permission denied/i,
+        );
       } finally {
         await appSql.end({ timeout: 5 });
       }
@@ -493,7 +517,7 @@ describe('migration 0004_auth', () => {
       const [before] = await migratorSql<{ updated_at: Date }[]>`
         SELECT updated_at FROM users WHERE id = ${userId}
       `;
-      await new Promise(r => setTimeout(r, 50));
+      await new Promise((r) => setTimeout(r, 50));
       await migratorSql`UPDATE users SET name = 'Renamed' WHERE id = ${userId}`;
       const [after] = await migratorSql<{ updated_at: Date }[]>`
         SELECT updated_at FROM users WHERE id = ${userId}

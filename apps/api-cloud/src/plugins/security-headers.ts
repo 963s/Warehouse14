@@ -23,12 +23,12 @@
  * from loading its inline scripts. Phase 1.5 can split CSP per-route.
  */
 
-import fastifyPlugin from 'fastify-plugin';
-import fastifyHelmet from '@fastify/helmet';
 import fastifyCors from '@fastify/cors';
+import fastifyHelmet from '@fastify/helmet';
 import type { FastifyPluginAsync } from 'fastify';
+import fastifyPlugin from 'fastify-plugin';
 
-import { parseOrigins, type Env } from '../config/env.js';
+import { type Env, parseOrigins } from '../config/env.js';
 
 export interface SecurityHeadersPluginOpts {
   env: Env;
@@ -88,9 +88,9 @@ const securityHeadersPlugin: FastifyPluginAsync<SecurityHeadersPluginOpts> = asy
       'content-type',
       'authorization',
       'cookie',
-      'last-event-id',                  // SSE reconnect
-      'x-dev-device-fingerprint',       // dev mTLS bypass
-      'x-request-id',                   // correlation
+      'last-event-id', // SSE reconnect
+      'x-dev-device-fingerprint', // dev mTLS bypass
+      'x-request-id', // correlation
     ],
     exposedHeaders: ['x-request-id', 'ratelimit-limit', 'ratelimit-remaining', 'ratelimit-reset'],
     maxAge: 600,

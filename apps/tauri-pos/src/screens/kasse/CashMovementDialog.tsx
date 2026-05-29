@@ -11,19 +11,11 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
-import {
-  ApiError,
-  shifts as shiftsApi,
-  type CashMovementDirection,
-} from '@warehouse14/api-client';
-import {
-  Button,
-  DiamondRule,
-  ParchmentCard,
-} from '@warehouse14/ui-kit';
+import { ApiError, type CashMovementDirection, shifts as shiftsApi } from '@warehouse14/api-client';
+import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 
-import { useApiClient } from '../../lib/api-context.js';
 import { useCurrentShift } from '../../hooks/useCurrentShift.js';
+import { useApiClient } from '../../lib/api-context.js';
 import { useToastStore } from '../../state/toast-store.js';
 
 import { EuroInput } from './EuroInput.js';
@@ -173,12 +165,7 @@ export function CashMovementDialog({
         <DiamondRule />
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          <EuroInput
-            label="Betrag"
-            valueEur={amountEur}
-            onValueChange={setAmountEur}
-            autoFocus
-          />
+          <EuroInput label="Betrag" valueEur={amountEur} onValueChange={setAmountEur} autoFocus />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <label
               htmlFor="cm-reason"
@@ -194,7 +181,9 @@ export function CashMovementDialog({
               onChange={(ev) => setReason(ev.target.value)}
               disabled={submitting}
               maxLength={1024}
-              placeholder={kind === 'einlage' ? 'z. B. Tresor-Übernahme' : 'z. B. Bürobedarf — Tinte'}
+              placeholder={
+                kind === 'einlage' ? 'z. B. Tresor-Übernahme' : 'z. B. Bürobedarf — Tinte'
+              }
               style={{
                 width: '100%',
                 border: 'none',

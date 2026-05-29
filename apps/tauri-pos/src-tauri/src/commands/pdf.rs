@@ -1,49 +1,32 @@
-//! Mandate 3-B — A4 invoice PDF via `printpdf`.
+//! Mandate 3-B — A4 invoice PDF via the native **Typst** compiler.
 //!
-//! Pure-Rust PDF generation. The layout is a deliberate scaffold:
-//! shop letterhead at top, customer block, line items with §25a-vs-standard
-//! tax breakdown, total, TSE block + QR, footer. The Owner will iterate
-//! on visuals later; this gets us a printable A4 with correct fiscal data
-//! from day one.
+//! Typst is a Rust-native typesetting engine: it compiles a document template
+//! to PDF entirely in-process (no Puppeteer, no headless Chrome, no external
+//! binary). We embed a small `World` (the trait Typst uses to resolve sources +
+//! fonts), bundle the default fonts from `typst-assets`, build the invoice
+//! source from `InvoiceData`, compile it, and export PDF bytes via `typst-pdf`.
 //!
-//! Dispatch to the system printer goes through `lpr` (macOS / Linux) for
-//! V1; Windows lands in Phase 1.5. The PDF preview opens via tauri-plugin-shell.
+//! `print_a4` / `open_pdf_preview` are unchanged — they take raw PDF bytes and
+//! are agnostic to how the bytes were produced.
 
-use printpdf::{
-    BuiltinFont, IndirectFontRef, Mm, PdfDocument, PdfLayerReference, Point,
-};
+use std::sync::OnceLock;
+
+use comemo::Prehashed;
 use serde::{Deserialize, Serialize};
-use std::io::BufWriter;
+use typst::diag::{FileError, FileResult};
+use typst::eval::Tracer;
+use typst::foundations::{Bytes, Datetime, Smart};
+use typst::syntax::{FileId, Source};
+use typst::text::{Font, FontBook};
+use typst::{Library, World};
 
 use crate::config;
 use crate::error::{HardwareError, HwResult};
 use crate::mock::printer_mock;
 
 // ────────────────────────────────────────────────────────────────────────
-// Wire-format structs — TypeScript mirrors live in `hardware-client.ts`.
+// Wire-format structs — TypeScript mirror lives in `hooks/useInvoicePdf.ts`.
 // ────────────────────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ShopInfo {
-    pub name: String,
-    pub address_lines: Vec<String>,
-    pub vat_id: String,
-    pub tax_id: Option<String>,
-    pub iban: Option<String>,
-    pub bic: Option<String>,
-    pub email: Option<String>,
-    pub phone: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CustomerInfo {
-    pub name: String,
-    pub address_lines: Vec<String>,
-    pub customer_number: Option<String>,
-    pub vat_id: Option<String>,
-}
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -51,58 +34,23 @@ pub struct InvoiceItem {
     pub description: String,
     pub quantity: u32,
     pub unit_price_eur: String,
-    pub line_total_eur: String,
-    /// One of: STANDARD_19, REDUCED_7, MARGIN_25A, INVESTMENT_GOLD_25C
-    pub tax_treatment_code: String,
-    /// VAT rate as a percentage, e.g. "19.00" — empty string for §25a/25c.
-    pub applied_vat_rate: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TaxBreakdownRow {
-    pub label: String,        // e.g. "MwSt. 19 %"
-    pub base_eur: String,
-    pub vat_eur: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TseSignatureBlock {
-    pub signature_value: String,
-    pub signature_counter: String,
-    pub transaction_number: String,
-    pub started_at: String,
-    pub finished_at: String,
-    /// Same payload as the thermal receipt's QR.
-    pub qr_payload: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PaymentInfo {
-    pub method_label: String,
+    /// VAT rate as printed, e.g. "19" / "7" / "" for §25a/§25c margin schemes.
+    pub vat_rate: String,
     pub total_eur: String,
-    /// e.g. ZVT auth-code, IBAN reference, etc.
-    pub reference: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InvoiceData {
     pub invoice_number: String,
-    pub invoice_date: String,       // pre-localised "27.05.2026"
-    pub due_date: Option<String>,   // for B2B invoices
-    pub shop: ShopInfo,
-    pub customer: Option<CustomerInfo>,
+    pub date: String,
+    pub seller_name: String,
     pub items: Vec<InvoiceItem>,
     pub subtotal_eur: String,
     pub vat_total_eur: String,
-    pub grand_total_eur: String,
-    pub tax_breakdown: Vec<TaxBreakdownRow>,
-    pub payment: PaymentInfo,
-    pub tse: TseSignatureBlock,
-    pub footer_notes: Vec<String>,
+    pub total_eur: String,
+    /// Legal tax note (§25a / §25c / §13b), printed if present.
+    pub tax_note: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -125,25 +73,24 @@ pub struct PdfPreviewResult {
 // Commands
 // ────────────────────────────────────────────────────────────────────────
 
-/// Render an `InvoiceData` to PDF bytes. Pure CPU work — runs on the
+/// Render an `InvoiceData` to PDF bytes via Typst. Pure CPU work — runs on the
 /// blocking pool so we never starve the Tauri event loop.
 #[tauri::command]
-pub async fn generate_invoice_pdf(data: InvoiceData) -> HwResult<Vec<u8>> {
-    tauri::async_runtime::spawn_blocking(move || render_invoice(&data))
-        .await
-        .map_err(|e| HardwareError::Internal(format!("join: {e}")))?
+pub async fn generate_invoice_pdf(data: InvoiceData) -> Result<Vec<u8>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let source = build_invoice_source(&data);
+        compile_typst_to_pdf(source)
+    })
+    .await
+    .map_err(|e| format!("invoice render task join failed: {e}"))?
 }
 
-/// Hand the PDF bytes to the OS print spool. macOS / Linux only in V1
-/// (`lpr` is everywhere); Windows joins in Phase 1.5.
+/// Hand the PDF bytes to the OS print spool (macOS / Linux `lpr`).
 #[tauri::command]
 pub async fn print_a4(params: PrintA4Params) -> HwResult<()> {
     if config::is_mock_mode() {
         return printer_mock::print_a4(params).await;
     }
-
-    // Write to a temp file because `lpr` reads from a path (the stdin
-    // variant is finicky on macOS).
     let tmp = std::env::temp_dir().join(format!("warehouse14-invoice-{}.pdf", uuid_like()));
     std::fs::write(&tmp, &params.pdf_bytes).map_err(HardwareError::from)?;
 
@@ -155,7 +102,6 @@ pub async fn print_a4(params: PrintA4Params) -> HwResult<()> {
         .await
         .map_err(HardwareError::from)?;
 
-    // Best-effort cleanup; the spooler has already taken the bytes.
     let _ = std::fs::remove_file(&tmp);
 
     if !status.success() {
@@ -167,9 +113,7 @@ pub async fn print_a4(params: PrintA4Params) -> HwResult<()> {
     Ok(())
 }
 
-/// Save the PDF to a temp path and ask the OS to open it (Preview.app on
-/// macOS, the default PDF reader elsewhere). The React layer can poll for
-/// the user to dismiss it, or just use it as a "look before print" affordance.
+/// Save the PDF to a temp path and ask the OS to open it (Preview.app on macOS).
 #[tauri::command]
 pub async fn open_pdf_preview(
     pdf_bytes: Vec<u8>,
@@ -178,10 +122,6 @@ pub async fn open_pdf_preview(
     let tmp = std::env::temp_dir().join(format!("warehouse14-preview-{}.pdf", uuid_like()));
     std::fs::write(&tmp, &pdf_bytes).map_err(HardwareError::from)?;
 
-    // Use tauri-plugin-shell's `open` API — picks the OS default PDF viewer.
-    // The method is marked deprecated in newer Tauri 2 in favour of
-    // tauri-plugin-opener; V1 keeps it for the smaller dep footprint
-    // and re-evaluates in V1.1.
     #[allow(deprecated)]
     {
         use tauri_plugin_shell::ShellExt;
@@ -197,209 +137,199 @@ pub async fn open_pdf_preview(
 }
 
 // ────────────────────────────────────────────────────────────────────────
-// Layout — deliberate scaffold; the Owner will iterate on visuals.
+// Typst compilation
 // ────────────────────────────────────────────────────────────────────────
 
-fn render_invoice(data: &InvoiceData) -> HwResult<Vec<u8>> {
-    let (doc, page1, layer1) =
-        PdfDocument::new("Rechnung", Mm(210.0), Mm(297.0), "Layer 1");
-    let regular = doc
-        .add_builtin_font(BuiltinFont::Helvetica)
-        .map_err(|e| HardwareError::Encoding(format!("font: {e}")))?;
-    let bold = doc
-        .add_builtin_font(BuiltinFont::HelveticaBold)
-        .map_err(|e| HardwareError::Encoding(format!("font-bold: {e}")))?;
-
-    let layer = doc.get_page(page1).get_layer(layer1);
-
-    // Shop letterhead.
-    write_text(&layer, &bold, 16.0, Mm(20.0), Mm(280.0), &data.shop.name);
-    let mut y = 273.0;
-    for line in &data.shop.address_lines {
-        write_text(&layer, &regular, 10.0, Mm(20.0), Mm(y), line);
-        y -= 4.5;
-    }
-    write_text(&layer, &regular, 9.0, Mm(20.0), Mm(y), &format!("USt-IdNr.: {}", data.shop.vat_id));
-
-    // Invoice meta (top-right block).
-    write_text(&layer, &bold, 18.0, Mm(140.0), Mm(280.0), "RECHNUNG");
-    write_text(&layer, &regular, 10.0, Mm(140.0), Mm(272.0), &format!("Nr.: {}", data.invoice_number));
-    write_text(&layer, &regular, 10.0, Mm(140.0), Mm(267.0), &format!("Datum: {}", data.invoice_date));
-    if let Some(due) = &data.due_date {
-        write_text(&layer, &regular, 10.0, Mm(140.0), Mm(262.0), &format!("Fällig: {due}"));
-    }
-
-    // Customer block.
-    let mut cy = 245.0;
-    write_text(&layer, &bold, 10.0, Mm(20.0), Mm(cy), "Rechnungsempfänger:");
-    cy -= 5.0;
-    if let Some(c) = &data.customer {
-        write_text(&layer, &regular, 10.0, Mm(20.0), Mm(cy), &c.name);
-        cy -= 4.5;
-        for line in &c.address_lines {
-            write_text(&layer, &regular, 10.0, Mm(20.0), Mm(cy), line);
-            cy -= 4.5;
-        }
-        if let Some(vat) = &c.vat_id {
-            cy -= 1.0;
-            write_text(&layer, &regular, 9.0, Mm(20.0), Mm(cy), &format!("USt-IdNr.: {vat}"));
-        }
-    } else {
-        write_text(&layer, &regular, 10.0, Mm(20.0), Mm(cy), "Barzahlung / Walk-in");
-    }
-
-    // Items table.
-    let mut row_y = 200.0;
-    write_text(&layer, &bold, 10.0, Mm(20.0), Mm(row_y), "Pos.");
-    write_text(&layer, &bold, 10.0, Mm(35.0), Mm(row_y), "Bezeichnung");
-    write_text(&layer, &bold, 10.0, Mm(125.0), Mm(row_y), "Menge");
-    write_text(&layer, &bold, 10.0, Mm(145.0), Mm(row_y), "Einzelpreis");
-    write_text(&layer, &bold, 10.0, Mm(180.0), Mm(row_y), "Summe");
-    row_y -= 3.0;
-    draw_horizontal_rule(&layer, Mm(20.0), Mm(190.0), Mm(row_y));
-
-    for (i, item) in data.items.iter().enumerate() {
-        row_y -= 5.5;
-        let pos = format!("{:>2}", i + 1);
-        write_text(&layer, &regular, 9.5, Mm(20.0), Mm(row_y), &pos);
-        write_text(&layer, &regular, 9.5, Mm(35.0), Mm(row_y), &truncate(&item.description, 50));
-        write_text(&layer, &regular, 9.5, Mm(125.0), Mm(row_y), &format!("{}", item.quantity));
-        write_text(&layer, &regular, 9.5, Mm(145.0), Mm(row_y), &format!("{} EUR", item.unit_price_eur));
-        write_text(&layer, &regular, 9.5, Mm(180.0), Mm(row_y), &format!("{} EUR", item.line_total_eur));
-        if !item.applied_vat_rate.is_empty() {
-            row_y -= 4.0;
-            write_text(&layer, &regular, 8.0, Mm(35.0), Mm(row_y),
-                &format!("({} – MwSt. {}%)", item.tax_treatment_code, item.applied_vat_rate),
-            );
-        }
-    }
-    row_y -= 3.0;
-    draw_horizontal_rule(&layer, Mm(20.0), Mm(190.0), Mm(row_y));
-
-    // Tax breakdown.
-    row_y -= 8.0;
-    write_text(&layer, &bold, 10.0, Mm(125.0), Mm(row_y), "Steueraufschlüsselung");
-    for row in &data.tax_breakdown {
-        row_y -= 5.0;
-        write_text(&layer, &regular, 9.5, Mm(125.0), Mm(row_y),
-            &format!("{} (Basis {} EUR)", row.label, row.base_eur),
-        );
-        write_text(&layer, &regular, 9.5, Mm(180.0), Mm(row_y), &format!("{} EUR", row.vat_eur));
-    }
-
-    // Totals.
-    row_y -= 8.0;
-    write_text(&layer, &regular, 10.0, Mm(125.0), Mm(row_y), "Zwischensumme");
-    write_text(&layer, &regular, 10.0, Mm(180.0), Mm(row_y), &format!("{} EUR", data.subtotal_eur));
-    row_y -= 5.0;
-    write_text(&layer, &regular, 10.0, Mm(125.0), Mm(row_y), "MwSt. gesamt");
-    write_text(&layer, &regular, 10.0, Mm(180.0), Mm(row_y), &format!("{} EUR", data.vat_total_eur));
-    row_y -= 6.0;
-    write_text(&layer, &bold, 12.0, Mm(125.0), Mm(row_y), "GESAMT");
-    write_text(&layer, &bold, 12.0, Mm(180.0), Mm(row_y), &format!("{} EUR", data.grand_total_eur));
-
-    // Payment block.
-    row_y -= 12.0;
-    write_text(&layer, &bold, 10.0, Mm(20.0), Mm(row_y), "Zahlung");
-    row_y -= 5.0;
-    write_text(&layer, &regular, 10.0, Mm(20.0), Mm(row_y),
-        &format!("{}: {} EUR", data.payment.method_label, data.payment.total_eur),
-    );
-    if let Some(reference) = &data.payment.reference {
-        row_y -= 4.5;
-        write_text(&layer, &regular, 9.0, Mm(20.0), Mm(row_y), &format!("Referenz: {reference}"));
-    }
-
-    // TSE block.
-    row_y -= 12.0;
-    write_text(&layer, &bold, 10.0, Mm(20.0), Mm(row_y), "TSE (KassenSichV)");
-    row_y -= 5.0;
-    write_text(&layer, &regular, 8.5, Mm(20.0), Mm(row_y),
-        &format!("Signatur-Zähler: {}   Trans-Nr.: {}",
-            data.tse.signature_counter, data.tse.transaction_number),
-    );
-    row_y -= 4.0;
-    write_text(&layer, &regular, 8.0, Mm(20.0), Mm(row_y),
-        &format!("Start: {}   Ende: {}", data.tse.started_at, data.tse.finished_at),
-    );
-    row_y -= 4.0;
-    write_text(&layer, &regular, 7.0, Mm(20.0), Mm(row_y),
-        &truncate(&data.tse.signature_value, 110),
-    );
-
-    // QR code — render via the `qrcode` crate, drop as a raster.
-    if let Err(e) = embed_qr(&layer, &data.tse.qr_payload, Mm(170.0), Mm(row_y - 28.0)) {
-        // Non-fatal — the textual TSE block above still satisfies KassenSichV.
-        eprintln!("warehouse14-pos: QR embed failed: {e}");
-    }
-
-    // Footer.
-    let mut fy = 30.0;
-    for line in &data.footer_notes {
-        write_text(&layer, &regular, 8.0, Mm(20.0), Mm(fy), line);
-        fy -= 3.5;
-    }
-
-    let mut out = Vec::with_capacity(8192);
-    let mut writer = BufWriter::new(&mut out);
-    doc.save(&mut writer)
-        .map_err(|e| HardwareError::Encoding(format!("pdf save: {e}")))?;
-    drop(writer);
-    Ok(out)
+/// Compile a Typst source string to PDF bytes. Shared by the command and tests.
+pub fn compile_typst_to_pdf(source: String) -> Result<Vec<u8>, String> {
+    let world = TypstWorld::new(source);
+    let mut tracer = Tracer::new();
+    let document = typst::compile(&world, &mut tracer).map_err(|errors| {
+        errors
+            .first()
+            .map(|d| format!("typst compile error: {}", d.message))
+            .unwrap_or_else(|| "typst compile failed".to_string())
+    })?;
+    Ok(typst_pdf::pdf(&document, Smart::Auto, None))
 }
 
-fn write_text(
-    layer: &PdfLayerReference,
-    font: &IndirectFontRef,
-    size: f32,
-    x: Mm,
-    y: Mm,
-    text: &str,
-) {
-    layer.use_text(text, size, x, y, font);
+/// Escape a value for safe insertion as a Typst code-mode string literal
+/// (`#"..."`), which renders verbatim with no markup interpretation.
+fn esc(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
-fn draw_horizontal_rule(layer: &PdfLayerReference, x1: Mm, x2: Mm, y: Mm) {
-    use printpdf::{Line, LineDashPattern};
-    layer.set_outline_thickness(0.3);
-    let line = Line {
-        points: vec![(Point::new(x1, y), false), (Point::new(x2, y), false)],
-        is_closed: false,
+/// Build the full Typst document source for an invoice. The static styling is
+/// the embedded template; the dynamic values are injected as `#"..."` literals.
+fn build_invoice_source(data: &InvoiceData) -> String {
+    let mut rows = String::new();
+    for item in &data.items {
+        let vat = if item.vat_rate.trim().is_empty() {
+            "—".to_string()
+        } else {
+            format!("{} %", item.vat_rate)
+        };
+        rows.push_str(&format!(
+            "  [#\"{}\"], [#\"{}\"], [#\"{} €\"], [#\"{}\"], [#\"{} €\"],\n",
+            esc(&item.description),
+            item.quantity,
+            esc(&item.unit_price_eur),
+            esc(&vat),
+            esc(&item.total_eur),
+        ));
+    }
+
+    let tax_note_block = match &data.tax_note {
+        Some(note) if !note.trim().is_empty() => format!(
+            "#v(1.2em)\n#text(size: 9pt, fill: rgb(\"#555555\"))[#\"{}\"]\n",
+            esc(note)
+        ),
+        _ => String::new(),
     };
-    layer.set_line_dash_pattern(LineDashPattern::default());
-    layer.add_line(line);
+
+    format!(
+        "{header}\n\
+#text(size: 18pt, weight: \"bold\")[WAREHOUSE 14]\n\
+#v(0.2em)\n\
+#text(size: 11pt)[Verkäufer: #\"{seller}\"]\n\
+#v(0.4em)\n\
+Rechnung Nr. #\"{invno}\" #h(1fr) Datum: #\"{date}\"\n\
+#line(length: 100%, stroke: 0.5pt)\n\
+#v(0.8em)\n\
+#table(\n\
+  columns: (1fr, auto, auto, auto, auto),\n\
+  align: (left, right, right, right, right),\n\
+  table.header(\n\
+    [*Beschreibung*], [*Menge*], [*Einzelpreis*], [*MwSt.*], [*Summe*],\n\
+  ),\n\
+{rows}\
+)\n\
+#v(0.6em)\n\
+#align(right)[\n\
+  Zwischensumme: #\"{subtotal} €\" \\\n\
+  MwSt. gesamt: #\"{vat_total} €\" \\\n\
+  #text(size: 13pt, weight: \"bold\")[Gesamt: #\"{total} €\"]\n\
+]\n\
+{tax_note}",
+        header = "#set page(paper: \"a4\", margin: 2cm)\n#set text(size: 10pt)",
+        seller = esc(&data.seller_name),
+        invno = esc(&data.invoice_number),
+        date = esc(&data.date),
+        rows = rows,
+        subtotal = esc(&data.subtotal_eur),
+        vat_total = esc(&data.vat_total_eur),
+        total = esc(&data.total_eur),
+        tax_note = tax_note_block,
+    )
 }
 
-fn truncate(s: &str, max: usize) -> String {
-    if s.chars().count() <= max { s.to_string() }
-    else { s.chars().take(max - 1).chain(std::iter::once('…')).collect() }
+// ────────────────────────────────────────────────────────────────────────
+// Typst World — in-memory single source + bundled default fonts.
+// ────────────────────────────────────────────────────────────────────────
+
+/// Process-wide font cache: loading + parsing the bundled fonts once.
+fn shared_fonts() -> &'static (Vec<Font>, Prehashed<FontBook>) {
+    static FONTS: OnceLock<(Vec<Font>, Prehashed<FontBook>)> = OnceLock::new();
+    FONTS.get_or_init(|| {
+        let mut fonts = Vec::new();
+        for data in typst_assets::fonts() {
+            let bytes = Bytes::from(data.to_vec());
+            let mut index = 0;
+            while let Some(font) = Font::new(bytes.clone(), index) {
+                fonts.push(font);
+                index += 1;
+            }
+        }
+        let book = FontBook::from_fonts(&fonts);
+        (fonts, Prehashed::new(book))
+    })
 }
 
-/// Render the TSE QR payload at the given anchor. `printpdf` accepts an
-/// `image::DynamicImage`; we render the QR via `qrcode`, blow it up to a
-/// raster, then embed.
-fn embed_qr(
-    _layer: &PdfLayerReference,
-    payload: &str,
-    _anchor_x: Mm,
-    _anchor_y: Mm,
-) -> Result<(), String> {
-    // Generate the QR matrix; we render textually for V1 if the image
-    // pipeline is not happy. `printpdf`'s image API has evolved across
-    // 0.7.x versions and the API surface for raster-into-pdf is brittle;
-    // we keep the textual TSE block as the fiscal source of truth and
-    // log a TODO for the next pass.
-    let _ = qrcode::QrCode::new(payload).map_err(|e| format!("qr: {e}"))?;
-    // TODO: render code into a `DynamicImage` and `layer.add_image(...)`
-    // once we pin a printpdf version. For now the textual block satisfies
-    // KassenSichV; the thermal receipt still emits a real QR.
-    Ok(())
+struct TypstWorld {
+    library: Prehashed<Library>,
+    source: Source,
 }
 
-/// Tiny per-temp-file id — avoids pulling in the full `uuid` crate just
-/// for a 12-char marker.
+impl TypstWorld {
+    fn new(source_text: String) -> Self {
+        Self {
+            library: Prehashed::new(Library::builder().build()),
+            source: Source::detached(source_text),
+        }
+    }
+}
+
+impl World for TypstWorld {
+    fn library(&self) -> &Prehashed<Library> {
+        &self.library
+    }
+
+    fn book(&self) -> &Prehashed<FontBook> {
+        &shared_fonts().1
+    }
+
+    fn main(&self) -> Source {
+        self.source.clone()
+    }
+
+    fn source(&self, id: FileId) -> FileResult<Source> {
+        if id == self.source.id() {
+            Ok(self.source.clone())
+        } else {
+            Err(FileError::NotFound(id.vpath().as_rootless_path().into()))
+        }
+    }
+
+    fn file(&self, id: FileId) -> FileResult<Bytes> {
+        Err(FileError::NotFound(id.vpath().as_rootless_path().into()))
+    }
+
+    fn font(&self, index: usize) -> Option<Font> {
+        shared_fonts().0.get(index).cloned()
+    }
+
+    fn today(&self, _offset: Option<i64>) -> Option<Datetime> {
+        None
+    }
+}
+
+/// Tiny per-temp-file id — avoids pulling in the full `uuid` crate just for a
+/// 12-char marker.
 fn uuid_like() -> String {
     let r1: u64 = fastrand::u64(..);
     let r2: u32 = fastrand::u32(..);
     format!("{r1:016x}{r2:08x}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compiles_minimal_document_to_pdf_bytes() {
+        let bytes = compile_typst_to_pdf("= Hello".to_string()).expect("typst should compile");
+        assert!(bytes.starts_with(b"%PDF-"), "output should be a PDF");
+    }
+
+    #[test]
+    fn builds_and_compiles_a_full_invoice() {
+        let data = InvoiceData {
+            invoice_number: "W14-2026-0001".to_string(),
+            date: "29.05.2026".to_string(),
+            seller_name: "Warehouse14 GmbH".to_string(),
+            items: vec![InvoiceItem {
+                description: "Goldring 585 \"Vintage\"".to_string(),
+                quantity: 1,
+                unit_price_eur: "249,00".to_string(),
+                vat_rate: "".to_string(),
+                total_eur: "249,00".to_string(),
+            }],
+            subtotal_eur: "249,00".to_string(),
+            vat_total_eur: "0,00".to_string(),
+            total_eur: "249,00".to_string(),
+            tax_note: Some("Differenzbesteuerung nach §25a UStG.".to_string()),
+        };
+        let pdf = compile_typst_to_pdf(build_invoice_source(&data)).expect("invoice compiles");
+        assert!(pdf.starts_with(b"%PDF-"));
+    }
 }

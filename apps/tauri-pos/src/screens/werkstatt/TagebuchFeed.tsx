@@ -17,19 +17,10 @@
 
 import { useMemo } from 'react';
 
-import { isAlertEvent, type LedgerEvent } from '@warehouse14/api-client';
-import {
-  DiamondRule,
-  LedgerEntry,
-  MoneyAmount,
-  ParchmentCard,
-} from '@warehouse14/ui-kit';
+import { type LedgerEvent, isAlertEvent } from '@warehouse14/api-client';
+import { DiamondRule, LedgerEntry, MoneyAmount, ParchmentCard } from '@warehouse14/ui-kit';
 
-import {
-  selectEvents,
-  selectLastEventId,
-  useLedgerFeed,
-} from '../../state/ledger-feed-store.js';
+import { selectEvents, selectLastEventId, useLedgerFeed } from '../../state/ledger-feed-store.js';
 
 const VISIBLE_LIMIT = 50;
 

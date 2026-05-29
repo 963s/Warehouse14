@@ -23,8 +23,8 @@
 import { useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
-import { CustomerListPanel } from './CustomerListPanel.js';
 import { CustomerDetailPanel } from './CustomerDetailPanel.js';
+import { CustomerListPanel } from './CustomerListPanel.js';
 
 export function Kunden(): JSX.Element {
   const [searchParams, setSearchParams] = useSearchParams();

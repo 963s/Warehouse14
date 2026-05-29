@@ -42,63 +42,64 @@ const EMAIL_HINT = /@/;
 const PHONE_HINT = /^[+\d\s().\-]{5,}$/;
 
 const customersListRoute: FastifyPluginAsync = async (app) => {
-  app.get<{ Querystring: TCustomerListQuery }>('/api/customers', {
-    schema: {
-      tags: ['customers'],
-      summary: 'Paged customer search by name / email / phone (Day 8).',
-      description:
-        'Powers Ankauf customer-lookup. Indexed blind-index match for email + phone, ' +
-        'decrypted ILIKE fallback for name. Returns minimal projection — no DOB, no address.',
-      querystring: CustomerListQuery,
-      response: {
-        200: CustomerListResponse,
-        401: ErrorResponse,
-        403: ErrorResponse,
-        400: ErrorResponse,
+  app.get<{ Querystring: TCustomerListQuery }>(
+    '/api/customers',
+    {
+      schema: {
+        tags: ['customers'],
+        summary: 'Paged customer search by name / email / phone (Day 8).',
+        description:
+          'Powers Ankauf customer-lookup. Indexed blind-index match for email + phone, ' +
+          'decrypted ILIKE fallback for name. Returns minimal projection — no DOB, no address.',
+        querystring: CustomerListQuery,
+        response: {
+          200: CustomerListResponse,
+          401: ErrorResponse,
+          403: ErrorResponse,
+          400: ErrorResponse,
+        },
       },
     },
-  }, async (req, reply) => {
-    requireAuth(req);
-    requireRole(req, 'ADMIN', 'CASHIER');
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'ADMIN', 'CASHIER');
 
-    const q = req.query.q?.trim() ?? '';
-    const limit = req.query.limit ?? 20;
-    const offset = req.query.offset ?? 0;
-    const kycVerifiedOnly = req.query.kycVerifiedOnly === true;
-    const excludeBlocked = req.query.excludeBlocked === true;
+      const q = req.query.q?.trim() ?? '';
+      const limit = req.query.limit ?? 20;
+      const offset = req.query.offset ?? 0;
+      const kycVerifiedOnly = req.query.kycVerifiedOnly === true;
+      const excludeBlocked = req.query.excludeBlocked === true;
 
-    const result = await app.withPii(async (tx) => {
-      // Build the strategy SQL. The single query covers all three cases
-      // via a CTE so the count + page come from the same plan.
-      const matchClause: ReturnType<typeof sql> =
-        q.length === 0
-          ? sql`TRUE`
-          : EMAIL_HINT.test(q)
-            ? sql`email_blind_index = blind_index(${q})`
-            : PHONE_HINT.test(q)
-              ? sql`phone_blind_index = blind_index(${q})`
-              : sql`decrypt_pii(full_name_encrypted) ILIKE ${'%' + q + '%'}`;
+      const result = await app.withPii(async (tx) => {
+        // Build the strategy SQL. The single query covers all three cases
+        // via a CTE so the count + page come from the same plan.
+        const matchClause: ReturnType<typeof sql> =
+          q.length === 0
+            ? sql`TRUE`
+            : EMAIL_HINT.test(q)
+              ? sql`email_blind_index = blind_index(${q})`
+              : PHONE_HINT.test(q)
+                ? sql`phone_blind_index = blind_index(${q})`
+                : sql`decrypt_pii(full_name_encrypted) ILIKE ${'%' + q + '%'}`;
 
-      const kycClause = kycVerifiedOnly
-        ? sql`AND kyc_verified_at IS NOT NULL`
-        : sql``;
-      const blockedClause = excludeBlocked
-        ? sql`AND sanctions_match = FALSE AND trust_level <> 'BANNED'`
-        : sql``;
+        const kycClause = kycVerifiedOnly ? sql`AND kyc_verified_at IS NOT NULL` : sql``;
+        const blockedClause = excludeBlocked
+          ? sql`AND sanctions_match = FALSE AND trust_level <> 'BANNED'`
+          : sql``;
 
-      const rows = await tx.execute<{
-        id: string;
-        customer_number: string;
-        full_name: string;
-        kyc_status: string;
-        kyc_verified_at: Date | null;
-        trust_level: string;
-        sanctions_match: boolean;
-        cumulative_ankauf_eur: string;
-        cumulative_spend_eur: string;
-        created_at: Date;
-        total_count: number;
-      }>(sql`
+        const rows = await tx.execute<{
+          id: string;
+          customer_number: string;
+          full_name: string;
+          kyc_status: string;
+          kyc_verified_at: Date | null;
+          trust_level: string;
+          sanctions_match: boolean;
+          cumulative_ankauf_eur: string;
+          cumulative_spend_eur: string;
+          created_at: Date;
+          total_count: number;
+        }>(sql`
         WITH matched AS (
           SELECT
             id,
@@ -124,32 +125,38 @@ const customersListRoute: FastifyPluginAsync = async (app) => {
         SELECT * FROM matched
       `);
 
-      const total = rows.length > 0 ? Number(rows[0]!.total_count) : 0;
-      return {
-        rows,
-        total,
-      };
-    });
+        const total = rows.length > 0 ? Number(rows[0]!.total_count) : 0;
+        return {
+          rows,
+          total,
+        };
+      });
 
-    return reply.status(200).send({
-      items: result.rows.map((r) => ({
-        id: r.id,
-        customerNumber: r.customer_number,
-        fullName: r.full_name,
-        kycStatus: r.kyc_status as 'NOT_REQUIRED' | 'PENDING' | 'COMPLETED' | 'EXPIRED' | 'FAILED',
-        kycVerifiedAt: r.kyc_verified_at ? r.kyc_verified_at.toISOString() : null,
-        trustLevel: r.trust_level as 'NEW' | 'VERIFIED' | 'VIP' | 'SUSPICIOUS' | 'BANNED',
-        sanctionsMatch: r.sanctions_match,
-        cumulativeAnkaufEur: r.cumulative_ankauf_eur,
-        cumulativeSpendEur: r.cumulative_spend_eur,
-        createdAt: r.created_at.toISOString(),
-      })),
-      total: result.total,
-      limit,
-      offset,
-      hasMore: offset + result.rows.length < result.total,
-    });
-  });
+      return reply.status(200).send({
+        items: result.rows.map((r) => ({
+          id: r.id,
+          customerNumber: r.customer_number,
+          fullName: r.full_name,
+          kycStatus: r.kyc_status as
+            | 'NOT_REQUIRED'
+            | 'PENDING'
+            | 'COMPLETED'
+            | 'EXPIRED'
+            | 'FAILED',
+          kycVerifiedAt: r.kyc_verified_at ? r.kyc_verified_at.toISOString() : null,
+          trustLevel: r.trust_level as 'NEW' | 'VERIFIED' | 'VIP' | 'SUSPICIOUS' | 'BANNED',
+          sanctionsMatch: r.sanctions_match,
+          cumulativeAnkaufEur: r.cumulative_ankauf_eur,
+          cumulativeSpendEur: r.cumulative_spend_eur,
+          createdAt: r.created_at.toISOString(),
+        })),
+        total: result.total,
+        limit,
+        offset,
+        hasMore: offset + result.rows.length < result.total,
+      });
+    },
+  );
 };
 
 export default customersListRoute;

@@ -8,8 +8,8 @@
  * NEVER deleted by app role — keys are forever; only their values change.
  */
 
-import { check, jsonb, pgTable, text, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import { check, jsonb, pgTable, text, uuid } from 'drizzle-orm/pg-core';
 
 import { timestamps } from '../_shared/columns.js';
 import { users } from '../auth/users.js';
@@ -23,7 +23,7 @@ export const systemSettings = pgTable(
     updatedByUserId: uuid('updated_by_user_id').references(() => users.id),
     ...timestamps(),
   },
-  table => ({
+  (table) => ({
     keyFormat: check(
       'system_settings_key_format',
       sql`${table.key} ~ '^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$'`,

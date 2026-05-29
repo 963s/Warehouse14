@@ -15,14 +15,35 @@ pub fn run() {
     // ADR-0044 Phase 3 — forward-only outbox migrations, applied on startup
     // before any UI mounts. NEVER edit a shipped migration (§25a UStG bars a
     // destructive rollback on financial-record tables); add 0002+ instead.
-    let outbox_migrations = vec![tauri_plugin_sql::Migration {
-        version: 1,
-        description: "create offline outbox tables",
-        sql: include_str!("../migrations/0001_outbox.sql"),
-        kind: tauri_plugin_sql::MigrationKind::Up,
-    }];
+    let outbox_migrations = vec![
+        tauri_plugin_sql::Migration {
+            version: 1,
+            description: "create offline outbox tables",
+            sql: include_str!("../migrations/0001_outbox.sql"),
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
+        // Epic C Part 2 — local KYC document index (offline preview).
+        tauri_plugin_sql::Migration {
+            version: 2,
+            description: "create customer_kyc table",
+            sql: include_str!("../migrations/0002_kyc.sql"),
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
+    ];
+
+    // Local P2P terminal discovery — shared peer registry, advertised + browsed
+    // by a background mDNS thread spawned in `.setup()` below.
+    let peer_registry = commands::mdns::PeerRegistry::new();
 
     tauri::Builder::default()
+        .manage(peer_registry.clone())
+        // Spawn the mDNS daemon once the app is up. It advertises this terminal
+        // as `_w14pos._tcp.local.` and discovers peers; it is fail-safe (logs and
+        // exits if mDNS is unavailable) and never blocks or crashes startup.
+        .setup(move |app| {
+            commands::mdns::start_mdns_daemon(app.handle().clone(), peer_registry.clone());
+            Ok(())
+        })
         // Plugins — order doesn't matter, registration is idempotent.
         // V1 only needs `shell` (for the PDF preview opener); store +
         // dialog land in V1.1 if the operator asks for a save dialog.
@@ -57,6 +78,8 @@ pub fn run() {
             commands::zvt::zvt_reverse_payment,
             // Mandate 3-A — ESC/POS thermal
             commands::thermal::print_thermal_receipt,
+            // Epic B — product sticker labels (ZPL / ESC-POS)
+            commands::label::print_label,
             // Mandate 3-B — A4 PDF
             commands::pdf::generate_invoice_pdf,
             commands::pdf::print_a4,
@@ -66,6 +89,11 @@ pub fn run() {
             // Epic C — encrypted local KYC vault
             commands::kyc::encrypt_and_save_kyc_document,
             commands::kyc::decrypt_and_load_kyc_document,
+            // USB digital scale (MT-SICS over serial)
+            commands::scale::read_scale_weight,
+            commands::scale::list_scale_ports,
+            // Local P2P — discovered LAN peers
+            commands::mdns::get_local_peers,
         ])
         .run(tauri::generate_context!())
         .expect("error while running warehouse14-tauri-pos");

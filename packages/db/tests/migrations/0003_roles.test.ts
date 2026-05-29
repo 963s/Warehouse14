@@ -12,10 +12,10 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
+  type TestDb,
   applyMigrations,
   setAppPasswordForTest,
   startTestDb,
-  type TestDb,
 } from '../helpers/testDb.js';
 
 describe('migration 0003_roles', () => {
@@ -172,14 +172,14 @@ describe('migration 0003_roles', () => {
         expect(rows[0].payload).toBe('a');
 
         // DELETE must fail with permission denied.
-        await expect(
-          appSql`DELETE FROM tmp_app_e2e WHERE id = 1`,
-        ).rejects.toThrow(/permission denied/i);
+        await expect(appSql`DELETE FROM tmp_app_e2e WHERE id = 1`).rejects.toThrow(
+          /permission denied/i,
+        );
 
         // UPDATE without explicit column grant must fail.
-        await expect(
-          appSql`UPDATE tmp_app_e2e SET payload = 'b' WHERE id = 1`,
-        ).rejects.toThrow(/permission denied/i);
+        await expect(appSql`UPDATE tmp_app_e2e SET payload = 'b' WHERE id = 1`).rejects.toThrow(
+          /permission denied/i,
+        );
       } finally {
         await appSql.end({ timeout: 5 });
         await testDb.migratorSql`DROP TABLE tmp_app_e2e`;
@@ -189,9 +189,9 @@ describe('migration 0003_roles', () => {
     it('warehouse14_app cannot CREATE objects in schema public', async () => {
       const appSql = testDb.appSql();
       try {
-        await expect(
-          appSql`CREATE TABLE tmp_app_should_not_create (id int)`,
-        ).rejects.toThrow(/permission denied/i);
+        await expect(appSql`CREATE TABLE tmp_app_should_not_create (id int)`).rejects.toThrow(
+          /permission denied/i,
+        );
       } finally {
         await appSql.end({ timeout: 5 });
       }

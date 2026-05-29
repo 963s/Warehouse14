@@ -15,7 +15,7 @@ export const shopHolidays = pgTable(
     reason: text('reason'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  table => ({
+  (table) => ({
     shopDateUq: uniqueIndex('shop_holidays_shop_date_uq').on(table.shopId, table.closedDate),
   }),
 );

@@ -1,0 +1,29 @@
+{
+  "name": "@warehouse14/ai-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Task-level Claude abstractions (intent classification + reply composition) with cost tracking and per-conversation budget caps. LLM transport is injected; a deterministic mock ships for dev/test.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rm -rf dist .tsbuildinfo"
+  },
+  "devDependencies": {
+    "@warehouse14/config": "workspace:*",
+    "typescript": "5.7.2",
+    "vitest": "2.1.8"
+  }
+}

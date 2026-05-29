@@ -20,13 +20,13 @@
  * here. We use a hand-written hook + Zustand.
  */
 
-import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useEffect, useRef, useState } from 'react';
 
 import {
+  type LedgerEvent,
   parseLedgerEvent,
   shouldInvalidateDashboard,
-  type LedgerEvent,
 } from '@warehouse14/api-client';
 
 import { useApiClient } from '../lib/api-context.js';
@@ -41,9 +41,7 @@ interface UseLedgerStreamResult {
   lastError: string | null;
 }
 
-const RECONNECT_BACKOFF_MS: readonly number[] = [
-  1_000, 2_000, 4_000, 8_000, 15_000, 30_000,
-];
+const RECONNECT_BACKOFF_MS: readonly number[] = [1_000, 2_000, 4_000, 8_000, 15_000, 30_000];
 /** Coalesce multiple dashboard invalidations within this window into one. */
 const DASHBOARD_INVALIDATE_DEBOUNCE_MS = 400;
 
@@ -72,8 +70,7 @@ export function useLedgerStream(enabled: boolean): UseLedgerStreamResult {
 
     function scheduleReconnect() {
       const attempt = reconnectAttemptRef.current;
-      const delay =
-        RECONNECT_BACKOFF_MS[Math.min(attempt, RECONNECT_BACKOFF_MS.length - 1)]!;
+      const delay = RECONNECT_BACKOFF_MS[Math.min(attempt, RECONNECT_BACKOFF_MS.length - 1)]!;
       reconnectAttemptRef.current = attempt + 1;
       setStatus('reconnecting');
       reconnectTimerRef.current = window.setTimeout(() => {

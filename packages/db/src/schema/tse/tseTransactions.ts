@@ -13,8 +13,20 @@
  *   • Every state change emits a `tse.<state>` ledger event (chain extends).
  */
 
-import { bigint, boolean, check, customType, index, pgTable, smallint, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import {
+  bigint,
+  boolean,
+  check,
+  customType,
+  index,
+  pgTable,
+  smallint,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 
 import { primaryKey, timestamps } from '../_shared/columns.js';
 import { transactions } from '../transactions/transactions.js';
@@ -31,7 +43,9 @@ export const tseTransactions = pgTable(
   {
     id: primaryKey(),
 
-    transactionId: uuid('transaction_id').notNull().references(() => transactions.id),
+    transactionId: uuid('transaction_id')
+      .notNull()
+      .references(() => transactions.id),
 
     state: tseState('state').notNull().default('QUEUED_OFFLINE'),
     stateReason: text('state_reason'),
@@ -66,7 +80,7 @@ export const tseTransactions = pgTable(
 
     ...timestamps(),
   },
-  table => ({
+  (table) => ({
     transactionIdUq: uniqueIndex('tse_transactions_unique_per_transaction').on(table.transactionId),
 
     queuedOfflineIdx: index('tse_transactions_queued_offline_idx')

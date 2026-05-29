@@ -82,11 +82,7 @@ export function SignOutButton({ onConfirm }: SignOutButtonProps): JSX.Element {
       >
         Bestätigen
       </button>
-      <button
-        type="button"
-        style={baseBtn}
-        onClick={() => setArmed(false)}
-      >
+      <button type="button" style={baseBtn} onClick={() => setArmed(false)}>
         Abbrechen
       </button>
     </div>

@@ -23,10 +23,15 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
 export type StripeSignatureFailure =
-  | { code: 'MALFORMED_HEADER';  detail: string }
+  | { code: 'MALFORMED_HEADER'; detail: string }
   | { code: 'NO_TIMESTAMP' }
   | { code: 'NO_V1_SIGNATURES' }
-  | { code: 'TIMESTAMP_OUTSIDE_TOLERANCE'; receivedTs: number; nowTs: number; toleranceSeconds: number }
+  | {
+      code: 'TIMESTAMP_OUTSIDE_TOLERANCE';
+      receivedTs: number;
+      nowTs: number;
+      toleranceSeconds: number;
+    }
   | { code: 'NO_MATCHING_SIGNATURE' };
 
 export interface StripeSignatureOk {

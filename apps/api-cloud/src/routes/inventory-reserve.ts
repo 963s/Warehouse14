@@ -20,9 +20,13 @@ import type { FastifyPluginAsync } from 'fastify';
 
 import { reserve } from '@warehouse14/inventory-lock';
 
-import { DomainError, type ApiErrorCode } from '../plugins/error-handler.js';
 import { requireAuth, requireRole } from '../lib/auth-policy.js';
-import { ReserveBody, ReserveResponse, type ReserveBody as TReserveBody } from '../schemas/inventory.js';
+import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
+import {
+  ReserveBody,
+  ReserveResponse,
+  type ReserveBody as TReserveBody,
+} from '../schemas/inventory.js';
 
 class ProductNotReservableError extends DomainError {
   public readonly httpStatus = 409;
@@ -44,59 +48,63 @@ const ErrorResponse = Type.Object({
 });
 
 const inventoryReserve: FastifyPluginAsync = async (app) => {
-  app.post<{ Body: TReserveBody }>('/api/inventory/reserve', {
-    schema: {
-      tags: ['inventory'],
-      summary: 'Reserve a product (AVAILABLE → RESERVED) — race-safe.',
-      description:
-        'Atomically transitions products.status from AVAILABLE to RESERVED. ' +
-        'Returns 409 PRODUCT_NOT_RESERVABLE if the product is already RESERVED, ' +
-        'SOLD, or does not exist. Session-id-keyed: the same sessionId must be ' +
-        'supplied later to release() or finalize().',
-      body: ReserveBody,
-      response: {
-        200: ReserveResponse,
-        401: ErrorResponse,
-        403: ErrorResponse,
-        409: ErrorResponse,
+  app.post<{ Body: TReserveBody }>(
+    '/api/inventory/reserve',
+    {
+      schema: {
+        tags: ['inventory'],
+        summary: 'Reserve a product (AVAILABLE → RESERVED) — race-safe.',
+        description:
+          'Atomically transitions products.status from AVAILABLE to RESERVED. ' +
+          'Returns 409 PRODUCT_NOT_RESERVABLE if the product is already RESERVED, ' +
+          'SOLD, or does not exist. Session-id-keyed: the same sessionId must be ' +
+          'supplied later to release() or finalize().',
+        body: ReserveBody,
+        response: {
+          200: ReserveResponse,
+          401: ErrorResponse,
+          403: ErrorResponse,
+          409: ErrorResponse,
+        },
       },
     },
-  }, async (req, reply) => {
-    requireAuth(req);
-    requireRole(req, 'CASHIER', 'ADMIN');
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'CASHIER', 'ADMIN');
 
-    // CASHIER must operate from a paired POS terminal.
-    if (req.actor.role === 'CASHIER' && req.deviceId == null) {
-      throw new DeviceRequiredError('CASHIER actions require a paired POS device cert.');
-    }
+      // CASHIER must operate from a paired POS terminal.
+      if (req.actor.role === 'CASHIER' && req.deviceId == null) {
+        throw new DeviceRequiredError('CASHIER actions require a paired POS device cert.');
+      }
 
-    const { productId, channel, sessionId } = req.body;
+      const { productId, channel, sessionId } = req.body;
 
-    const result = await reserve(app.db, {
-      productId,
-      channel,
-      sessionId,
-      userId: req.actor.id,
-    });
+      const result = await reserve(app.db, {
+        productId,
+        channel,
+        sessionId,
+        userId: req.actor.id,
+      });
 
-    if (result === null) {
-      // Race lost OR product not AVAILABLE. The single message is intentional —
-      // the caller should not distinguish "someone else won" from "product is
-      // SOLD" for UX purposes; both render as "no longer available".
-      throw new ProductNotReservableError(
-        `Product ${productId} is not AVAILABLE — it is already reserved, sold, or does not exist.`,
-      );
-    }
+      if (result === null) {
+        // Race lost OR product not AVAILABLE. The single message is intentional —
+        // the caller should not distinguish "someone else won" from "product is
+        // SOLD" for UX purposes; both render as "no longer available".
+        throw new ProductNotReservableError(
+          `Product ${productId} is not AVAILABLE — it is already reserved, sold, or does not exist.`,
+        );
+      }
 
-    return reply.status(200).send({
-      productId: result.productId,
-      channel: result.channel,
-      sessionId: result.sessionId,
-      userId: result.userId,
-      reservedAt: result.reservedAt.toISOString(),
-      expiresAt: result.expiresAt ? result.expiresAt.toISOString() : null,
-    });
-  });
+      return reply.status(200).send({
+        productId: result.productId,
+        channel: result.channel,
+        sessionId: result.sessionId,
+        userId: result.userId,
+        reservedAt: result.reservedAt.toISOString(),
+        expiresAt: result.expiresAt ? result.expiresAt.toISOString() : null,
+      });
+    },
+  );
 };
 
 export default inventoryReserve;

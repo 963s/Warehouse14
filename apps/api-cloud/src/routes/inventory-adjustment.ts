@@ -21,8 +21,8 @@ import type { FastifyPluginAsync } from 'fastify';
 
 import { auditLog, products } from '@warehouse14/db/schema';
 
-import { DomainError, type ApiErrorCode } from '../plugins/error-handler.js';
 import { requireAuth, requireRole, requireStepUp } from '../lib/auth-policy.js';
+import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 import {
   InventoryAdjustmentBody,
   InventoryAdjustmentResponse,
@@ -167,9 +167,7 @@ const inventoryAdjustmentRoute: FastifyPluginAsync = async (app) => {
               productId: id,
               reason: body.reason,
               notes: body.notes,
-              ...(body.reason === 'LOCATION_CHANGE'
-                ? { previousLocation, nextLocation }
-                : {}),
+              ...(body.reason === 'LOCATION_CHANGE' ? { previousLocation, nextLocation } : {}),
             },
           })
           .returning({ id: auditLog.id, createdAt: auditLog.createdAt });

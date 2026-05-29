@@ -22,22 +22,11 @@
 
 import { useMemo, useState } from 'react';
 
-import {
-  Button,
-  DiamondRule,
-  MoneyAmount,
-  ParchmentCard,
-  RomanIndex,
-} from '@warehouse14/ui-kit';
+import { Button, DiamondRule, MoneyAmount, ParchmentCard, RomanIndex } from '@warehouse14/ui-kit';
 
-import type { CartLine } from '../../state/cart-store.js';
-import {
-  computeLineMath,
-  fromCents,
-  sumHeader,
-  type LineMath,
-} from '../../lib/cart-math.js';
+import { type LineMath, computeLineMath, fromCents, sumHeader } from '../../lib/cart-math.js';
 import { TAX_TREATMENT_LABEL } from '../../lib/tax-treatment-label.js';
+import type { CartLine } from '../../state/cart-store.js';
 
 import { BezahlenDialog } from './BezahlenDialog.js';
 
@@ -168,14 +157,8 @@ export function CartPanel({
           }}
         >
           <tbody>
-            <TotalRow
-              label="Zwischensumme"
-              value={<MoneyAmount valueEur={header.subtotalEur} />}
-            />
-            <TotalRow
-              label="USt"
-              value={<MoneyAmount valueEur={header.vatEur} />}
-            />
+            <TotalRow label="Zwischensumme" value={<MoneyAmount valueEur={header.subtotalEur} />} />
+            <TotalRow label="USt" value={<MoneyAmount valueEur={header.vatEur} />} />
             <tr>
               <td colSpan={2} style={{ padding: 0 }}>
                 <div

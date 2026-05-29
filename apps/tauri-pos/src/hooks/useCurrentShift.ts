@@ -8,7 +8,7 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { shifts as shiftsApi, type ShiftView } from '@warehouse14/api-client';
+import { type ShiftView, shifts as shiftsApi } from '@warehouse14/api-client';
 
 import { useApiClient } from '../lib/api-context.js';
 import { dashboardQueryKey } from './useDashboardSummary.js';

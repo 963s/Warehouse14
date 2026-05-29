@@ -14,16 +14,21 @@
  *      transaction_items / transaction_payments.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres, { type Sql } from 'postgres';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { verifyChain } from '@warehouse14/audit';
 import type { AppDb } from '@warehouse14/db/client';
 import * as schema from '@warehouse14/db/schema';
 import { finalize, reserve } from '@warehouse14/inventory-lock';
 
-import { applyMigrations, setAppPasswordForTest, startTestDb, type TestDb } from '../helpers/testDb.js';
+import {
+  type TestDb,
+  applyMigrations,
+  setAppPasswordForTest,
+  startTestDb,
+} from '../helpers/testDb.js';
 
 const PII_KEY = 'test-pii-key-do-not-use-in-production-32b';
 
@@ -127,23 +132,26 @@ describe('migration 0009_transactions — The Great Connection', () => {
 
       // 2. Inside one DB transaction: finalize the product + insert the
       //    transaction + items + payment. This is the all-or-nothing contract.
-      const transactionId = await appDb.transaction(async tx => {
+      const transactionId = await appDb.transaction(async (tx) => {
         // 2a. Move product RESERVED → SOLD.
         await finalize(tx as AppDb, { productId, sessionId: reservation!.sessionId, userId: null });
 
         // 2b. Insert the transaction. Money math (margin tax §25a):
         //     sale=150, acquisition=100 → margin=50 → VAT = 50 * 19/119 ≈ 7.98
         //     subtotal = 150 - 7.98 = 142.02
-        const [tr] = await tx.insert(schema.transactions).values({
-          direction: 'VERKAUF',
-          customerId,
-          deviceId,
-          cashierUserId: cashierId,
-          subtotalEur: '142.02',
-          vatEur: '7.98',
-          totalEur: '150.00',
-          taxTreatmentCode: 'MARGIN_25A',
-        }).returning({ id: schema.transactions.id });
+        const [tr] = await tx
+          .insert(schema.transactions)
+          .values({
+            direction: 'VERKAUF',
+            customerId,
+            deviceId,
+            cashierUserId: cashierId,
+            subtotalEur: '142.02',
+            vatEur: '7.98',
+            totalEur: '150.00',
+            taxTreatmentCode: 'MARGIN_25A',
+          })
+          .returning({ id: schema.transactions.id });
 
         // 2c. Insert the line item.
         await tx.insert(schema.transactionItems).values({
@@ -182,11 +190,13 @@ describe('migration 0009_transactions — The Great Connection', () => {
       expect(customerAfter.cumulative_spend_eur).toBe('150.00');
 
       // 5. Assert ledger event emitted with the right payload.
-      const [ledger] = await migratorSql<{
-        event_type: string;
-        entity_id: string;
-        payload: { total_eur: string; direction: string; storno_of: string | null };
-      }[]>`
+      const [ledger] = await migratorSql<
+        {
+          event_type: string;
+          entity_id: string;
+          payload: { total_eur: string; direction: string; storno_of: string | null };
+        }[]
+      >`
         SELECT event_type, entity_id, payload
           FROM ledger_events
          WHERE entity_table = 'transactions'
@@ -213,7 +223,7 @@ describe('migration 0009_transactions — The Great Connection', () => {
 
       // No product reservation step — Ankauf creates a new product as part of the flow.
       // For brevity, we just insert the Ankauf transaction here.
-      await appDb.transaction(async tx => {
+      await appDb.transaction(async (tx) => {
         await tx.insert(schema.transactions).values({
           direction: 'ANKAUF',
           customerId,
@@ -226,7 +236,9 @@ describe('migration 0009_transactions — The Great Connection', () => {
         });
       });
 
-      const [row] = await migratorSql<{ cumulative_ankauf_eur: string; cumulative_spend_eur: string }[]>`
+      const [row] = await migratorSql<
+        { cumulative_ankauf_eur: string; cumulative_spend_eur: string }[]
+      >`
         SELECT cumulative_ankauf_eur, cumulative_spend_eur FROM customers WHERE id = ${customerId}
       `;
       expect(row.cumulative_ankauf_eur).toBe('450.00');
@@ -243,17 +255,20 @@ describe('migration 0009_transactions — The Great Connection', () => {
       const { customerId, cashierId, deviceId } = await seedScenario({ listPriceEur: '0.01' });
 
       // Original Verkauf — €100 to this customer.
-      const [original] = await appDb.transaction(async tx =>
-        tx.insert(schema.transactions).values({
-          direction: 'VERKAUF',
-          customerId,
-          deviceId,
-          cashierUserId: cashierId,
-          subtotalEur: '84.03',
-          vatEur: '15.97',
-          totalEur: '100.00',
-          taxTreatmentCode: 'STANDARD_19',
-        }).returning({ id: schema.transactions.id }),
+      const [original] = await appDb.transaction(async (tx) =>
+        tx
+          .insert(schema.transactions)
+          .values({
+            direction: 'VERKAUF',
+            customerId,
+            deviceId,
+            cashierUserId: cashierId,
+            subtotalEur: '84.03',
+            vatEur: '15.97',
+            totalEur: '100.00',
+            taxTreatmentCode: 'STANDARD_19',
+          })
+          .returning({ id: schema.transactions.id }),
       );
 
       const [before] = await migratorSql<{ cumulative_spend_eur: string }[]>`
@@ -262,7 +277,7 @@ describe('migration 0009_transactions — The Great Connection', () => {
       expect(before.cumulative_spend_eur).toBe('100.00');
 
       // Storno — mirror the magnitudes with negation.
-      await appDb.transaction(async tx =>
+      await appDb.transaction(async (tx) =>
         tx.insert(schema.transactions).values({
           direction: 'VERKAUF',
           stornoOfTransactionId: original.id,
@@ -287,49 +302,55 @@ describe('migration 0009_transactions — The Great Connection', () => {
          WHERE entity_table = 'transactions' AND entity_id = ${original.id}
          ORDER BY id
       `;
-      expect(events.map(e => e.event_type)).toEqual(['transaction.finalized']);
+      expect(events.map((e) => e.event_type)).toEqual(['transaction.finalized']);
 
       const stornoEvents = await migratorSql<{ event_type: string }[]>`
         SELECT le.event_type FROM ledger_events le
           JOIN transactions t ON t.id = le.entity_id
          WHERE t.storno_of_transaction_id = ${original.id}
       `;
-      expect(stornoEvents.map(e => e.event_type)).toEqual(['transaction.stornoed']);
+      expect(stornoEvents.map((e) => e.event_type)).toEqual(['transaction.stornoed']);
     });
 
     it('storno-of-storno is rejected by the trigger', async () => {
       const { customerId, cashierId, deviceId } = await seedScenario({ listPriceEur: '0.01' });
 
-      const [original] = await appDb.transaction(async tx =>
-        tx.insert(schema.transactions).values({
-          direction: 'VERKAUF',
-          customerId,
-          deviceId,
-          cashierUserId: cashierId,
-          subtotalEur: '10.00',
-          vatEur: '0.00',
-          totalEur: '10.00',
-          taxTreatmentCode: 'INVESTMENT_GOLD_25C',
-        }).returning({ id: schema.transactions.id }),
+      const [original] = await appDb.transaction(async (tx) =>
+        tx
+          .insert(schema.transactions)
+          .values({
+            direction: 'VERKAUF',
+            customerId,
+            deviceId,
+            cashierUserId: cashierId,
+            subtotalEur: '10.00',
+            vatEur: '0.00',
+            totalEur: '10.00',
+            taxTreatmentCode: 'INVESTMENT_GOLD_25C',
+          })
+          .returning({ id: schema.transactions.id }),
       );
 
-      const [storno] = await appDb.transaction(async tx =>
-        tx.insert(schema.transactions).values({
-          direction: 'VERKAUF',
-          stornoOfTransactionId: original.id,
-          customerId,
-          deviceId,
-          cashierUserId: cashierId,
-          subtotalEur: '-10.00',
-          vatEur: '-0.00',
-          totalEur: '-10.00',
-          taxTreatmentCode: 'INVESTMENT_GOLD_25C',
-        }).returning({ id: schema.transactions.id }),
+      const [storno] = await appDb.transaction(async (tx) =>
+        tx
+          .insert(schema.transactions)
+          .values({
+            direction: 'VERKAUF',
+            stornoOfTransactionId: original.id,
+            customerId,
+            deviceId,
+            cashierUserId: cashierId,
+            subtotalEur: '-10.00',
+            vatEur: '-0.00',
+            totalEur: '-10.00',
+            taxTreatmentCode: 'INVESTMENT_GOLD_25C',
+          })
+          .returning({ id: schema.transactions.id }),
       );
 
       // Attempt to storno the storno — must be rejected.
       await expect(
-        appDb.transaction(async tx =>
+        appDb.transaction(async (tx) =>
           tx.insert(schema.transactions).values({
             direction: 'VERKAUF',
             stornoOfTransactionId: storno.id,
@@ -348,22 +369,25 @@ describe('migration 0009_transactions — The Great Connection', () => {
     it('storno with mismatched amount magnitude is rejected', async () => {
       const { customerId, cashierId, deviceId } = await seedScenario({ listPriceEur: '0.01' });
 
-      const [original] = await appDb.transaction(async tx =>
-        tx.insert(schema.transactions).values({
-          direction: 'VERKAUF',
-          customerId,
-          deviceId,
-          cashierUserId: cashierId,
-          subtotalEur: '50.00',
-          vatEur: '9.50',
-          totalEur: '59.50',
-          taxTreatmentCode: 'STANDARD_19',
-        }).returning({ id: schema.transactions.id }),
+      const [original] = await appDb.transaction(async (tx) =>
+        tx
+          .insert(schema.transactions)
+          .values({
+            direction: 'VERKAUF',
+            customerId,
+            deviceId,
+            cashierUserId: cashierId,
+            subtotalEur: '50.00',
+            vatEur: '9.50',
+            totalEur: '59.50',
+            taxTreatmentCode: 'STANDARD_19',
+          })
+          .returning({ id: schema.transactions.id }),
       );
 
       // Wrong storno amount (-30 instead of -59.50).
       await expect(
-        appDb.transaction(async tx =>
+        appDb.transaction(async (tx) =>
           tx.insert(schema.transactions).values({
             direction: 'VERKAUF',
             stornoOfTransactionId: original.id,
@@ -389,7 +413,7 @@ describe('migration 0009_transactions — The Great Connection', () => {
       const { customerId, cashierId, deviceId } = await seedScenario({ listPriceEur: '0.01' });
 
       await expect(
-        appDb.transaction(async tx =>
+        appDb.transaction(async (tx) =>
           tx.insert(schema.transactions).values({
             direction: 'VERKAUF',
             customerId,
@@ -414,7 +438,7 @@ describe('migration 0009_transactions — The Great Connection', () => {
                (100.00)::text AS total
       `;
       // Sanity: the rounded values sum back to the gross.
-      expect(parseFloat(row.subtotal) + parseFloat(row.vat)).toBeCloseTo(100, 2);
+      expect(Number.parseFloat(row.subtotal) + Number.parseFloat(row.vat)).toBeCloseTo(100, 2);
     });
   });
 
@@ -425,7 +449,7 @@ describe('migration 0009_transactions — The Great Connection', () => {
   describe('app-role grants', () => {
     it.each(['transactions', 'transaction_items', 'transaction_payments'])(
       '%s — app cannot DELETE',
-      async tbl => {
+      async (tbl) => {
         const [row] = await migratorSql<{ has: boolean }[]>`
           SELECT has_table_privilege('warehouse14_app', ${tbl}, 'DELETE') AS has`;
         expect(row.has).toBe(false);
@@ -439,8 +463,16 @@ describe('migration 0009_transactions — The Great Connection', () => {
         expect(row.has, col).toBe(true);
       }
       // Forbidden — financial integrity columns.
-      for (const col of ['total_eur', 'subtotal_eur', 'vat_eur', 'tax_treatment_code',
-                         'direction', 'storno_of_transaction_id', 'customer_id', 'created_at']) {
+      for (const col of [
+        'total_eur',
+        'subtotal_eur',
+        'vat_eur',
+        'tax_treatment_code',
+        'direction',
+        'storno_of_transaction_id',
+        'customer_id',
+        'created_at',
+      ]) {
         const [row] = await migratorSql<{ has: boolean }[]>`
           SELECT has_column_privilege('warehouse14_app', 'transactions', ${col}, 'UPDATE') AS has`;
         expect(row.has, col).toBe(false);
@@ -449,7 +481,7 @@ describe('migration 0009_transactions — The Great Connection', () => {
 
     it.each(['transaction_items', 'transaction_payments'])(
       '%s — app has NO UPDATE privileges at all (lines/payments are immutable snapshots)',
-      async tbl => {
+      async (tbl) => {
         const [row] = await migratorSql<{ has: boolean }[]>`
           SELECT has_table_privilege('warehouse14_app', ${tbl}, 'UPDATE') AS has`;
         expect(row.has).toBe(false);
@@ -458,21 +490,24 @@ describe('migration 0009_transactions — The Great Connection', () => {
 
     it('end-to-end: app role CANNOT DELETE a transaction even with full context', async () => {
       const { customerId, cashierId, deviceId } = await seedScenario({ listPriceEur: '0.01' });
-      const [tr] = await appDb.transaction(async tx =>
-        tx.insert(schema.transactions).values({
-          direction: 'VERKAUF',
-          customerId,
-          deviceId,
-          cashierUserId: cashierId,
-          subtotalEur: '10.00',
-          vatEur: '1.90',
-          totalEur: '11.90',
-          taxTreatmentCode: 'STANDARD_19',
-        }).returning({ id: schema.transactions.id }),
+      const [tr] = await appDb.transaction(async (tx) =>
+        tx
+          .insert(schema.transactions)
+          .values({
+            direction: 'VERKAUF',
+            customerId,
+            deviceId,
+            cashierUserId: cashierId,
+            subtotalEur: '10.00',
+            vatEur: '1.90',
+            totalEur: '11.90',
+            taxTreatmentCode: 'STANDARD_19',
+          })
+          .returning({ id: schema.transactions.id }),
       );
-      await expect(
-        appSql`DELETE FROM transactions WHERE id = ${tr.id}`,
-      ).rejects.toThrow(/permission denied/i);
+      await expect(appSql`DELETE FROM transactions WHERE id = ${tr.id}`).rejects.toThrow(
+        /permission denied/i,
+      );
     });
   });
 

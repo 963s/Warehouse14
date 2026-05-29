@@ -11,13 +11,13 @@
  * re-render unrelated rows.
  */
 
-import { memo, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { type CSSProperties, memo, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
-  customersApi,
   type CustomerListQuery,
   type CustomerListRow,
+  customersApi,
 } from '@warehouse14/api-client';
 import {
   Button,
@@ -32,11 +32,11 @@ import { useApiClient } from '../../lib/api-context.js';
 type FilterTab = 'ALL' | 'KYC_VERIFIED' | 'VIP' | 'WATCHLIST' | 'BLOCKED';
 
 const FILTER_CHIPS: Array<{ value: FilterTab; label: string }> = [
-  { value: 'ALL',          label: 'Alle' },
+  { value: 'ALL', label: 'Alle' },
   { value: 'KYC_VERIFIED', label: 'KYC ✓' },
-  { value: 'VIP',          label: 'VIP' },
-  { value: 'WATCHLIST',    label: 'Verdächtig' },
-  { value: 'BLOCKED',      label: 'Gesperrt' },
+  { value: 'VIP', label: 'VIP' },
+  { value: 'WATCHLIST', label: 'Verdächtig' },
+  { value: 'BLOCKED', label: 'Gesperrt' },
 ];
 
 export interface CustomerListPanelProps {
@@ -83,10 +83,14 @@ export function CustomerListPanel({ selectedId, onSelect }: CustomerListPanelPro
   const items = useMemo(() => {
     const raw = q.data?.items ?? [];
     switch (filter) {
-      case 'VIP':       return raw.filter((c) => c.trustLevel === 'VIP');
-      case 'WATCHLIST': return raw.filter((c) => c.trustLevel === 'SUSPICIOUS');
-      case 'BLOCKED':   return raw.filter((c) => c.trustLevel === 'BANNED' || c.sanctionsMatch);
-      default:          return raw;
+      case 'VIP':
+        return raw.filter((c) => c.trustLevel === 'VIP');
+      case 'WATCHLIST':
+        return raw.filter((c) => c.trustLevel === 'SUSPICIOUS');
+      case 'BLOCKED':
+        return raw.filter((c) => c.trustLevel === 'BANNED' || c.sanctionsMatch);
+      default:
+        return raw;
     }
   }, [q.data, filter]);
 
@@ -105,7 +109,14 @@ export function CustomerListPanel({ selectedId, onSelect }: CustomerListPanelPro
       }}
     >
       <header style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-        <h2 style={{ margin: 0, fontFamily: 'var(--w14-font-display)', fontWeight: 500, fontSize: '1.4rem' }}>
+        <h2
+          style={{
+            margin: 0,
+            fontFamily: 'var(--w14-font-display)',
+            fontWeight: 500,
+            fontSize: '1.4rem',
+          }}
+        >
           Kundenakte
         </h2>
         <span
@@ -161,7 +172,16 @@ export function CustomerListPanel({ selectedId, onSelect }: CustomerListPanelPro
       </div>
 
       {/* Results */}
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+        }}
+      >
         {q.isError ? (
           <ErrorBanner />
         ) : items.length === 0 ? (
@@ -197,62 +217,81 @@ interface CustomerRowProps {
   onClick: () => void;
 }
 
-const CustomerRow = memo(function CustomerRow({ row, selected, onClick }: CustomerRowProps): JSX.Element {
-  const blocked = row.sanctionsMatch || row.trustLevel === 'BANNED';
-  const verified = row.kycVerifiedAt !== null;
+const CustomerRow = memo(
+  function CustomerRow({ row, selected, onClick }: CustomerRowProps): JSX.Element {
+    const blocked = row.sanctionsMatch || row.trustLevel === 'BANNED';
+    const verified = row.kycVerifiedAt !== null;
 
-  const cardStyle: CSSProperties = {
-    cursor: 'pointer',
-    border: selected
-      ? '1px solid var(--w14-gold)'
-      : blocked
-        ? '1px solid var(--w14-wax-red)'
-        : '1px solid transparent',
-    background: selected ? 'var(--w14-parchment-3)' : 'var(--w14-parchment-2)',
-    opacity: blocked ? 0.7 : 1,
-    transition: 'background-color var(--w14-dur-short) var(--w14-ease-curator), border-color var(--w14-dur-short) var(--w14-ease-curator)',
-  };
+    const cardStyle: CSSProperties = {
+      cursor: 'pointer',
+      border: selected
+        ? '1px solid var(--w14-gold)'
+        : blocked
+          ? '1px solid var(--w14-wax-red)'
+          : '1px solid transparent',
+      background: selected ? 'var(--w14-parchment-3)' : 'var(--w14-parchment-2)',
+      opacity: blocked ? 0.7 : 1,
+      transition:
+        'background-color var(--w14-dur-short) var(--w14-ease-curator), border-color var(--w14-dur-short) var(--w14-ease-curator)',
+    };
 
-  return (
-    <ParchmentCard padding="sm" onClick={onClick} style={cardStyle}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 }}>
-        <div style={{ minWidth: 0 }}>
-          <div
-            style={{
-              fontFamily: 'var(--w14-font-display)',
-              fontWeight: 500,
-              fontSize: '0.98rem',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-            }}
-          >
-            {row.fullName}
+    return (
+      <ParchmentCard padding="sm" onClick={onClick} style={cardStyle}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'baseline',
+            gap: 10,
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <div
+              style={{
+                fontFamily: 'var(--w14-font-display)',
+                fontWeight: 500,
+                fontSize: '0.98rem',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {row.fullName}
+            </div>
+            <div
+              className="w14-tabular"
+              style={{
+                fontFamily: 'var(--w14-font-mono)',
+                fontSize: '0.74rem',
+                color: 'var(--w14-ink-faded)',
+              }}
+            >
+              {row.customerNumber}
+            </div>
           </div>
-          <div
-            className="w14-tabular"
-            style={{ fontFamily: 'var(--w14-font-mono)', fontSize: '0.74rem', color: 'var(--w14-ink-faded)' }}
-          >
-            {row.customerNumber}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+            <TrustChip
+              kycVerified={verified}
+              trust={row.trustLevel}
+              sanctions={row.sanctionsMatch}
+            />
+            <span
+              className="w14-tabular"
+              style={{
+                fontFamily: 'var(--w14-font-mono)',
+                fontSize: '0.72rem',
+                color: 'var(--w14-ink-faded)',
+              }}
+            >
+              Ank. <MoneyAmount valueEur={row.cumulativeAnkaufEur} />
+            </span>
           </div>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-          <TrustChip
-            kycVerified={verified}
-            trust={row.trustLevel}
-            sanctions={row.sanctionsMatch}
-          />
-          <span
-            className="w14-tabular"
-            style={{ fontFamily: 'var(--w14-font-mono)', fontSize: '0.72rem', color: 'var(--w14-ink-faded)' }}
-          >
-            Ank. <MoneyAmount valueEur={row.cumulativeAnkaufEur} />
-          </span>
-        </div>
-      </div>
-    </ParchmentCard>
-  );
-}, (prev, next) => prev.selected === next.selected && prev.row === next.row);
+      </ParchmentCard>
+    );
+  },
+  (prev, next) => prev.selected === next.selected && prev.row === next.row,
+);
 
 function TrustChip({
   kycVerified,
@@ -275,10 +314,7 @@ function TrustChip({
 
 function Chip({ color, children }: { color: string; children: React.ReactNode }): JSX.Element {
   return (
-    <span
-      className="w14-smallcaps"
-      style={{ fontSize: '0.72rem', color, letterSpacing: '0.08em' }}
-    >
+    <span className="w14-smallcaps" style={{ fontSize: '0.72rem', color, letterSpacing: '0.08em' }}>
       {children}
     </span>
   );
@@ -319,7 +355,15 @@ function EmptyHint({ hasQuery }: { hasQuery: boolean }): JSX.Element {
   return (
     <ParchmentCard padding="md" style={{ textAlign: 'center' }}>
       <DiamondRule />
-      <p style={{ margin: '8px 0 0', color: 'var(--w14-ink-faded)', fontFamily: 'var(--w14-font-display)', fontStyle: 'italic', fontSize: '0.92rem' }}>
+      <p
+        style={{
+          margin: '8px 0 0',
+          color: 'var(--w14-ink-faded)',
+          fontFamily: 'var(--w14-font-display)',
+          fontStyle: 'italic',
+          fontSize: '0.92rem',
+        }}
+      >
         {hasQuery
           ? 'Keine Treffer für diese Suche.'
           : 'Geben Sie Name oder Kontakt ein,\num einen Kunden zu finden.'}

@@ -21,8 +21,17 @@
  * transition to status='revoked'.
  */
 
-import { check, index, inet, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import {
+  check,
+  index,
+  inet,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 
 import { primaryKey, timestamps } from '../_shared/columns.js';
 import { deviceClass, deviceStatus } from './enums.js';
@@ -45,9 +54,7 @@ export const devices = pgTable(
     pairedByUserId: uuid('paired_by_user_id')
       .notNull()
       .references(() => users.id),
-    pairedAt: timestamp('paired_at', { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    pairedAt: timestamp('paired_at', { withTimezone: true }).notNull().defaultNow(),
 
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
     lastSeenIp: inet('last_seen_ip'),
@@ -56,7 +63,7 @@ export const devices = pgTable(
 
     ...timestamps(),
   },
-  table => ({
+  (table) => ({
     certSerialUq: uniqueIndex('devices_cert_serial_uq').on(table.certSerial),
     statusClassIdx: index('devices_status_class_idx').on(table.status, table.deviceClass),
     expiringSoonIdx: index('devices_expiring_soon_idx')

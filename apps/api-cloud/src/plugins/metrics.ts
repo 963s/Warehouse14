@@ -15,17 +15,17 @@
  * will live here as `app.metrics.client.Counter` registrations.
  */
 
-import fastifyPlugin from 'fastify-plugin';
-import fastifyMetrics from 'fastify-metrics';
 import type { FastifyPluginAsync } from 'fastify';
+import fastifyMetrics from 'fastify-metrics';
+import fastifyPlugin from 'fastify-plugin';
 
 const metricsPlugin: FastifyPluginAsync = async (app) => {
   await app.register(fastifyMetrics, {
     endpoint: '/metrics',
     routeMetrics: {
       enabled: true,
-      registeredRoutesOnly: true,    // do not blow cardinality on 404s
-      groupStatusCodes: false,        // keep 200/201/204 distinct from 4xx/5xx
+      registeredRoutesOnly: true, // do not blow cardinality on 404s
+      groupStatusCodes: false, // keep 200/201/204 distinct from 4xx/5xx
     },
     defaultMetrics: { enabled: true },
   });

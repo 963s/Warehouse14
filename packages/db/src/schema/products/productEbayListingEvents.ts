@@ -10,8 +10,17 @@
  * VERKAUFT, cashier says SOLD — who flipped what when?").
  */
 
-import { bigserial, check, index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import {
+  bigserial,
+  check,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from 'drizzle-orm/pg-core';
 
 import { users } from '../auth/users.js';
 import { ebayListingState } from './enums.js';

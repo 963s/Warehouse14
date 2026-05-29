@@ -1,0 +1,449 @@
+/**
+ * Appointments API (ADR-0020). All scheduling is Europe/Berlin (the
+ * available_slots() SQL function + berlin helpers handle DST).
+ *
+ *   GET   /api/appointments/available-slots — capacity grid via available_slots().
+ *   POST  /api/appointments                 — book (txn: verify slot + insert +
+ *                                              link VIEWING products + schedule
+ *                                              reminders; ledger via DB trigger).
+ *   PATCH /api/appointments/:id             — status transition (trigger-validated).
+ *   POST  /api/appointments/:id/reschedule  — clone + link + release old holds.
+ */
+
+import { type Static, Type } from '@sinclair/typebox';
+import { type SQL, sql } from 'drizzle-orm';
+import type { FastifyPluginAsync } from 'fastify';
+
+import {
+  type AppointmentType,
+  DEFAULT_DURATION_MINUTES,
+  computeReminderSchedule,
+} from '@warehouse14/appointments';
+
+import type { Env } from '../config/env.js';
+import { requireAuth, requireRole } from '../lib/auth-policy.js';
+import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
+
+class SlotUnavailableError extends DomainError {
+  public readonly httpStatus = 409;
+  public readonly code: ApiErrorCode = 'CONFLICT';
+}
+class AppointmentNotFoundError extends DomainError {
+  public readonly httpStatus = 404;
+  public readonly code: ApiErrorCode = 'NOT_FOUND';
+}
+class AppointmentValidationError extends DomainError {
+  public readonly httpStatus = 400;
+  public readonly code: ApiErrorCode = 'VALIDATION_ERROR';
+}
+
+const ErrorResponse = Type.Object({
+  error: Type.Object({
+    code: Type.String(),
+    message: Type.String(),
+    requestId: Type.String(),
+    details: Type.Optional(Type.Unknown()),
+  }),
+});
+
+const APPOINTMENT_TYPE_VALUES = ['VIEWING', 'BUYBACK_EVAL', 'CONSULTATION', 'PICKUP'] as const;
+
+const SlotsQuery = Type.Object({
+  type: Type.Union(APPOINTMENT_TYPE_VALUES.map((t) => Type.Literal(t))),
+  durationMinutes: Type.Optional(Type.Integer({ minimum: 1, maximum: 480 })),
+  from: Type.String({ format: 'date-time' }),
+  to: Type.String({ format: 'date-time' }),
+  staffUserId: Type.Optional(Type.String({ format: 'uuid' })),
+});
+type TSlotsQuery = Static<typeof SlotsQuery>;
+
+const BookBody = Type.Object({
+  type: Type.Union(APPOINTMENT_TYPE_VALUES.map((t) => Type.Literal(t))),
+  startsAt: Type.String({ format: 'date-time' }),
+  durationMinutes: Type.Optional(Type.Integer({ minimum: 1, maximum: 480 })),
+  staffUserId: Type.String({ format: 'uuid' }),
+  customerId: Type.Optional(Type.String({ format: 'uuid' })),
+  bookedVia: Type.Union([
+    Type.Literal('control_desktop'),
+    Type.Literal('storefront'),
+    Type.Literal('pos'),
+    Type.Literal('whatsapp_bot'),
+  ]),
+  linkedProductIds: Type.Optional(Type.Array(Type.String({ format: 'uuid' }))),
+  customerNotes: Type.Optional(Type.String({ maxLength: 2000 })),
+  /** Contact for reminder scheduling (kept out of PII tables here). */
+  customerEmail: Type.Optional(Type.String({ maxLength: 200 })),
+  customerPhone: Type.Optional(Type.String({ maxLength: 32 })),
+});
+type TBookBody = Static<typeof BookBody>;
+
+const PatchBody = Type.Object({
+  status: Type.Union([
+    Type.Literal('CONFIRMED'),
+    Type.Literal('CHECKED_IN'),
+    Type.Literal('IN_PROGRESS'),
+    Type.Literal('COMPLETED'),
+    Type.Literal('CANCELLED'),
+    Type.Literal('NO_SHOW'),
+  ]),
+  cancellationReason: Type.Optional(Type.String({ maxLength: 500 })),
+  staffNotes: Type.Optional(Type.String({ maxLength: 2000 })),
+});
+type TPatchBody = Static<typeof PatchBody>;
+
+const RescheduleBody = Type.Object({
+  startsAt: Type.String({ format: 'date-time' }),
+  durationMinutes: Type.Optional(Type.Integer({ minimum: 1, maximum: 480 })),
+  staffUserId: Type.Optional(Type.String({ format: 'uuid' })),
+  reason: Type.Optional(Type.String({ maxLength: 500 })),
+});
+type TRescheduleBody = Static<typeof RescheduleBody>;
+
+const IdParams = Type.Object({ id: Type.String({ format: 'uuid' }) });
+type TIdParams = Static<typeof IdParams>;
+
+export interface AppointmentsOpts {
+  env: Env;
+}
+
+type SlotRow = { staff_user_id: string; slot_starts_at: string; slot_ends_at: string };
+type ApptRow = {
+  id: string;
+  appointment_type: AppointmentType;
+  status: string;
+  starts_at: string;
+  duration_minutes: number;
+  staff_user_id: string;
+  customer_id: string | null;
+};
+
+function durationFor(type: AppointmentType, override?: number): number {
+  return override ?? DEFAULT_DURATION_MINUTES[type];
+}
+
+interface DbExecutor {
+  execute(query: SQL): Promise<unknown>;
+}
+
+/** Insert the computed reminder cadence into appointment_notifications. */
+async function scheduleReminders(
+  tx: DbExecutor,
+  appointmentId: string,
+  startsAt: Date,
+  email: string | null,
+  phone: string | null,
+): Promise<void> {
+  const rows = computeReminderSchedule({
+    startsAt,
+    recipientEmail: email,
+    recipientPhone: phone,
+  });
+  for (const r of rows) {
+    await tx.execute(sql`
+      INSERT INTO appointment_notifications
+        (appointment_id, notification_type, channel, recipient, template_id, scheduled_for)
+      VALUES (${appointmentId}::uuid, ${r.notificationType}, ${r.channel}, ${r.recipient},
+              ${r.templateId ?? null}, ${r.scheduledFor.toISOString()}::timestamptz)
+    `);
+  }
+}
+
+const STATUS_MARKER_COLUMN: Record<string, string | null> = {
+  CONFIRMED: 'confirmed_at',
+  CHECKED_IN: 'checked_in_at',
+  IN_PROGRESS: 'in_progress_started_at',
+  COMPLETED: 'completed_at',
+  NO_SHOW: 'no_show_marked_at',
+  CANCELLED: 'cancelled_at',
+};
+
+const ListQuery = Type.Object({
+  from: Type.String({ format: 'date-time' }),
+  to: Type.String({ format: 'date-time' }),
+  staffUserId: Type.Optional(Type.String({ format: 'uuid' })),
+});
+type TListQuery = Static<typeof ListQuery>;
+
+const appointmentsRoutes: FastifyPluginAsync<AppointmentsOpts> = async (app) => {
+  // ── GET list (calendar + next-hour panel) ────────────────────────────────
+  app.get<{ Querystring: TListQuery }>(
+    '/api/appointments',
+    {
+      schema: {
+        tags: ['appointments'],
+        summary: 'List appointments in a time window (Europe/Berlin display).',
+        querystring: ListQuery,
+        response: {
+          200: Type.Object({ appointments: Type.Array(Type.Unknown()) }),
+          401: ErrorResponse,
+        },
+      },
+    },
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'ADMIN', 'CASHIER', 'READONLY');
+      const q = req.query;
+      const rows = (await app.db.execute(sql`
+        SELECT a.id::text AS id, a.appointment_type::text AS appointment_type,
+               a.status::text AS status, a.starts_at::text AS starts_at,
+               a.ends_at::text AS ends_at, a.duration_minutes,
+               a.staff_user_id::text AS staff_user_id, a.customer_id::text AS customer_id,
+               COALESCE(
+                 (SELECT array_agg(lp.product_id::text)
+                  FROM appointment_linked_products lp WHERE lp.appointment_id = a.id),
+                 ARRAY[]::text[]
+               ) AS linked_product_ids
+        FROM appointments a
+        WHERE a.starts_at >= ${q.from}::timestamptz
+          AND a.starts_at < ${q.to}::timestamptz
+          AND (${q.staffUserId ?? null}::uuid IS NULL OR a.staff_user_id = ${q.staffUserId ?? null}::uuid)
+          AND a.status NOT IN ('CANCELLED', 'RESCHEDULED')
+        ORDER BY a.starts_at ASC
+        LIMIT 500
+      `)) as unknown as unknown[];
+      return reply.status(200).send({ appointments: rows });
+    },
+  );
+
+  // ── GET available-slots ──────────────────────────────────────────────────
+  app.get<{ Querystring: TSlotsQuery }>(
+    '/api/appointments/available-slots',
+    {
+      schema: {
+        tags: ['appointments'],
+        summary: 'Compute available appointment slots (Europe/Berlin, DST-correct).',
+        querystring: SlotsQuery,
+        response: { 200: Type.Object({ slots: Type.Array(Type.Unknown()) }), 401: ErrorResponse },
+      },
+    },
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'ADMIN', 'CASHIER', 'READONLY');
+      const q = req.query;
+      const dur = durationFor(q.type, q.durationMinutes);
+      const rows = (await app.db.execute<SlotRow>(sql`
+        SELECT staff_user_id::text AS staff_user_id,
+               slot_starts_at::text AS slot_starts_at,
+               slot_ends_at::text   AS slot_ends_at
+        FROM available_slots(
+          ${q.type}::appointment_type, ${dur},
+          ${q.from}::timestamptz, ${q.to}::timestamptz,
+          ${q.staffUserId ?? null}::uuid, NULL::uuid
+        )
+      `)) as unknown as SlotRow[];
+      return reply.status(200).send({ slots: rows });
+    },
+  );
+
+  // ── POST book ──────────────────────────────────────────────────────────
+  app.post<{ Body: TBookBody }>(
+    '/api/appointments',
+    {
+      schema: {
+        tags: ['appointments'],
+        summary: 'Book an appointment (slot-verified transaction).',
+        body: BookBody,
+        response: {
+          200: Type.Object({ id: Type.String(), status: Type.String() }),
+          400: ErrorResponse,
+          401: ErrorResponse,
+          409: ErrorResponse,
+        },
+      },
+    },
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'ADMIN', 'CASHIER');
+      const b = req.body;
+      const bookedBy = req.actor.id;
+      const dur = durationFor(b.type, b.durationMinutes);
+      const startsAt = new Date(b.startsAt);
+
+      const id = await app.db.transaction(async (txAny) => {
+        const tx = txAny as unknown as typeof app.db;
+
+        // 1. Re-verify the slot inside the transaction (the list was advisory).
+        const toIso = new Date(startsAt.getTime() + dur * 60_000 + 60_000).toISOString();
+        const slot = (await tx.execute<{ ok: number }>(sql`
+          SELECT 1 AS ok FROM available_slots(
+            ${b.type}::appointment_type, ${dur},
+            ${startsAt.toISOString()}::timestamptz, ${toIso}::timestamptz,
+            ${b.staffUserId}::uuid, NULL::uuid
+          )
+          WHERE staff_user_id = ${b.staffUserId}::uuid
+            AND slot_starts_at = ${startsAt.toISOString()}::timestamptz
+          LIMIT 1
+        `)) as unknown as Array<{ ok: number }>;
+        if (slot.length === 0)
+          throw new SlotUnavailableError('Selected slot is no longer available.');
+
+        // 2. Insert the appointment (ledger emitted by AFTER INSERT trigger).
+        const inserted = (await tx.execute<{ id: string }>(sql`
+          INSERT INTO appointments
+            (appointment_type, starts_at, duration_minutes, customer_id, staff_user_id,
+             booked_by_user_id, booked_via, customer_notes)
+          VALUES (${b.type}::appointment_type, ${startsAt.toISOString()}::timestamptz, ${dur},
+                  ${b.customerId ?? null}::uuid, ${b.staffUserId}::uuid, ${bookedBy}::uuid,
+                  ${b.bookedVia}, ${b.customerNotes ?? null})
+          RETURNING id::text AS id
+        `)) as unknown as Array<{ id: string }>;
+        const apptId = inserted[0]?.id;
+        if (!apptId) throw new AppointmentValidationError('appointment insert returned no row');
+
+        // 3. VIEWING: link products → soft holds via the DB trigger.
+        if (b.type === 'VIEWING' && b.linkedProductIds && b.linkedProductIds.length > 0) {
+          for (const pid of b.linkedProductIds) {
+            await tx.execute(sql`
+              INSERT INTO appointment_linked_products (appointment_id, product_id, added_by_user_id)
+              VALUES (${apptId}::uuid, ${pid}::uuid, ${bookedBy}::uuid)
+            `);
+          }
+        }
+
+        // 4. Schedule the reminder cadence.
+        await scheduleReminders(
+          tx,
+          apptId,
+          startsAt,
+          b.customerEmail ?? null,
+          b.customerPhone ?? null,
+        );
+
+        return apptId;
+      });
+
+      return reply.status(200).send({ id, status: 'SCHEDULED' });
+    },
+  );
+
+  // ── PATCH status ─────────────────────────────────────────────────────────
+  app.patch<{ Params: TIdParams; Body: TPatchBody }>(
+    '/api/appointments/:id',
+    {
+      schema: {
+        tags: ['appointments'],
+        summary: 'Transition appointment status (trigger-validated graph).',
+        params: IdParams,
+        body: PatchBody,
+        response: {
+          200: Type.Object({ id: Type.String(), status: Type.String() }),
+          400: ErrorResponse,
+          401: ErrorResponse,
+          404: ErrorResponse,
+        },
+      },
+    },
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'ADMIN', 'CASHIER');
+      const { id } = req.params;
+      const { status, cancellationReason, staffNotes } = req.body;
+      const markerCol = STATUS_MARKER_COLUMN[status];
+
+      // Build the marker SET clause via column name (whitelisted above).
+      const markerSet =
+        markerCol !== null && markerCol !== undefined
+          ? sql`, ${sql.raw(markerCol)} = now()`
+          : sql``;
+      const cancelSet =
+        status === 'CANCELLED'
+          ? sql`, cancellation_reason = ${cancellationReason ?? 'cancelled'}`
+          : sql``;
+      const notesSet = staffNotes !== undefined ? sql`, staff_notes = ${staffNotes}` : sql``;
+
+      const rows = (await app.db.execute<{ id: string; status: string }>(sql`
+        UPDATE appointments
+        SET status = ${status}::appointment_status ${markerSet} ${cancelSet} ${notesSet}
+        WHERE id = ${id}::uuid
+        RETURNING id::text AS id, status::text AS status
+      `)) as unknown as Array<{ id: string; status: string }>;
+      const row = rows[0];
+      if (!row) throw new AppointmentNotFoundError(`Appointment ${id} not found`);
+      return reply.status(200).send(row);
+    },
+  );
+
+  // ── POST reschedule ────────────────────────────────────────────────────
+  app.post<{ Params: TIdParams; Body: TRescheduleBody }>(
+    '/api/appointments/:id/reschedule',
+    {
+      schema: {
+        tags: ['appointments'],
+        summary: 'Reschedule: clone to a new slot, link the chain, release old holds.',
+        params: IdParams,
+        body: RescheduleBody,
+        response: {
+          200: Type.Object({ id: Type.String(), rescheduledFrom: Type.String() }),
+          400: ErrorResponse,
+          401: ErrorResponse,
+          404: ErrorResponse,
+          409: ErrorResponse,
+        },
+      },
+    },
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'ADMIN', 'CASHIER');
+      const { id } = req.params;
+      const b = req.body;
+      const bookedBy = req.actor.id;
+      const startsAt = new Date(b.startsAt);
+
+      const newId = await app.db.transaction(async (txAny) => {
+        const tx = txAny as unknown as typeof app.db;
+
+        const origRows = (await tx.execute<ApptRow>(sql`
+          SELECT id::text AS id, appointment_type::text AS appointment_type, status::text AS status,
+                 starts_at::text AS starts_at, duration_minutes,
+                 staff_user_id::text AS staff_user_id, customer_id::text AS customer_id
+          FROM appointments WHERE id = ${id}::uuid LIMIT 1
+        `)) as unknown as ApptRow[];
+        const orig = origRows[0];
+        if (!orig) throw new AppointmentNotFoundError(`Appointment ${id} not found`);
+        if (['COMPLETED', 'NO_SHOW', 'CANCELLED', 'RESCHEDULED'].includes(orig.status)) {
+          throw new AppointmentValidationError(`Cannot reschedule a ${orig.status} appointment`);
+        }
+
+        const staffId = b.staffUserId ?? orig.staff_user_id;
+        const dur = b.durationMinutes ?? orig.duration_minutes;
+
+        // Insert the rescheduled clone, linked back to the original.
+        const cloneRows = (await tx.execute<{ id: string }>(sql`
+          INSERT INTO appointments
+            (appointment_type, starts_at, duration_minutes, customer_id, staff_user_id,
+             booked_by_user_id, booked_via, rescheduled_from_appointment_id)
+          VALUES (${orig.appointment_type}::appointment_type, ${startsAt.toISOString()}::timestamptz,
+                  ${dur}, ${orig.customer_id}::uuid, ${staffId}::uuid, ${bookedBy}::uuid,
+                  'pos', ${orig.id}::uuid)
+          RETURNING id::text AS id
+        `)) as unknown as Array<{ id: string }>;
+        const cloneId = cloneRows[0]?.id;
+        if (!cloneId)
+          throw new AppointmentValidationError('reschedule clone insert returned no row');
+
+        // Point the original at the clone, then move it to RESCHEDULED.
+        await tx.execute(sql`
+          UPDATE appointments SET rescheduled_to_appointment_id = ${cloneId}::uuid WHERE id = ${orig.id}::uuid
+        `);
+        await tx.execute(sql`
+          UPDATE appointments
+          SET status = 'RESCHEDULED', cancellation_reason = ${b.reason ?? 'rescheduled'}
+          WHERE id = ${orig.id}::uuid
+        `);
+
+        // Release the original's active soft holds.
+        await tx.execute(sql`
+          UPDATE product_viewing_holds
+          SET released_at = now(), released_reason = 'rescheduled'
+          WHERE appointment_id = ${orig.id}::uuid AND released_at IS NULL
+        `);
+
+        return cloneId;
+      });
+
+      return reply.status(200).send({ id: newId, rescheduledFrom: id });
+    },
+  );
+};
+
+export default appointmentsRoutes;

@@ -29,22 +29,22 @@
  *     ✓ /metrics exposes worker_job_runs_total + process metrics
  */
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { readFile, readdir } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
+import { readFile, readdir } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { setTimeout as wait } from 'node:timers/promises';
+import { fileURLToPath } from 'node:url';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import postgres, { type Sql } from 'postgres';
-import { drizzle } from 'drizzle-orm/postgres-js';
-import * as schema from '@warehouse14/db/schema';
 import type { WorkerDb } from '@warehouse14/db/client';
+import * as schema from '@warehouse14/db/schema';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import postgres, { type Sql } from 'postgres';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { buildWorker, type WorkerHandle } from '../../src/app.js';
+import { type WorkerHandle, buildWorker } from '../../src/app.js';
+import type { Env } from '../../src/config/env.js';
 import { JobRunner } from '../../src/lib/job-runner.js';
 import { createMetrics } from '../../src/lib/metrics.js';
-import type { Env } from '../../src/config/env.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -60,9 +60,7 @@ const INITDB_SQL = `
 `;
 
 async function applyAll(sqlClient: Sql): Promise<void> {
-  const files = (await readdir(MIGRATIONS_DIR))
-    .filter((n) => /^\d{4}_.+\.sql$/.test(n))
-    .sort();
+  const files = (await readdir(MIGRATIONS_DIR)).filter((n) => /^\d{4}_.+\.sql$/.test(n)).sort();
   for (const f of files) await sqlClient.unsafe(await readFile(join(MIGRATIONS_DIR, f), 'utf8'));
 }
 
@@ -86,11 +84,13 @@ describe('Day 18 — apps/worker resilience', () => {
       .start();
 
     migratorSql = postgres({
-      host: container.getHost(), port: container.getPort(),
+      host: container.getHost(),
+      port: container.getPort(),
       database: 'warehouse14_test',
       username: 'warehouse14_migrator',
       password: 'warehouse14_migrator_test_pw',
-      max: 1, onnotice: () => {},
+      max: 1,
+      onnotice: () => {},
     });
     await applyAll(migratorSql);
     await migratorSql.unsafe(`ALTER ROLE warehouse14_worker PASSWORD 'warehouse14_worker_test_pw'`);
@@ -98,11 +98,13 @@ describe('Day 18 — apps/worker resilience', () => {
     const host = container.getHost();
     const port = container.getPort();
     workerSql = postgres({
-      host, port,
+      host,
+      port,
       database: 'warehouse14_test',
       username: 'warehouse14_worker',
       password: 'warehouse14_worker_test_pw',
-      max: 5, onnotice: () => {},
+      max: 5,
+      onnotice: () => {},
     });
     workerDb = drizzle(workerSql, { schema });
     lockUrl = `postgres://warehouse14_worker:warehouse14_worker_test_pw@${host}:${port}/warehouse14_test`;
@@ -143,7 +145,9 @@ describe('Day 18 — apps/worker resilience', () => {
     const outcome = await workerHandle.runner.runOnce('chain_verifier');
     expect(outcome.status).toBe('SUCCESS');
 
-    const rows = await migratorSql<{ status: string; finished_at: Date; payload: { breaks: number } }[]>`
+    const rows = await migratorSql<
+      { status: string; finished_at: Date; payload: { breaks: number } }[]
+    >`
       SELECT status::text AS status, finished_at, payload
         FROM worker_job_runs
        WHERE job_name = 'chain_verifier'
@@ -274,12 +278,19 @@ describe('Day 18 — apps/worker resilience', () => {
   it('runner.close() makes subsequent runOnce return SKIPPED(closing)', async () => {
     const metrics = createMetrics();
     const runner = new JobRunner({
-      db: workerDb, sql: workerSql, lockConnectionUrl: lockUrl,
+      db: workerDb,
+      sql: workerSql,
+      lockConnectionUrl: lockUrl,
       metrics,
       defaults: { maxRetries: 3, timeoutMs: 5_000 },
       schedule: 'manual',
     });
-    runner.register({ name: 'closed_test', async run() { return { ok: true }; } });
+    runner.register({
+      name: 'closed_test',
+      async run() {
+        return { ok: true };
+      },
+    });
     await runner.close();
     const outcome = await runner.runOnce('closed_test');
     expect(outcome.status).toBe('SKIPPED');

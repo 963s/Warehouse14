@@ -14,12 +14,7 @@
 import type { ApiClient } from '../client.js';
 import type { AnkaufCondition, AnkaufItemType, AnkaufMetal } from './transactions.js';
 
-export type AppraisalStatus =
-  | 'DRAFT'
-  | 'COMPLETED'
-  | 'ACCEPTED'
-  | 'REJECTED'
-  | 'EXPIRED';
+export type AppraisalStatus = 'DRAFT' | 'COMPLETED' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED';
 
 export interface AppraisalItemView {
   id: string;
@@ -99,10 +94,7 @@ export const appraisalsApi = {
     return client.request<AppraisalView>('POST', '/api/appraisals', body);
   },
   get(client: ApiClient, id: string): Promise<AppraisalView> {
-    return client.request<AppraisalView>(
-      'GET',
-      `/api/appraisals/${encodeURIComponent(id)}`,
-    );
+    return client.request<AppraisalView>('GET', `/api/appraisals/${encodeURIComponent(id)}`);
   },
   addItem(client: ApiClient, id: string, body: AppraisalItemBody): Promise<AppraisalView> {
     return client.request<AppraisalView>(
@@ -117,11 +109,7 @@ export const appraisalsApi = {
       `/api/appraisals/${encodeURIComponent(id)}/items/${encodeURIComponent(itemId)}`,
     );
   },
-  complete(
-    client: ApiClient,
-    id: string,
-    body: AppraisalCompleteBody,
-  ): Promise<AppraisalView> {
+  complete(client: ApiClient, id: string, body: AppraisalCompleteBody): Promise<AppraisalView> {
     return client.request<AppraisalView>(
       'POST',
       `/api/appraisals/${encodeURIComponent(id)}/complete`,
@@ -134,11 +122,7 @@ export const appraisalsApi = {
       `/api/appraisals/${encodeURIComponent(id)}/accept`,
     );
   },
-  reject(
-    client: ApiClient,
-    id: string,
-    body: AppraisalRejectBody,
-  ): Promise<AppraisalView> {
+  reject(client: ApiClient, id: string, body: AppraisalRejectBody): Promise<AppraisalView> {
     return client.request<AppraisalView>(
       'POST',
       `/api/appraisals/${encodeURIComponent(id)}/reject`,

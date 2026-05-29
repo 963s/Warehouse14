@@ -23,12 +23,10 @@
  *   • requireRole('ADMIN', 'CASHIER')
  */
 
-import { Type, type Static } from '@sinclair/typebox';
+import { type Static, Type } from '@sinclair/typebox';
 
 import { DecimalString } from './money.js';
-import {
-  CreateProductBody as ProductCreateFields,
-} from './product.js';
+import { CreateProductBody as ProductCreateFields } from './product.js';
 
 // ────────────────────────────────────────────────────────────────────────
 // Payout method — V1 ships CASH + BANK_TRANSFER (matches transaction_payments

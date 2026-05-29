@@ -13,13 +13,13 @@
  */
 
 import { Type } from '@sinclair/typebox';
-import { eq, sql as drizzleSql } from 'drizzle-orm';
+import { sql as drizzleSql, eq } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 
 import { auditLog, customers } from '@warehouse14/db/schema';
 
 import { requireAuth, requireOwnerStepUp } from '../lib/auth-policy.js';
-import { DomainError, type ApiErrorCode } from '../plugins/error-handler.js';
+import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 import {
   CustomerIdParams,
   KycStampBody,
@@ -178,8 +178,10 @@ const customerTrustRoutes: FastifyPluginAsync = async (app) => {
       const actorId = req.actor.id;
       const target = req.body.trustLevel;
 
-      if ((target === 'SUSPICIOUS' || target === 'BANNED')
-          && (!req.body.reason || req.body.reason.length < 8)) {
+      if (
+        (target === 'SUSPICIOUS' || target === 'BANNED') &&
+        (!req.body.reason || req.body.reason.length < 8)
+      ) {
         throw new TrustValidationError(
           `trust_level=${target} requires a reason (≥ 8 chars) — written to price_expectation_notes`,
         );
@@ -201,7 +203,7 @@ const customerTrustRoutes: FastifyPluginAsync = async (app) => {
         if ((target === 'VERIFIED' || target === 'VIP') && current.kycVerifiedAt == null) {
           throw new TrustConflictError(
             `cannot promote to ${target} without a prior physical-ID check ` +
-            '(PATCH /api/customers/:id/kyc first)',
+              '(PATCH /api/customers/:id/kyc first)',
           );
         }
 
@@ -299,7 +301,10 @@ const customerTrustRoutes: FastifyPluginAsync = async (app) => {
         params: CustomerIdParams,
         body: PriceNotesBody,
         response: {
-          200: Type.Object({ id: Type.String(), priceExpectationNotes: Type.Union([Type.String(), Type.Null()]) }),
+          200: Type.Object({
+            id: Type.String(),
+            priceExpectationNotes: Type.Union([Type.String(), Type.Null()]),
+          }),
           404: ErrorResponse,
           409: ErrorResponse,
           403: ErrorResponse,
@@ -323,11 +328,13 @@ const customerTrustRoutes: FastifyPluginAsync = async (app) => {
           .limit(1);
         if (!current) throw new CustomerNotFoundError(`Customer ${req.params.id} not found`);
 
-        if (req.body.notes === null
-            && (current.trustLevel === 'SUSPICIOUS' || current.trustLevel === 'BANNED')) {
+        if (
+          req.body.notes === null &&
+          (current.trustLevel === 'SUSPICIOUS' || current.trustLevel === 'BANNED')
+        ) {
           throw new TrustConflictError(
             `cannot clear notes while trust_level=${current.trustLevel}; ` +
-            'change trust_level first or replace with a non-null note',
+              'change trust_level first or replace with a non-null note',
           );
         }
 

@@ -12,7 +12,7 @@
  *   • optional retention years (default 5 — GwG-aligned, see ADR-0007)
  */
 
-import { Type, type Static } from '@sinclair/typebox';
+import { type Static, Type } from '@sinclair/typebox';
 
 export const KycDocumentType = Type.Union(
   [
@@ -39,9 +39,7 @@ export const KycDocumentBody = Type.Object({
   r2Key: Type.String({ minLength: 1, maxLength: 1024 }),
   /** 64-hex-char SHA-256 of the uploaded photo bytes (lowercase). */
   sha256Hex: Type.String({ pattern: '^[0-9a-f]{64}$' }),
-  retentionYears: Type.Optional(
-    Type.Integer({ minimum: 1, maximum: 30, default: 5 }),
-  ),
+  retentionYears: Type.Optional(Type.Integer({ minimum: 1, maximum: 30, default: 5 })),
 });
 export type KycDocumentBody = Static<typeof KycDocumentBody>;
 

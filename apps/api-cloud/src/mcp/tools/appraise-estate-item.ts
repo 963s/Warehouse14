@@ -52,12 +52,7 @@
 
 import { Type } from '@sinclair/typebox';
 
-import type {
-  ToolHandler,
-  ToolInvocationContext,
-  ToolRegistration,
-  ToolResult,
-} from '../types.js';
+import type { ToolHandler, ToolInvocationContext, ToolRegistration, ToolResult } from '../types.js';
 
 // ────────────────────────────────────────────────────────────────────────
 // Argument schema
@@ -72,9 +67,7 @@ export const AppraiseEstateItemArgs = Type.Object({
   itemType: Type.Union(ITEM_TYPES.map((s) => Type.Literal(s))),
   metal: Type.Optional(Type.Union(METALS.map((s) => Type.Literal(s)))),
   weightGrams: Type.Optional(Type.String({ pattern: '^\\d{1,6}(\\.\\d{1,4})?$' })),
-  finenessDecimal: Type.Optional(
-    Type.String({ pattern: '^(0(\\.\\d{1,4})?|1(\\.0{1,4})?)$' }),
-  ),
+  finenessDecimal: Type.Optional(Type.String({ pattern: '^(0(\\.\\d{1,4})?|1(\\.0{1,4})?)$' })),
   yearMintedFrom: Type.Optional(Type.Integer({ minimum: -3000, maximum: 3000 })),
   yearMintedTo: Type.Optional(Type.Integer({ minimum: -3000, maximum: 3000 })),
   originCountry: Type.Optional(Type.String({ minLength: 2, maxLength: 2 })),
@@ -174,17 +167,13 @@ async function runLlm(args: ArgsShape): Promise<AppraisalStubResult> {
 
   let mid = 0n;
 
-  if (
-    args.metal &&
-    args.weightGrams &&
-    args.finenessDecimal
-  ) {
+  if (args.metal && args.weightGrams && args.finenessDecimal) {
     // Stub spot prices in EUR cents per gram (real impl reads metal_prices).
     // Numbers are wrong on purpose — the orchestrator MUST override them
     // with live LBMA when the real LLM call is wired.
     const stubSpotEurCentsPerGram: Record<(typeof METALS)[number], bigint> = {
-      GOLD: 6_500n,         // ~ €65/g pure
-      SILVER: 80n,          // ~ €0.80/g pure
+      GOLD: 6_500n, // ~ €65/g pure
+      SILVER: 80n, // ~ €0.80/g pure
       PLATINUM: 3_000n,
       PALLADIUM: 2_500n,
     };
@@ -251,24 +240,36 @@ async function runLlm(args: ArgsShape): Promise<AppraisalStubResult> {
 function baseEstimateByType(type: (typeof ITEM_TYPES)[number]): bigint {
   // EUR cents — intentionally conservative stubs.
   switch (type) {
-    case 'COIN':              return 5_000n;     // €50
-    case 'JEWELRY':           return 20_000n;    // €200
-    case 'ANTIQUE_FURNITURE': return 50_000n;    // €500
-    case 'ART':               return 30_000n;    // €300
-    case 'WATCH':             return 40_000n;    // €400
-    case 'OTHER':             return 10_000n;    // €100
+    case 'COIN':
+      return 5_000n; // €50
+    case 'JEWELRY':
+      return 20_000n; // €200
+    case 'ANTIQUE_FURNITURE':
+      return 50_000n; // €500
+    case 'ART':
+      return 30_000n; // €300
+    case 'WATCH':
+      return 40_000n; // €400
+    case 'OTHER':
+      return 10_000n; // €100
   }
 }
 
 function conditionMultiplier(c: ArgsShape['condition']): bigint {
   // Returned in tenths (so 12n = 1.2×, 8n = 0.8×).
   switch (c) {
-    case 'MINT':      return 12n;
-    case 'EXCELLENT': return 11n;
-    case 'GOOD':      return 10n;
-    case 'FAIR':      return 8n;
-    case 'POOR':      return 5n;
-    default:          return 10n;
+    case 'MINT':
+      return 12n;
+    case 'EXCELLENT':
+      return 11n;
+    case 'GOOD':
+      return 10n;
+    case 'FAIR':
+      return 8n;
+    case 'POOR':
+      return 5n;
+    default:
+      return 10n;
   }
 }
 

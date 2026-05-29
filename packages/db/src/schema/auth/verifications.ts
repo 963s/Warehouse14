@@ -25,7 +25,7 @@ export const verifications = pgTable(
 
     ...timestamps(),
   },
-  table => ({
+  (table) => ({
     identifierIdx: index('verifications_identifier_idx').on(table.identifier),
     expiresAtIdx: index('verifications_expires_at_idx').on(table.expiresAt),
   }),

@@ -19,8 +19,19 @@
  *   • id, created_at — immutable
  */
 
-import { boolean, char, check, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import {
+  boolean,
+  char,
+  check,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 
 import { citext } from '../_shared/columnTypes.js';
 import { primaryKey, timestamps } from '../_shared/columns.js';
@@ -39,9 +50,7 @@ export const users = pgTable(
 
     // Warehouse14 extensions
     role: userRole('role').notNull(),
-    preferredLanguage: char('preferred_language', { length: 2 })
-      .notNull()
-      .default('de'),
+    preferredLanguage: char('preferred_language', { length: 2 }).notNull().default('de'),
     shopId: uuid('shop_id'),
 
     // GDPR markers
@@ -59,16 +68,14 @@ export const users = pgTable(
 
     ...timestamps(),
   },
-  table => ({
+  (table) => ({
     emailActiveUq: uniqueIndex('users_email_active_uq')
       .on(table.email)
       .where(sql`${table.softDeletedAt} IS NULL`),
     roleActiveIdx: index('users_role_active_idx')
       .on(table.role)
       .where(sql`${table.softDeletedAt} IS NULL`),
-    shopIdIdx: index('users_shop_id_idx')
-      .on(table.shopId)
-      .where(sql`${table.shopId} IS NOT NULL`),
+    shopIdIdx: index('users_shop_id_idx').on(table.shopId).where(sql`${table.shopId} IS NOT NULL`),
     preferredLanguageCheck: check(
       'users_preferred_language_chk',
       sql`${table.preferredLanguage} IN ('de', 'en', 'ar')`,
@@ -95,10 +102,7 @@ export const users = pgTable(
       sql`(${table.posPinHash} IS NULL AND ${table.posPinSetAt} IS NULL)
         OR (${table.posPinHash} IS NOT NULL AND ${table.posPinSetAt} IS NOT NULL)`,
     ),
-    pinAttemptsNonneg: check(
-      'users_pin_attempts_nonneg',
-      sql`${table.posPinFailedAttempts} >= 0`,
-    ),
+    pinAttemptsNonneg: check('users_pin_attempts_nonneg', sql`${table.posPinFailedAttempts} >= 0`),
     posPinActiveIdx: index('users_pos_pin_active_idx')
       .on(table.id)
       .where(sql`${table.posPinHash} IS NOT NULL AND ${table.softDeletedAt} IS NULL`),

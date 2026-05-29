@@ -25,16 +25,19 @@
  */
 
 import { Type } from '@sinclair/typebox';
-import { eq, sql as drizzleSql } from 'drizzle-orm';
+import { sql as drizzleSql, eq } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 
 import {
-  paymentIntents, transactionItems, transactionPayments, transactions,
+  paymentIntents,
+  transactionItems,
+  transactionPayments,
+  transactions,
 } from '@warehouse14/db/schema';
 
 import type { Env } from '../config/env.js';
-import { DomainError, type ApiErrorCode } from '../plugins/error-handler.js';
 import { requireAuth, requireRole, requireStepUp } from '../lib/auth-policy.js';
+import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 
 class ReturnNotFoundError extends DomainError {
   public readonly httpStatus = 404;
@@ -71,156 +74,179 @@ export interface ReturnRouteOpts {
 const transactionsReturnRoute: FastifyPluginAsync<ReturnRouteOpts> = async (app, opts) => {
   app.post<{
     Body: { originalTransactionId: string; reason: string };
-  }>('/api/transactions/return', {
-    schema: {
-      tags: ['transactions'],
-      summary: 'Online return (Fernabsatzgesetz). Reverses fiscal + returns product to AVAILABLE.',
-      body: Type.Object({
-        originalTransactionId: Type.String({ format: 'uuid' }),
-        reason: Type.String({ minLength: 8, maxLength: 1024 }),
-      }),
-      response: {
-        200: Type.Object({
-          id: Type.String({ format: 'uuid' }),
-          stornoOfTransactionId: Type.String({ format: 'uuid' }),
-          returnedAt: Type.String({ format: 'date-time' }),
-          stripeRefundQueued: Type.Boolean(),
+  }>(
+    '/api/transactions/return',
+    {
+      schema: {
+        tags: ['transactions'],
+        summary:
+          'Online return (Fernabsatzgesetz). Reverses fiscal + returns product to AVAILABLE.',
+        body: Type.Object({
+          originalTransactionId: Type.String({ format: 'uuid' }),
+          reason: Type.String({ minLength: 8, maxLength: 1024 }),
         }),
-        401: ErrorResponse, 403: ErrorResponse, 404: ErrorResponse,
-        409: ErrorResponse, 422: ErrorResponse,
+        response: {
+          200: Type.Object({
+            id: Type.String({ format: 'uuid' }),
+            stornoOfTransactionId: Type.String({ format: 'uuid' }),
+            returnedAt: Type.String({ format: 'date-time' }),
+            stripeRefundQueued: Type.Boolean(),
+          }),
+          401: ErrorResponse,
+          403: ErrorResponse,
+          404: ErrorResponse,
+          409: ErrorResponse,
+          422: ErrorResponse,
+        },
       },
     },
-  }, async (req, reply) => {
-    requireAuth(req);
-    requireRole(req, 'ADMIN');
-    requireStepUp(req);
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'ADMIN');
+      requireStepUp(req);
 
-    const { originalTransactionId, reason } = req.body;
+      const { originalTransactionId, reason } = req.body;
 
-    const outcome = await app.db.transaction(async (tx) => {
-      const [orig] = await tx
-        .select().from(transactions)
-        .where(eq(transactions.id, originalTransactionId)).limit(1);
-      if (!orig) throw new ReturnNotFoundError(`Transaction ${originalTransactionId} not found.`);
-      if (orig.stornoOfTransactionId != null) {
-        throw new ReturnValidationError('Cannot return a storno transaction.');
-      }
-      if (orig.salesChannel !== 'WEB') {
-        throw new ReturnConflictError('Only WEB sales can be online-returned. Use storno for POS sales.');
-      }
-      // Refuse double-return: partial UNIQUE on storno_of_transaction_id already does it.
+      const outcome = await app.db.transaction(async (tx) => {
+        const [orig] = await tx
+          .select()
+          .from(transactions)
+          .where(eq(transactions.id, originalTransactionId))
+          .limit(1);
+        if (!orig) throw new ReturnNotFoundError(`Transaction ${originalTransactionId} not found.`);
+        if (orig.stornoOfTransactionId != null) {
+          throw new ReturnValidationError('Cannot return a storno transaction.');
+        }
+        if (orig.salesChannel !== 'WEB') {
+          throw new ReturnConflictError(
+            'Only WEB sales can be online-returned. Use storno for POS sales.',
+          );
+        }
+        // Refuse double-return: partial UNIQUE on storno_of_transaction_id already does it.
 
-      const items = await tx.select().from(transactionItems)
-        .where(eq(transactionItems.transactionId, originalTransactionId));
-      const payments = await tx.select().from(transactionPayments)
-        .where(eq(transactionPayments.transactionId, originalTransactionId));
+        const items = await tx
+          .select()
+          .from(transactionItems)
+          .where(eq(transactionItems.transactionId, originalTransactionId));
+        const payments = await tx
+          .select()
+          .from(transactionPayments)
+          .where(eq(transactionPayments.transactionId, originalTransactionId));
 
-      // Insert the return mirror.
-      const [ret] = await tx.insert(transactions).values({
-        direction: orig.direction,
-        customerId: orig.customerId,
-        deviceId: orig.deviceId,
-        cashierUserId: req.actor.id,
-        subtotalEur: neg(orig.subtotalEur),
-        vatEur: neg(orig.vatEur),
-        totalEur: neg(orig.totalEur),
-        taxTreatmentCode: orig.taxTreatmentCode,
-        stornoOfTransactionId: orig.id,
-        notesInternal: `[return] ${reason}`,
-        salesChannel: orig.salesChannel,
-        shippingStatus: 'RETURNED',
-        returnedAt: new Date(),
-      }).returning({ id: transactions.id, finalizedAt: transactions.finalizedAt });
-      if (!ret) throw new Error('return insert returned no row');
+        // Insert the return mirror.
+        const [ret] = await tx
+          .insert(transactions)
+          .values({
+            direction: orig.direction,
+            customerId: orig.customerId,
+            deviceId: orig.deviceId,
+            cashierUserId: req.actor.id,
+            subtotalEur: neg(orig.subtotalEur),
+            vatEur: neg(orig.vatEur),
+            totalEur: neg(orig.totalEur),
+            taxTreatmentCode: orig.taxTreatmentCode,
+            stornoOfTransactionId: orig.id,
+            notesInternal: `[return] ${reason}`,
+            salesChannel: orig.salesChannel,
+            shippingStatus: 'RETURNED',
+            returnedAt: new Date(),
+          })
+          .returning({ id: transactions.id, finalizedAt: transactions.finalizedAt });
+        if (!ret) throw new Error('return insert returned no row');
 
-      if (items.length > 0) {
-        await tx.insert(transactionItems).values(items.map((line) => ({
-          transactionId: ret.id,
-          productId: line.productId,
-          lineSubtotalEur: neg(line.lineSubtotalEur),
-          lineVatEur: neg(line.lineVatEur),
-          lineTotalEur: neg(line.lineTotalEur),
-          appliedTaxTreatmentCode: line.appliedTaxTreatmentCode,
-          appliedVatRate: line.appliedVatRate,
-          acquisitionCostEurSnapshot: line.acquisitionCostEurSnapshot,
-          marginEur: line.marginEur != null ? neg(line.marginEur) : null,
-          displayOrder: line.displayOrder,
-        })));
-      }
-      if (payments.length > 0) {
-        await tx.insert(transactionPayments).values(payments.map((p) => ({
-          transactionId: ret.id,
-          paymentMethod: p.paymentMethod,
-          amountEur: neg(p.amountEur),
-          externalRef: p.externalRef,
-          zvtTerminalId: p.zvtTerminalId,
-          zvtReceiptNumber: p.zvtReceiptNumber,
-          zvtCardBrand: p.zvtCardBrand,
-          zvtCardPanMasked: p.zvtCardPanMasked,
-          molliePaymentId: p.molliePaymentId,
-        })));
-      }
+        if (items.length > 0) {
+          await tx.insert(transactionItems).values(
+            items.map((line) => ({
+              transactionId: ret.id,
+              productId: line.productId,
+              lineSubtotalEur: neg(line.lineSubtotalEur),
+              lineVatEur: neg(line.lineVatEur),
+              lineTotalEur: neg(line.lineTotalEur),
+              appliedTaxTreatmentCode: line.appliedTaxTreatmentCode,
+              appliedVatRate: line.appliedVatRate,
+              acquisitionCostEurSnapshot: line.acquisitionCostEurSnapshot,
+              marginEur: line.marginEur != null ? neg(line.marginEur) : null,
+              displayOrder: line.displayOrder,
+            })),
+          );
+        }
+        if (payments.length > 0) {
+          await tx.insert(transactionPayments).values(
+            payments.map((p) => ({
+              transactionId: ret.id,
+              paymentMethod: p.paymentMethod,
+              amountEur: neg(p.amountEur),
+              externalRef: p.externalRef,
+              zvtTerminalId: p.zvtTerminalId,
+              zvtReceiptNumber: p.zvtReceiptNumber,
+              zvtCardBrand: p.zvtCardBrand,
+              zvtCardPanMasked: p.zvtCardPanMasked,
+              molliePaymentId: p.molliePaymentId,
+            })),
+          );
+        }
 
-      // Flip each product back to AVAILABLE.
-      for (const line of items) {
-        await tx.execute(drizzleSql`
+        // Flip each product back to AVAILABLE.
+        for (const line of items) {
+          await tx.execute(drizzleSql`
           UPDATE products
              SET status = 'AVAILABLE'::product_status,
                  sold_at = NULL
            WHERE id = ${line.productId} AND status = 'SOLD'::product_status
         `);
-      }
-
-      // Best-effort Stripe Refund. We resolve the original payment_intent for
-      // this transaction by walking back to the cart it was converted from.
-      let refundQueued = false;
-      const [pi] = await tx
-        .select({ provider: paymentIntents.provider, providerIntentId: paymentIntents.providerIntentId })
-        .from(paymentIntents)
-        .innerJoin(
-          drizzleSql`carts c`,
-          drizzleSql`carts.id = ${paymentIntents.cartId}` as never,
-        )
-        .where(drizzleSql`carts.converted_to_transaction_id = ${orig.id}` as never)
-        .limit(1)
-        .catch(() => []) as Array<{ provider: string; providerIntentId: string }>;
-      if (pi && opts.env.STRIPE_SECRET_KEY && pi.provider === 'STRIPE') {
-        // Fire-and-forget: the refund event lands on the existing webhook.
-        // We don't await this strictly — but inside the tx it stays serial.
-        // We DO await to surface auth/network errors loudly.
-        try {
-          const body = new URLSearchParams();
-          body.set('payment_intent', pi.providerIntentId);
-          body.set('metadata[return_transaction_id]', ret.id);
-          body.set('metadata[reason]', reason.slice(0, 200));
-          const resp = await fetch('https://api.stripe.com/v1/refunds', {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${opts.env.STRIPE_SECRET_KEY}`,
-              'Content-Type': 'application/x-www-form-urlencoded',
-              'Stripe-Version': opts.env.STRIPE_API_VERSION,
-            },
-            body: body.toString(),
-          });
-          refundQueued = resp.ok;
-          if (!resp.ok) {
-            req.log.warn({ status: resp.status }, 'stripe refund call failed (continuing)');
-          }
-        } catch (err) {
-          req.log.warn({ err }, 'stripe refund call threw (continuing)');
         }
-      }
 
-      return { id: ret.id, finalizedAt: ret.finalizedAt, refundQueued };
-    });
+        // Best-effort Stripe Refund. We resolve the original payment_intent for
+        // this transaction by walking back to the cart it was converted from.
+        let refundQueued = false;
+        const [pi] = (await tx
+          .select({
+            provider: paymentIntents.provider,
+            providerIntentId: paymentIntents.providerIntentId,
+          })
+          .from(paymentIntents)
+          .innerJoin(drizzleSql`carts c`, drizzleSql`carts.id = ${paymentIntents.cartId}` as never)
+          .where(drizzleSql`carts.converted_to_transaction_id = ${orig.id}` as never)
+          .limit(1)
+          .catch(() => [])) as Array<{ provider: string; providerIntentId: string }>;
+        if (pi && opts.env.STRIPE_SECRET_KEY && pi.provider === 'STRIPE') {
+          // Fire-and-forget: the refund event lands on the existing webhook.
+          // We don't await this strictly — but inside the tx it stays serial.
+          // We DO await to surface auth/network errors loudly.
+          try {
+            const body = new URLSearchParams();
+            body.set('payment_intent', pi.providerIntentId);
+            body.set('metadata[return_transaction_id]', ret.id);
+            body.set('metadata[reason]', reason.slice(0, 200));
+            const resp = await fetch('https://api.stripe.com/v1/refunds', {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${opts.env.STRIPE_SECRET_KEY}`,
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Stripe-Version': opts.env.STRIPE_API_VERSION,
+              },
+              body: body.toString(),
+            });
+            refundQueued = resp.ok;
+            if (!resp.ok) {
+              req.log.warn({ status: resp.status }, 'stripe refund call failed (continuing)');
+            }
+          } catch (err) {
+            req.log.warn({ err }, 'stripe refund call threw (continuing)');
+          }
+        }
 
-    return reply.status(200).send({
-      id: outcome.id,
-      stornoOfTransactionId: originalTransactionId,
-      returnedAt: outcome.finalizedAt.toISOString(),
-      stripeRefundQueued: outcome.refundQueued,
-    });
-  });
+        return { id: ret.id, finalizedAt: ret.finalizedAt, refundQueued };
+      });
+
+      return reply.status(200).send({
+        id: outcome.id,
+        stornoOfTransactionId: originalTransactionId,
+        returnedAt: outcome.finalizedAt.toISOString(),
+        stripeRefundQueued: outcome.refundQueued,
+      });
+    },
+  );
 };
 
 export default transactionsReturnRoute;

@@ -155,17 +155,11 @@ export const storefrontApi = {
 
   /** Full taxonomy tree (storefront-visible only). Edge-cacheable. */
   listCategories(client: ApiClient): Promise<StorefrontCategoriesResponse> {
-    return client.request<StorefrontCategoriesResponse>(
-      'GET',
-      '/api/storefront/categories',
-    );
+    return client.request<StorefrontCategoriesResponse>('GET', '/api/storefront/categories');
   },
 
   /** Active business locations for the storefront map + LocalBusiness JSON-LD. */
   listLocations(client: ApiClient): Promise<StorefrontLocationsResponse> {
-    return client.request<StorefrontLocationsResponse>(
-      'GET',
-      '/api/storefront/locations',
-    );
+    return client.request<StorefrontLocationsResponse>('GET', '/api/storefront/locations');
   },
 };

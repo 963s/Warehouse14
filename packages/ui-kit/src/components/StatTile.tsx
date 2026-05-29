@@ -59,8 +59,9 @@ export function StatTile({
     flexDirection: 'column',
     justifyContent: 'space-between',
     cursor: interactive ? 'pointer' : 'default',
-    transition: 'border-color var(--w14-dur-short) var(--w14-ease-curator),' +
-                ' box-shadow var(--w14-dur-short) var(--w14-ease-curator)',
+    transition:
+      'border-color var(--w14-dur-short) var(--w14-ease-curator),' +
+      ' box-shadow var(--w14-dur-short) var(--w14-ease-curator)',
     ...style,
   };
 
@@ -91,7 +92,9 @@ export function StatTile({
         {index !== undefined ? (
           <RomanIndex value={index} tone="faded" />
         ) : (
-          <span aria-hidden style={{ opacity: 0.35 }}>◆</span>
+          <span aria-hidden style={{ opacity: 0.35 }}>
+            ◆
+          </span>
         )}
         {attention && (
           <span

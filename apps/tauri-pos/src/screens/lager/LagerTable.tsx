@@ -13,7 +13,7 @@
  * memory.md §13.2. Phase 1.5 #I-46 wraps with `@tanstack/react-virtual`.
  */
 
-import { memo, type CSSProperties } from 'react';
+import { type CSSProperties, memo } from 'react';
 
 import type { ProductListRow } from '@warehouse14/api-client';
 import { MoneyAmount, ParchmentCard } from '@warehouse14/ui-kit';
@@ -47,7 +47,8 @@ const ITEM_TYPE_LABEL: Record<string, string> = {
   other: 'Sonstiges',
 };
 
-const GRID_TEMPLATE = 'minmax(120px, 1fr) minmax(0, 2fr) 110px 130px minmax(140px, 1.2fr) 110px 90px';
+const GRID_TEMPLATE =
+  'minmax(120px, 1fr) minmax(0, 2fr) 110px 130px minmax(140px, 1.2fr) 110px 90px';
 const CELL_PADDING = '10px 12px';
 
 export interface LagerTableProps {
@@ -152,83 +153,119 @@ interface LagerRowProps {
   onClick: (row: ProductListRow) => void;
 }
 
-const LagerRow = memo(function LagerRow({ row, highlighted, onClick }: LagerRowProps): JSX.Element {
-  const lagerort = [row.locationStorageUnit, row.locationDrawer, row.locationPosition]
-    .filter((s): s is string => s !== null && s.length > 0)
-    .join(' · ');
+const LagerRow = memo(
+  function LagerRow({ row, highlighted, onClick }: LagerRowProps): JSX.Element {
+    const lagerort = [row.locationStorageUnit, row.locationDrawer, row.locationPosition]
+      .filter((s): s is string => s !== null && s.length > 0)
+      .join(' · ');
 
-  const rowStyle: CSSProperties = {
-    display: 'grid',
-    gridTemplateColumns: GRID_TEMPLATE,
-    borderBottom: '1px solid var(--w14-rule)',
-    background: highlighted ? 'var(--w14-parchment-3)' : 'transparent',
-    transition: 'background-color var(--w14-dur-short) var(--w14-ease-curator)',
-    cursor: 'pointer',
-  };
-  const cellBase: CSSProperties = {
-    padding: CELL_PADDING,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-  };
-  const monoCell: CSSProperties = {
-    ...cellBase,
-    fontFamily: 'var(--w14-font-mono)',
-    fontSize: '0.88rem',
-    color: 'var(--w14-ink)',
-  };
+    const rowStyle: CSSProperties = {
+      display: 'grid',
+      gridTemplateColumns: GRID_TEMPLATE,
+      borderBottom: '1px solid var(--w14-rule)',
+      background: highlighted ? 'var(--w14-parchment-3)' : 'transparent',
+      transition: 'background-color var(--w14-dur-short) var(--w14-ease-curator)',
+      cursor: 'pointer',
+    };
+    const cellBase: CSSProperties = {
+      padding: CELL_PADDING,
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+    };
+    const monoCell: CSSProperties = {
+      ...cellBase,
+      fontFamily: 'var(--w14-font-mono)',
+      fontSize: '0.88rem',
+      color: 'var(--w14-ink)',
+    };
 
-  return (
-    <div
-      style={rowStyle}
-      onClick={() => onClick(row)}
-      role="row"
-      data-product-id={row.id}
-      data-highlighted={highlighted ? 'true' : 'false'}
-    >
-      <div style={monoCell}>
-        <div className="w14-tabular" style={{ color: 'var(--w14-ink-aged)' }}>{row.sku}</div>
-        {row.barcode && (
-          <div style={{ fontSize: '0.72rem', color: 'var(--w14-ink-faded)' }}>{row.barcode}</div>
-        )}
-      </div>
-      <div style={{ ...cellBase, fontFamily: 'var(--w14-font-display)', fontWeight: 500, fontSize: '0.95rem' }} title={row.name}>
-        {row.name}
-      </div>
-      <div style={{ ...cellBase }}>
-        <span
-          className="w14-smallcaps"
+    return (
+      <div
+        style={rowStyle}
+        onClick={() => onClick(row)}
+        role="row"
+        data-product-id={row.id}
+        data-highlighted={highlighted ? 'true' : 'false'}
+      >
+        <div style={monoCell}>
+          <div className="w14-tabular" style={{ color: 'var(--w14-ink-aged)' }}>
+            {row.sku}
+          </div>
+          {row.barcode && (
+            <div style={{ fontSize: '0.72rem', color: 'var(--w14-ink-faded)' }}>{row.barcode}</div>
+          )}
+        </div>
+        <div
           style={{
-            color: STATUS_COLOR[row.status],
-            fontSize: '0.78rem',
-            letterSpacing: '0.08em',
+            ...cellBase,
+            fontFamily: 'var(--w14-font-display)',
+            fontWeight: 500,
+            fontSize: '0.95rem',
+          }}
+          title={row.name}
+        >
+          {row.name}
+        </div>
+        <div style={{ ...cellBase }}>
+          <span
+            className="w14-smallcaps"
+            style={{
+              color: STATUS_COLOR[row.status],
+              fontSize: '0.78rem',
+              letterSpacing: '0.08em',
+            }}
+          >
+            {STATUS_LABEL[row.status]}
+          </span>
+          {row.archivedAt && (
+            <span
+              className="w14-smallcaps"
+              style={{ marginLeft: 8, fontSize: '0.7rem', color: 'var(--w14-wax-red)' }}
+            >
+              archiviert
+            </span>
+          )}
+        </div>
+        <div
+          style={{
+            ...cellBase,
+            fontFamily: 'var(--w14-font-display)',
+            fontSize: '0.88rem',
+            color: 'var(--w14-ink-faded)',
           }}
         >
-          {STATUS_LABEL[row.status]}
-        </span>
-        {row.archivedAt && (
-          <span className="w14-smallcaps" style={{ marginLeft: 8, fontSize: '0.7rem', color: 'var(--w14-wax-red)' }}>
-            archiviert
-          </span>
-        )}
+          {ITEM_TYPE_LABEL[row.itemType] ?? row.itemType}
+        </div>
+        <div
+          style={{
+            ...cellBase,
+            fontFamily: 'var(--w14-font-mono)',
+            fontSize: '0.82rem',
+            color: 'var(--w14-ink-faded)',
+          }}
+        >
+          {lagerort || '—'}
+        </div>
+        <div style={{ ...cellBase, textAlign: 'right' }}>
+          <MoneyAmount valueEur={row.listPriceEur} />
+        </div>
+        <div
+          style={{
+            ...cellBase,
+            textAlign: 'right',
+            fontFamily: 'var(--w14-font-display)',
+            fontStyle: 'italic',
+            fontSize: '0.82rem',
+            color: 'var(--w14-ink-faded)',
+          }}
+        >
+          anpassen
+        </div>
       </div>
-      <div style={{ ...cellBase, fontFamily: 'var(--w14-font-display)', fontSize: '0.88rem', color: 'var(--w14-ink-faded)' }}>
-        {ITEM_TYPE_LABEL[row.itemType] ?? row.itemType}
-      </div>
-      <div style={{ ...cellBase, fontFamily: 'var(--w14-font-mono)', fontSize: '0.82rem', color: 'var(--w14-ink-faded)' }}>
-        {lagerort || '—'}
-      </div>
-      <div style={{ ...cellBase, textAlign: 'right' }}>
-        <MoneyAmount valueEur={row.listPriceEur} />
-      </div>
-      <div style={{ ...cellBase, textAlign: 'right', fontFamily: 'var(--w14-font-display)', fontStyle: 'italic', fontSize: '0.82rem', color: 'var(--w14-ink-faded)' }}>
-        anpassen
-      </div>
-    </div>
-  );
-}, (prev, next) =>
-  prev.highlighted === next.highlighted &&
-  prev.row === next.row,
+    );
+  },
+  (prev, next) => prev.highlighted === next.highlighted && prev.row === next.row,
 );
 
 // ────────────────────────────────────────────────────────────────────────
@@ -239,7 +276,14 @@ function EmptyTable(): JSX.Element {
   return (
     <div style={{ padding: 48, textAlign: 'center' }}>
       <ParchmentCard padding="lg" style={{ display: 'inline-block', minWidth: 320 }}>
-        <p style={{ margin: 0, color: 'var(--w14-ink-faded)', fontFamily: 'var(--w14-font-display)', fontStyle: 'italic' }}>
+        <p
+          style={{
+            margin: 0,
+            color: 'var(--w14-ink-faded)',
+            fontFamily: 'var(--w14-font-display)',
+            fontStyle: 'italic',
+          }}
+        >
           Keine Stücke entsprechen den Filtern.
         </p>
       </ParchmentCard>
@@ -275,7 +319,11 @@ function Footer({
     >
       <span
         className="w14-tabular"
-        style={{ fontFamily: 'var(--w14-font-mono)', fontSize: '0.82rem', color: 'var(--w14-ink-faded)' }}
+        style={{
+          fontFamily: 'var(--w14-font-mono)',
+          fontSize: '0.82rem',
+          color: 'var(--w14-ink-faded)',
+        }}
       >
         {rowsShown} von {total} Stück{total === 1 ? '' : 'en'}
       </span>

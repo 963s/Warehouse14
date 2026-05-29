@@ -31,8 +31,11 @@
 
 import { sql as drizzleSql } from 'drizzle-orm';
 
-import { release as inventoryRelease, ReservationOwnershipError } from '@warehouse14/inventory-lock';
 import type { AppDb } from '@warehouse14/db/client';
+import {
+  ReservationOwnershipError,
+  release as inventoryRelease,
+} from '@warehouse14/inventory-lock';
 
 import type { JobDefinition } from '../lib/job-runner.js';
 
@@ -72,7 +75,10 @@ export const storefrontCartSweeperJob: JobDefinition = {
           // serialise vs a racing webhook conversion. If the webhook handler
           // already converted this cart between SELECT and tx start, status
           // is 'CONVERTED' and we skip the rest.
-          const stillCheckout = await tx.execute<{ id: string; reservation_session_id: string }>(drizzleSql`
+          const stillCheckout = await tx.execute<{
+            id: string;
+            reservation_session_id: string;
+          }>(drizzleSql`
             SELECT id, reservation_session_id
               FROM carts
              WHERE id = ${cart.id}

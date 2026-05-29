@@ -2,7 +2,7 @@
  * TypeBox schemas for customer KYC verification + trust routes (Day 26).
  */
 
-import { Type, type Static } from '@sinclair/typebox';
+import { type Static, Type } from '@sinclair/typebox';
 
 const TRUST_LEVEL = Type.Union([
   Type.Literal('NEW'),
@@ -35,9 +35,7 @@ export const KycStampBody = Type.Object({
    * choose to stamp KYC without promoting (e.g. customer's relationship is
    * still being assessed).
    */
-  promoteTrustLevelTo: Type.Optional(
-    Type.Union([Type.Literal('VERIFIED'), Type.Literal('VIP')]),
-  ),
+  promoteTrustLevelTo: Type.Optional(Type.Union([Type.Literal('VERIFIED'), Type.Literal('VIP')])),
   /** Free-text note saved as audit_log payload context. */
   notes: Type.Optional(Type.String({ maxLength: 1000 })),
 });
@@ -74,10 +72,7 @@ export const SetTrustResponse = Type.Object({
 // ────────────────────────────────────────────────────────────────────────
 
 export const PriceNotesBody = Type.Object({
-  notes: Type.Union([
-    Type.String({ maxLength: 2000 }),
-    Type.Null(),
-  ]),
+  notes: Type.Union([Type.String({ maxLength: 2000 }), Type.Null()]),
 });
 
 export type TCustomerIdParams = Static<typeof CustomerIdParams>;
