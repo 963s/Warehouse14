@@ -9,3 +9,4 @@
 
 export * from './enums.js';
 export * from './tseTransactions.js';
+export * from './tseDailyArchives.js';

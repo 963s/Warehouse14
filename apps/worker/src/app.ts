@@ -28,11 +28,13 @@ import {
   chainVerifierJob,
   dsfinvkDailyExportJob,
   ebaySyncJob,
+  gdprCleanupJob,
   intakeSweepJob,
   lbmaPricesJob,
   reservationSweeperJob,
   sessionsCleanupJob,
   storefrontCartSweeperJob,
+  tseArchiveExporterJob,
 } from './jobs/index.js';
 import { createMetalPriceProvider } from './jobs/providers/index.js';
 import { JobRunner } from './lib/job-runner.js';
@@ -127,6 +129,35 @@ export async function buildWorker(opts: BuildWorkerOpts): Promise<WorkerHandle> 
       fiskaly: {
         apiKey: opts.env.FISKALY_API_KEY,
         apiSecret: opts.env.FISKALY_API_SECRET,
+      },
+    }),
+  );
+  // Phase 1.5 #I-2: KassenSichV §10 daily TSE archive → Fiskaly export + R2.
+  // Empty Fiskaly TSS id → the job records FAILED("fiskaly not configured").
+  runner.register(
+    tseArchiveExporterJob({
+      fiskaly: {
+        apiKey: opts.env.FISKALY_API_KEY,
+        apiSecret: opts.env.FISKALY_API_SECRET,
+        tssId: opts.env.FISKALY_TSS_ID,
+      },
+      r2Config: {
+        accountId: opts.env.R2_ACCOUNT_ID,
+        bucket: opts.env.R2_BUCKET,
+        accessKeyId: opts.env.R2_ACCESS_KEY_ID,
+        secretAccessKey: opts.env.R2_SECRET_ACCESS_KEY,
+      },
+    }),
+  );
+  // Phase 1.5 #I-4 + #I-5: daily GDPR sweep — audit_log IP minimization +
+  // expired-KYC purge (R2 photo delete + PII null, row kept as an audit shell).
+  runner.register(
+    gdprCleanupJob({
+      r2Config: {
+        accountId: opts.env.R2_ACCOUNT_ID,
+        bucket: opts.env.R2_BUCKET,
+        accessKeyId: opts.env.R2_ACCESS_KEY_ID,
+        secretAccessKey: opts.env.R2_SECRET_ACCESS_KEY,
       },
     }),
   );

@@ -1,0 +1,33 @@
+{
+  "name": "@warehouse14/control-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Warehouse14 Owner Control Desktop — Tauri 2 + React 18 + Vite back-office command center (ADR-0009, Decisions #30/#41).",
+  "scripts": {
+    "dev": "vite",
+    "dev:tauri": "tauri dev",
+    "build": "vite build",
+    "build:tauri": "tauri build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist .tsbuildinfo src-tauri/target"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "5.59.20",
+    "@tauri-apps/api": "2.1.1",
+    "@warehouse14/api-client": "workspace:*",
+    "@warehouse14/ui-kit": "workspace:*",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.1.0",
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1",
+    "@vitejs/plugin-react": "4.3.3",
+    "@warehouse14/config": "workspace:*",
+    "typescript": "5.7.2",
+    "vite": "5.4.11"
+  }
+}

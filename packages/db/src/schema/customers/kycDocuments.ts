@@ -51,13 +51,16 @@ export const kycDocuments = pgTable(
     issuingCountryIso2: char('issuing_country_iso2', { length: 2 }).notNull(),
     issuingAuthority: text('issuing_authority'),
 
-    documentNumberEncrypted: bytea('document_number_encrypted').notNull(),
+    // Nullable since migration 0041 — NULLed when the document is purged
+    // (GDPR #I-5). The purge-consistency CHECK keeps these in lock-step with
+    // `purged_at` / `purged_by_user_id`.
+    documentNumberEncrypted: bytea('document_number_encrypted'),
 
     issuedOn: date('issued_on'),
     expiresOn: date('expires_on').notNull(),
 
-    documentPhotoR2Key: text('document_photo_r2_key').notNull(),
-    documentPhotoSha256: bytea('document_photo_sha256').notNull(),
+    documentPhotoR2Key: text('document_photo_r2_key'),
+    documentPhotoSha256: bytea('document_photo_sha256'),
 
     capturedByUserId: uuid('captured_by_user_id')
       .notNull()
@@ -72,6 +75,10 @@ export const kycDocuments = pgTable(
     verifiedByUserId: uuid('verified_by_user_id').references(() => users.id),
 
     retentionUntil: date('retention_until').notNull(),
+
+    // GDPR #I-5 purge evidence. Set together when a row becomes a shell.
+    purgedAt: timestamp('purged_at', { withTimezone: true }),
+    purgedByUserId: uuid('purged_by_user_id').references(() => users.id),
 
     ...timestamps(),
   },
@@ -102,6 +109,24 @@ export const kycDocuments = pgTable(
     verifiedHasVerifier: check(
       'kyc_documents_verified_has_verifier',
       sql`(${table.verifiedAt} IS NULL) = (${table.verifiedByUserId} IS NULL)`,
+    ),
+    // GDPR #I-5 — a row is either LIVE (PII present, not purged) or a purged
+    // SHELL (PII nulled, purge stamped). No in-between state is valid.
+    purgedConsistency: check(
+      'kyc_documents_purged_consistency',
+      sql`(
+        ${table.purgedAt} IS NULL
+          AND ${table.documentNumberEncrypted} IS NOT NULL
+          AND ${table.documentPhotoSha256} IS NOT NULL
+          AND ${table.documentPhotoR2Key} IS NOT NULL
+          AND ${table.purgedByUserId} IS NULL
+      ) OR (
+        ${table.purgedAt} IS NOT NULL
+          AND ${table.documentNumberEncrypted} IS NULL
+          AND ${table.documentPhotoSha256} IS NULL
+          AND ${table.documentPhotoR2Key} IS NULL
+          AND ${table.purgedByUserId} IS NOT NULL
+      )`,
     ),
   }),
 );
