@@ -63,6 +63,9 @@ pub fn run() {
             commands::pdf::open_pdf_preview,
             // Mandate 4 — system probe
             commands::system::list_system_printers,
+            // Epic C — encrypted local KYC vault
+            commands::kyc::encrypt_and_save_kyc_document,
+            commands::kyc::decrypt_and_load_kyc_document,
         ])
         .run(tauri::generate_context!())
         .expect("error while running warehouse14-tauri-pos");
