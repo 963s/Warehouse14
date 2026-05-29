@@ -17,8 +17,8 @@
  *     reflects "we refused to make this call" rather than a generic error.
  */
 
-import type { Middleware, MiddlewareRequest, MiddlewareResponse } from '../middleware.js';
 import { ApiCircuitOpenError, ApiError, ApiNetworkError } from '../errors.js';
+import type { Middleware, MiddlewareRequest, MiddlewareResponse } from '../middleware.js';
 
 export interface TelemetryStartEvent {
   readonly traceId: string;

@@ -17,18 +17,18 @@
  * configure the Meta webhook before the inbox sees any traffic.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   ApiError,
-  customersApi,
-  whatsappApi,
   type CustomerListRow,
   type WhatsAppMessage,
   type WhatsAppOutboundStatus,
   type WhatsAppThreadDetail,
   type WhatsAppThreadSummary,
+  customersApi,
+  whatsappApi,
 } from '@warehouse14/api-client';
 import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 
@@ -61,10 +61,7 @@ export function WhatsApp(): JSX.Element {
         flex: 1,
       }}
     >
-      <ThreadList
-        selectedPhone={selectedPhone}
-        onSelect={setSelectedPhone}
-      />
+      <ThreadList selectedPhone={selectedPhone} onSelect={setSelectedPhone} />
       <ConversationPane phone={selectedPhone} />
       <ThreadSidebar phone={selectedPhone} />
     </section>
@@ -186,7 +183,9 @@ function ThreadRow({
         color: 'var(--w14-ink)',
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 6 }}>
+      <div
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 6 }}
+      >
         <span
           style={{
             fontSize: '0.92rem',
@@ -277,6 +276,7 @@ function ConversationPane({ phone }: { phone: string | null }): JSX.Element {
   const scrollerRef = useRef<HTMLDivElement | null>(null);
 
   // Reset draft + optimistic queue when the thread changes.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: setState setters are stable; reset is intentionally keyed on phone only.
   useEffect(() => {
     setDraft('');
     setOptimistic([]);
@@ -284,6 +284,7 @@ function ConversationPane({ phone }: { phone: string | null }): JSX.Element {
 
   const threadQ = useQuery({
     queryKey: phone ? threadKey(phone) : ['whatsapp', 'thread', '__none__'],
+    // biome-ignore lint/style/noNonNullAssertion: query is `enabled` only when phone !== null.
     queryFn: () => whatsappApi.getThread(api, phone!),
     staleTime: 5_000,
     enabled: phone !== null,
@@ -305,6 +306,7 @@ function ConversationPane({ phone }: { phone: string | null }): JSX.Element {
     ];
   }, [threadQ.data, optimistic]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: auto-scroll intentionally fires on message count only.
   useEffect(() => {
     const el = scrollerRef.current;
     if (!el) return;
@@ -312,8 +314,8 @@ function ConversationPane({ phone }: { phone: string | null }): JSX.Element {
   }, [messages.length]);
 
   const send = useMutation({
-    mutationFn: (body: string) =>
-      whatsappApi.send(api, { toPhone: phone!, body }),
+    // biome-ignore lint/style/noNonNullAssertion: send is only invoked from a thread with a selected phone.
+    mutationFn: (body: string) => whatsappApi.send(api, { toPhone: phone!, body }),
     onMutate: (body) => {
       const tempId = `optimistic-${Date.now()}`;
       const bubble: OptimisticBubble = {
@@ -334,11 +336,12 @@ function ConversationPane({ phone }: { phone: string | null }): JSX.Element {
       addToast({
         tone: 'alert',
         title: 'Senden fehlgeschlagen',
-        body: err instanceof ApiError
-          ? err.code === 'EXTERNAL_SERVICE_FAILED'
-            ? 'WhatsApp-Anbieter hat abgelehnt.'
-            : err.message
-          : 'Netzwerkfehler. Bitte erneut versuchen.',
+        body:
+          err instanceof ApiError
+            ? err.code === 'EXTERNAL_SERVICE_FAILED'
+              ? 'WhatsApp-Anbieter hat abgelehnt.'
+              : err.message
+            : 'Netzwerkfehler. Bitte erneut versuchen.',
       });
     },
   });
@@ -558,11 +561,7 @@ function Composer({
           outline: 'none',
         }}
       />
-      <Button
-        type="submit"
-        variant="primary"
-        disabled={busy || value.trim().length === 0}
-      >
+      <Button type="submit" variant="primary" disabled={busy || value.trim().length === 0}>
         {busy ? 'Sendet…' : 'Senden'}
       </Button>
     </form>
@@ -899,7 +898,13 @@ function CustomerPicker({
                   color: 'var(--w14-ink)',
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'baseline',
+                  }}
+                >
                   <span>{c.fullName}</span>
                   <span
                     className="w14-tabular"
@@ -1004,6 +1009,7 @@ function ListSkeleton({ rows }: { rows: number }): JSX.Element {
     <>
       {Array.from({ length: rows }).map((_, i) => (
         <div
+          // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton placeholders have no stable id.
           key={i}
           aria-hidden
           style={{
@@ -1017,7 +1023,11 @@ function ListSkeleton({ rows }: { rows: number }): JSX.Element {
           }}
         />
       ))}
-      <style>{`@keyframes w14-skel { 0%,100%{background-position:0% 50%;} 50%{background-position:100% 50%;} }`}</style>
+      <style>
+        {
+          '@keyframes w14-skel { 0%,100%{background-position:0% 50%;} 50%{background-position:100% 50%;} }'
+        }
+      </style>
     </>
   );
 }
@@ -1036,11 +1046,16 @@ const STATUS_LABEL: Record<WhatsAppOutboundStatus, string> = {
 
 function statusIcon(status: WhatsAppOutboundStatus): string {
   switch (status) {
-    case 'queued': return '◷';
-    case 'sent': return '✓';
-    case 'delivered': return '✓✓';
-    case 'read': return '✓✓';
-    case 'failed': return '⚠';
+    case 'queued':
+      return '◷';
+    case 'sent':
+      return '✓';
+    case 'delivered':
+      return '✓✓';
+    case 'read':
+      return '✓✓';
+    case 'failed':
+      return '⚠';
   }
 }
 

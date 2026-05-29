@@ -6,7 +6,7 @@
  * Tagebuch screen. Append-only, never mutated.
  */
 
-import { Type, type Static } from '@sinclair/typebox';
+import { type Static, Type } from '@sinclair/typebox';
 
 export const ListLedgerQuery = Type.Object({
   eventType: Type.Optional(Type.String({ maxLength: 100 })),

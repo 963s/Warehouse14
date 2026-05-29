@@ -22,11 +22,7 @@ export type BelegtextKind =
   | 'GENERIC_HEADER'
   | 'GENERIC_FOOTER';
 
-export type TaxTreatmentCode =
-  | 'MARGIN_25A'
-  | 'STANDARD_19'
-  | 'REDUCED_7'
-  | 'INVESTMENT_GOLD_25C';
+export type TaxTreatmentCode = 'MARGIN_25A' | 'STANDARD_19' | 'REDUCED_7' | 'INVESTMENT_GOLD_25C';
 
 export const BELEGTEXT_KIND_LABELS: Readonly<Record<BelegtextKind, string>> = {
   MARGIN_25A: 'Differenzbesteuerung (§25a)',

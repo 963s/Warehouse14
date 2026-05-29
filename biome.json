@@ -15,7 +15,8 @@
       "**/src-tauri/target",
       "**/drizzle/meta",
       "**/.turbo",
-      "**/pnpm-lock.yaml"
+      "**/pnpm-lock.yaml",
+      "**/graphify-out"
     ]
   },
   "formatter": {

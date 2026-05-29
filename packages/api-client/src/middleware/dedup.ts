@@ -39,8 +39,7 @@ interface InflightEntry {
 const isIdempotent = (req: MiddlewareRequest): boolean =>
   req.method === 'GET' && req.meta.dedup !== false;
 
-const defaultKey = (req: MiddlewareRequest): string =>
-  `${req.method} ${req.url}`;
+const defaultKey = (req: MiddlewareRequest): string => `${req.method} ${req.url}`;
 
 export function inflightDedupMiddleware(opts: DedupOptions = {}): Middleware {
   const inflight = new Map<string, InflightEntry>();
@@ -92,9 +91,7 @@ function join(entry: InflightEntry, callerSignal: AbortSignal): Promise<Middlewa
   }
   const onAbort = (): void => decrement(entry, callerSignal.reason);
   callerSignal.addEventListener('abort', onAbort, { once: true });
-  return entry.promise.finally(() =>
-    callerSignal.removeEventListener('abort', onAbort),
-  );
+  return entry.promise.finally(() => callerSignal.removeEventListener('abort', onAbort));
 }
 
 function decrement(entry: InflightEntry, reason: unknown): void {

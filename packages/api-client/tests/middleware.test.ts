@@ -1,20 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import {
-  ApiCircuitOpenError,
-  ApiError,
-  ApiNetworkError,
-} from '../src/errors.js';
-import type {
-  MiddlewareRequest,
-  MiddlewareResponse,
-  Next,
-} from '../src/middleware.js';
+import { ApiCircuitOpenError, ApiError, ApiNetworkError } from '../src/errors.js';
+import type { MiddlewareRequest, MiddlewareResponse, Next } from '../src/middleware.js';
 import { compose } from '../src/middleware.js';
 import { circuitBreakerMiddleware } from '../src/middleware/circuit.js';
 import { inflightDedupMiddleware } from '../src/middleware/dedup.js';
 import { retryMiddleware } from '../src/middleware/retry.js';
-import type { StepUpReason, StepUpToken } from '../src/middleware/step-up.js';
+import type { StepUpToken } from '../src/middleware/step-up.js';
 import { stepUpMiddleware } from '../src/middleware/step-up.js';
 import type { TelemetrySink } from '../src/middleware/telemetry.js';
 import { telemetryMiddleware } from '../src/middleware/telemetry.js';
@@ -70,7 +62,7 @@ describe('stepUpMiddleware', () => {
     const res = createMockResponse();
 
     let attempts = 0;
-    const next: Next = vi.fn().mockImplementation(async (r) => {
+    const next: Next = vi.fn().mockImplementation(async (_r) => {
       attempts++;
       if (attempts === 1) {
         throw new ApiError({
@@ -111,7 +103,7 @@ describe('stepUpMiddleware', () => {
         message: 'Step up still needed',
         httpStatus: 403,
         requestId: 'req_err',
-      })
+      }),
     );
 
     await expect(mw(req, next)).rejects.toThrow(ApiError);
@@ -156,7 +148,7 @@ describe('retryMiddleware', () => {
         message: 'Bad input',
         httpStatus: 400,
         requestId: 'req_1',
-      })
+      }),
     );
 
     await expect(mw(req, next)).rejects.toThrow(ApiError);
@@ -244,14 +236,11 @@ describe('inflightDedupMiddleware', () => {
       return createMockResponse({ data: { calls } });
     });
 
-    const [res1, res2] = await Promise.all([
-      mw(req1, next),
-      mw(req2, next),
-    ]);
+    const [res1, res2] = await Promise.all([mw(req1, next), mw(req2, next)]);
 
     expect(calls).toBe(1);
-    expect((res1.data as any).calls).toBe(1);
-    expect((res2.data as any).calls).toBe(1);
+    expect((res1.data as { calls: number }).calls).toBe(1);
+    expect((res2.data as { calls: number }).calls).toBe(1);
   });
 
   it('does not coalesce POST requests', async () => {
@@ -269,8 +258,8 @@ describe('inflightDedupMiddleware', () => {
     const res2 = await mw(req2, next);
 
     expect(calls).toBe(2);
-    expect((res1.data as any).calls).toBe(1);
-    expect((res2.data as any).calls).toBe(2);
+    expect((res1.data as { calls: number }).calls).toBe(1);
+    expect((res2.data as { calls: number }).calls).toBe(2);
   });
 });
 
@@ -293,7 +282,8 @@ describe('telemetryMiddleware', () => {
     expect(sink.onError).not.toHaveBeenCalled();
 
     // Verify trace ID generated and attached
-    const startEvent = (sink.onStart as any).mock.calls[0][0];
+    const startEvent = (sink.onStart as unknown as { mock: { calls: unknown[][] } }).mock
+      .calls[0]?.[0] as { traceId: string };
     expect(startEvent.traceId).toBeTypeOf('string');
     expect(req.headers['x-client-trace-id']).toBe(startEvent.traceId);
   });
@@ -314,7 +304,8 @@ describe('telemetryMiddleware', () => {
     expect(sink.onSuccess).not.toHaveBeenCalled();
     expect(sink.onError).toHaveBeenCalledTimes(1);
 
-    const errEvent = (sink.onError as any).mock.calls[0][0];
+    const errEvent = (sink.onError as unknown as { mock: { calls: unknown[][] } }).mock
+      .calls[0]?.[0] as { kind: string; errorMessage: string };
     expect(errEvent.kind).toBe('network');
     expect(errEvent.errorMessage).toBe('DNS fail');
   });

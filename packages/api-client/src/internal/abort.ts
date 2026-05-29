@@ -28,15 +28,9 @@ export interface ComposedSignal {
   cleanup: () => void;
 }
 
-export function composeSignals(
-  parent: AbortSignal | undefined,
-  timeoutMs: number,
-): ComposedSignal {
+export function composeSignals(parent: AbortSignal | undefined, timeoutMs: number): ComposedSignal {
   const controller = new AbortController();
-  const timer = setTimeout(
-    () => controller.abort(new TimeoutError(timeoutMs)),
-    timeoutMs,
-  );
+  const timer = setTimeout(() => controller.abort(new TimeoutError(timeoutMs)), timeoutMs);
 
   if (!parent) {
     return {

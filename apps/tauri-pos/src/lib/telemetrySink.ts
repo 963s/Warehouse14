@@ -1,13 +1,24 @@
-import type { TelemetrySink, TelemetryStartEvent, TelemetrySuccessEvent, TelemetryErrorEvent } from '@warehouse14/api-client';
+import type {
+  TelemetryErrorEvent,
+  TelemetrySink,
+  TelemetryStartEvent,
+  TelemetrySuccessEvent,
+} from '@warehouse14/api-client';
 
 export const telemetrySink: TelemetrySink = {
   onStart(evt: TelemetryStartEvent) {
-    console.debug(`[API] START: ${evt.method} ${evt.path} (attempt: ${evt.attempt}, traceId: ${evt.traceId})`);
+    console.debug(
+      `[API] START: ${evt.method} ${evt.path} (attempt: ${evt.attempt}, traceId: ${evt.traceId})`,
+    );
   },
   onSuccess(evt: TelemetrySuccessEvent) {
-    console.debug(`[API] SUCCESS: ${evt.method} ${evt.path} (status: ${evt.status}, duration: ${evt.durationMs.toFixed(1)}ms)`);
+    console.debug(
+      `[API] SUCCESS: ${evt.method} ${evt.path} (status: ${evt.status}, duration: ${evt.durationMs.toFixed(1)}ms)`,
+    );
   },
   onError(evt: TelemetryErrorEvent) {
-    console.error(`[API] ERROR: ${evt.method} ${evt.path} (kind: ${evt.kind}, code: ${evt.code}, msg: ${evt.errorMessage}, duration: ${evt.durationMs.toFixed(1)}ms)`);
-  }
+    console.error(
+      `[API] ERROR: ${evt.method} ${evt.path} (kind: ${evt.kind}, code: ${evt.code}, msg: ${evt.errorMessage}, duration: ${evt.durationMs.toFixed(1)}ms)`,
+    );
+  },
 };
