@@ -10,7 +10,7 @@
  *   POST   /api/products/:id/categories    — replace-all category assignments
  */
 
-import { Type, type Static } from '@sinclair/typebox';
+import { type Static, Type } from '@sinclair/typebox';
 
 const Slug = Type.String({
   pattern: '^[a-z0-9]+(-[a-z0-9]+)*$',

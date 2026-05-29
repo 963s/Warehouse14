@@ -33,7 +33,13 @@ export const Row: Story = {
   render: () => (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 220px)', gap: 16 }}>
       <StatTile value={47} label="Meine Aufgaben" index={1} />
-      <StatTile value={2} label="Heute fällig" index={2} attention attentionCaption="Sofort fällig." />
+      <StatTile
+        value={2}
+        label="Heute fällig"
+        index={2}
+        attention
+        attentionCaption="Sofort fällig."
+      />
       <StatTile value={0} label="Überfällig" index={3} />
     </div>
   ),

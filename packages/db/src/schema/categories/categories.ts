@@ -11,8 +11,18 @@
  * languages — names diverge, URLs don't).
  */
 
-import { boolean, check, index, integer, pgTable, text, uniqueIndex, uuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import {
+  type AnyPgColumn,
+  boolean,
+  check,
+  index,
+  integer,
+  pgTable,
+  text,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 
 import { primaryKey, timestamps } from '../_shared/columns.js';
 
@@ -20,7 +30,9 @@ export const categories = pgTable(
   'categories',
   {
     id: primaryKey(),
-    parentId: uuid('parent_id').references((): AnyPgColumn => categories.id, { onDelete: 'restrict' }),
+    parentId: uuid('parent_id').references((): AnyPgColumn => categories.id, {
+      onDelete: 'restrict',
+    }),
 
     slug: text('slug').notNull(),
     nameDe: text('name_de').notNull(),
@@ -38,16 +50,14 @@ export const categories = pgTable(
   (table) => ({
     slugUq: uniqueIndex('categories_slug_uq').on(table.slug),
     parentIdx: index('categories_parent_idx').on(table.parentId),
-    displayOrderIdx: index('categories_display_order_idx').on(table.parentId, table.displayOrder, table.nameDe),
+    displayOrderIdx: index('categories_display_order_idx').on(
+      table.parentId,
+      table.displayOrder,
+      table.nameDe,
+    ),
 
-    slugFormat: check(
-      'categories_slug_format',
-      sql`${table.slug} ~ '^[a-z0-9]+(-[a-z0-9]+)*$'`,
-    ),
-    noSelfParent: check(
-      'categories_no_self_parent',
-      sql`${table.id} <> ${table.parentId}`,
-    ),
+    slugFormat: check('categories_slug_format', sql`${table.slug} ~ '^[a-z0-9]+(-[a-z0-9]+)*$'`),
+    noSelfParent: check('categories_no_self_parent', sql`${table.id} <> ${table.parentId}`),
   }),
 );
 

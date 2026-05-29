@@ -50,46 +50,28 @@
  * finalize against the same sessionIds.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
   ApiError,
-  productsApi,
   type ProductDetail,
   type ProductListRow,
-  type TaxTreatmentCode,
+  productsApi,
 } from '@warehouse14/api-client';
 import { DiamondRule, ParchmentCard, Seal } from '@warehouse14/ui-kit';
 
-import { useApiClient } from '../../lib/api-context.js';
-import { releaseCart } from '../../lib/release-cart.js';
-import { TAX_TREATMENT_LABEL } from '../../lib/tax-treatment-label.js';
 import { useCurrentShift } from '../../hooks/useCurrentShift.js';
-import {
-  useCartStore,
-  selectCartLines,
-  type CartLine,
-} from '../../state/cart-store.js';
+import { useApiClient } from '../../lib/api-context.js';
+import { classifyCartProductTax } from '../../lib/cart-math.js';
+import { releaseCart } from '../../lib/release-cart.js';
+import { type CartLine, selectCartLines, useCartStore } from '../../state/cart-store.js';
 import { useToastStore } from '../../state/toast-store.js';
 
 import { ShiftGuard } from '../_shared/ShiftGuard.js';
 
 import { CartPanel } from './CartPanel.js';
 import { CatalogGrid } from './CatalogGrid.js';
-
-const VALID_TAX_TREATMENTS = new Set<TaxTreatmentCode>([
-  'STANDARD_19',
-  'REDUCED_7',
-  'MARGIN_25A',
-  'INVESTMENT_GOLD_25C',
-]);
-
-function asTaxTreatment(raw: string): TaxTreatmentCode | null {
-  return (VALID_TAX_TREATMENTS as Set<string>).has(raw)
-    ? (raw as TaxTreatmentCode)
-    : null;
-}
 
 export function Verkauf(): JSX.Element {
   const { data: shift, isLoading } = useCurrentShift();
@@ -136,10 +118,7 @@ function VerkaufFloor(): JSX.Element {
   // Derived: which productIds are currently in the cart. Memoized so
   // CatalogGrid's `inCart` prop is referentially stable as long as
   // `lines` hasn't changed → no unnecessary re-renders of the grid.
-  const inCart = useMemo(
-    () => new Set(lines.map((l) => l.productId)),
-    [lines],
-  );
+  const inCart = useMemo(() => new Set(lines.map((l) => l.productId)), [lines]);
 
   // ────────────────────────────────────────────────────────────────────
   // Reserve handler — fires on tile click / barcode scan
@@ -177,16 +156,12 @@ function VerkaufFloor(): JSX.Element {
           throw err;
         }
 
-        const treatment = asTaxTreatment(detail.taxTreatmentCode);
-        if (!treatment) {
-          await safeRelease(api, product.id, sessionId);
-          addToast({
-            tone: 'alert',
-            title: 'Unbekannte Steuerklasse',
-            body: `Produkt ${detail.sku} hat eine unerwartete Steuerklasse — bitte im Lager prüfen.`,
-          });
-          return;
-        }
+        const treatment = classifyCartProductTax({
+          itemType: detail.itemType,
+          finenessDecimal: detail.finenessDecimal,
+          acquiredFromCustomerId: detail.acquiredFromCustomerId,
+          isCommission: detail.isCommission,
+        });
 
         const newLine: CartLine = {
           productId: detail.id,
@@ -209,20 +184,11 @@ function VerkaufFloor(): JSX.Element {
 
         // Cart-store rejected — release the hold + toast.
         await safeRelease(api, product.id, sessionId);
-        if (addResult.kind === 'MIXED_TAX_TREATMENT') {
-          addToast({
-            tone: 'alert',
-            title: 'Steuerklassen passen nicht zusammen',
-            body: `Die Karte enthält ${TAX_TREATMENT_LABEL[addResult.existing]}; ${detail.sku} wäre ${TAX_TREATMENT_LABEL[addResult.incoming]}. Karte zuerst leeren.`,
-          });
-        } else {
-          // ALREADY_IN_CART — duplicate guard; informational only.
-          addToast({
-            tone: 'info',
-            title: 'Bereits in der Karte',
-            body: detail.sku,
-          });
-        }
+        addToast({
+          tone: 'info',
+          title: 'Bereits in der Karte',
+          body: detail.sku,
+        });
       } catch (err) {
         if (err instanceof ApiError && err.code === 'PRODUCT_NOT_RESERVABLE') {
           addToast({
@@ -412,10 +378,7 @@ async function safeRelease(
 function VerkaufSplash(): JSX.Element {
   return (
     <div style={{ flex: 1, display: 'grid', placeItems: 'center', padding: 32 }}>
-      <ParchmentCard
-        padding="lg"
-        style={{ width: 'min(420px, 100%)', textAlign: 'center' }}
-      >
+      <ParchmentCard padding="lg" style={{ width: 'min(420px, 100%)', textAlign: 'center' }}>
         <Seal size="md" tone="faded" label="2" />
         <h2
           style={{

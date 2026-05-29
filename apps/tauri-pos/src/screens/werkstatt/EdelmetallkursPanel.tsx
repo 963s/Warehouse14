@@ -30,9 +30,9 @@ export interface EdelmetallkursPanelProps {
 }
 
 const METAL_LABELS: Array<{ key: keyof DashboardSummary['currentMetalPrices']; label: string }> = [
-  { key: 'gold',      label: 'Gold' },
-  { key: 'silver',    label: 'Silber' },
-  { key: 'platinum',  label: 'Platin' },
+  { key: 'gold', label: 'Gold' },
+  { key: 'silver', label: 'Silber' },
+  { key: 'platinum', label: 'Platin' },
   { key: 'palladium', label: 'Palladium' },
 ];
 
@@ -46,10 +46,7 @@ function formatPrice(raw: string | null): string {
   }).format(num);
 }
 
-export function EdelmetallkursPanel({
-  data,
-  isLoading,
-}: EdelmetallkursPanelProps): JSX.Element {
+export function EdelmetallkursPanel({ data, isLoading }: EdelmetallkursPanelProps): JSX.Element {
   const pulse = useLedgerFeed(selectPulse);
   const [recent, setRecent] = useState(false);
   const lastPulseRef = useRef(pulse);
@@ -116,8 +113,9 @@ export function EdelmetallkursPanel({
                 borderRadius: '50%',
                 backgroundColor: recent ? 'var(--w14-gold)' : 'var(--w14-ink-faded)',
                 opacity: recent ? 1 : 0.4,
-                transition: 'opacity 280ms var(--w14-ease-curator),' +
-                            ' background-color 280ms var(--w14-ease-curator)',
+                transition:
+                  'opacity 280ms var(--w14-ease-curator),' +
+                  ' background-color 280ms var(--w14-ease-curator)',
               }}
             />
             {recent ? 'soeben' : 'still'}
@@ -140,7 +138,9 @@ function RowSlot({ label, value }: { label: string; value: string }): JSX.Elemen
       >
         {label}
       </span>
-      <span style={{ borderBottom: '1px dotted var(--w14-rule)', opacity: 0.35, alignSelf: 'end' }} />
+      <span
+        style={{ borderBottom: '1px dotted var(--w14-rule)', opacity: 0.35, alignSelf: 'end' }}
+      />
       <span
         className="w14-tabular"
         style={{

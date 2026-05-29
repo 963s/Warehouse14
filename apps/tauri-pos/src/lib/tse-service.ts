@@ -12,13 +12,13 @@
  */
 
 import {
-  isRunningInTauri,
-  tseClient,
   type TseConfig,
   type TseFinishParams,
   type TseIntention,
   type TseSignature,
   type TseStartParams,
+  isRunningInTauri,
+  tseClient,
 } from './hardware-client.js';
 
 const QUEUE_STORAGE_KEY = 'warehouse14.tse-queue.v1';
@@ -151,7 +151,5 @@ export function newIntentionId(): string {
     return crypto.randomUUID();
   }
   // Fallback (testing): pseudo-random hex.
-  return Array.from({ length: 32 }, () =>
-    Math.floor(Math.random() * 16).toString(16),
-  ).join('');
+  return Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
 }

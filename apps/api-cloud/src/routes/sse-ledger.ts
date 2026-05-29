@@ -34,8 +34,8 @@
  *     the "watch the cashier from home" stream.
  */
 
-import type { FastifyPluginAsync } from 'fastify';
 import { sql as drizzleSql } from 'drizzle-orm';
+import type { FastifyPluginAsync } from 'fastify';
 import type { Sql } from 'postgres';
 
 import { ledgerEvents } from '@warehouse14/db/schema';
@@ -53,7 +53,7 @@ interface LedgerRow {
   actor_user_id: string | null;
   device_id: string | null;
   payload: unknown;
-  created_at: string;     // ISO 8601 — Date serializes to it anyway, but be explicit
+  created_at: string; // ISO 8601 — Date serializes to it anyway, but be explicit
 }
 
 interface LedgerRawRow {
@@ -81,212 +81,218 @@ function normalizeRow(r: LedgerRawRow): LedgerRow {
 }
 
 const sseLedger: FastifyPluginAsync = async (app) => {
-  app.get('/api/sse/ledger', {
-    schema: {
-      tags: ['sse'],
-      summary: 'Live ledger event stream (text/event-stream)',
-      description:
-        'Server-Sent Events over the ledger_events table. Each NOTIFY from ' +
-        'pg_notify(\'warehouse14_ledger\', NEW.id) produces one `event: ledger` ' +
-        'SSE message. ADMIN-only. Reconnect with `Last-Event-ID` to replay ' +
-        `up to ${MAX_REPLAY_ROWS} missed rows.`,
-      // We do not declare a response schema — Fastify would try to validate
-      // the streamed bytes against JSON. The hijack contract is explicit.
+  app.get(
+    '/api/sse/ledger',
+    {
+      schema: {
+        tags: ['sse'],
+        summary: 'Live ledger event stream (text/event-stream)',
+        description:
+          'Server-Sent Events over the ledger_events table. Each NOTIFY from ' +
+          "pg_notify('warehouse14_ledger', NEW.id) produces one `event: ledger` " +
+          'SSE message. ADMIN-only. Reconnect with `Last-Event-ID` to replay ' +
+          `up to ${MAX_REPLAY_ROWS} missed rows.`,
+        // We do not declare a response schema — Fastify would try to validate
+        // the streamed bytes against JSON. The hijack contract is explicit.
+      },
     },
-  }, async (req, reply) => {
-    // ──────────────────────────────────────────────────────────────────
-    // 1. Auth gate.
-    // ──────────────────────────────────────────────────────────────────
-    requireAuth(req);
-    requireRole(req, 'ADMIN');
+    async (req, reply) => {
+      // ──────────────────────────────────────────────────────────────────
+      // 1. Auth gate.
+      // ──────────────────────────────────────────────────────────────────
+      requireAuth(req);
+      requireRole(req, 'ADMIN');
 
-    // ──────────────────────────────────────────────────────────────────
-    // 2. SSE response headers.
-    //    `X-Accel-Buffering: no` disables nginx/Cloudflare proxy buffering;
-    //    without it, chunks would queue and the UX would feel laggy.
-    //    Fastify's `reply.hijack()` hands the socket to us — Fastify will
-    //    not try to serialize/serialize-end the response itself.
-    // ──────────────────────────────────────────────────────────────────
-    reply.hijack();
-    const raw = reply.raw;
-    raw.writeHead(200, {
-      'Content-Type': 'text/event-stream; charset=utf-8',
-      'Cache-Control': 'no-cache, no-transform',
-      Connection: 'keep-alive',
-      'X-Accel-Buffering': 'no',
-    });
-
-    // ──────────────────────────────────────────────────────────────────
-    // 3. Open the dedicated LISTEN connection.
-    // ──────────────────────────────────────────────────────────────────
-    let listener: Sql | null = app.openDedicatedConnection();
-    let subscription: { unlisten: () => Promise<void> } | null = null;
-    let heartbeatTimer: NodeJS.Timeout | null = null;
-    let closed = false;
-    // Last id we've emitted on THIS connection. Both replay + live use it.
-    let lastEmittedId = 0;
-
-    const cleanup = async (reason: string): Promise<void> => {
-      if (closed) return;
-      closed = true;
-      if (heartbeatTimer) {
-        clearInterval(heartbeatTimer);
-        heartbeatTimer = null;
-      }
-      try {
-        await subscription?.unlisten();
-      } catch (err) {
-        req.log.warn({ err }, 'sse: unlisten failed');
-      }
-      try {
-        await listener?.end({ timeout: 5 });
-      } catch (err) {
-        req.log.warn({ err }, 'sse: listener.end failed');
-      }
-      listener = null;
-      subscription = null;
-      try {
-        if (!raw.writableEnded) raw.end();
-      } catch {
-        // socket already gone
-      }
-      req.log.debug({ reason }, 'sse: connection cleaned up');
-    };
-
-    // Hook every plausible termination signal — Basel directive: zero leaks.
-    req.raw.on('close', () => { void cleanup('req-close'); });
-    req.raw.on('error', (err) => {
-      req.log.warn({ err }, 'sse: req error');
-      void cleanup('req-error');
-    });
-    raw.on('error', (err) => {
-      req.log.warn({ err }, 'sse: reply error');
-      void cleanup('reply-error');
-    });
-
-    // ──────────────────────────────────────────────────────────────────
-    // 4. Helper — write one event. Catches socket-closed errors.
-    // ──────────────────────────────────────────────────────────────────
-    const writeEvent = (id: number, payload: LedgerRow): void => {
-      if (closed || raw.writableEnded) return;
-      try {
-        raw.write(`id: ${id}\nevent: ledger\ndata: ${JSON.stringify(payload)}\n\n`);
-        lastEmittedId = Math.max(lastEmittedId, id);
-      } catch (err) {
-        req.log.debug({ err }, 'sse: write event failed — cleaning up');
-        void cleanup('write-failed');
-      }
-    };
-    const writeHeartbeat = (): void => {
-      if (closed || raw.writableEnded) return;
-      try {
-        raw.write(`: hb ${new Date().toISOString()}\n\n`);
-      } catch {
-        void cleanup('heartbeat-failed');
-      }
-    };
-
-    // ──────────────────────────────────────────────────────────────────
-    // 5. Subscribe to NOTIFY FIRST (before catch-up) so we don't lose
-    //    events landing during the replay query. Buffer incoming ids
-    //    until catch-up completes; then drain the buffer (de-duped).
-    // ──────────────────────────────────────────────────────────────────
-    const liveBuffer: number[] = [];
-    let replayDone = false;
-
-    const fetchAndEmit = async (id: number): Promise<void> => {
-      // De-dup against the replay window — if we already emitted this id
-      // during catch-up, skip it.
-      if (id <= lastEmittedId) return;
-      try {
-        const rows = await app.db
-          .select({
-            id: ledgerEvents.id,
-            event_type: ledgerEvents.eventType,
-            entity_table: ledgerEvents.entityTable,
-            entity_id: ledgerEvents.entityId,
-            actor_user_id: ledgerEvents.actorUserId,
-            device_id: ledgerEvents.deviceId,
-            payload: ledgerEvents.payload,
-            created_at: ledgerEvents.createdAt,
-          })
-          .from(ledgerEvents)
-          .where(drizzleSql`${ledgerEvents.id} = ${id}`)
-          .limit(1);
-        const row = rows[0];
-        if (row) writeEvent(Number(row.id), normalizeRow(row as LedgerRawRow));
-      } catch (err) {
-        req.log.warn({ err, id }, 'sse: failed to fetch ledger row');
-      }
-    };
-
-    try {
-      subscription = await listener.listen('warehouse14_ledger', (payload) => {
-        const id = Number(payload);
-        if (!Number.isFinite(id) || id <= 0) return;
-        if (!replayDone) {
-          liveBuffer.push(id);
-          return;
-        }
-        // Live path — fire and forget; intentional, ordering is by id.
-        void fetchAndEmit(id);
+      // ──────────────────────────────────────────────────────────────────
+      // 2. SSE response headers.
+      //    `X-Accel-Buffering: no` disables nginx/Cloudflare proxy buffering;
+      //    without it, chunks would queue and the UX would feel laggy.
+      //    Fastify's `reply.hijack()` hands the socket to us — Fastify will
+      //    not try to serialize/serialize-end the response itself.
+      // ──────────────────────────────────────────────────────────────────
+      reply.hijack();
+      const raw = reply.raw;
+      raw.writeHead(200, {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
       });
-    } catch (err) {
-      req.log.error({ err }, 'sse: LISTEN subscribe failed');
-      await cleanup('subscribe-failed');
-      return;
-    }
 
-    // ──────────────────────────────────────────────────────────────────
-    // 6. Catch-up: replay rows with id > Last-Event-ID, up to MAX_REPLAY_ROWS.
-    // ──────────────────────────────────────────────────────────────────
-    const lastIdHeader = req.headers['last-event-id'];
-    const lastEventId = Array.isArray(lastIdHeader) ? lastIdHeader[0] : lastIdHeader;
-    const sinceId = lastEventId != null ? parseInt(lastEventId, 10) : NaN;
-    if (Number.isFinite(sinceId) && sinceId >= 0) {
-      try {
-        const catchUp = await app.db
-          .select({
-            id: ledgerEvents.id,
-            event_type: ledgerEvents.eventType,
-            entity_table: ledgerEvents.entityTable,
-            entity_id: ledgerEvents.entityId,
-            actor_user_id: ledgerEvents.actorUserId,
-            device_id: ledgerEvents.deviceId,
-            payload: ledgerEvents.payload,
-            created_at: ledgerEvents.createdAt,
-          })
-          .from(ledgerEvents)
-          .where(drizzleSql`${ledgerEvents.id} > ${sinceId}`)
-          .orderBy(ledgerEvents.id)
-          .limit(MAX_REPLAY_ROWS);
-        for (const row of catchUp) {
-          writeEvent(Number(row.id), normalizeRow(row as LedgerRawRow));
+      // ──────────────────────────────────────────────────────────────────
+      // 3. Open the dedicated LISTEN connection.
+      // ──────────────────────────────────────────────────────────────────
+      let listener: Sql | null = app.openDedicatedConnection();
+      let subscription: { unlisten: () => Promise<void> } | null = null;
+      let heartbeatTimer: NodeJS.Timeout | null = null;
+      let closed = false;
+      // Last id we've emitted on THIS connection. Both replay + live use it.
+      let lastEmittedId = 0;
+
+      const cleanup = async (reason: string): Promise<void> => {
+        if (closed) return;
+        closed = true;
+        if (heartbeatTimer) {
+          clearInterval(heartbeatTimer);
+          heartbeatTimer = null;
         }
+        try {
+          await subscription?.unlisten();
+        } catch (err) {
+          req.log.warn({ err }, 'sse: unlisten failed');
+        }
+        try {
+          await listener?.end({ timeout: 5 });
+        } catch (err) {
+          req.log.warn({ err }, 'sse: listener.end failed');
+        }
+        listener = null;
+        subscription = null;
+        try {
+          if (!raw.writableEnded) raw.end();
+        } catch {
+          // socket already gone
+        }
+        req.log.debug({ reason }, 'sse: connection cleaned up');
+      };
+
+      // Hook every plausible termination signal — Basel directive: zero leaks.
+      req.raw.on('close', () => {
+        void cleanup('req-close');
+      });
+      req.raw.on('error', (err) => {
+        req.log.warn({ err }, 'sse: req error');
+        void cleanup('req-error');
+      });
+      raw.on('error', (err) => {
+        req.log.warn({ err }, 'sse: reply error');
+        void cleanup('reply-error');
+      });
+
+      // ──────────────────────────────────────────────────────────────────
+      // 4. Helper — write one event. Catches socket-closed errors.
+      // ──────────────────────────────────────────────────────────────────
+      const writeEvent = (id: number, payload: LedgerRow): void => {
+        if (closed || raw.writableEnded) return;
+        try {
+          raw.write(`id: ${id}\nevent: ledger\ndata: ${JSON.stringify(payload)}\n\n`);
+          lastEmittedId = Math.max(lastEmittedId, id);
+        } catch (err) {
+          req.log.debug({ err }, 'sse: write event failed — cleaning up');
+          void cleanup('write-failed');
+        }
+      };
+      const writeHeartbeat = (): void => {
+        if (closed || raw.writableEnded) return;
+        try {
+          raw.write(`: hb ${new Date().toISOString()}\n\n`);
+        } catch {
+          void cleanup('heartbeat-failed');
+        }
+      };
+
+      // ──────────────────────────────────────────────────────────────────
+      // 5. Subscribe to NOTIFY FIRST (before catch-up) so we don't lose
+      //    events landing during the replay query. Buffer incoming ids
+      //    until catch-up completes; then drain the buffer (de-duped).
+      // ──────────────────────────────────────────────────────────────────
+      const liveBuffer: number[] = [];
+      let replayDone = false;
+
+      const fetchAndEmit = async (id: number): Promise<void> => {
+        // De-dup against the replay window — if we already emitted this id
+        // during catch-up, skip it.
+        if (id <= lastEmittedId) return;
+        try {
+          const rows = await app.db
+            .select({
+              id: ledgerEvents.id,
+              event_type: ledgerEvents.eventType,
+              entity_table: ledgerEvents.entityTable,
+              entity_id: ledgerEvents.entityId,
+              actor_user_id: ledgerEvents.actorUserId,
+              device_id: ledgerEvents.deviceId,
+              payload: ledgerEvents.payload,
+              created_at: ledgerEvents.createdAt,
+            })
+            .from(ledgerEvents)
+            .where(drizzleSql`${ledgerEvents.id} = ${id}`)
+            .limit(1);
+          const row = rows[0];
+          if (row) writeEvent(Number(row.id), normalizeRow(row as LedgerRawRow));
+        } catch (err) {
+          req.log.warn({ err, id }, 'sse: failed to fetch ledger row');
+        }
+      };
+
+      try {
+        subscription = await listener.listen('warehouse14_ledger', (payload) => {
+          const id = Number(payload);
+          if (!Number.isFinite(id) || id <= 0) return;
+          if (!replayDone) {
+            liveBuffer.push(id);
+            return;
+          }
+          // Live path — fire and forget; intentional, ordering is by id.
+          void fetchAndEmit(id);
+        });
       } catch (err) {
-        req.log.warn({ err, sinceId }, 'sse: catch-up replay failed');
+        req.log.error({ err }, 'sse: LISTEN subscribe failed');
+        await cleanup('subscribe-failed');
+        return;
       }
-    }
-    replayDone = true;
 
-    // ──────────────────────────────────────────────────────────────────
-    // 7. Drain anything that arrived during catch-up (deduped by lastEmittedId).
-    // ──────────────────────────────────────────────────────────────────
-    for (const id of liveBuffer.splice(0)) {
-      void fetchAndEmit(id);
-    }
+      // ──────────────────────────────────────────────────────────────────
+      // 6. Catch-up: replay rows with id > Last-Event-ID, up to MAX_REPLAY_ROWS.
+      // ──────────────────────────────────────────────────────────────────
+      const lastIdHeader = req.headers['last-event-id'];
+      const lastEventId = Array.isArray(lastIdHeader) ? lastIdHeader[0] : lastIdHeader;
+      const sinceId = lastEventId != null ? Number.parseInt(lastEventId, 10) : Number.NaN;
+      if (Number.isFinite(sinceId) && sinceId >= 0) {
+        try {
+          const catchUp = await app.db
+            .select({
+              id: ledgerEvents.id,
+              event_type: ledgerEvents.eventType,
+              entity_table: ledgerEvents.entityTable,
+              entity_id: ledgerEvents.entityId,
+              actor_user_id: ledgerEvents.actorUserId,
+              device_id: ledgerEvents.deviceId,
+              payload: ledgerEvents.payload,
+              created_at: ledgerEvents.createdAt,
+            })
+            .from(ledgerEvents)
+            .where(drizzleSql`${ledgerEvents.id} > ${sinceId}`)
+            .orderBy(ledgerEvents.id)
+            .limit(MAX_REPLAY_ROWS);
+          for (const row of catchUp) {
+            writeEvent(Number(row.id), normalizeRow(row as LedgerRawRow));
+          }
+        } catch (err) {
+          req.log.warn({ err, sinceId }, 'sse: catch-up replay failed');
+        }
+      }
+      replayDone = true;
 
-    // ──────────────────────────────────────────────────────────────────
-    // 8. Start heartbeat. setInterval is unref'd so Node can exit cleanly
-    //    if the process is shutting down.
-    // ──────────────────────────────────────────────────────────────────
-    heartbeatTimer = setInterval(writeHeartbeat, HEARTBEAT_INTERVAL_MS);
-    heartbeatTimer.unref();
+      // ──────────────────────────────────────────────────────────────────
+      // 7. Drain anything that arrived during catch-up (deduped by lastEmittedId).
+      // ──────────────────────────────────────────────────────────────────
+      for (const id of liveBuffer.splice(0)) {
+        void fetchAndEmit(id);
+      }
 
-    // Immediate hello frame so the client knows the stream is alive even
-    // before any ledger activity. Doubles as a smoke test in production.
-    writeHeartbeat();
-  });
+      // ──────────────────────────────────────────────────────────────────
+      // 8. Start heartbeat. setInterval is unref'd so Node can exit cleanly
+      //    if the process is shutting down.
+      // ──────────────────────────────────────────────────────────────────
+      heartbeatTimer = setInterval(writeHeartbeat, HEARTBEAT_INTERVAL_MS);
+      heartbeatTimer.unref();
+
+      // Immediate hello frame so the client knows the stream is alive even
+      // before any ledger activity. Doubles as a smoke test in production.
+      writeHeartbeat();
+    },
+  );
 };
 
 export default sseLedger;

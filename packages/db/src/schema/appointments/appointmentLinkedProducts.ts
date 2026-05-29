@@ -6,21 +6,31 @@
  * (per ADR-0016 §6 contract).
  */
 
-import { index, pgTable, primaryKey as drizzlePrimaryKey, timestamp, uuid } from 'drizzle-orm/pg-core';
+import {
+  primaryKey as drizzlePrimaryKey,
+  index,
+  pgTable,
+  timestamp,
+  uuid,
+} from 'drizzle-orm/pg-core';
 
-import { appointments } from './appointments.js';
-import { products } from '../products/products.js';
 import { users } from '../auth/users.js';
+import { products } from '../products/products.js';
+import { appointments } from './appointments.js';
 
 export const appointmentLinkedProducts = pgTable(
   'appointment_linked_products',
   {
-    appointmentId: uuid('appointment_id').notNull().references(() => appointments.id),
-    productId: uuid('product_id').notNull().references(() => products.id),
+    appointmentId: uuid('appointment_id')
+      .notNull()
+      .references(() => appointments.id),
+    productId: uuid('product_id')
+      .notNull()
+      .references(() => products.id),
     addedAt: timestamp('added_at', { withTimezone: true }).notNull().defaultNow(),
     addedByUserId: uuid('added_by_user_id').references(() => users.id),
   },
-  table => ({
+  (table) => ({
     pk: drizzlePrimaryKey({ columns: [table.appointmentId, table.productId] }),
     productIdx: index('appointment_linked_products_product_idx').on(table.productId),
   }),

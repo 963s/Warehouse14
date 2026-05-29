@@ -10,10 +10,10 @@
  * cashier, never the sweeper.
  */
 
-import type { JobDefinition } from '../lib/job-runner.js';
-import { autoReleaseExpired } from '@warehouse14/inventory-lock';
 import { emit } from '@warehouse14/audit';
 import type { AppDb } from '@warehouse14/db/client';
+import { autoReleaseExpired } from '@warehouse14/inventory-lock';
+import type { JobDefinition } from '../lib/job-runner.js';
 
 export const reservationSweeperJob: JobDefinition = {
   name: 'reservation_sweeper',
@@ -40,11 +40,13 @@ export const reservationSweeperJob: JobDefinition = {
         });
         emitted++;
       } catch (err) {
-        log.warn('failed to emit ledger event for released product', { productId, err: String(err) });
+        log.warn('failed to emit ledger event for released product', {
+          productId,
+          err: String(err),
+        });
       }
     }
     log.info('sweeper released expired reservations', { released: releasedIds.length, emitted });
     return { rowsReleased: releasedIds.length, ledgerEventsEmitted: emitted };
   },
 };
-

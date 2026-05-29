@@ -12,22 +12,19 @@
  * itself is server-of-record (TanStack Query against `GET /api/appraisals/:id`).
  */
 
-import { useCallback, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useCallback, useState } from 'react';
 
 import { appraisalsApi } from '@warehouse14/api-client';
-import {
-  Button,
-  DiamondRule,
-  ParchmentCard,
-  Seal,
-} from '@warehouse14/ui-kit';
+import { Button, DiamondRule, ParchmentCard, Seal } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
+import type { LabelData } from '../../lib/hardware-client.js';
+import { useLabelPrinter } from '../../lib/use-label-printer.js';
 import {
-  useBewertungStore,
   selectAppraisalId,
   selectBewertungCustomerId,
+  useBewertungStore,
 } from '../../state/bewertung-store.js';
 
 import { AcceptanceDialog } from './AcceptanceDialog.js';
@@ -81,16 +78,17 @@ export function Bewertung(): JSX.Element {
 
   const appraisal = q.data;
 
-  if (appraisal.status === 'ACCEPTED' || appraisal.status === 'REJECTED' || appraisal.status === 'EXPIRED') {
+  if (
+    appraisal.status === 'ACCEPTED' ||
+    appraisal.status === 'REJECTED' ||
+    appraisal.status === 'EXPIRED'
+  ) {
     return <OutcomeView appraisal={appraisal} onReset={reset} />;
   }
 
   return (
     <>
-      <BewertungWorkspace
-        appraisal={appraisal}
-        onOpenAcceptance={() => setAcceptOpen(true)}
-      />
+      <BewertungWorkspace appraisal={appraisal} onOpenAcceptance={() => setAcceptOpen(true)} />
       {acceptOpen && (
         <AcceptanceDialog
           open={acceptOpen}
@@ -107,7 +105,14 @@ function LoadingSplash(): JSX.Element {
     <div style={{ flex: 1, display: 'grid', placeItems: 'center', padding: 32 }}>
       <ParchmentCard padding="lg" style={{ width: 'min(420px, 100%)', textAlign: 'center' }}>
         <Seal size="md" tone="faded" label="8" />
-        <h2 style={{ fontFamily: 'var(--w14-font-display)', fontWeight: 500, margin: '14px 0 4px', fontSize: '1.4rem' }}>
+        <h2
+          style={{
+            fontFamily: 'var(--w14-font-display)',
+            fontWeight: 500,
+            margin: '14px 0 4px',
+            fontSize: '1.4rem',
+          }}
+        >
           Bewertung wird geladen…
         </h2>
         <DiamondRule />
@@ -119,12 +124,24 @@ function LoadingSplash(): JSX.Element {
 function ErrorSplash({ onReset }: { onReset: () => void }): JSX.Element {
   return (
     <div style={{ flex: 1, display: 'grid', placeItems: 'center', padding: 32 }}>
-      <ParchmentCard padding="lg" style={{ width: 'min(460px, 100%)', textAlign: 'center', border: '1px solid var(--w14-wax-red)' }}>
-        <p role="alert" style={{ color: 'var(--w14-wax-red)', margin: 0, fontFamily: 'var(--w14-font-display)' }}>
+      <ParchmentCard
+        padding="lg"
+        style={{
+          width: 'min(460px, 100%)',
+          textAlign: 'center',
+          border: '1px solid var(--w14-wax-red)',
+        }}
+      >
+        <p
+          role="alert"
+          style={{ color: 'var(--w14-wax-red)', margin: 0, fontFamily: 'var(--w14-font-display)' }}
+        >
           Die Bewertung konnte nicht geladen werden.
         </p>
         <div style={{ marginTop: 14 }}>
-          <Button variant="ghost" onClick={onReset}>Neue Bewertung beginnen</Button>
+          <Button variant="ghost" onClick={onReset}>
+            Neue Bewertung beginnen
+          </Button>
         </div>
       </ParchmentCard>
     </div>
@@ -139,15 +156,48 @@ function OutcomeView({
   onReset: () => void;
 }): JSX.Element {
   const accepted = appraisal.status === 'ACCEPTED';
+  const printer = useLabelPrinter();
+  // Accepted items spawn products (productId set). The appraisal item doesn't
+  // expose the spawned SKU, so the product id is used as the QR/scan reference.
+  const labels: LabelData[] = accepted
+    ? appraisal.items
+        .filter((i) => i.productId !== null)
+        .map((i) => ({
+          sku: i.productId as string,
+          productName: i.name,
+          weightGrams: i.weightGrams ?? null,
+          karat: i.karatCode ?? null,
+          storageLocation: null,
+        }))
+    : [];
   return (
     <div style={{ flex: 1, display: 'grid', placeItems: 'center', padding: 32 }}>
       <ParchmentCard padding="lg" style={{ width: 'min(520px, 100%)', textAlign: 'center' }}>
         <Seal size="md" tone={accepted ? 'gold' : 'faded'} label="8" />
-        <h2 style={{ fontFamily: 'var(--w14-font-display)', fontWeight: 500, margin: '14px 0 4px', fontSize: '1.5rem' }}>
-          {accepted ? 'Bewertung angenommen' : appraisal.status === 'REJECTED' ? 'Bewertung abgelehnt' : 'Bewertung abgelaufen'}
+        <h2
+          style={{
+            fontFamily: 'var(--w14-font-display)',
+            fontWeight: 500,
+            margin: '14px 0 4px',
+            fontSize: '1.5rem',
+          }}
+        >
+          {accepted
+            ? 'Bewertung angenommen'
+            : appraisal.status === 'REJECTED'
+              ? 'Bewertung abgelehnt'
+              : 'Bewertung abgelaufen'}
         </h2>
         <DiamondRule />
-        <p style={{ margin: '8px 0 0', color: 'var(--w14-ink-faded)', fontFamily: 'var(--w14-font-display)', fontStyle: 'italic', fontSize: '0.92rem' }}>
+        <p
+          style={{
+            margin: '8px 0 0',
+            color: 'var(--w14-ink-faded)',
+            fontFamily: 'var(--w14-font-display)',
+            fontStyle: 'italic',
+            fontSize: '0.92rem',
+          }}
+        >
           {appraisal.items.length} Stück{appraisal.items.length === 1 ? '' : 'e'}
           {accepted && appraisal.ankaufTransactionId && (
             <>
@@ -158,8 +208,15 @@ function OutcomeView({
             </>
           )}
         </p>
-        <div style={{ marginTop: 22 }}>
-          <Button variant="primary" onClick={onReset}>Neue Bewertung</Button>
+        <div style={{ marginTop: 22, display: 'flex', gap: 10, justifyContent: 'center' }}>
+          {accepted && labels.length > 0 && (
+            <Button variant="ghost" onClick={() => void printer.print(labels)}>
+              Etiketten drucken
+            </Button>
+          )}
+          <Button variant="primary" onClick={onReset}>
+            Neue Bewertung
+          </Button>
         </div>
       </ParchmentCard>
     </div>

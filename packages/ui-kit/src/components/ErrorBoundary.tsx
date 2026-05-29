@@ -90,10 +90,7 @@ function Fallback({
         padding: 32,
       }}
     >
-      <ParchmentCard
-        padding="lg"
-        style={{ width: 'min(560px, 100%)', textAlign: 'center' }}
-      >
+      <ParchmentCard padding="lg" style={{ width: 'min(560px, 100%)', textAlign: 'center' }}>
         <Seal size="md" tone="wax-red" label="!" />
         <h2
           style={{

@@ -13,7 +13,7 @@
  * the cashier doesn't have permission to act on still appear (read-only).
  */
 
-import { Type, type Static } from '@sinclair/typebox';
+import { type Static, Type } from '@sinclair/typebox';
 import { sql as drizzleSql } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 
@@ -55,10 +55,10 @@ const DashboardSummaryResponse = Type.Object({
 
   /** Current metal prices keyed by metal — null entries when no row recorded. */
   currentMetalPrices: Type.Object({
-    gold:       Type.Union([Type.String(), Type.Null()]),
-    silver:     Type.Union([Type.String(), Type.Null()]),
-    platinum:   Type.Union([Type.String(), Type.Null()]),
-    palladium:  Type.Union([Type.String(), Type.Null()]),
+    gold: Type.Union([Type.String(), Type.Null()]),
+    silver: Type.Union([Type.String(), Type.Null()]),
+    platinum: Type.Union([Type.String(), Type.Null()]),
+    palladium: Type.Union([Type.String(), Type.Null()]),
   }),
 
   /** When the snapshot was assembled (server time). */
@@ -76,42 +76,45 @@ const ErrorResponse = Type.Object({
 });
 
 const dashboardRoutes: FastifyPluginAsync = async (app) => {
-  app.get('/api/dashboard/summary', {
-    schema: {
-      tags: ['dashboard'],
-      summary: 'Aggregate counters for the Werkstatt + Übersicht tiles.',
-      description:
-        'One round-trip replaces the 10+ fetches a dashboard would otherwise need. ' +
-        'Every sub-query targets a partial index or a single-row aggregate.',
-      response: { 200: DashboardSummaryResponse, 401: ErrorResponse, 403: ErrorResponse },
+  app.get(
+    '/api/dashboard/summary',
+    {
+      schema: {
+        tags: ['dashboard'],
+        summary: 'Aggregate counters for the Werkstatt + Übersicht tiles.',
+        description:
+          'One round-trip replaces the 10+ fetches a dashboard would otherwise need. ' +
+          'Every sub-query targets a partial index or a single-row aggregate.',
+        response: { 200: DashboardSummaryResponse, 401: ErrorResponse, 403: ErrorResponse },
+      },
     },
-  }, async (req, reply) => {
-    requireAuth(req);
-    requireRole(req, 'ADMIN', 'CASHIER');
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'ADMIN', 'CASHIER');
 
-    const actorId = req.actor.id;
-    const deviceId = req.deviceId ?? null;
+      const actorId = req.actor.id;
+      const deviceId = req.deviceId ?? null;
 
-    // One big read transaction — gives all sub-queries the same snapshot.
-    const rows = await app.db.execute<{
-      open_tasks_mine: number;
-      tasks_due_today: number;
-      tasks_overdue: number;
-      pending_appraisals: number;
-      unassigned_photos: number;
-      ebay_pipeline_depth: number;
-      ebay_conflicts_week: number;
-      current_shift_id: string | null;
-      current_shift_revenue_eur: string;
-      watchlist_customer_count: number;
-      worker_jobs_running: string[];
-      last_chain_verified_at: Date | null;
-      worker_dlq_unacked: number;
-      gold:       string | null;
-      silver:     string | null;
-      platinum:   string | null;
-      palladium:  string | null;
-    }>(drizzleSql`
+      // One big read transaction — gives all sub-queries the same snapshot.
+      const rows = await app.db.execute<{
+        open_tasks_mine: number;
+        tasks_due_today: number;
+        tasks_overdue: number;
+        pending_appraisals: number;
+        unassigned_photos: number;
+        ebay_pipeline_depth: number;
+        ebay_conflicts_week: number;
+        current_shift_id: string | null;
+        current_shift_revenue_eur: string;
+        watchlist_customer_count: number;
+        worker_jobs_running: string[];
+        last_chain_verified_at: Date | null;
+        worker_dlq_unacked: number;
+        gold: string | null;
+        silver: string | null;
+        platinum: string | null;
+        palladium: string | null;
+      }>(drizzleSql`
       WITH
         t_mine AS (
           SELECT COUNT(*)::int AS n FROM internal_tasks
@@ -154,9 +157,7 @@ const dashboardRoutes: FastifyPluginAsync = async (app) => {
            WHERE status = 'OPEN'
              ${
                // Filter to the calling device when known so cashiers see THEIR shift.
-               deviceId
-                 ? drizzleSql`AND device_id = ${deviceId}::uuid`
-                 : drizzleSql``
+               deviceId ? drizzleSql`AND device_id = ${deviceId}::uuid` : drizzleSql``
              }
            ORDER BY opened_at DESC LIMIT 1
         ),
@@ -210,53 +211,58 @@ const dashboardRoutes: FastifyPluginAsync = async (app) => {
         (SELECT v FROM metal_palladium)     AS palladium
     `);
 
-    const r = (rows as unknown as Array<{
-      open_tasks_mine: number;
-      tasks_due_today: number;
-      tasks_overdue: number;
-      pending_appraisals: number;
-      unassigned_photos: number;
-      ebay_pipeline_depth: number;
-      ebay_conflicts_week: number;
-      current_shift_id: string | null;
-      current_shift_revenue_eur: string;
-      watchlist_customer_count: number;
-      worker_jobs_running: string[];
-      last_chain_verified_at: Date | null;
-      worker_dlq_unacked: number;
-      gold: string | null;
-      silver: string | null;
-      platinum: string | null;
-      palladium: string | null;
-    }>)[0];
+      const r = (
+        rows as unknown as Array<{
+          open_tasks_mine: number;
+          tasks_due_today: number;
+          tasks_overdue: number;
+          pending_appraisals: number;
+          unassigned_photos: number;
+          ebay_pipeline_depth: number;
+          ebay_conflicts_week: number;
+          current_shift_id: string | null;
+          current_shift_revenue_eur: string;
+          watchlist_customer_count: number;
+          worker_jobs_running: string[];
+          last_chain_verified_at: Date | null;
+          worker_dlq_unacked: number;
+          gold: string | null;
+          silver: string | null;
+          platinum: string | null;
+          palladium: string | null;
+        }>
+      )[0];
 
-    if (!r) {
-      throw new Error('dashboard summary returned no rows');
-    }
+      if (!r) {
+        throw new Error('dashboard summary returned no rows');
+      }
 
-    return reply.status(200).send({
-      openTasksMine: Number(r.open_tasks_mine ?? 0),
-      tasksDueToday: Number(r.tasks_due_today ?? 0),
-      tasksOverdue: Number(r.tasks_overdue ?? 0),
-      pendingAppraisals: Number(r.pending_appraisals ?? 0),
-      unassignedPhotos: Number(r.unassigned_photos ?? 0),
-      ebayPipelineDepth: Number(r.ebay_pipeline_depth ?? 0),
-      ebayConflictsWeek: Number(r.ebay_conflicts_week ?? 0),
-      currentShiftId: r.current_shift_id,
-      currentShiftRevenueEur: r.current_shift_revenue_eur ?? '0',
-      watchlistCustomerCount: Number(r.watchlist_customer_count ?? 0),
-      workerJobsRunning: Array.isArray(r.worker_jobs_running) ? r.worker_jobs_running : [],
-      lastChainVerifiedAt: r.last_chain_verified_at ? r.last_chain_verified_at.toISOString() : null,
-      workerDlqUnacked: Number(r.worker_dlq_unacked ?? 0),
-      currentMetalPrices: {
-        gold: r.gold,
-        silver: r.silver,
-        platinum: r.platinum,
-        palladium: r.palladium,
-      },
-      computedAt: new Date().toISOString(),
-    });
-  });
+      return reply.status(200).send({
+        openTasksMine: Number(r.open_tasks_mine ?? 0),
+        tasksDueToday: Number(r.tasks_due_today ?? 0),
+        tasksOverdue: Number(r.tasks_overdue ?? 0),
+        pendingAppraisals: Number(r.pending_appraisals ?? 0),
+        unassignedPhotos: Number(r.unassigned_photos ?? 0),
+        ebayPipelineDepth: Number(r.ebay_pipeline_depth ?? 0),
+        ebayConflictsWeek: Number(r.ebay_conflicts_week ?? 0),
+        currentShiftId: r.current_shift_id,
+        currentShiftRevenueEur: r.current_shift_revenue_eur ?? '0',
+        watchlistCustomerCount: Number(r.watchlist_customer_count ?? 0),
+        workerJobsRunning: Array.isArray(r.worker_jobs_running) ? r.worker_jobs_running : [],
+        lastChainVerifiedAt: r.last_chain_verified_at
+          ? r.last_chain_verified_at.toISOString()
+          : null,
+        workerDlqUnacked: Number(r.worker_dlq_unacked ?? 0),
+        currentMetalPrices: {
+          gold: r.gold,
+          silver: r.silver,
+          platinum: r.platinum,
+          palladium: r.palladium,
+        },
+        computedAt: new Date().toISOString(),
+      });
+    },
+  );
 };
 
 export default dashboardRoutes;

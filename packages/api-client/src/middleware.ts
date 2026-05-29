@@ -79,8 +79,5 @@ export type Middleware = (req: MiddlewareRequest, next: Next) => Promise<Middlew
  * smoke test (ADR-0043 Action Item).
  */
 export function compose(middlewares: readonly Middleware[], terminal: Next): Next {
-  return middlewares.reduceRight<Next>(
-    (next, mw) => (req) => mw(req, next),
-    terminal,
-  );
+  return middlewares.reduceRight<Next>((next, mw) => (req) => mw(req, next), terminal);
 }

@@ -12,30 +12,30 @@
  *     >= 8 chars — UI requires the operator to type the rationale.
  */
 
-import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 
 import {
   ApiError,
-  customersApi,
   type CustomerDetail,
   type CustomerTrustLevel,
+  customersApi,
 } from '@warehouse14/api-client';
-import {
-  Button,
-  DiamondRule,
-  ParchmentCard,
-} from '@warehouse14/ui-kit';
+import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
 import { useToastStore } from '../../state/toast-store.js';
 
-const TRUST_OPTIONS: Array<{ value: CustomerTrustLevel; label: string; tone: 'gold' | 'ink' | 'wax-red' }> = [
-  { value: 'NEW',        label: 'NEU — Standard',           tone: 'ink' },
-  { value: 'VERIFIED',   label: 'BESTÄTIGT — Stammkunde',   tone: 'gold' },
-  { value: 'VIP',        label: 'VIP — Sammler',            tone: 'gold' },
-  { value: 'SUSPICIOUS', label: 'BEOBACHTEN — Verdacht',    tone: 'wax-red' },
-  { value: 'BANNED',     label: 'GESPERRT — kein Geschäft', tone: 'wax-red' },
+const TRUST_OPTIONS: Array<{
+  value: CustomerTrustLevel;
+  label: string;
+  tone: 'gold' | 'ink' | 'wax-red';
+}> = [
+  { value: 'NEW', label: 'NEU — Standard', tone: 'ink' },
+  { value: 'VERIFIED', label: 'BESTÄTIGT — Stammkunde', tone: 'gold' },
+  { value: 'VIP', label: 'VIP — Sammler', tone: 'gold' },
+  { value: 'SUSPICIOUS', label: 'BEOBACHTEN — Verdacht', tone: 'wax-red' },
+  { value: 'BANNED', label: 'GESPERRT — kein Geschäft', tone: 'wax-red' },
 ];
 
 export interface CustomerTrustDialogProps {
@@ -44,7 +44,11 @@ export interface CustomerTrustDialogProps {
   onClose: () => void;
 }
 
-export function CustomerTrustDialog({ open, customer, onClose }: CustomerTrustDialogProps): JSX.Element | null {
+export function CustomerTrustDialog({
+  open,
+  customer,
+  onClose,
+}: CustomerTrustDialogProps): JSX.Element | null {
   const api = useApiClient();
   const qc = useQueryClient();
   const addToast = useToastStore((s) => s.addToast);
@@ -78,17 +82,17 @@ export function CustomerTrustDialog({ open, customer, onClose }: CustomerTrustDi
   const requiresNote = target === 'SUSPICIOUS' || target === 'BANNED';
   const promotionRequiresKyc = (target === 'VERIFIED' || target === 'VIP') && !kycVerified;
   const noteValid = !requiresNote || note.trim().length >= 8;
-  const canSubmit = target !== customer.trustLevel && noteValid && !promotionRequiresKyc && !submitting;
+  const canSubmit =
+    target !== customer.trustLevel && noteValid && !promotionRequiresKyc && !submitting;
 
   const submit = async (): Promise<void> => {
     if (!canSubmit) return;
     setSubmitting(true);
     setError(null);
     try {
-      const body =
-        requiresNote
-          ? { trustLevel: target, priceExpectationNotes: note.trim() }
-          : { trustLevel: target };
+      const body = requiresNote
+        ? { trustLevel: target, priceExpectationNotes: note.trim() }
+        : { trustLevel: target };
       await customersApi.setTrust(api, customer.id, body);
       addToast({
         tone: target === 'BANNED' || target === 'SUSPICIOUS' ? 'alert' : 'success',
@@ -117,10 +121,17 @@ export function CustomerTrustDialog({ open, customer, onClose }: CustomerTrustDi
       role="dialog"
       aria-modal="true"
       aria-label="Vertrauensstufe ändern"
-      onClick={() => { if (!submitting) onClose(); }}
+      onClick={() => {
+        if (!submitting) onClose();
+      }}
       style={{
-        position: 'fixed', inset: 0, backgroundColor: 'var(--w14-overlay)',
-        zIndex: 1050, display: 'grid', placeItems: 'center', padding: 24,
+        position: 'fixed',
+        inset: 0,
+        backgroundColor: 'var(--w14-overlay)',
+        zIndex: 1050,
+        display: 'grid',
+        placeItems: 'center',
+        padding: 24,
       }}
     >
       <ParchmentCard
@@ -128,10 +139,27 @@ export function CustomerTrustDialog({ open, customer, onClose }: CustomerTrustDi
         onClick={(ev) => ev.stopPropagation()}
         style={{ width: 'min(460px, 100%)', boxShadow: 'var(--w14-shadow-modal)' }}
       >
-        <h2 style={{ margin: 0, fontFamily: 'var(--w14-font-display)', fontWeight: 500, fontSize: '1.4rem', textAlign: 'center' }}>
+        <h2
+          style={{
+            margin: 0,
+            fontFamily: 'var(--w14-font-display)',
+            fontWeight: 500,
+            fontSize: '1.4rem',
+            textAlign: 'center',
+          }}
+        >
           Vertrauensstufe
         </h2>
-        <p style={{ margin: '4px 0 0', textAlign: 'center', fontFamily: 'var(--w14-font-display)', fontStyle: 'italic', fontSize: '0.85rem', color: 'var(--w14-ink-faded)' }}>
+        <p
+          style={{
+            margin: '4px 0 0',
+            textAlign: 'center',
+            fontFamily: 'var(--w14-font-display)',
+            fontStyle: 'italic',
+            fontSize: '0.85rem',
+            color: 'var(--w14-ink-faded)',
+          }}
+        >
           {customer.fullName}
         </p>
 
@@ -140,7 +168,12 @@ export function CustomerTrustDialog({ open, customer, onClose }: CustomerTrustDi
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {TRUST_OPTIONS.map((opt) => {
             const disabled = (opt.value === 'VERIFIED' || opt.value === 'VIP') && !kycVerified;
-            const color = opt.tone === 'gold' ? 'var(--w14-gold)' : opt.tone === 'wax-red' ? 'var(--w14-wax-red)' : 'var(--w14-ink-faded)';
+            const color =
+              opt.tone === 'gold'
+                ? 'var(--w14-gold)'
+                : opt.tone === 'wax-red'
+                  ? 'var(--w14-wax-red)'
+                  : 'var(--w14-ink-faded)';
             return (
               <label
                 key={opt.value}
@@ -177,14 +210,29 @@ export function CustomerTrustDialog({ open, customer, onClose }: CustomerTrustDi
         </div>
 
         {promotionRequiresKyc && (
-          <p style={{ margin: '14px 0 0', color: 'var(--w14-wax-red)', fontSize: '0.85rem', textAlign: 'center', fontStyle: 'italic' }}>
+          <p
+            style={{
+              margin: '14px 0 0',
+              color: 'var(--w14-wax-red)',
+              fontSize: '0.85rem',
+              textAlign: 'center',
+              fontStyle: 'italic',
+            }}
+          >
             KYC-Bestätigung erforderlich, bevor BESTÄTIGT oder VIP gesetzt werden kann.
           </p>
         )}
 
         {requiresNote && (
           <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span className="w14-smallcaps" style={{ color: 'var(--w14-ink-faded)', fontSize: '0.72rem', letterSpacing: '0.08em' }}>
+            <span
+              className="w14-smallcaps"
+              style={{
+                color: 'var(--w14-ink-faded)',
+                fontSize: '0.72rem',
+                letterSpacing: '0.08em',
+              }}
+            >
               Begründung (mind. 8 Zeichen) *
             </span>
             <textarea
@@ -193,16 +241,30 @@ export function CustomerTrustDialog({ open, customer, onClose }: CustomerTrustDi
               rows={2}
               placeholder="Z. B. Hehlerverdacht — Auffälligkeit am 27.05.2026"
               style={{
-                border: 'none', outline: 'none', borderBottom: '2px solid var(--w14-rule)',
-                background: 'transparent', padding: '6px 4px', resize: 'vertical',
-                fontFamily: 'var(--w14-font-body)', fontSize: '0.92rem', color: 'var(--w14-ink)',
+                border: 'none',
+                outline: 'none',
+                borderBottom: '2px solid var(--w14-rule)',
+                background: 'transparent',
+                padding: '6px 4px',
+                resize: 'vertical',
+                fontFamily: 'var(--w14-font-body)',
+                fontSize: '0.92rem',
+                color: 'var(--w14-ink)',
               }}
             />
           </div>
         )}
 
         {error && (
-          <p role="alert" style={{ color: 'var(--w14-wax-red)', margin: '14px 0 0', fontSize: '0.92rem', textAlign: 'center' }}>
+          <p
+            role="alert"
+            style={{
+              color: 'var(--w14-wax-red)',
+              margin: '14px 0 0',
+              fontSize: '0.92rem',
+              textAlign: 'center',
+            }}
+          >
             {error}
           </p>
         )}

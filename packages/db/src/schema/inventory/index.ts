@@ -2,22 +2,38 @@
  * inventory/ — Stichtagsinventur (Day 21, migration 0019).
  */
 
-import { check, index, integer, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import {
+  check,
+  index,
+  integer,
+  pgEnum,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 
 import { users } from '../auth/users.js';
 import { products } from '../products/products.js';
 
 export const inventorySessionStatus = pgEnum('inventory_session_status', ['OPEN', 'CLOSED']);
 export const inventoryScanMatch = pgEnum('inventory_scan_match', [
-  'MATCHED', 'UNKNOWN_BARCODE', 'DUPLICATE', 'EXPECTED_BUT_SOLD', 'UNEXPECTED',
+  'MATCHED',
+  'UNKNOWN_BARCODE',
+  'DUPLICATE',
+  'EXPECTED_BUT_SOLD',
+  'UNEXPECTED',
 ]);
 
 export const inventorySessions = pgTable(
   'inventory_sessions',
   {
     id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-    openedByUserId: uuid('opened_by_user_id').notNull().references(() => users.id),
+    openedByUserId: uuid('opened_by_user_id')
+      .notNull()
+      .references(() => users.id),
     openedAt: timestamp('opened_at', { withTimezone: true }).notNull().default(sql`now()`),
     closedAt: timestamp('closed_at', { withTimezone: true }),
     closedByUserId: uuid('closed_by_user_id').references(() => users.id),
@@ -54,17 +70,22 @@ export const inventoryScans = pgTable(
   'inventory_scans',
   {
     id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-    sessionId: uuid('session_id').notNull().references(() => inventorySessions.id),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => inventorySessions.id),
     rawBarcode: text('raw_barcode').notNull(),
     productId: uuid('product_id').references(() => products.id),
     matchStatus: inventoryScanMatch('match_status').notNull(),
-    scannedByUserId: uuid('scanned_by_user_id').notNull().references(() => users.id),
+    scannedByUserId: uuid('scanned_by_user_id')
+      .notNull()
+      .references(() => users.id),
     scannedAt: timestamp('scanned_at', { withTimezone: true }).notNull().default(sql`now()`),
   },
   (table) => ({
     sessionIdx: index('inventory_scans_session_idx').on(table.sessionId, table.scannedAt),
     productIdx: index('inventory_scans_product_idx')
-      .on(table.productId).where(sql`${table.productId} IS NOT NULL`),
+      .on(table.productId)
+      .where(sql`${table.productId} IS NOT NULL`),
   }),
 );
 

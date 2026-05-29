@@ -23,24 +23,19 @@ import { useSearchParams } from 'react-router-dom';
 
 import {
   ApiError,
-  customersApi,
-  photosApi,
   type KycDocumentType,
   type PhotoUploadIntent,
+  customersApi,
+  photosApi,
 } from '@warehouse14/api-client';
-import {
-  Button,
-  DiamondRule,
-  ParchmentCard,
-  Seal,
-} from '@warehouse14/ui-kit';
+import { Button, DiamondRule, ParchmentCard, Seal } from '@warehouse14/ui-kit';
 
+import { CropStudio } from '../../components/hardware/CropStudio.js';
+import { useCamera } from '../../hooks/useCamera.js';
 import { useApiClient } from '../../lib/api-context.js';
 import { sha256HexOfBlob } from '../../lib/image-hash.js';
 import { uploadBlobToR2 } from '../../lib/photo-upload.js';
-import { useCamera } from '../../hooks/useCamera.js';
 import { useToastStore } from '../../state/toast-store.js';
-import { CropStudio } from '../../components/hardware/CropStudio.js';
 
 type Mode = 'produkt' | 'kyc' | 'allgemein';
 type SnapshotStatus = 'queued' | 'uploading' | 'registering' | 'done' | 'failed';
@@ -169,7 +164,11 @@ export function Fotos(): JSX.Element {
         updateSnapshot(snap.id, { status: 'done' });
       } catch (err) {
         const message =
-          err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'Unbekannter Fehler';
+          err instanceof ApiError
+            ? err.message
+            : err instanceof Error
+              ? err.message
+              : 'Unbekannter Fehler';
         updateSnapshot(snap.id, { status: 'failed', error: message });
       }
     },
@@ -181,7 +180,11 @@ export function Fotos(): JSX.Element {
   const onShutter = useCallback(async (): Promise<void> => {
     const blob = await camera.captureBlob();
     if (!blob) {
-      addToast({ tone: 'alert', title: 'Aufnahme fehlgeschlagen', body: 'Kamera-Stream nicht bereit.' });
+      addToast({
+        tone: 'alert',
+        title: 'Aufnahme fehlgeschlagen',
+        body: 'Kamera-Stream nicht bereit.',
+      });
       return;
     }
     if (mode === 'kyc') {
@@ -196,7 +199,11 @@ export function Fotos(): JSX.Element {
   const onFileSelect = useCallback(
     (file: File): void => {
       if (!file.type.startsWith('image/')) {
-        addToast({ tone: 'alert', title: 'Falscher Dateityp', body: 'Nur JPEG / PNG / WebP zulässig.' });
+        addToast({
+          tone: 'alert',
+          title: 'Falscher Dateityp',
+          body: 'Nur JPEG / PNG / WebP zulässig.',
+        });
         return;
       }
       if (mode === 'kyc') {
@@ -213,7 +220,11 @@ export function Fotos(): JSX.Element {
   // as the originals. The metadata (final size / quality) is logged via toast
   // so the operator can confirm the WebP shrink worked.
   const onCropResult = useCallback(
-    ({ blob, sizeBytes, achievedQuality }: { blob: Blob; sizeBytes: number; achievedQuality: number }): void => {
+    ({
+      blob,
+      sizeBytes,
+      achievedQuality,
+    }: { blob: Blob; sizeBytes: number; achievedQuality: number }): void => {
       setPendingCrop(null);
       const snap = addSnapshot(blob);
       void processSnapshot(snap);
@@ -264,18 +275,39 @@ export function Fotos(): JSX.Element {
       }}
     >
       {/* Header */}
-      <header style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 14 }}>
+      <header
+        style={{
+          display: 'flex',
+          alignItems: 'baseline',
+          justifyContent: 'space-between',
+          gap: 14,
+        }}
+      >
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <Seal size="sm" tone="ink" label="◎" />
-          <h1 style={{ margin: 0, fontFamily: 'var(--w14-font-display)', fontWeight: 500, fontSize: '1.5rem' }}>
+          <h1
+            style={{
+              margin: 0,
+              fontFamily: 'var(--w14-font-display)',
+              fontWeight: 500,
+              fontSize: '1.5rem',
+            }}
+          >
             Foto-Werkstatt
           </h1>
-          <span className="w14-smallcaps" style={{ color: 'var(--w14-ink-faded)', letterSpacing: '0.08em', fontSize: '0.78rem' }}>
+          <span
+            className="w14-smallcaps"
+            style={{ color: 'var(--w14-ink-faded)', letterSpacing: '0.08em', fontSize: '0.78rem' }}
+          >
             {contextLine}
           </span>
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
-          <ModeChip active={mode === 'allgemein'} label="Allgemein" onClick={() => setMode('allgemein')} />
+          <ModeChip
+            active={mode === 'allgemein'}
+            label="Allgemein"
+            onClick={() => setMode('allgemein')}
+          />
           <ModeChip
             active={mode === 'produkt'}
             label="Produkt"
@@ -336,7 +368,9 @@ export function Fotos(): JSX.Element {
           {mode === 'kyc' && customerId && (
             <KycDocumentForm
               customerId={customerId}
-              readySnapshot={snapshots.find((s) => s.status === 'done' && s.r2Key && s.sha256Hex) ?? null}
+              readySnapshot={
+                snapshots.find((s) => s.status === 'done' && s.r2Key && s.sha256Hex) ?? null
+              }
               onBound={(snapId) => updateSnapshot(snapId, { status: 'done' })}
             />
           )}
@@ -416,10 +450,25 @@ function Viewfinder({
             </p>
           ) : permission === 'denied' ? (
             <>
-              <p style={{ margin: '0 0 12px', color: 'var(--w14-wax-red)', fontFamily: 'var(--w14-font-display)', fontSize: '1rem' }}>
+              <p
+                style={{
+                  margin: '0 0 12px',
+                  color: 'var(--w14-wax-red)',
+                  fontFamily: 'var(--w14-font-display)',
+                  fontSize: '1rem',
+                }}
+              >
                 Kamera-Zugriff verweigert.
               </p>
-              <p style={{ margin: '0 0 14px', color: 'var(--w14-parchment-3)', fontFamily: 'var(--w14-font-display)', fontStyle: 'italic', fontSize: '0.88rem' }}>
+              <p
+                style={{
+                  margin: '0 0 14px',
+                  color: 'var(--w14-parchment-3)',
+                  fontFamily: 'var(--w14-font-display)',
+                  fontStyle: 'italic',
+                  fontSize: '0.88rem',
+                }}
+              >
                 {error ?? 'Bitte in den Systemeinstellungen erlauben und erneut versuchen.'}
               </p>
               <Button variant="primary" onClick={onRequestPermission}>
@@ -428,10 +477,25 @@ function Viewfinder({
             </>
           ) : (
             <>
-              <p style={{ margin: '0 0 12px', color: 'var(--w14-parchment-3)', fontFamily: 'var(--w14-font-display)', fontStyle: 'italic' }}>
+              <p
+                style={{
+                  margin: '0 0 12px',
+                  color: 'var(--w14-parchment-3)',
+                  fontFamily: 'var(--w14-font-display)',
+                  fontStyle: 'italic',
+                }}
+              >
                 {error ?? 'Keine Kamera erkannt.'}
               </p>
-              <p style={{ margin: 0, color: 'var(--w14-parchment-3)', fontFamily: 'var(--w14-font-display)', fontStyle: 'italic', fontSize: '0.85rem' }}>
+              <p
+                style={{
+                  margin: 0,
+                  color: 'var(--w14-parchment-3)',
+                  fontFamily: 'var(--w14-font-display)',
+                  fontStyle: 'italic',
+                  fontSize: '0.85rem',
+                }}
+              >
                 Datei rechts ablegen oder auswählen.
               </p>
             </>
@@ -469,7 +533,11 @@ function Viewfinder({
                 }}
               >
                 {devices.map((d) => (
-                  <option key={d.deviceId} value={d.deviceId} style={{ background: '#1c1410', color: 'var(--w14-gold)' }}>
+                  <option
+                    key={d.deviceId}
+                    value={d.deviceId}
+                    style={{ background: '#1c1410', color: 'var(--w14-gold)' }}
+                  >
                     {d.label}
                   </option>
                 ))}
@@ -497,7 +565,8 @@ function Viewfinder({
               transition: 'transform var(--w14-dur-short) var(--w14-ease-curator)',
             }}
             onMouseDown={(ev) => {
-              (ev.currentTarget as HTMLButtonElement).style.transform = 'translateX(-50%) scale(0.92)';
+              (ev.currentTarget as HTMLButtonElement).style.transform =
+                'translateX(-50%) scale(0.92)';
             }}
             onMouseUp={(ev) => {
               (ev.currentTarget as HTMLButtonElement).style.transform = 'translateX(-50%)';
@@ -539,10 +608,20 @@ function Filmstrip({
       }}
     >
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <span className="w14-smallcaps" style={{ color: 'var(--w14-ink-aged)', fontSize: '0.78rem', letterSpacing: '0.08em' }}>
+        <span
+          className="w14-smallcaps"
+          style={{ color: 'var(--w14-ink-aged)', fontSize: '0.78rem', letterSpacing: '0.08em' }}
+        >
           Aufnahmen
         </span>
-        <span className="w14-tabular" style={{ fontFamily: 'var(--w14-font-mono)', fontSize: '0.72rem', color: 'var(--w14-ink-faded)' }}>
+        <span
+          className="w14-tabular"
+          style={{
+            fontFamily: 'var(--w14-font-mono)',
+            fontSize: '0.72rem',
+            color: 'var(--w14-ink-faded)',
+          }}
+        >
           {snapshots.length}
         </span>
       </header>
@@ -800,7 +879,9 @@ function KycDocumentForm({
         expiresOn,
         r2Key: readySnapshot.r2Key,
         sha256Hex: readySnapshot.sha256Hex,
-        ...(issuingAuthority.trim().length > 0 ? { issuingAuthority: issuingAuthority.trim() } : {}),
+        ...(issuingAuthority.trim().length > 0
+          ? { issuingAuthority: issuingAuthority.trim() }
+          : {}),
         ...(issuedOn.length > 0 ? { issuedOn } : {}),
       };
       await customersApi.addKycDocument(api, customerId, body);
@@ -825,8 +906,18 @@ function KycDocumentForm({
       setSubmitting(false);
     }
   }, [
-    addToast, api, canSubmit, customerId, documentNumber, documentType, expiresOn,
-    issuedOn, issuingAuthority, issuingCountry, onBound, readySnapshot,
+    addToast,
+    api,
+    canSubmit,
+    customerId,
+    documentNumber,
+    documentType,
+    expiresOn,
+    issuedOn,
+    issuingAuthority,
+    issuingCountry,
+    onBound,
+    readySnapshot,
   ]);
 
   return (
@@ -853,15 +944,46 @@ function KycDocumentForm({
           options={KYC_DOC_OPTIONS}
           onChange={setDocumentType}
         />
-        <TextField label="Ausstellerland (ISO)" value={issuingCountry} onChange={(v) => setIssuingCountry(v.toUpperCase().slice(0, 2))} mono />
-        <TextField label="Dokumentnummer *" value={documentNumber} onChange={setDocumentNumber} mono colSpan={2} />
-        <TextField label="Ausgestellt von (optional)" value={issuingAuthority} onChange={setIssuingAuthority} colSpan={2} />
-        <TextField label="Ausgestellt am (TT-MM-JJJJ)" value={issuedOn} onChange={setIssuedOn} placeholder="2020-01-15" mono />
-        <TextField label="Gültig bis (JJJJ-MM-TT) *" value={expiresOn} onChange={setExpiresOn} placeholder="2030-01-15" mono />
+        <TextField
+          label="Ausstellerland (ISO)"
+          value={issuingCountry}
+          onChange={(v) => setIssuingCountry(v.toUpperCase().slice(0, 2))}
+          mono
+        />
+        <TextField
+          label="Dokumentnummer *"
+          value={documentNumber}
+          onChange={setDocumentNumber}
+          mono
+          colSpan={2}
+        />
+        <TextField
+          label="Ausgestellt von (optional)"
+          value={issuingAuthority}
+          onChange={setIssuingAuthority}
+          colSpan={2}
+        />
+        <TextField
+          label="Ausgestellt am (TT-MM-JJJJ)"
+          value={issuedOn}
+          onChange={setIssuedOn}
+          placeholder="2020-01-15"
+          mono
+        />
+        <TextField
+          label="Gültig bis (JJJJ-MM-TT) *"
+          value={expiresOn}
+          onChange={setExpiresOn}
+          placeholder="2030-01-15"
+          mono
+        />
       </div>
 
       {error && (
-        <p role="alert" style={{ color: 'var(--w14-wax-red)', margin: '12px 0 0', fontSize: '0.88rem' }}>
+        <p
+          role="alert"
+          style={{ color: 'var(--w14-wax-red)', margin: '12px 0 0', fontSize: '0.88rem' }}
+        >
           {error}
         </p>
       )}
@@ -876,7 +998,12 @@ function KycDocumentForm({
 }
 
 function TextField({
-  label, value, onChange, mono = false, placeholder, colSpan,
+  label,
+  value,
+  onChange,
+  mono = false,
+  placeholder,
+  colSpan,
 }: {
   label: string;
   value: string;
@@ -888,7 +1015,10 @@ function TextField({
   const style: React.CSSProperties = colSpan ? { gridColumn: `span ${colSpan}` } : {};
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 4, ...style }}>
-      <span className="w14-smallcaps" style={{ color: 'var(--w14-ink-faded)', fontSize: '0.7rem', letterSpacing: '0.08em' }}>
+      <span
+        className="w14-smallcaps"
+        style={{ color: 'var(--w14-ink-faded)', fontSize: '0.7rem', letterSpacing: '0.08em' }}
+      >
         {label}
       </span>
       <input
@@ -898,10 +1028,14 @@ function TextField({
         placeholder={placeholder}
         onChange={(ev) => onChange(ev.target.value)}
         style={{
-          border: 'none', outline: 'none', borderBottom: '1px solid var(--w14-rule)',
-          background: 'transparent', padding: '4px',
+          border: 'none',
+          outline: 'none',
+          borderBottom: '1px solid var(--w14-rule)',
+          background: 'transparent',
+          padding: '4px',
           fontFamily: mono ? 'var(--w14-font-mono)' : 'var(--w14-font-body)',
-          fontSize: '0.9rem', color: 'var(--w14-ink)',
+          fontSize: '0.9rem',
+          color: 'var(--w14-ink)',
         }}
       />
     </label>
@@ -909,7 +1043,10 @@ function TextField({
 }
 
 function SelectField<T extends string>({
-  label, value, options, onChange,
+  label,
+  value,
+  options,
+  onChange,
 }: {
   label: string;
   value: T;
@@ -918,20 +1055,30 @@ function SelectField<T extends string>({
 }): JSX.Element {
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <span className="w14-smallcaps" style={{ color: 'var(--w14-ink-faded)', fontSize: '0.7rem', letterSpacing: '0.08em' }}>
+      <span
+        className="w14-smallcaps"
+        style={{ color: 'var(--w14-ink-faded)', fontSize: '0.7rem', letterSpacing: '0.08em' }}
+      >
         {label}
       </span>
       <select
         value={value}
         onChange={(ev) => onChange(ev.target.value as T)}
         style={{
-          border: 'none', outline: 'none', borderBottom: '1px solid var(--w14-rule)',
-          background: 'transparent', padding: '4px',
-          fontFamily: 'var(--w14-font-body)', fontSize: '0.9rem', color: 'var(--w14-ink)',
+          border: 'none',
+          outline: 'none',
+          borderBottom: '1px solid var(--w14-rule)',
+          background: 'transparent',
+          padding: '4px',
+          fontFamily: 'var(--w14-font-body)',
+          fontSize: '0.9rem',
+          color: 'var(--w14-ink)',
         }}
       >
         {options.map((o) => (
-          <option key={o.value} value={o.value}>{o.label}</option>
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
         ))}
       </select>
     </label>
@@ -943,7 +1090,11 @@ function SelectField<T extends string>({
 // ────────────────────────────────────────────────────────────────────────
 
 function ModeChip({
-  active, label, onClick, disabled = false, disabledReason,
+  active,
+  label,
+  onClick,
+  disabled = false,
+  disabledReason,
 }: {
   active: boolean;
   label: string;

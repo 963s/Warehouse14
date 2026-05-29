@@ -6,7 +6,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { applyMigrations, startTestDb, type TestDb } from '../helpers/testDb.js';
+import { type TestDb, applyMigrations, startTestDb } from '../helpers/testDb.js';
 
 describe('migration 0001_extensions', () => {
   let testDb: TestDb;
@@ -26,7 +26,7 @@ describe('migration 0001_extensions', () => {
     ['citext', 'better-auth + case-insensitive identifiers'],
     ['btree_gist', 'ADR-0020 §2: slot-overlap exclusion constraint'],
     ['pg_stat_statements', 'ADR-0012 §6: Grafana query observability'],
-  ])('extension %s is installed (%s)', async name => {
+  ])('extension %s is installed (%s)', async (name) => {
     const rows = await testDb.migratorSql<{ extname: string }[]>`
       SELECT extname FROM pg_extension WHERE extname = ${name}
     `;

@@ -33,7 +33,7 @@ export function fromCents(cents: bigint): string {
 
 function roundHalfEven(num: bigint, den: bigint): bigint {
   if (den === 0n) throw new Error('roundHalfEven: division by zero');
-  const negative = (num < 0n) !== (den < 0n);
+  const negative = num < 0n !== den < 0n;
   const absNum = num < 0n ? -num : num;
   const absDen = den < 0n ? -den : den;
   const q = absNum / absDen;

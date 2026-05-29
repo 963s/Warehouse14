@@ -10,7 +10,7 @@
 import { and, eq, isNull } from 'drizzle-orm';
 
 import type { AppDb } from '@warehouse14/db/client';
-import { users, sessions } from '@warehouse14/db/schema';
+import { sessions, users } from '@warehouse14/db/schema';
 
 export type ActorRole = 'ADMIN' | 'CASHIER' | 'READONLY';
 
@@ -39,7 +39,10 @@ export interface ActorWithSession {
  * Skips soft-deleted users so a tombstoned account cannot reactivate by
  * presenting an old cookie. Returns null on miss; caller treats as 401.
  */
-export async function loadActorBySession(db: AppDb, sessionId: string): Promise<ActorWithSession | null> {
+export async function loadActorBySession(
+  db: AppDb,
+  sessionId: string,
+): Promise<ActorWithSession | null> {
   const rows = await db
     .select({
       userId: users.id,

@@ -13,7 +13,7 @@
  * One slow query doesn't block the others.
  */
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
 import { type CustomerDetail, customersApi } from '@warehouse14/api-client';
@@ -25,6 +25,7 @@ import { CustomerEditDialog } from './CustomerEditDialog.js';
 import { CustomerAnkaufHistory, CustomerSalesHistory } from './CustomerHistoryPanels.js';
 import { CustomerTrustDialog } from './CustomerTrustDialog.js';
 import { KycCaptureModal } from './KycCaptureModal.js';
+import { KycLocalDocs, kycLocalQueryKey } from './KycLocalDocs.js';
 
 export interface CustomerDetailPanelProps {
   customerId: string | null;
@@ -54,6 +55,7 @@ function DetailLoaded({ customerId }: { customerId: string }): JSX.Element {
 // ────────────────────────────────────────────────────────────────────────
 
 function CustomerCard({ detail }: { detail: CustomerDetail }): JSX.Element {
+  const qc = useQueryClient();
   const [editOpen, setEditOpen] = useState<boolean>(false);
   const [trustOpen, setTrustOpen] = useState<boolean>(false);
   const [kycOpen, setKycOpen] = useState<boolean>(false);
@@ -210,6 +212,8 @@ function CustomerCard({ detail }: { detail: CustomerDetail }): JSX.Element {
             />
           )}
         </DataGrid>
+        <KycLocalDocs customerId={detail.id} onPromoteTrust={() => setTrustOpen(true)} />
+
         <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
           <Button variant="ghost" size="md" onClick={() => setKycOpen(true)}>
             Ausweis erfassen
@@ -223,7 +227,13 @@ function CustomerCard({ detail }: { detail: CustomerDetail }): JSX.Element {
 
       <CustomerEditDialog open={editOpen} customer={detail} onClose={() => setEditOpen(false)} />
       <CustomerTrustDialog open={trustOpen} customer={detail} onClose={() => setTrustOpen(false)} />
-      {kycOpen && <KycCaptureModal customerId={detail.id} onClose={() => setKycOpen(false)} />}
+      {kycOpen && (
+        <KycCaptureModal
+          customerId={detail.id}
+          onClose={() => setKycOpen(false)}
+          onSaved={() => void qc.invalidateQueries({ queryKey: kycLocalQueryKey(detail.id) })}
+        />
+      )}
     </section>
   );
 }

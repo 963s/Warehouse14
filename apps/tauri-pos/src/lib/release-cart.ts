@@ -20,7 +20,7 @@
  * the operator UX has already moved on).
  */
 
-import { productsApi, type ReleaseReason } from '@warehouse14/api-client';
+import { type ReleaseReason, productsApi } from '@warehouse14/api-client';
 
 import type { ApiClient } from '@warehouse14/api-client';
 import type { CartLine } from '../state/cart-store.js';

@@ -13,15 +13,15 @@
  * and a new CURRENT row is inserted in one TX.
  */
 
-import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useMemo, useState } from 'react';
 
 import {
   ApiError,
   BELEGTEXT_KIND_LABELS,
-  belegtextApi,
   type BelegtextKind,
   type BelegtextRow,
+  belegtextApi,
 } from '@warehouse14/api-client';
 import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 

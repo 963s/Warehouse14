@@ -64,9 +64,10 @@ export function Button({
     fontWeight: 500,
     cursor: rest.disabled ? 'not-allowed' : 'pointer',
     opacity: rest.disabled ? 0.55 : 1,
-    transition: 'border-color var(--w14-dur-short) var(--w14-ease-curator),' +
-                ' background-color var(--w14-dur-short) var(--w14-ease-curator),' +
-                ' box-shadow var(--w14-dur-short) var(--w14-ease-curator)',
+    transition:
+      'border-color var(--w14-dur-short) var(--w14-ease-curator),' +
+      ' background-color var(--w14-dur-short) var(--w14-ease-curator),' +
+      ' box-shadow var(--w14-dur-short) var(--w14-ease-curator)',
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',

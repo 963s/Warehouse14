@@ -25,53 +25,60 @@
  *   • invalidates dashboard + products-list queries
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   ApiError,
-  transactionsApi,
   type FinalizeBody,
   type FinalizeLineItem,
   type FinalizeResponse,
   type PaymentMethod,
+  customersApi,
+  transactionsApi,
 } from '@warehouse14/api-client';
-import {
-  Button,
-  DiamondRule,
-  MoneyAmount,
-  ParchmentCard,
-} from '@warehouse14/ui-kit';
 
-import { useApiClient } from '../../lib/api-context.js';
-import { useCartStore, type CartLine } from '../../state/cart-store.js';
-import { useToastStore } from '../../state/toast-store.js';
-import { useHardwareStore } from '../../state/hardware-store.js';
-import { dashboardQueryKey } from '../../hooks/useDashboardSummary.js';
+const TAX_LEGAL_TEXTS: Record<string, string> = {
+  STANDARD_19:
+    'Im Preis ist die gesetzliche Umsatzsteuer von 19 % gemäß § 12 Abs. 1 UStG enthalten.',
+  REDUCED_7: 'Im Preis ist die gesetzliche Umsatzsteuer von 7 % gemäß § 12 Abs. 2 UStG enthalten.',
+  MARGIN_25A: 'Differenzbesteuerung gemäß § 25a UStG. Vorsteuerabzug ist ausgeschlossen.',
+  INVESTMENT_GOLD_25C: 'Steuerfreie Lieferung von Anlagegold gemäß § 25c UStG.',
+  REVERSE_CHARGE_13B: 'Steuerschuldnerschaft des Leistungsempfängers nach §13b Abs. 2 Nr. 9 UStG.',
+};
+import { Button, DiamondRule, MoneyAmount, ParchmentCard } from '@warehouse14/ui-kit';
+
+import { ZvtSpinner } from '../../components/hardware/ZvtSpinner.js';
 import { currentShiftQueryKey } from '../../hooks/useCurrentShift.js';
+import { dashboardQueryKey } from '../../hooks/useDashboardSummary.js';
+import { useApiClient } from '../../lib/api-context.js';
 import {
-  fromCents,
-  toCents,
   type HeaderTotals,
   type LineMath,
+  computeLineMath,
+  fromCents,
+  sumHeader,
+  toCents,
 } from '../../lib/cart-math.js';
 import {
+  type ThermalReceiptData,
+  type ZvtResult,
   describeHardwareError,
   isHardwareError,
   isRunningInTauri,
   thermalClient,
   zvtClient,
-  type ThermalReceiptData,
-  type ZvtResult,
 } from '../../lib/hardware-client.js';
 import {
+  type TseSessionResult,
   closeTseSession,
   newIntentionId,
   openTseSession,
-  type TseSessionResult,
 } from '../../lib/tse-service.js';
-import { ZvtSpinner } from '../../components/hardware/ZvtSpinner.js';
+import { type CartLine, useCartStore } from '../../state/cart-store.js';
+import { useHardwareStore } from '../../state/hardware-store.js';
 import { useSessionStore } from '../../state/session-store.js';
+import { useToastStore } from '../../state/toast-store.js';
 
 import { EuroInput } from '../kasse/EuroInput.js';
 
@@ -88,7 +95,7 @@ export function BezahlenDialog({
   onClose,
   lines,
   perLineMath,
-  totals,
+  totals: _totals,
 }: BezahlenDialogProps): JSX.Element | null {
   const api = useApiClient();
   const qc = useQueryClient();
@@ -107,6 +114,77 @@ export function BezahlenDialog({
   const [finalized, setFinalized] = useState<FinalizeResponse | null>(null);
   /** Set while the ZVT terminal owns the cardholder's attention. */
   const [zvtBusy, setZvtBusy] = useState<boolean>(false);
+
+  // B2B state
+  const [isB2b, setIsB2b] = useState<boolean>(false);
+  const [vatId, setVatId] = useState<string>('');
+  const [viesStatus, setViesStatus] = useState<
+    'idle' | 'checking' | 'valid' | 'invalid' | 'unavailable' | 'timeout'
+  >('idle');
+  const [viesCompany, setViesCompany] = useState<string>('');
+  const [viesAddress, setViesAddress] = useState<string>('');
+  const [manualCompany, setManualCompany] = useState<string>('');
+  const [manualAddress, setManualAddress] = useState<string>('');
+
+  const cleanVatId = useMemo(() => vatId.replace(/[^A-Za-z0-9]/g, '').toUpperCase(), [vatId]);
+  const companyName = useMemo(() => {
+    return viesCompany && viesCompany !== '---' ? viesCompany : manualCompany;
+  }, [viesCompany, manualCompany]);
+
+  const b2bActive =
+    isB2b && (viesStatus === 'valid' || viesStatus === 'unavailable' || viesStatus === 'timeout');
+
+  const adjustedPerLineMath = useMemo(() => {
+    return lines.map((line, idx) => {
+      const actualTaxCode =
+        b2bActive && line.taxTreatmentCode === 'STANDARD_19'
+          ? 'REVERSE_CHARGE_13B'
+          : line.taxTreatmentCode;
+      const originalMath = perLineMath[idx];
+      if (!originalMath) throw new Error('cart-math/lines length mismatch');
+      if (actualTaxCode === line.taxTreatmentCode) {
+        return originalMath;
+      }
+      return computeLineMath({
+        taxTreatmentCode: actualTaxCode,
+        listPriceEur: line.listPriceEur,
+        acquisitionCostEur: line.acquisitionCostEur,
+      });
+    });
+  }, [lines, perLineMath, b2bActive]);
+
+  const adjustedTotals = useMemo(() => sumHeader(adjustedPerLineMath), [adjustedPerLineMath]);
+
+  const verifyVat = useCallback(async () => {
+    if (!vatId.trim()) return;
+    setViesStatus('checking');
+    try {
+      const res = await api.request<{
+        valid: boolean;
+        name?: string;
+        address?: string;
+        error?: string;
+      }>('GET', `/api/customers/verify-vat?vatId=${encodeURIComponent(vatId)}`);
+
+      if (res.valid) {
+        setViesStatus('valid');
+        setViesCompany(res.name || '---');
+        setViesAddress(res.address || '---');
+        setManualCompany(res.name && res.name !== '---' ? res.name : '');
+        setManualAddress(res.address && res.address !== '---' ? res.address : '');
+      } else {
+        if (res.error === 'VIES_TIMEOUT') {
+          setViesStatus('timeout');
+        } else if (res.error === 'VIES_UNAVAILABLE') {
+          setViesStatus('unavailable');
+        } else {
+          setViesStatus('invalid');
+        }
+      }
+    } catch {
+      setViesStatus('unavailable');
+    }
+  }, [api, vatId]);
 
   /**
    * §19.3 W-1/W-2 — synchronous mutex.
@@ -156,6 +234,14 @@ export function BezahlenDialog({
       setZvtBusy(false);
       inFlightRef.current = false;
       idempotencyKeyRef.current = newIntentionId();
+
+      setIsB2b(false);
+      setVatId('');
+      setViesStatus('idle');
+      setViesCompany('');
+      setViesAddress('');
+      setManualCompany('');
+      setManualAddress('');
     }
   }, [open]);
 
@@ -172,7 +258,7 @@ export function BezahlenDialog({
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose, submitting]);
 
-  const totalCents = useMemo(() => toCents(totals.totalEur), [totals.totalEur]);
+  const totalCents = useMemo(() => toCents(adjustedTotals.totalEur), [adjustedTotals.totalEur]);
   const cashCents = useMemo(() => {
     if (cashReceivedEur.length === 0) return 0n;
     try {
@@ -184,33 +270,15 @@ export function BezahlenDialog({
   const validCash = /^\d{1,16}(\.\d{1,2})?$/.test(cashReceivedEur);
   const enoughCash = validCash && cashCents >= totalCents;
   const changeCents = enoughCash ? cashCents - totalCents : 0n;
-  const canSubmit = enoughCash && !submitting && finalized === null && lines.length > 0;
 
-  /**
-   * Build the line-items array — identical for cash and card paths.
-   */
-  const buildItems = useCallback((): FinalizeLineItem[] => {
-    return lines.map((line, idx) => {
-      const math = perLineMath[idx];
-      if (!math) throw new Error('cart-math/lines length mismatch');
-      const item: FinalizeLineItem = {
-        productId: line.productId,
-        reservationSessionId: line.reservationSessionId,
-        lineSubtotalEur: fromCents(math.lineSubtotalCents),
-        lineVatEur: fromCents(math.lineVatCents),
-        lineTotalEur: fromCents(math.lineTotalCents),
-        appliedTaxTreatmentCode: line.taxTreatmentCode,
-        appliedVatRate: math.appliedVatRate,
-        acquisitionCostEurSnapshot:
-          math.acquisitionCostSnapshotCents !== null
-            ? fromCents(math.acquisitionCostSnapshotCents)
-            : null,
-        marginEur: math.marginCents !== null ? fromCents(math.marginCents) : null,
-        displayOrder: idx + 1,
-      };
-      return item;
-    });
-  }, [lines, perLineMath]);
+  const b2bValid =
+    !isB2b ||
+    ((viesStatus === 'valid' || viesStatus === 'unavailable' || viesStatus === 'timeout') &&
+      companyName.trim().length > 0 &&
+      cleanVatId.length >= 4);
+
+  const canSubmit = enoughCash && !submitting && finalized === null && lines.length > 0 && b2bValid;
+  const canSubmitCard = lines.length > 0 && !submitting && b2bValid;
 
   /**
    * Run the TSE INTENTION → finalize → FINISH sandwich. Returns the
@@ -225,8 +293,37 @@ export function BezahlenDialog({
       payments: NonNullable<FinalizeBody['payments']>,
       paymentKind: 'Bar' | 'Unbar',
     ): Promise<FinalizeResponse> => {
-      const headTreatment = lines[0]?.taxTreatmentCode;
-      if (!headTreatment) throw new Error('Warenkorb leer');
+      let customerId: string | null = null;
+      if (isB2b) {
+        const cleanVat = vatId.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+
+        // 1. Search existing customers by name
+        const searchRes = await customersApi.list(api, { q: companyName });
+        for (const item of searchRes.items) {
+          const detail = await customersApi.get(api, item.id);
+          if (detail.vatId === cleanVat) {
+            customerId = detail.id;
+            break;
+          }
+        }
+
+        // 2. If not found, create new customer
+        if (!customerId) {
+          const companyAddress = viesAddress && viesAddress !== '---' ? viesAddress : manualAddress;
+          const createBody = {
+            fullName: companyName,
+            vatId: cleanVat,
+            notes: 'Automated B2B registration via checkout (VIES verified)',
+            ...(companyAddress?.trim() ? { address: companyAddress.trim() } : {}),
+          };
+          const createRes = await customersApi.create(api, createBody);
+          customerId = createRes.id;
+        }
+      }
+
+      const headTreatment = b2bActive
+        ? 'REVERSE_CHARGE_13B'
+        : lines[0]?.taxTreatmentCode || 'STANDARD_19';
 
       // 1. TSE INTENTION — best-effort; failure logs a toast but doesn't block.
       const intentionId = newIntentionId();
@@ -237,17 +334,41 @@ export function BezahlenDialog({
         paymentKind,
       });
 
+      const items = lines.map((line, idx) => {
+        const math = adjustedPerLineMath[idx];
+        if (!math) throw new Error('cart-math/lines length mismatch');
+        const item: FinalizeLineItem = {
+          productId: line.productId,
+          reservationSessionId: line.reservationSessionId,
+          lineSubtotalEur: fromCents(math.lineSubtotalCents),
+          lineVatEur: fromCents(math.lineVatCents),
+          lineTotalEur: fromCents(math.lineTotalCents),
+          appliedTaxTreatmentCode:
+            b2bActive && line.taxTreatmentCode === 'STANDARD_19'
+              ? 'REVERSE_CHARGE_13B'
+              : line.taxTreatmentCode,
+          appliedVatRate: math.appliedVatRate,
+          acquisitionCostEurSnapshot:
+            math.acquisitionCostSnapshotCents !== null
+              ? fromCents(math.acquisitionCostSnapshotCents)
+              : null,
+          marginEur: math.marginCents !== null ? fromCents(math.marginCents) : null,
+          displayOrder: idx + 1,
+        };
+        return item;
+      });
+
       // 2. Finalize on the API. The idempotency key is held in a ref so
       //    every retry path (step-up, network blip) sends the SAME value
       //    — server's partial UNIQUE INDEX dedupes (§19.2 C-4).
       const body: FinalizeBody = {
         direction: 'VERKAUF',
-        customerId: null,
-        subtotalEur: totals.subtotalEur,
-        vatEur: totals.vatEur,
-        totalEur: totals.totalEur,
+        customerId,
+        subtotalEur: adjustedTotals.subtotalEur,
+        vatEur: adjustedTotals.vatEur,
+        totalEur: adjustedTotals.totalEur,
         taxTreatmentCode: headTreatment,
-        items: buildItems(),
+        items,
         payments,
         idempotencyKey: idempotencyKeyRef.current,
       };
@@ -258,7 +379,7 @@ export function BezahlenDialog({
       //    KassenSichV signature block on the paper receipt.
       lastTseSignatureRef.current = null;
       if ('intention' in intentionRes) {
-        const totalCents = Number(toCents(totals.totalEur));
+        const totalCents = Number(toCents(adjustedTotals.totalEur));
         const finishRes: TseSessionResult = await closeTseSession({
           config: hardwareCfg.tse,
           intentionId,
@@ -291,7 +412,20 @@ export function BezahlenDialog({
       }
       return result;
     },
-    [addToast, api, buildItems, hardwareCfg.tse, lines, totals],
+    [
+      addToast,
+      api,
+      hardwareCfg.tse,
+      lines,
+      adjustedTotals,
+      b2bActive,
+      isB2b,
+      vatId,
+      companyName,
+      viesAddress,
+      manualAddress,
+      adjustedPerLineMath,
+    ],
   );
 
   /**
@@ -312,7 +446,25 @@ export function BezahlenDialog({
       const tse = lastTseSignatureRef.current;
       const cashPayment = payments.find((p) => p.paymentMethod === 'CASH');
       const cardPayment = payments.find((p) => p.paymentMethod === 'ZVT_CARD');
-      const paymentLabel = cashPayment ? 'Bar' : cardPayment ? `Karte ${cardPayment.zvtCardBrand ?? ''}`.trim() : 'Zahlung';
+      const paymentLabel = cashPayment
+        ? 'Bar'
+        : cardPayment
+          ? `Karte ${cardPayment.zvtCardBrand ?? ''}`.trim()
+          : 'Zahlung';
+
+      const activeTaxCodes = Array.from(
+        new Set(
+          lines.map((line) =>
+            b2bActive && line.taxTreatmentCode === 'STANDARD_19'
+              ? 'REVERSE_CHARGE_13B'
+              : line.taxTreatmentCode,
+          ),
+        ),
+      );
+
+      const legalFooters = activeTaxCodes
+        .map((code) => TAX_LEGAL_TEXTS[code])
+        .filter(Boolean) as string[];
 
       const data: ThermalReceiptData = {
         // V1: shop info is constant in code. Phase 1.5 will pull from
@@ -322,22 +474,28 @@ export function BezahlenDialog({
         shopVatId: 'DE000000000',
         shopPhone: null,
         receiptLocator: result.receiptLocator,
-        printedAt: new Date(result.finalizedAt).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }),
+        printedAt: new Date(result.finalizedAt).toLocaleString('de-DE', {
+          timeZone: 'Europe/Berlin',
+        }),
         cashierName: sessionActor ? `Bediener ${sessionActor.id.slice(0, 6)}` : 'Bediener',
         shiftId: null,
         items: lines.map((line, idx) => {
-          const math = perLineMath[idx];
+          const math = adjustedPerLineMath[idx];
           return {
             name: line.name,
             quantity: 1,
-            unitPriceEur: line.listPriceEur,
+            unitPriceEur: math ? fromCents(math.lineTotalCents) : line.listPriceEur,
             lineTotalEur: math ? fromCents(math.lineTotalCents) : line.listPriceEur,
-            vatLabel: math ? `${math.appliedVatRate}%` : '',
+            vatLabel: math
+              ? math.appliedVatRate !== null
+                ? `${Math.round(Number(math.appliedVatRate) * 100)}%`
+                : ''
+              : '',
           };
         }),
-        subtotalEur: totals.subtotalEur,
-        vatEur: totals.vatEur,
-        totalEur: totals.totalEur,
+        subtotalEur: adjustedTotals.subtotalEur,
+        vatEur: adjustedTotals.vatEur,
+        totalEur: adjustedTotals.totalEur,
         paymentMethodLabel: paymentLabel,
         cashReceivedEur: cashPayment ? cashReceivedEur || cashPayment.amountEur : null,
         changeEur: cashPayment && cashReceivedEur ? fromCents(changeCentsForPrint()) : null,
@@ -345,7 +503,11 @@ export function BezahlenDialog({
         tseSignatureCounter: tse?.signatureCounter ?? '0',
         tseTransactionNumber: tse?.transactionNumber ?? '0',
         tseQrPayload: tse?.qrPayload ?? `OFFLINE;tx=${result.id}`,
-        footerLines: ['Vielen Dank für Ihren Besuch.', 'Beleg auf Wunsch elektronisch.'],
+        footerLines: [
+          'Vielen Dank für Ihren Besuch.',
+          'Beleg auf Wunsch elektronisch.',
+          ...legalFooters,
+        ],
       };
 
       void thermalClient
@@ -354,18 +516,30 @@ export function BezahlenDialog({
           addToast({
             tone: 'alert',
             title: 'Druck fehlgeschlagen',
-            body: isHardwareError(err) ? describeHardwareError(err) : 'Drucker prüfen — Beleg digital ausgegeben.',
+            body: isHardwareError(err)
+              ? describeHardwareError(err)
+              : 'Drucker prüfen — Beleg digital ausgegeben.',
           });
         });
     },
-    [addToast, cashReceivedEur, hardwareCfg.thermal.ip, hardwareCfg.thermal.port, lines, perLineMath, sessionActor, totals],
+    [
+      addToast,
+      cashReceivedEur,
+      hardwareCfg.thermal.ip,
+      hardwareCfg.thermal.port,
+      lines,
+      adjustedPerLineMath,
+      adjustedTotals,
+      b2bActive,
+      sessionActor,
+    ],
   );
 
   /** Helper for the print path — recomputes change from cash + total. */
   function changeCentsForPrint(): bigint {
     try {
       const cash = toCents(cashReceivedEur || '0');
-      const total = toCents(totals.totalEur);
+      const total = toCents(adjustedTotals.totalEur);
       return cash >= total ? cash - total : 0n;
     } catch {
       return 0n;
@@ -388,7 +562,7 @@ export function BezahlenDialog({
     setError(null);
     try {
       const payments: FinalizeBody['payments'] = [
-        { paymentMethod: 'CASH', amountEur: totals.totalEur },
+        { paymentMethod: 'CASH', amountEur: adjustedTotals.totalEur },
       ];
       const result = await finalizeWithTse(payments, 'Bar');
       setFinalized(result);
@@ -410,7 +584,7 @@ export function BezahlenDialog({
       setSubmitting(false);
       inFlightRef.current = false;
     }
-  }, [addToast, canSubmit, finalizeWithTse, firePrintReceipt, qc, totals.totalEur]);
+  }, [addToast, canSubmit, finalizeWithTse, firePrintReceipt, qc, adjustedTotals.totalEur]);
 
   /**
    * CARD (ZVT) path — opens spinner, authorises on the terminal, then
@@ -442,7 +616,7 @@ export function BezahlenDialog({
     setError(null);
     setZvtBusy(true);
 
-    const totalCents = Number(toCents(totals.totalEur));
+    const totalCents = Number(toCents(adjustedTotals.totalEur));
     let zvt: ZvtResult;
     try {
       zvt = await zvtClient.authorize(
@@ -451,9 +625,7 @@ export function BezahlenDialog({
       );
     } catch (err) {
       setError(
-        isHardwareError(err)
-          ? describeHardwareError(err)
-          : 'Karten-Terminal nicht erreichbar.',
+        isHardwareError(err) ? describeHardwareError(err) : 'Karten-Terminal nicht erreichbar.',
       );
       // Release the mutex + UI flags so the operator can re-attempt.
       setZvtBusy(false);
@@ -475,7 +647,7 @@ export function BezahlenDialog({
       const payments: FinalizeBody['payments'] = [
         {
           paymentMethod: 'ZVT_CARD' as PaymentMethod,
-          amountEur: totals.totalEur,
+          amountEur: adjustedTotals.totalEur,
           ...(zvt.authorizationCode ? { zvtReceiptNumber: zvt.authorizationCode } : {}),
           ...(zvt.cardBrand ? { zvtCardBrand: zvt.cardBrand } : {}),
           ...(zvt.cardPanMasked ? { zvtCardPanMasked: zvt.cardPanMasked } : {}),
@@ -514,7 +686,7 @@ export function BezahlenDialog({
     hardwareCfg.zvt.port,
     lines.length,
     qc,
-    totals.totalEur,
+    adjustedTotals.totalEur,
   ]);
 
   const closeAfterFinalize = useCallback(() => {
@@ -565,18 +737,30 @@ export function BezahlenDialog({
           <PaymentInput
             paymentChoice={paymentChoice}
             setPaymentChoice={setPaymentChoice}
-            totalEur={totals.totalEur}
+            totalEur={adjustedTotals.totalEur}
             cashReceivedEur={cashReceivedEur}
             setCashReceivedEur={setCashReceivedEur}
             changeEur={fromCents(changeCents)}
             enoughCash={enoughCash}
             cardConfigured={hardwareCfg.zvt.ip.length > 0}
             canSubmitCash={canSubmit}
-            canSubmitCard={lines.length > 0 && !submitting}
+            canSubmitCard={canSubmitCard}
             submitting={submitting}
             error={error}
             onSubmit={dispatchSubmit}
             onCancel={onClose}
+            isB2b={isB2b}
+            setIsB2b={setIsB2b}
+            vatId={vatId}
+            setVatId={setVatId}
+            viesStatus={viesStatus}
+            viesCompany={viesCompany}
+            viesAddress={viesAddress}
+            manualCompany={manualCompany}
+            setManualCompany={setManualCompany}
+            manualAddress={manualAddress}
+            setManualAddress={setManualAddress}
+            verifyVat={verifyVat}
           />
         ) : (
           <ReceiptResult
@@ -589,7 +773,7 @@ export function BezahlenDialog({
       </ParchmentCard>
 
       {/* ZVT terminal owns the cardholder's attention — block the UI. */}
-      {zvtBusy && <ZvtSpinner amountEur={totals.totalEur} />}
+      {zvtBusy && <ZvtSpinner amountEur={adjustedTotals.totalEur} />}
     </div>
   );
 }
@@ -613,6 +797,18 @@ function PaymentInput({
   error,
   onSubmit,
   onCancel,
+  isB2b,
+  setIsB2b,
+  vatId,
+  setVatId,
+  viesStatus,
+  viesCompany,
+  viesAddress,
+  manualCompany,
+  setManualCompany,
+  manualAddress,
+  setManualAddress,
+  verifyVat,
 }: {
   paymentChoice: 'CASH' | 'ZVT_CARD';
   setPaymentChoice: (next: 'CASH' | 'ZVT_CARD') => void;
@@ -628,6 +824,18 @@ function PaymentInput({
   error: string | null;
   onSubmit: () => void;
   onCancel: () => void;
+  isB2b: boolean;
+  setIsB2b: (v: boolean) => void;
+  vatId: string;
+  setVatId: (v: string) => void;
+  viesStatus: 'idle' | 'checking' | 'valid' | 'invalid' | 'unavailable' | 'timeout';
+  viesCompany: string;
+  viesAddress: string;
+  manualCompany: string;
+  setManualCompany: (v: string) => void;
+  manualAddress: string;
+  setManualAddress: (v: string) => void;
+  verifyVat: () => void;
 }): JSX.Element {
   const buttonLabel = (() => {
     if (submitting) return 'Schließt ab…';
@@ -674,6 +882,175 @@ function PaymentInput({
         />
       </div>
 
+      {/* B2B Reverse Charge Toggle & Panel */}
+      <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <label
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            cursor: submitting ? 'not-allowed' : 'pointer',
+            fontFamily: 'var(--w14-font-display)',
+            fontSize: '0.9rem',
+            color: 'var(--w14-ink-aged)',
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={isB2b}
+            onChange={(e) => setIsB2b(e.target.checked)}
+            disabled={submitting}
+            style={{
+              accentColor: 'var(--w14-gold)',
+              cursor: submitting ? 'not-allowed' : 'pointer',
+              width: 16,
+              height: 16,
+            }}
+          />
+          <span>B2B Reverse Charge (§ 13b UStG)</span>
+        </label>
+
+        {isB2b && (
+          <div
+            style={{
+              padding: 12,
+              borderRadius: 6,
+              backgroundColor: 'var(--w14-parchment-2)',
+              border: '1px dashed var(--w14-rule)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+            }}
+          >
+            <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ flex: 1 }}>
+                <input
+                  type="text"
+                  placeholder="USt-IdNr. (z.B. DE123456789)"
+                  value={vatId}
+                  onChange={(e) => setVatId(e.target.value)}
+                  disabled={submitting || viesStatus === 'checking'}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    borderRadius: 4,
+                    border: '1px solid var(--w14-rule)',
+                    backgroundColor: 'var(--w14-parchment-1)',
+                    color: 'var(--w14-ink-aged)',
+                    fontFamily: 'var(--w14-font-mono)',
+                    fontSize: '0.9rem',
+                  }}
+                />
+              </div>
+              <Button
+                variant="ghost"
+                onClick={verifyVat}
+                disabled={submitting || viesStatus === 'checking' || !vatId.trim()}
+                style={{ alignSelf: 'stretch', padding: '0 16px' }}
+              >
+                {viesStatus === 'checking' ? 'Prüft...' : 'Prüfen'}
+              </Button>
+            </div>
+
+            {/* VIES Status display */}
+            {viesStatus !== 'idle' && (
+              <div style={{ fontSize: '0.85rem', fontFamily: 'var(--w14-font-display)' }}>
+                {viesStatus === 'checking' && (
+                  <span style={{ color: 'var(--w14-ink-faded)', fontStyle: 'italic' }}>
+                    USt-IdNr. wird über EU-VIES validiert…
+                  </span>
+                )}
+                {viesStatus === 'valid' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <span style={{ color: 'var(--w14-gold)', fontWeight: 600 }}>
+                      ✓ USt-IdNr. gültig
+                    </span>
+                    {viesCompany && viesCompany !== '---' && (
+                      <div style={{ color: 'var(--w14-ink-aged)' }}>
+                        <strong>Firma:</strong> {viesCompany}
+                      </div>
+                    )}
+                    {viesAddress && viesAddress !== '---' && (
+                      <div style={{ color: 'var(--w14-ink-faded)' }}>
+                        <strong>Adresse:</strong> {viesAddress}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {viesStatus === 'invalid' && (
+                  <span style={{ color: 'var(--w14-wax-red)', fontWeight: 600 }}>
+                    ✗ Ungültige USt-IdNr. laut EU-VIES-Datenbank.
+                  </span>
+                )}
+                {viesStatus === 'unavailable' && (
+                  <span style={{ color: 'var(--w14-wax-red)' }}>
+                    ⚠ VIES-Dienst nicht erreichbar. Manuelle Prüfung erforderlich.
+                  </span>
+                )}
+                {viesStatus === 'timeout' && (
+                  <span style={{ color: 'var(--w14-wax-red)' }}>
+                    ⚠ Zeitüberschreitung bei VIES-Prüfung. Manuelle Prüfung erforderlich.
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* Manual fallback fields if name/address is masked or VIES is down/timeout */}
+            {(viesStatus === 'unavailable' ||
+              viesStatus === 'timeout' ||
+              (viesStatus === 'valid' && (!viesCompany || viesCompany === '---'))) && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
+                <div
+                  style={{
+                    fontSize: '0.8rem',
+                    color: 'var(--w14-ink-faded)',
+                    fontStyle: 'italic',
+                  }}
+                >
+                  {viesStatus === 'valid'
+                    ? 'Daten durch EU-Datenschutz ausgeblendet. Bitte manuell ergänzen:'
+                    : 'Bitte Firmenname und Adresse manuell eintragen:'}
+                </div>
+                <input
+                  type="text"
+                  placeholder="Firmenname"
+                  value={manualCompany}
+                  onChange={(e) => setManualCompany(e.target.value)}
+                  disabled={submitting}
+                  style={{
+                    width: '100%',
+                    padding: '6px 10px',
+                    borderRadius: 4,
+                    border: '1px solid var(--w14-rule)',
+                    backgroundColor: 'var(--w14-parchment-1)',
+                    color: 'var(--w14-ink-aged)',
+                    fontFamily: 'var(--w14-font-display)',
+                    fontSize: '0.85rem',
+                  }}
+                />
+                <input
+                  type="text"
+                  placeholder="Adresse (z.B. Str, PLZ, Ort)"
+                  value={manualAddress}
+                  onChange={(e) => setManualAddress(e.target.value)}
+                  disabled={submitting}
+                  style={{
+                    width: '100%',
+                    padding: '6px 10px',
+                    borderRadius: 4,
+                    border: '1px solid var(--w14-rule)',
+                    backgroundColor: 'var(--w14-parchment-1)',
+                    color: 'var(--w14-ink-aged)',
+                    fontFamily: 'var(--w14-font-display)',
+                    fontSize: '0.85rem',
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       <DiamondRule label="Beleg" />
 
       <table
@@ -685,11 +1062,7 @@ function PaymentInput({
         }}
       >
         <tbody>
-          <Row
-            label="Zu zahlen"
-            value={<MoneyAmount valueEur={totalEur} emphasis />}
-            emphasised
-          />
+          <Row label="Zu zahlen" value={<MoneyAmount valueEur={totalEur} emphasis />} emphasised />
         </tbody>
       </table>
 
@@ -717,12 +1090,7 @@ function PaymentInput({
             <tbody>
               <Row
                 label="Wechselgeld"
-                value={
-                  <MoneyAmount
-                    valueEur={enoughCash ? changeEur : '0.00'}
-                    emphasis
-                  />
-                }
+                value={<MoneyAmount valueEur={enoughCash ? changeEur : '0.00'} emphasis />}
                 emphasised
                 valueColor={enoughCash ? 'var(--w14-gold)' : 'var(--w14-ink-faded)'}
               />
@@ -740,8 +1108,7 @@ function PaymentInput({
             textAlign: 'center',
           }}
         >
-          Bei Klick wird das Karten-Terminal angesprochen.
-          Der Kunde bestätigt am Terminal.
+          Bei Klick wird das Karten-Terminal angesprochen. Der Kunde bestätigt am Terminal.
         </p>
       )}
 
@@ -878,10 +1245,7 @@ function ReceiptResult({
             value={<MoneyAmount valueEur={finalized.totalEur} emphasis />}
             emphasised
           />
-          <Row
-            label="Bar erhalten"
-            value={<MoneyAmount valueEur={cashReceivedEur || '0.00'} />}
-          />
+          <Row label="Bar erhalten" value={<MoneyAmount valueEur={cashReceivedEur || '0.00'} />} />
           <Row
             label="Wechselgeld"
             value={<MoneyAmount valueEur={changeEur} emphasis />}

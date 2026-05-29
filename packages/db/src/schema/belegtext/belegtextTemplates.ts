@@ -13,8 +13,8 @@
  * historical receipt.
  */
 
-import { check, index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import { check, index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
 import { primaryKey } from '../_shared/columns.js';
 import { users } from '../auth/users.js';
@@ -50,10 +50,7 @@ export const belegtextTemplates = pgTable(
       table.validFrom.desc(),
     ),
 
-    bodyLength: check(
-      'belegtext_body_length',
-      sql`length(${table.bodyText}) BETWEEN 1 AND 4000`,
-    ),
+    bodyLength: check('belegtext_body_length', sql`length(${table.bodyText}) BETWEEN 1 AND 4000`),
     languageFormat: check(
       'belegtext_language_format',
       sql`${table.language} ~ '^[a-z]{2}(-[A-Z]{2})?$'`,

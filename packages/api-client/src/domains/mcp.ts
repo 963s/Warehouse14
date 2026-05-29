@@ -188,11 +188,7 @@ export const mcpApi = {
     client: ApiClient,
     args: GenerateSeoDescriptionArgs,
   ): Promise<McpToolResult<GenerateSeoDescriptionData>> {
-    return mcpApi.callTool<GenerateSeoDescriptionData>(
-      client,
-      'generate_seo_description',
-      args,
-    );
+    return mcpApi.callTool<GenerateSeoDescriptionData>(client, 'generate_seo_description', args);
   },
 
   /** Typed convenience — `appraise_estate_item`. */
@@ -200,10 +196,6 @@ export const mcpApi = {
     client: ApiClient,
     args: AppraiseEstateItemArgs,
   ): Promise<McpToolResult<AppraiseEstateItemData>> {
-    return mcpApi.callTool<AppraiseEstateItemData>(
-      client,
-      'appraise_estate_item',
-      args,
-    );
+    return mcpApi.callTool<AppraiseEstateItemData>(client, 'appraise_estate_item', args);
   },
 };

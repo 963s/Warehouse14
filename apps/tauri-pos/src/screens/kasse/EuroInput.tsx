@@ -12,7 +12,7 @@
  *   • the suffix shows "€" + the live formatted preview to confirm parsing.
  */
 
-import { useId, useMemo, useState, type ChangeEvent, type CSSProperties } from 'react';
+import { type CSSProperties, type ChangeEvent, useId, useMemo, useState } from 'react';
 
 export interface EuroInputProps {
   /** Canonical decimal string (e.g. "1234.50"). Always dot-decimal. */
@@ -38,7 +38,10 @@ function normalise(raw: string): string {
   const dotIdx = cleaned.indexOf('.');
   if (dotIdx === -1) return cleaned;
   const head = cleaned.slice(0, dotIdx);
-  const tail = cleaned.slice(dotIdx + 1).replace(/\./g, '').slice(0, 2);
+  const tail = cleaned
+    .slice(dotIdx + 1)
+    .replace(/\./g, '')
+    .slice(0, 2);
   return `${head}.${tail}`;
 }
 

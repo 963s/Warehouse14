@@ -13,19 +13,19 @@
  * of an eBay seller's open listings (typically < 100).
  */
 
-import { useMemo, useState } from 'react';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
 
 import {
-  ApiError,
   ALLOWED_EBAY_TRANSITIONS,
+  ApiError,
   EBAY_STATE_LABELS,
   EBAY_STATE_ORDER,
-  ebayApi,
-  productsApi,
   type EbayState,
   type ProductDetail,
   type ProductListRow,
+  ebayApi,
+  productsApi,
 } from '@warehouse14/api-client';
 import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 
@@ -158,12 +158,7 @@ export function Ebay(): JSX.Element {
         </div>
       )}
 
-      {selectedId && (
-        <ProductDrawer
-          productId={selectedId}
-          onClose={() => setSelectedId(null)}
-        />
-      )}
+      {selectedId && <ProductDrawer productId={selectedId} onClose={() => setSelectedId(null)} />}
     </section>
   );
 }
@@ -318,7 +313,8 @@ function ProductDrawer({
       addToast({
         tone: 'success',
         title: `Übergang ${res.fromState ?? '—'} → ${res.toState}`,
-        body: res.inventorySideEffect !== 'NONE' ? `Inventar: ${res.inventorySideEffect}` : undefined,
+        body:
+          res.inventorySideEffect !== 'NONE' ? `Inventar: ${res.inventorySideEffect}` : undefined,
       });
       await qc.invalidateQueries({ queryKey: ['products', 'detail', productId] });
       await qc.invalidateQueries({ queryKey: ['products', 'ebay-history', productId] });
@@ -460,9 +456,7 @@ function ProductDrawer({
           <div>
             <DiamondRule label="Historie" />
             {historyQ.isLoading ? (
-              <p style={{ color: 'var(--w14-ink-faded)', fontStyle: 'italic', margin: 0 }}>
-                Lade…
-              </p>
+              <p style={{ color: 'var(--w14-ink-faded)', fontStyle: 'italic', margin: 0 }}>Lade…</p>
             ) : !historyQ.data || historyQ.data.items.length === 0 ? (
               <p
                 style={{
@@ -475,7 +469,16 @@ function ProductDrawer({
                 Noch keine Übergänge.
               </p>
             ) : (
-              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <ul
+                style={{
+                  listStyle: 'none',
+                  padding: 0,
+                  margin: 0,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 6,
+                }}
+              >
                 {historyQ.data.items.map((ev) => (
                   <li
                     key={ev.id}
@@ -507,7 +510,7 @@ function ProductDrawer({
 // ════════════════════════════════════════════════════════════════════════
 
 function formatEuro(s: string): string {
-  const n = parseFloat(s);
+  const n = Number.parseFloat(s);
   if (!Number.isFinite(n)) return s;
   return n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }

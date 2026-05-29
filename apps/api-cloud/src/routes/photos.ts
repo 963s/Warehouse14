@@ -21,16 +21,13 @@
  */
 
 import { Type } from '@sinclair/typebox';
-import { type SQL, and, asc, count, desc, eq, sql as drizzleSql } from 'drizzle-orm';
+import { type SQL, and, asc, count, desc, sql as drizzleSql, eq } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 
-import {
-  productPhotos,
-  productPhotoWorkflowEvents,
-} from '@warehouse14/db/schema';
+import { productPhotoWorkflowEvents, productPhotos } from '@warehouse14/db/schema';
 
 import { requireAuth, requireRole } from '../lib/auth-policy.js';
-import { DomainError, type ApiErrorCode } from '../plugins/error-handler.js';
+import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 import {
   ALLOWED_PHOTO_TRANSITIONS,
   CreatePhotoBody,
@@ -38,14 +35,14 @@ import {
   PhotoRow,
   ProductPhotosQuery,
   ProductPhotosResponse,
-  TransitionPhotoStateBody,
-  UnassignedPhotosQuery,
-  UnassignedPhotosResponse,
   type TCreatePhotoBody,
   type TPhotoIdParams,
   type TProductPhotosQuery,
   type TTransitionPhotoStateBody,
   type TUnassignedPhotosQuery,
+  TransitionPhotoStateBody,
+  UnassignedPhotosQuery,
+  UnassignedPhotosResponse,
 } from '../schemas/photos.js';
 
 class PhotoNotFoundError extends DomainError {
@@ -94,95 +91,103 @@ const photosRoutes: FastifyPluginAsync = async (app) => {
   // ────────────────────────────────────────────────────────────────────
   // POST /api/photos
   // ────────────────────────────────────────────────────────────────────
-  app.post<{ Body: TCreatePhotoBody }>('/api/photos', {
-    schema: {
-      tags: ['photos'],
-      summary: 'Register an R2-uploaded photo (defaults to FOTOGRAFIERT).',
-      description:
-        'V1 flow: client uploads bytes to R2 via signed URL, then POSTs ' +
-        'metadata here. productId may be omitted — the photo lives as an ' +
-        'orphan until a PATCH /:id/workflow-state with toState=ZUGEORDNET ' +
-        'attaches it.',
-      body: CreatePhotoBody,
-      response: { 200: PhotoRow, 400: ErrorResponse, 401: ErrorResponse, 403: ErrorResponse },
+  app.post<{ Body: TCreatePhotoBody }>(
+    '/api/photos',
+    {
+      schema: {
+        tags: ['photos'],
+        summary: 'Register an R2-uploaded photo (defaults to FOTOGRAFIERT).',
+        description:
+          'V1 flow: client uploads bytes to R2 via signed URL, then POSTs ' +
+          'metadata here. productId may be omitted — the photo lives as an ' +
+          'orphan until a PATCH /:id/workflow-state with toState=ZUGEORDNET ' +
+          'attaches it.',
+        body: CreatePhotoBody,
+        response: { 200: PhotoRow, 400: ErrorResponse, 401: ErrorResponse, 403: ErrorResponse },
+      },
     },
-  }, async (req, reply) => {
-    requireAuth(req);
-    requireRole(req, 'ADMIN', 'CASHIER');
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'ADMIN', 'CASHIER');
 
-    const body = req.body;
-    const actorId = req.actor.id;
+      const body = req.body;
+      const actorId = req.actor.id;
 
-    const result = await app.db.transaction(async (tx) => {
-      const [row] = await tx
-        .insert(productPhotos)
-        .values({
-          r2Key: body.r2Key,
-          productId: body.productId ?? null,
-          source: body.source ?? 'admin_upload',
-          altTextDe: body.altTextDe ?? null,
-          altTextEn: body.altTextEn ?? null,
-          workflowState: 'FOTOGRAFIERT',
-          workflowChangedByUserId: actorId,
-        })
-        .returning();
-      if (!row) throw new Error('product_photos INSERT returned no row');
+      const result = await app.db.transaction(async (tx) => {
+        const [row] = await tx
+          .insert(productPhotos)
+          .values({
+            r2Key: body.r2Key,
+            productId: body.productId ?? null,
+            source: body.source ?? 'admin_upload',
+            altTextDe: body.altTextDe ?? null,
+            altTextEn: body.altTextEn ?? null,
+            workflowState: 'FOTOGRAFIERT',
+            workflowChangedByUserId: actorId,
+          })
+          .returning();
+        if (!row) throw new Error('product_photos INSERT returned no row');
 
-      await tx.insert(productPhotoWorkflowEvents).values({
-        productPhotoId: row.id,
-        fromState: null,
-        toState: 'FOTOGRAFIERT',
-        changedByUserId: actorId,
-        notes: 'initial registration',
+        await tx.insert(productPhotoWorkflowEvents).values({
+          productPhotoId: row.id,
+          fromState: null,
+          toState: 'FOTOGRAFIERT',
+          changedByUserId: actorId,
+          notes: 'initial registration',
+        });
+
+        return row;
       });
 
-      return row;
-    });
-
-    return reply.status(200).send(serializePhoto(result));
-  });
+      return reply.status(200).send(serializePhoto(result));
+    },
+  );
 
   // ────────────────────────────────────────────────────────────────────
   // GET /api/photos/unassigned
   // ────────────────────────────────────────────────────────────────────
-  app.get<{ Querystring: TUnassignedPhotosQuery }>('/api/photos/unassigned', {
-    schema: {
-      tags: ['photos'],
-      summary: 'Orphan photos awaiting product assignment.',
-      querystring: UnassignedPhotosQuery,
-      response: { 200: UnassignedPhotosResponse, 401: ErrorResponse, 403: ErrorResponse },
+  app.get<{ Querystring: TUnassignedPhotosQuery }>(
+    '/api/photos/unassigned',
+    {
+      schema: {
+        tags: ['photos'],
+        summary: 'Orphan photos awaiting product assignment.',
+        querystring: UnassignedPhotosQuery,
+        response: { 200: UnassignedPhotosResponse, 401: ErrorResponse, 403: ErrorResponse },
+      },
     },
-  }, async (req, reply) => {
-    requireAuth(req);
-    requireRole(req, 'ADMIN', 'CASHIER');
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'ADMIN', 'CASHIER');
 
-    const limit = req.query.limit ?? 50;
-    const offset = req.query.offset ?? 0;
+      const limit = req.query.limit ?? 50;
+      const offset = req.query.offset ?? 0;
 
-    const preds: Array<SQL | undefined> = [
-      drizzleSql`${productPhotos.productId} IS NULL`,
-      req.query.workflowState !== undefined
-        ? eq(productPhotos.workflowState, req.query.workflowState)
-        : undefined,
-    ];
-    const whereClause = and(...preds);
+      const preds: Array<SQL | undefined> = [
+        drizzleSql`${productPhotos.productId} IS NULL`,
+        req.query.workflowState !== undefined
+          ? eq(productPhotos.workflowState, req.query.workflowState)
+          : undefined,
+      ];
+      const whereClause = and(...preds);
 
-    const [rows, totalRow] = await Promise.all([
-      app.db
-        .select()
-        .from(productPhotos)
-        .where(whereClause)
-        .orderBy(desc(productPhotos.createdAt))
-        .limit(limit)
-        .offset(offset),
-      app.db.select({ n: count() }).from(productPhotos).where(whereClause),
-    ]);
+      const [rows, totalRow] = await Promise.all([
+        app.db
+          .select()
+          .from(productPhotos)
+          .where(whereClause)
+          .orderBy(desc(productPhotos.createdAt))
+          .limit(limit)
+          .offset(offset),
+        app.db.select({ n: count() }).from(productPhotos).where(whereClause),
+      ]);
 
-    return reply.status(200).send({
-      items: rows.map(serializePhoto),
-      total: Number(totalRow[0]?.n ?? 0),
-    });
-  });
+      return reply.status(200).send({
+        items: rows.map(serializePhoto),
+        total: Number(totalRow[0]?.n ?? 0),
+      });
+    },
+  );
 
   // ────────────────────────────────────────────────────────────────────
   // PATCH /api/photos/:id/workflow-state
@@ -227,9 +232,7 @@ const photosRoutes: FastifyPluginAsync = async (app) => {
 
         // Validate side-condition data is present.
         const wantsBgRemoved =
-          toState === 'FREIGESTELLT' ||
-          toState === 'ZUGEORDNET' ||
-          toState === 'FUER_EBAY_BEREIT';
+          toState === 'FREIGESTELLT' || toState === 'ZUGEORDNET' || toState === 'FUER_EBAY_BEREIT';
         if (wantsBgRemoved && !current.r2KeyBgRemoved && !r2KeyBgRemoved) {
           throw new PhotoValidationError(
             `transition to ${toState} requires r2KeyBgRemoved (current row has none)`,

@@ -19,34 +19,26 @@
  * not shift presence.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { productsApi, type ProductListRow, type ProductStatus } from '@warehouse14/api-client';
-import {
-  DiamondRule,
-  MagnifierIcon,
-  ParchmentCard,
-  Seal,
-} from '@warehouse14/ui-kit';
+import { type ProductListRow, type ProductStatus, productsApi } from '@warehouse14/api-client';
+import { DiamondRule, MagnifierIcon, ParchmentCard, Seal } from '@warehouse14/ui-kit';
 
-import { useApiClient } from '../../lib/api-context.js';
 import { useBarcodeScanner } from '../../hooks/useBarcodeScanner.js';
-import {
-  useLagerFilterStore,
-  type StatusFilter,
-} from '../../state/lager-filter-store.js';
+import { useApiClient } from '../../lib/api-context.js';
+import { type StatusFilter, useLagerFilterStore } from '../../state/lager-filter-store.js';
 import { useToastStore } from '../../state/toast-store.js';
 
 import { InventoryAdjustmentDialog } from './InventoryAdjustmentDialog.js';
 import { LagerTable } from './LagerTable.js';
 
 const STATUS_CHIPS: Array<{ value: StatusFilter; label: string }> = [
-  { value: 'ALL',       label: 'Alle' },
+  { value: 'ALL', label: 'Alle' },
   { value: 'AVAILABLE', label: 'Verfügbar' },
-  { value: 'DRAFT',     label: 'Entwurf' },
-  { value: 'RESERVED',  label: 'Reserviert' },
-  { value: 'SOLD',      label: 'Verkauft' },
+  { value: 'DRAFT', label: 'Entwurf' },
+  { value: 'RESERVED', label: 'Reserviert' },
+  { value: 'SOLD', label: 'Verkauft' },
 ];
 
 const PAGE_SIZE = 50;
@@ -152,25 +144,61 @@ export function Lager(): JSX.Element {
         gap: 14,
       }}
     >
-      <header style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 14 }}>
+      <header
+        style={{
+          display: 'flex',
+          alignItems: 'baseline',
+          justifyContent: 'space-between',
+          gap: 14,
+        }}
+      >
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <Seal size="sm" tone="ink" label="6" />
-          <h1 style={{ margin: 0, fontFamily: 'var(--w14-font-display)', fontWeight: 500, fontSize: '1.5rem' }}>
+          <h1
+            style={{
+              margin: 0,
+              fontFamily: 'var(--w14-font-display)',
+              fontWeight: 500,
+              fontSize: '1.5rem',
+            }}
+          >
             Lager
           </h1>
-          <span className="w14-smallcaps" style={{ color: 'var(--w14-ink-faded)', letterSpacing: '0.08em', fontSize: '0.78rem' }}>
+          <span
+            className="w14-smallcaps"
+            style={{ color: 'var(--w14-ink-faded)', letterSpacing: '0.08em', fontSize: '0.78rem' }}
+          >
             Tresor · Fach · Position
           </span>
         </div>
-        <span className="w14-tabular" style={{ fontFamily: 'var(--w14-font-mono)', fontSize: '0.82rem', color: 'var(--w14-ink-faded)' }}>
+        <span
+          className="w14-tabular"
+          style={{
+            fontFamily: 'var(--w14-font-mono)',
+            fontSize: '0.82rem',
+            color: 'var(--w14-ink-faded)',
+          }}
+        >
           {q.isFetching ? 'lädt…' : `${total} Stück${total === 1 ? '' : 'e'}`}
         </span>
       </header>
 
       <DiamondRule />
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 14, alignItems: 'center' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: 'var(--w14-parchment-2)', border: '1px solid var(--w14-rule)', borderRadius: 'var(--w14-radius-card)' }}>
+      <div
+        style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 14, alignItems: 'center' }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '8px 12px',
+            background: 'var(--w14-parchment-2)',
+            border: '1px solid var(--w14-rule)',
+            borderRadius: 'var(--w14-radius-card)',
+          }}
+        >
           <MagnifierIcon size={20} tone="ink" />
           <input
             type="text"
@@ -221,7 +249,10 @@ export function Lager(): JSX.Element {
         </div>
       </div>
 
-      <div ref={tableContainerRef} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+      <div
+        ref={tableContainerRef}
+        style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}
+      >
         {q.isError ? (
           <ErrorBanner message="Lagerliste konnte nicht geladen werden." />
         ) : (
@@ -246,7 +277,11 @@ export function Lager(): JSX.Element {
   );
 }
 
-function StatusChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }): JSX.Element {
+function StatusChip({
+  label,
+  active,
+  onClick,
+}: { label: string; active: boolean; onClick: () => void }): JSX.Element {
   return (
     <button
       type="button"
@@ -271,8 +306,14 @@ function StatusChip({ label, active, onClick }: { label: string; active: boolean
 
 function ErrorBanner({ message }: { message: string }): JSX.Element {
   return (
-    <ParchmentCard padding="lg" style={{ textAlign: 'center', border: '1px solid var(--w14-wax-red)' }}>
-      <p role="alert" style={{ margin: 0, color: 'var(--w14-wax-red)', fontFamily: 'var(--w14-font-display)' }}>
+    <ParchmentCard
+      padding="lg"
+      style={{ textAlign: 'center', border: '1px solid var(--w14-wax-red)' }}
+    >
+      <p
+        role="alert"
+        style={{ margin: 0, color: 'var(--w14-wax-red)', fontFamily: 'var(--w14-font-display)' }}
+      >
         {message}
       </p>
     </ParchmentCard>

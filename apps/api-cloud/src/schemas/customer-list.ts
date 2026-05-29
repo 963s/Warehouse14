@@ -13,7 +13,7 @@
  * `withPii` envelope — same key-management discipline as the by-id route.
  */
 
-import { Type, type Static } from '@sinclair/typebox';
+import { type Static, Type } from '@sinclair/typebox';
 
 export const CustomerListQuery = Type.Object({
   /**

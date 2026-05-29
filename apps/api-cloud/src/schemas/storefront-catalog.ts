@@ -18,7 +18,7 @@
  *      extra fetch.
  */
 
-import { Type, type Static } from '@sinclair/typebox';
+import { type Static, Type } from '@sinclair/typebox';
 
 import { DecimalString } from './money.js';
 

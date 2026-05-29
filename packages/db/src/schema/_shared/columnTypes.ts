@@ -52,9 +52,6 @@ export const vector = (length: number) =>
     },
     fromDriver(value: string): number[] {
       // pgvector returns '[1,2,3]' — strip brackets, split, parse.
-      return value
-        .slice(1, -1)
-        .split(',')
-        .map(Number);
+      return value.slice(1, -1).split(',').map(Number);
     },
   });

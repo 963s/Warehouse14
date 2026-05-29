@@ -10,28 +10,30 @@
  * the POS PIN (decideAttemptOutcome) — 5 wrong attempts → 30-minute lock.
  */
 
+import { randomBytes } from 'node:crypto';
 import { Type } from '@sinclair/typebox';
 import { sql as drizzleSql, eq } from 'drizzle-orm';
-import { randomBytes } from 'node:crypto';
 import type { FastifyPluginAsync, FastifyReply } from 'fastify';
 
 import {
+  type AttemptState,
   PasswordPolicy,
   decideAttemptOutcome,
   hashPassword,
   verifyPassword,
-  type AttemptState,
 } from '@warehouse14/auth-pin';
-import { customers, shoppers, shopperSessions } from '@warehouse14/db/schema';
+import { customers, shopperSessions, shoppers } from '@warehouse14/db/schema';
 
-import { DomainError, type ApiErrorCode } from '../plugins/error-handler.js';
-import {
-  SignUpBody, SignUpResponse,
-  SignInBody, SignInResponse,
-  type SignUpBody as TSignUpBody,
-  type SignInBody as TSignInBody,
-} from '../schemas/storefront.js';
+import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 import { STOREFRONT_COOKIE_NAME } from '../plugins/storefront-session.js';
+import {
+  SignInBody,
+  SignInResponse,
+  SignUpBody,
+  SignUpResponse,
+  type SignInBody as TSignInBody,
+  type SignUpBody as TSignUpBody,
+} from '../schemas/storefront.js';
 
 class ShopperUnauthorizedError extends DomainError {
   public readonly httpStatus = 401;
@@ -72,7 +74,12 @@ function newSessionToken(): string {
 }
 
 /** Attach the cookie that the storefront-session plugin will read on later requests. */
-function setShopperCookie(reply: FastifyReply, token: string, expiresAt: Date, env: { NODE_ENV: string }): void {
+function setShopperCookie(
+  reply: FastifyReply,
+  token: string,
+  expiresAt: Date,
+  env: { NODE_ENV: string },
+): void {
   reply.setCookie(STOREFRONT_COOKIE_NAME, token, {
     path: '/',
     httpOnly: true,
@@ -87,228 +94,242 @@ const storefrontAuthRoutes: FastifyPluginAsync = async (app) => {
   // POST /api/storefront/auth/sign-up
   // ════════════════════════════════════════════════════════════════════
 
-  app.post<{ Body: TSignUpBody }>('/api/storefront/auth/sign-up', {
-    schema: {
-      tags: ['storefront'],
-      summary: 'Create a new shopper account.',
-      description:
-        'Creates a `customers` row (KYC-track) + a `shoppers` row (online account) ' +
-        'in one DB transaction. Sets the `warehouse14.shopper_session` cookie. ' +
-        'Email re-registration after soft-delete is allowed (partial UNIQUE).',
-      body: SignUpBody,
-      response: {
-        201: SignUpResponse,
-        400: ErrorResponse,
-        409: ErrorResponse,
+  app.post<{ Body: TSignUpBody }>(
+    '/api/storefront/auth/sign-up',
+    {
+      schema: {
+        tags: ['storefront'],
+        summary: 'Create a new shopper account.',
+        description:
+          'Creates a `customers` row (KYC-track) + a `shoppers` row (online account) ' +
+          'in one DB transaction. Sets the `warehouse14.shopper_session` cookie. ' +
+          'Email re-registration after soft-delete is allowed (partial UNIQUE).',
+        body: SignUpBody,
+        response: {
+          201: SignUpResponse,
+          400: ErrorResponse,
+          409: ErrorResponse,
+        },
       },
     },
-  }, async (req, reply) => {
-    const body = req.body;
+    async (req, reply) => {
+      const body = req.body;
 
-    // 1. Validate password strength.
-    const pwErr = PasswordPolicy.validate(body.password, { email: body.email });
-    if (pwErr) {
-      throw new ShopperValidationError(`Weak password: ${pwErr.code}`, pwErr);
-    }
+      // 1. Validate password strength.
+      const pwErr = PasswordPolicy.validate(body.password, { email: body.email });
+      if (pwErr) {
+        throw new ShopperValidationError(`Weak password: ${pwErr.code}`, pwErr);
+      }
 
-    // 2. Hash the password (argon2id, ~100ms).
-    const passwordHash = await hashPassword(body.password);
+      // 2. Hash the password (argon2id, ~100ms).
+      const passwordHash = await hashPassword(body.password);
 
-    // 3. Insert customer + shopper in ONE transaction inside withPii.
-    //    The encrypted email + blind index require warehouse14.pii_key.
-    const result = await app.withPii(async (tx) => {
-      // 3a. Reject if an active shopper already uses this email.
-      const existing = await tx.execute<{ id: string }>(drizzleSql`
+      // 3. Insert customer + shopper in ONE transaction inside withPii.
+      //    The encrypted email + blind index require warehouse14.pii_key.
+      const result = await app.withPii(async (tx) => {
+        // 3a. Reject if an active shopper already uses this email.
+        const existing = await tx.execute<{ id: string }>(drizzleSql`
         SELECT s.id FROM shoppers s
          WHERE s.email_blind_index = blind_index(${body.email})
            AND s.soft_deleted_at IS NULL
          LIMIT 1
       `);
-      if (existing[0]) {
-        throw new ShopperConflictError('Email already registered.');
-      }
+        if (existing[0]) {
+          throw new ShopperConflictError('Email already registered.');
+        }
 
-      // 3b. Create the customer (KYC-track).
-      const [c] = await tx.insert(customers).values({
-        fullNameEncrypted: drizzleSql`encrypt_pii(${body.fullName})` as never,
-        retentionUntil: drizzleSql`(now() + interval '5 years')::date` as never,
-      }).returning({ id: customers.id });
-      if (!c) throw new Error('customer insert returned no row');
+        // 3b. Create the customer (KYC-track).
+        const [c] = await tx
+          .insert(customers)
+          .values({
+            fullNameEncrypted: drizzleSql`encrypt_pii(${body.fullName})` as never,
+            retentionUntil: drizzleSql`(now() + interval '5 years')::date` as never,
+          })
+          .returning({ id: customers.id });
+        if (!c) throw new Error('customer insert returned no row');
 
-      // 3c. Create the shopper.
-      const phoneEnc = body.phone
-        ? drizzleSql`encrypt_pii(${body.phone})`
-        : drizzleSql`NULL`;
-      const phoneBlind = body.phone
-        ? drizzleSql`blind_index(${body.phone})`
-        : drizzleSql`NULL`;
-      const consentAt = body.marketingConsent ? drizzleSql`now()` : drizzleSql`NULL`;
+        // 3c. Create the shopper.
+        const phoneEnc = body.phone ? drizzleSql`encrypt_pii(${body.phone})` : drizzleSql`NULL`;
+        const phoneBlind = body.phone ? drizzleSql`blind_index(${body.phone})` : drizzleSql`NULL`;
+        const consentAt = body.marketingConsent ? drizzleSql`now()` : drizzleSql`NULL`;
 
-      const [s] = await tx.insert(shoppers).values({
-        customerId: c.id,
-        emailEncrypted: drizzleSql`encrypt_pii(${body.email})` as never,
-        emailBlindIndex: drizzleSql`blind_index(${body.email})` as never,
-        passwordHash,
-        phoneEncrypted: phoneEnc as never,
-        phoneBlindIndex: phoneBlind as never,
-        preferredLanguage: body.preferredLanguage ?? 'de',
-        marketingConsent: body.marketingConsent ?? false,
-        marketingConsentAt: consentAt as never,
-      }).returning({ id: shoppers.id });
-      if (!s) throw new Error('shopper insert returned no row');
+        const [s] = await tx
+          .insert(shoppers)
+          .values({
+            customerId: c.id,
+            emailEncrypted: drizzleSql`encrypt_pii(${body.email})` as never,
+            emailBlindIndex: drizzleSql`blind_index(${body.email})` as never,
+            passwordHash,
+            phoneEncrypted: phoneEnc as never,
+            phoneBlindIndex: phoneBlind as never,
+            preferredLanguage: body.preferredLanguage ?? 'de',
+            marketingConsent: body.marketingConsent ?? false,
+            marketingConsentAt: consentAt as never,
+          })
+          .returning({ id: shoppers.id });
+        if (!s) throw new Error('shopper insert returned no row');
 
-      // 3d. Open a session immediately (sign-up implies sign-in).
-      const token = newSessionToken();
-      const expiresAt = new Date(Date.now() + SHOPPER_SESSION_TTL_MS);
-      await tx.insert(shopperSessions).values({
-        shopperId: s.id,
-        token,
-        expiresAt,
-        ipAddress: (req.ip ?? null) as never,
-        userAgent: req.headers['user-agent'] ?? null,
+        // 3d. Open a session immediately (sign-up implies sign-in).
+        const token = newSessionToken();
+        const expiresAt = new Date(Date.now() + SHOPPER_SESSION_TTL_MS);
+        await tx.insert(shopperSessions).values({
+          shopperId: s.id,
+          token,
+          expiresAt,
+          ipAddress: (req.ip ?? null) as never,
+          userAgent: req.headers['user-agent'] ?? null,
+        });
+
+        return { shopperId: s.id, customerId: c.id, token, expiresAt };
       });
 
-      return { shopperId: s.id, customerId: c.id, token, expiresAt };
-    });
-
-    setShopperCookie(reply, result.token, result.expiresAt, { NODE_ENV: 'development' });
-    return reply.status(201).send({
-      shopperId: result.shopperId,
-      customerId: result.customerId,
-      emailVerified: false,
-    });
-  });
+      setShopperCookie(reply, result.token, result.expiresAt, { NODE_ENV: 'development' });
+      return reply.status(201).send({
+        shopperId: result.shopperId,
+        customerId: result.customerId,
+        emailVerified: false,
+      });
+    },
+  );
 
   // ════════════════════════════════════════════════════════════════════
   // POST /api/storefront/auth/sign-in
   // ════════════════════════════════════════════════════════════════════
 
-  app.post<{ Body: TSignInBody }>('/api/storefront/auth/sign-in', {
-    schema: {
-      tags: ['storefront'],
-      summary: 'Sign in an existing shopper (email + password).',
-      description:
-        'Verifies argon2id-hashed password. Increments failed_login_attempts on ' +
-        'wrong password; locks the account for 30 minutes after 5 consecutive ' +
-        'failures (same state machine as POS PIN).',
-      body: SignInBody,
-      response: {
-        200: SignInResponse,
-        401: ErrorResponse,
-        423: ErrorResponse,
+  app.post<{ Body: TSignInBody }>(
+    '/api/storefront/auth/sign-in',
+    {
+      schema: {
+        tags: ['storefront'],
+        summary: 'Sign in an existing shopper (email + password).',
+        description:
+          'Verifies argon2id-hashed password. Increments failed_login_attempts on ' +
+          'wrong password; locks the account for 30 minutes after 5 consecutive ' +
+          'failures (same state machine as POS PIN).',
+        body: SignInBody,
+        response: {
+          200: SignInResponse,
+          401: ErrorResponse,
+          423: ErrorResponse,
+        },
       },
     },
-  }, async (req, reply) => {
-    const body = req.body;
+    async (req, reply) => {
+      const body = req.body;
 
-    const outcome = await app.withPii(async (tx) => {
-      // 1. Resolve the shopper by email_blind_index (active rows only).
-      const rows = await tx.execute<{
-        id: string;
-        password_hash: string;
-        email_verified_at: Date | null;
-        failed_login_attempts: number;
-        locked_until: Date | null;
-      }>(drizzleSql`
+      const outcome = await app.withPii(async (tx) => {
+        // 1. Resolve the shopper by email_blind_index (active rows only).
+        const rows = await tx.execute<{
+          id: string;
+          password_hash: string;
+          email_verified_at: Date | null;
+          failed_login_attempts: number;
+          locked_until: Date | null;
+        }>(drizzleSql`
         SELECT id, password_hash, email_verified_at, failed_login_attempts, locked_until
           FROM shoppers
          WHERE email_blind_index = blind_index(${body.email})
            AND soft_deleted_at IS NULL
          LIMIT 1
       `);
-      const row = rows[0];
-      if (!row) {
-        // Defuse user-enumeration timing leak — pretend to hash anyway.
-        await verifyPassword(body.password, '$argon2id$v=19$m=19456,t=2,p=1$xxxxx$x');
-        return { kind: 'no_user' as const };
-      }
+        const row = rows[0];
+        if (!row) {
+          // Defuse user-enumeration timing leak — pretend to hash anyway.
+          await verifyPassword(body.password, '$argon2id$v=19$m=19456,t=2,p=1$xxxxx$x');
+          return { kind: 'no_user' as const };
+        }
 
-      // 2. State machine: try-attempt decision.
-      const state: AttemptState = {
-        failedAttempts: row.failed_login_attempts,
-        lockedUntil: row.locked_until,
-      };
-      // Refuse outright if already locked.
-      const pre = decideAttemptOutcome({ state, now: new Date(), pinCorrect: false });
-      if (pre.kind === 'already_locked') {
-        return { kind: 'locked' as const, until: pre.until };
-      }
-
-      // 3. Verify password.
-      const ok = await verifyPassword(body.password, row.password_hash);
-      const decision = decideAttemptOutcome({ state, now: new Date(), pinCorrect: ok });
-
-      // 4. Persist the new state.
-      if (decision.kind !== 'already_locked') {
-        await tx
-          .update(shoppers)
-          .set({
-            failedLoginAttempts: decision.newState.failedAttempts,
-            lockedUntil: decision.newState.lockedUntil ?? null,
-          })
-          .where(eq(shoppers.id, row.id));
-      }
-
-      if (decision.kind === 'success') {
-        // 5. Create session.
-        const token = newSessionToken();
-        const expiresAt = new Date(Date.now() + SHOPPER_SESSION_TTL_MS);
-        await tx.insert(shopperSessions).values({
-          shopperId: row.id,
-          token,
-          expiresAt,
-          ipAddress: (req.ip ?? null) as never,
-          userAgent: req.headers['user-agent'] ?? null,
-        });
-        return {
-          kind: 'success' as const,
-          shopperId: row.id,
-          token,
-          expiresAt,
-          emailVerified: row.email_verified_at !== null,
+        // 2. State machine: try-attempt decision.
+        const state: AttemptState = {
+          failedAttempts: row.failed_login_attempts,
+          lockedUntil: row.locked_until,
         };
-      }
-      if (decision.kind === 'failed_now_locked') {
-        return { kind: 'locked' as const, until: decision.newState.lockedUntil! };
-      }
-      return { kind: 'wrong_password' as const };
-    });
+        // Refuse outright if already locked.
+        const pre = decideAttemptOutcome({ state, now: new Date(), pinCorrect: false });
+        if (pre.kind === 'already_locked') {
+          return { kind: 'locked' as const, until: pre.until };
+        }
 
-    if (outcome.kind === 'success') {
-      setShopperCookie(reply, outcome.token, outcome.expiresAt, { NODE_ENV: 'development' });
-      return reply.status(200).send({
-        shopperId: outcome.shopperId,
-        emailVerified: outcome.emailVerified,
-        sessionExpiresAt: outcome.expiresAt.toISOString(),
+        // 3. Verify password.
+        const ok = await verifyPassword(body.password, row.password_hash);
+        const decision = decideAttemptOutcome({ state, now: new Date(), pinCorrect: ok });
+
+        // 4. Persist the new state.
+        if (decision.kind !== 'already_locked') {
+          await tx
+            .update(shoppers)
+            .set({
+              failedLoginAttempts: decision.newState.failedAttempts,
+              lockedUntil: decision.newState.lockedUntil ?? null,
+            })
+            .where(eq(shoppers.id, row.id));
+        }
+
+        if (decision.kind === 'success') {
+          // 5. Create session.
+          const token = newSessionToken();
+          const expiresAt = new Date(Date.now() + SHOPPER_SESSION_TTL_MS);
+          await tx.insert(shopperSessions).values({
+            shopperId: row.id,
+            token,
+            expiresAt,
+            ipAddress: (req.ip ?? null) as never,
+            userAgent: req.headers['user-agent'] ?? null,
+          });
+          return {
+            kind: 'success' as const,
+            shopperId: row.id,
+            token,
+            expiresAt,
+            emailVerified: row.email_verified_at !== null,
+          };
+        }
+        if (decision.kind === 'failed_now_locked') {
+          return { kind: 'locked' as const, until: decision.newState.lockedUntil! };
+        }
+        return { kind: 'wrong_password' as const };
       });
-    }
-    if (outcome.kind === 'locked') {
-      throw new ShopperLockedError(
-        `Account locked until ${outcome.until.toISOString()}. Reset via password recovery.`,
-      );
-    }
-    throw new ShopperUnauthorizedError('Invalid email or password.');
-  });
+
+      if (outcome.kind === 'success') {
+        setShopperCookie(reply, outcome.token, outcome.expiresAt, { NODE_ENV: 'development' });
+        return reply.status(200).send({
+          shopperId: outcome.shopperId,
+          emailVerified: outcome.emailVerified,
+          sessionExpiresAt: outcome.expiresAt.toISOString(),
+        });
+      }
+      if (outcome.kind === 'locked') {
+        throw new ShopperLockedError(
+          `Account locked until ${outcome.until.toISOString()}. Reset via password recovery.`,
+        );
+      }
+      throw new ShopperUnauthorizedError('Invalid email or password.');
+    },
+  );
 
   // ════════════════════════════════════════════════════════════════════
   // POST /api/storefront/auth/sign-out
   // ════════════════════════════════════════════════════════════════════
 
-  app.post('/api/storefront/auth/sign-out', {
-    schema: {
-      tags: ['storefront'],
-      summary: 'Sign out — revoke the current shopper session.',
-      response: { 200: Type.Object({ ok: Type.Boolean() }) },
+  app.post(
+    '/api/storefront/auth/sign-out',
+    {
+      schema: {
+        tags: ['storefront'],
+        summary: 'Sign out — revoke the current shopper session.',
+        response: { 200: Type.Object({ ok: Type.Boolean() }) },
+      },
     },
-  }, async (req, reply) => {
-    // No requireShopper — silent no-op if already signed out.
-    const token = (req.cookies as Record<string, string | undefined>)?.[STOREFRONT_COOKIE_NAME];
-    if (token) {
-      await app.db.delete(shopperSessions).where(eq(shopperSessions.token, token));
-    }
-    reply.clearCookie(STOREFRONT_COOKIE_NAME, { path: '/' });
-    return reply.status(200).send({ ok: true });
-  });
+    async (req, reply) => {
+      // No requireShopper — silent no-op if already signed out.
+      const token = (req.cookies as Record<string, string | undefined>)?.[STOREFRONT_COOKIE_NAME];
+      if (token) {
+        await app.db.delete(shopperSessions).where(eq(shopperSessions.token, token));
+      }
+      reply.clearCookie(STOREFRONT_COOKIE_NAME, { path: '/' });
+      return reply.status(200).send({ ok: true });
+    },
+  );
 };
 
 export default storefrontAuthRoutes;

@@ -111,11 +111,7 @@ export const tasksApi = {
     return client.request<TaskRow>('PATCH', `/api/tasks/${encodeURIComponent(id)}`, body);
   },
   transition(client: ApiClient, id: string, body: TransitionTaskBody): Promise<TaskRow> {
-    return client.request<TaskRow>(
-      'PATCH',
-      `/api/tasks/${encodeURIComponent(id)}/status`,
-      body,
-    );
+    return client.request<TaskRow>('PATCH', `/api/tasks/${encodeURIComponent(id)}/status`, body);
   },
 };
 

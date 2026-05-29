@@ -17,7 +17,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 
-import { dashboard, type DashboardSummary } from '@warehouse14/api-client';
+import { type DashboardSummary, dashboard } from '@warehouse14/api-client';
 
 import { useApiClient } from '../lib/api-context.js';
 

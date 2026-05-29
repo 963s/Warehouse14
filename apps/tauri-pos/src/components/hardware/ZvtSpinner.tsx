@@ -9,7 +9,7 @@
 
 import { useEffect } from 'react';
 
-import { DiamondRule, ParchmentCard, MoneyAmount } from '@warehouse14/ui-kit';
+import { DiamondRule, MoneyAmount, ParchmentCard } from '@warehouse14/ui-kit';
 
 export interface ZvtSpinnerProps {
   /** Amount that's being authorised — shown in the centre. */
@@ -55,7 +55,11 @@ export function ZvtSpinner({
     >
       <ParchmentCard
         padding="lg"
-        style={{ width: 'min(440px, 100%)', textAlign: 'center', boxShadow: 'var(--w14-shadow-modal)' }}
+        style={{
+          width: 'min(440px, 100%)',
+          textAlign: 'center',
+          boxShadow: 'var(--w14-shadow-modal)',
+        }}
       >
         <h2
           style={{

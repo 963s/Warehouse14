@@ -10,8 +10,22 @@
  * verify_ledger_chain() above this point can be skipped on future audits.
  */
 
-import { bigint, check, customType, date, index, integer, jsonb, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import {
+  bigint,
+  check,
+  customType,
+  date,
+  index,
+  integer,
+  jsonb,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 
 import { primaryKey, timestamps } from '../_shared/columns.js';
 import { ledgerEvents } from '../audit/ledgerEvents.js';
@@ -37,7 +51,9 @@ export const dailyClosings = pgTable(
     ankaufCount: integer('ankauf_count').notNull().default(0),
     stornoCount: integer('storno_count').notNull().default(0),
 
-    grossVerkaufEur: numeric('gross_verkauf_eur', { precision: 18, scale: 2 }).notNull().default('0'),
+    grossVerkaufEur: numeric('gross_verkauf_eur', { precision: 18, scale: 2 })
+      .notNull()
+      .default('0'),
     grossAnkaufEur: numeric('gross_ankauf_eur', { precision: 18, scale: 2 }).notNull().default('0'),
     netVerkaufEur: numeric('net_verkauf_eur', { precision: 18, scale: 2 }).notNull().default('0'),
     netAnkaufEur: numeric('net_ankauf_eur', { precision: 18, scale: 2 }).notNull().default('0'),
@@ -53,7 +69,9 @@ export const dailyClosings = pgTable(
     tsePendingCount: integer('tse_pending_count').notNull().default(0),
     tseFailedCount: integer('tse_failed_count').notNull().default(0),
 
-    ledgerAnchorId: bigint('ledger_anchor_id', { mode: 'bigint' }).references(() => ledgerEvents.id),
+    ledgerAnchorId: bigint('ledger_anchor_id', { mode: 'bigint' }).references(
+      () => ledgerEvents.id,
+    ),
     ledgerAnchorHash: bytea('ledger_anchor_hash'),
 
     countedByUserId: uuid('counted_by_user_id').references(() => users.id),
@@ -64,8 +82,11 @@ export const dailyClosings = pgTable(
 
     ...timestamps(),
   },
-  table => ({
-    businessDayShopUq: uniqueIndex('daily_closings_business_day_shop_uq').on(table.businessDay, table.shopId),
+  (table) => ({
+    businessDayShopUq: uniqueIndex('daily_closings_business_day_shop_uq').on(
+      table.businessDay,
+      table.shopId,
+    ),
     stateIdx: index('daily_closings_state_idx').on(table.state, table.businessDay.desc()),
     businessDayIdx: index('daily_closings_business_day_idx').on(table.businessDay.desc()),
     finalizedIdx: index('daily_closings_finalized_idx')
@@ -100,8 +121,14 @@ export const dailyClosings = pgTable(
       sql`${table.verkaufCount} >= 0 AND ${table.ankaufCount} >= 0 AND ${table.stornoCount} >= 0
           AND ${table.tseFinishedCount} >= 0 AND ${table.tsePendingCount} >= 0 AND ${table.tseFailedCount} >= 0`,
     ),
-    vatObject: check('daily_closings_vat_object', sql`jsonb_typeof(${table.vatByTreatment}) = 'object'`),
-    paymentsObject: check('daily_closings_payments_object', sql`jsonb_typeof(${table.paymentsByMethod}) = 'object'`),
+    vatObject: check(
+      'daily_closings_vat_object',
+      sql`jsonb_typeof(${table.vatByTreatment}) = 'object'`,
+    ),
+    paymentsObject: check(
+      'daily_closings_payments_object',
+      sql`jsonb_typeof(${table.paymentsByMethod}) = 'object'`,
+    ),
     grossNonNegative: check(
       'daily_closings_gross_non_negative',
       sql`${table.grossVerkaufEur} >= 0 AND ${table.grossAnkaufEur} >= 0`,

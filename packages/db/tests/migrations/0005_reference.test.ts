@@ -10,10 +10,15 @@
  *   6. Idempotency     — re-applying 0005 + re-inserting seed = no-op
  */
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from 'postgres';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { applyMigrations, setAppPasswordForTest, startTestDb, type TestDb } from '../helpers/testDb.js';
+import {
+  type TestDb,
+  applyMigrations,
+  setAppPasswordForTest,
+  startTestDb,
+} from '../helpers/testDb.js';
 
 describe('migration 0005_reference', () => {
   let testDb: TestDb;
@@ -37,7 +42,7 @@ describe('migration 0005_reference', () => {
   describe('structure', () => {
     it.each(['tax_treatment_codes', 'karat_grades', 'hallmarks'])(
       'table %s exists',
-      async name => {
+      async (name) => {
         const [row] = await migratorSql<{ exists: boolean }[]>`
           SELECT EXISTS (
             SELECT 1 FROM information_schema.tables
@@ -146,17 +151,19 @@ describe('migration 0005_reference', () => {
     });
 
     it.each([
-      ['MARGIN_25A',         null,    '§25a UStG'],
+      ['MARGIN_25A', null, '§25a UStG'],
       ['INVESTMENT_GOLD_25C', '0.0000', '§25c UStG'],
-      ['STANDARD_19',        '0.1900', '§12 Abs. 1 UStG'],
-      ['REDUCED_7',          '0.0700', '§12 Abs. 2 UStG'],
+      ['STANDARD_19', '0.1900', '§12 Abs. 1 UStG'],
+      ['REDUCED_7', '0.0700', '§12 Abs. 2 UStG'],
     ])(
       'tax code %s has correct rate (%s) and legal_reference (%s)',
       async (code, expectedRate, expectedRef) => {
-        const [row] = await migratorSql<{
-          effective_vat_rate: string | null;
-          legal_reference: string;
-        }[]>`
+        const [row] = await migratorSql<
+          {
+            effective_vat_rate: string | null;
+            legal_reference: string;
+          }[]
+        >`
           SELECT effective_vat_rate, legal_reference
             FROM tax_treatment_codes
            WHERE code = ${code}
@@ -174,7 +181,7 @@ describe('migration 0005_reference', () => {
     });
 
     it.each([
-      ['8K',  8,  333, '0.3330'],
+      ['8K', 8, 333, '0.3330'],
       ['14K', 14, 585, '0.5850'],
       ['18K', 18, 750, '0.7500'],
       ['22K', 22, 916, '0.9160'],
@@ -182,11 +189,13 @@ describe('migration 0005_reference', () => {
     ])(
       '%s → karat=%i, fineness_per_1000=%i, fineness_decimal=%s',
       async (code, expKarat, expPerMille, expDecimal) => {
-        const [row] = await migratorSql<{
-          karat_value: number;
-          fineness_per_1000: number;
-          fineness_decimal: string;
-        }[]>`
+        const [row] = await migratorSql<
+          {
+            karat_value: number;
+            fineness_per_1000: number;
+            fineness_decimal: string;
+          }[]
+        >`
           SELECT karat_value, fineness_per_1000, fineness_decimal
             FROM karat_grades
            WHERE code = ${code}
@@ -218,9 +227,9 @@ describe('migration 0005_reference', () => {
     });
 
     it.each([
-      ['gold',      5],
-      ['silver',    5],
-      ['platinum',  4],
+      ['gold', 5],
+      ['silver', 5],
+      ['platinum', 4],
       ['palladium', 3],
     ])('hallmarks: %s has %i entries', async (metal, expected) => {
       const [row] = await migratorSql<{ n: number }[]>`
@@ -233,16 +242,18 @@ describe('migration 0005_reference', () => {
       const rows = await migratorSql<{ metal: string; fineness_decimal: string }[]>`
         SELECT metal, fineness_decimal FROM hallmarks WHERE stamp = '999' ORDER BY metal
       `;
-      expect(rows.map(r => r.metal)).toEqual(['gold', 'palladium', 'platinum', 'silver']);
+      expect(rows.map((r) => r.metal)).toEqual(['gold', 'palladium', 'platinum', 'silver']);
       for (const r of rows) expect(r.fineness_decimal).toBe('0.9990');
     });
 
-    it("Sterling silver (stamp 925) maps to metal=silver, fineness=0.9250", async () => {
-      const [row] = await migratorSql<{
-        metal: string;
-        fineness_per_1000: number;
-        fineness_decimal: string;
-      }[]>`
+    it('Sterling silver (stamp 925) maps to metal=silver, fineness=0.9250', async () => {
+      const [row] = await migratorSql<
+        {
+          metal: string;
+          fineness_per_1000: number;
+          fineness_decimal: string;
+        }[]
+      >`
         SELECT metal, fineness_per_1000, fineness_decimal
           FROM hallmarks
          WHERE stamp = '925' AND metal = 'silver'
@@ -260,7 +271,7 @@ describe('migration 0005_reference', () => {
   describe('app-role grants — Day-3 READ-ONLY directive', () => {
     it.each(['tax_treatment_codes', 'karat_grades', 'hallmarks'])(
       '%s — app has SELECT',
-      async tbl => {
+      async (tbl) => {
         const [row] = await migratorSql<{ has: boolean }[]>`
           SELECT has_table_privilege('warehouse14_app', ${tbl}, 'SELECT') AS has`;
         expect(row.has).toBe(true);
@@ -292,10 +303,12 @@ describe('migration 0005_reference', () => {
     it('app role can SELECT tax treatment codes by primary key', async () => {
       const appSql = testDb.appSql();
       try {
-        const rows = await appSql<{
-          code: string;
-          effective_vat_rate: string | null;
-        }[]>`
+        const rows = await appSql<
+          {
+            code: string;
+            effective_vat_rate: string | null;
+          }[]
+        >`
           SELECT code, effective_vat_rate FROM tax_treatment_codes WHERE code = 'STANDARD_19'
         `;
         expect(rows[0].code).toBe('STANDARD_19');
@@ -377,9 +390,11 @@ describe('migration 0005_reference', () => {
     it('re-applying migration 0005 does not throw and does not duplicate seed rows', async () => {
       await expect(applyMigrations(migratorSql, 5)).resolves.not.toThrow();
 
-      const [tax] = await migratorSql<{ n: number }[]>`SELECT COUNT(*)::int AS n FROM tax_treatment_codes`;
+      const [tax] = await migratorSql<
+        { n: number }[]
+      >`SELECT COUNT(*)::int AS n FROM tax_treatment_codes`;
       const [kar] = await migratorSql<{ n: number }[]>`SELECT COUNT(*)::int AS n FROM karat_grades`;
-      const [hm]  = await migratorSql<{ n: number }[]>`SELECT COUNT(*)::int AS n FROM hallmarks`;
+      const [hm] = await migratorSql<{ n: number }[]>`SELECT COUNT(*)::int AS n FROM hallmarks`;
       expect(tax.n).toBe(4);
       expect(kar.n).toBe(5);
       expect(hm.n).toBe(17);

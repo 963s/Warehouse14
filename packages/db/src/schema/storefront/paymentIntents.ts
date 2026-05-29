@@ -5,8 +5,18 @@
  * provider intent ID (network retry) collides at the DB.
  */
 
-import { check, index, jsonb, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import {
+  check,
+  index,
+  jsonb,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 
 import { carts } from './carts.js';
 import { paymentIntentStatus, paymentProvider } from './enums.js';
@@ -15,7 +25,10 @@ export const paymentIntents = pgTable(
   'payment_intents',
   {
     id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-    cartId: uuid('cart_id').notNull().unique().references(() => carts.id),
+    cartId: uuid('cart_id')
+      .notNull()
+      .unique()
+      .references(() => carts.id),
     provider: paymentProvider('provider').notNull(),
     providerIntentId: text('provider_intent_id').notNull(),
     status: paymentIntentStatus('status').notNull().default('CREATED'),
@@ -27,10 +40,11 @@ export const paymentIntents = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().default(sql`now()`),
   },
   (table) => ({
-    providerIntentUq: uniqueIndex('payment_intents_provider_intent_uq')
-      .on(table.provider, table.providerIntentId),
-    statusIdx: index('payment_intents_status_idx')
-      .on(table.status, table.createdAt.desc()),
+    providerIntentUq: uniqueIndex('payment_intents_provider_intent_uq').on(
+      table.provider,
+      table.providerIntentId,
+    ),
+    statusIdx: index('payment_intents_status_idx').on(table.status, table.createdAt.desc()),
     amountNonNeg: check('payment_intents_amount_nonneg', sql`${table.amountEur} >= 0`),
     outcomeIsObject: check(
       'payment_intents_outcome_is_object',

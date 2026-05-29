@@ -9,15 +9,15 @@
  * new event lands at the top while the user is on this screen.
  */
 
-import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
 
 import {
-  isAlertEvent,
-  ledgerQueryApi,
   type LedgerEventType,
   type LedgerListQuery,
   type LedgerListRow,
+  isAlertEvent,
+  ledgerQueryApi,
 } from '@warehouse14/api-client';
 import { DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 
@@ -223,7 +223,16 @@ export function Tagebuch(): JSX.Element {
       <DiamondRule />
 
       {/* Results */}
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 4,
+        }}
+      >
         {listQ.isLoading ? (
           <ListSkeleton />
         ) : listQ.isError ? (

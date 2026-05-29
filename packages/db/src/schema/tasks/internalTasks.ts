@@ -16,8 +16,8 @@
  * NEVER DELETE — operator history is forensic + GoBD-relevant.
  */
 
-import { check, date, index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import { check, date, index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
 import { primaryKey, timestamps } from '../_shared/columns.js';
 import { users } from '../auth/users.js';

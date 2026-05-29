@@ -38,7 +38,7 @@ interface AvailableUpdate {
 }
 
 const POLL_INTERVAL_MS = 60 * 60 * 1000; // hourly
-const INITIAL_GRACE_MS = 5_000;          // let auth probe finish first
+const INITIAL_GRACE_MS = 5_000; // let auth probe finish first
 
 export function UpdateBanner(): JSX.Element | null {
   const [update, setUpdate] = useState<AvailableUpdate | null>(null);
@@ -137,7 +137,9 @@ export function UpdateBanner(): JSX.Element | null {
         maxWidth: 'min(540px, calc(100vw - 24px))',
       }}
     >
-      <span aria-hidden style={{ fontSize: '1.05rem', color: 'var(--w14-gold)' }}>✦</span>
+      <span aria-hidden style={{ fontSize: '1.05rem', color: 'var(--w14-gold)' }}>
+        ✦
+      </span>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div
           className="w14-smallcaps"

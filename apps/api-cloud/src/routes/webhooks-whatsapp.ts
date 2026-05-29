@@ -14,14 +14,15 @@
  */
 
 import { Type } from '@sinclair/typebox';
-import { createHmac, timingSafeEqual } from 'node:crypto';
 import { sql as drizzleSql } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 
 import { whatsappInboundMessages } from '@warehouse14/db/schema';
 
 import type { Env } from '../config/env.js';
-import { DomainError, type ApiErrorCode } from '../plugins/error-handler.js';
+import { verifyMetaSignature } from '../lib/meta-signature.js';
+import { runWhatsAppBot } from '../lib/whatsapp-bot-runner.js';
+import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 
 class WhatsAppBadSignatureError extends DomainError {
   public readonly httpStatus = 400;
@@ -50,6 +51,7 @@ interface WhatsAppEntry {
         id?: string;
         from?: string;
         type?: string;
+        text?: { body?: string };
       }>;
     };
   }>;
@@ -57,21 +59,6 @@ interface WhatsAppEntry {
 
 export interface WhatsAppWebhookOpts {
   env: Env;
-}
-
-/** Constant-time verify the Meta X-Hub-Signature-256 header. */
-function verifySignature(rawBody: string, header: string, secret: string): boolean {
-  // Header format: `sha256=<hex>`.
-  if (!header.startsWith('sha256=')) return false;
-  const candidate = header.slice('sha256='.length).trim();
-  if (!/^[0-9a-f]+$/i.test(candidate)) return false;
-  const expected = createHmac('sha256', secret).update(rawBody, 'utf8').digest('hex');
-  if (expected.length !== candidate.length) return false;
-  try {
-    return timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(candidate, 'hex'));
-  } catch {
-    return false;
-  }
 }
 
 const whatsappWebhookRoutes: FastifyPluginAsync<WhatsAppWebhookOpts> = async (app, opts) => {
@@ -92,102 +79,137 @@ const whatsappWebhookRoutes: FastifyPluginAsync<WhatsAppWebhookOpts> = async (ap
       'hub.verify_token'?: string;
       'hub.challenge'?: string;
     };
-  }>('/api/webhooks/whatsapp', {
-    schema: {
-      tags: ['webhooks'],
-      summary: 'Meta subscription handshake for the WhatsApp webhook.',
-      querystring: Type.Object({
-        'hub.mode': Type.Optional(Type.String()),
-        'hub.verify_token': Type.Optional(Type.String()),
-        'hub.challenge': Type.Optional(Type.String()),
-      }),
+  }>(
+    '/api/webhooks/whatsapp',
+    {
+      schema: {
+        tags: ['webhooks'],
+        summary: 'Meta subscription handshake for the WhatsApp webhook.',
+        querystring: Type.Object({
+          'hub.mode': Type.Optional(Type.String()),
+          'hub.verify_token': Type.Optional(Type.String()),
+          'hub.challenge': Type.Optional(Type.String()),
+        }),
+      },
     },
-  }, async (req, reply) => {
-    if (!opts.env.WHATSAPP_VERIFY_TOKEN) {
-      throw new WhatsAppConfigError('WhatsApp verify token not configured.');
-    }
-    const q = req.query;
-    if (
-      q['hub.mode'] === 'subscribe' &&
-      q['hub.verify_token'] === opts.env.WHATSAPP_VERIFY_TOKEN &&
-      typeof q['hub.challenge'] === 'string'
-    ) {
-      reply.type('text/plain');
-      return reply.send(q['hub.challenge']);
-    }
-    return reply.status(403).send({
-      error: { code: 'FORBIDDEN', message: 'verify token mismatch', requestId: req.id },
-    });
-  });
+    async (req, reply) => {
+      if (!opts.env.WHATSAPP_VERIFY_TOKEN) {
+        throw new WhatsAppConfigError('WhatsApp verify token not configured.');
+      }
+      const q = req.query;
+      if (
+        q['hub.mode'] === 'subscribe' &&
+        q['hub.verify_token'] === opts.env.WHATSAPP_VERIFY_TOKEN &&
+        typeof q['hub.challenge'] === 'string'
+      ) {
+        reply.type('text/plain');
+        return reply.send(q['hub.challenge']);
+      }
+      return reply.status(403).send({
+        error: { code: 'FORBIDDEN', message: 'verify token mismatch', requestId: req.id },
+      });
+    },
+  );
 
   // ════════════════════════════════════════════════════════════════════
   // POST — message delivery
   // ════════════════════════════════════════════════════════════════════
 
-  app.post('/api/webhooks/whatsapp', {
-    schema: {
-      tags: ['webhooks'],
-      summary: 'WhatsApp Cloud API inbound — signature-verified + idempotent.',
-      response: { 200: WebhookAck, 400: ErrorResponse, 500: ErrorResponse },
+  app.post(
+    '/api/webhooks/whatsapp',
+    {
+      schema: {
+        tags: ['webhooks'],
+        summary: 'WhatsApp Cloud API inbound — signature-verified + idempotent.',
+        response: { 200: WebhookAck, 400: ErrorResponse, 500: ErrorResponse },
+      },
     },
-  }, async (req, reply) => {
-    if (!opts.env.WHATSAPP_APP_SECRET) {
-      throw new WhatsAppConfigError('WhatsApp app secret not configured.');
-    }
+    async (req, reply) => {
+      if (!opts.env.WHATSAPP_APP_SECRET) {
+        throw new WhatsAppConfigError('WhatsApp app secret not configured.');
+      }
 
-    const rawBody = typeof req.body === 'string' ? req.body : '';
-    const sigHeader = req.headers['x-hub-signature-256'];
-    if (typeof sigHeader !== 'string') {
-      throw new WhatsAppBadSignatureError('Missing X-Hub-Signature-256.');
-    }
-    if (!verifySignature(rawBody, sigHeader, opts.env.WHATSAPP_APP_SECRET)) {
-      req.log.warn({ headerPrefix: sigHeader.slice(0, 16) }, 'whatsapp webhook: signature rejected');
-      throw new WhatsAppBadSignatureError('Signature mismatch.');
-    }
+      const rawBody = typeof req.body === 'string' ? req.body : '';
+      const sigHeader = req.headers['x-hub-signature-256'];
+      if (typeof sigHeader !== 'string') {
+        throw new WhatsAppBadSignatureError('Missing X-Hub-Signature-256.');
+      }
+      if (!verifyMetaSignature(rawBody, sigHeader, opts.env.WHATSAPP_APP_SECRET)) {
+        req.log.warn(
+          { headerPrefix: sigHeader.slice(0, 16) },
+          'whatsapp webhook: signature rejected',
+        );
+        throw new WhatsAppBadSignatureError('Signature mismatch.');
+      }
 
-    let parsed: { entry?: WhatsAppEntry[] };
-    try {
-      parsed = JSON.parse(rawBody);
-    } catch {
-      throw new WhatsAppBadSignatureError('Verified signature but body is not JSON.');
-    }
+      let parsed: { entry?: WhatsAppEntry[] };
+      try {
+        parsed = JSON.parse(rawBody);
+      } catch {
+        throw new WhatsAppBadSignatureError('Verified signature but body is not JSON.');
+      }
 
-    let stored = 0;
-    const entries = parsed.entry ?? [];
-    for (const entry of entries) {
-      for (const change of entry.changes ?? []) {
-        const value = change.value;
-        if (!value?.messages) continue;
-        for (const msg of value.messages) {
-          if (!msg.id) continue;
-          try {
-            await app.db.insert(whatsappInboundMessages).values({
-              metaMessageId: msg.id,
-              fromPhone: msg.from ?? '',
-              messageType: msg.type ?? 'unknown',
-              rawPayload: msg as unknown,
-              signatureVerified: true,
-            });
-            stored++;
-          } catch (err) {
-            // UNIQUE on meta_message_id means Meta retried this delivery.
-            // Idempotent: no-op, count as not stored.
-            const msgText = (err as Error).message ?? '';
-            if (!msgText.includes('whatsapp_inbound_meta_id_uq')) {
-              req.log.error({ err }, 'whatsapp webhook: insert failed');
-              throw err;
+      let stored = 0;
+      // Text messages to hand to the bot orchestrator AFTER we ack Meta.
+      const botTriggers: Array<{ fromPhone: string; body: string }> = [];
+      const entries = parsed.entry ?? [];
+      for (const entry of entries) {
+        for (const change of entry.changes ?? []) {
+          const value = change.value;
+          if (!value?.messages) continue;
+          for (const msg of value.messages) {
+            if (!msg.id) continue;
+            const fromPhone = msg.from ?? '';
+            const textBody = typeof msg.text?.body === 'string' ? msg.text.body : '';
+            try {
+              await app.db.insert(whatsappInboundMessages).values({
+                metaMessageId: msg.id,
+                fromPhone,
+                messageType: msg.type ?? 'unknown',
+                rawPayload: msg as unknown,
+                signatureVerified: true,
+              });
+              stored++;
+              // Encrypt the body at rest (Epic E). Best-effort — a failure here
+              // must not fail the webhook ack.
+              if (textBody.length > 0) {
+                try {
+                  await app.withPii(async (txAny) => {
+                    const tx = txAny as unknown as typeof app.db;
+                    await tx.execute(drizzleSql`
+                    UPDATE whatsapp_inbound_messages
+                    SET body_encrypted = encrypt_pii(${textBody})
+                    WHERE meta_message_id = ${msg.id}
+                  `);
+                  });
+                } catch (err) {
+                  req.log.warn({ err }, 'whatsapp webhook: body encryption failed');
+                }
+                if (fromPhone.length > 0) botTriggers.push({ fromPhone, body: textBody });
+              }
+            } catch (err) {
+              // UNIQUE on meta_message_id means Meta retried this delivery.
+              // Idempotent: no-op, count as not stored.
+              const msgText = (err as Error).message ?? '';
+              if (!msgText.includes('whatsapp_inbound_meta_id_uq')) {
+                req.log.error({ err }, 'whatsapp webhook: insert failed');
+                throw err;
+              }
             }
           }
         }
       }
-    }
 
-    // Mark the rows we just stored as not-yet-processed (workers will pick up).
-    // The worker reads `WHERE processed_at IS NULL`.
-    void drizzleSql; // keep import used in case of future raw SQL needs
+      // Fire the bot orchestrator per inbound text — detached so we ack Meta
+      // immediately. Started inside the request scope so the orchestrator's
+      // withPii() calls inherit the PII key via AsyncLocalStorage.
+      for (const trigger of botTriggers) {
+        void runWhatsAppBot(app, opts.env, trigger);
+      }
 
-    return reply.status(200).send({ received: true, stored });
-  });
+      return reply.status(200).send({ received: true, stored });
+    },
+  );
 };
 
 export default whatsappWebhookRoutes;

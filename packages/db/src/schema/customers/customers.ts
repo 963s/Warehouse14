@@ -13,6 +13,7 @@
  *     trigger from migration 0009. App role has no UPDATE on them.
  */
 
+import { sql } from 'drizzle-orm';
 import {
   boolean,
   char,
@@ -27,7 +28,6 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { sql } from 'drizzle-orm';
 
 import { timestamps } from '../_shared/columns.js';
 import { users } from '../auth/users.js';
@@ -71,6 +71,7 @@ export const customers = pgTable(
 
     // Non-PII metadata
     preferredLanguage: char('preferred_language', { length: 2 }).notNull().default('de'),
+    vatId: text('vat_id'),
     customerTags: text('customer_tags').array().notNull().default(sql`'{}'::text[]`),
 
     // KYC state
@@ -98,10 +99,16 @@ export const customers = pgTable(
     pepMatch: boolean('pep_match').notNull().default(false),
 
     // Cumulative spend (trigger-maintained from migration 0009)
-    cumulativeSpendEur: numeric('cumulative_spend_eur', { precision: 18, scale: 2 }).notNull().default('0'),
-    cumulativeAnkaufEur: numeric('cumulative_ankauf_eur', { precision: 18, scale: 2 }).notNull().default('0'),
+    cumulativeSpendEur: numeric('cumulative_spend_eur', { precision: 18, scale: 2 })
+      .notNull()
+      .default('0'),
+    cumulativeAnkaufEur: numeric('cumulative_ankauf_eur', { precision: 18, scale: 2 })
+      .notNull()
+      .default('0'),
     /** Outstanding debt — trigger-maintained from migration 0016 (DEBT payments). */
-    cumulativeDebtEur: numeric('cumulative_debt_eur', { precision: 18, scale: 2 }).notNull().default('0'),
+    cumulativeDebtEur: numeric('cumulative_debt_eur', { precision: 18, scale: 2 })
+      .notNull()
+      .default('0'),
 
     // GDPR retention
     retentionUntil: date('retention_until').notNull(),
@@ -110,7 +117,7 @@ export const customers = pgTable(
 
     ...timestamps(),
   },
-  table => ({
+  (table) => ({
     customerNumberUq: uniqueIndex('customers_customer_number_uq').on(table.customerNumber),
 
     emailBlindActiveUq: uniqueIndex('customers_email_blind_index_active_uq')
@@ -126,7 +133,9 @@ export const customers = pgTable(
 
     sanctionsFlagsIdx: index('customers_sanctions_flags_idx')
       .on(table.sanctionsMatch, table.pepMatch)
-      .where(sql`(${table.sanctionsMatch} = TRUE OR ${table.pepMatch} = TRUE) AND ${table.softDeletedAt} IS NULL`),
+      .where(
+        sql`(${table.sanctionsMatch} = TRUE OR ${table.pepMatch} = TRUE) AND ${table.softDeletedAt} IS NULL`,
+      ),
 
     retentionIdx: index('customers_retention_idx')
       .on(table.retentionUntil)

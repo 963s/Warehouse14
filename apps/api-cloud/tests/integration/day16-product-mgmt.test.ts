@@ -30,17 +30,17 @@
  *     ✓ A-3 helmet: Strict-Transport-Security present
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { readFile, readdir } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
+import { readFile, readdir } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import postgres, { type Sql } from 'postgres';
-import { drizzle } from 'drizzle-orm/postgres-js';
-import * as schema from '@warehouse14/db/schema';
 import type { AppDb } from '@warehouse14/db/client';
+import * as schema from '@warehouse14/db/schema';
+import { drizzle } from 'drizzle-orm/postgres-js';
 import type { FastifyInstance } from 'fastify';
+import postgres, { type Sql } from 'postgres';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildApp } from '../../src/app.js';
 import type { Env } from '../../src/config/env.js';
@@ -60,9 +60,7 @@ const INITDB_SQL = `
 `;
 
 async function applyAll(sqlClient: Sql): Promise<void> {
-  const files = (await readdir(MIGRATIONS_DIR))
-    .filter((n) => /^\d{4}_.+\.sql$/.test(n))
-    .sort();
+  const files = (await readdir(MIGRATIONS_DIR)).filter((n) => /^\d{4}_.+\.sql$/.test(n)).sort();
   for (const f of files) await sqlClient.unsafe(await readFile(join(MIGRATIONS_DIR, f), 'utf8'));
 }
 
@@ -94,21 +92,25 @@ describe('Day 16 — Product Management + audit fixes', () => {
       .start();
 
     migratorSql = postgres({
-      host: container.getHost(), port: container.getPort(),
+      host: container.getHost(),
+      port: container.getPort(),
       database: 'warehouse14_test',
       username: 'warehouse14_migrator',
       password: 'warehouse14_migrator_test_pw',
-      max: 1, onnotice: () => {},
+      max: 1,
+      onnotice: () => {},
     });
     await applyAll(migratorSql);
     await migratorSql.unsafe(`ALTER ROLE warehouse14_app PASSWORD 'warehouse14_app_test_pw'`);
 
     appSql = postgres({
-      host: container.getHost(), port: container.getPort(),
+      host: container.getHost(),
+      port: container.getPort(),
       database: 'warehouse14_test',
       username: 'warehouse14_app',
       password: 'warehouse14_app_test_pw',
-      max: 5, onnotice: () => {},
+      max: 5,
+      onnotice: () => {},
     });
     appDb = drizzle(appSql, { schema });
 
@@ -228,7 +230,8 @@ describe('Day 16 — Product Management + audit fixes', () => {
   describe('POST /api/products', () => {
     it('Owner happy path → 200 + audit_log entry', async () => {
       const res = await app.inject({
-        method: 'POST', url: '/api/products',
+        method: 'POST',
+        url: '/api/products',
         headers: headers(ownerTokenStepUp),
         payload: createBody({ acquiredFromCustomerId: sellerCustomerId, isCommission: true }),
       });
@@ -245,7 +248,9 @@ describe('Day 16 — Product Management + audit fixes', () => {
       expect((audit!.payload as { isCommission: boolean }).isCommission).toBe(true);
 
       // is_commission + acquired_from_customer_id persisted.
-      const [row] = await migratorSql<{ is_commission: boolean; acquired_from_customer_id: string | null }[]>`
+      const [row] = await migratorSql<
+        { is_commission: boolean; acquired_from_customer_id: string | null }[]
+      >`
         SELECT is_commission, acquired_from_customer_id FROM products WHERE id = ${out.id}`;
       expect(row!.is_commission).toBe(true);
       expect(row!.acquired_from_customer_id).toBe(sellerCustomerId);
@@ -253,7 +258,8 @@ describe('Day 16 — Product Management + audit fixes', () => {
 
     it('CASHIER role → 403 FORBIDDEN', async () => {
       const res = await app.inject({
-        method: 'POST', url: '/api/products',
+        method: 'POST',
+        url: '/api/products',
         headers: headers(cashierToken),
         payload: createBody(),
       });
@@ -262,7 +268,8 @@ describe('Day 16 — Product Management + audit fixes', () => {
 
     it('no cookie → 401 UNAUTHORIZED', async () => {
       const res = await app.inject({
-        method: 'POST', url: '/api/products',
+        method: 'POST',
+        url: '/api/products',
         headers: headers(null),
         payload: createBody(),
       });
@@ -271,7 +278,8 @@ describe('Day 16 — Product Management + audit fixes', () => {
 
     it('acquisitionCostEur ≥ threshold without step-up → 403 STEP_UP_REQUIRED', async () => {
       const res = await app.inject({
-        method: 'POST', url: '/api/products',
+        method: 'POST',
+        url: '/api/products',
         headers: headers(ownerTokenNoStepUp),
         payload: createBody({ acquisitionCostEur: '5000.00' }),
       });
@@ -287,7 +295,8 @@ describe('Day 16 — Product Management + audit fixes', () => {
   describe('PUT /api/products/:id', () => {
     async function createOne(): Promise<string> {
       const res = await app.inject({
-        method: 'POST', url: '/api/products',
+        method: 'POST',
+        url: '/api/products',
         headers: headers(ownerTokenStepUp),
         payload: createBody(),
       });
@@ -297,7 +306,8 @@ describe('Day 16 — Product Management + audit fixes', () => {
     it('Owner update list price → 200 + changedFields includes listPriceEur', async () => {
       const id = await createOne();
       const res = await app.inject({
-        method: 'PUT', url: `/api/products/${id}`,
+        method: 'PUT',
+        url: `/api/products/${id}`,
         headers: headers(ownerTokenStepUp),
         payload: { listPriceEur: '199.99' },
       });
@@ -309,7 +319,8 @@ describe('Day 16 — Product Management + audit fixes', () => {
     it('rejects unknown / intake-locked field (additionalProperties: false)', async () => {
       const id = await createOne();
       const res = await app.inject({
-        method: 'PUT', url: `/api/products/${id}`,
+        method: 'PUT',
+        url: `/api/products/${id}`,
         headers: headers(ownerTokenStepUp),
         payload: { acquisitionCostEur: '999.99' }, // intake-locked, not in PUT schema
       });
@@ -319,7 +330,8 @@ describe('Day 16 — Product Management + audit fixes', () => {
 
     it('unknown product id → 404 NOT_FOUND', async () => {
       const res = await app.inject({
-        method: 'PUT', url: `/api/products/00000000-0000-0000-0000-000000000000`,
+        method: 'PUT',
+        url: `/api/products/00000000-0000-0000-0000-000000000000`,
         headers: headers(ownerTokenStepUp),
         payload: { listPriceEur: '199.99' },
       });
@@ -329,7 +341,8 @@ describe('Day 16 — Product Management + audit fixes', () => {
     it('DRAFT → AVAILABLE transition lands publishedAt', async () => {
       const id = await createOne();
       const res = await app.inject({
-        method: 'PUT', url: `/api/products/${id}`,
+        method: 'PUT',
+        url: `/api/products/${id}`,
         headers: headers(ownerTokenStepUp),
         payload: { status: 'AVAILABLE' },
       });
@@ -348,18 +361,21 @@ describe('Day 16 — Product Management + audit fixes', () => {
   describe('POST /api/products/:id/archive', () => {
     it('AVAILABLE product → 409 CONFLICT', async () => {
       const create = await app.inject({
-        method: 'POST', url: '/api/products',
+        method: 'POST',
+        url: '/api/products',
         headers: headers(ownerTokenStepUp),
         payload: createBody(),
       });
       const id = (create.json() as { id: string }).id;
       await app.inject({
-        method: 'PUT', url: `/api/products/${id}`,
+        method: 'PUT',
+        url: `/api/products/${id}`,
         headers: headers(ownerTokenStepUp),
         payload: { status: 'AVAILABLE' },
       });
       const res = await app.inject({
-        method: 'POST', url: `/api/products/${id}/archive`,
+        method: 'POST',
+        url: `/api/products/${id}/archive`,
         headers: headers(ownerTokenStepUp),
         payload: {},
       });
@@ -377,7 +393,8 @@ describe('Day 16 — Product Management + audit fixes', () => {
         RETURNING id`;
 
       const res = await app.inject({
-        method: 'POST', url: `/api/products/${p!.id}/archive`,
+        method: 'POST',
+        url: `/api/products/${p!.id}/archive`,
         headers: headers(ownerTokenStepUp),
         payload: {},
       });
@@ -395,7 +412,8 @@ describe('Day 16 — Product Management + audit fixes', () => {
                 'gold_jewelry'::item_type, '50.00', '150.00', 'x', now(), now())
         RETURNING id`;
       const res = await app.inject({
-        method: 'POST', url: `/api/products/${p!.id}/archive`,
+        method: 'POST',
+        url: `/api/products/${p!.id}/archive`,
         headers: headers(ownerTokenNoStepUp),
         payload: {},
       });
@@ -411,7 +429,8 @@ describe('Day 16 — Product Management + audit fixes', () => {
   describe('POST /api/products/:id/photos', () => {
     it('unknown product → 404', async () => {
       const res = await app.inject({
-        method: 'POST', url: `/api/products/00000000-0000-0000-0000-000000000000/photos`,
+        method: 'POST',
+        url: `/api/products/00000000-0000-0000-0000-000000000000/photos`,
         headers: headers(ownerTokenStepUp),
         payload: { contentType: 'image/jpeg', contentLength: 1024 },
       });
@@ -420,13 +439,15 @@ describe('Day 16 — Product Management + audit fixes', () => {
 
     it('R2 not configured → 500 INTERNAL_ERROR (test env empty R2 vars)', async () => {
       const create = await app.inject({
-        method: 'POST', url: '/api/products',
+        method: 'POST',
+        url: '/api/products',
         headers: headers(ownerTokenStepUp),
         payload: createBody(),
       });
       const id = (create.json() as { id: string }).id;
       const res = await app.inject({
-        method: 'POST', url: `/api/products/${id}/photos`,
+        method: 'POST',
+        url: `/api/products/${id}/photos`,
         headers: headers(ownerTokenStepUp),
         payload: { contentType: 'image/jpeg', contentLength: 1024 },
       });

@@ -15,15 +15,20 @@
  *   • audit_log is append-only via grants
  */
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres, { type Sql } from 'postgres';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { emit, emitAudit, verifyChain } from '@warehouse14/audit';
 import type { AppDb } from '@warehouse14/db/client';
 import * as schema from '@warehouse14/db/schema';
 
-import { applyMigrations, setAppPasswordForTest, startTestDb, type TestDb } from '../helpers/testDb.js';
+import {
+  type TestDb,
+  applyMigrations,
+  setAppPasswordForTest,
+  startTestDb,
+} from '../helpers/testDb.js';
 
 describe('migration 0008_audit_chain + @warehouse14/audit', () => {
   let testDb: TestDb;
@@ -256,12 +261,14 @@ describe('migration 0008_audit_chain + @warehouse14/audit', () => {
       // Emit 5 events.
       const events = [];
       for (let i = 1; i <= 5; i++) {
-        events.push(await emit(appDb, {
-          eventType: `test.tamper.${i}`,
-          entityTable: 'products',
-          entityId: u(),
-          payload: { sequence: i, sensitive: 'original' },
-        }));
+        events.push(
+          await emit(appDb, {
+            eventType: `test.tamper.${i}`,
+            entityTable: 'products',
+            entityId: u(),
+            payload: { sequence: i, sensitive: 'original' },
+          }),
+        );
       }
 
       // Verify chain is valid before tampering.
@@ -302,8 +309,18 @@ describe('migration 0008_audit_chain + @warehouse14/audit', () => {
     it('🔥 DBA deleting a middle row BREAKS the chain at the next row', async () => {
       // Emit 3 events.
       await emit(appDb, { eventType: 'test.del.1', entityTable: 'p', entityId: u(), payload: {} });
-      const e2 = await emit(appDb, { eventType: 'test.del.2', entityTable: 'p', entityId: u(), payload: {} });
-      const e3 = await emit(appDb, { eventType: 'test.del.3', entityTable: 'p', entityId: u(), payload: {} });
+      const e2 = await emit(appDb, {
+        eventType: 'test.del.2',
+        entityTable: 'p',
+        entityId: u(),
+        payload: {},
+      });
+      const e3 = await emit(appDb, {
+        eventType: 'test.del.3',
+        entityTable: 'p',
+        entityId: u(),
+        payload: {},
+      });
 
       // Sanity: e3.prev_hash should equal e2.row_hash.
       expect(Buffer.from(e3.prevHash).equals(Buffer.from(e2.rowHash))).toBe(true);
@@ -351,9 +368,9 @@ describe('migration 0008_audit_chain + @warehouse14/audit', () => {
       const results = await Promise.all(attempts);
 
       // 100 distinct ids, 100 distinct row_hashes.
-      const ids = new Set(results.map(r => r.id));
-      const rowHashes = new Set(results.map(r => Buffer.from(r.rowHash).toString('hex')));
-      const prevHashes = new Set(results.map(r => Buffer.from(r.prevHash).toString('hex')));
+      const ids = new Set(results.map((r) => r.id));
+      const rowHashes = new Set(results.map((r) => Buffer.from(r.rowHash).toString('hex')));
+      const prevHashes = new Set(results.map((r) => Buffer.from(r.prevHash).toString('hex')));
       expect(ids.size).toBe(100);
       expect(rowHashes.size).toBe(100);
       // Every prev_hash must be unique too (no two rows share a parent).

@@ -11,8 +11,16 @@
  * accidental orphaning of products.
  */
 
-import { boolean, index, pgTable, primaryKey, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import {
+  boolean,
+  index,
+  pgTable,
+  primaryKey,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 
 import { products } from '../products/products.js';
 import { categories } from './categories.js';

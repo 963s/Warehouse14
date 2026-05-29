@@ -13,8 +13,8 @@
  * here.
  */
 
-import fastifyPlugin from 'fastify-plugin';
 import type { FastifyError, FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
+import fastifyPlugin from 'fastify-plugin';
 
 /** Stable error codes — front-end maps these, not status codes. */
 export type ApiErrorCode =
@@ -70,10 +70,11 @@ function pgErrorToCode(err: FastifyError & { code?: string }): ApiErrorCode | nu
   if (msg.includes('transactions_ankauf_requires_customer')) return 'VALIDATION_ERROR';
   if (msg.includes('transactions_one_storno_per_original_uq')) return 'CONFLICT';
   if (msg.includes('appointments_one_transaction_link_uq')) return 'CONFLICT';
-  if (msg.includes('Cannot storno') && msg.includes('it is itself a storno')) return 'STORNO_OF_STORNO';
-  if (err.code === '23505') return 'CONFLICT';        // unique_violation
-  if (err.code === '23503') return 'CONFLICT';        // foreign_key_violation
-  if (err.code === '23514') return 'CONFLICT';        // check_violation (fallback)
+  if (msg.includes('Cannot storno') && msg.includes('it is itself a storno'))
+    return 'STORNO_OF_STORNO';
+  if (err.code === '23505') return 'CONFLICT'; // unique_violation
+  if (err.code === '23503') return 'CONFLICT'; // foreign_key_violation
+  if (err.code === '23514') return 'CONFLICT'; // check_violation (fallback)
   if (err.code === '23502') return 'VALIDATION_ERROR'; // not_null_violation
   return null;
 }
@@ -96,7 +97,13 @@ const codeToHttp: Record<ApiErrorCode, number> = {
   INTERNAL_ERROR: 500,
 };
 
-function send(reply: FastifyReply, req: FastifyRequest, code: ApiErrorCode, message: string, details?: unknown): FastifyReply {
+function send(
+  reply: FastifyReply,
+  req: FastifyRequest,
+  code: ApiErrorCode,
+  message: string,
+  details?: unknown,
+): FastifyReply {
   const body: ApiErrorBody = {
     error: {
       code,
@@ -141,9 +148,18 @@ const errorHandlerPlugin: FastifyPluginAsync = async (app) => {
     }
 
     // 4. Fastify auth/rate-limit conventional shapes.
-    if (err.statusCode === 401) { send(reply, req, 'UNAUTHORIZED', err.message); return; }
-    if (err.statusCode === 403) { send(reply, req, 'FORBIDDEN', err.message); return; }
-    if (err.statusCode === 429) { send(reply, req, 'RATE_LIMITED', err.message); return; }
+    if (err.statusCode === 401) {
+      send(reply, req, 'UNAUTHORIZED', err.message);
+      return;
+    }
+    if (err.statusCode === 403) {
+      send(reply, req, 'FORBIDDEN', err.message);
+      return;
+    }
+    if (err.statusCode === 429) {
+      send(reply, req, 'RATE_LIMITED', err.message);
+      return;
+    }
 
     // 5. Unknown → 500 + log. The body intentionally hides the underlying
     //    error message (avoid leaking stack hints to a hostile client).

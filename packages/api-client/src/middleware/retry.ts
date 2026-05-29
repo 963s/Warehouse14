@@ -52,9 +52,7 @@ const RETRYABLE_HTTP_STATUS: ReadonlySet<number> = new Set([429, 500, 502, 503, 
 
 const defaultIsRetryable = (err: unknown, req: MiddlewareRequest): boolean => {
   const idempotent =
-    req.method === 'GET' ||
-    req.method === 'HEAD' ||
-    req.meta.custom?.idempotent === true;
+    req.method === 'GET' || req.method === 'HEAD' || req.meta.custom?.idempotent === true;
   if (!idempotent) return false;
 
   if (err instanceof ApiCircuitOpenError) return false;

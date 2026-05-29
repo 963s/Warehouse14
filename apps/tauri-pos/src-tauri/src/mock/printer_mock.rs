@@ -1,6 +1,7 @@
 //! Printer mocks — both ESC/POS and lpr A4. Just log + sleep; CI will
 //! `cat` the bytes if it ever needs to assert on them.
 
+use crate::commands::label::LabelConfig;
 use crate::commands::pdf::PrintA4Params;
 use crate::commands::thermal::{ThermalEndpoint, ThermalReceiptData};
 use crate::error::HwResult;
@@ -25,6 +26,20 @@ pub async fn print_a4(params: PrintA4Params) -> HwResult<()> {
         "warehouse14-pos[mock]: A4 print → {} ({} bytes)",
         params.printer_name,
         params.pdf_bytes.len(),
+    );
+    Ok(())
+}
+
+pub async fn print_label(config: &LabelConfig, count: usize, bytes: &[u8]) -> HwResult<()> {
+    mock::mock_delay(400).await;
+    mock::maybe_inject_failure("label print (mock)")?;
+    eprintln!(
+        "warehouse14-pos[mock]: label print → {:?}/{} via {} ({} labels, {} bytes)",
+        config.printer_type,
+        config.mode,
+        config.printer_name.as_deref().unwrap_or("tcp"),
+        count,
+        bytes.len(),
     );
     Ok(())
 }

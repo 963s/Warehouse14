@@ -11,8 +11,8 @@
  * active` enforces exactly one primary location at a time.
  */
 
-import { boolean, char, check, index, jsonb, numeric, pgTable, text } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import { boolean, char, check, index, jsonb, numeric, pgTable, text } from 'drizzle-orm/pg-core';
 
 import { primaryKey, timestamps } from '../_shared/columns.js';
 
@@ -37,7 +37,10 @@ export const businessLocations = pgTable(
     googlePlaceId: text('google_place_id'),
 
     openingHours: jsonb('opening_hours').notNull().default(sql`'{}'::jsonb`),
-    serviceAreaPostalCodes: text('service_area_postal_codes').array().notNull().default(sql`'{}'::text[]`),
+    serviceAreaPostalCodes: text('service_area_postal_codes')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
 
     schemaOrgBusinessType: text('schema_org_business_type').notNull().default('JewelryStore'),
 

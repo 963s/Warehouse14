@@ -6,8 +6,19 @@
  * per item across a lump-sum buyback.
  */
 
-import { check, index, integer, numeric, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import {
+  check,
+  index,
+  integer,
+  numeric,
+  pgEnum,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 
 import { users } from '../auth/users.js';
 import { customers } from '../customers/customers.js';
@@ -18,19 +29,29 @@ import { karatGrades } from '../reference/karatGrades.js';
 import { transactions } from '../transactions/transactions.js';
 
 export const appraisalStatus = pgEnum('appraisal_status', [
-  'DRAFT', 'COMPLETED', 'ACCEPTED', 'REJECTED', 'EXPIRED',
+  'DRAFT',
+  'COMPLETED',
+  'ACCEPTED',
+  'REJECTED',
+  'EXPIRED',
 ]);
 
 export const appraisals = pgTable(
   'appraisals',
   {
     id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-    customerId: uuid('customer_id').notNull().references(() => customers.id),
-    appraisedByUserId: uuid('appraised_by_user_id').notNull().references(() => users.id),
+    customerId: uuid('customer_id')
+      .notNull()
+      .references(() => customers.id),
+    appraisedByUserId: uuid('appraised_by_user_id')
+      .notNull()
+      .references(() => users.id),
 
     status: appraisalStatus('status').notNull().default('DRAFT'),
 
-    totalAppraisedEur: numeric('total_appraised_eur', { precision: 18, scale: 2 }).notNull().default('0'),
+    totalAppraisedEur: numeric('total_appraised_eur', { precision: 18, scale: 2 })
+      .notNull()
+      .default('0'),
     totalOfferedEur: numeric('total_offered_eur', { precision: 18, scale: 2 }),
     customerExpectationEur: numeric('customer_expectation_eur', { precision: 18, scale: 2 }),
 
@@ -85,7 +106,9 @@ export const appraisalItems = pgTable(
   'appraisal_items',
   {
     id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-    appraisalId: uuid('appraisal_id').notNull().references(() => appraisals.id),
+    appraisalId: uuid('appraisal_id')
+      .notNull()
+      .references(() => appraisals.id),
     sequenceInLot: integer('sequence_in_lot').notNull().default(0),
 
     name: text('name').notNull(),
@@ -98,7 +121,10 @@ export const appraisalItems = pgTable(
     condition: productCondition('condition'),
     hallmarkStamps: text('hallmark_stamps').array().notNull().default(sql`'{}'`),
 
-    individualAppraisedEur: numeric('individual_appraised_eur', { precision: 18, scale: 2 }).notNull(),
+    individualAppraisedEur: numeric('individual_appraised_eur', {
+      precision: 18,
+      scale: 2,
+    }).notNull(),
 
     photoR2Keys: text('photo_r2_keys').array().notNull().default(sql`'{}'`),
     notes: text('notes'),
@@ -111,7 +137,8 @@ export const appraisalItems = pgTable(
   (table) => ({
     appraisalIdx: index('appraisal_items_appraisal_idx').on(table.appraisalId, table.sequenceInLot),
     productIdx: index('appraisal_items_product_idx')
-      .on(table.productId).where(sql`${table.productId} IS NOT NULL`),
+      .on(table.productId)
+      .where(sql`${table.productId} IS NOT NULL`),
   }),
 );
 

@@ -15,10 +15,10 @@
  *   • transaction_payments: tradein_requires_ankauf
  */
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from 'postgres';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { applyMigrations, startTestDb, type TestDb } from '../helpers/testDb.js';
+import { type TestDb, applyMigrations, startTestDb } from '../helpers/testDb.js';
 
 describe('migration 0019_retail_compliance', () => {
   let testDb: TestDb;
@@ -41,11 +41,17 @@ describe('migration 0019_retail_compliance', () => {
   describe('enums', () => {
     it.each([
       ['shift_status', ['OPEN', 'CLOSED']],
-      ['cash_movement_direction', ['OPENING_FLOAT', 'INJECTION', 'BANK_DROP', 'SAFE_TRANSIT', 'CLOSING_RECONCILIATION']],
+      [
+        'cash_movement_direction',
+        ['OPENING_FLOAT', 'INJECTION', 'BANK_DROP', 'SAFE_TRANSIT', 'CLOSING_RECONCILIATION'],
+      ],
       ['voucher_type', ['SINGLE_PURPOSE', 'MULTI_PURPOSE']],
       ['voucher_status', ['ACTIVE', 'REDEEMED', 'EXPIRED', 'REVOKED']],
       ['inventory_session_status', ['OPEN', 'CLOSED']],
-      ['inventory_scan_match', ['MATCHED', 'UNKNOWN_BARCODE', 'DUPLICATE', 'EXPECTED_BUT_SOLD', 'UNEXPECTED']],
+      [
+        'inventory_scan_match',
+        ['MATCHED', 'UNKNOWN_BARCODE', 'DUPLICATE', 'EXPECTED_BUT_SOLD', 'UNEXPECTED'],
+      ],
     ] as const)('enum %s has labels %j', async (enumName, expected) => {
       const rows = await migratorSql<{ enumlabel: string }[]>`
         SELECT enumlabel FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid

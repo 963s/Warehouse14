@@ -5,18 +5,20 @@
  * Never stores raw PAN — only masked last-4 (ADR-0013 PCI minimization).
  */
 
-import { check, index, numeric, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import { check, index, numeric, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
 import { primaryKey } from '../_shared/columns.js';
-import { transactions } from './transactions.js';
 import { paymentMethod } from './enums.js';
+import { transactions } from './transactions.js';
 
 export const transactionPayments = pgTable(
   'transaction_payments',
   {
     id: primaryKey(),
-    transactionId: uuid('transaction_id').notNull().references(() => transactions.id),
+    transactionId: uuid('transaction_id')
+      .notNull()
+      .references(() => transactions.id),
     paymentMethod: paymentMethod('payment_method').notNull(),
     amountEur: numeric('amount_eur', { precision: 18, scale: 2 }).notNull(),
 
@@ -32,7 +34,7 @@ export const transactionPayments = pgTable(
 
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  table => ({
+  (table) => ({
     transactionIdx: index('transaction_payments_transaction_id_idx').on(table.transactionId),
     methodDayIdx: index('transaction_payments_method_day_idx').on(
       table.paymentMethod,

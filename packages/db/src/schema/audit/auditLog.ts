@@ -6,8 +6,18 @@
  * model). Append-only via grants — app has SELECT + INSERT only.
  */
 
-import { bigserial, check, index, inet, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import {
+  bigserial,
+  check,
+  index,
+  inet,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from 'drizzle-orm/pg-core';
 
 import { devices } from '../auth/devices.js';
 import { users } from '../auth/users.js';
@@ -24,12 +34,18 @@ export const auditLog = pgTable(
     payload: jsonb('payload').notNull().default(sql`'{}'::jsonb`),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  table => ({
-    eventTypeIdx: index('audit_log_event_type_created_at_idx').on(table.eventType, table.createdAt.desc()),
+  (table) => ({
+    eventTypeIdx: index('audit_log_event_type_created_at_idx').on(
+      table.eventType,
+      table.createdAt.desc(),
+    ),
     actorIdx: index('audit_log_actor_created_at_idx')
       .on(table.actorUserId, table.createdAt.desc())
       .where(sql`${table.actorUserId} IS NOT NULL`),
-    payloadObject: check('audit_log_payload_object', sql`jsonb_typeof(${table.payload}) = 'object'`),
+    payloadObject: check(
+      'audit_log_payload_object',
+      sql`jsonb_typeof(${table.payload}) = 'object'`,
+    ),
   }),
 );
 

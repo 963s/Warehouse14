@@ -12,10 +12,15 @@
  *   8. Seed data sanity — anomaly threshold, AI budget, intake window all present.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import postgres, { type Sql } from 'postgres';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { applyMigrations, setAppPasswordForTest, startTestDb, type TestDb } from '../helpers/testDb.js';
+import {
+  type TestDb,
+  applyMigrations,
+  setAppPasswordForTest,
+  startTestDb,
+} from '../helpers/testDb.js';
 
 describe('migration 0011_closing — accounting circle closure', () => {
   let testDb: TestDb;
@@ -91,7 +96,7 @@ describe('migration 0011_closing — accounting circle closure', () => {
       'kyc.high_value_threshold_eur',
       'smurfing.ankauf_count_threshold',
       'cash_drawer.variance_alert_threshold_eur',
-    ])('system_setting %s is seeded', async key => {
+    ])('system_setting %s is seeded', async (key) => {
       const [row] = await migratorSql<{ value: unknown }[]>`
         SELECT value FROM system_settings WHERE key = ${key}`;
       expect(row).toBeDefined();
@@ -101,7 +106,7 @@ describe('migration 0011_closing — accounting circle closure', () => {
     it('anomaly.sigma_threshold = 3.0 (default)', async () => {
       const [row] = await migratorSql<{ value: number }[]>`
         SELECT value::numeric AS value FROM system_settings WHERE key = 'anomaly.sigma_threshold'`;
-      expect(parseFloat(row.value as unknown as string)).toBe(3.0);
+      expect(Number.parseFloat(row.value as unknown as string)).toBe(3.0);
     });
 
     it('intake.grouping_window_seconds = 120 (Day-3 directive)', async () => {
@@ -136,7 +141,9 @@ describe('migration 0011_closing — accounting circle closure', () => {
            AND payload->>'key' = 'anomaly.sigma_threshold'`;
       expect(BigInt(after_count) - BigInt(before_count)).toBe(1n);
 
-      const [audit] = await migratorSql<{ actor_user_id: string; payload: { old_value: unknown; new_value: unknown } }[]>`
+      const [audit] = await migratorSql<
+        { actor_user_id: string; payload: { old_value: unknown; new_value: unknown } }[]
+      >`
         SELECT actor_user_id, payload
           FROM audit_log
          WHERE event_type = 'system_setting.updated'
@@ -215,7 +222,9 @@ describe('migration 0011_closing — accounting circle closure', () => {
 
       // But notes IS allowed.
       await appSql`UPDATE daily_closings SET notes = 'Reviewed by Basel' WHERE id = ${closing.id}`;
-      const [row] = await migratorSql<{ notes: string }[]>`SELECT notes FROM daily_closings WHERE id = ${closing.id}`;
+      const [row] = await migratorSql<
+        { notes: string }[]
+      >`SELECT notes FROM daily_closings WHERE id = ${closing.id}`;
       expect(row.notes).toBe('Reviewed by Basel');
     });
 
@@ -278,7 +287,10 @@ describe('migration 0011_closing — accounting circle closure', () => {
         SELECT event_type FROM ledger_events
          WHERE entity_table = 'daily_closings' AND entity_id = ${closing.id}
          ORDER BY id`;
-      expect(events.map(e => e.event_type)).toEqual(['daily_closing.counting', 'daily_closing.finalized']);
+      expect(events.map((e) => e.event_type)).toEqual([
+        'daily_closing.counting',
+        'daily_closing.finalized',
+      ]);
     });
   });
 
@@ -362,7 +374,7 @@ describe('migration 0011_closing — accounting circle closure', () => {
   describe('app grants', () => {
     it.each(['daily_closings', 'dsfinvk_exports', 'system_settings'])(
       '%s — app cannot DELETE',
-      async tbl => {
+      async (tbl) => {
         const [row] = await migratorSql<{ has: boolean }[]>`
           SELECT has_table_privilege('warehouse14_app', ${tbl}, 'DELETE') AS has`;
         expect(row.has).toBe(false);
@@ -383,7 +395,7 @@ describe('migration 0011_closing — accounting circle closure', () => {
   describe('trigger ownership', () => {
     it.each(['on_daily_closing_event', 'on_system_setting_event'])(
       '%s is SECURITY DEFINER owned by warehouse14_security',
-      async fn => {
+      async (fn) => {
         const [row] = await migratorSql<{ owner: string; sec_def: boolean }[]>`
           SELECT pg_get_userbyid(proowner) AS owner, prosecdef AS sec_def
             FROM pg_proc WHERE proname = ${fn}`;

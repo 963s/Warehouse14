@@ -153,10 +153,14 @@ export class JobRunner {
     const cron = await import('node-cron');
     for (const def of this.defs.values()) {
       if (!def.schedule) continue;
-      const task = cron.default.schedule(def.schedule, () => {
-        // Fire-and-forget; the runner records every outcome to worker_job_runs.
-        void this.runOnce(def.name);
-      }, { scheduled: true });
+      const task = cron.default.schedule(
+        def.schedule,
+        () => {
+          // Fire-and-forget; the runner records every outcome to worker_job_runs.
+          void this.runOnce(def.name);
+        },
+        { scheduled: true },
+      );
       this.cronTasks.push({ stop: () => task.stop() });
     }
   }
@@ -191,7 +195,11 @@ export class JobRunner {
     this.closing = true;
     this.opts.metrics.workerUp.set(0);
     for (const t of this.cronTasks) {
-      try { t.stop(); } catch { /* swallow */ }
+      try {
+        t.stop();
+      } catch {
+        /* swallow */
+      }
     }
     this.cronTasks = [];
 
@@ -235,7 +243,10 @@ export class JobRunner {
 
       const timeoutMs = def.timeoutMs ?? this.opts.defaults.timeoutMs;
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(new Error(`job '${def.name}' exceeded ${timeoutMs}ms`)), timeoutMs);
+      const timer = setTimeout(
+        () => controller.abort(new Error(`job '${def.name}' exceeded ${timeoutMs}ms`)),
+        timeoutMs,
+      );
 
       try {
         const payload = await def.run({
@@ -273,7 +284,10 @@ export class JobRunner {
           await this.pushToDlq(def.name, next, errorMsg, runRowId);
           this.consecutiveFailures.set(def.name, 0);
           this.opts.metrics.consecutiveFailures.set({ job: def.name }, 0);
-          log.error('dlq: consecutive-failures budget exceeded — emitted alert.worker_job_dead_letter', { maxRetries });
+          log.error(
+            'dlq: consecutive-failures budget exceeded — emitted alert.worker_job_dead_letter',
+            { maxRetries },
+          );
         }
 
         if (isTimeout) return { status: 'TIMEOUT', runId, durationMs };
@@ -334,7 +348,12 @@ export class JobRunner {
       .where(sql`${workerJobRuns.id} = ${rowId}`);
   }
 
-  private async pushToDlq(jobName: string, failureCount: number, lastError: string, lastRunId: bigint | null): Promise<void> {
+  private async pushToDlq(
+    jobName: string,
+    failureCount: number,
+    lastError: string,
+    lastRunId: bigint | null,
+  ): Promise<void> {
     await this.opts.db.insert(workerJobDlq).values({
       jobName,
       failureCount,
@@ -366,7 +385,8 @@ export class JobRunner {
       info: (msg, extra) => root.info(`${prefix} ${msg}`, { job: jobName, runId, ...extra }),
       warn: (msg, extra) => root.warn(`${prefix} ${msg}`, { job: jobName, runId, ...extra }),
       error: (msg, extra) => root.error(`${prefix} ${msg}`, { job: jobName, runId, ...extra }),
-      debug: (msg, extra) => (root.debug ?? root.info)(`${prefix} ${msg}`, { job: jobName, runId, ...extra }),
+      debug: (msg, extra) =>
+        (root.debug ?? root.info)(`${prefix} ${msg}`, { job: jobName, runId, ...extra }),
     };
   }
 }
@@ -381,7 +401,11 @@ function elapsedMs(startHrTime: bigint): number {
 
 function formatError(e: unknown): string {
   if (e instanceof Error) return `${e.name}: ${e.message}${e.stack ? `\n${e.stack}` : ''}`;
-  try { return JSON.stringify(e); } catch { return String(e); }
+  try {
+    return JSON.stringify(e);
+  } catch {
+    return String(e);
+  }
 }
 
 function truncate(s: string, max: number): string {

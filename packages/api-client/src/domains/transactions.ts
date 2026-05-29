@@ -90,10 +90,18 @@ export interface FinalizeResponse {
 export type AnkaufPayoutMethod = 'CASH' | 'BANK_TRANSFER';
 
 export type AnkaufItemType =
-  | 'gold_jewelry' | 'gold_coin' | 'gold_bar'
-  | 'silver_jewelry' | 'silver_coin' | 'silver_bar'
-  | 'platinum_jewelry' | 'platinum_coin' | 'platinum_bar'
-  | 'antique' | 'watch' | 'other';
+  | 'gold_jewelry'
+  | 'gold_coin'
+  | 'gold_bar'
+  | 'silver_jewelry'
+  | 'silver_coin'
+  | 'silver_bar'
+  | 'platinum_jewelry'
+  | 'platinum_coin'
+  | 'platinum_bar'
+  | 'antique'
+  | 'watch'
+  | 'other';
 
 export type AnkaufMetal = 'gold' | 'silver' | 'platinum' | 'palladium';
 

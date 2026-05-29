@@ -13,29 +13,20 @@
 
 import { useMemo, useState } from 'react';
 
-import {
-  type AnkaufCondition,
-  type AnkaufItemType,
-  type AnkaufMetal,
-  type TaxTreatmentCode,
+import type {
+  AnkaufCondition,
+  AnkaufItemType,
+  AnkaufMetal,
+  TaxTreatmentCode,
 } from '@warehouse14/api-client';
-import {
-  Button,
-  DiamondRule,
-  MoneyAmount,
-  ParchmentCard,
-  RomanIndex,
-} from '@warehouse14/ui-kit';
+import { Button, DiamondRule, MoneyAmount, ParchmentCard, RomanIndex } from '@warehouse14/ui-kit';
 
+import { fromCents, sumNegotiatedCents } from '../../lib/intake-math.js';
 import { TAX_TREATMENT_LABEL } from '../../lib/tax-treatment-label.js';
 import {
-  fromCents,
-  sumNegotiatedCents,
-} from '../../lib/intake-math.js';
-import {
-  useAnkaufCartStore,
-  selectAnkaufItems,
   type IntakeItem,
+  selectAnkaufItems,
+  useAnkaufCartStore,
 } from '../../state/ankauf-cart-store.js';
 import { useToastStore } from '../../state/toast-store.js';
 
@@ -99,10 +90,20 @@ export function IntakeList({ customerSelected, onOpenBezahlen }: IntakeListProps
       }}
     >
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <h2 style={{ margin: 0, fontFamily: 'var(--w14-font-display)', fontWeight: 500, fontSize: '1.4rem' }}>
+        <h2
+          style={{
+            margin: 0,
+            fontFamily: 'var(--w14-font-display)',
+            fontWeight: 500,
+            fontSize: '1.4rem',
+          }}
+        >
           Ankaufstücke
         </h2>
-        <span className="w14-smallcaps" style={{ color: 'var(--w14-ink-faded)', fontSize: '0.78rem', letterSpacing: '0.08em' }}>
+        <span
+          className="w14-smallcaps"
+          style={{ color: 'var(--w14-ink-faded)', fontSize: '0.78rem', letterSpacing: '0.08em' }}
+        >
           {items.length === 0 ? 'leer' : `${items.length} Stück${items.length === 1 ? '' : 'e'}`}
         </span>
       </header>
@@ -113,7 +114,16 @@ export function IntakeList({ customerSelected, onOpenBezahlen }: IntakeListProps
         <>
           <AddItemForm existingTreatment={items[0]?.taxTreatmentCode ?? null} />
 
-          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div
+            style={{
+              flex: 1,
+              minHeight: 0,
+              overflowY: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+            }}
+          >
             {items.length === 0 ? (
               <EmptyList />
             ) : (
@@ -130,13 +140,29 @@ export function IntakeList({ customerSelected, onOpenBezahlen }: IntakeListProps
 
           <ParchmentCard padding="md" style={{ flexShrink: 0 }}>
             <DiamondRule label="Auszahlung" />
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '8px 0' }}>
-              <span className="w14-smallcaps" style={{ color: 'var(--w14-ink-aged)', letterSpacing: '0.08em', fontSize: '0.95rem' }}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'baseline',
+                padding: '8px 0',
+              }}
+            >
+              <span
+                className="w14-smallcaps"
+                style={{
+                  color: 'var(--w14-ink-aged)',
+                  letterSpacing: '0.08em',
+                  fontSize: '0.95rem',
+                }}
+              >
                 Gesamt
               </span>
               <MoneyAmount valueEur={totalEur} emphasis />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 10, marginTop: 10 }}>
+            <div
+              style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 10, marginTop: 10 }}
+            >
               <Button variant="ghost" size="md" onClick={clearItems} disabled={items.length === 0}>
                 Liste leeren
               </Button>
@@ -206,7 +232,7 @@ function AddItemForm({
       sku: sku.trim(),
       barcode: '',
       itemType,
-      metal: (metal === '' ? null : metal),
+      metal: metal === '' ? null : metal,
       karatCode: karatCode.trim(),
       finenessDecimal: finenessDecimal.trim(),
       weightGrams: weightGrams.trim(),
@@ -286,25 +312,55 @@ function AddItemForm({
           ]}
         />
         <FormField label="Karat (z. B. K585)" value={karatCode} onChange={setKaratCode} mono />
-        <FormField label="Feingehalt (0…1)" value={finenessDecimal} onChange={setFinenessDecimal} mono />
+        <FormField
+          label="Feingehalt (0…1)"
+          value={finenessDecimal}
+          onChange={setFinenessDecimal}
+          mono
+        />
         <FormField label="Gewicht (g)" value={weightGrams} onChange={setWeightGrams} mono />
-        <FormField label="Beschreibung" value={descriptionDe} onChange={setDescriptionDe} multiline colSpan={2} />
+        <FormField
+          label="Beschreibung"
+          value={descriptionDe}
+          onChange={setDescriptionDe}
+          multiline
+          colSpan={2}
+        />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 14 }}>
-        <EuroInput label="Ankaufpreis (bar bezahlt)" valueEur={negotiatedPriceEur} onValueChange={setNegotiatedPriceEur} />
-        <EuroInput label="Listenpreis (Wiederverkauf)" valueEur={listPriceEur} onValueChange={setListPriceEur} />
+        <EuroInput
+          label="Ankaufpreis (bar bezahlt)"
+          valueEur={negotiatedPriceEur}
+          onValueChange={setNegotiatedPriceEur}
+        />
+        <EuroInput
+          label="Listenpreis (Wiederverkauf)"
+          valueEur={listPriceEur}
+          onValueChange={setListPriceEur}
+        />
       </div>
 
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
-        <input type="checkbox" checked={publishImmediately} onChange={(ev) => setPublishImmediately(ev.target.checked)} />
+        <input
+          type="checkbox"
+          checked={publishImmediately}
+          onChange={(ev) => setPublishImmediately(ev.target.checked)}
+        />
         <span style={{ fontFamily: 'var(--w14-font-display)', fontSize: '0.9rem' }}>
           Sofort verkaufsbereit (AVAILABLE — sonst DRAFT bis Foto)
         </span>
       </label>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 14 }}>
-        <Button variant="ghost" size="md" onClick={() => { reset(); setExpanded(false); }}>
+        <Button
+          variant="ghost"
+          size="md"
+          onClick={() => {
+            reset();
+            setExpanded(false);
+          }}
+        >
           Abbrechen
         </Button>
         <Button variant="primary" size="md" onClick={submit} disabled={!canSubmit}>
@@ -335,8 +391,12 @@ function FormField({
   const style = colSpan ? { gridColumn: `span ${colSpan}` } : {};
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 4, ...style }}>
-      <span className="w14-smallcaps" style={{ color: 'var(--w14-ink-faded)', fontSize: '0.72rem', letterSpacing: '0.08em' }}>
-        {label}{required && <span style={{ color: 'var(--w14-wax-red)' }}> *</span>}
+      <span
+        className="w14-smallcaps"
+        style={{ color: 'var(--w14-ink-faded)', fontSize: '0.72rem', letterSpacing: '0.08em' }}
+      >
+        {label}
+        {required && <span style={{ color: 'var(--w14-wax-red)' }}> *</span>}
       </span>
       {multiline ? (
         <textarea
@@ -344,9 +404,15 @@ function FormField({
           onChange={(ev) => onChange(ev.target.value)}
           rows={2}
           style={{
-            border: 'none', outline: 'none', borderBottom: '1px solid var(--w14-rule)',
-            background: 'transparent', padding: '4px', resize: 'vertical',
-            fontFamily: 'var(--w14-font-body)', fontSize: '0.9rem', color: 'var(--w14-ink)',
+            border: 'none',
+            outline: 'none',
+            borderBottom: '1px solid var(--w14-rule)',
+            background: 'transparent',
+            padding: '4px',
+            resize: 'vertical',
+            fontFamily: 'var(--w14-font-body)',
+            fontSize: '0.9rem',
+            color: 'var(--w14-ink)',
           }}
         />
       ) : (
@@ -356,10 +422,14 @@ function FormField({
           spellCheck={false}
           onChange={(ev) => onChange(ev.target.value)}
           style={{
-            border: 'none', outline: 'none', borderBottom: '1px solid var(--w14-rule)',
-            background: 'transparent', padding: '4px',
+            border: 'none',
+            outline: 'none',
+            borderBottom: '1px solid var(--w14-rule)',
+            background: 'transparent',
+            padding: '4px',
             fontFamily: mono ? 'var(--w14-font-mono)' : 'var(--w14-font-body)',
-            fontSize: '0.9rem', color: 'var(--w14-ink)',
+            fontSize: '0.9rem',
+            color: 'var(--w14-ink)',
           }}
         />
       )}
@@ -382,7 +452,10 @@ function SelectField<T extends string>({
 }): JSX.Element {
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <span className="w14-smallcaps" style={{ color: 'var(--w14-ink-faded)', fontSize: '0.72rem', letterSpacing: '0.08em' }}>
+      <span
+        className="w14-smallcaps"
+        style={{ color: 'var(--w14-ink-faded)', fontSize: '0.72rem', letterSpacing: '0.08em' }}
+      >
         {label}
       </span>
       <select
@@ -390,14 +463,21 @@ function SelectField<T extends string>({
         disabled={disabled}
         onChange={(ev) => onChange(ev.target.value as T)}
         style={{
-          border: 'none', outline: 'none', borderBottom: '1px solid var(--w14-rule)',
-          background: 'transparent', padding: '4px',
-          fontFamily: 'var(--w14-font-body)', fontSize: '0.9rem', color: 'var(--w14-ink)',
+          border: 'none',
+          outline: 'none',
+          borderBottom: '1px solid var(--w14-rule)',
+          background: 'transparent',
+          padding: '4px',
+          fontFamily: 'var(--w14-font-body)',
+          fontSize: '0.9rem',
+          color: 'var(--w14-ink)',
           opacity: disabled ? 0.55 : 1,
         }}
       >
         {options.map((o) => (
-          <option key={o.value} value={o.value}>{o.label}</option>
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
         ))}
       </select>
     </label>
@@ -420,26 +500,64 @@ function ItemRow({
   return (
     <ParchmentCard
       padding="md"
-      style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 12, alignItems: 'start' }}
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'auto 1fr auto',
+        gap: 12,
+        alignItems: 'start',
+      }}
     >
       <RomanIndex value={index} tone="gold" />
       <div style={{ minWidth: 0 }}>
-        <span className="w14-tabular" style={{ fontFamily: 'var(--w14-font-mono)', fontSize: '0.78rem', color: 'var(--w14-ink-faded)' }}>
+        <span
+          className="w14-tabular"
+          style={{
+            fontFamily: 'var(--w14-font-mono)',
+            fontSize: '0.78rem',
+            color: 'var(--w14-ink-faded)',
+          }}
+        >
           {item.sku}
         </span>
-        <div style={{ fontFamily: 'var(--w14-font-display)', fontWeight: 500, fontSize: '1rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <div
+          style={{
+            fontFamily: 'var(--w14-font-display)',
+            fontWeight: 500,
+            fontSize: '1rem',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
           {item.name}
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', marginTop: 4 }}>
-          <span className="w14-smallcaps" style={{ color: 'var(--w14-ink-faded)', fontSize: '0.72rem', letterSpacing: '0.08em' }}>
+          <span
+            className="w14-smallcaps"
+            style={{ color: 'var(--w14-ink-faded)', fontSize: '0.72rem', letterSpacing: '0.08em' }}
+          >
             {TAX_TREATMENT_LABEL[item.taxTreatmentCode]}
           </span>
           {item.weightGrams && (
-            <span className="w14-tabular" style={{ fontFamily: 'var(--w14-font-mono)', fontSize: '0.72rem', color: 'var(--w14-ink-faded)' }}>
+            <span
+              className="w14-tabular"
+              style={{
+                fontFamily: 'var(--w14-font-mono)',
+                fontSize: '0.72rem',
+                color: 'var(--w14-ink-faded)',
+              }}
+            >
               {item.weightGrams} g
             </span>
           )}
-          <span className="w14-smallcaps" style={{ color: item.publishImmediately ? 'var(--w14-gold)' : 'var(--w14-ink-faded)', fontSize: '0.72rem', letterSpacing: '0.08em' }}>
+          <span
+            className="w14-smallcaps"
+            style={{
+              color: item.publishImmediately ? 'var(--w14-gold)' : 'var(--w14-ink-faded)',
+              fontSize: '0.72rem',
+              letterSpacing: '0.08em',
+            }}
+          >
             {item.publishImmediately ? 'sofort' : 'Entwurf'}
           </span>
         </div>
@@ -449,7 +567,18 @@ function ItemRow({
         <button
           type="button"
           onClick={onRemove}
-          style={{ background: 'transparent', border: 'none', color: 'var(--w14-ink-faded)', fontFamily: 'var(--w14-font-display)', fontStyle: 'italic', fontSize: '0.78rem', cursor: 'pointer', padding: 0, textDecoration: 'underline', textUnderlineOffset: 2 }}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            color: 'var(--w14-ink-faded)',
+            fontFamily: 'var(--w14-font-display)',
+            fontStyle: 'italic',
+            fontSize: '0.78rem',
+            cursor: 'pointer',
+            padding: 0,
+            textDecoration: 'underline',
+            textUnderlineOffset: 2,
+          }}
         >
           entfernen
         </button>
@@ -460,11 +589,23 @@ function ItemRow({
 
 function CustomerRequiredLock(): JSX.Element {
   return (
-    <ParchmentCard padding="lg" style={{ textAlign: 'center', flex: 1, display: 'grid', placeItems: 'center' }}>
+    <ParchmentCard
+      padding="lg"
+      style={{ textAlign: 'center', flex: 1, display: 'grid', placeItems: 'center' }}
+    >
       <div>
         <DiamondRule />
-        <p style={{ margin: '8px 0 0', color: 'var(--w14-ink-faded)', fontFamily: 'var(--w14-font-display)', fontStyle: 'italic', fontSize: '0.95rem' }}>
-          Bitte zuerst den Verkäufer auswählen.<br />
+        <p
+          style={{
+            margin: '8px 0 0',
+            color: 'var(--w14-ink-faded)',
+            fontFamily: 'var(--w14-font-display)',
+            fontStyle: 'italic',
+            fontSize: '0.95rem',
+          }}
+        >
+          Bitte zuerst den Verkäufer auswählen.
+          <br />
           Ein Ankauf ohne identifizierte Person ist nach § 10 GwG nicht zulässig.
         </p>
       </div>
@@ -474,9 +615,21 @@ function CustomerRequiredLock(): JSX.Element {
 
 function EmptyList(): JSX.Element {
   return (
-    <div style={{ flex: 1, display: 'grid', placeItems: 'center', padding: 24, textAlign: 'center' }}>
-      <p style={{ margin: 0, color: 'var(--w14-ink-faded)', fontFamily: 'var(--w14-font-display)', fontStyle: 'italic', fontSize: '0.92rem' }}>
-        Noch keine Stücke erfasst.<br />Fügen Sie eines mit dem Knopf oben hinzu.
+    <div
+      style={{ flex: 1, display: 'grid', placeItems: 'center', padding: 24, textAlign: 'center' }}
+    >
+      <p
+        style={{
+          margin: 0,
+          color: 'var(--w14-ink-faded)',
+          fontFamily: 'var(--w14-font-display)',
+          fontStyle: 'italic',
+          fontSize: '0.92rem',
+        }}
+      >
+        Noch keine Stücke erfasst.
+        <br />
+        Fügen Sie eines mit dem Knopf oben hinzu.
       </p>
     </div>
   );

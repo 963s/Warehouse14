@@ -28,10 +28,7 @@ export function UebersichtPanel({ data, isLoading }: UebersichtPanelProps): JSX.
 
   return (
     <section aria-label="Übersicht">
-      <PanelHeading
-        label="Übersicht"
-        sublabel={placeholder ? 'Lädt…' : 'Heute · Stand jetzt'}
-      />
+      <PanelHeading label="Übersicht" sublabel={placeholder ? 'Lädt…' : 'Heute · Stand jetzt'} />
       <div
         style={{
           display: 'grid',

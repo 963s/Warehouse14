@@ -127,7 +127,10 @@ export function CropStudio({
         padding: 24,
       }}
     >
-      <ParchmentCard padding="lg" style={{ width: 'min(640px, 100%)', boxShadow: 'var(--w14-shadow-modal)' }}>
+      <ParchmentCard
+        padding="lg"
+        style={{ width: 'min(640px, 100%)', boxShadow: 'var(--w14-shadow-modal)' }}
+      >
         <h2
           style={{
             margin: 0,
@@ -176,8 +179,20 @@ export function CropStudio({
         </div>
 
         {/* Zoom + Rotation sliders */}
-        <div style={{ marginTop: 14, display: 'grid', gridTemplateColumns: '70px 1fr', gap: 10, alignItems: 'center' }}>
-          <label htmlFor="cs-zoom" className="w14-smallcaps" style={{ letterSpacing: '0.08em', fontSize: '0.78rem' }}>
+        <div
+          style={{
+            marginTop: 14,
+            display: 'grid',
+            gridTemplateColumns: '70px 1fr',
+            gap: 10,
+            alignItems: 'center',
+          }}
+        >
+          <label
+            htmlFor="cs-zoom"
+            className="w14-smallcaps"
+            style={{ letterSpacing: '0.08em', fontSize: '0.78rem' }}
+          >
             Zoom
           </label>
           <input
@@ -190,7 +205,11 @@ export function CropStudio({
             onChange={(e) => setZoom(Number(e.target.value))}
             disabled={busy}
           />
-          <label htmlFor="cs-rot" className="w14-smallcaps" style={{ letterSpacing: '0.08em', fontSize: '0.78rem' }}>
+          <label
+            htmlFor="cs-rot"
+            className="w14-smallcaps"
+            style={{ letterSpacing: '0.08em', fontSize: '0.78rem' }}
+          >
             Drehen
           </label>
           <input
@@ -223,7 +242,11 @@ export function CropStudio({
           <Button variant="ghost" onClick={onCancel} disabled={busy}>
             Abbrechen
           </Button>
-          <Button variant="primary" onClick={() => void confirm()} disabled={busy || !croppedAreaPixels}>
+          <Button
+            variant="primary"
+            onClick={() => void confirm()}
+            disabled={busy || !croppedAreaPixels}
+          >
             {busy ? 'Wird komprimiert…' : 'Zuschneiden & Speichern'}
           </Button>
         </div>

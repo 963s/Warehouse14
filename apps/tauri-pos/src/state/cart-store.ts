@@ -50,7 +50,7 @@
  */
 
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
 
 import type { TaxTreatmentCode } from '@warehouse14/api-client';
 
@@ -131,16 +131,6 @@ export const useCartStore = create<CartState>()(
           return { kind: 'ALREADY_IN_CART' };
         }
 
-        // Rule 2: same tax_treatment_code for every line.
-        const existing = state.lines[0];
-        if (existing && existing.taxTreatmentCode !== incoming.taxTreatmentCode) {
-          return {
-            kind: 'MIXED_TAX_TREATMENT',
-            existing: existing.taxTreatmentCode,
-            incoming: incoming.taxTreatmentCode,
-          };
-        }
-
         set({ lines: [...state.lines, incoming] });
         return null;
       },
@@ -181,5 +171,9 @@ export const useCartStore = create<CartState>()(
 
 export const selectCartLines = (s: CartState): CartLine[] => s.lines;
 export const selectCartCount = (s: CartState): number => s.lines.length;
-export const selectCartTaxTreatment = (s: CartState): TaxTreatmentCode | null =>
-  s.lines[0]?.taxTreatmentCode ?? null;
+export const selectCartTaxTreatment = (s: CartState): TaxTreatmentCode | null => {
+  if (s.lines.length === 0) return null;
+  const first = s.lines[0]!.taxTreatmentCode;
+  const allSame = s.lines.every((l) => l.taxTreatmentCode === first);
+  return allSame ? first : 'MIXED';
+};

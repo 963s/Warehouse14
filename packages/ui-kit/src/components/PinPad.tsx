@@ -19,7 +19,7 @@
  * affordance — same one PinLogin uses).
  */
 
-import { useEffect, type CSSProperties } from 'react';
+import { type CSSProperties, useEffect } from 'react';
 
 import { Button } from './Button.js';
 import { MagnifierIcon } from './MagnifierIcon.js';

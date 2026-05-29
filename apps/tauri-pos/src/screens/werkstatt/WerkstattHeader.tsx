@@ -21,19 +21,19 @@ export interface WerkstattHeaderProps {
 }
 
 const DOT_COLOR: Record<SseStatus, string> = {
-  idle:         'var(--w14-ink-faded)',
-  connecting:   'var(--w14-gold-soft)',
-  open:         'var(--w14-gold)',
+  idle: 'var(--w14-ink-faded)',
+  connecting: 'var(--w14-gold-soft)',
+  open: 'var(--w14-gold)',
   reconnecting: 'var(--w14-wax-red)',
-  closed:       'var(--w14-ink-faded)',
+  closed: 'var(--w14-ink-faded)',
 };
 
 const DOT_LABEL: Record<SseStatus, string> = {
-  idle:         'Inaktiv',
-  connecting:   'Verbindet…',
-  open:         'Live',
+  idle: 'Inaktiv',
+  connecting: 'Verbindet…',
+  open: 'Live',
   reconnecting: 'Wiederverbinden…',
-  closed:       'Getrennt',
+  closed: 'Getrennt',
 };
 
 export function WerkstattHeader({

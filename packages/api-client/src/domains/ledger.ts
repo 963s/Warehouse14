@@ -52,7 +52,7 @@ export type LedgerEventType =
 export interface LedgerEvent {
   /** bigserial as a JS number (route normalizes via Number(bigint)). */
   id: number;
-  event_type: LedgerEventType | string;   // future-proof: accept unknown strings too
+  event_type: LedgerEventType | string; // future-proof: accept unknown strings too
   entity_table: string;
   entity_id: string;
   actor_user_id: string | null;
@@ -96,9 +96,7 @@ const DASHBOARD_INVALIDATING_EVENTS: readonly string[] = [
   'alert.worker_job_dead_letter',
 ];
 
-export function shouldInvalidateDashboard(
-  e: Pick<LedgerEvent, 'event_type'>,
-): boolean {
+export function shouldInvalidateDashboard(e: Pick<LedgerEvent, 'event_type'>): boolean {
   return DASHBOARD_INVALIDATING_EVENTS.includes(String(e.event_type));
 }
 

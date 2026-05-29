@@ -25,8 +25,8 @@ import {
   products,
 } from '@warehouse14/db/schema';
 
-import { DomainError, type ApiErrorCode } from '../plugins/error-handler.js';
 import { requireAuth, requireRole } from '../lib/auth-policy.js';
+import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 import {
   SetProductCategoriesBody,
   SetProductCategoriesResponse,
@@ -83,10 +83,7 @@ const productCategoriesRoute: FastifyPluginAsync = async (app) => {
       const body = req.body;
 
       // Validate primary ⊆ categoryIds
-      if (
-        body.primaryCategoryId !== null &&
-        !body.categoryIds.includes(body.primaryCategoryId)
-      ) {
+      if (body.primaryCategoryId !== null && !body.categoryIds.includes(body.primaryCategoryId)) {
         throw new CategoryValidationError(
           'primaryCategoryId',
           'primaryCategoryId must appear in categoryIds.',
@@ -95,10 +92,7 @@ const productCategoriesRoute: FastifyPluginAsync = async (app) => {
       // Reject duplicate categoryIds
       const unique = new Set(body.categoryIds);
       if (unique.size !== body.categoryIds.length) {
-        throw new CategoryValidationError(
-          'categoryIds',
-          'Duplicate category ids are not allowed.',
-        );
+        throw new CategoryValidationError('categoryIds', 'Duplicate category ids are not allowed.');
       }
 
       const result = await app.db.transaction(async (tx) => {

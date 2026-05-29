@@ -17,10 +17,15 @@
  *     app can UPDATE customers.trust_level
  */
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import postgres, { type Sql } from 'postgres';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { applyMigrations, setAppPasswordForTest, startTestDb, type TestDb } from '../helpers/testDb.js';
+import {
+  type TestDb,
+  applyMigrations,
+  setAppPasswordForTest,
+  startTestDb,
+} from '../helpers/testDb.js';
 
 const PII_KEY = 'test-pii-key-do-not-use-in-production-32b';
 
@@ -78,7 +83,11 @@ describe('migration 0024_customer_trust_belegtext', () => {
         SELECT enumlabel FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
          WHERE t.typname = 'customer_trust_level' ORDER BY enumsortorder`;
       expect(rows.map((r) => r.enumlabel)).toEqual([
-        'NEW', 'VERIFIED', 'VIP', 'SUSPICIOUS', 'BANNED',
+        'NEW',
+        'VERIFIED',
+        'VIP',
+        'SUSPICIOUS',
+        'BANNED',
       ]);
     });
   });
@@ -89,9 +98,14 @@ describe('migration 0024_customer_trust_belegtext', () => {
         SELECT enumlabel FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
          WHERE t.typname = 'belegtext_kind' ORDER BY enumsortorder`;
       expect(rows.map((r) => r.enumlabel)).toEqual([
-        'MARGIN_25A', 'STANDARD_19', 'REDUCED_7', 'INVESTMENT_GOLD_25C',
-        'KLEINUNTERNEHMER_19', 'ANKAUFBELEG_DECLARATION',
-        'GENERIC_HEADER', 'GENERIC_FOOTER',
+        'MARGIN_25A',
+        'STANDARD_19',
+        'REDUCED_7',
+        'INVESTMENT_GOLD_25C',
+        'KLEINUNTERNEHMER_19',
+        'ANKAUFBELEG_DECLARATION',
+        'GENERIC_HEADER',
+        'GENERIC_FOOTER',
       ]);
     });
   });

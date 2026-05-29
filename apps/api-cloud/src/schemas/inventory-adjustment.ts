@@ -9,7 +9,7 @@
  * the audit but leaves `products.status` untouched (see memory.md §13.4).
  */
 
-import { Type, type Static } from '@sinclair/typebox';
+import { type Static, Type } from '@sinclair/typebox';
 
 export const InventoryAdjustmentReason = Type.Union(
   [

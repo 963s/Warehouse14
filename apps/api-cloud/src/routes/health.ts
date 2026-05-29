@@ -12,8 +12,8 @@
  */
 
 import { Type } from '@sinclair/typebox';
-import type { FastifyPluginAsync } from 'fastify';
 import { sql as drizzleSql } from 'drizzle-orm';
+import type { FastifyPluginAsync } from 'fastify';
 
 const HealthResponse = Type.Object({
   ok: Type.Boolean(),
@@ -25,37 +25,41 @@ const HealthResponse = Type.Object({
 const VERSION = '0.1.0'; // align with package.json — kept static, no env lookup
 
 const healthRoute: FastifyPluginAsync = async (app) => {
-  app.get('/health', {
-    schema: {
-      tags: ['system'],
-      summary: 'Liveness + readiness probe',
-      description:
-        'Always 200 if the process is alive. The body reports `db: "down"` ' +
-        'when the readiness check fails (caller decides what to do).',
-      response: { 200: HealthResponse },
+  app.get(
+    '/health',
+    {
+      schema: {
+        tags: ['system'],
+        summary: 'Liveness + readiness probe',
+        description:
+          'Always 200 if the process is alive. The body reports `db: "down"` ' +
+          'when the readiness check fails (caller decides what to do).',
+        response: { 200: HealthResponse },
+      },
     },
-  }, async (_req, _reply) => {
-    let dbStatus: 'up' | 'down' = 'down';
-    try {
-      // 1-second budget — long enough for transient hiccups, short enough that
-      // a hung Postgres does not block the readiness probe.
-      await Promise.race([
-        app.db.execute(drizzleSql`SELECT 1`),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('db readiness timeout')), 1_000),
-        ),
-      ]);
-      dbStatus = 'up';
-    } catch (err) {
-      app.log.warn({ err }, 'db readiness check failed');
-    }
-    return {
-      ok: true,
-      db: dbStatus,
-      version: VERSION,
-      timestamp: new Date().toISOString(),
-    };
-  });
+    async (_req, _reply) => {
+      let dbStatus: 'up' | 'down' = 'down';
+      try {
+        // 1-second budget — long enough for transient hiccups, short enough that
+        // a hung Postgres does not block the readiness probe.
+        await Promise.race([
+          app.db.execute(drizzleSql`SELECT 1`),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('db readiness timeout')), 1_000),
+          ),
+        ]);
+        dbStatus = 'up';
+      } catch (err) {
+        app.log.warn({ err }, 'db readiness check failed');
+      }
+      return {
+        ok: true,
+        db: dbStatus,
+        version: VERSION,
+        timestamp: new Date().toISOString(),
+      };
+    },
+  );
 };
 
 export default healthRoute;

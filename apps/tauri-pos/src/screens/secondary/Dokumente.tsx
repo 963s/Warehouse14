@@ -15,20 +15,20 @@
  *   3. POST metadata to `/api/documents` (returned by `documentsApi.create`)
  */
 
-import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
 
 import {
   ApiError,
-  DOCUMENT_CATEGORY_LABELS,
-  documentsApi,
-  photosApi,
   type CreateDocumentBody,
+  DOCUMENT_CATEGORY_LABELS,
   type DocumentCategory,
   type DocumentRow,
   type ListDocumentsQuery,
   type PhotoUploadIntent,
   type PhotoUploadUrlBody,
+  documentsApi,
+  photosApi,
 } from '@warehouse14/api-client';
 import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 
@@ -363,13 +363,23 @@ function UploadDialog({
 
   const upload = useMutation({
     mutationFn: async () => {
-      if (!file) throw new ApiError({ code: 'VALIDATION_ERROR', message: 'Bitte Datei wählen.', httpStatus: 400 });
+      if (!file)
+        throw new ApiError({
+          code: 'VALIDATION_ERROR',
+          message: 'Bitte Datei wählen.',
+          httpStatus: 400,
+        });
       if (linkId.trim().length === 0) {
-        throw new ApiError({ code: 'VALIDATION_ERROR', message: 'Bitte verknüpfte Entität-UUID eingeben.', httpStatus: 400 });
+        throw new ApiError({
+          code: 'VALIDATION_ERROR',
+          message: 'Bitte verknüpfte Entität-UUID eingeben.',
+          httpStatus: 400,
+        });
       }
 
       setStage('signing');
-      const contentType = (file.type || 'application/octet-stream') as PhotoUploadUrlBody['contentType'];
+      const contentType = (file.type ||
+        'application/octet-stream') as PhotoUploadUrlBody['contentType'];
       // The signed-URL endpoint enforces a small allowlist for `contentType`;
       // for non-image attachments we fall back to PDF-image content type so the
       // operator gets a friendly error if the backend rejects it.
@@ -507,7 +517,13 @@ function UploadDialog({
               </div>
             </div>
           ) : (
-            <p style={{ margin: 0, fontFamily: 'var(--w14-font-display)', color: 'var(--w14-ink-faded)' }}>
+            <p
+              style={{
+                margin: 0,
+                fontFamily: 'var(--w14-font-display)',
+                color: 'var(--w14-ink-faded)',
+              }}
+            >
               Datei hierher ziehen oder unten auswählen
             </p>
           )}
@@ -626,7 +642,7 @@ function UploadDialog({
 // ════════════════════════════════════════════════════════════════════════
 
 function formatBytes(s: string): string {
-  const n = parseInt(s, 10);
+  const n = Number.parseInt(s, 10);
   if (!Number.isFinite(n) || n <= 0) return '—';
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;

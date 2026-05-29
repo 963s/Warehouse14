@@ -26,5 +26,5 @@ export async function autoReleaseExpired(db: AnyDb): Promise<string[]> {
    RETURNING id
   `);
 
-  return result.map(r => r.id);
+  return result.map((r) => r.id);
 }

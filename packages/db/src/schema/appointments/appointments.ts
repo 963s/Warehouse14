@@ -7,13 +7,13 @@
  * `ends_at` is GENERATED ALWAYS AS STORED from `starts_at + duration_minutes`.
  */
 
-import { check, index, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import { check, index, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
 import { primaryKey, timestamps } from '../_shared/columns.js';
+import { users } from '../auth/users.js';
 import { customers } from '../customers/customers.js';
 import { transactions } from '../transactions/transactions.js';
-import { users } from '../auth/users.js';
 import { appointmentStatus, appointmentType } from './enums.js';
 
 export const appointments = pgTable(
@@ -32,7 +32,9 @@ export const appointments = pgTable(
       .notNull(),
 
     customerId: uuid('customer_id').references(() => customers.id),
-    staffUserId: uuid('staff_user_id').notNull().references(() => users.id),
+    staffUserId: uuid('staff_user_id')
+      .notNull()
+      .references(() => users.id),
     bookedByUserId: uuid('booked_by_user_id').references(() => users.id),
     bookedVia: text('booked_via').notNull(),
 
@@ -55,9 +57,12 @@ export const appointments = pgTable(
 
     ...timestamps(),
   },
-  table => ({
+  (table) => ({
     statusStartsAtIdx: index('appointments_status_starts_at_idx').on(table.status, table.startsAt),
-    staffStartsAtIdx: index('appointments_staff_starts_at_idx').on(table.staffUserId, table.startsAt),
+    staffStartsAtIdx: index('appointments_staff_starts_at_idx').on(
+      table.staffUserId,
+      table.startsAt,
+    ),
     customerIdx: index('appointments_customer_idx')
       .on(table.customerId)
       .where(sql`${table.customerId} IS NOT NULL`),

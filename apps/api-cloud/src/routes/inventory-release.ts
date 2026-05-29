@@ -19,11 +19,15 @@
 import { Type } from '@sinclair/typebox';
 import type { FastifyPluginAsync } from 'fastify';
 
-import { release, ReservationOwnershipError } from '@warehouse14/inventory-lock';
+import { ReservationOwnershipError, release } from '@warehouse14/inventory-lock';
 
-import { DomainError, type ApiErrorCode } from '../plugins/error-handler.js';
 import { requireAuth, requireRole } from '../lib/auth-policy.js';
-import { ReleaseBody, ReleaseResponse, type ReleaseBody as TReleaseBody } from '../schemas/inventory.js';
+import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
+import {
+  ReleaseBody,
+  ReleaseResponse,
+  type ReleaseBody as TReleaseBody,
+} from '../schemas/inventory.js';
 
 class ProductNotReservableError extends DomainError {
   public readonly httpStatus = 409;
@@ -45,54 +49,58 @@ const ErrorResponse = Type.Object({
 });
 
 const inventoryRelease: FastifyPluginAsync = async (app) => {
-  app.post<{ Body: TReleaseBody }>('/api/inventory/release', {
-    schema: {
-      tags: ['inventory'],
-      summary: 'Release a reservation (RESERVED → AVAILABLE) — session-guarded.',
-      description:
-        'Returns the product to AVAILABLE. The `sessionId` MUST match the ' +
-        'row\'s `reserved_by_session_id` — cross-session releases are refused. ' +
-        '409 PRODUCT_NOT_RESERVABLE on mismatch or when the row is not RESERVED.',
-      body: ReleaseBody,
-      response: {
-        200: ReleaseResponse,
-        401: ErrorResponse,
-        403: ErrorResponse,
-        409: ErrorResponse,
+  app.post<{ Body: TReleaseBody }>(
+    '/api/inventory/release',
+    {
+      schema: {
+        tags: ['inventory'],
+        summary: 'Release a reservation (RESERVED → AVAILABLE) — session-guarded.',
+        description:
+          'Returns the product to AVAILABLE. The `sessionId` MUST match the ' +
+          "row's `reserved_by_session_id` — cross-session releases are refused. " +
+          '409 PRODUCT_NOT_RESERVABLE on mismatch or when the row is not RESERVED.',
+        body: ReleaseBody,
+        response: {
+          200: ReleaseResponse,
+          401: ErrorResponse,
+          403: ErrorResponse,
+          409: ErrorResponse,
+        },
       },
     },
-  }, async (req, reply) => {
-    requireAuth(req);
-    requireRole(req, 'CASHIER', 'ADMIN');
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'CASHIER', 'ADMIN');
 
-    if (req.actor.role === 'CASHIER' && req.deviceId == null) {
-      throw new DeviceRequiredError('CASHIER actions require a paired POS device cert.');
-    }
+      if (req.actor.role === 'CASHIER' && req.deviceId == null) {
+        throw new DeviceRequiredError('CASHIER actions require a paired POS device cert.');
+      }
 
-    const { productId, sessionId, reason } = req.body;
+      const { productId, sessionId, reason } = req.body;
 
-    try {
-      // userId guard (§19.2 C-1): only the cashier who reserved can
-      // release. requireAuth narrowed req.actor to non-null.
-      await release(app.db, {
+      try {
+        // userId guard (§19.2 C-1): only the cashier who reserved can
+        // release. requireAuth narrowed req.actor to non-null.
+        await release(app.db, {
+          productId,
+          sessionId,
+          userId: req.actor.id,
+          reason,
+        });
+      } catch (err) {
+        if (err instanceof ReservationOwnershipError) {
+          throw new ProductNotReservableError(err.message);
+        }
+        throw err;
+      }
+
+      return reply.status(200).send({
         productId,
-        sessionId,
-        userId: req.actor.id,
+        releasedAt: new Date().toISOString(),
         reason,
       });
-    } catch (err) {
-      if (err instanceof ReservationOwnershipError) {
-        throw new ProductNotReservableError(err.message);
-      }
-      throw err;
-    }
-
-    return reply.status(200).send({
-      productId,
-      releasedAt: new Date().toISOString(),
-      reason,
-    });
-  });
+    },
+  );
 };
 
 export default inventoryRelease;

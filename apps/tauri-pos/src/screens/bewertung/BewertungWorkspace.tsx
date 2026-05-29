@@ -14,12 +14,8 @@
 
 import { useMemo } from 'react';
 
-import {
-  DiamondRule,
-  MoneyAmount,
-  ParchmentCard,
-} from '@warehouse14/ui-kit';
 import type { AppraisalView } from '@warehouse14/api-client';
+import { DiamondRule, MoneyAmount, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { AppraisalItemForm } from './AppraisalItemForm.js';
 import { AppraisalItemsList } from './AppraisalItemsList.js';
@@ -29,9 +25,15 @@ export interface BewertungWorkspaceProps {
   onOpenAcceptance: () => void;
 }
 
-export function BewertungWorkspace({ appraisal, onOpenAcceptance }: BewertungWorkspaceProps): JSX.Element {
+export function BewertungWorkspace({
+  appraisal,
+  onOpenAcceptance,
+}: BewertungWorkspaceProps): JSX.Element {
   const editable = appraisal.status === 'DRAFT';
-  const totalAppraisedEur = useMemo(() => appraisal.totalAppraisedEur, [appraisal.totalAppraisedEur]);
+  const totalAppraisedEur = useMemo(
+    () => appraisal.totalAppraisedEur,
+    [appraisal.totalAppraisedEur],
+  );
 
   return (
     <div
@@ -66,11 +68,19 @@ export function BewertungWorkspace({ appraisal, onOpenAcceptance }: BewertungWor
         ) : (
           <ParchmentCard padding="lg" style={{ textAlign: 'center' }}>
             <DiamondRule />
-            <p style={{ margin: '8px 0 0', color: 'var(--w14-ink-faded)', fontFamily: 'var(--w14-font-display)', fontStyle: 'italic' }}>
+            <p
+              style={{
+                margin: '8px 0 0',
+                color: 'var(--w14-ink-faded)',
+                fontFamily: 'var(--w14-font-display)',
+                fontStyle: 'italic',
+              }}
+            >
               Bewertung ist abgeschlossen. Bitte mit „Kunde nimmt an / lehnt ab" fortfahren.
             </p>
             <p style={{ marginTop: 8, fontFamily: 'var(--w14-font-display)' }}>
-              Angebotswert: <MoneyAmount valueEur={appraisal.totalOfferedEur ?? totalAppraisedEur} emphasis />
+              Angebotswert:{' '}
+              <MoneyAmount valueEur={appraisal.totalOfferedEur ?? totalAppraisedEur} emphasis />
             </p>
           </ParchmentCard>
         )}

@@ -16,12 +16,9 @@ import { useLocation, useNavigate } from 'react-router-dom';
 
 import { MagnifierIcon, Seal } from '@warehouse14/ui-kit';
 
-import {
-  HOME_PATH,
-  PRIMARY_SURFACES,
-} from './surface-registry.js';
 import { SignOutButton } from './SignOutButton.js';
 import { SurfaceChip } from './SurfaceChip.js';
+import { HOME_PATH, PRIMARY_SURFACES } from './surface-registry.js';
 
 export interface AppShellHeaderProps {
   /** Opens the Spotlight palette — wired up in AppShell. */
@@ -30,10 +27,7 @@ export interface AppShellHeaderProps {
   onSignOut: () => void;
 }
 
-export function AppShellHeader({
-  onOpenSpotlight,
-  onSignOut,
-}: AppShellHeaderProps): JSX.Element {
+export function AppShellHeader({ onOpenSpotlight, onSignOut }: AppShellHeaderProps): JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
 

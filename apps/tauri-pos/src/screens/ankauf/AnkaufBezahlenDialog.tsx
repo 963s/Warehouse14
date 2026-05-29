@@ -17,43 +17,45 @@
  * Same UX as Verkauf finalize.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
-  ApiError,
-  customersApi,
-  transactionsApi,
   type AnkaufBody,
   type AnkaufLineItem,
   type AnkaufResponse,
+  type AnkaufResponseProduct,
+  ApiError,
   type CustomerDetail,
+  customersApi,
+  transactionsApi,
 } from '@warehouse14/api-client';
-import {
-  Button,
-  DiamondRule,
-  MoneyAmount,
-  ParchmentCard,
-} from '@warehouse14/ui-kit';
+import { Button, DiamondRule, MoneyAmount, ParchmentCard } from '@warehouse14/ui-kit';
+import type { LabelData } from '../../lib/hardware-client.js';
+import { useLabelPrinter } from '../../lib/use-label-printer.js';
+import type { IntakeItem } from '../../state/ankauf-cart-store.js';
 
-import { useApiClient } from '../../lib/api-context.js';
+import { currentShiftQueryKey } from '../../hooks/useCurrentShift.js';
+import { dashboardQueryKey } from '../../hooks/useDashboardSummary.js';
 import { GWG_IDENTITY_THRESHOLD_EUR } from '../../lib/ankauf-thresholds.js';
+import { useApiClient } from '../../lib/api-context.js';
 import { fromCents, sumNegotiatedCents, toCents } from '../../lib/intake-math.js';
 import {
-  useAnkaufCartStore,
-  selectAnkaufItems,
   selectAnkaufCustomerId,
+  selectAnkaufItems,
+  useAnkaufCartStore,
 } from '../../state/ankauf-cart-store.js';
 import { useToastStore } from '../../state/toast-store.js';
-import { dashboardQueryKey } from '../../hooks/useDashboardSummary.js';
-import { currentShiftQueryKey } from '../../hooks/useCurrentShift.js';
 
 export interface AnkaufBezahlenDialogProps {
   open: boolean;
   onClose: () => void;
 }
 
-export function AnkaufBezahlenDialog({ open, onClose }: AnkaufBezahlenDialogProps): JSX.Element | null {
+export function AnkaufBezahlenDialog({
+  open,
+  onClose,
+}: AnkaufBezahlenDialogProps): JSX.Element | null {
   const api = useApiClient();
   const qc = useQueryClient();
   const addToast = useToastStore((s) => s.addToast);
@@ -112,7 +114,8 @@ export function AnkaufBezahlenDialog({ open, onClose }: AnkaufBezahlenDialogProp
   const needsKycStamp = triggersGwgGate && !kycVerified;
 
   const payoutValid =
-    payoutMethod === 'CASH' || (payoutMethod === 'BANK_TRANSFER' && payoutExternalRef.trim().length > 0);
+    payoutMethod === 'CASH' ||
+    (payoutMethod === 'BANK_TRANSFER' && payoutExternalRef.trim().length > 0);
 
   const canSubmit =
     !submitting &&
@@ -222,8 +225,16 @@ export function AnkaufBezahlenDialog({ open, onClose }: AnkaufBezahlenDialogProp
       setSubmitting(false);
     }
   }, [
-    addToast, api, canSubmit, customerId, items, notesInternal, payoutExternalRef,
-    payoutMethod, qc, totalEur,
+    addToast,
+    api,
+    canSubmit,
+    customerId,
+    items,
+    notesInternal,
+    payoutExternalRef,
+    payoutMethod,
+    qc,
+    totalEur,
   ]);
 
   const dismissAfterFinalize = useCallback((): void => {
@@ -238,10 +249,17 @@ export function AnkaufBezahlenDialog({ open, onClose }: AnkaufBezahlenDialogProp
       role="dialog"
       aria-modal="true"
       aria-label="Ankauf bezahlen"
-      onClick={() => { if (!submitting && !stampingKyc && finalized === null) onClose(); }}
+      onClick={() => {
+        if (!submitting && !stampingKyc && finalized === null) onClose();
+      }}
       style={{
-        position: 'fixed', inset: 0, backgroundColor: 'var(--w14-overlay)',
-        zIndex: 1050, display: 'grid', placeItems: 'center', padding: 24,
+        position: 'fixed',
+        inset: 0,
+        backgroundColor: 'var(--w14-overlay)',
+        zIndex: 1050,
+        display: 'grid',
+        placeItems: 'center',
+        padding: 24,
       }}
     >
       <ParchmentCard
@@ -250,7 +268,12 @@ export function AnkaufBezahlenDialog({ open, onClose }: AnkaufBezahlenDialogProp
         style={{ width: 'min(560px, 100%)', boxShadow: 'var(--w14-shadow-modal)' }}
       >
         {finalized !== null ? (
-          <ReceiptPhase finalized={finalized} customerName={customer?.fullName ?? ''} onDismiss={dismissAfterFinalize} />
+          <ReceiptPhase
+            finalized={finalized}
+            customerName={customer?.fullName ?? ''}
+            items={items}
+            onDismiss={dismissAfterFinalize}
+          />
         ) : (
           <ReviewPhase
             customer={customer}
@@ -305,35 +328,91 @@ function ReviewPhase(props: {
   onCancel: () => void;
 }): JSX.Element {
   const {
-    customer, items, totalEur, payoutMethod, payoutExternalRef, notesInternal,
-    setPayoutMethod, setPayoutExternalRef, setNotesInternal,
-    triggersGwgGate, needsKycStamp, blocked,
-    error, canSubmit, submitting, stampingKyc, onStampKyc, onSubmit, onCancel,
+    customer,
+    items,
+    totalEur,
+    payoutMethod,
+    payoutExternalRef,
+    notesInternal,
+    setPayoutMethod,
+    setPayoutExternalRef,
+    setNotesInternal,
+    triggersGwgGate,
+    needsKycStamp,
+    blocked,
+    error,
+    canSubmit,
+    submitting,
+    stampingKyc,
+    onStampKyc,
+    onSubmit,
+    onCancel,
   } = props;
 
   return (
     <>
-      <h2 style={{ margin: 0, fontFamily: 'var(--w14-font-display)', fontWeight: 500, fontSize: '1.5rem', textAlign: 'center' }}>
+      <h2
+        style={{
+          margin: 0,
+          fontFamily: 'var(--w14-font-display)',
+          fontWeight: 500,
+          fontSize: '1.5rem',
+          textAlign: 'center',
+        }}
+      >
         Ankauf abschließen
       </h2>
-      <p style={{ margin: '6px 0 0', color: 'var(--w14-ink-faded)', fontFamily: 'var(--w14-font-display)', fontStyle: 'italic', fontSize: '0.92rem', textAlign: 'center' }}>
+      <p
+        style={{
+          margin: '6px 0 0',
+          color: 'var(--w14-ink-faded)',
+          fontFamily: 'var(--w14-font-display)',
+          fontStyle: 'italic',
+          fontSize: '0.92rem',
+          textAlign: 'center',
+        }}
+      >
         Bestätigen Sie Verkäufer, Stücke und Auszahlung.
       </p>
       <DiamondRule label="Verkäufer" />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 8, alignItems: 'baseline' }}>
-        <span className="w14-smallcaps" style={{ color: 'var(--w14-ink-faded)', fontSize: '0.78rem', letterSpacing: '0.08em' }}>Name</span>
-        <span style={{ textAlign: 'right', fontFamily: 'var(--w14-font-display)', fontWeight: 500 }}>
+      <div
+        style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 8, alignItems: 'baseline' }}
+      >
+        <span
+          className="w14-smallcaps"
+          style={{ color: 'var(--w14-ink-faded)', fontSize: '0.78rem', letterSpacing: '0.08em' }}
+        >
+          Name
+        </span>
+        <span
+          style={{ textAlign: 'right', fontFamily: 'var(--w14-font-display)', fontWeight: 500 }}
+        >
           {customer?.fullName ?? 'wird geladen…'}
         </span>
-        <span className="w14-smallcaps" style={{ color: 'var(--w14-ink-faded)', fontSize: '0.78rem', letterSpacing: '0.08em' }}>KYC</span>
-        <span style={{ textAlign: 'right', color: customer?.kycVerifiedAt ? 'var(--w14-gold)' : 'var(--w14-ink-faded)' }}>
-          {customer?.kycVerifiedAt ? `bestätigt ${new Date(customer.kycVerifiedAt).toLocaleDateString('de-DE')}` : 'noch nicht bestätigt'}
+        <span
+          className="w14-smallcaps"
+          style={{ color: 'var(--w14-ink-faded)', fontSize: '0.78rem', letterSpacing: '0.08em' }}
+        >
+          KYC
+        </span>
+        <span
+          style={{
+            textAlign: 'right',
+            color: customer?.kycVerifiedAt ? 'var(--w14-gold)' : 'var(--w14-ink-faded)',
+          }}
+        >
+          {customer?.kycVerifiedAt
+            ? `bestätigt ${new Date(customer.kycVerifiedAt).toLocaleDateString('de-DE')}`
+            : 'noch nicht bestätigt'}
         </span>
       </div>
 
       {blocked && (
-        <ParchmentCard padding="md" style={{ marginTop: 12, border: '2px solid var(--w14-wax-red)' }}>
+        <ParchmentCard
+          padding="md"
+          style={{ marginTop: 12, border: '2px solid var(--w14-wax-red)' }}
+        >
           <p style={{ margin: 0, color: 'var(--w14-wax-red)', fontWeight: 500 }}>
             Geschäft mit diesem Verkäufer nicht zulässig — Sanktion oder Sperre.
           </p>
@@ -341,7 +420,16 @@ function ReviewPhase(props: {
       )}
 
       {triggersGwgGate && (
-        <p style={{ margin: '12px 0 0', color: needsKycStamp ? 'var(--w14-wax-red)' : 'var(--w14-ink-aged)', fontFamily: 'var(--w14-font-display)', fontStyle: 'italic', fontSize: '0.88rem', textAlign: 'center' }}>
+        <p
+          style={{
+            margin: '12px 0 0',
+            color: needsKycStamp ? 'var(--w14-wax-red)' : 'var(--w14-ink-aged)',
+            fontFamily: 'var(--w14-font-display)',
+            fontStyle: 'italic',
+            fontSize: '0.88rem',
+            textAlign: 'center',
+          }}
+        >
           Ankauf über {GWG_IDENTITY_THRESHOLD_EUR} € — § 10 GwG verlangt persönliche Ausweisprüfung.
         </p>
       )}
@@ -349,26 +437,49 @@ function ReviewPhase(props: {
       <DiamondRule label="Auszahlung" />
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
-        <PayoutChip active={payoutMethod === 'CASH'} onClick={() => setPayoutMethod('CASH')} label="Bar" />
-        <PayoutChip active={payoutMethod === 'BANK_TRANSFER'} onClick={() => setPayoutMethod('BANK_TRANSFER')} label="Überweisung" />
+        <PayoutChip
+          active={payoutMethod === 'CASH'}
+          onClick={() => setPayoutMethod('CASH')}
+          label="Bar"
+        />
+        <PayoutChip
+          active={payoutMethod === 'BANK_TRANSFER'}
+          onClick={() => setPayoutMethod('BANK_TRANSFER')}
+          label="Überweisung"
+        />
       </div>
 
       {payoutMethod === 'BANK_TRANSFER' && (
         <label style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 }}>
-          <span className="w14-smallcaps" style={{ color: 'var(--w14-ink-faded)', fontSize: '0.78rem', letterSpacing: '0.08em' }}>
+          <span
+            className="w14-smallcaps"
+            style={{ color: 'var(--w14-ink-faded)', fontSize: '0.78rem', letterSpacing: '0.08em' }}
+          >
             Verwendungszweck / Überweisungs-Ref
           </span>
           <input
             type="text"
             value={payoutExternalRef}
             onChange={(ev) => setPayoutExternalRef(ev.target.value)}
-            style={{ border: 'none', outline: 'none', borderBottom: '2px solid var(--w14-rule)', background: 'transparent', padding: '6px 4px', fontFamily: 'var(--w14-font-mono)', fontSize: '0.95rem', color: 'var(--w14-ink)' }}
+            style={{
+              border: 'none',
+              outline: 'none',
+              borderBottom: '2px solid var(--w14-rule)',
+              background: 'transparent',
+              padding: '6px 4px',
+              fontFamily: 'var(--w14-font-mono)',
+              fontSize: '0.95rem',
+              color: 'var(--w14-ink)',
+            }}
           />
         </label>
       )}
 
       <label style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 }}>
-        <span className="w14-smallcaps" style={{ color: 'var(--w14-ink-faded)', fontSize: '0.78rem', letterSpacing: '0.08em' }}>
+        <span
+          className="w14-smallcaps"
+          style={{ color: 'var(--w14-ink-faded)', fontSize: '0.78rem', letterSpacing: '0.08em' }}
+        >
           Notiz (optional)
         </span>
         <input
@@ -376,14 +487,35 @@ function ReviewPhase(props: {
           value={notesInternal}
           maxLength={1024}
           onChange={(ev) => setNotesInternal(ev.target.value)}
-          style={{ border: 'none', outline: 'none', borderBottom: '2px solid var(--w14-rule)', background: 'transparent', padding: '6px 4px', fontFamily: 'var(--w14-font-body)', fontSize: '0.95rem', color: 'var(--w14-ink)' }}
+          style={{
+            border: 'none',
+            outline: 'none',
+            borderBottom: '2px solid var(--w14-rule)',
+            background: 'transparent',
+            padding: '6px 4px',
+            fontFamily: 'var(--w14-font-body)',
+            fontSize: '0.95rem',
+            color: 'var(--w14-ink)',
+          }}
         />
       </label>
 
-      <table className="w14-tabular" style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'var(--w14-font-mono)' }}>
+      <table
+        className="w14-tabular"
+        style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'var(--w14-font-mono)' }}
+      >
         <tbody>
           <tr>
-            <td style={{ padding: '8px 0', color: 'var(--w14-ink-faded)', fontFamily: 'var(--w14-font-display)', fontVariant: 'all-small-caps', letterSpacing: '0.08em', fontSize: '0.85rem' }}>
+            <td
+              style={{
+                padding: '8px 0',
+                color: 'var(--w14-ink-faded)',
+                fontFamily: 'var(--w14-font-display)',
+                fontVariant: 'all-small-caps',
+                letterSpacing: '0.08em',
+                fontSize: '0.85rem',
+              }}
+            >
               {items.length} Stück{items.length === 1 ? '' : 'e'}
             </td>
             <td style={{ padding: '8px 0', textAlign: 'right' }}>
@@ -394,7 +526,15 @@ function ReviewPhase(props: {
       </table>
 
       {error && (
-        <p role="alert" style={{ color: 'var(--w14-wax-red)', margin: '14px 0 0', fontSize: '0.92rem', textAlign: 'center' }}>
+        <p
+          role="alert"
+          style={{
+            color: 'var(--w14-wax-red)',
+            margin: '14px 0 0',
+            fontSize: '0.92rem',
+            textAlign: 'center',
+          }}
+        >
           {error}
         </p>
       )}
@@ -417,7 +557,11 @@ function ReviewPhase(props: {
   );
 }
 
-function PayoutChip({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }): JSX.Element {
+function PayoutChip({
+  active,
+  onClick,
+  label,
+}: { active: boolean; onClick: () => void; label: string }): JSX.Element {
   return (
     <button
       type="button"
@@ -448,31 +592,146 @@ function PayoutChip({ active, onClick, label }: { active: boolean; onClick: () =
 function ReceiptPhase({
   finalized,
   customerName,
+  items,
   onDismiss,
 }: {
   finalized: AnkaufResponse;
   customerName: string;
+  items: readonly IntakeItem[];
   onDismiss: () => void;
 }): JSX.Element {
+  const printer = useLabelPrinter();
+  const bySku = new Map(items.map((it) => [it.sku, it]));
+  const labelFor = (p: AnkaufResponseProduct): LabelData => {
+    const it = bySku.get(p.sku);
+    return {
+      sku: p.sku,
+      productName: it?.name ?? p.sku,
+      weightGrams: it?.weightGrams ?? null,
+      karat: it?.karatCode ?? null,
+      storageLocation: null, // Lagerort is assigned later in Lager
+    };
+  };
+  const allLabels = finalized.createdProducts.map(labelFor);
+
   return (
     <>
-      <h2 style={{ margin: 0, fontFamily: 'var(--w14-font-display)', fontWeight: 500, fontSize: '1.5rem', textAlign: 'center' }}>
+      <h2
+        style={{
+          margin: 0,
+          fontFamily: 'var(--w14-font-display)',
+          fontWeight: 500,
+          fontSize: '1.5rem',
+          textAlign: 'center',
+        }}
+      >
         Ankaufbeleg ausgegeben
       </h2>
       <DiamondRule />
 
-      <table className="w14-tabular" style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'var(--w14-font-mono)' }}>
+      <table
+        className="w14-tabular"
+        style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'var(--w14-font-mono)' }}
+      >
         <tbody>
-          <ReceiptRow label="Beleg-Nr." value={<span style={{ fontFamily: 'var(--w14-font-mono)', fontSize: '1.05rem', color: 'var(--w14-ink-aged)' }}>{finalized.receiptLocator}</span>} emphasised />
-          <ReceiptRow label="Verkäufer" value={<span style={{ fontFamily: 'var(--w14-font-display)' }}>{customerName}</span>} />
-          <ReceiptRow label="Stücke neu im Lager" value={<span className="w14-tabular">{finalized.createdProducts.length}</span>} />
-          <ReceiptRow label="Auszahlung" value={<MoneyAmount valueEur={finalized.totalEur} emphasis />} emphasised valueColor="var(--w14-wax-red)" />
+          <ReceiptRow
+            label="Beleg-Nr."
+            value={
+              <span
+                style={{
+                  fontFamily: 'var(--w14-font-mono)',
+                  fontSize: '1.05rem',
+                  color: 'var(--w14-ink-aged)',
+                }}
+              >
+                {finalized.receiptLocator}
+              </span>
+            }
+            emphasised
+          />
+          <ReceiptRow
+            label="Verkäufer"
+            value={<span style={{ fontFamily: 'var(--w14-font-display)' }}>{customerName}</span>}
+          />
+          <ReceiptRow
+            label="Stücke neu im Lager"
+            value={<span className="w14-tabular">{finalized.createdProducts.length}</span>}
+          />
+          <ReceiptRow
+            label="Auszahlung"
+            value={<MoneyAmount valueEur={finalized.totalEur} emphasis />}
+            emphasised
+            valueColor="var(--w14-wax-red)"
+          />
         </tbody>
       </table>
 
-      <p style={{ margin: '14px 0 0', color: 'var(--w14-ink-faded)', fontFamily: 'var(--w14-font-display)', fontStyle: 'italic', fontSize: '0.85rem', textAlign: 'center' }}>
-        {new Date(finalized.finalizedAt).toLocaleString('de-DE')}{' · ID '}{finalized.transactionId.slice(0, 8)}…
+      <p
+        style={{
+          margin: '14px 0 0',
+          color: 'var(--w14-ink-faded)',
+          fontFamily: 'var(--w14-font-display)',
+          fontStyle: 'italic',
+          fontSize: '0.85rem',
+          textAlign: 'center',
+        }}
+      >
+        {new Date(finalized.finalizedAt).toLocaleString('de-DE')}
+        {' · ID '}
+        {finalized.transactionId.slice(0, 8)}…
       </p>
+
+      {finalized.createdProducts.length > 0 && (
+        <div style={{ marginTop: 18 }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'baseline',
+              justifyContent: 'space-between',
+              marginBottom: 6,
+            }}
+          >
+            <span
+              className="w14-smallcaps"
+              style={{
+                letterSpacing: '0.08em',
+                fontSize: '0.78rem',
+                color: 'var(--w14-ink-faded)',
+              }}
+            >
+              Etiketten
+            </span>
+            <Button variant="ghost" size="sm" onClick={() => void printer.print(allLabels)}>
+              Alle Etiketten drucken
+            </Button>
+          </div>
+          <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 4 }}>
+            {finalized.createdProducts.map((p) => (
+              <li
+                key={p.id}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '0.86rem' }}
+              >
+                <span style={{ fontFamily: 'var(--w14-font-mono)', color: 'var(--w14-ink-aged)' }}>
+                  {p.sku}
+                </span>
+                <span
+                  style={{
+                    flex: 1,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {bySku.get(p.sku)?.name ?? '—'}
+                </span>
+                <Button variant="ghost" size="sm" onClick={() => void printer.print([labelFor(p)])}>
+                  Drucken
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div style={{ marginTop: 22, display: 'flex', justifyContent: 'center' }}>
         <Button variant="primary" size="lg" onClick={onDismiss}>
@@ -496,12 +755,19 @@ function ReceiptRow({
 }): JSX.Element {
   return (
     <tr>
-      <td style={{ padding: '8px 0', color: emphasised ? 'var(--w14-ink-aged)' : 'var(--w14-ink-faded)', fontFamily: 'var(--w14-font-display)', fontVariant: 'all-small-caps', letterSpacing: '0.08em', fontSize: emphasised ? '0.95rem' : '0.82rem' }}>
+      <td
+        style={{
+          padding: '8px 0',
+          color: emphasised ? 'var(--w14-ink-aged)' : 'var(--w14-ink-faded)',
+          fontFamily: 'var(--w14-font-display)',
+          fontVariant: 'all-small-caps',
+          letterSpacing: '0.08em',
+          fontSize: emphasised ? '0.95rem' : '0.82rem',
+        }}
+      >
         {label}
       </td>
-      <td style={{ padding: '8px 0', textAlign: 'right', color: valueColor }}>
-        {value}
-      </td>
+      <td style={{ padding: '8px 0', textAlign: 'right', color: valueColor }}>{value}</td>
     </tr>
   );
 }

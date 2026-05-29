@@ -17,10 +17,15 @@
  * See docs/architecture/RED_TEAM_AUDIT_2026-05-25.md.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import postgres, { type Sql } from 'postgres';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { applyMigrations, setAppPasswordForTest, startTestDb, type TestDb } from '../helpers/testDb.js';
+import {
+  type TestDb,
+  applyMigrations,
+  setAppPasswordForTest,
+  startTestDb,
+} from '../helpers/testDb.js';
 
 const PII_KEY = 'test-pii-key-do-not-use-in-production-32b';
 
@@ -97,9 +102,9 @@ describe('migration 0013_security_hardening — Red Team Audit fixes', () => {
     // For storno, negate.
     const isStorno = opts.stornoOfId != null;
     const sign = isStorno ? -1 : 1;
-    const subtotalSigned = (parseFloat(subtotal) * sign).toFixed(2);
-    const vatSigned = (parseFloat(vat) * sign).toFixed(2);
-    const totalSigned = (parseFloat(total) * sign).toFixed(2);
+    const subtotalSigned = (Number.parseFloat(subtotal) * sign).toFixed(2);
+    const vatSigned = (Number.parseFloat(vat) * sign).toFixed(2);
+    const totalSigned = (Number.parseFloat(total) * sign).toFixed(2);
     const [tx] = await migratorSql<{ id: string }[]>`
       INSERT INTO transactions (direction, customer_id, device_id, cashier_user_id,
                                 subtotal_eur, vat_eur, total_eur,
@@ -153,7 +158,12 @@ describe('migration 0013_security_hardening — Red Team Audit fixes', () => {
       const device = await makeDevice(cashier);
       const customer = await makeCustomer();
       await expect(
-        insertTx({ direction: 'ANKAUF', cashierId: cashier, deviceId: device, customerId: customer }),
+        insertTx({
+          direction: 'ANKAUF',
+          cashierId: cashier,
+          deviceId: device,
+          customerId: customer,
+        }),
       ).resolves.toBeDefined();
     });
   });
@@ -168,7 +178,12 @@ describe('migration 0013_security_hardening — Red Team Audit fixes', () => {
       const device = await makeDevice(cashier);
       const sanctioned = await makeCustomer({ sanctionsMatch: true });
       await expect(
-        insertTx({ direction: 'VERKAUF', cashierId: cashier, deviceId: device, customerId: sanctioned }),
+        insertTx({
+          direction: 'VERKAUF',
+          cashierId: cashier,
+          deviceId: device,
+          customerId: sanctioned,
+        }),
       ).rejects.toThrow(/Sanctions hard-block/);
     });
 
@@ -187,7 +202,12 @@ describe('migration 0013_security_hardening — Red Team Audit fixes', () => {
       const customer = await makeCustomer({ sanctionsMatch: false });
 
       // First sale is fine.
-      const ok = await insertTx({ direction: 'VERKAUF', cashierId: cashier, deviceId: device, customerId: customer });
+      const ok = await insertTx({
+        direction: 'VERKAUF',
+        cashierId: cashier,
+        deviceId: device,
+        customerId: customer,
+      });
       expect(ok).toBeDefined();
 
       // Flag the customer.
@@ -195,7 +215,12 @@ describe('migration 0013_security_hardening — Red Team Audit fixes', () => {
 
       // Second sale is rejected.
       await expect(
-        insertTx({ direction: 'VERKAUF', cashierId: cashier, deviceId: device, customerId: customer }),
+        insertTx({
+          direction: 'VERKAUF',
+          cashierId: cashier,
+          deviceId: device,
+          customerId: customer,
+        }),
       ).rejects.toThrow(/Sanctions hard-block/);
     });
   });
@@ -321,7 +346,9 @@ describe('migration 0013_security_hardening — Red Team Audit fixes', () => {
         UPDATE appointments
            SET status = 'CANCELLED'::appointment_status, cancelled_at = now()
          WHERE id = ${apptId}`;
-      const [after] = await migratorSql<{ released_at: Date | null; released_reason: string | null }[]>`
+      const [after] = await migratorSql<
+        { released_at: Date | null; released_reason: string | null }[]
+      >`
         SELECT released_at, released_reason FROM product_viewing_holds WHERE id = ${holdId}`;
       expect(after!.released_at).toBeInstanceOf(Date);
       expect(after!.released_reason).toBe('appointment_cancelled');
@@ -333,7 +360,9 @@ describe('migration 0013_security_hardening — Red Team Audit fixes', () => {
         UPDATE appointments
            SET status = 'NO_SHOW'::appointment_status, no_show_marked_at = now()
          WHERE id = ${apptId}`;
-      const [after] = await migratorSql<{ released_at: Date | null; released_reason: string | null }[]>`
+      const [after] = await migratorSql<
+        { released_at: Date | null; released_reason: string | null }[]
+      >`
         SELECT released_at, released_reason FROM product_viewing_holds WHERE id = ${holdId}`;
       expect(after!.released_at).toBeInstanceOf(Date);
       expect(after!.released_reason).toBe('appointment_no_show');
@@ -355,7 +384,9 @@ describe('migration 0013_security_hardening — Red Team Audit fixes', () => {
            SET status = 'RESCHEDULED'::appointment_status,
                rescheduled_to_appointment_id = ${newAppt!.id}
          WHERE id = ${apptId}`;
-      const [after] = await migratorSql<{ released_at: Date | null; released_reason: string | null }[]>`
+      const [after] = await migratorSql<
+        { released_at: Date | null; released_reason: string | null }[]
+      >`
         SELECT released_at, released_reason FROM product_viewing_holds WHERE id = ${holdId}`;
       expect(after!.released_at).toBeInstanceOf(Date);
       expect(after!.released_reason).toBe('appointment_rescheduled');
@@ -368,7 +399,9 @@ describe('migration 0013_security_hardening — Red Team Audit fixes', () => {
       await migratorSql`UPDATE appointments SET status='IN_PROGRESS', in_progress_started_at = now() WHERE id = ${apptId}`;
       await migratorSql`UPDATE appointments SET status='COMPLETED', completed_at = now() WHERE id = ${apptId}`;
 
-      const [after] = await migratorSql<{ released_at: Date | null; released_reason: string | null }[]>`
+      const [after] = await migratorSql<
+        { released_at: Date | null; released_reason: string | null }[]
+      >`
         SELECT released_at, released_reason FROM product_viewing_holds WHERE id = ${holdId}`;
       expect(after!.released_at).toBeInstanceOf(Date);
       expect(after!.released_reason).toBe('appointment_completed');
@@ -416,18 +449,31 @@ describe('migration 0013_security_hardening — Red Team Audit fixes', () => {
       const cashier = await makeUser();
       const device = await makeDevice(cashier);
       const orig = await insertTx({
-        direction: 'VERKAUF', cashierId: cashier, deviceId: device, customerId: null,
+        direction: 'VERKAUF',
+        cashierId: cashier,
+        deviceId: device,
+        customerId: null,
       });
 
       // First storno: fine.
       const storno1 = await insertTx({
-        direction: 'VERKAUF', cashierId: cashier, deviceId: device, customerId: null, stornoOfId: orig,
+        direction: 'VERKAUF',
+        cashierId: cashier,
+        deviceId: device,
+        customerId: null,
+        stornoOfId: orig,
       });
       expect(storno1).toBeDefined();
 
       // Second storno of the same original: rejected by partial UNIQUE.
       await expect(
-        insertTx({ direction: 'VERKAUF', cashierId: cashier, deviceId: device, customerId: null, stornoOfId: orig }),
+        insertTx({
+          direction: 'VERKAUF',
+          cashierId: cashier,
+          deviceId: device,
+          customerId: null,
+          stornoOfId: orig,
+        }),
       ).rejects.toThrow(/transactions_one_storno_per_original_uq/);
     });
 
@@ -436,7 +482,10 @@ describe('migration 0013_security_hardening — Red Team Audit fixes', () => {
       const staff = await makeUser();
       const device = await makeDevice(cashier);
       const tx = await insertTx({
-        direction: 'VERKAUF', cashierId: cashier, deviceId: device, customerId: null,
+        direction: 'VERKAUF',
+        cashierId: cashier,
+        deviceId: device,
+        customerId: null,
       });
 
       const startsAt = new Date(Date.now() + 60 * 60 * 1000);
@@ -462,10 +511,16 @@ describe('migration 0013_security_hardening — Red Team Audit fixes', () => {
       const device = await makeDevice(cashier);
       // Two originals — both have storno_of_transaction_id = NULL — must coexist.
       const a = await insertTx({
-        direction: 'VERKAUF', cashierId: cashier, deviceId: device, customerId: null,
+        direction: 'VERKAUF',
+        cashierId: cashier,
+        deviceId: device,
+        customerId: null,
       });
       const b = await insertTx({
-        direction: 'VERKAUF', cashierId: cashier, deviceId: device, customerId: null,
+        direction: 'VERKAUF',
+        cashierId: cashier,
+        deviceId: device,
+        customerId: null,
       });
       expect(a).not.toBe(b);
     });
@@ -489,7 +544,7 @@ describe('migration 0013_security_hardening — Red Team Audit fixes', () => {
       });
 
       const received: string[] = [];
-      const subscription = await listenerSql.listen('warehouse14_ledger', payload => {
+      const subscription = await listenerSql.listen('warehouse14_ledger', (payload) => {
         received.push(payload);
       });
 
@@ -502,7 +557,7 @@ describe('migration 0013_security_hardening — Red Team Audit fixes', () => {
         // Allow up to 1s for NOTIFY delivery (background socket; usually <10ms).
         const insertedId = row!.id;
         for (let attempt = 0; attempt < 50 && !received.includes(insertedId); attempt++) {
-          await new Promise(r => setTimeout(r, 20));
+          await new Promise((r) => setTimeout(r, 20));
         }
 
         expect(received).toContain(insertedId);

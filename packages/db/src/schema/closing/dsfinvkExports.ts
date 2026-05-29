@@ -6,8 +6,20 @@
  * NEVER deleted by app role.
  */
 
-import { bigint, check, customType, date, index, integer, numeric, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import {
+  bigint,
+  check,
+  customType,
+  date,
+  index,
+  integer,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from 'drizzle-orm/pg-core';
 
 import { primaryKey, timestamps } from '../_shared/columns.js';
 import { users } from '../auth/users.js';
@@ -30,7 +42,9 @@ export const dsfinvkExports = pgTable(
 
     state: dsfinvkExportState('state').notNull().default('GENERATING'),
 
-    requestedByUserId: uuid('requested_by_user_id').notNull().references(() => users.id),
+    requestedByUserId: uuid('requested_by_user_id')
+      .notNull()
+      .references(() => users.id),
     generatedAt: timestamp('generated_at', { withTimezone: true }),
     deliveredAt: timestamp('delivered_at', { withTimezone: true }),
     deliveryMethod: text('delivery_method'),
@@ -51,12 +65,18 @@ export const dsfinvkExports = pgTable(
 
     ...timestamps(),
   },
-  table => ({
+  (table) => ({
     stateIdx: index('dsfinvk_exports_state_idx').on(table.state, table.createdAt.desc()),
     periodIdx: index('dsfinvk_exports_period_idx').on(table.periodStart, table.periodEnd),
-    requestedByIdx: index('dsfinvk_exports_requested_by_idx').on(table.requestedByUserId, table.createdAt.desc()),
+    requestedByIdx: index('dsfinvk_exports_requested_by_idx').on(
+      table.requestedByUserId,
+      table.createdAt.desc(),
+    ),
 
-    periodOrder: check('dsfinvk_exports_period_order', sql`${table.periodEnd} >= ${table.periodStart}`),
+    periodOrder: check(
+      'dsfinvk_exports_period_order',
+      sql`${table.periodEnd} >= ${table.periodStart}`,
+    ),
     sha256Length: check(
       'dsfinvk_exports_sha256_length',
       sql`${table.fileSha256} IS NULL OR octet_length(${table.fileSha256}) = 32`,

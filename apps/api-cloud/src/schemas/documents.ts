@@ -2,7 +2,7 @@
  * TypeBox schemas for the document_attachments API surface (Day 25).
  */
 
-import { Type, type Static } from '@sinclair/typebox';
+import { type Static, Type } from '@sinclair/typebox';
 
 const DOCUMENT_CATEGORY = Type.Union([
   Type.Literal('AUSWEIS'),

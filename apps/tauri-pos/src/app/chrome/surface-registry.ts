@@ -58,23 +58,23 @@ export interface SurfaceDescriptor {
   searchAliases?: readonly string[];
 }
 
+import { Ankauf } from '../../screens/ankauf/Ankauf.js';
+import { Aufgaben } from '../../screens/aufgaben/Aufgaben.js';
+import { Bewertung } from '../../screens/bewertung/Bewertung.js';
+import { Kasse } from '../../screens/kasse/Kasse.js';
+import { Kunden } from '../../screens/kunden/Kunden.js';
+import { Lager } from '../../screens/lager/Lager.js';
+import { Belegtexte } from '../../screens/secondary/Belegtexte.js';
+import { Dokumente } from '../../screens/secondary/Dokumente.js';
+import { Ebay } from '../../screens/secondary/Ebay.js';
+import { Einstellungen } from '../../screens/secondary/Einstellungen.js';
+import { Fotos } from '../../screens/secondary/Fotos.js';
+import { Kurse } from '../../screens/secondary/Kurse.js';
+import { Tagebuch } from '../../screens/secondary/Tagebuch.js';
+import { WhatsApp } from '../../screens/secondary/WhatsApp.js';
+import { Verkauf } from '../../screens/verkauf/Verkauf.js';
 // Lazy imports — kept at the top so `npm/pnpm typecheck` validates them all.
 import { Werkstatt } from '../../screens/werkstatt/Werkstatt.js';
-import { Verkauf } from '../../screens/verkauf/Verkauf.js';
-import { Ankauf } from '../../screens/ankauf/Ankauf.js';
-import { Kasse } from '../../screens/kasse/Kasse.js';
-import { Aufgaben } from '../../screens/aufgaben/Aufgaben.js';
-import { Lager } from '../../screens/lager/Lager.js';
-import { Kunden } from '../../screens/kunden/Kunden.js';
-import { Bewertung } from '../../screens/bewertung/Bewertung.js';
-import { Kurse } from '../../screens/secondary/Kurse.js';
-import { Ebay } from '../../screens/secondary/Ebay.js';
-import { Fotos } from '../../screens/secondary/Fotos.js';
-import { Belegtexte } from '../../screens/secondary/Belegtexte.js';
-import { Tagebuch } from '../../screens/secondary/Tagebuch.js';
-import { Dokumente } from '../../screens/secondary/Dokumente.js';
-import { Einstellungen } from '../../screens/secondary/Einstellungen.js';
-import { WhatsApp } from '../../screens/secondary/WhatsApp.js';
 
 export const SURFACES: readonly SurfaceDescriptor[] = [
   // ── Tier 1 — 8 chips, frequency-ordered ─────────────────────────────
@@ -247,7 +247,7 @@ export const HOME_PATH = '/werkstatt';
   if (PRIMARY_SURFACES.length > 8) {
     throw new Error(
       `[surface-registry] tier-1 count is ${PRIMARY_SURFACES.length}; ` +
-      'memory.md §11.3 caps it at 8. Move one surface to tier 2 or replace.',
+        'memory.md §11.3 caps it at 8. Move one surface to tier 2 or replace.',
     );
   }
   // Rule 2 — unique paths.
@@ -274,9 +274,7 @@ export const HOME_PATH = '/werkstatt';
   }
   for (const s of SECONDARY_SURFACES) {
     if (s.digit !== undefined) {
-      throw new Error(
-        `[surface-registry] secondary surface "${s.path}" must not carry a digit`,
-      );
+      throw new Error(`[surface-registry] secondary surface "${s.path}" must not carry a digit`);
     }
   }
 })();

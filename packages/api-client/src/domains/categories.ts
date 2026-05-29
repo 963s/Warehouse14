@@ -134,11 +134,7 @@ export const categoriesApi = {
   create(client: ApiClient, body: CreateCategoryBody): Promise<CreateCategoryResponse> {
     return client.request<CreateCategoryResponse>('POST', '/api/categories', body);
   },
-  update(
-    client: ApiClient,
-    id: string,
-    body: UpdateCategoryBody,
-  ): Promise<UpdateCategoryResponse> {
+  update(client: ApiClient, id: string, body: UpdateCategoryBody): Promise<UpdateCategoryResponse> {
     return client.request<UpdateCategoryResponse>(
       'PUT',
       `/api/categories/${encodeURIComponent(id)}`,

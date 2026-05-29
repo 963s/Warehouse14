@@ -26,13 +26,7 @@ export function AppRouter(): JSX.Element {
           <Route index element={<Navigate to={HOME_PATH} replace />} />
           {SURFACES.map((s) => {
             const Component = s.component;
-            return (
-              <Route
-                key={s.path}
-                path={s.path}
-                element={<Component />}
-              />
-            );
+            return <Route key={s.path} path={s.path} element={<Component />} />;
           })}
           <Route path="*" element={<Navigate to={HOME_PATH} replace />} />
         </Route>

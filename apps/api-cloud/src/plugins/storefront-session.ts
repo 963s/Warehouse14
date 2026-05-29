@@ -16,8 +16,8 @@
  * Everything else under `/api/storefront/` requires `req.shopper`.
  */
 
-import fastifyPlugin from 'fastify-plugin';
 import type { FastifyPluginAsync } from 'fastify';
+import fastifyPlugin from 'fastify-plugin';
 
 import { loadShopperBySession } from '../lib/shopper.js';
 
@@ -67,7 +67,7 @@ const storefrontSessionPlugin: FastifyPluginAsync = async (app) => {
     if (
       isProtectedStorefrontRoute(req.url) &&
       !req.shopper &&
-      (req.routeOptions?.method !== 'OPTIONS')
+      req.routeOptions?.method !== 'OPTIONS'
     ) {
       // Soft observability — error-handler already responded.
       req.log.debug({ url: req.url }, 'storefront protected route without shopper');

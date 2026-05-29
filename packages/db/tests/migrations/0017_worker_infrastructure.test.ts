@@ -11,13 +11,13 @@
  *   • Role grants — worker has narrow column UPDATEs (products, dsfinvk_exports)
  */
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import postgres, { type Sql } from 'postgres';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { applyMigrations, startTestDb, type TestDb } from '../helpers/testDb.js';
+import { type TestDb, applyMigrations, startTestDb } from '../helpers/testDb.js';
 
 const WORKER_PW = 'warehouse14_worker_test_pw';
-const APP_PW    = 'warehouse14_app_test_pw';
+const APP_PW = 'warehouse14_app_test_pw';
 
 describe('migration 0017_worker_infrastructure', () => {
   let testDb: TestDb;
@@ -35,18 +35,22 @@ describe('migration 0017_worker_infrastructure', () => {
     const host = testDb.container.getHost();
     const port = testDb.container.getPort();
     workerSql = postgres({
-      host, port,
+      host,
+      port,
       database: 'warehouse14_test',
       username: 'warehouse14_worker',
       password: WORKER_PW,
-      max: 2, onnotice: () => {},
+      max: 2,
+      onnotice: () => {},
     });
     appSql = postgres({
-      host, port,
+      host,
+      port,
       database: 'warehouse14_test',
       username: 'warehouse14_app',
       password: APP_PW,
-      max: 2, onnotice: () => {},
+      max: 2,
+      onnotice: () => {},
     });
   });
 
@@ -66,7 +70,11 @@ describe('migration 0017_worker_infrastructure', () => {
         SELECT enumlabel FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
          WHERE t.typname = 'worker_job_status' ORDER BY enumsortorder`;
       expect(rows.map((r) => r.enumlabel)).toEqual([
-        'RUNNING', 'SUCCESS', 'FAILED', 'TIMEOUT', 'SKIPPED',
+        'RUNNING',
+        'SUCCESS',
+        'FAILED',
+        'TIMEOUT',
+        'SKIPPED',
       ]);
     });
   });
@@ -160,9 +168,7 @@ describe('migration 0017_worker_infrastructure', () => {
         INSERT INTO sessions (user_id, token, expires_at)
         VALUES (${u!.id}, ${`tok-${crypto.randomUUID()}`}, now() + interval '1 hour')
         RETURNING id`;
-      await expect(
-        workerSql`DELETE FROM sessions WHERE id = ${s!.id}`,
-      ).resolves.toBeDefined();
+      await expect(workerSql`DELETE FROM sessions WHERE id = ${s!.id}`).resolves.toBeDefined();
     });
 
     it('worker CAN UPDATE products.status (reservation sweeper path)', async () => {

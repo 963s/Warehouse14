@@ -23,8 +23,8 @@ import type { FastifyPluginAsync } from 'fastify';
 
 import { auditLog, customers, kycDocuments } from '@warehouse14/db/schema';
 
-import { DomainError, type ApiErrorCode } from '../plugins/error-handler.js';
 import { requireAuth, requireRole, requireStepUp } from '../lib/auth-policy.js';
+import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 import {
   KycDocumentBody,
   KycDocumentResponse,

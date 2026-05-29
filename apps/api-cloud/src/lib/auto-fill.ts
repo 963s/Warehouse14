@@ -59,19 +59,17 @@ export function resolveDocumentLink(input: {
   appraisalId: string | null;
 } {
   const setCount =
-    (input.customerId ? 1 : 0)
-    + (input.productId ? 1 : 0)
-    + (input.transactionId ? 1 : 0)
-    + (input.appraisalId ? 1 : 0);
+    (input.customerId ? 1 : 0) +
+    (input.productId ? 1 : 0) +
+    (input.transactionId ? 1 : 0) +
+    (input.appraisalId ? 1 : 0);
   if (setCount === 0) {
     throw new DocumentLinkError(
       'document must link to exactly one entity (customerId | productId | transactionId | appraisalId)',
     );
   }
   if (setCount > 1) {
-    throw new DocumentLinkError(
-      'document may link to ONLY one entity at a time',
-    );
+    throw new DocumentLinkError('document may link to ONLY one entity at a time');
   }
   return {
     customerId: input.customerId ?? null,

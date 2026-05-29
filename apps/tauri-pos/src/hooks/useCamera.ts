@@ -72,54 +72,57 @@ export function useCamera(opts: UseCameraOptions = {}): UseCameraResult {
     }
   }, []);
 
-  const attachStream = useCallback(async (deviceId: string | null): Promise<void> => {
-    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
-      setPermission('unavailable');
-      setError('MediaDevices API nicht verfügbar in dieser Umgebung.');
-      return;
-    }
-
-    setPermission('pending');
-    setError(null);
-
-    // Stop existing stream BEFORE requesting a new one.
-    stop();
-
-    const constraints: MediaStreamConstraints = {
-      video: deviceId
-        ? { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }
-        : { width: { ideal: 1920 }, height: { ideal: 1080 } },
-      audio: false,
-    };
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play().catch(() => undefined);
+  const attachStream = useCallback(
+    async (deviceId: string | null): Promise<void> => {
+      if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+        setPermission('unavailable');
+        setError('MediaDevices API nicht verfügbar in dieser Umgebung.');
+        return;
       }
-      const track = stream.getVideoTracks()[0];
-      const settings = track?.getSettings();
-      setActiveDeviceId(settings?.deviceId ?? deviceId ?? null);
-      setPermission('granted');
-    } catch (err) {
-      if (err instanceof DOMException) {
-        if (err.name === 'NotAllowedError' || err.name === 'SecurityError') {
-          setPermission('denied');
-          setError('Kamera-Zugriff verweigert. Bitte in den Systemeinstellungen erlauben.');
-          return;
+
+      setPermission('pending');
+      setError(null);
+
+      // Stop existing stream BEFORE requesting a new one.
+      stop();
+
+      const constraints: MediaStreamConstraints = {
+        video: deviceId
+          ? { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+          : { width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: false,
+      };
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play().catch(() => undefined);
         }
-        if (err.name === 'NotFoundError' || err.name === 'OverconstrainedError') {
-          setPermission('unavailable');
-          setError('Keine Kamera gefunden.');
-          return;
+        const track = stream.getVideoTracks()[0];
+        const settings = track?.getSettings();
+        setActiveDeviceId(settings?.deviceId ?? deviceId ?? null);
+        setPermission('granted');
+      } catch (err) {
+        if (err instanceof DOMException) {
+          if (err.name === 'NotAllowedError' || err.name === 'SecurityError') {
+            setPermission('denied');
+            setError('Kamera-Zugriff verweigert. Bitte in den Systemeinstellungen erlauben.');
+            return;
+          }
+          if (err.name === 'NotFoundError' || err.name === 'OverconstrainedError') {
+            setPermission('unavailable');
+            setError('Keine Kamera gefunden.');
+            return;
+          }
         }
+        setPermission('denied');
+        setError(err instanceof Error ? err.message : 'Unbekannter Kamera-Fehler.');
       }
-      setPermission('denied');
-      setError(err instanceof Error ? err.message : 'Unbekannter Kamera-Fehler.');
-    }
-  }, [stop]);
+    },
+    [stop],
+  );
 
   const refreshDevices = useCallback(async (): Promise<void> => {
     if (typeof navigator === 'undefined' || !navigator.mediaDevices?.enumerateDevices) return;
@@ -152,9 +155,12 @@ export function useCamera(opts: UseCameraOptions = {}): UseCameraResult {
     await refreshDevices();
   }, [attachStream, activeDeviceId, refreshDevices]);
 
-  const switchDevice = useCallback(async (deviceId: string): Promise<void> => {
-    await attachStream(deviceId);
-  }, [attachStream]);
+  const switchDevice = useCallback(
+    async (deviceId: string): Promise<void> => {
+      await attachStream(deviceId);
+    },
+    [attachStream],
+  );
 
   const captureBlob = useCallback(async (): Promise<Blob | null> => {
     const video = videoRef.current;

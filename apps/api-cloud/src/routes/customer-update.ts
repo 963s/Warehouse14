@@ -24,12 +24,12 @@ import type { FastifyPluginAsync } from 'fastify';
 
 import { auditLog } from '@warehouse14/db/schema';
 
-import { DomainError, type ApiErrorCode } from '../plugins/error-handler.js';
 import { requireAuth, requireRole, requireStepUp } from '../lib/auth-policy.js';
+import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 import {
+  type UpdateCustomerBody as TBody,
   UpdateCustomerBody,
   UpdateCustomerResponse,
-  type UpdateCustomerBody as TBody,
 } from '../schemas/customer.js';
 
 class CustomerNotFoundError extends DomainError {
@@ -40,7 +40,9 @@ class CustomerNotFoundError extends DomainError {
 class NothingToUpdateError extends DomainError {
   public readonly httpStatus = 400;
   public readonly code: ApiErrorCode = 'VALIDATION_ERROR';
-  public readonly details = { reason: 'no changes detected — body had no diff against current row' };
+  public readonly details = {
+    reason: 'no changes detected — body had no diff against current row',
+  };
 }
 
 const ErrorResponse = Type.Object({
@@ -100,6 +102,7 @@ const customerUpdateRoute: FastifyPluginAsync = async (app) => {
           phone: string | null;
           address: string | null;
           notes: string | null;
+          vat_id: string | null;
           preferred_language: 'de' | 'en' | 'ar';
           customer_tags: string[];
         }>(sql`
@@ -112,6 +115,7 @@ const customerUpdateRoute: FastifyPluginAsync = async (app) => {
             ${sql`decrypt_pii(phone_encrypted)`}         AS phone,
             ${sql`decrypt_pii(address_encrypted)`}       AS address,
             ${sql`decrypt_pii(notes_encrypted)`}         AS notes,
+            vat_id,
             preferred_language,
             customer_tags
           FROM customers
@@ -138,17 +142,12 @@ const customerUpdateRoute: FastifyPluginAsync = async (app) => {
           changedFields.push('fullName');
           setFragments.push(sql`full_name_encrypted = encrypt_pii(${body.fullName})`);
         }
-        if (
-          body.dateOfBirth !== undefined &&
-          body.dateOfBirth !== before.date_of_birth
-        ) {
+        if (body.dateOfBirth !== undefined && body.dateOfBirth !== before.date_of_birth) {
           changedFields.push('dateOfBirth');
           if (body.dateOfBirth === null) {
             setFragments.push(sql`date_of_birth_encrypted = NULL`);
           } else {
-            setFragments.push(
-              sql`date_of_birth_encrypted = encrypt_pii(${body.dateOfBirth})`,
-            );
+            setFragments.push(sql`date_of_birth_encrypted = encrypt_pii(${body.dateOfBirth})`);
           }
         }
         if (body.email !== undefined && body.email !== before.email) {
@@ -176,9 +175,7 @@ const customerUpdateRoute: FastifyPluginAsync = async (app) => {
           if (body.address === null) {
             setFragments.push(sql`address_encrypted = NULL`);
           } else {
-            setFragments.push(
-              sql`address_encrypted = encrypt_pii(${body.address})`,
-            );
+            setFragments.push(sql`address_encrypted = encrypt_pii(${body.address})`);
           }
         }
         if (body.notes !== undefined && body.notes !== before.notes) {
@@ -187,6 +184,14 @@ const customerUpdateRoute: FastifyPluginAsync = async (app) => {
             setFragments.push(sql`notes_encrypted = NULL`);
           } else {
             setFragments.push(sql`notes_encrypted = encrypt_pii(${body.notes})`);
+          }
+        }
+        if (body.vatId !== undefined && body.vatId !== before.vat_id) {
+          changedFields.push('vatId');
+          if (body.vatId === null) {
+            setFragments.push(sql`vat_id = NULL`);
+          } else {
+            setFragments.push(sql`vat_id = ${body.vatId}`);
           }
         }
         if (

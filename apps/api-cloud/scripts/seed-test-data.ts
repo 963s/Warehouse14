@@ -26,8 +26,8 @@
  *     use at runtime so the rows are decryptable end-to-end.
  */
 
-import { resolve, dirname } from 'node:path';
 import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import postgres, { type Sql } from 'postgres';
 
@@ -163,7 +163,10 @@ async function seedTaxTreatmentCodes(sql: Sql): Promise<void> {
 async function noteReferenceData(sql: Sql): Promise<void> {
   const k = await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM karat_grades`;
   const h = await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM hallmarks`;
-  log('reference', `  karat_grades: ${k[0]?.n ?? 0}, hallmarks: ${h[0]?.n ?? 0} (migration-seeded; no-op)`);
+  log(
+    'reference',
+    `  karat_grades: ${k[0]?.n ?? 0}, hallmarks: ${h[0]?.n ?? 0} (migration-seeded; no-op)`,
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -246,8 +249,18 @@ const CATEGORIES: SeedCategory[] = [
   // Münzen
   { slug: 'kruegerrand', nameDe: 'Krügerrand', nameEn: 'Krugerrand', parentSlug: 'muenzen' },
   { slug: 'maple-leaf', nameDe: 'Maple Leaf', nameEn: 'Maple Leaf', parentSlug: 'muenzen' },
-  { slug: 'wiener-philharmoniker', nameDe: 'Wiener Philharmoniker', nameEn: 'Vienna Philharmonic', parentSlug: 'muenzen' },
-  { slug: 'sonderpraegungen', nameDe: 'Sonderprägungen', nameEn: 'Commemorative Coins', parentSlug: 'muenzen' },
+  {
+    slug: 'wiener-philharmoniker',
+    nameDe: 'Wiener Philharmoniker',
+    nameEn: 'Vienna Philharmonic',
+    parentSlug: 'muenzen',
+  },
+  {
+    slug: 'sonderpraegungen',
+    nameDe: 'Sonderprägungen',
+    nameEn: 'Commemorative Coins',
+    parentSlug: 'muenzen',
+  },
 
   // Schmuck
   { slug: 'ringe', nameDe: 'Ringe', nameEn: 'Rings', parentSlug: 'schmuck' },
@@ -257,12 +270,22 @@ const CATEGORIES: SeedCategory[] = [
 
   // Antiquitäten
   { slug: 'uhren', nameDe: 'Uhren', nameEn: 'Watches', parentSlug: 'antiquitaeten' },
-  { slug: 'silberbesteck', nameDe: 'Silberbesteck', nameEn: 'Silver Cutlery', parentSlug: 'antiquitaeten' },
+  {
+    slug: 'silberbesteck',
+    nameDe: 'Silberbesteck',
+    nameEn: 'Silver Cutlery',
+    parentSlug: 'antiquitaeten',
+  },
   { slug: 'porzellan', nameDe: 'Porzellan', nameEn: 'Porcelain', parentSlug: 'antiquitaeten' },
 
   // Edelmetalle
   { slug: 'goldbarren', nameDe: 'Goldbarren', nameEn: 'Gold Bars', parentSlug: 'edelmetalle' },
-  { slug: 'silberbarren', nameDe: 'Silberbarren', nameEn: 'Silver Bars', parentSlug: 'edelmetalle' },
+  {
+    slug: 'silberbarren',
+    nameDe: 'Silberbarren',
+    nameEn: 'Silver Bars',
+    parentSlug: 'edelmetalle',
+  },
 ];
 
 async function seedCategories(sql: Sql): Promise<Map<string, Uuid>> {
@@ -294,6 +317,7 @@ async function seedCategories(sql: Sql): Promise<Map<string, Uuid>> {
       slugToId.set(cat.slug, existing[0].id);
       continue;
     }
+    // biome-ignore lint/style/noNonNullAssertion: the loop `continue`s above when parentSlug is absent.
     const parentId = slugToId.get(cat.parentSlug!);
     if (!parentId) {
       log('categories', `  ✗ skip ${cat.slug} — parent ${cat.parentSlug} not found`);
@@ -444,7 +468,8 @@ const PRODUCTS: SeedProduct[] = [
   {
     sku: 'REICH-20M-1888',
     name: '20 Mark Reichsgoldmünze 1888 Wilhelm II',
-    descriptionDe: 'Historische 20-Mark-Goldmünze, Wilhelm II., Preußen, 7,965 g, Feingehalt 900/1000.',
+    descriptionDe:
+      'Historische 20-Mark-Goldmünze, Wilhelm II., Preußen, 7,965 g, Feingehalt 900/1000.',
     itemType: 'gold_coin',
     metal: 'gold',
     karatCode: '22K',
@@ -504,7 +529,8 @@ const PRODUCTS: SeedProduct[] = [
   {
     sku: 'KRG-AG-SET5',
     name: 'Silber-Krügerrand Set 5x 1oz',
-    descriptionDe: 'Fünf-teiliges Set Silber-Krügerrand, je 1 Unze, Feingehalt 999/1000, Jahrgang 2022-2024.',
+    descriptionDe:
+      'Fünf-teiliges Set Silber-Krügerrand, je 1 Unze, Feingehalt 999/1000, Jahrgang 2022-2024.',
     itemType: 'silver_coin',
     metal: 'silver',
     karatCode: null,
@@ -524,7 +550,8 @@ const PRODUCTS: SeedProduct[] = [
   {
     sku: 'SBK-WMF-12T',
     name: 'WMF Silberbesteck 12 Teile',
-    descriptionDe: 'Antikes Tafelbesteck WMF, 12-teilig (4 Gabeln, 4 Messer, 4 Löffel), 800er Silber, ca. 1920.',
+    descriptionDe:
+      'Antikes Tafelbesteck WMF, 12-teilig (4 Gabeln, 4 Messer, 4 Löffel), 800er Silber, ca. 1920.',
     itemType: 'antique',
     metal: 'silver',
     karatCode: null,
@@ -665,7 +692,8 @@ const PRODUCTS: SeedProduct[] = [
   {
     sku: 'WATCH-GLAS-PKT-001',
     name: 'Glashütte Taschenuhr ca. 1910',
-    descriptionDe: 'Original Glashütte Sa Taschenuhr, Sprungdeckel, 585 Gelbgold, mechanisches Werk, läuft.',
+    descriptionDe:
+      'Original Glashütte Sa Taschenuhr, Sprungdeckel, 585 Gelbgold, mechanisches Werk, läuft.',
     itemType: 'watch',
     metal: 'gold',
     karatCode: '14K',
@@ -705,7 +733,8 @@ const PRODUCTS: SeedProduct[] = [
   {
     sku: 'COMP-BRASS-1875',
     name: 'Messing-Kompass um 1875',
-    descriptionDe: 'Antiker Schiffskompass, vermessing, kardanisch aufgehängt, im Holzkasten, voll funktionsfähig.',
+    descriptionDe:
+      'Antiker Schiffskompass, vermessing, kardanisch aufgehängt, im Holzkasten, voll funktionsfähig.',
     itemType: 'antique',
     metal: null,
     karatCode: null,
@@ -745,7 +774,8 @@ const PRODUCTS: SeedProduct[] = [
   {
     sku: 'OIL-PORTRAIT-1860',
     name: 'Öl-Porträt deutscher Meister 1860',
-    descriptionDe: 'Öl auf Leinwand, Damenporträt, signiert "F. Müller 1860", Original-Goldrahmen, 60x80cm.',
+    descriptionDe:
+      'Öl auf Leinwand, Damenporträt, signiert "F. Müller 1860", Original-Goldrahmen, 60x80cm.',
     itemType: 'antique',
     metal: null,
     karatCode: null,
@@ -767,7 +797,9 @@ const PRODUCTS: SeedProduct[] = [
 async function seedProducts(sql: Sql, slugToCategoryId: Map<string, Uuid>): Promise<void> {
   for (const p of PRODUCTS) {
     // sku is UNIQUE — check existence first
-    const existing = await sql<{ id: string }[]>`SELECT id FROM products WHERE sku = ${p.sku} LIMIT 1`;
+    const existing = await sql<
+      { id: string }[]
+    >`SELECT id FROM products WHERE sku = ${p.sku} LIMIT 1`;
     if (existing.length > 0) continue;
 
     // products_non_draft_is_published requires published_at NOT NULL when
@@ -793,7 +825,7 @@ async function seedProducts(sql: Sql, slugToCategoryId: Map<string, Uuid>): Prom
           ${p.condition}::product_condition, FALSE,
           ${p.storageUnit}, ${p.drawer}, now(),
           ${p.yearMintedFrom ?? null}, ${p.originCountry ?? null},
-          ${slugify(p.sku)}, ${p.name + ' kaufen | Warehouse14'},
+          ${slugify(p.sku)}, ${`${p.name} kaufen | Warehouse14`},
           ${p.descriptionDe.slice(0, 155)},
           TRUE, now()
         )
@@ -973,8 +1005,10 @@ async function seedCustomers(sql: Sql, ownerUserId: Uuid): Promise<void> {
 
         // Verified customers need both kyc_completed_at + kyc_expires_at.
         // VERIFIED trust requires kyc_verified_at + kyc_verified_by_user_id.
-        const kycCompletedSql = c.kycStatus === 'VERIFIED' ? sql`now() - INTERVAL '30 days'` : sql`NULL`;
-        const kycExpiresSql = c.kycStatus === 'VERIFIED' ? sql`now() + INTERVAL '5 years'` : sql`NULL`;
+        const kycCompletedSql =
+          c.kycStatus === 'VERIFIED' ? sql`now() - INTERVAL '30 days'` : sql`NULL`;
+        const kycExpiresSql =
+          c.kycStatus === 'VERIFIED' ? sql`now() + INTERVAL '5 years'` : sql`NULL`;
         const kycVerifiedAtSql = c.isKycVerified ? sql`now() - INTERVAL '30 days'` : sql`NULL`;
         const kycVerifiedByUserSql = c.isKycVerified ? sql`${ownerUserId}::uuid` : sql`NULL`;
 
@@ -1064,7 +1098,7 @@ async function seedMetalPrices(sql: Sql, ownerUserId: Uuid): Promise<void> {
 
       for (let i = points; i > 0; i--) {
         const daysAgo = i * 5;
-        const variance = (Math.sin(i) * 0.03 + 1); // ±3%
+        const variance = Math.sin(i) * 0.03 + 1; // ±3%
         const price = (spot * variance).toFixed(4);
 
         await sql`
@@ -1190,7 +1224,10 @@ async function seedInternalTasks(sql: Sql, ownerUserId: Uuid): Promise<void> {
        LIMIT 1`;
     if (existing.length > 0) continue;
 
-    const startedAt = t.status === 'IN_PROGRESS' || t.status === 'DONE' ? sql`now() - INTERVAL '2 days'` : sql`NULL`;
+    const startedAt =
+      t.status === 'IN_PROGRESS' || t.status === 'DONE'
+        ? sql`now() - INTERVAL '2 days'`
+        : sql`NULL`;
     const completedAt = t.status === 'DONE' ? sql`now() - INTERVAL '1 day'` : sql`NULL`;
     const dueDate =
       t.dueOffsetDays === null
@@ -1256,16 +1293,66 @@ async function seedLedgerEvents(sql: Sql, ownerUserId: Uuid): Promise<void> {
   const customerId = firstCustomer[0]?.id ?? '00000000-0000-0000-0000-000000000000';
 
   const events: SeedLedgerEvent[] = [
-    { eventType: 'auth.pin_login', entityTable: 'users', entityId: ownerUserId, payload: { device_class: 'POS_TERMINAL', success: true } },
-    { eventType: 'metal_price.set', entityTable: 'metal_prices', entityId: productId, payload: { metal: 'gold', price_per_gram_eur: '63.0000', source: 'MANUAL' } },
-    { eventType: 'metal_price.set', entityTable: 'metal_prices', entityId: productId, payload: { metal: 'silver', price_per_gram_eur: '0.9200', source: 'MANUAL' } },
-    { eventType: 'inventory.adjusted', entityTable: 'products', entityId: productId, payload: { sku: productSku, reason: 'Zählkorrektur Tresor A', delta: 0 } },
-    { eventType: 'product.listed', entityTable: 'products', entityId: productId, payload: { sku: productSku, channel: 'storefront' } },
-    { eventType: 'customer.created', entityTable: 'customers', entityId: customerId, payload: { trust_level: 'VERIFIED' } },
-    { eventType: 'customer.kyc_verified', entityTable: 'customers', entityId: customerId, payload: { verified_by: ownerUserId } },
-    { eventType: 'task.completed', entityTable: 'internal_tasks', entityId: productId, payload: { title: 'Versicherungsanpassung Inventar' } },
-    { eventType: 'auth.pin_login', entityTable: 'users', entityId: ownerUserId, payload: { device_class: 'POS_TERMINAL', success: true } },
-    { eventType: 'belegtext.updated', entityTable: 'belegtext_templates', entityId: productId, payload: { kind: 'MARGIN_25A' } },
+    {
+      eventType: 'auth.pin_login',
+      entityTable: 'users',
+      entityId: ownerUserId,
+      payload: { device_class: 'POS_TERMINAL', success: true },
+    },
+    {
+      eventType: 'metal_price.set',
+      entityTable: 'metal_prices',
+      entityId: productId,
+      payload: { metal: 'gold', price_per_gram_eur: '63.0000', source: 'MANUAL' },
+    },
+    {
+      eventType: 'metal_price.set',
+      entityTable: 'metal_prices',
+      entityId: productId,
+      payload: { metal: 'silver', price_per_gram_eur: '0.9200', source: 'MANUAL' },
+    },
+    {
+      eventType: 'inventory.adjusted',
+      entityTable: 'products',
+      entityId: productId,
+      payload: { sku: productSku, reason: 'Zählkorrektur Tresor A', delta: 0 },
+    },
+    {
+      eventType: 'product.listed',
+      entityTable: 'products',
+      entityId: productId,
+      payload: { sku: productSku, channel: 'storefront' },
+    },
+    {
+      eventType: 'customer.created',
+      entityTable: 'customers',
+      entityId: customerId,
+      payload: { trust_level: 'VERIFIED' },
+    },
+    {
+      eventType: 'customer.kyc_verified',
+      entityTable: 'customers',
+      entityId: customerId,
+      payload: { verified_by: ownerUserId },
+    },
+    {
+      eventType: 'task.completed',
+      entityTable: 'internal_tasks',
+      entityId: productId,
+      payload: { title: 'Versicherungsanpassung Inventar' },
+    },
+    {
+      eventType: 'auth.pin_login',
+      entityTable: 'users',
+      entityId: ownerUserId,
+      payload: { device_class: 'POS_TERMINAL', success: true },
+    },
+    {
+      eventType: 'belegtext.updated',
+      entityTable: 'belegtext_templates',
+      entityId: productId,
+      payload: { kind: 'MARGIN_25A' },
+    },
   ];
 
   // Idempotency: count rows where actor = owner and event_type IN our set.

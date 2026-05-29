@@ -25,12 +25,7 @@
 
 import { useNavigate } from 'react-router-dom';
 
-import {
-  Button,
-  DiamondRule,
-  ParchmentCard,
-  Seal,
-} from '@warehouse14/ui-kit';
+import { Button, DiamondRule, ParchmentCard, Seal } from '@warehouse14/ui-kit';
 
 export interface ShiftGuardProps {
   /** Karteikasten chip digit (2=Verkauf, 3=Ankauf, …). */
@@ -58,10 +53,7 @@ export function ShiftGuard({
         padding: 32,
       }}
     >
-      <ParchmentCard
-        padding="lg"
-        style={{ width: 'min(460px, 100%)', textAlign: 'center' }}
-      >
+      <ParchmentCard padding="lg" style={{ width: 'min(460px, 100%)', textAlign: 'center' }}>
         <Seal size="md" tone="faded" label={digitLabel} />
         <h2
           style={{
@@ -85,11 +77,7 @@ export function ShiftGuard({
         >
           {lede}
         </p>
-        <Button
-          variant="primary"
-          size="lg"
-          onClick={() => navigate('/kasse')}
-        >
+        <Button variant="primary" size="lg" onClick={() => navigate('/kasse')}>
           {ctaLabel}
         </Button>
       </ParchmentCard>

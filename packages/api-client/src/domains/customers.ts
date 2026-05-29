@@ -70,6 +70,7 @@ export interface CustomerCreateBody {
   phone?: string;
   address?: string;
   notes?: string;
+  vatId?: string | null;
   preferredLanguage?: CustomerLanguage;
   customerTags?: string[];
   retentionYears?: number;
@@ -94,6 +95,7 @@ export interface CustomerDetail {
   phone: string | null;
   address: string | null;
   notes: string | null;
+  vatId: string | null;
   preferredLanguage: CustomerLanguage;
   customerTags: string[];
   kycStatus: CustomerKycStatus;
@@ -121,6 +123,7 @@ export interface CustomerUpdateBody {
   phone?: string | null;
   address?: string | null;
   notes?: string | null;
+  vatId?: string | null;
   preferredLanguage?: CustomerLanguage;
   customerTags?: string[];
 }
@@ -192,6 +195,22 @@ export interface CustomerTrustChangeResponse {
 }
 
 // ────────────────────────────────────────────────────────────────────────
+// POST /api/customers/:id/check-sanctions  (Epic J — GwG PEP/EU/OFAC)
+// ────────────────────────────────────────────────────────────────────────
+
+export interface SanctionsCheckResult {
+  customerId: string;
+  /** Best match score in [0, 1]. */
+  score: number;
+  /** True iff a real watchlist hit at/above the configured threshold. */
+  matched: boolean;
+  /** True when the OpenSanctions API was unreachable (fail-safe, not a hit). */
+  apiUnavailable?: boolean;
+  /** True when no API key is configured and screening was skipped. */
+  skipped?: boolean;
+}
+
+// ────────────────────────────────────────────────────────────────────────
 // Querystring helper
 // ────────────────────────────────────────────────────────────────────────
 
@@ -218,11 +237,7 @@ export const customersApi = {
   create(client: ApiClient, body: CustomerCreateBody): Promise<CustomerCreateResponse> {
     return client.request<CustomerCreateResponse>('POST', '/api/customers', body);
   },
-  update(
-    client: ApiClient,
-    id: string,
-    body: CustomerUpdateBody,
-  ): Promise<CustomerUpdateResponse> {
+  update(client: ApiClient, id: string, body: CustomerUpdateBody): Promise<CustomerUpdateResponse> {
     return client.request<CustomerUpdateResponse>(
       'PUT',
       `/api/customers/${encodeURIComponent(id)}`,
@@ -260,6 +275,12 @@ export const customersApi = {
       'PATCH',
       `/api/customers/${encodeURIComponent(id)}/trust`,
       body,
+    );
+  },
+  checkSanctions(client: ApiClient, customerId: string): Promise<SanctionsCheckResult> {
+    return client.request<SanctionsCheckResult>(
+      'POST',
+      `/api/customers/${encodeURIComponent(customerId)}/check-sanctions`,
     );
   },
 };

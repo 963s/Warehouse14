@@ -18,3 +18,4 @@ export * from './shopHolidays.js';
 export * from './appointments.js';
 export * from './appointmentLinkedProducts.js';
 export * from './productViewingHolds.js';
+export * from './appointmentNotifications.js';

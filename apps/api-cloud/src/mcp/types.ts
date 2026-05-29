@@ -79,11 +79,10 @@ export const JsonRpcErrorCode = {
   INTERNAL_ERROR: -32603,
   // MCP / Warehouse14 extensions
   TOOL_NOT_FOUND: -32001,
-  TOOL_REJECTED: -32002,   // gatekeeper said no (auth / role / rate)
-  TOOL_FAILED: -32003,     // handler body threw
+  TOOL_REJECTED: -32002, // gatekeeper said no (auth / role / rate)
+  TOOL_FAILED: -32003, // handler body threw
 } as const;
-export type JsonRpcErrorCode =
-  (typeof JsonRpcErrorCode)[keyof typeof JsonRpcErrorCode];
+export type JsonRpcErrorCode = (typeof JsonRpcErrorCode)[keyof typeof JsonRpcErrorCode];
 
 // ────────────────────────────────────────────────────────────────────────
 // MCP tool shapes.

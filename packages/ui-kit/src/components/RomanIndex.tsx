@@ -30,9 +30,18 @@ const TONE_VAR: Record<NonNullable<RomanIndexProps['tone']>, string> = {
 };
 
 const ROMAN_PAIRS: Array<[number, string]> = [
-  [1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'],
-  [100, 'C'],  [90, 'XC'],  [50, 'L'],  [40, 'XL'],
-  [10, 'X'],   [9, 'IX'],   [5, 'V'],   [4, 'IV'],
+  [1000, 'M'],
+  [900, 'CM'],
+  [500, 'D'],
+  [400, 'CD'],
+  [100, 'C'],
+  [90, 'XC'],
+  [50, 'L'],
+  [40, 'XL'],
+  [10, 'X'],
+  [9, 'IX'],
+  [5, 'V'],
+  [4, 'IV'],
   [1, 'I'],
 ];
 
@@ -74,7 +83,9 @@ export function RomanIndex({
   return (
     <span className={className} style={merged}>
       {showDiamond && (
-        <span aria-hidden style={{ opacity: 0.55, fontSize: '0.82em' }}>◆</span>
+        <span aria-hidden style={{ opacity: 0.55, fontSize: '0.82em' }}>
+          ◆
+        </span>
       )}
       <span>{numeral}</span>
     </span>

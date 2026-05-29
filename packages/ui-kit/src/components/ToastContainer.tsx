@@ -10,7 +10,7 @@
  * AppShell level — never duplicate in a screen.
  */
 
-import { useEffect, useMemo, type CSSProperties } from 'react';
+import { type CSSProperties, useEffect, useMemo } from 'react';
 
 import { Toast, type ToastShape } from './Toast.js';
 

@@ -20,8 +20,18 @@
  * unique index (rescoped in migration 0022).
  */
 
-import { boolean, check, index, pgTable, smallint, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import {
+  boolean,
+  check,
+  index,
+  pgTable,
+  smallint,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 
 import { primaryKey, timestamps } from '../_shared/columns.js';
 import { users } from '../auth/users.js';

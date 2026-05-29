@@ -5,8 +5,17 @@
  *                                                    or ABANDONED (sweeper)
  */
 
-import { check, index, integer, numeric, pgTable, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import {
+  check,
+  index,
+  integer,
+  numeric,
+  pgTable,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 
 import { products } from '../products/products.js';
 import { transactions } from '../transactions/transactions.js';
@@ -17,12 +26,16 @@ export const carts = pgTable(
   'carts',
   {
     id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-    shopperId: uuid('shopper_id').notNull().references(() => shoppers.id),
+    shopperId: uuid('shopper_id')
+      .notNull()
+      .references(() => shoppers.id),
     status: cartStatus('status').notNull().default('ACTIVE'),
     reservationSessionId: uuid('reservation_session_id').unique(),
     checkoutStartedAt: timestamp('checkout_started_at', { withTimezone: true }),
     checkoutExpiresAt: timestamp('checkout_expires_at', { withTimezone: true }),
-    convertedToTransactionId: uuid('converted_to_transaction_id').unique().references(() => transactions.id),
+    convertedToTransactionId: uuid('converted_to_transaction_id')
+      .unique()
+      .references(() => transactions.id),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().default(sql`now()`),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().default(sql`now()`),
   },
@@ -53,15 +66,22 @@ export const cartItems = pgTable(
   'cart_items',
   {
     id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-    cartId: uuid('cart_id').notNull().references(() => carts.id),
-    productId: uuid('product_id').notNull().references(() => products.id),
+    cartId: uuid('cart_id')
+      .notNull()
+      .references(() => carts.id),
+    productId: uuid('product_id')
+      .notNull()
+      .references(() => products.id),
     unitPriceEur: numeric('unit_price_eur', { precision: 18, scale: 2 }).notNull(),
     quantity: integer('quantity').notNull().default(1),
     addedAt: timestamp('added_at', { withTimezone: true }).notNull().default(sql`now()`),
   },
   (table) => ({
     cartIdx: index('cart_items_cart_idx').on(table.cartId),
-    oneProductPerCart: uniqueIndex('cart_items_one_product_per_cart').on(table.cartId, table.productId),
+    oneProductPerCart: uniqueIndex('cart_items_one_product_per_cart').on(
+      table.cartId,
+      table.productId,
+    ),
     quantityPositive: check('cart_items_quantity_positive', sql`${table.quantity} > 0`),
     pricesNonNegative: check('cart_items_price_nonneg', sql`${table.unitPriceEur} >= 0`),
   }),

@@ -29,7 +29,7 @@ import {
 } from '@warehouse14/db/schema';
 
 import { requireAuth, requireRole } from '../lib/auth-policy.js';
-import { DomainError, type ApiErrorCode } from '../plugins/error-handler.js';
+import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 
 class ProductNotFoundError extends DomainError {
   public readonly httpStatus = 404;
@@ -138,100 +138,105 @@ const ErrorResponse = Type.Object({
 });
 
 const productsDetailRoute: FastifyPluginAsync = async (app) => {
-  app.get<{ Params: { id: string } }>('/api/products/:id', {
-    schema: {
-      tags: ['products'],
-      summary: 'Full product detail — used by Verkauf cart for §25a math.',
-      description:
-        'Returns the product row plus its category assignments. The Day-13 ' +
-        'SEO + collector fields are NULL-able and may be edited via PUT.',
-      params: Params,
-      response: { 200: ProductDetail, 404: ErrorResponse, 401: ErrorResponse, 403: ErrorResponse },
+  app.get<{ Params: { id: string } }>(
+    '/api/products/:id',
+    {
+      schema: {
+        tags: ['products'],
+        summary: 'Full product detail — used by Verkauf cart for §25a math.',
+        description:
+          'Returns the product row plus its category assignments. The Day-13 ' +
+          'SEO + collector fields are NULL-able and may be edited via PUT.',
+        params: Params,
+        response: {
+          200: ProductDetail,
+          404: ErrorResponse,
+          401: ErrorResponse,
+          403: ErrorResponse,
+        },
+      },
     },
-  }, async (req, reply) => {
-    requireAuth(req);
-    requireRole(req, 'ADMIN', 'CASHIER');
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'ADMIN', 'CASHIER');
 
-    // Two parallel queries — product row + its category assignments.
-    // Independent, so issue both at once for round-trip latency.
-    const [productRows, categoryRows] = await Promise.all([
-      app.db
-        .select()
-        .from(products)
-        .where(eq(products.id, req.params.id))
-        .limit(1),
-      app.db
-        .select({
-          id: categoriesTable.id,
-          slug: categoriesTable.slug,
-          nameDe: categoriesTable.nameDe,
-          nameEn: categoriesTable.nameEn,
-          isPrimary: productCategoriesTable.isPrimary,
-        })
-        .from(productCategoriesTable)
-        .innerJoin(categoriesTable, eq(productCategoriesTable.categoryId, categoriesTable.id))
-        .where(eq(productCategoriesTable.productId, req.params.id))
-        .orderBy(asc(categoriesTable.nameDe)),
-    ]);
+      // Two parallel queries — product row + its category assignments.
+      // Independent, so issue both at once for round-trip latency.
+      const [productRows, categoryRows] = await Promise.all([
+        app.db.select().from(products).where(eq(products.id, req.params.id)).limit(1),
+        app.db
+          .select({
+            id: categoriesTable.id,
+            slug: categoriesTable.slug,
+            nameDe: categoriesTable.nameDe,
+            nameEn: categoriesTable.nameEn,
+            isPrimary: productCategoriesTable.isPrimary,
+          })
+          .from(productCategoriesTable)
+          .innerJoin(categoriesTable, eq(productCategoriesTable.categoryId, categoriesTable.id))
+          .where(eq(productCategoriesTable.productId, req.params.id))
+          .orderBy(asc(categoriesTable.nameDe)),
+      ]);
 
-    const row = productRows[0];
-    if (!row) throw new ProductNotFoundError(`Product ${req.params.id} not found`);
+      const row = productRows[0];
+      if (!row) throw new ProductNotFoundError(`Product ${req.params.id} not found`);
 
-    // Primary first, then alphabetical — keeps the breadcrumb hint stable.
-    const categories = [...categoryRows].sort((a, b) => {
-      if (a.isPrimary && !b.isPrimary) return -1;
-      if (!a.isPrimary && b.isPrimary) return 1;
-      return a.nameDe.localeCompare(b.nameDe, 'de');
-    });
+      // Primary first, then alphabetical — keeps the breadcrumb hint stable.
+      const categories = [...categoryRows].sort((a, b) => {
+        if (a.isPrimary && !b.isPrimary) return -1;
+        if (!a.isPrimary && b.isPrimary) return 1;
+        return a.nameDe.localeCompare(b.nameDe, 'de');
+      });
 
-    return reply.status(200).send({
-      id: row.id,
-      sku: row.sku,
-      slug: row.slug,
-      barcode: row.barcode,
-      status: row.status,
-      condition: row.condition,
-      itemType: row.itemType,
-      metal: row.metal as 'gold' | 'silver' | 'platinum' | 'palladium' | null,
-      karatCode: row.karatCode,
-      finenessDecimal: row.finenessDecimal,
-      weightGrams: row.weightGrams,
-      feingewichtGrams: row.feingewichtGrams,
-      taxTreatmentCode: row.taxTreatmentCode,
-      acquisitionCostEur: row.acquisitionCostEur,
-      listPriceEur: row.listPriceEur,
-      collectorPremiumEur: row.collectorPremiumEur,
-      name: row.name,
-      descriptionDe: row.descriptionDe,
-      descriptionEn: row.descriptionEn,
-      seoTitle: row.seoTitle,
-      seoDescription: row.seoDescription,
-      seoTitleEn: row.seoTitleEn,
-      seoDescriptionEn: row.seoDescriptionEn,
-      schemaOrgType: row.schemaOrgType,
-      yearMintedFrom: row.yearMintedFrom,
-      yearMintedTo: row.yearMintedTo,
-      originCountry: row.originCountry,
-      period: row.period,
-      catalogReference: row.catalogReference,
-      provenanceNotes: row.provenanceNotes,
-      isCommission: row.isCommission,
-      listedOnStorefront: row.listedOnStorefront,
-      listedOnEbay: row.listedOnEbay,
-      // Phase 2.A / Day-14: storefront publication gate.
-      isPublishedToWeb: row.isPublishedToWeb,
-      ebayState: row.ebayState,
-      ebayStateChangedAt: row.ebayStateChangedAt ? row.ebayStateChangedAt.toISOString() : null,
-      parentProductId: row.parentProductId,
-      locationStorageUnit: row.locationStorageUnit,
-      locationDrawer: row.locationDrawer,
-      locationPosition: row.locationPosition,
-      categories,
-      archivedAt: row.archivedAt ? row.archivedAt.toISOString() : null,
-      createdAt: row.createdAt.toISOString(),
-      updatedAt: row.updatedAt.toISOString(),
-    });
-  });
+      return reply.status(200).send({
+        id: row.id,
+        sku: row.sku,
+        slug: row.slug,
+        barcode: row.barcode,
+        status: row.status,
+        condition: row.condition,
+        itemType: row.itemType,
+        metal: row.metal as 'gold' | 'silver' | 'platinum' | 'palladium' | null,
+        karatCode: row.karatCode,
+        finenessDecimal: row.finenessDecimal,
+        weightGrams: row.weightGrams,
+        feingewichtGrams: row.feingewichtGrams,
+        taxTreatmentCode: row.taxTreatmentCode,
+        acquisitionCostEur: row.acquisitionCostEur,
+        listPriceEur: row.listPriceEur,
+        collectorPremiumEur: row.collectorPremiumEur,
+        name: row.name,
+        descriptionDe: row.descriptionDe,
+        descriptionEn: row.descriptionEn,
+        seoTitle: row.seoTitle,
+        seoDescription: row.seoDescription,
+        seoTitleEn: row.seoTitleEn,
+        seoDescriptionEn: row.seoDescriptionEn,
+        schemaOrgType: row.schemaOrgType,
+        yearMintedFrom: row.yearMintedFrom,
+        yearMintedTo: row.yearMintedTo,
+        originCountry: row.originCountry,
+        period: row.period,
+        catalogReference: row.catalogReference,
+        provenanceNotes: row.provenanceNotes,
+        isCommission: row.isCommission,
+        listedOnStorefront: row.listedOnStorefront,
+        listedOnEbay: row.listedOnEbay,
+        // Phase 2.A / Day-14: storefront publication gate.
+        isPublishedToWeb: row.isPublishedToWeb,
+        ebayState: row.ebayState,
+        ebayStateChangedAt: row.ebayStateChangedAt ? row.ebayStateChangedAt.toISOString() : null,
+        parentProductId: row.parentProductId,
+        locationStorageUnit: row.locationStorageUnit,
+        locationDrawer: row.locationDrawer,
+        locationPosition: row.locationPosition,
+        categories,
+        archivedAt: row.archivedAt ? row.archivedAt.toISOString() : null,
+        createdAt: row.createdAt.toISOString(),
+        updatedAt: row.updatedAt.toISOString(),
+      });
+    },
+  );
 };
 
 export default productsDetailRoute;

@@ -14,7 +14,7 @@
  */
 
 import type { ApiClient } from '@warehouse14/api-client';
-import { photosApi, type PhotoUploadIntent } from '@warehouse14/api-client';
+import { type PhotoUploadIntent, photosApi } from '@warehouse14/api-client';
 
 export interface UploadedPhoto {
   r2Key: string;

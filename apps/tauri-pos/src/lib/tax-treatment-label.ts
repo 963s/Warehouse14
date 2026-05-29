@@ -14,4 +14,6 @@ export const TAX_TREATMENT_LABEL: Readonly<Record<TaxTreatmentCode, string>> = O
   REDUCED_7: '7 %',
   MARGIN_25A: '§ 25a',
   INVESTMENT_GOLD_25C: '§ 25c',
+  REVERSE_CHARGE_13B: '§ 13b',
+  MIXED: 'Mischung',
 });

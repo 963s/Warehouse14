@@ -5,8 +5,18 @@
  * Closes Phase 1.5 backlog item I-3.
  */
 
-import { bigserial, boolean, check, index, jsonb, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import {
+  bigserial,
+  boolean,
+  check,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+} from 'drizzle-orm/pg-core';
 
 export const webhookEvents = pgTable(
   'webhook_events',
@@ -23,8 +33,10 @@ export const webhookEvents = pgTable(
     receivedAt: timestamp('received_at', { withTimezone: true }).notNull().default(sql`now()`),
   },
   (table) => ({
-    providerEventUq: uniqueIndex('webhook_events_provider_event_uq')
-      .on(table.provider, table.providerEventId),
+    providerEventUq: uniqueIndex('webhook_events_provider_event_uq').on(
+      table.provider,
+      table.providerEventId,
+    ),
     unprocessedIdx: index('webhook_events_unprocessed_idx')
       .on(table.provider, table.receivedAt.desc())
       .where(sql`${table.processedAt} IS NULL`),

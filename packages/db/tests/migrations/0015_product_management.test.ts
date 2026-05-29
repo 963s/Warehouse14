@@ -11,10 +11,15 @@
  *   • Indexes exist (smoke check)
  */
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import postgres, { type Sql } from 'postgres';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { applyMigrations, setAppPasswordForTest, startTestDb, type TestDb } from '../helpers/testDb.js';
+import {
+  type TestDb,
+  applyMigrations,
+  setAppPasswordForTest,
+  startTestDb,
+} from '../helpers/testDb.js';
 
 const PII_KEY = 'test-pii-key-do-not-use-in-production-32b';
 
@@ -24,13 +29,21 @@ describe('migration 0015_product_management', () => {
   let appSql: Sql;
 
   /** Seed a product via the migrator (bypasses app grants). */
-  async function makeProduct(opts: {
-    isCommission?: boolean;
-    acquiredFrom?: string | null;
-    condition?: 'NEW' | 'USED_EXCELLENT' | 'USED_GOOD' | 'USED_FAIR' | 'ANTIQUE_RESTORED' | 'ANTIQUE_AS_FOUND';
-    status?: 'DRAFT' | 'AVAILABLE' | 'RESERVED' | 'SOLD';
-    soldAt?: Date | null;
-  } = {}): Promise<string> {
+  async function makeProduct(
+    opts: {
+      isCommission?: boolean;
+      acquiredFrom?: string | null;
+      condition?:
+        | 'NEW'
+        | 'USED_EXCELLENT'
+        | 'USED_GOOD'
+        | 'USED_FAIR'
+        | 'ANTIQUE_RESTORED'
+        | 'ANTIQUE_AS_FOUND';
+      status?: 'DRAFT' | 'AVAILABLE' | 'RESERVED' | 'SOLD';
+      soldAt?: Date | null;
+    } = {},
+  ): Promise<string> {
     const status = opts.status ?? 'DRAFT';
     const publishedAt = status !== 'DRAFT' ? new Date() : null;
     const soldAt = opts.soldAt ?? (status === 'SOLD' ? new Date() : null);
@@ -91,8 +104,12 @@ describe('migration 0015_product_management', () => {
          WHERE t.typname = 'product_condition'
          ORDER BY enumsortorder`;
       expect(rows.map((r) => r.enumlabel)).toEqual([
-        'NEW', 'USED_EXCELLENT', 'USED_GOOD', 'USED_FAIR',
-        'ANTIQUE_RESTORED', 'ANTIQUE_AS_FOUND',
+        'NEW',
+        'USED_EXCELLENT',
+        'USED_GOOD',
+        'USED_FAIR',
+        'ANTIQUE_RESTORED',
+        'ANTIQUE_AS_FOUND',
       ]);
     });
 

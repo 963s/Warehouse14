@@ -72,6 +72,16 @@ const EnvSchema = Type.Object({
     default: '',
     description: 'eBay Trading API user token used by ebay_sync to call EndItem. Empty → mock.',
   }),
+  // ── Fiskaly DSFinV-K (Epic K) — used by dsfinvk_daily_export ─────────
+  // Empty → the job skips the Fiskaly push and logs "fiskaly not configured".
+  FISKALY_API_KEY: Type.String({
+    default: '',
+    description: 'Fiskaly DSFinV-K API key (Basic auth user). Empty → push skipped.',
+  }),
+  FISKALY_API_SECRET: Type.String({
+    default: '',
+    description: 'Fiskaly DSFinV-K API secret (Basic auth password). Empty → push skipped.',
+  }),
 });
 
 export type Env = Static<typeof EnvSchema>;
@@ -109,6 +119,7 @@ export function assertWorkerRoleInDatabaseUrl(env: Env): void {
   if (!m) {
     throw new Error('DATABASE_URL has unexpected shape (worker boot guard)');
   }
+  // biome-ignore lint/style/noNonNullAssertion: the regex above guarantees group 1 when matched.
   const user = decodeURIComponent(m[1]!);
   if (user !== 'warehouse14_worker') {
     throw new Error(

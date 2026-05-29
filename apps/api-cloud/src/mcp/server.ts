@@ -35,19 +35,19 @@
 
 import { Value } from '@sinclair/typebox/value';
 import { sql } from 'drizzle-orm';
-import type { FastifyPluginAsync, FastifyBaseLogger } from 'fastify';
+import type { FastifyBaseLogger, FastifyPluginAsync } from 'fastify';
 
 import type { AppDb } from '@warehouse14/db/client';
 import { mcpToolInvocations } from '@warehouse14/db/schema';
 
-import { DomainError, type ApiErrorCode } from '../plugins/error-handler.js';
-import { requireAuth, requireRole } from '../lib/auth-policy.js';
 import type { Actor } from '../lib/actor.js';
+import { requireAuth, requireRole } from '../lib/auth-policy.js';
+import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 
 import { buildToolMap } from './tools/index.js';
 import {
-  JsonRpcErrorCode,
   type JsonRpcError,
+  JsonRpcErrorCode,
   type JsonRpcRequest,
   type JsonRpcSuccess,
   type ToolHandler,
@@ -191,10 +191,7 @@ async function callTool(
 ): Promise<ToolResult> {
   const reg = TOOL_MAP.get(params.name);
   if (!reg) {
-    throw new ToolDispatchError(
-      JsonRpcErrorCode.TOOL_NOT_FOUND,
-      `Unknown tool: ${params.name}`,
-    );
+    throw new ToolDispatchError(JsonRpcErrorCode.TOOL_NOT_FOUND, `Unknown tool: ${params.name}`);
   }
 
   // 1. Role gate per tool manifest.
@@ -267,112 +264,111 @@ class ToolDispatchError extends Error {
 // ────────────────────────────────────────────────────────────────────────
 
 const mcpServer: FastifyPluginAsync = async (app) => {
-  app.post('/api/mcp', {
-    schema: {
-      tags: ['mcp'],
-      summary:
-        'Model Context Protocol JSON-RPC 2.0 endpoint. Supports tools/list and tools/call. ADMIN-only.',
-      // Body shape is JSON-RPC — we don't TypeBox-validate the envelope
-      // because we need to surface JSON-RPC error codes for malformed
-      // input, which a Fastify 400 wouldn't.
+  app.post(
+    '/api/mcp',
+    {
+      schema: {
+        tags: ['mcp'],
+        summary:
+          'Model Context Protocol JSON-RPC 2.0 endpoint. Supports tools/list and tools/call. ADMIN-only.',
+        // Body shape is JSON-RPC — we don't TypeBox-validate the envelope
+        // because we need to surface JSON-RPC error codes for malformed
+        // input, which a Fastify 400 wouldn't.
+      },
     },
-  }, async (req, reply) => {
-    requireAuth(req);
-    requireRole(req, 'ADMIN');
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'ADMIN');
 
-    const body = req.body as JsonRpcRequest;
+      const body = req.body as JsonRpcRequest;
 
-    // Envelope sanity checks. Anything malformed → return a JSON-RPC
-    // error envelope with HTTP 200; that's what JSON-RPC clients expect.
-    if (
-      !body ||
-      typeof body !== 'object' ||
-      body.jsonrpc !== '2.0' ||
-      typeof body.id !== 'string' ||
-      typeof body.method !== 'string'
-    ) {
-      const err: JsonRpcError = {
-        jsonrpc: '2.0',
-        id: (body && typeof body.id === 'string' ? body.id : 'unknown'),
-        error: {
-          code: JsonRpcErrorCode.INVALID_REQUEST,
-          message: 'Malformed JSON-RPC 2.0 envelope. Expected { jsonrpc:"2.0", id, method, params? }',
-        },
-      };
-      return reply.status(200).send(err);
-    }
+      // Envelope sanity checks. Anything malformed → return a JSON-RPC
+      // error envelope with HTTP 200; that's what JSON-RPC clients expect.
+      if (
+        !body ||
+        typeof body !== 'object' ||
+        body.jsonrpc !== '2.0' ||
+        typeof body.id !== 'string' ||
+        typeof body.method !== 'string'
+      ) {
+        const err: JsonRpcError = {
+          jsonrpc: '2.0',
+          id: body && typeof body.id === 'string' ? body.id : 'unknown',
+          error: {
+            code: JsonRpcErrorCode.INVALID_REQUEST,
+            message:
+              'Malformed JSON-RPC 2.0 envelope. Expected { jsonrpc:"2.0", id, method, params? }',
+          },
+        };
+        return reply.status(200).send(err);
+      }
 
-    try {
-      switch (body.method) {
-        case 'tools/list': {
-          const ok: JsonRpcSuccess<ReturnType<typeof listTools>> = {
-            jsonrpc: '2.0',
-            id: body.id,
-            result: listTools(),
-          };
-          return reply.status(200).send(ok);
-        }
-        case 'tools/call': {
-          const params = (body.params ?? {}) as CallParams;
-          if (typeof params.name !== 'string') {
+      try {
+        switch (body.method) {
+          case 'tools/list': {
+            const ok: JsonRpcSuccess<ReturnType<typeof listTools>> = {
+              jsonrpc: '2.0',
+              id: body.id,
+              result: listTools(),
+            };
+            return reply.status(200).send(ok);
+          }
+          case 'tools/call': {
+            const params = (body.params ?? {}) as CallParams;
+            if (typeof params.name !== 'string') {
+              const err: JsonRpcError = {
+                jsonrpc: '2.0',
+                id: body.id,
+                error: {
+                  code: JsonRpcErrorCode.INVALID_PARAMS,
+                  message: 'tools/call requires params.name (string)',
+                },
+              };
+              return reply.status(200).send(err);
+            }
+            const result = await callTool(app.db, req.log, req.actor!, body.id, params);
+            const ok: JsonRpcSuccess<ToolResult> = {
+              jsonrpc: '2.0',
+              id: body.id,
+              result,
+            };
+            return reply.status(200).send(ok);
+          }
+          default: {
             const err: JsonRpcError = {
               jsonrpc: '2.0',
               id: body.id,
               error: {
-                code: JsonRpcErrorCode.INVALID_PARAMS,
-                message: 'tools/call requires params.name (string)',
+                code: JsonRpcErrorCode.METHOD_NOT_FOUND,
+                message: `Unknown method: ${body.method as string}. Supported: tools/list, tools/call.`,
               },
             };
             return reply.status(200).send(err);
           }
-          const result = await callTool(
-            app.db,
-            req.log,
-            req.actor!,
-            body.id,
-            params,
-          );
-          const ok: JsonRpcSuccess<ToolResult> = {
+        }
+      } catch (err) {
+        if (err instanceof ToolDispatchError) {
+          const out: JsonRpcError = {
             jsonrpc: '2.0',
             id: body.id,
-            result,
+            error: { code: err.jsonRpcCode, message: err.message },
           };
-          return reply.status(200).send(ok);
+          return reply.status(200).send(out);
         }
-        default: {
-          const err: JsonRpcError = {
-            jsonrpc: '2.0',
-            id: body.id,
-            error: {
-              code: JsonRpcErrorCode.METHOD_NOT_FOUND,
-              message: `Unknown method: ${body.method as string}. Supported: tools/list, tools/call.`,
-            },
-          };
-          return reply.status(200).send(err);
-        }
-      }
-    } catch (err) {
-      if (err instanceof ToolDispatchError) {
+        // Unexpected — wrap as INTERNAL_ERROR but DO NOT leak the stack.
+        req.log.error({ err }, 'mcp dispatcher: unhandled error');
         const out: JsonRpcError = {
           jsonrpc: '2.0',
           id: body.id,
-          error: { code: err.jsonRpcCode, message: err.message },
+          error: {
+            code: JsonRpcErrorCode.INTERNAL_ERROR,
+            message: 'Internal MCP server error.',
+          },
         };
         return reply.status(200).send(out);
       }
-      // Unexpected — wrap as INTERNAL_ERROR but DO NOT leak the stack.
-      req.log.error({ err }, 'mcp dispatcher: unhandled error');
-      const out: JsonRpcError = {
-        jsonrpc: '2.0',
-        id: body.id,
-        error: {
-          code: JsonRpcErrorCode.INTERNAL_ERROR,
-          message: 'Internal MCP server error.',
-        },
-      };
-      return reply.status(200).send(out);
-    }
-  });
+    },
+  );
 };
 
 export default mcpServer;

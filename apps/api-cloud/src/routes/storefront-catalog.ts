@@ -38,14 +38,14 @@ import { Type } from '@sinclair/typebox';
 import { sql } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 
-import { DomainError, type ApiErrorCode } from '../plugins/error-handler.js';
+import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 import {
   StorefrontCategoriesResponse,
+  type StorefrontCategoryNode,
   StorefrontLocationsResponse,
+  type StorefrontProduct,
   StorefrontProduct as StorefrontProductSchema,
   StorefrontProductsResponse,
-  type StorefrontCategoryNode,
-  type StorefrontProduct,
 } from '../schemas/storefront-catalog.js';
 
 // ────────────────────────────────────────────────────────────────────────
@@ -239,38 +239,41 @@ const storefrontCatalog: FastifyPluginAsync = async (app) => {
   //     The Next.js client sorts client-side for "Price low-high" /
   //     "Year newest" facet toggles (kept off the server hot path).
   // ════════════════════════════════════════════════════════════════════
-  app.get('/api/storefront/products', {
-    schema: {
-      tags: ['storefront'],
-      summary: 'Public product catalog. is_published_to_web=true + AVAILABLE only.',
-      querystring: Type.Object({
-        limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
-        offset: Type.Optional(Type.Integer({ minimum: 0 })),
-        category: Type.Optional(Type.String({ maxLength: 80 })),
-        metal: Type.Optional(Type.String({ maxLength: 16 })),
-        q: Type.Optional(Type.String({ maxLength: 80 })),
-      }),
-      response: {
-        200: StorefrontProductsResponse,
-        400: ErrorResponse,
+  app.get(
+    '/api/storefront/products',
+    {
+      schema: {
+        tags: ['storefront'],
+        summary: 'Public product catalog. is_published_to_web=true + AVAILABLE only.',
+        querystring: Type.Object({
+          limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+          offset: Type.Optional(Type.Integer({ minimum: 0 })),
+          category: Type.Optional(Type.String({ maxLength: 80 })),
+          metal: Type.Optional(Type.String({ maxLength: 16 })),
+          q: Type.Optional(Type.String({ maxLength: 80 })),
+        }),
+        response: {
+          200: StorefrontProductsResponse,
+          400: ErrorResponse,
+        },
       },
     },
-  }, async (req, reply) => {
-    const q = req.query as {
-      limit?: number;
-      offset?: number;
-      category?: string;
-      metal?: string;
-      q?: string;
-    };
-    const limit = Math.min(Math.max(q.limit ?? 24, 1), 100);
-    const offset = Math.max(q.offset ?? 0, 0);
+    async (req, reply) => {
+      const q = req.query as {
+        limit?: number;
+        offset?: number;
+        category?: string;
+        metal?: string;
+        q?: string;
+      };
+      const limit = Math.min(Math.max(q.limit ?? 24, 1), 100);
+      const offset = Math.max(q.offset ?? 0, 0);
 
-    // The WHERE clause mirrors the predicate of
-    // `products_storefront_catalog_idx` so the planner can use the
-    // covering index. Optional facets are appended; they still hit
-    // the index, just with a heap fetch.
-    const rows = await app.db.execute<ProductRow & { total_count: string }>(sql`
+      // The WHERE clause mirrors the predicate of
+      // `products_storefront_catalog_idx` so the planner can use the
+      // covering index. Optional facets are appended; they still hit
+      // the index, just with a heap fetch.
+      const rows = await app.db.execute<ProductRow & { total_count: string }>(sql`
       WITH catalog AS (
         SELECT
           p.id, p.sku, p.slug, p.name,
@@ -316,36 +319,40 @@ const storefrontCatalog: FastifyPluginAsync = async (app) => {
       OFFSET ${offset}
     `);
 
-    const items = Array.from(rows).map(toStorefrontProduct);
-    const total = rows.length > 0 ? Number(rows[0]!.total_count) : 0;
+      const items = Array.from(rows).map(toStorefrontProduct);
+      const total = rows.length > 0 ? Number(rows[0]!.total_count) : 0;
 
-    // Public catalog is heavily cacheable. CDN edge caches for 60 s;
-    // the operator's "publish" action is rare and slow propagation is
-    // acceptable. ETag would be cleaner but Fastify doesn't ship one
-    // by default and the gain is small.
-    reply.header('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
-    return reply.status(200).send({ items, total, limit, offset });
-  });
+      // Public catalog is heavily cacheable. CDN edge caches for 60 s;
+      // the operator's "publish" action is rare and slow propagation is
+      // acceptable. ETag would be cleaner but Fastify doesn't ship one
+      // by default and the gain is small.
+      reply.header('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+      return reply.status(200).send({ items, total, limit, offset });
+    },
+  );
 
   // ════════════════════════════════════════════════════════════════════
   // GET /api/storefront/products/:slug — single product page
   // ════════════════════════════════════════════════════════════════════
-  app.get('/api/storefront/products/:slug', {
-    schema: {
-      tags: ['storefront'],
-      summary: 'Single published product by slug. 404 if not published.',
-      params: Type.Object({
-        slug: Type.String({ minLength: 1, maxLength: 200 }),
-      }),
-      response: {
-        200: StorefrontProductSchema,
-        404: ErrorResponse,
+  app.get(
+    '/api/storefront/products/:slug',
+    {
+      schema: {
+        tags: ['storefront'],
+        summary: 'Single published product by slug. 404 if not published.',
+        params: Type.Object({
+          slug: Type.String({ minLength: 1, maxLength: 200 }),
+        }),
+        response: {
+          200: StorefrontProductSchema,
+          404: ErrorResponse,
+        },
       },
     },
-  }, async (req, reply) => {
-    const { slug } = req.params as { slug: string };
+    async (req, reply) => {
+      const { slug } = req.params as { slug: string };
 
-    const rows = await app.db.execute<ProductRow>(sql`
+      const rows = await app.db.execute<ProductRow>(sql`
       SELECT
         p.id, p.sku, p.slug, p.name,
         p.description_de, p.description_en,
@@ -370,13 +377,14 @@ const storefrontCatalog: FastifyPluginAsync = async (app) => {
         AND p.status = 'AVAILABLE'
       LIMIT 1
     `);
-    const row = rows[0];
-    if (!row) {
-      throw new StorefrontProductNotFoundError(`No published product with slug '${slug}'`);
-    }
-    reply.header('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
-    return reply.status(200).send(toStorefrontProduct(row));
-  });
+      const row = rows[0];
+      if (!row) {
+        throw new StorefrontProductNotFoundError(`No published product with slug '${slug}'`);
+      }
+      reply.header('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+      return reply.status(200).send(toStorefrontProduct(row));
+    },
+  );
 
   // ════════════════════════════════════════════════════════════════════
   // GET /api/storefront/categories — full taxonomy tree
@@ -385,14 +393,17 @@ const storefrontCatalog: FastifyPluginAsync = async (app) => {
   // appear first; children follow their parent. V1 schema caps depth
   // at 2 so the tree is always at most root → leaf.
   // ════════════════════════════════════════════════════════════════════
-  app.get('/api/storefront/categories', {
-    schema: {
-      tags: ['storefront'],
-      summary: 'Public category tree (hidden_from_storefront rows excluded).',
-      response: { 200: StorefrontCategoriesResponse },
+  app.get(
+    '/api/storefront/categories',
+    {
+      schema: {
+        tags: ['storefront'],
+        summary: 'Public category tree (hidden_from_storefront rows excluded).',
+        response: { 200: StorefrontCategoriesResponse },
+      },
     },
-  }, async (_req, reply) => {
-    const rows = await app.db.execute<CategoryRow>(sql`
+    async (_req, reply) => {
+      const rows = await app.db.execute<CategoryRow>(sql`
       SELECT
         id, parent_id, slug,
         name_de, name_en,
@@ -402,10 +413,11 @@ const storefrontCatalog: FastifyPluginAsync = async (app) => {
       WHERE hidden_from_storefront = FALSE
       ORDER BY parent_id NULLS FIRST, display_order, name_de
     `);
-    const roots = composeCategoryTree(Array.from(rows));
-    reply.header('Cache-Control', 'public, max-age=300, stale-while-revalidate=3600');
-    return reply.status(200).send({ roots });
-  });
+      const roots = composeCategoryTree(Array.from(rows));
+      reply.header('Cache-Control', 'public, max-age=300, stale-while-revalidate=3600');
+      return reply.status(200).send({ roots });
+    },
+  );
 
   // ════════════════════════════════════════════════════════════════════
   // GET /api/storefront/locations — public business locations
@@ -415,14 +427,17 @@ const storefrontCatalog: FastifyPluginAsync = async (app) => {
   // "you can collect online orders here"; until inventory is
   // multi-location, every active row is treated as pickup-capable.
   // ════════════════════════════════════════════════════════════════════
-  app.get('/api/storefront/locations', {
-    schema: {
-      tags: ['storefront'],
-      summary: 'Public business locations for the storefront map + LocalBusiness JSON-LD.',
-      response: { 200: StorefrontLocationsResponse },
+  app.get(
+    '/api/storefront/locations',
+    {
+      schema: {
+        tags: ['storefront'],
+        summary: 'Public business locations for the storefront map + LocalBusiness JSON-LD.',
+        response: { 200: StorefrontLocationsResponse },
+      },
     },
-  }, async (_req, reply) => {
-    const rows = await app.db.execute<LocationRow>(sql`
+    async (_req, reply) => {
+      const rows = await app.db.execute<LocationRow>(sql`
       SELECT
         id, name,
         street, postal_code, city, country_code,
@@ -433,27 +448,28 @@ const storefrontCatalog: FastifyPluginAsync = async (app) => {
       WHERE active = TRUE
       ORDER BY is_primary DESC, name
     `);
-    const items = Array.from(rows).map((r) => ({
-      id: r.id,
-      slug: r.id, // V1: slug = id; Phase 2.B adds a real `slug` column.
-      name: r.name,
-      addressLines: [r.street, `${r.postal_code} ${r.city}`].filter(Boolean),
-      city: r.city,
-      postalCode: r.postal_code,
-      countryCode: r.country_code,
-      publicPhone: r.phone,
-      publicEmail: r.email,
-      latitude: r.lat != null ? Number(r.lat) : null,
-      longitude: r.lng != null ? Number(r.lng) : null,
-      openingHours: r.opening_hours ?? null,
-      // Until multi-location inventory lands, every active row is a
-      // pickup point. The schema field exists so the next-js page
-      // doesn't need a follow-up migration to switch behaviour.
-      isPickupLocation: true,
-    }));
-    reply.header('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
-    return reply.status(200).send({ items });
-  });
+      const items = Array.from(rows).map((r) => ({
+        id: r.id,
+        slug: r.id, // V1: slug = id; Phase 2.B adds a real `slug` column.
+        name: r.name,
+        addressLines: [r.street, `${r.postal_code} ${r.city}`].filter(Boolean),
+        city: r.city,
+        postalCode: r.postal_code,
+        countryCode: r.country_code,
+        publicPhone: r.phone,
+        publicEmail: r.email,
+        latitude: r.lat != null ? Number(r.lat) : null,
+        longitude: r.lng != null ? Number(r.lng) : null,
+        openingHours: r.opening_hours ?? null,
+        // Until multi-location inventory lands, every active row is a
+        // pickup point. The schema field exists so the next-js page
+        // doesn't need a follow-up migration to switch behaviour.
+        isPickupLocation: true,
+      }));
+      reply.header('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
+      return reply.status(200).send({ items });
+    },
+  );
 };
 
 export default storefrontCatalog;

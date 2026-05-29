@@ -3,8 +3,18 @@
  * Landed in migration 0017.
  */
 
-import { bigserial, check, index, integer, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import {
+  bigserial,
+  check,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from 'drizzle-orm/pg-core';
 
 import { workerJobStatus } from './enums.js';
 
@@ -23,8 +33,11 @@ export const workerJobRuns = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().default(sql`now()`),
   },
   (table) => ({
-    jobStatusStartedIdx: index('worker_job_runs_job_status_idx')
-      .on(table.jobName, table.status, table.startedAt.desc()),
+    jobStatusStartedIdx: index('worker_job_runs_job_status_idx').on(
+      table.jobName,
+      table.status,
+      table.startedAt.desc(),
+    ),
     lastSuccessIdx: index('worker_job_runs_last_success_idx')
       .on(table.jobName, table.startedAt.desc())
       .where(sql`${table.status} = 'SUCCESS'`),

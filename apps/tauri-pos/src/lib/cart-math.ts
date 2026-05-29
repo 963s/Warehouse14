@@ -55,7 +55,7 @@ export function fromCents(cents: bigint): string {
 
 function roundHalfEven(num: bigint, den: bigint): bigint {
   if (den === 0n) throw new Error('roundHalfEven: division by zero');
-  const negative = (num < 0n) !== (den < 0n);
+  const negative = num < 0n !== den < 0n;
   const absNum = num < 0n ? -num : num;
   const absDen = den < 0n ? -den : den;
 
@@ -145,7 +145,59 @@ export function computeLineMath(params: {
         appliedVatRate: null,
         acquisitionCostSnapshotCents: null,
       };
+    case 'REVERSE_CHARGE_13B': {
+      const subtotal = roundHalfEven(total * 100n, 119n);
+      return {
+        lineTotalCents: subtotal,
+        lineVatCents: 0n,
+        lineSubtotalCents: subtotal,
+        marginCents: null,
+        appliedVatRate: '0.0000',
+        acquisitionCostSnapshotCents: null,
+      };
+    }
+    default:
+      return {
+        lineTotalCents: total,
+        lineVatCents: 0n,
+        lineSubtotalCents: total,
+        marginCents: null,
+        appliedVatRate: null,
+        acquisitionCostSnapshotCents: null,
+      };
   }
+}
+
+export function classifyCartProductTax(product: {
+  itemType: string;
+  finenessDecimal: string | null;
+  acquiredFromCustomerId: string | null;
+  isCommission: boolean;
+}): TaxTreatmentCode {
+  if (product.itemType === 'gold_bar') {
+    const purity = product.finenessDecimal ? Number.parseFloat(product.finenessDecimal) : 0;
+    if (purity >= 0.995) {
+      return 'INVESTMENT_GOLD_25C';
+    }
+  }
+
+  const isSecondHand = product.acquiredFromCustomerId !== null || product.isCommission;
+  const isSecondHandEligibleType = [
+    'gold_jewelry',
+    'gold_coin',
+    'silver_jewelry',
+    'silver_coin',
+    'platinum_jewelry',
+    'platinum_coin',
+    'antique',
+    'watch',
+  ].includes(product.itemType);
+
+  if (isSecondHand && isSecondHandEligibleType) {
+    return 'MARGIN_25A';
+  }
+
+  return 'STANDARD_19';
 }
 
 // ────────────────────────────────────────────────────────────────────────

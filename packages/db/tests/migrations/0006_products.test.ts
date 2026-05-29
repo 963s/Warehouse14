@@ -10,10 +10,15 @@
  *   • pgvector column accepts vector(1536) and cosine-similarity sorts
  */
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Sql } from 'postgres';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { applyMigrations, setAppPasswordForTest, startTestDb, type TestDb } from '../helpers/testDb.js';
+import {
+  type TestDb,
+  applyMigrations,
+  setAppPasswordForTest,
+  startTestDb,
+} from '../helpers/testDb.js';
 
 describe('migration 0006_products', () => {
   let testDb: TestDb;
@@ -53,7 +58,7 @@ describe('migration 0006_products', () => {
   // ────────────────────────────────────────────────────────────────────
 
   describe('structure', () => {
-    it.each(['products', 'product_photos'])('table %s exists', async name => {
+    it.each(['products', 'product_photos'])('table %s exists', async (name) => {
       const [row] = await migratorSql<{ exists: boolean }[]>`
         SELECT EXISTS (
           SELECT 1 FROM information_schema.tables
@@ -74,7 +79,7 @@ describe('migration 0006_products', () => {
          WHERE t.typname = ${typeName}
          ORDER BY e.enumsortorder
       `;
-      expect(rows.map(r => r.enumlabel)).toEqual([...expected]);
+      expect(rows.map((r) => r.enumlabel)).toEqual([...expected]);
     });
 
     it('HNSW index on products.embedding exists (partial on AVAILABLE)', async () => {
@@ -207,7 +212,7 @@ describe('migration 0006_products', () => {
   // ────────────────────────────────────────────────────────────────────
 
   describe('app-role grants', () => {
-    it.each(['products', 'product_photos'])('%s — app has SELECT + INSERT', async tbl => {
+    it.each(['products', 'product_photos'])('%s — app has SELECT + INSERT', async (tbl) => {
       const [s] = await migratorSql<{ has: boolean }[]>`
         SELECT has_table_privilege('warehouse14_app', ${tbl}, 'SELECT') AS has`;
       const [i] = await migratorSql<{ has: boolean }[]>`
@@ -262,7 +267,9 @@ describe('migration 0006_products', () => {
       const id = await makeProduct();
       const appSql = testDb.appSql();
       try {
-        await expect(appSql`DELETE FROM products WHERE id = ${id}`).rejects.toThrow(/permission denied/i);
+        await expect(appSql`DELETE FROM products WHERE id = ${id}`).rejects.toThrow(
+          /permission denied/i,
+        );
       } finally {
         await appSql.end({ timeout: 5 });
       }
@@ -335,7 +342,9 @@ describe('migration 0006_products', () => {
       expect(row.dim).toBe(1536);
 
       await expect(
-        migratorSql.unsafe(`UPDATE products SET embedding = '${badVec}'::vector WHERE id = '${id}'`),
+        migratorSql.unsafe(
+          `UPDATE products SET embedding = '${badVec}'::vector WHERE id = '${id}'`,
+        ),
       ).rejects.toThrow(/expected 1536 dimensions/i);
     });
 
@@ -346,8 +355,12 @@ describe('migration 0006_products', () => {
 
       const onehot0 = `[${[1, ...Array.from({ length: 1535 }, () => 0)].join(',')}]`;
       const onehot1 = `[${[0, 1, ...Array.from({ length: 1534 }, () => 0)].join(',')}]`;
-      await migratorSql.unsafe(`UPDATE products SET embedding = '${onehot0}'::vector WHERE id = '${aId}'`);
-      await migratorSql.unsafe(`UPDATE products SET embedding = '${onehot1}'::vector WHERE id = '${bId}'`);
+      await migratorSql.unsafe(
+        `UPDATE products SET embedding = '${onehot0}'::vector WHERE id = '${aId}'`,
+      );
+      await migratorSql.unsafe(
+        `UPDATE products SET embedding = '${onehot1}'::vector WHERE id = '${bId}'`,
+      );
 
       const probe = onehot0; // identical to A's embedding
       const rows = await migratorSql.unsafe<{ id: string; dist: number }[]>(

@@ -23,9 +23,12 @@ import { type WorkerDb, connectWorker } from '@warehouse14/db/client';
 import type { Env } from './config/env.js';
 import {
   anomalyWatchdogJob,
+  appointmentNoShowDetectorJob,
+  appointmentNotificationsJob,
   chainVerifierJob,
   dsfinvkDailyExportJob,
   ebaySyncJob,
+  intakeSweepJob,
   lbmaPricesJob,
   reservationSweeperJob,
   sessionsCleanupJob,
@@ -117,11 +120,26 @@ export async function buildWorker(opts: BuildWorkerOpts): Promise<WorkerHandle> 
       nodeEnv: opts.env.NODE_ENV,
     }),
   );
-  runner.register(dsfinvkDailyExportJob);
+  // Epic K: push the finalized closing to Fiskaly DSFinV-K when configured;
+  // empty credentials → the job logs "fiskaly not configured" and continues.
+  runner.register(
+    dsfinvkDailyExportJob({
+      fiskaly: {
+        apiKey: opts.env.FISKALY_API_KEY,
+        apiSecret: opts.env.FISKALY_API_SECRET,
+      },
+    }),
+  );
   // Day 20: B2C cart expiry — releases 15-min STOREFRONT soft locks.
   runner.register(storefrontCartSweeperJob);
   // Epic D: end eBay listings for items sold at the retail counter.
   runner.register(ebaySyncJob({ token: opts.env.EBAY_API_TOKEN }));
+  // Epic F: AI Intake Pipeline — close grouping windows + process sessions.
+  // Uses the deterministic mock vision client until real credentials are wired.
+  runner.register(intakeSweepJob());
+  // Epic G: Smart Appointment System — reminder dispatch + no-show grace release.
+  runner.register(appointmentNotificationsJob);
+  runner.register(appointmentNoShowDetectorJob);
 
   // Tiny Fastify for /metrics + /health.
   const httpServer = Fastify({

@@ -8,18 +8,9 @@
 
 import { pgEnum } from 'drizzle-orm/pg-core';
 
-export const productStatus = pgEnum('product_status', [
-  'DRAFT',
-  'AVAILABLE',
-  'RESERVED',
-  'SOLD',
-]);
+export const productStatus = pgEnum('product_status', ['DRAFT', 'AVAILABLE', 'RESERVED', 'SOLD']);
 
-export const reservationChannel = pgEnum('reservation_channel', [
-  'POS',
-  'STOREFRONT',
-  'EBAY',
-]);
+export const reservationChannel = pgEnum('reservation_channel', ['POS', 'STOREFRONT', 'EBAY']);
 
 export const itemType = pgEnum('item_type', [
   'gold_jewelry',

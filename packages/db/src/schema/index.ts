@@ -54,6 +54,7 @@ export * from './shifts/index.js';
 export * from './vouchers/index.js';
 export * from './inventory/index.js';
 export * from './whatsapp/index.js';
+export * from './intake/index.js';
 export * from './appraisals/index.js';
 export * from './metals/index.js';
 export * from './tasks/index.js';

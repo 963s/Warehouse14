@@ -10,11 +10,7 @@
 
 import { create } from 'zustand';
 
-import type {
-  AuthSessionResponse,
-  PinLoginResponse,
-  SessionActor,
-} from '@warehouse14/api-client';
+import type { AuthSessionResponse, PinLoginResponse, SessionActor } from '@warehouse14/api-client';
 
 export type SessionStatus = 'unknown' | 'unauthenticated' | 'authenticated';
 
@@ -56,8 +52,7 @@ export const useSessionStore = create<SessionState>((set) => ({
       lastPinStepUpAt: payload.lastPinStepUpAt,
       sessionExpiresAt: payload.expiresAt,
     }),
-  recordStepUp: (lastPinStepUpAt) =>
-    set({ lastPinStepUpAt }),
+  recordStepUp: (lastPinStepUpAt) => set({ lastPinStepUpAt }),
   setUnauthenticated: () =>
     set({
       status: 'unauthenticated',

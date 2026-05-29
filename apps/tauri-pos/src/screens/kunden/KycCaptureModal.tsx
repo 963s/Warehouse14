@@ -22,6 +22,7 @@ import {
   encryptAndSaveKycDocument,
   isHardwareError,
 } from '../../lib/hardware-client.js';
+import { insertKycRecord } from '../../lib/kyc-store.js';
 import { useToastStore } from '../../state/toast-store.js';
 
 const DOC_TYPES: { value: KycDocType; label: string }[] = [
@@ -50,6 +51,27 @@ export function KycCaptureModal({
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
       const result = await encryptAndSaveKycDocument(bytes, customerId, docType);
+
+      // Index the encrypted file locally so it's listable/previewable offline.
+      // The ciphertext is already safe on disk; an index failure is non-fatal.
+      try {
+        await insertKycRecord({
+          customerId,
+          docType,
+          filePath: result.path,
+          sha256: result.sha256,
+          createdAt: Date.now(),
+        });
+      } catch (dbErr) {
+        addToast({
+          tone: 'alert',
+          title: 'Lokaler KYC-Index nicht aktualisiert',
+          body: isHardwareError(dbErr)
+            ? describeHardwareError(dbErr)
+            : 'Dokument ist verschlüsselt gespeichert, aber nicht im lokalen Index erfasst.',
+        });
+      }
+
       addToast({
         tone: 'success',
         title: 'Ausweis verschlüsselt gespeichert',

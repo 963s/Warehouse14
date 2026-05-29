@@ -24,9 +24,9 @@
  * is the correct behavior for brute-force defense.
  */
 
-import fastifyPlugin from 'fastify-plugin';
 import fastifyRateLimit from '@fastify/rate-limit';
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
+import fastifyPlugin from 'fastify-plugin';
 
 import type { Env } from '../config/env.js';
 
@@ -48,9 +48,14 @@ const rateLimitPlugin: FastifyPluginAsync<RateLimitPluginOpts> = async (app, opt
       // Stripe will retry but we want the FIRST delivery to land so the
       // idempotency table records it. Stripe imposes its own retry policy.
       if (path === '/api/webhooks/stripe' || path.startsWith('/api/webhooks/')) return true;
-      return path === '/health' || path === '/metrics' ||
-             path === '/' || path === '' ||
-             path.startsWith('/docs') || path === '/openapi.json';
+      return (
+        path === '/health' ||
+        path === '/metrics' ||
+        path === '/' ||
+        path === '' ||
+        path.startsWith('/docs') ||
+        path === '/openapi.json'
+      );
     },
 
     // Key: per-actor when authenticated, per-IP otherwise.

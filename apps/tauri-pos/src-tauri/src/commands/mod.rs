@@ -16,7 +16,10 @@
 
 pub mod image;
 pub mod kyc;
+pub mod label;
+pub mod mdns;
 pub mod pdf;
+pub mod scale;
 pub mod system;
 pub mod thermal;
 pub mod tse;

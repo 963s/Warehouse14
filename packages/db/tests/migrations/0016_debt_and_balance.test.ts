@@ -14,10 +14,10 @@
  *   • CONSTRAINT TRIGGER: zero payments at COMMIT → refused
  */
 
+import type { Sql } from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { type Sql } from 'postgres';
 
-import { applyMigrations, startTestDb, type TestDb } from '../helpers/testDb.js';
+import { type TestDb, applyMigrations, startTestDb } from '../helpers/testDb.js';
 
 const PII_KEY = 'test-pii-key-do-not-use-in-production-32b';
 
@@ -86,9 +86,9 @@ describe('migration 0016_debt_and_balance', () => {
     paymentLegs: Array<{ method: 'CASH' | 'DEBT' | 'ZVT_CARD'; amount: string }>;
     customerOverride?: string | null;
   }): Promise<string> {
-    const totalNum = parseFloat(opts.total);
-    const vat = (totalNum * 19 / 119).toFixed(2);
-    const subtotal = (totalNum - parseFloat(vat)).toFixed(2);
+    const totalNum = Number.parseFloat(opts.total);
+    const vat = ((totalNum * 19) / 119).toFixed(2);
+    const subtotal = (totalNum - Number.parseFloat(vat)).toFixed(2);
     const prodId = await makeProduct();
     const custId = opts.customerOverride === undefined ? customerId : opts.customerOverride;
 

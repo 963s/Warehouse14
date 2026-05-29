@@ -24,10 +24,15 @@
  *     restricted columns (acquisition_cost_eur).
  */
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import postgres, { type Sql } from 'postgres';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { applyMigrations, setAppPasswordForTest, startTestDb, type TestDb } from '../helpers/testDb.js';
+import {
+  type TestDb,
+  applyMigrations,
+  setAppPasswordForTest,
+  startTestDb,
+} from '../helpers/testDb.js';
 
 describe('migration 0022_photo_ebay_workflow', () => {
   let testDb: TestDb;
@@ -42,11 +47,13 @@ describe('migration 0022_photo_ebay_workflow', () => {
     return u!.id;
   }
 
-  async function makeProduct(opts: {
-    status?: 'DRAFT' | 'AVAILABLE' | 'RESERVED' | 'SOLD';
-    listedOnEbay?: boolean;
-    reservationChannel?: 'POS' | 'STOREFRONT' | 'EBAY';
-  } = {}): Promise<string> {
+  async function makeProduct(
+    opts: {
+      status?: 'DRAFT' | 'AVAILABLE' | 'RESERVED' | 'SOLD';
+      listedOnEbay?: boolean;
+      reservationChannel?: 'POS' | 'STOREFRONT' | 'EBAY';
+    } = {},
+  ): Promise<string> {
     const status = opts.status ?? 'AVAILABLE';
 
     const [draft] = await migratorSql<{ id: string }[]>`
@@ -96,12 +103,14 @@ describe('migration 0022_photo_ebay_workflow', () => {
     return id;
   }
 
-  async function makePhoto(opts: {
-    productId?: string | null;
-    workflowState?: string;
-    r2KeyBgRemoved?: string | null;
-    isPrimary?: boolean;
-  } = {}): Promise<string> {
+  async function makePhoto(
+    opts: {
+      productId?: string | null;
+      workflowState?: string;
+      r2KeyBgRemoved?: string | null;
+      isPrimary?: boolean;
+    } = {},
+  ): Promise<string> {
     const [row] = await migratorSql<{ id: string }[]>`
       INSERT INTO product_photos (
         product_id, r2_key, r2_key_bg_removed, workflow_state, is_primary, source
@@ -149,7 +158,11 @@ describe('migration 0022_photo_ebay_workflow', () => {
         SELECT enumlabel FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
          WHERE t.typname = 'photo_workflow_state' ORDER BY enumsortorder`;
       expect(rows.map((r) => r.enumlabel)).toEqual([
-        'FOTOGRAFIERT', 'BEARBEITET', 'FREIGESTELLT', 'ZUGEORDNET', 'FUER_EBAY_BEREIT',
+        'FOTOGRAFIERT',
+        'BEARBEITET',
+        'FREIGESTELLT',
+        'ZUGEORDNET',
+        'FUER_EBAY_BEREIT',
       ]);
     });
   });
@@ -250,9 +263,9 @@ describe('migration 0022_photo_ebay_workflow', () => {
 
   describe('product_photos_orphan_not_primary CHECK', () => {
     it('refuses is_primary on orphan photos', async () => {
-      await expect(
-        makePhoto({ productId: null, isPrimary: true }),
-      ).rejects.toThrow(/product_photos_orphan_not_primary/);
+      await expect(makePhoto({ productId: null, isPrimary: true })).rejects.toThrow(
+        /product_photos_orphan_not_primary/,
+      );
     });
 
     it('accepts is_primary on assigned photos', async () => {
@@ -337,8 +350,15 @@ describe('migration 0022_photo_ebay_workflow', () => {
         SELECT enumlabel FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
          WHERE t.typname = 'ebay_listing_state' ORDER BY enumsortorder`;
       expect(rows.map((r) => r.enumlabel)).toEqual([
-        'ENTWURF', 'GEPRUEFT', 'ONLINE', 'VERKAUFT', 'BEZAHLT',
-        'VERPACKT', 'VERSENDET', 'REKLAMIERT', 'RETOURNIERT',
+        'ENTWURF',
+        'GEPRUEFT',
+        'ONLINE',
+        'VERKAUFT',
+        'BEZAHLT',
+        'VERPACKT',
+        'VERSENDET',
+        'REKLAMIERT',
+        'RETOURNIERT',
       ]);
     });
   });
@@ -459,12 +479,14 @@ describe('migration 0022_photo_ebay_workflow', () => {
         UPDATE products
            SET ebay_state = 'VERKAUFT'::ebay_listing_state
          WHERE id = ${productId}`;
-      const [row] = await migratorSql<{
-        status: string;
-        reserved_by_channel: string | null;
-        reserved_at: Date | null;
-        reservation_expires_at: Date | null;
-      }[]>`
+      const [row] = await migratorSql<
+        {
+          status: string;
+          reserved_by_channel: string | null;
+          reserved_at: Date | null;
+          reservation_expires_at: Date | null;
+        }[]
+      >`
         SELECT status, reserved_by_channel, reserved_at, reservation_expires_at
           FROM products WHERE id = ${productId}`;
       expect(row!.status).toBe('RESERVED');
@@ -472,8 +494,9 @@ describe('migration 0022_photo_ebay_workflow', () => {
       expect(row!.reserved_at).toBeInstanceOf(Date);
       expect(row!.reservation_expires_at).toBeInstanceOf(Date);
       // ~7 days out (allow generous slack for test timing).
-      const daysOut = (row!.reservation_expires_at!.getTime() - row!.reserved_at!.getTime())
-        / (24 * 60 * 60 * 1000);
+      const daysOut =
+        (row!.reservation_expires_at!.getTime() - row!.reserved_at!.getTime()) /
+        (24 * 60 * 60 * 1000);
       expect(daysOut).toBeGreaterThan(6.9);
       expect(daysOut).toBeLessThan(7.1);
     });
@@ -498,11 +521,13 @@ describe('migration 0022_photo_ebay_workflow', () => {
         UPDATE products
            SET ebay_state = 'VERKAUFT'::ebay_listing_state
          WHERE id = ${productId}`;
-      const [row] = await migratorSql<{
-        status: string;
-        reserved_by_channel: string;
-        ebay_state: string;
-      }[]>`
+      const [row] = await migratorSql<
+        {
+          status: string;
+          reserved_by_channel: string;
+          ebay_state: string;
+        }[]
+      >`
         SELECT status, reserved_by_channel, ebay_state
           FROM products WHERE id = ${productId}`;
       expect(row!.status).toBe('RESERVED');
@@ -540,22 +565,28 @@ describe('migration 0022_photo_ebay_workflow', () => {
     it('ENTWURF → GEPRUEFT only updates ebay_state_changed_at (no inventory side effect)', async () => {
       const productId = await makeProduct({ status: 'AVAILABLE' });
       await migratorSql`UPDATE products SET ebay_state = 'ENTWURF'::ebay_listing_state WHERE id = ${productId}`;
-      const [before] = await migratorSql<{
-        status: string;
-        ebay_state_changed_at: Date;
-      }[]>`SELECT status, ebay_state_changed_at FROM products WHERE id = ${productId}`;
+      const [before] = await migratorSql<
+        {
+          status: string;
+          ebay_state_changed_at: Date;
+        }[]
+      >`SELECT status, ebay_state_changed_at FROM products WHERE id = ${productId}`;
 
       // Tiny sleep to ensure clock advances between updates.
       await new Promise((r) => setTimeout(r, 20));
 
       await migratorSql`UPDATE products SET ebay_state = 'GEPRUEFT'::ebay_listing_state WHERE id = ${productId}`;
-      const [after] = await migratorSql<{
-        status: string;
-        ebay_state_changed_at: Date;
-      }[]>`SELECT status, ebay_state_changed_at FROM products WHERE id = ${productId}`;
+      const [after] = await migratorSql<
+        {
+          status: string;
+          ebay_state_changed_at: Date;
+        }[]
+      >`SELECT status, ebay_state_changed_at FROM products WHERE id = ${productId}`;
 
       expect(after!.status).toBe('AVAILABLE'); // not touched
-      expect(after!.ebay_state_changed_at.getTime()).toBeGreaterThan(before!.ebay_state_changed_at.getTime());
+      expect(after!.ebay_state_changed_at.getTime()).toBeGreaterThan(
+        before!.ebay_state_changed_at.getTime(),
+      );
     });
   });
 

@@ -22,11 +22,11 @@
  * for tests that don't exercise SSE).
  */
 
-import fastifyPlugin from 'fastify-plugin';
 import type { FastifyPluginAsync } from 'fastify';
+import fastifyPlugin from 'fastify-plugin';
 import postgres, { type Sql } from 'postgres';
 
-import { connectApp, type AppDb } from '@warehouse14/db/client';
+import { type AppDb, connectApp } from '@warehouse14/db/client';
 
 import type { Env } from '../config/env.js';
 
@@ -68,7 +68,8 @@ const dbPlugin: FastifyPluginAsync<DbPluginOpts> = async (app, opts) => {
   // Production / dev: open a fresh per-subscriber connection from env.DATABASE_URL.
   // Test with explicit factory: use it.
   // Test without explicit factory: still use env.DATABASE_URL (must be set).
-  const dedicatedFactory: () => Sql = opts.override?.dedicatedConnectionFactory ??
+  const dedicatedFactory: () => Sql =
+    opts.override?.dedicatedConnectionFactory ??
     (() =>
       postgres(opts.env.DATABASE_URL, {
         max: 1,

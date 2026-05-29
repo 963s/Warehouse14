@@ -11,9 +11,9 @@
 
 import { sql } from 'drizzle-orm';
 
-import type { JobDefinition } from '../lib/job-runner.js';
 import { emit } from '@warehouse14/audit';
 import type { AppDb } from '@warehouse14/db/client';
+import type { JobDefinition } from '../lib/job-runner.js';
 
 export const anomalyWatchdogJob: JobDefinition = {
   name: 'anomaly_watchdog',
@@ -24,7 +24,7 @@ export const anomalyWatchdogJob: JobDefinition = {
       SELECT (value::text)::numeric AS sigma
         FROM system_settings
        WHERE key = 'anomaly.sigma_threshold'`);
-    const sigma = sigmaRows[0]?.sigma != null ? parseFloat(sigmaRows[0].sigma) : 3.0;
+    const sigma = sigmaRows[0]?.sigma != null ? Number.parseFloat(sigmaRows[0].sigma) : 3.0;
 
     // Daily CASH sales counts over the trailing 30 days.
     const rows = await db.execute<{ business_day: string; cash_count: string }>(sql`
@@ -45,16 +45,15 @@ export const anomalyWatchdogJob: JobDefinition = {
 
     const todayISO = new Date().toISOString().slice(0, 10);
     const todayRow = rows.find((r) => r.business_day === todayISO);
-    const todayCount = todayRow ? parseInt(todayRow.cash_count, 10) : 0;
+    const todayCount = todayRow ? Number.parseInt(todayRow.cash_count, 10) : 0;
 
     const historicalCounts = rows
       .filter((r) => r.business_day !== todayISO)
-      .map((r) => parseInt(r.cash_count, 10));
+      .map((r) => Number.parseInt(r.cash_count, 10));
 
     const mean = historicalCounts.reduce((acc, n) => acc + n, 0) / historicalCounts.length;
     const variance =
-      historicalCounts.reduce((acc, n) => acc + (n - mean) ** 2, 0) /
-      historicalCounts.length;
+      historicalCounts.reduce((acc, n) => acc + (n - mean) ** 2, 0) / historicalCounts.length;
     const stddev = Math.sqrt(variance);
     if (stddev === 0) {
       return { skipped: true, reason: 'zero_stddev', mean, todayCount };

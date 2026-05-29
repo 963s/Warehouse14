@@ -286,8 +286,7 @@ describe('Money — round (banker’s rounding to currency precision)', () => {
 });
 
 describe('Money — allocate (penny-safe distribution)', () => {
-  const sumOf = (parts: Money[]) =>
-    parts.reduce((acc, m) => acc.add(m), Money.zero());
+  const sumOf = (parts: Money[]) => parts.reduce((acc, m) => acc.add(m), Money.zero());
 
   it('splits 10.00 three ways with the leftover cent up front', () => {
     const parts = Money.of('10.00').allocate([1, 1, 1]);
@@ -347,8 +346,7 @@ describe('Money — allocate (penny-safe distribution)', () => {
 });
 
 describe('Money — split (even, penny-safe)', () => {
-  const sumOf = (parts: Money[]) =>
-    parts.reduce((acc, m) => acc.add(m), Money.zero());
+  const sumOf = (parts: Money[]) => parts.reduce((acc, m) => acc.add(m), Money.zero());
 
   it('splits evenly and conserves the total', () => {
     const parts = Money.of('10.00').split(3);

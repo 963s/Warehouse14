@@ -14,8 +14,8 @@
  *   • REDUCED_7           — §12 Abs. 2 UStG (rate 0.0700)
  */
 
-import { boolean, check, index, numeric, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import { boolean, check, index, numeric, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
 
 export const taxTreatmentCodes = pgTable(
   'tax_treatment_codes',
@@ -38,15 +38,12 @@ export const taxTreatmentCodes = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  table => ({
+  (table) => ({
     rateRange: check(
       'tax_treatment_codes_rate_range',
       sql`${table.effectiveVatRate} IS NULL OR (${table.effectiveVatRate} >= 0.0000 AND ${table.effectiveVatRate} <= 1.0000)`,
     ),
-    codeFormat: check(
-      'tax_treatment_codes_code_format',
-      sql`${table.code} ~ '^[A-Z][A-Z0-9_]*$'`,
-    ),
+    codeFormat: check('tax_treatment_codes_code_format', sql`${table.code} ~ '^[A-Z][A-Z0-9_]*$'`),
     activeIdx: index('tax_treatment_codes_active_idx')
       .on(table.active)
       .where(sql`${table.active} = TRUE`),

@@ -18,10 +18,15 @@
  *   • role grants — app may UPDATE narrow columns, NOT r2_key / size_bytes
  */
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import postgres, { type Sql } from 'postgres';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { applyMigrations, setAppPasswordForTest, startTestDb, type TestDb } from '../helpers/testDb.js';
+import {
+  type TestDb,
+  applyMigrations,
+  setAppPasswordForTest,
+  startTestDb,
+} from '../helpers/testDb.js';
 
 const PII_KEY = 'test-pii-key-do-not-use-in-production-32b';
 
@@ -58,16 +63,18 @@ describe('migration 0023_tasks_documents', () => {
     return p!.id;
   }
 
-  async function makeTask(opts: {
-    title?: string;
-    status?: string;
-    startedAt?: string;
-    completedAt?: string;
-    cancelledAt?: string;
-    cancellationReason?: string;
-    relatedTable?: string | null;
-    relatedId?: string | null;
-  } = {}): Promise<string> {
+  async function makeTask(
+    opts: {
+      title?: string;
+      status?: string;
+      startedAt?: string;
+      completedAt?: string;
+      cancelledAt?: string;
+      cancellationReason?: string;
+      relatedTable?: string | null;
+      relatedId?: string | null;
+    } = {},
+  ): Promise<string> {
     const userId = await makeUser();
     const [row] = await migratorSql<{ id: string }[]>`
       INSERT INTO internal_tasks (
@@ -120,9 +127,7 @@ describe('migration 0023_tasks_documents', () => {
       const rows = await migratorSql<{ enumlabel: string }[]>`
         SELECT enumlabel FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
          WHERE t.typname = 'task_priority' ORDER BY enumsortorder`;
-      expect(rows.map((r) => r.enumlabel)).toEqual([
-        'LOW', 'NORMAL', 'HIGH', 'URGENT',
-      ]);
+      expect(rows.map((r) => r.enumlabel)).toEqual(['LOW', 'NORMAL', 'HIGH', 'URGENT']);
     });
   });
 
@@ -132,7 +137,11 @@ describe('migration 0023_tasks_documents', () => {
         SELECT enumlabel FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
          WHERE t.typname = 'task_status' ORDER BY enumsortorder`;
       expect(rows.map((r) => r.enumlabel)).toEqual([
-        'OPEN', 'IN_PROGRESS', 'BLOCKED', 'DONE', 'CANCELLED',
+        'OPEN',
+        'IN_PROGRESS',
+        'BLOCKED',
+        'DONE',
+        'CANCELLED',
       ]);
     });
   });
@@ -143,8 +152,12 @@ describe('migration 0023_tasks_documents', () => {
         SELECT enumlabel FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
          WHERE t.typname = 'document_category' ORDER BY enumsortorder`;
       expect(rows.map((r) => r.enumlabel)).toEqual([
-        'AUSWEIS', 'ANKAUFBELEG', 'RECHNUNG', 'EXPERTISE',
-        'ZERTIFIKAT', 'VERSANDBELEG',
+        'AUSWEIS',
+        'ANKAUFBELEG',
+        'RECHNUNG',
+        'EXPERTISE',
+        'ZERTIFIKAT',
+        'VERSANDBELEG',
       ]);
     });
   });
@@ -159,33 +172,31 @@ describe('migration 0023_tasks_documents', () => {
     });
 
     it('refuses IN_PROGRESS without started_at', async () => {
-      await expect(
-        makeTask({ status: 'IN_PROGRESS' }),
-      ).rejects.toThrow(/internal_tasks_in_progress_has_started/);
+      await expect(makeTask({ status: 'IN_PROGRESS' })).rejects.toThrow(
+        /internal_tasks_in_progress_has_started/,
+      );
     });
 
     it('accepts IN_PROGRESS with started_at', async () => {
-      await expect(
-        makeTask({ status: 'IN_PROGRESS', startedAt: 'now()' }),
-      ).resolves.toBeDefined();
+      await expect(makeTask({ status: 'IN_PROGRESS', startedAt: 'now()' })).resolves.toBeDefined();
     });
 
     it('refuses DONE without completed_at', async () => {
-      await expect(
-        makeTask({ status: 'DONE', startedAt: 'now()' }),
-      ).rejects.toThrow(/internal_tasks_done_has_completion/);
+      await expect(makeTask({ status: 'DONE', startedAt: 'now()' })).rejects.toThrow(
+        /internal_tasks_done_has_completion/,
+      );
     });
 
     it('refuses DONE without started_at', async () => {
-      await expect(
-        makeTask({ status: 'DONE', completedAt: 'now()' }),
-      ).rejects.toThrow(/internal_tasks_done_has_completion/);
+      await expect(makeTask({ status: 'DONE', completedAt: 'now()' })).rejects.toThrow(
+        /internal_tasks_done_has_completion/,
+      );
     });
 
     it('refuses CANCELLED without reason', async () => {
-      await expect(
-        makeTask({ status: 'CANCELLED', cancelledAt: 'now()' }),
-      ).rejects.toThrow(/internal_tasks_cancelled_has_reason/);
+      await expect(makeTask({ status: 'CANCELLED', cancelledAt: 'now()' })).rejects.toThrow(
+        /internal_tasks_cancelled_has_reason/,
+      );
     });
 
     it('refuses CANCELLED with too-short reason', async () => {
@@ -209,9 +220,9 @@ describe('migration 0023_tasks_documents', () => {
     });
 
     it('refuses OPEN with lifecycle timestamps set', async () => {
-      await expect(
-        makeTask({ status: 'OPEN', startedAt: 'now()' }),
-      ).rejects.toThrow(/internal_tasks_open_no_timestamps/);
+      await expect(makeTask({ status: 'OPEN', startedAt: 'now()' })).rejects.toThrow(
+        /internal_tasks_open_no_timestamps/,
+      );
     });
 
     it('refuses both completed_at and cancelled_at set', async () => {
@@ -236,16 +247,16 @@ describe('migration 0023_tasks_documents', () => {
 
   describe('related_entity_* polymorphic CHECKs', () => {
     it('refuses setting only related_entity_table', async () => {
-      await expect(
-        makeTask({ relatedTable: 'products' }),
-      ).rejects.toThrow(/internal_tasks_related_entity_both_or_none/);
+      await expect(makeTask({ relatedTable: 'products' })).rejects.toThrow(
+        /internal_tasks_related_entity_both_or_none/,
+      );
     });
 
     it('refuses setting only related_entity_id', async () => {
       const productId = await makeProduct();
-      await expect(
-        makeTask({ relatedId: productId }),
-      ).rejects.toThrow(/internal_tasks_related_entity_both_or_none/);
+      await expect(makeTask({ relatedId: productId })).rejects.toThrow(
+        /internal_tasks_related_entity_both_or_none/,
+      );
     });
 
     it('accepts both NULL', async () => {
@@ -261,9 +272,9 @@ describe('migration 0023_tasks_documents', () => {
 
     it('refuses unknown entity table', async () => {
       const someId = crypto.randomUUID();
-      await expect(
-        makeTask({ relatedTable: 'aliens', relatedId: someId }),
-      ).rejects.toThrow(/internal_tasks_related_entity_known/);
+      await expect(makeTask({ relatedTable: 'aliens', relatedId: someId })).rejects.toThrow(
+        /internal_tasks_related_entity_known/,
+      );
     });
   });
 
@@ -304,7 +315,7 @@ describe('migration 0023_tasks_documents', () => {
           uploaded_by_user_id
         )
         VALUES (
-          ${(overrides.category ?? 'ZERTIFIKAT')}::document_category,
+          ${overrides.category ?? 'ZERTIFIKAT'}::document_category,
           ${`r2/${crypto.randomUUID()}.pdf`},
           'doc.pdf', 'application/pdf', 1024,
           ${overrides.customerId ?? null},
@@ -324,9 +335,9 @@ describe('migration 0023_tasks_documents', () => {
     it('refuses two links set', async () => {
       const customerId = await makeCustomer();
       const productId = await makeProduct();
-      await expect(
-        tryInsert({ category: 'ZERTIFIKAT', customerId, productId }),
-      ).rejects.toThrow(/document_attachments_exactly_one_link/);
+      await expect(tryInsert({ category: 'ZERTIFIKAT', customerId, productId })).rejects.toThrow(
+        /document_attachments_exactly_one_link/,
+      );
     });
 
     it('accepts exactly one link (product only)', async () => {
@@ -340,12 +351,15 @@ describe('migration 0023_tasks_documents', () => {
   // ────────────────────────────────────────────────────────────────────
 
   describe('category-specific link CHECKs', () => {
-    async function insertDoc(category: string, link: {
-      customer_id?: string | null;
-      product_id?: string | null;
-      transaction_id?: string | null;
-      appraisal_id?: string | null;
-    }) {
+    async function insertDoc(
+      category: string,
+      link: {
+        customer_id?: string | null;
+        product_id?: string | null;
+        transaction_id?: string | null;
+        appraisal_id?: string | null;
+      },
+    ) {
       const userId = await makeUser();
       return migratorSql`
         INSERT INTO document_attachments (
@@ -367,37 +381,33 @@ describe('migration 0023_tasks_documents', () => {
 
     it('AUSWEIS requires customer_id (refuses product-only)', async () => {
       const productId = await makeProduct();
-      await expect(
-        insertDoc('AUSWEIS', { product_id: productId }),
-      ).rejects.toThrow(/document_attachments_ausweis_is_customer/);
+      await expect(insertDoc('AUSWEIS', { product_id: productId })).rejects.toThrow(
+        /document_attachments_ausweis_is_customer/,
+      );
     });
 
     it('AUSWEIS accepts customer_id', async () => {
       const customerId = await makeCustomer();
-      await expect(
-        insertDoc('AUSWEIS', { customer_id: customerId }),
-      ).resolves.toBeDefined();
+      await expect(insertDoc('AUSWEIS', { customer_id: customerId })).resolves.toBeDefined();
     });
 
     it('EXPERTISE accepts product_id', async () => {
       const productId = await makeProduct();
-      await expect(
-        insertDoc('EXPERTISE', { product_id: productId }),
-      ).resolves.toBeDefined();
+      await expect(insertDoc('EXPERTISE', { product_id: productId })).resolves.toBeDefined();
     });
 
     it('EXPERTISE refuses customer-only link', async () => {
       const customerId = await makeCustomer();
-      await expect(
-        insertDoc('EXPERTISE', { customer_id: customerId }),
-      ).rejects.toThrow(/document_attachments_expertise_link/);
+      await expect(insertDoc('EXPERTISE', { customer_id: customerId })).rejects.toThrow(
+        /document_attachments_expertise_link/,
+      );
     });
 
     it('VERSANDBELEG refuses customer-only link', async () => {
       const customerId = await makeCustomer();
-      await expect(
-        insertDoc('VERSANDBELEG', { customer_id: customerId }),
-      ).rejects.toThrow(/document_attachments_versandbeleg_is_transaction/);
+      await expect(insertDoc('VERSANDBELEG', { customer_id: customerId })).rejects.toThrow(
+        /document_attachments_versandbeleg_is_transaction/,
+      );
     });
   });
 

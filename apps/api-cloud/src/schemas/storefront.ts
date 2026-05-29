@@ -4,7 +4,7 @@
  * Wire contract for /api/storefront/* and /api/webhooks/stripe.
  */
 
-import { Type, type Static } from '@sinclair/typebox';
+import { type Static, Type } from '@sinclair/typebox';
 
 import { DecimalString } from './money.js';
 
@@ -17,11 +17,7 @@ const Iso2Country = Type.String({
   description: 'ISO 3166-1 alpha-2 country code, uppercase.',
 });
 
-const Language = Type.Union([
-  Type.Literal('de'),
-  Type.Literal('en'),
-  Type.Literal('ar'),
-]);
+const Language = Type.Union([Type.Literal('de'), Type.Literal('en'), Type.Literal('ar')]);
 
 // ────────────────────────────────────────────────────────────────────────
 // Address sub-objects

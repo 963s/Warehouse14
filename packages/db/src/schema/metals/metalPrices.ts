@@ -10,8 +10,20 @@
  * NEVER DELETE — forensic audit + DSFinV-K context.
  */
 
-import { bigint, bigserial, check, index, jsonb, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import {
+  bigint,
+  bigserial,
+  check,
+  index,
+  jsonb,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 
 import { users } from '../auth/users.js';
 import { workerJobRuns } from '../worker/workerJobRuns.js';

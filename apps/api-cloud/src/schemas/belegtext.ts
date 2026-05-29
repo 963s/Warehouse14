@@ -2,7 +2,7 @@
  * TypeBox schemas for the belegtext_templates API surface (Day 26).
  */
 
-import { Type, type Static } from '@sinclair/typebox';
+import { type Static, Type } from '@sinclair/typebox';
 
 const BELEGTEXT_KIND = Type.Union([
   Type.Literal('MARGIN_25A'),

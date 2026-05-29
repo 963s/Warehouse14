@@ -8,13 +8,13 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  PinPolicy,
-  hashPin,
-  verifyPin,
-  decideAttemptOutcome,
+  type AttemptState,
   PIN_FAILED_THRESHOLD,
   PIN_LOCKOUT_MINUTES,
-  type AttemptState,
+  PinPolicy,
+  decideAttemptOutcome,
+  hashPin,
+  verifyPin,
 } from '../src/index.js';
 
 describe('PinPolicy.validate', () => {
@@ -23,21 +23,35 @@ describe('PinPolicy.validate', () => {
   });
 
   it('rejects wrong length (too short / too long)', () => {
-    expect(PinPolicy.validate('123', { enforceBlacklist: true })).toMatchObject({ code: 'WRONG_LENGTH' });
-    expect(PinPolicy.validate('12345', { enforceBlacklist: true })).toMatchObject({ code: 'WRONG_LENGTH' });
-    expect(PinPolicy.validate('', { enforceBlacklist: true })).toMatchObject({ code: 'WRONG_LENGTH' });
+    expect(PinPolicy.validate('123', { enforceBlacklist: true })).toMatchObject({
+      code: 'WRONG_LENGTH',
+    });
+    expect(PinPolicy.validate('12345', { enforceBlacklist: true })).toMatchObject({
+      code: 'WRONG_LENGTH',
+    });
+    expect(PinPolicy.validate('', { enforceBlacklist: true })).toMatchObject({
+      code: 'WRONG_LENGTH',
+    });
   });
 
   it('rejects non-numeric', () => {
-    expect(PinPolicy.validate('12a4', { enforceBlacklist: true })).toMatchObject({ code: 'NON_NUMERIC' });
-    expect(PinPolicy.validate('abcd', { enforceBlacklist: true })).toMatchObject({ code: 'NON_NUMERIC' });
-    expect(PinPolicy.validate('12-4', { enforceBlacklist: true })).toMatchObject({ code: 'NON_NUMERIC' });
+    expect(PinPolicy.validate('12a4', { enforceBlacklist: true })).toMatchObject({
+      code: 'NON_NUMERIC',
+    });
+    expect(PinPolicy.validate('abcd', { enforceBlacklist: true })).toMatchObject({
+      code: 'NON_NUMERIC',
+    });
+    expect(PinPolicy.validate('12-4', { enforceBlacklist: true })).toMatchObject({
+      code: 'NON_NUMERIC',
+    });
   });
 
   it.each(['0000', '1111', '9999', '1234', '6789', '9876', '3210'])(
     'rejects blacklisted PIN %s when enforceBlacklist=true',
     (pin) => {
-      expect(PinPolicy.validate(pin, { enforceBlacklist: true })).toMatchObject({ code: 'BLACKLISTED' });
+      expect(PinPolicy.validate(pin, { enforceBlacklist: true })).toMatchObject({
+        code: 'BLACKLISTED',
+      });
     },
   );
 
@@ -107,7 +121,9 @@ describe('decideAttemptOutcome — state machine', () => {
     expect(out.kind).toBe('failed_now_locked');
     if (out.kind === 'failed_now_locked') {
       expect(out.newState.failedAttempts).toBe(PIN_FAILED_THRESHOLD);
-      expect(out.newState.lockedUntil).toEqual(new Date(now.getTime() + PIN_LOCKOUT_MINUTES * 60_000));
+      expect(out.newState.lockedUntil).toEqual(
+        new Date(now.getTime() + PIN_LOCKOUT_MINUTES * 60_000),
+      );
       expect(out.auditEventType).toBe('auth.pin_locked');
     }
   });

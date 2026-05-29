@@ -14,11 +14,11 @@
  * only makes the key REACHABLE; the DB layer enforces transaction-scoping.
  */
 
-import fastifyPlugin from 'fastify-plugin';
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
+import fastifyPlugin from 'fastify-plugin';
 
 import type { Env } from '../config/env.js';
-import { runInRequestScope, type RequestContext } from '../lib/request-context.js';
+import { type RequestContext, runInRequestScope } from '../lib/request-context.js';
 
 declare module 'fastify' {
   interface FastifyRequest {

@@ -11,13 +11,8 @@
 
 import { useMemo, useState } from 'react';
 
-import {
-  Button,
-  DiamondRule,
-  MoneyAmount,
-  ParchmentCard,
-} from '@warehouse14/ui-kit';
 import type { ShiftView } from '@warehouse14/api-client';
+import { Button, DiamondRule, MoneyAmount, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { useDashboardSummary } from '../../hooks/useDashboardSummary.js';
 
@@ -126,10 +121,7 @@ export function KassenbuchPanel({ shift }: KassenbuchPanelProps): JSX.Element {
                 label="Wechselgeld (Eröffnung)"
                 value={<MoneyAmount valueEur={shift.openingFloatEur} />}
               />
-              <Row
-                label="Bareinnahmen heute"
-                value={<MoneyAmount valueEur={cashRevenueEur} />}
-              />
+              <Row label="Bareinnahmen heute" value={<MoneyAmount valueEur={cashRevenueEur} />} />
               <RowSeparator />
               <Row
                 label="Geschätzter Stand"
@@ -160,18 +152,10 @@ export function KassenbuchPanel({ shift }: KassenbuchPanelProps): JSX.Element {
             gap: 12,
           }}
         >
-          <Button
-            variant="primary"
-            size="lg"
-            onClick={() => setCashKind('einlage')}
-          >
+          <Button variant="primary" size="lg" onClick={() => setCashKind('einlage')}>
             + Einlage
           </Button>
-          <Button
-            variant="primary"
-            size="lg"
-            onClick={() => setCashKind('entnahme')}
-          >
+          <Button variant="primary" size="lg" onClick={() => setCashKind('entnahme')}>
             − Entnahme
           </Button>
         </div>

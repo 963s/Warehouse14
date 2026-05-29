@@ -17,18 +17,18 @@
  * configure the Meta webhook before the inbox sees any traffic.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   ApiError,
-  customersApi,
-  whatsappApi,
   type CustomerListRow,
   type WhatsAppMessage,
   type WhatsAppOutboundStatus,
   type WhatsAppThreadDetail,
   type WhatsAppThreadSummary,
+  customersApi,
+  whatsappApi,
 } from '@warehouse14/api-client';
 import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 
@@ -61,10 +61,7 @@ export function WhatsApp(): JSX.Element {
         flex: 1,
       }}
     >
-      <ThreadList
-        selectedPhone={selectedPhone}
-        onSelect={setSelectedPhone}
-      />
+      <ThreadList selectedPhone={selectedPhone} onSelect={setSelectedPhone} />
       <ConversationPane phone={selectedPhone} />
       <ThreadSidebar phone={selectedPhone} />
     </section>
@@ -186,7 +183,9 @@ function ThreadRow({
         color: 'var(--w14-ink)',
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 6 }}>
+      <div
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 6 }}
+      >
         <span
           style={{
             fontSize: '0.92rem',
@@ -312,8 +311,7 @@ function ConversationPane({ phone }: { phone: string | null }): JSX.Element {
   }, [messages.length]);
 
   const send = useMutation({
-    mutationFn: (body: string) =>
-      whatsappApi.send(api, { toPhone: phone!, body }),
+    mutationFn: (body: string) => whatsappApi.send(api, { toPhone: phone!, body }),
     onMutate: (body) => {
       const tempId = `optimistic-${Date.now()}`;
       const bubble: OptimisticBubble = {
@@ -334,11 +332,12 @@ function ConversationPane({ phone }: { phone: string | null }): JSX.Element {
       addToast({
         tone: 'alert',
         title: 'Senden fehlgeschlagen',
-        body: err instanceof ApiError
-          ? err.code === 'EXTERNAL_SERVICE_FAILED'
-            ? 'WhatsApp-Anbieter hat abgelehnt.'
-            : err.message
-          : 'Netzwerkfehler. Bitte erneut versuchen.',
+        body:
+          err instanceof ApiError
+            ? err.code === 'EXTERNAL_SERVICE_FAILED'
+              ? 'WhatsApp-Anbieter hat abgelehnt.'
+              : err.message
+            : 'Netzwerkfehler. Bitte erneut versuchen.',
       });
     },
   });
@@ -558,11 +557,7 @@ function Composer({
           outline: 'none',
         }}
       />
-      <Button
-        type="submit"
-        variant="primary"
-        disabled={busy || value.trim().length === 0}
-      >
+      <Button type="submit" variant="primary" disabled={busy || value.trim().length === 0}>
         {busy ? 'Sendet…' : 'Senden'}
       </Button>
     </form>
@@ -899,7 +894,13 @@ function CustomerPicker({
                   color: 'var(--w14-ink)',
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'baseline',
+                  }}
+                >
                   <span>{c.fullName}</span>
                   <span
                     className="w14-tabular"
@@ -1036,11 +1037,16 @@ const STATUS_LABEL: Record<WhatsAppOutboundStatus, string> = {
 
 function statusIcon(status: WhatsAppOutboundStatus): string {
   switch (status) {
-    case 'queued': return '◷';
-    case 'sent': return '✓';
-    case 'delivered': return '✓✓';
-    case 'read': return '✓✓';
-    case 'failed': return '⚠';
+    case 'queued':
+      return '◷';
+    case 'sent':
+      return '✓';
+    case 'delivered':
+      return '✓✓';
+    case 'read':
+      return '✓✓';
+    case 'failed':
+      return '⚠';
   }
 }
 

@@ -8,16 +8,16 @@
  * `customers`/`devices` does not need a fresh fixture.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { readFile, readdir } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import postgres, { type Sql } from 'postgres';
-import { drizzle } from 'drizzle-orm/postgres-js';
-import * as schema from '@warehouse14/db/schema';
 import type { AppDb } from '@warehouse14/db/client';
+import * as schema from '@warehouse14/db/schema';
+import { drizzle } from 'drizzle-orm/postgres-js';
 import type { FastifyInstance } from 'fastify';
+import postgres, { type Sql } from 'postgres';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { buildApp } from '../../src/app.js';
 import type { Env } from '../../src/config/env.js';
@@ -37,7 +37,7 @@ const INITDB_SQL = `
 
 async function applyAllMigrations(sql: Sql): Promise<void> {
   const all = await readdir(MIGRATIONS_DIR);
-  const files = all.filter(n => /^\d{4}_.+\.sql$/.test(n)).sort();
+  const files = all.filter((n) => /^\d{4}_.+\.sql$/.test(n)).sort();
   for (const file of files) {
     const sqlText = await readFile(join(MIGRATIONS_DIR, file), 'utf8');
     await sql.unsafe(sqlText);
@@ -124,7 +124,12 @@ describe('apps/api-cloud — Day 11 health + observability', () => {
   it('GET /health returns 200 with ok=true and db=up', async () => {
     const res = await app.inject({ method: 'GET', url: '/health' });
     expect(res.statusCode).toBe(200);
-    const body = res.json() as { ok: boolean; db: 'up' | 'down'; version: string; timestamp: string };
+    const body = res.json() as {
+      ok: boolean;
+      db: 'up' | 'down';
+      version: string;
+      timestamp: string;
+    };
     expect(body.ok).toBe(true);
     expect(body.db).toBe('up');
     expect(body.version).toMatch(/^\d+\.\d+\.\d+/);

@@ -23,17 +23,17 @@
  *   ✓ mTLS gate: missing device header → 403 DEVICE_NOT_AUTHORIZED
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { readFile, readdir } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
+import { readFile, readdir } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import postgres, { type Sql } from 'postgres';
-import { drizzle } from 'drizzle-orm/postgres-js';
-import * as schema from '@warehouse14/db/schema';
 import type { AppDb } from '@warehouse14/db/client';
+import * as schema from '@warehouse14/db/schema';
+import { drizzle } from 'drizzle-orm/postgres-js';
 import type { FastifyInstance } from 'fastify';
+import postgres, { type Sql } from 'postgres';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildApp } from '../../src/app.js';
 import type { Env } from '../../src/config/env.js';
@@ -53,9 +53,7 @@ const INITDB_SQL = `
 `;
 
 async function applyAll(sqlClient: Sql): Promise<void> {
-  const files = (await readdir(MIGRATIONS_DIR))
-    .filter((n) => /^\d{4}_.+\.sql$/.test(n))
-    .sort();
+  const files = (await readdir(MIGRATIONS_DIR)).filter((n) => /^\d{4}_.+\.sql$/.test(n)).sort();
   for (const f of files) await sqlClient.unsafe(await readFile(join(MIGRATIONS_DIR, f), 'utf8'));
 }
 
@@ -248,7 +246,7 @@ describe('POST /api/transactions/finalize — Day 13 vital artery', () => {
     // For the test we accept any consistent triple; pre-compute by hand.
     const totalNum = Number.parseFloat(total);
     const margin = totalNum - 50;
-    const vat = Math.round((margin * 19) / 119 * 100) / 100;
+    const vat = Math.round(((margin * 19) / 119) * 100) / 100;
     const subtotal = Math.round((totalNum - vat) * 100) / 100;
 
     return {
@@ -258,21 +256,25 @@ describe('POST /api/transactions/finalize — Day 13 vital artery', () => {
       vatEur: vat.toFixed(2),
       totalEur: totalNum.toFixed(2),
       taxTreatmentCode: 'MARGIN_25A',
-      items: [{
-        productId,
-        reservationSessionId: opts.reservationSessionId,
-        lineSubtotalEur: subtotal.toFixed(2),
-        lineVatEur: vat.toFixed(2),
-        lineTotalEur: totalNum.toFixed(2),
-        appliedTaxTreatmentCode: 'MARGIN_25A',
-        appliedVatRate: null,
-        acquisitionCostEurSnapshot: '50.00',
-        marginEur: margin.toFixed(2),
-      }],
-      payments: [{
-        paymentMethod: 'CASH',
-        amountEur: totalNum.toFixed(2),
-      }],
+      items: [
+        {
+          productId,
+          reservationSessionId: opts.reservationSessionId,
+          lineSubtotalEur: subtotal.toFixed(2),
+          lineVatEur: vat.toFixed(2),
+          lineTotalEur: totalNum.toFixed(2),
+          appliedTaxTreatmentCode: 'MARGIN_25A',
+          appliedVatRate: null,
+          acquisitionCostEurSnapshot: '50.00',
+          marginEur: margin.toFixed(2),
+        },
+      ],
+      payments: [
+        {
+          paymentMethod: 'CASH',
+          amountEur: totalNum.toFixed(2),
+        },
+      ],
     };
   }
 
@@ -307,8 +309,13 @@ describe('POST /api/transactions/finalize — Day 13 vital artery', () => {
     const res = await postFinalize(body);
     expect(res.statusCode).toBe(200);
     const out = res.json() as {
-      id: string; receiptLocator: string; finalizedAt: string;
-      ledgerEventId: number; direction: string; totalEur: string; storno: boolean;
+      id: string;
+      receiptLocator: string;
+      finalizedAt: string;
+      ledgerEventId: number;
+      direction: string;
+      totalEur: string;
+      storno: boolean;
     };
     expect(out.direction).toBe('VERKAUF');
     expect(out.totalEur).toBe('150.00');
@@ -339,7 +346,7 @@ describe('POST /api/transactions/finalize — Day 13 vital artery', () => {
 
   it('all-or-nothing: wrong reservation_session_id rolls back EVERYTHING', async () => {
     await reserveProduct(cashierUserId); // valid reservation exists, but…
-    const wrongSession = randomUUID();    // …caller sends a different one.
+    const wrongSession = randomUUID(); // …caller sends a different one.
     const body = buildBody({ reservationSessionId: wrongSession });
 
     const res = await postFinalize(body);
@@ -354,7 +361,7 @@ describe('POST /api/transactions/finalize — Day 13 vital artery', () => {
     // No transactions row.
     const [{ count }] = await migratorSql<{ count: string }[]>`
       SELECT COUNT(*)::text AS count FROM transactions WHERE cashier_user_id = ${cashierUserId}`;
-    expect(parseInt(count, 10)).toBe(0);
+    expect(Number.parseInt(count, 10)).toBe(0);
 
     // Customer cumulative still zero.
     const [c] = await migratorSql<{ cumulative_spend_eur: string }[]>`
@@ -384,7 +391,11 @@ describe('POST /api/transactions/finalize — Day 13 vital artery', () => {
 
   it('ANKAUF without customerId is rejected (mig 0013 C-1)', async () => {
     const sessionId = await reserveProduct(cashierUserId);
-    const body = buildBody({ reservationSessionId: sessionId, direction: 'ANKAUF', customerId: null });
+    const body = buildBody({
+      reservationSessionId: sessionId,
+      direction: 'ANKAUF',
+      customerId: null,
+    });
 
     const res = await postFinalize(body);
     // The DB CHECK fires inside the transaction; the error-handler maps the

@@ -11,7 +11,7 @@
  * connection returns to the pool with no `warehouse14.pii_key` set.
  */
 
-import { Type, type Static } from '@sinclair/typebox';
+import { type Static, Type } from '@sinclair/typebox';
 
 import { DecimalString } from './money.js';
 
@@ -37,6 +37,7 @@ export const CreateCustomerBody = Type.Object({
   address: Type.Optional(Type.String({ maxLength: 1024 })),
   notes: Type.Optional(Type.String({ maxLength: 4096 })),
   preferredLanguage: Type.Optional(Iso2Lang),
+  vatId: Type.Optional(Type.String({ minLength: 4, maxLength: 32 })),
   customerTags: Type.Optional(Type.Array(Type.String({ maxLength: 32 }), { maxItems: 32 })),
   /** Years to retain post-last-activity (GDPR Art. 5). Defaults to 5y. */
   retentionYears: Type.Optional(Type.Integer({ minimum: 1, maximum: 30, default: 5 })),
@@ -60,17 +61,12 @@ export type CreateCustomerResponse = Static<typeof CreateCustomerResponse>;
 
 export const UpdateCustomerBody = Type.Object({
   fullName: Type.Optional(Type.String({ minLength: 1, maxLength: 256 })),
-  dateOfBirth: Type.Optional(
-    Type.Union([Type.String({ format: 'date' }), Type.Null()]),
-  ),
-  email: Type.Optional(
-    Type.Union([Type.String({ format: 'email', maxLength: 320 }), Type.Null()]),
-  ),
-  phone: Type.Optional(
-    Type.Union([Type.String({ minLength: 4, maxLength: 32 }), Type.Null()]),
-  ),
+  dateOfBirth: Type.Optional(Type.Union([Type.String({ format: 'date' }), Type.Null()])),
+  email: Type.Optional(Type.Union([Type.String({ format: 'email', maxLength: 320 }), Type.Null()])),
+  phone: Type.Optional(Type.Union([Type.String({ minLength: 4, maxLength: 32 }), Type.Null()])),
   address: Type.Optional(Type.Union([Type.String({ maxLength: 1024 }), Type.Null()])),
   notes: Type.Optional(Type.Union([Type.String({ maxLength: 4096 }), Type.Null()])),
+  vatId: Type.Optional(Type.Union([Type.String({ minLength: 4, maxLength: 32 }), Type.Null()])),
   preferredLanguage: Type.Optional(Iso2Lang),
   customerTags: Type.Optional(Type.Array(Type.String({ maxLength: 32 }), { maxItems: 32 })),
 });
@@ -106,6 +102,7 @@ export const CustomerDetailResponse = Type.Object({
   phone: Type.Union([Type.String(), Type.Null()]),
   address: Type.Union([Type.String(), Type.Null()]),
   notes: Type.Union([Type.String(), Type.Null()]),
+  vatId: Type.Union([Type.String(), Type.Null()]),
   preferredLanguage: Iso2Lang,
   customerTags: Type.Array(Type.String()),
   kycStatus: KycStatus,

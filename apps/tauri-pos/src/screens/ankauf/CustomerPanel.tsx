@@ -18,15 +18,15 @@
  * client prevents the operator from wasting effort.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   ApiError,
-  customersApi,
   type CustomerCreateBody,
   type CustomerDetail,
   type CustomerListRow,
+  customersApi,
 } from '@warehouse14/api-client';
 import {
   Button,
@@ -37,10 +37,7 @@ import {
 } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
-import {
-  useAnkaufCartStore,
-  selectAnkaufCustomerId,
-} from '../../state/ankauf-cart-store.js';
+import { selectAnkaufCustomerId, useAnkaufCartStore } from '../../state/ankauf-cart-store.js';
 import { useToastStore } from '../../state/toast-store.js';
 
 type Mode = 'SEARCH' | 'CREATE';
@@ -50,18 +47,9 @@ export function CustomerPanel(): JSX.Element {
   const setCustomerId = useAnkaufCartStore((s) => s.setCustomerId);
 
   if (customerId === null) {
-    return (
-      <SearchOrCreate
-        onSelect={(id) => setCustomerId(id)}
-      />
-    );
+    return <SearchOrCreate onSelect={(id) => setCustomerId(id)} />;
   }
-  return (
-    <SelectedCustomer
-      customerId={customerId}
-      onClear={() => setCustomerId(null)}
-    />
-  );
+  return <SelectedCustomer customerId={customerId} onClear={() => setCustomerId(null)} />;
 }
 
 // ────────────────────────────────────────────────────────────────────────
@@ -85,10 +73,20 @@ function SearchOrCreate({ onSelect }: { onSelect: (id: string) => void }): JSX.E
       }}
     >
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <h2 style={{ margin: 0, fontFamily: 'var(--w14-font-display)', fontWeight: 500, fontSize: '1.4rem' }}>
+        <h2
+          style={{
+            margin: 0,
+            fontFamily: 'var(--w14-font-display)',
+            fontWeight: 500,
+            fontSize: '1.4rem',
+          }}
+        >
           Verkäufer
         </h2>
-        <span className="w14-smallcaps" style={{ color: 'var(--w14-ink-faded)', fontSize: '0.78rem' }}>
+        <span
+          className="w14-smallcaps"
+          style={{ color: 'var(--w14-ink-faded)', fontSize: '0.78rem' }}
+        >
           {mode === 'SEARCH' ? 'suchen oder anlegen' : 'neue Person'}
         </span>
       </header>
@@ -168,21 +166,35 @@ function SearchMode({
           }}
         />
         {q.isFetching && (
-          <span style={{ fontFamily: 'var(--w14-font-display)', fontStyle: 'italic', fontSize: '0.78rem', color: 'var(--w14-ink-faded)' }}>
+          <span
+            style={{
+              fontFamily: 'var(--w14-font-display)',
+              fontStyle: 'italic',
+              fontSize: '0.78rem',
+              color: 'var(--w14-ink-faded)',
+            }}
+          >
             sucht…
           </span>
         )}
       </div>
 
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+        }}
+      >
         {debouncedQ.length === 0 ? (
           <EmptyHint />
         ) : items.length === 0 && !q.isFetching ? (
           <NoResults onSwitchToCreate={onSwitchToCreate} />
         ) : (
-          items.map((row) => (
-            <CustomerResultRow key={row.id} row={row} onSelect={onSelect} />
-          ))
+          items.map((row) => <CustomerResultRow key={row.id} row={row} onSelect={onSelect} />)
         )}
       </div>
 
@@ -196,8 +208,18 @@ function SearchMode({
 function EmptyHint(): JSX.Element {
   return (
     <div style={{ padding: 24, textAlign: 'center' }}>
-      <p style={{ margin: 0, color: 'var(--w14-ink-faded)', fontFamily: 'var(--w14-font-display)', fontStyle: 'italic', fontSize: '0.92rem' }}>
-        Geben Sie Name oder Kontakt ein,<br />um den Verkäufer zu finden.
+      <p
+        style={{
+          margin: 0,
+          color: 'var(--w14-ink-faded)',
+          fontFamily: 'var(--w14-font-display)',
+          fontStyle: 'italic',
+          fontSize: '0.92rem',
+        }}
+      >
+        Geben Sie Name oder Kontakt ein,
+        <br />
+        um den Verkäufer zu finden.
       </p>
     </div>
   );
@@ -206,7 +228,14 @@ function EmptyHint(): JSX.Element {
 function NoResults({ onSwitchToCreate }: { onSwitchToCreate: () => void }): JSX.Element {
   return (
     <ParchmentCard padding="md" style={{ textAlign: 'center' }}>
-      <p style={{ margin: '0 0 10px', color: 'var(--w14-ink-faded)', fontFamily: 'var(--w14-font-display)', fontStyle: 'italic' }}>
+      <p
+        style={{
+          margin: '0 0 10px',
+          color: 'var(--w14-ink-faded)',
+          fontFamily: 'var(--w14-font-display)',
+          fontStyle: 'italic',
+        }}
+      >
         Kein Treffer.
       </p>
       <Button variant="primary" size="sm" onClick={onSwitchToCreate}>
@@ -236,18 +265,52 @@ function CustomerResultRow({
         if (!banned) onSelect(row.id);
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'baseline',
+          gap: 10,
+        }}
+      >
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontFamily: 'var(--w14-font-display)', fontWeight: 500, fontSize: '1rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <div
+            style={{
+              fontFamily: 'var(--w14-font-display)',
+              fontWeight: 500,
+              fontSize: '1rem',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
             {row.fullName}
           </div>
-          <div className="w14-tabular" style={{ fontFamily: 'var(--w14-font-mono)', fontSize: '0.78rem', color: 'var(--w14-ink-faded)' }}>
+          <div
+            className="w14-tabular"
+            style={{
+              fontFamily: 'var(--w14-font-mono)',
+              fontSize: '0.78rem',
+              color: 'var(--w14-ink-faded)',
+            }}
+          >
             {row.customerNumber}
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-          <KycChip kyc={row.kycVerifiedAt !== null} trust={row.trustLevel} sanctions={row.sanctionsMatch} />
-          <span className="w14-tabular" style={{ fontFamily: 'var(--w14-font-mono)', fontSize: '0.72rem', color: 'var(--w14-ink-faded)' }}>
+          <KycChip
+            kyc={row.kycVerifiedAt !== null}
+            trust={row.trustLevel}
+            sanctions={row.sanctionsMatch}
+          />
+          <span
+            className="w14-tabular"
+            style={{
+              fontFamily: 'var(--w14-font-mono)',
+              fontSize: '0.72rem',
+              color: 'var(--w14-ink-faded)',
+            }}
+          >
             Ank. <MoneyAmount valueEur={row.cumulativeAnkaufEur} />
           </span>
         </div>
@@ -267,34 +330,49 @@ function KycChip({
 }): JSX.Element {
   if (sanctions) {
     return (
-      <span className="w14-smallcaps" style={{ fontSize: '0.72rem', color: 'var(--w14-wax-red)', letterSpacing: '0.08em' }}>
+      <span
+        className="w14-smallcaps"
+        style={{ fontSize: '0.72rem', color: 'var(--w14-wax-red)', letterSpacing: '0.08em' }}
+      >
         Sanktioniert
       </span>
     );
   }
   if (trust === 'BANNED') {
     return (
-      <span className="w14-smallcaps" style={{ fontSize: '0.72rem', color: 'var(--w14-wax-red)', letterSpacing: '0.08em' }}>
+      <span
+        className="w14-smallcaps"
+        style={{ fontSize: '0.72rem', color: 'var(--w14-wax-red)', letterSpacing: '0.08em' }}
+      >
         gesperrt
       </span>
     );
   }
   if (trust === 'SUSPICIOUS') {
     return (
-      <span className="w14-smallcaps" style={{ fontSize: '0.72rem', color: 'var(--w14-wax-red)', letterSpacing: '0.08em' }}>
+      <span
+        className="w14-smallcaps"
+        style={{ fontSize: '0.72rem', color: 'var(--w14-wax-red)', letterSpacing: '0.08em' }}
+      >
         beobachten
       </span>
     );
   }
   if (kyc) {
     return (
-      <span className="w14-smallcaps" style={{ fontSize: '0.72rem', color: 'var(--w14-gold)', letterSpacing: '0.08em' }}>
+      <span
+        className="w14-smallcaps"
+        style={{ fontSize: '0.72rem', color: 'var(--w14-gold)', letterSpacing: '0.08em' }}
+      >
         KYC ✓
       </span>
     );
   }
   return (
-    <span className="w14-smallcaps" style={{ fontSize: '0.72rem', color: 'var(--w14-ink-faded)', letterSpacing: '0.08em' }}>
+    <span
+      className="w14-smallcaps"
+      style={{ fontSize: '0.72rem', color: 'var(--w14-ink-faded)', letterSpacing: '0.08em' }}
+    >
       ohne KYC
     </span>
   );
@@ -334,7 +412,14 @@ function SelectedCustomer({
       }}
     >
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <h2 style={{ margin: 0, fontFamily: 'var(--w14-font-display)', fontWeight: 500, fontSize: '1.4rem' }}>
+        <h2
+          style={{
+            margin: 0,
+            fontFamily: 'var(--w14-font-display)',
+            fontWeight: 500,
+            fontSize: '1.4rem',
+          }}
+        >
           Verkäufer
         </h2>
         <button
@@ -372,7 +457,14 @@ function SelectedCustomer({
 function SkeletonCard(): JSX.Element {
   return (
     <ParchmentCard padding="md">
-      <p style={{ margin: 0, color: 'var(--w14-ink-faded)', fontFamily: 'var(--w14-font-display)', fontStyle: 'italic' }}>
+      <p
+        style={{
+          margin: 0,
+          color: 'var(--w14-ink-faded)',
+          fontFamily: 'var(--w14-font-display)',
+          fontStyle: 'italic',
+        }}
+      >
         Lädt Verkäufer…
       </p>
     </ParchmentCard>
@@ -389,10 +481,26 @@ function CustomerCard({ detail }: { detail: CustomerDetail }): JSX.Element {
           padding="md"
           style={{ border: '2px solid var(--w14-wax-red)', background: 'var(--w14-parchment-3)' }}
         >
-          <p style={{ margin: 0, color: 'var(--w14-wax-red)', fontFamily: 'var(--w14-font-display)', fontWeight: 500, fontSize: '1rem' }}>
+          <p
+            style={{
+              margin: 0,
+              color: 'var(--w14-wax-red)',
+              fontFamily: 'var(--w14-font-display)',
+              fontWeight: 500,
+              fontSize: '1rem',
+            }}
+          >
             Geschäft mit diesem Kunden nicht zulässig.
           </p>
-          <p style={{ margin: '6px 0 0', color: 'var(--w14-ink-faded)', fontFamily: 'var(--w14-font-display)', fontStyle: 'italic', fontSize: '0.85rem' }}>
+          <p
+            style={{
+              margin: '6px 0 0',
+              color: 'var(--w14-ink-faded)',
+              fontFamily: 'var(--w14-font-display)',
+              fontStyle: 'italic',
+              fontSize: '0.85rem',
+            }}
+          >
             {detail.sanctionsMatch
               ? 'Sanktionslisten-Treffer — Verstoß gegen EU-Verordnung.'
               : 'Kunde ist gesperrt — siehe Notizen.'}
@@ -402,13 +510,39 @@ function CustomerCard({ detail }: { detail: CustomerDetail }): JSX.Element {
 
       <ParchmentCard padding="md">
         <DiamondRule />
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 8 }}>
-          <h3 style={{ margin: 0, fontFamily: 'var(--w14-font-display)', fontWeight: 500, fontSize: '1.15rem' }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'baseline',
+            marginTop: 8,
+          }}
+        >
+          <h3
+            style={{
+              margin: 0,
+              fontFamily: 'var(--w14-font-display)',
+              fontWeight: 500,
+              fontSize: '1.15rem',
+            }}
+          >
             {detail.fullName}
           </h3>
-          <KycChip kyc={detail.kycVerifiedAt !== null} trust={detail.trustLevel} sanctions={detail.sanctionsMatch} />
+          <KycChip
+            kyc={detail.kycVerifiedAt !== null}
+            trust={detail.trustLevel}
+            sanctions={detail.sanctionsMatch}
+          />
         </div>
-        <p className="w14-tabular" style={{ margin: '4px 0 8px', fontFamily: 'var(--w14-font-mono)', fontSize: '0.78rem', color: 'var(--w14-ink-faded)' }}>
+        <p
+          className="w14-tabular"
+          style={{
+            margin: '4px 0 8px',
+            fontFamily: 'var(--w14-font-mono)',
+            fontSize: '0.78rem',
+            color: 'var(--w14-ink-faded)',
+          }}
+        >
           {detail.customerNumber}
         </p>
 
@@ -419,13 +553,19 @@ function CustomerCard({ detail }: { detail: CustomerDetail }): JSX.Element {
 
         <DiamondRule label="Bisher" />
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
-          <span className="w14-smallcaps" style={{ color: 'var(--w14-ink-faded)', fontSize: '0.78rem' }}>
+          <span
+            className="w14-smallcaps"
+            style={{ color: 'var(--w14-ink-faded)', fontSize: '0.78rem' }}
+          >
             Ankäufe
           </span>
           <MoneyAmount valueEur={detail.cumulativeAnkaufEur} />
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginTop: 4 }}>
-          <span className="w14-smallcaps" style={{ color: 'var(--w14-ink-faded)', fontSize: '0.78rem' }}>
+          <span
+            className="w14-smallcaps"
+            style={{ color: 'var(--w14-ink-faded)', fontSize: '0.78rem' }}
+          >
             Verkäufe an
           </span>
           <MoneyAmount valueEur={detail.cumulativeSpendEur} />
@@ -435,7 +575,11 @@ function CustomerCard({ detail }: { detail: CustomerDetail }): JSX.Element {
   );
 }
 
-function Row({ label, value, multiline = false }: { label: string; value: string; multiline?: boolean }): JSX.Element {
+function Row({
+  label,
+  value,
+  multiline = false,
+}: { label: string; value: string; multiline?: boolean }): JSX.Element {
   return (
     <div
       style={{
@@ -446,10 +590,22 @@ function Row({ label, value, multiline = false }: { label: string; value: string
         alignItems: multiline ? 'start' : 'baseline',
       }}
     >
-      <span className="w14-smallcaps" style={{ color: 'var(--w14-ink-faded)', fontSize: '0.78rem', letterSpacing: '0.08em' }}>
+      <span
+        className="w14-smallcaps"
+        style={{ color: 'var(--w14-ink-faded)', fontSize: '0.78rem', letterSpacing: '0.08em' }}
+      >
         {label}
       </span>
-      <span style={{ fontFamily: multiline ? 'var(--w14-font-body)' : 'var(--w14-font-mono)', fontSize: '0.92rem', textAlign: 'right', whiteSpace: multiline ? 'pre-wrap' : 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+      <span
+        style={{
+          fontFamily: multiline ? 'var(--w14-font-body)' : 'var(--w14-font-mono)',
+          fontSize: '0.92rem',
+          textAlign: 'right',
+          whiteSpace: multiline ? 'pre-wrap' : 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}
+      >
         {value}
       </span>
     </div>
@@ -508,7 +664,13 @@ function CreateMode({
   return (
     <>
       <ParchmentCard padding="md" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <Field label="Vollständiger Name" value={fullName} onChange={setFullName} autoFocus required />
+        <Field
+          label="Vollständiger Name"
+          value={fullName}
+          onChange={setFullName}
+          autoFocus
+          required
+        />
         <Field label="Geburtsdatum (TT.MM.JJJJ)" value={dateOfBirth} onChange={setDateOfBirth} />
         <Field label="E-Mail" value={email} onChange={setEmail} type="email" />
         <Field label="Telefon" value={phone} onChange={setPhone} />
@@ -516,7 +678,15 @@ function CreateMode({
       </ParchmentCard>
 
       {error && (
-        <p role="alert" style={{ color: 'var(--w14-wax-red)', margin: 0, fontSize: '0.92rem', textAlign: 'center' }}>
+        <p
+          role="alert"
+          style={{
+            color: 'var(--w14-wax-red)',
+            margin: 0,
+            fontSize: '0.92rem',
+            textAlign: 'center',
+          }}
+        >
           {error}
         </p>
       )}
@@ -552,7 +722,10 @@ function Field({
 }): JSX.Element {
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <span className="w14-smallcaps" style={{ color: 'var(--w14-ink-faded)', fontSize: '0.78rem', letterSpacing: '0.08em' }}>
+      <span
+        className="w14-smallcaps"
+        style={{ color: 'var(--w14-ink-faded)', fontSize: '0.78rem', letterSpacing: '0.08em' }}
+      >
         {label}
         {required && <span style={{ color: 'var(--w14-wax-red)' }}> *</span>}
       </span>

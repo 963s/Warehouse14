@@ -11,7 +11,7 @@
  * objects older than N days for cleanup.
  */
 
-import { Type, type Static } from '@sinclair/typebox';
+import { type Static, Type } from '@sinclair/typebox';
 
 export const PhotoUploadUrlBody = Type.Object({
   contentType: Type.Union([

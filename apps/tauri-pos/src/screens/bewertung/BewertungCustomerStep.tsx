@@ -10,17 +10,11 @@
  * coordinator's phase machine flips to the workspace.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { customersApi, type CustomerListRow } from '@warehouse14/api-client';
-import {
-  Button,
-  DiamondRule,
-  MagnifierIcon,
-  ParchmentCard,
-  Seal,
-} from '@warehouse14/ui-kit';
+import { type CustomerListRow, customersApi } from '@warehouse14/api-client';
+import { Button, DiamondRule, MagnifierIcon, ParchmentCard, Seal } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
 
@@ -140,12 +134,29 @@ export function BewertungCustomerStep({
                 }}
               />
             </div>
-            <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 320, overflowY: 'auto' }}>
+            <div
+              style={{
+                marginTop: 12,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8,
+                maxHeight: 320,
+                overflowY: 'auto',
+              }}
+            >
               {items.map((row) => (
                 <CustomerRow key={row.id} row={row} onSelect={() => onPickCustomer(row.id)} />
               ))}
               {debouncedQ.length > 0 && items.length === 0 && !q.isFetching && (
-                <p style={{ margin: 0, textAlign: 'center', color: 'var(--w14-ink-faded)', fontFamily: 'var(--w14-font-display)', fontStyle: 'italic' }}>
+                <p
+                  style={{
+                    margin: 0,
+                    textAlign: 'center',
+                    color: 'var(--w14-ink-faded)',
+                    fontFamily: 'var(--w14-font-display)',
+                    fontStyle: 'italic',
+                  }}
+                >
                   Kein Treffer. Bitte zuerst Kunde im Tab „Kunden“ anlegen.
                 </p>
               )}
@@ -165,19 +176,38 @@ export function BewertungCustomerStep({
   );
 }
 
-function CustomerRow({ row, onSelect }: { row: CustomerListRow; onSelect: () => void }): JSX.Element {
+function CustomerRow({
+  row,
+  onSelect,
+}: { row: CustomerListRow; onSelect: () => void }): JSX.Element {
   return (
     <ParchmentCard
       padding="sm"
       onClick={onSelect}
       style={{ cursor: 'pointer', background: 'var(--w14-parchment-2)' }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'baseline',
+          gap: 10,
+        }}
+      >
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontFamily: 'var(--w14-font-display)', fontWeight: 500, fontSize: '0.96rem' }}>
+          <div
+            style={{ fontFamily: 'var(--w14-font-display)', fontWeight: 500, fontSize: '0.96rem' }}
+          >
             {row.fullName}
           </div>
-          <div className="w14-tabular" style={{ fontFamily: 'var(--w14-font-mono)', fontSize: '0.74rem', color: 'var(--w14-ink-faded)' }}>
+          <div
+            className="w14-tabular"
+            style={{
+              fontFamily: 'var(--w14-font-mono)',
+              fontSize: '0.74rem',
+              color: 'var(--w14-ink-faded)',
+            }}
+          >
             {row.customerNumber}
           </div>
         </div>
@@ -215,12 +245,34 @@ function SelectedCustomerCard({
         <p style={{ margin: 0, color: 'var(--w14-ink-faded)', fontStyle: 'italic' }}>Lädt…</p>
       ) : (
         <>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'baseline',
+              gap: 12,
+            }}
+          >
             <div style={{ minWidth: 0 }}>
-              <h3 style={{ margin: 0, fontFamily: 'var(--w14-font-display)', fontWeight: 500, fontSize: '1.15rem' }}>
+              <h3
+                style={{
+                  margin: 0,
+                  fontFamily: 'var(--w14-font-display)',
+                  fontWeight: 500,
+                  fontSize: '1.15rem',
+                }}
+              >
                 {detail.fullName}
               </h3>
-              <p className="w14-tabular" style={{ margin: '4px 0 0', fontFamily: 'var(--w14-font-mono)', fontSize: '0.78rem', color: 'var(--w14-ink-faded)' }}>
+              <p
+                className="w14-tabular"
+                style={{
+                  margin: '4px 0 0',
+                  fontFamily: 'var(--w14-font-mono)',
+                  fontSize: '0.78rem',
+                  color: 'var(--w14-ink-faded)',
+                }}
+              >
                 {detail.customerNumber}
               </p>
             </div>

@@ -11,10 +11,15 @@
  *   • app role grants — narrow column UPDATEs
  */
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import postgres, { type Sql } from 'postgres';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { applyMigrations, setAppPasswordForTest, startTestDb, type TestDb } from '../helpers/testDb.js';
+import {
+  type TestDb,
+  applyMigrations,
+  setAppPasswordForTest,
+  startTestDb,
+} from '../helpers/testDb.js';
 
 const PII_KEY = 'test-pii-key-do-not-use-in-production-32b';
 
@@ -127,12 +132,14 @@ describe('migration 0020_konvolut_appraisals_lagerort', () => {
                location_position = 'Position-12',
                location_assigned_at = now()
          WHERE id = ${id}`;
-      const [row] = await migratorSql<{
-        location_storage_unit: string;
-        location_drawer: string;
-        location_position: string;
-        location_assigned_at: Date;
-      }[]>`SELECT location_storage_unit, location_drawer, location_position, location_assigned_at
+      const [row] = await migratorSql<
+        {
+          location_storage_unit: string;
+          location_drawer: string;
+          location_position: string;
+          location_assigned_at: Date;
+        }[]
+      >`SELECT location_storage_unit, location_drawer, location_position, location_assigned_at
              FROM products WHERE id = ${id}`;
       expect(row!.location_storage_unit).toBe('Tresor-1');
       expect(row!.location_drawer).toBe('Fach-3');
@@ -165,7 +172,11 @@ describe('migration 0020_konvolut_appraisals_lagerort', () => {
         SELECT enumlabel FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
          WHERE t.typname = 'appraisal_status' ORDER BY enumsortorder`;
       expect(rows.map((r) => r.enumlabel)).toEqual([
-        'DRAFT', 'COMPLETED', 'ACCEPTED', 'REJECTED', 'EXPIRED',
+        'DRAFT',
+        'COMPLETED',
+        'ACCEPTED',
+        'REJECTED',
+        'EXPIRED',
       ]);
     });
 

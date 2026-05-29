@@ -11,8 +11,19 @@
  * `verify_ledger_chain()` SQL function exposed by the same package.
  */
 
-import { bigserial, check, customType, index, inet, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import {
+  bigserial,
+  check,
+  customType,
+  index,
+  inet,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from 'drizzle-orm/pg-core';
 
 import { devices } from '../auth/devices.js';
 import { users } from '../auth/users.js';
@@ -44,15 +55,21 @@ export const ledgerEvents = pgTable(
 
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  table => ({
+  (table) => ({
     entityIdx: index('ledger_events_entity_idx').on(table.entityTable, table.entityId),
     eventTypeIdx: index('ledger_events_event_type_idx').on(table.eventType, table.id.desc()),
     actorIdx: index('ledger_events_actor_idx')
       .on(table.actorUserId, table.id.desc())
       .where(sql`${table.actorUserId} IS NOT NULL`),
-    prevHashLength: check('ledger_events_prev_hash_length', sql`octet_length(${table.prevHash}) = 32`),
+    prevHashLength: check(
+      'ledger_events_prev_hash_length',
+      sql`octet_length(${table.prevHash}) = 32`,
+    ),
     rowHashLength: check('ledger_events_row_hash_length', sql`octet_length(${table.rowHash}) = 32`),
-    payloadObject: check('ledger_events_payload_object', sql`jsonb_typeof(${table.payload}) = 'object'`),
+    payloadObject: check(
+      'ledger_events_payload_object',
+      sql`jsonb_typeof(${table.payload}) = 'object'`,
+    ),
   }),
 );
 

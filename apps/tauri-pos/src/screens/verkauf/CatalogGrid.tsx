@@ -10,13 +10,10 @@
  * 240 ms.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
-import {
-  productsApi,
-  type ProductListRow,
-} from '@warehouse14/api-client';
+import { type ProductListRow, productsApi } from '@warehouse14/api-client';
 import { MagnifierIcon, MoneyAmount, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';

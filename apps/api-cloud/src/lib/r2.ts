@@ -13,7 +13,7 @@
  * rather than discovering it silently months later.
  */
 
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 import type { Env } from '../config/env.js';
@@ -32,13 +32,13 @@ function getR2Client(env: Env): S3Client {
 
   const endpoint = `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`;
   const client = new S3Client({
-    region: 'auto',                  // R2 ignores the region; "auto" is the convention
+    region: 'auto', // R2 ignores the region; "auto" is the convention
     endpoint,
     credentials: {
       accessKeyId: env.R2_ACCESS_KEY_ID,
       secretAccessKey: env.R2_SECRET_ACCESS_KEY,
     },
-    forcePathStyle: true,            // R2 prefers path-style addressing
+    forcePathStyle: true, // R2 prefers path-style addressing
   });
   cachedClient = { client, key: cacheKey };
   return client;
@@ -106,13 +106,48 @@ export async function getPresignedPutUrl(
 }
 
 /**
+ * Server-side direct upload of bytes to R2 (used by the media engine to store
+ * generated marketing cards — the bytes are produced in-process, so there is no
+ * browser to presign for). Returns the public URL.
+ */
+export async function putObjectToR2(
+  env: Env,
+  key: string,
+  bytes: Buffer | Uint8Array,
+  contentType: string,
+): Promise<{ key: string; publicUrl: string }> {
+  const client = getR2Client(env);
+  await client.send(
+    new PutObjectCommand({
+      Bucket: env.R2_BUCKET,
+      Key: key,
+      Body: bytes,
+      ContentType: contentType,
+    }),
+  );
+  const publicUrl = env.R2_PUBLIC_URL_BASE
+    ? `${env.R2_PUBLIC_URL_BASE.replace(/\/$/, '')}/${key}`
+    : `https://${env.R2_BUCKET}.${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${key}`;
+  return { key, publicUrl };
+}
+
+/** Deterministic R2 key for a generated marketing card. */
+export function buildMarketingCardKey(productId: string, variant: string): string {
+  return `marketing-cards/${productId}/${variant}.webp`;
+}
+
+/**
  * Build a deterministic R2 key for a product photo.
  * Shape: `products/<productId>/photo-<photoId>.<ext>`.
  */
 export function buildPhotoKey(productId: string, photoId: string, mimeType: string): string {
-  const ext = mimeType === 'image/jpeg' ? 'jpg' :
-              mimeType === 'image/png'  ? 'png' :
-              mimeType === 'image/webp' ? 'webp' :
-              'bin';
+  const ext =
+    mimeType === 'image/jpeg'
+      ? 'jpg'
+      : mimeType === 'image/png'
+        ? 'png'
+        : mimeType === 'image/webp'
+          ? 'webp'
+          : 'bin';
   return `products/${productId}/photo-${photoId}.${ext}`;
 }

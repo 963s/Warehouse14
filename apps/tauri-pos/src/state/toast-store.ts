@@ -56,9 +56,10 @@ export const useToastStore = create<ToastState>((set, get) => ({
     // De-dupe by stable id — useful for "one toast per AML event row".
     if (id && get().ids.has(id)) return finalId;
     const ms = autoDismissMs === undefined ? DEFAULT_AUTO_DISMISS_MS[tone] : autoDismissMs;
-    const t: ToastShape = body !== undefined
-      ? { id: finalId, tone, title, body, autoDismissMs: ms }
-      : { id: finalId, tone, title, autoDismissMs: ms };
+    const t: ToastShape =
+      body !== undefined
+        ? { id: finalId, tone, title, body, autoDismissMs: ms }
+        : { id: finalId, tone, title, autoDismissMs: ms };
     set((s) => {
       const nextIds = new Set(s.ids);
       nextIds.add(finalId);

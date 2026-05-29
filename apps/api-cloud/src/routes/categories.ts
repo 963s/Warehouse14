@@ -25,15 +25,15 @@ import {
   productCategories as productCategoriesTable,
 } from '@warehouse14/db/schema';
 
-import { DomainError, type ApiErrorCode } from '../plugins/error-handler.js';
 import { requireAuth, requireRole } from '../lib/auth-policy.js';
+import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 import {
+  type CategoryNodeShape,
   CategoryTreeResponse,
   CreateCategoryBody,
-  UpdateCategoryBody,
-  type CategoryNodeShape,
   type TCreateCategoryBody,
   type TUpdateCategoryBody,
+  UpdateCategoryBody,
 } from '../schemas/category.js';
 
 class CategoryNotFoundError extends DomainError {
@@ -124,18 +124,21 @@ const categoriesRoutes: FastifyPluginAsync = async (app) => {
   // ════════════════════════════════════════════════════════════════════
   // GET /api/categories — hierarchical tree
   // ════════════════════════════════════════════════════════════════════
-  app.get('/api/categories', {
-    schema: {
-      tags: ['categories'],
-      summary: 'Hierarchical category tree with product counts.',
-      response: { 200: CategoryTreeResponse, 401: ErrorResponse, 403: ErrorResponse },
+  app.get(
+    '/api/categories',
+    {
+      schema: {
+        tags: ['categories'],
+        summary: 'Hierarchical category tree with product counts.',
+        response: { 200: CategoryTreeResponse, 401: ErrorResponse, 403: ErrorResponse },
+      },
     },
-  }, async (req, reply) => {
-    requireAuth(req);
-    requireRole(req, 'ADMIN', 'CASHIER');
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'ADMIN', 'CASHIER');
 
-    // Single query: categories + product-count via LEFT JOIN GROUP BY.
-    const rows = await app.db.execute<FlatCategoryRow>(sql`
+      // Single query: categories + product-count via LEFT JOIN GROUP BY.
+      const rows = await app.db.execute<FlatCategoryRow>(sql`
       SELECT
         c.id,
         c.parent_id,
@@ -159,203 +162,217 @@ const categoriesRoutes: FastifyPluginAsync = async (app) => {
       ORDER BY c.parent_id NULLS FIRST, c.display_order, c.name_de
     `);
 
-    const tree = composeTree(Array.from(rows));
-    return reply.status(200).send({ roots: tree });
-  });
+      const tree = composeTree(Array.from(rows));
+      return reply.status(200).send({ roots: tree });
+    },
+  );
 
   // ════════════════════════════════════════════════════════════════════
   // POST /api/categories — create
   // ════════════════════════════════════════════════════════════════════
-  app.post<{ Body: TCreateCategoryBody }>('/api/categories', {
-    schema: {
-      tags: ['categories'],
-      summary: 'Create a category (ADMIN). Hierarchy capped at 2 levels.',
-      body: CreateCategoryBody,
-      response: {
-        200: Type.Object({ id: Type.String({ format: 'uuid' }) }),
-        400: ErrorResponse,
-        401: ErrorResponse,
-        403: ErrorResponse,
-        409: ErrorResponse,
+  app.post<{ Body: TCreateCategoryBody }>(
+    '/api/categories',
+    {
+      schema: {
+        tags: ['categories'],
+        summary: 'Create a category (ADMIN). Hierarchy capped at 2 levels.',
+        body: CreateCategoryBody,
+        response: {
+          200: Type.Object({ id: Type.String({ format: 'uuid' }) }),
+          400: ErrorResponse,
+          401: ErrorResponse,
+          403: ErrorResponse,
+          409: ErrorResponse,
+        },
       },
     },
-  }, async (req, reply) => {
-    requireAuth(req);
-    requireRole(req, 'ADMIN');
-    const body = req.body;
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'ADMIN');
+      const body = req.body;
 
-    // Pre-check 2-level cap for a friendlier error (the DB trigger is the
-    // authoritative gate).
-    if (body.parentId) {
-      const [parent] = await app.db
-        .select({ parentId: categoriesTable.parentId })
-        .from(categoriesTable)
-        .where(eq(categoriesTable.id, body.parentId))
-        .limit(1);
-      if (!parent) {
-        throw new CategoryValidationError('parentId', 'Parent category not found.');
+      // Pre-check 2-level cap for a friendlier error (the DB trigger is the
+      // authoritative gate).
+      if (body.parentId) {
+        const [parent] = await app.db
+          .select({ parentId: categoriesTable.parentId })
+          .from(categoriesTable)
+          .where(eq(categoriesTable.id, body.parentId))
+          .limit(1);
+        if (!parent) {
+          throw new CategoryValidationError('parentId', 'Parent category not found.');
+        }
+        if (parent.parentId !== null) {
+          throw new CategoryValidationError(
+            'parentId',
+            'Hierarchy capped at 2 levels — cannot nest grandchildren.',
+          );
+        }
       }
-      if (parent.parentId !== null) {
-        throw new CategoryValidationError(
-          'parentId',
-          'Hierarchy capped at 2 levels — cannot nest grandchildren.',
-        );
-      }
-    }
 
-    try {
-      const [row] = await app.db
-        .insert(categoriesTable)
-        .values({
-          slug: body.slug,
-          nameDe: body.nameDe,
-          nameEn: body.nameEn ?? null,
-          descriptionDe: body.descriptionDe ?? null,
-          descriptionEn: body.descriptionEn ?? null,
-          schemaOrgType: body.schemaOrgType ?? null,
-          displayOrder: body.displayOrder ?? 0,
-          hiddenFromStorefront: body.hiddenFromStorefront ?? false,
-          parentId: body.parentId ?? null,
-        })
-        .returning({ id: categoriesTable.id });
-      if (!row) throw new Error('category INSERT returned no row');
-      return reply.status(200).send({ id: row.id });
-    } catch (err) {
-      // 23505 = unique_violation (slug already exists)
-      if (err instanceof Error && err.message.includes('categories_slug_uq')) {
-        throw new CategoryConflictError(`Slug "${body.slug}" already exists.`);
+      try {
+        const [row] = await app.db
+          .insert(categoriesTable)
+          .values({
+            slug: body.slug,
+            nameDe: body.nameDe,
+            nameEn: body.nameEn ?? null,
+            descriptionDe: body.descriptionDe ?? null,
+            descriptionEn: body.descriptionEn ?? null,
+            schemaOrgType: body.schemaOrgType ?? null,
+            displayOrder: body.displayOrder ?? 0,
+            hiddenFromStorefront: body.hiddenFromStorefront ?? false,
+            parentId: body.parentId ?? null,
+          })
+          .returning({ id: categoriesTable.id });
+        if (!row) throw new Error('category INSERT returned no row');
+        return reply.status(200).send({ id: row.id });
+      } catch (err) {
+        // 23505 = unique_violation (slug already exists)
+        if (err instanceof Error && err.message.includes('categories_slug_uq')) {
+          throw new CategoryConflictError(`Slug "${body.slug}" already exists.`);
+        }
+        throw err;
       }
-      throw err;
-    }
-  });
+    },
+  );
 
   // ════════════════════════════════════════════════════════════════════
   // PUT /api/categories/:id — update
   // ════════════════════════════════════════════════════════════════════
-  app.put<{ Params: { id: string }; Body: TUpdateCategoryBody }>('/api/categories/:id', {
-    schema: {
-      tags: ['categories'],
-      summary: 'Update a category (ADMIN).',
-      params: Type.Object({ id: Type.String({ format: 'uuid' }) }),
-      body: UpdateCategoryBody,
-      response: {
-        200: Type.Object({ id: Type.String({ format: 'uuid' }) }),
-        400: ErrorResponse,
-        401: ErrorResponse,
-        403: ErrorResponse,
-        404: ErrorResponse,
-        409: ErrorResponse,
+  app.put<{ Params: { id: string }; Body: TUpdateCategoryBody }>(
+    '/api/categories/:id',
+    {
+      schema: {
+        tags: ['categories'],
+        summary: 'Update a category (ADMIN).',
+        params: Type.Object({ id: Type.String({ format: 'uuid' }) }),
+        body: UpdateCategoryBody,
+        response: {
+          200: Type.Object({ id: Type.String({ format: 'uuid' }) }),
+          400: ErrorResponse,
+          401: ErrorResponse,
+          403: ErrorResponse,
+          404: ErrorResponse,
+          409: ErrorResponse,
+        },
       },
     },
-  }, async (req, reply) => {
-    requireAuth(req);
-    requireRole(req, 'ADMIN');
-    const body = req.body;
-    const id = req.params.id;
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'ADMIN');
+      const body = req.body;
+      const id = req.params.id;
 
-    if (Object.keys(body).length === 0) {
-      throw new CategoryValidationError('body', 'At least one field is required.');
-    }
-
-    // Pre-check 2-level cap when parent_id changes.
-    if (body.parentId !== undefined && body.parentId !== null) {
-      if (body.parentId === id) {
-        throw new CategoryValidationError('parentId', 'A category cannot be its own parent.');
+      if (Object.keys(body).length === 0) {
+        throw new CategoryValidationError('body', 'At least one field is required.');
       }
-      const [parent] = await app.db
-        .select({ parentId: categoriesTable.parentId })
-        .from(categoriesTable)
-        .where(eq(categoriesTable.id, body.parentId))
-        .limit(1);
-      if (!parent) throw new CategoryValidationError('parentId', 'Parent category not found.');
-      if (parent.parentId !== null) {
-        throw new CategoryValidationError(
-          'parentId',
-          'Hierarchy capped at 2 levels — cannot nest grandchildren.',
-        );
-      }
-    }
 
-    const updates: Partial<typeof categoriesTable.$inferInsert> = {};
-    if (body.slug !== undefined) updates.slug = body.slug;
-    if (body.nameDe !== undefined) updates.nameDe = body.nameDe;
-    if (body.nameEn !== undefined) updates.nameEn = body.nameEn;
-    if (body.descriptionDe !== undefined) updates.descriptionDe = body.descriptionDe;
-    if (body.descriptionEn !== undefined) updates.descriptionEn = body.descriptionEn;
-    if (body.schemaOrgType !== undefined) updates.schemaOrgType = body.schemaOrgType;
-    if (body.displayOrder !== undefined) updates.displayOrder = body.displayOrder;
-    if (body.hiddenFromStorefront !== undefined) updates.hiddenFromStorefront = body.hiddenFromStorefront;
-    if (body.parentId !== undefined) updates.parentId = body.parentId;
-
-    try {
-      const result = await app.db
-        .update(categoriesTable)
-        .set(updates)
-        .where(eq(categoriesTable.id, id))
-        .returning({ id: categoriesTable.id });
-      const updated = result[0];
-      if (!updated) throw new CategoryNotFoundError(`Category ${id} not found.`);
-      return reply.status(200).send({ id: updated.id });
-    } catch (err) {
-      if (err instanceof Error && err.message.includes('categories_slug_uq')) {
-        throw new CategoryConflictError(`Slug "${body.slug}" already exists.`);
+      // Pre-check 2-level cap when parent_id changes.
+      if (body.parentId !== undefined && body.parentId !== null) {
+        if (body.parentId === id) {
+          throw new CategoryValidationError('parentId', 'A category cannot be its own parent.');
+        }
+        const [parent] = await app.db
+          .select({ parentId: categoriesTable.parentId })
+          .from(categoriesTable)
+          .where(eq(categoriesTable.id, body.parentId))
+          .limit(1);
+        if (!parent) throw new CategoryValidationError('parentId', 'Parent category not found.');
+        if (parent.parentId !== null) {
+          throw new CategoryValidationError(
+            'parentId',
+            'Hierarchy capped at 2 levels — cannot nest grandchildren.',
+          );
+        }
       }
-      throw err;
-    }
-  });
+
+      const updates: Partial<typeof categoriesTable.$inferInsert> = {};
+      if (body.slug !== undefined) updates.slug = body.slug;
+      if (body.nameDe !== undefined) updates.nameDe = body.nameDe;
+      if (body.nameEn !== undefined) updates.nameEn = body.nameEn;
+      if (body.descriptionDe !== undefined) updates.descriptionDe = body.descriptionDe;
+      if (body.descriptionEn !== undefined) updates.descriptionEn = body.descriptionEn;
+      if (body.schemaOrgType !== undefined) updates.schemaOrgType = body.schemaOrgType;
+      if (body.displayOrder !== undefined) updates.displayOrder = body.displayOrder;
+      if (body.hiddenFromStorefront !== undefined)
+        updates.hiddenFromStorefront = body.hiddenFromStorefront;
+      if (body.parentId !== undefined) updates.parentId = body.parentId;
+
+      try {
+        const result = await app.db
+          .update(categoriesTable)
+          .set(updates)
+          .where(eq(categoriesTable.id, id))
+          .returning({ id: categoriesTable.id });
+        const updated = result[0];
+        if (!updated) throw new CategoryNotFoundError(`Category ${id} not found.`);
+        return reply.status(200).send({ id: updated.id });
+      } catch (err) {
+        if (err instanceof Error && err.message.includes('categories_slug_uq')) {
+          throw new CategoryConflictError(`Slug "${body.slug}" already exists.`);
+        }
+        throw err;
+      }
+    },
+  );
 
   // ════════════════════════════════════════════════════════════════════
   // DELETE /api/categories/:id
   // ════════════════════════════════════════════════════════════════════
-  app.delete<{ Params: { id: string } }>('/api/categories/:id', {
-    schema: {
-      tags: ['categories'],
-      summary: 'Delete a category (ADMIN). Refuses when products reference it.',
-      params: Type.Object({ id: Type.String({ format: 'uuid' }) }),
-      response: {
-        204: Type.Null(),
-        401: ErrorResponse,
-        403: ErrorResponse,
-        404: ErrorResponse,
-        409: ErrorResponse,
+  app.delete<{ Params: { id: string } }>(
+    '/api/categories/:id',
+    {
+      schema: {
+        tags: ['categories'],
+        summary: 'Delete a category (ADMIN). Refuses when products reference it.',
+        params: Type.Object({ id: Type.String({ format: 'uuid' }) }),
+        response: {
+          204: Type.Null(),
+          401: ErrorResponse,
+          403: ErrorResponse,
+          404: ErrorResponse,
+          409: ErrorResponse,
+        },
       },
     },
-  }, async (req, reply) => {
-    requireAuth(req);
-    requireRole(req, 'ADMIN');
-    const id = req.params.id;
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'ADMIN');
+      const id = req.params.id;
 
-    // Friendly 409 if any product points at this category — beats raw 23503.
-    const [referenced] = await app.db
-      .select({ n: count() })
-      .from(productCategoriesTable)
-      .where(eq(productCategoriesTable.categoryId, id));
-    if (referenced && Number(referenced.n) > 0) {
-      throw new CategoryConflictError(
-        `Category ${id} is assigned to ${referenced.n} product(s). Unassign first.`,
-      );
-    }
+      // Friendly 409 if any product points at this category — beats raw 23503.
+      const [referenced] = await app.db
+        .select({ n: count() })
+        .from(productCategoriesTable)
+        .where(eq(productCategoriesTable.categoryId, id));
+      if (referenced && Number(referenced.n) > 0) {
+        throw new CategoryConflictError(
+          `Category ${id} is assigned to ${referenced.n} product(s). Unassign first.`,
+        );
+      }
 
-    // Also refuse if a child category exists (ON DELETE RESTRICT would
-    // throw 23503 — we surface friendlier).
-    const [childCount] = await app.db
-      .select({ n: count() })
-      .from(categoriesTable)
-      .where(eq(categoriesTable.parentId, id));
-    if (childCount && Number(childCount.n) > 0) {
-      throw new CategoryConflictError(
-        `Category ${id} has ${childCount.n} subcategory/-ies. Delete or re-parent first.`,
-      );
-    }
+      // Also refuse if a child category exists (ON DELETE RESTRICT would
+      // throw 23503 — we surface friendlier).
+      const [childCount] = await app.db
+        .select({ n: count() })
+        .from(categoriesTable)
+        .where(eq(categoriesTable.parentId, id));
+      if (childCount && Number(childCount.n) > 0) {
+        throw new CategoryConflictError(
+          `Category ${id} has ${childCount.n} subcategory/-ies. Delete or re-parent first.`,
+        );
+      }
 
-    const result = await app.db
-      .delete(categoriesTable)
-      .where(eq(categoriesTable.id, id))
-      .returning({ id: categoriesTable.id });
-    if (!result[0]) throw new CategoryNotFoundError(`Category ${id} not found.`);
+      const result = await app.db
+        .delete(categoriesTable)
+        .where(eq(categoriesTable.id, id))
+        .returning({ id: categoriesTable.id });
+      if (!result[0]) throw new CategoryNotFoundError(`Category ${id} not found.`);
 
-    return reply.status(204).send();
-  });
+      return reply.status(204).send();
+    },
+  );
 
   // Silence the unused isNull import in tree-only paths.
   void isNull;

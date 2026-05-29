@@ -31,10 +31,10 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { authPin } from '@warehouse14/api-client';
 import { ErrorBoundary, ToastContainer } from '@warehouse14/ui-kit';
 
-import { useApiClient } from '../../lib/api-context.js';
-import { useAlertSubscription } from '../../hooks/useAlertSubscription.js';
-import { releaseCart } from '../../lib/release-cart.js';
 import { UpdateBanner } from '../../components/UpdateBanner.js';
+import { useAlertSubscription } from '../../hooks/useAlertSubscription.js';
+import { useApiClient } from '../../lib/api-context.js';
+import { releaseCart } from '../../lib/release-cart.js';
 import { useAnkaufCartStore } from '../../state/ankauf-cart-store.js';
 import { useBewertungStore } from '../../state/bewertung-store.js';
 import { useCartStore } from '../../state/cart-store.js';
@@ -58,9 +58,9 @@ import { useToastStore } from '../../state/toast-store.js';
  * recovery (next boot) starts clean.
  */
 const PER_OPERATOR_STORAGE_KEYS = [
-  'w14.cart.v1',        // Verkauf cart (with reservationSessionIds)
-  'w14.ankauf.v1',      // Ankauf intake cart (customer context + items)
-  'w14.bewertung.v1',   // Appraisal selection (customer id + appraisal id)
+  'w14.cart.v1', // Verkauf cart (with reservationSessionIds)
+  'w14.ankauf.v1', // Ankauf intake cart (customer context + items)
+  'w14.bewertung.v1', // Appraisal selection (customer id + appraisal id)
   'warehouse14.tse-queue.v1', // pending TSE signatures queued offline
 ] as const;
 
@@ -68,10 +68,7 @@ import { AppShellHeader } from './AppShellHeader.js';
 import { Spotlight } from './Spotlight.js';
 import { StepUpModal } from './StepUpModal.js';
 import { SubBreadcrumb } from './SubBreadcrumb.js';
-import {
-  findSurfaceByPath,
-  SECONDARY_SURFACES,
-} from './surface-registry.js';
+import { SECONDARY_SURFACES, findSurfaceByPath } from './surface-registry.js';
 
 export function AppShell(): JSX.Element {
   const location = useLocation();
@@ -196,9 +193,7 @@ export function AppShell(): JSX.Element {
   ]);
 
   // Tier-2 surfaces render the SubBreadcrumb (memory.md §11.5).
-  const secondarySurface = SECONDARY_SURFACES.find((s) =>
-    location.pathname.startsWith(s.path),
-  );
+  const secondarySurface = SECONDARY_SURFACES.find((s) => location.pathname.startsWith(s.path));
 
   // Toast click → navigate to the stored path.
   const onToastActivate = useCallback(
@@ -248,11 +243,7 @@ export function AppShell(): JSX.Element {
       {/* Overlays — order matters: Spotlight under StepUpModal under Toasts */}
       <Spotlight open={spotlightOpen} onClose={() => setSpotlightOpen(false)} />
       <StepUpModal />
-      <ToastContainer
-        toasts={toasts}
-        onDismiss={dismissToast}
-        onActivate={onToastActivate}
-      />
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} onActivate={onToastActivate} />
       {/* Auto-update banner (Day-15 release automation). Polls the
           configured GitHub Releases endpoint hourly; renders only when
           an update is available. Safe inside Tauri only. */}

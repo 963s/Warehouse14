@@ -8,7 +8,7 @@
  * is the append-only audit trail.
  */
 
-import { Type, type Static } from '@sinclair/typebox';
+import { type Static, Type } from '@sinclair/typebox';
 
 const PHOTO_WORKFLOW_STATE = Type.Union([
   Type.Literal('FOTOGRAFIERT'),
@@ -115,9 +115,9 @@ export type TUnassignedPhotosQuery = Static<typeof UnassignedPhotosQuery>;
 // ────────────────────────────────────────────────────────────────────────
 
 export const ALLOWED_PHOTO_TRANSITIONS: Readonly<Record<string, readonly string[]>> = {
-  FOTOGRAFIERT:    ['BEARBEITET'],
-  BEARBEITET:      ['FREIGESTELLT', 'FOTOGRAFIERT'],          // step-back permitted
-  FREIGESTELLT:    ['ZUGEORDNET', 'BEARBEITET'],
-  ZUGEORDNET:      ['FUER_EBAY_BEREIT', 'FREIGESTELLT'],
-  FUER_EBAY_BEREIT:['ZUGEORDNET'],                            // un-publish path
+  FOTOGRAFIERT: ['BEARBEITET'],
+  BEARBEITET: ['FREIGESTELLT', 'FOTOGRAFIERT'], // step-back permitted
+  FREIGESTELLT: ['ZUGEORDNET', 'BEARBEITET'],
+  ZUGEORDNET: ['FUER_EBAY_BEREIT', 'FREIGESTELLT'],
+  FUER_EBAY_BEREIT: ['ZUGEORDNET'], // un-publish path
 };

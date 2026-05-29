@@ -11,7 +11,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { applyMigrations, startTestDb, type TestDb } from '../helpers/testDb.js';
+import { type TestDb, applyMigrations, startTestDb } from '../helpers/testDb.js';
 
 describe('migration 0002_helpers', () => {
   let testDb: TestDb;
@@ -133,7 +133,7 @@ describe('migration 0002_helpers', () => {
       const [before] = await testDb.migratorSql<{ updated_at: Date }[]>`
         SELECT updated_at FROM tmp_wired WHERE id = 1
       `;
-      await new Promise(resolveFn => setTimeout(resolveFn, 50));
+      await new Promise((resolveFn) => setTimeout(resolveFn, 50));
       await testDb.migratorSql`UPDATE tmp_wired SET payload = 'b' WHERE id = 1`;
       const [after] = await testDb.migratorSql<{ updated_at: Date }[]>`
         SELECT updated_at FROM tmp_wired WHERE id = 1
@@ -160,7 +160,7 @@ describe('migration 0002_helpers', () => {
       const [before] = await testDb.migratorSql<{ updated_at: Date }[]>`
         SELECT updated_at FROM tmp_noop WHERE id = 1
       `;
-      await new Promise(resolveFn => setTimeout(resolveFn, 50));
+      await new Promise((resolveFn) => setTimeout(resolveFn, 50));
       // Update payload to the same value — should still trigger.
       await testDb.migratorSql`UPDATE tmp_noop SET payload = 'x' WHERE id = 1`;
       const [after] = await testDb.migratorSql<{ updated_at: Date }[]>`

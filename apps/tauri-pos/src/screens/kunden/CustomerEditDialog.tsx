@@ -12,20 +12,16 @@
  * would 400 anyway, but client-side gating saves a roundtrip).
  */
 
-import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 
 import {
   ApiError,
-  customersApi,
   type CustomerDetail,
   type CustomerUpdateBody,
+  customersApi,
 } from '@warehouse14/api-client';
-import {
-  Button,
-  DiamondRule,
-  ParchmentCard,
-} from '@warehouse14/ui-kit';
+import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
 import { useToastStore } from '../../state/toast-store.js';
@@ -36,7 +32,11 @@ export interface CustomerEditDialogProps {
   onClose: () => void;
 }
 
-export function CustomerEditDialog({ open, customer, onClose }: CustomerEditDialogProps): JSX.Element | null {
+export function CustomerEditDialog({
+  open,
+  customer,
+  onClose,
+}: CustomerEditDialogProps): JSX.Element | null {
   const api = useApiClient();
   const qc = useQueryClient();
   const addToast = useToastStore((s) => s.addToast);
@@ -81,7 +81,8 @@ export function CustomerEditDialog({ open, customer, onClose }: CustomerEditDial
     const trimOrNull = (v: string): string | null => (v.trim().length === 0 ? null : v.trim());
 
     if (fullName.trim() !== customer.fullName) body.fullName = fullName.trim();
-    if ((dateOfBirth.trim() || null) !== customer.dateOfBirth) body.dateOfBirth = trimOrNull(dateOfBirth);
+    if ((dateOfBirth.trim() || null) !== customer.dateOfBirth)
+      body.dateOfBirth = trimOrNull(dateOfBirth);
     if ((email.trim() || null) !== customer.email) body.email = trimOrNull(email);
     if ((phone.trim() || null) !== customer.phone) body.phone = trimOrNull(phone);
     if ((address.trim() || null) !== customer.address) body.address = trimOrNull(address);
@@ -133,10 +134,17 @@ export function CustomerEditDialog({ open, customer, onClose }: CustomerEditDial
       role="dialog"
       aria-modal="true"
       aria-label="Kundendaten bearbeiten"
-      onClick={() => { if (!submitting) onClose(); }}
+      onClick={() => {
+        if (!submitting) onClose();
+      }}
       style={{
-        position: 'fixed', inset: 0, backgroundColor: 'var(--w14-overlay)',
-        zIndex: 1050, display: 'grid', placeItems: 'center', padding: 24,
+        position: 'fixed',
+        inset: 0,
+        backgroundColor: 'var(--w14-overlay)',
+        zIndex: 1050,
+        display: 'grid',
+        placeItems: 'center',
+        padding: 24,
       }}
     >
       <ParchmentCard
@@ -144,17 +152,45 @@ export function CustomerEditDialog({ open, customer, onClose }: CustomerEditDial
         onClick={(ev) => ev.stopPropagation()}
         style={{ width: 'min(560px, 100%)', boxShadow: 'var(--w14-shadow-modal)' }}
       >
-        <h2 style={{ margin: 0, fontFamily: 'var(--w14-font-display)', fontWeight: 500, fontSize: '1.4rem', textAlign: 'center' }}>
+        <h2
+          style={{
+            margin: 0,
+            fontFamily: 'var(--w14-font-display)',
+            fontWeight: 500,
+            fontSize: '1.4rem',
+            textAlign: 'center',
+          }}
+        >
           Kundendaten bearbeiten
         </h2>
-        <p style={{ margin: '4px 0 0', textAlign: 'center', fontFamily: 'var(--w14-font-display)', fontStyle: 'italic', fontSize: '0.85rem', color: 'var(--w14-ink-faded)' }}>
+        <p
+          style={{
+            margin: '4px 0 0',
+            textAlign: 'center',
+            fontFamily: 'var(--w14-font-display)',
+            fontStyle: 'italic',
+            fontSize: '0.85rem',
+            color: 'var(--w14-ink-faded)',
+          }}
+        >
           {customer.fullName}
           {' · '}
-          <span className="w14-tabular" style={{ fontFamily: 'var(--w14-font-mono)' }}>{customer.customerNumber}</span>
+          <span className="w14-tabular" style={{ fontFamily: 'var(--w14-font-mono)' }}>
+            {customer.customerNumber}
+          </span>
         </p>
 
         {kycVerified && (
-          <p style={{ margin: '12px 0 0', textAlign: 'center', fontFamily: 'var(--w14-font-display)', fontStyle: 'italic', fontSize: '0.82rem', color: 'var(--w14-ink-aged)' }}>
+          <p
+            style={{
+              margin: '12px 0 0',
+              textAlign: 'center',
+              fontFamily: 'var(--w14-font-display)',
+              fontStyle: 'italic',
+              fontSize: '0.82rem',
+              color: 'var(--w14-ink-aged)',
+            }}
+          >
             KYC ist bestätigt — Änderungen erfordern PIN-Bestätigung.
           </p>
         )}
@@ -162,16 +198,41 @@ export function CustomerEditDialog({ open, customer, onClose }: CustomerEditDial
         <DiamondRule label="Daten" />
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <Field label="Vollständiger Name" value={fullName} onChange={setFullName} required colSpan={2} />
-          <Field label="Geburtsdatum (TT.MM.JJJJ)" value={dateOfBirth} onChange={setDateOfBirth} mono />
+          <Field
+            label="Vollständiger Name"
+            value={fullName}
+            onChange={setFullName}
+            required
+            colSpan={2}
+          />
+          <Field
+            label="Geburtsdatum (TT.MM.JJJJ)"
+            value={dateOfBirth}
+            onChange={setDateOfBirth}
+            mono
+          />
           <Field label="E-Mail" value={email} onChange={setEmail} type="email" />
           <Field label="Telefon" value={phone} onChange={setPhone} mono />
           <Field label="Adresse" value={address} onChange={setAddress} multiline colSpan={2} />
-          <Field label="Notizen (z. B. Personalausweis-Nr.)" value={notes} onChange={setNotes} multiline colSpan={2} />
+          <Field
+            label="Notizen (z. B. Personalausweis-Nr.)"
+            value={notes}
+            onChange={setNotes}
+            multiline
+            colSpan={2}
+          />
         </div>
 
         {error && (
-          <p role="alert" style={{ color: 'var(--w14-wax-red)', margin: '14px 0 0', fontSize: '0.92rem', textAlign: 'center' }}>
+          <p
+            role="alert"
+            style={{
+              color: 'var(--w14-wax-red)',
+              margin: '14px 0 0',
+              fontSize: '0.92rem',
+              textAlign: 'center',
+            }}
+          >
             {error}
           </p>
         )}
@@ -211,8 +272,12 @@ function Field({
   const containerStyle: React.CSSProperties = colSpan ? { gridColumn: `span ${colSpan}` } : {};
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 4, ...containerStyle }}>
-      <span className="w14-smallcaps" style={{ color: 'var(--w14-ink-faded)', fontSize: '0.72rem', letterSpacing: '0.08em' }}>
-        {label}{required && <span style={{ color: 'var(--w14-wax-red)' }}> *</span>}
+      <span
+        className="w14-smallcaps"
+        style={{ color: 'var(--w14-ink-faded)', fontSize: '0.72rem', letterSpacing: '0.08em' }}
+      >
+        {label}
+        {required && <span style={{ color: 'var(--w14-wax-red)' }}> *</span>}
       </span>
       {multiline ? (
         <textarea
@@ -220,9 +285,15 @@ function Field({
           onChange={(ev) => onChange(ev.target.value)}
           rows={2}
           style={{
-            border: 'none', outline: 'none', borderBottom: '2px solid var(--w14-rule)',
-            background: 'transparent', padding: '6px 4px', resize: 'vertical',
-            fontFamily: 'var(--w14-font-body)', fontSize: '0.92rem', color: 'var(--w14-ink)',
+            border: 'none',
+            outline: 'none',
+            borderBottom: '2px solid var(--w14-rule)',
+            background: 'transparent',
+            padding: '6px 4px',
+            resize: 'vertical',
+            fontFamily: 'var(--w14-font-body)',
+            fontSize: '0.92rem',
+            color: 'var(--w14-ink)',
           }}
         />
       ) : (
@@ -232,10 +303,14 @@ function Field({
           spellCheck={false}
           onChange={(ev) => onChange(ev.target.value)}
           style={{
-            border: 'none', outline: 'none', borderBottom: '2px solid var(--w14-rule)',
-            background: 'transparent', padding: '6px 4px',
+            border: 'none',
+            outline: 'none',
+            borderBottom: '2px solid var(--w14-rule)',
+            background: 'transparent',
+            padding: '6px 4px',
             fontFamily: mono ? 'var(--w14-font-mono)' : 'var(--w14-font-body)',
-            fontSize: '0.92rem', color: 'var(--w14-ink)',
+            fontSize: '0.92rem',
+            color: 'var(--w14-ink)',
           }}
         />
       )}

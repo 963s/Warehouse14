@@ -17,10 +17,15 @@
  *     worker may INSERT + UPDATE(valid_to)
  */
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import postgres, { type Sql } from 'postgres';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { applyMigrations, setAppPasswordForTest, startTestDb, type TestDb } from '../helpers/testDb.js';
+import {
+  type TestDb,
+  applyMigrations,
+  setAppPasswordForTest,
+  startTestDb,
+} from '../helpers/testDb.js';
 
 describe('migration 0021_metal_prices_engine', () => {
   let testDb: TestDb;
@@ -36,11 +41,13 @@ describe('migration 0021_metal_prices_engine', () => {
     return u!.id;
   }
 
-  async function makeProduct(opts: {
-    metal?: string | null;
-    weight?: string | null;
-    fineness?: string | null;
-  } = {}): Promise<string> {
+  async function makeProduct(
+    opts: {
+      metal?: string | null;
+      weight?: string | null;
+      fineness?: string | null;
+    } = {},
+  ): Promise<string> {
     const [p] = await migratorSql<{ id: string }[]>`
       INSERT INTO products (sku, status, tax_treatment_code, item_type, name,
                             acquisition_cost_eur, list_price_eur,
@@ -70,9 +77,7 @@ describe('migration 0021_metal_prices_engine', () => {
     await setAppPasswordForTest(migratorSql);
 
     // Worker role exists since migration 0017 — set its password for tests.
-    await migratorSql.unsafe(
-      `ALTER ROLE warehouse14_worker PASSWORD 'warehouse14_worker_test_pw'`,
-    );
+    await migratorSql.unsafe(`ALTER ROLE warehouse14_worker PASSWORD 'warehouse14_worker_test_pw'`);
 
     appSql = postgres({
       host: testDb.container.getHost(),
@@ -110,7 +115,10 @@ describe('migration 0021_metal_prices_engine', () => {
         SELECT enumlabel FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
          WHERE t.typname = 'metal_price_source' ORDER BY enumsortorder`;
       expect(rows.map((r) => r.enumlabel)).toEqual([
-        'LBMA', 'XAUEUR_VENDOR', 'MANUAL', 'INTERNAL_ESTIMATE',
+        'LBMA',
+        'XAUEUR_VENDOR',
+        'MANUAL',
+        'INTERNAL_ESTIMATE',
       ]);
     });
   });

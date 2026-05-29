@@ -30,14 +30,14 @@ const PADDING_PX = { none: 0, sm: 12, md: 24, lg: 32 } as const;
 
 const TONE_BG: Record<NonNullable<ParchmentCardProps['tone']>, string> = {
   parchment: 'var(--w14-parchment-2)',
-  deep:      'var(--w14-parchment-3)',
-  ink:       'var(--w14-ink)',
+  deep: 'var(--w14-parchment-3)',
+  ink: 'var(--w14-ink)',
 };
 
 const TONE_FG: Record<NonNullable<ParchmentCardProps['tone']>, string> = {
   parchment: 'var(--w14-ink)',
-  deep:      'var(--w14-ink)',
-  ink:       'var(--w14-parchment)',
+  deep: 'var(--w14-ink)',
+  ink: 'var(--w14-parchment)',
 };
 
 export function ParchmentCard({
