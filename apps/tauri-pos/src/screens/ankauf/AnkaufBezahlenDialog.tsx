@@ -59,6 +59,7 @@ export function AnkaufBezahlenDialog({
   const api = useApiClient();
   const qc = useQueryClient();
   const addToast = useToastStore((s) => s.addToast);
+  const printer = useLabelPrinter();
   const items = useAnkaufCartStore(selectAnkaufItems);
   const customerId = useAnkaufCartStore(selectAnkaufCustomerId);
   const payoutMethod = useAnkaufCartStore((s) => s.payoutMethod);
@@ -200,6 +201,22 @@ export function AnkaufBezahlenDialog({
         title: 'Ankauf abgeschlossen',
         body: `Beleg-Nr. ${result.receiptLocator}`,
       });
+
+      if (result.createdProducts.length > 0) {
+        const bySkuMap = new Map(items.map((it) => [it.sku, it]));
+        const labelsToPrint = result.createdProducts.map((p) => {
+          const it = bySkuMap.get(p.sku);
+          return {
+            sku: p.sku,
+            productName: it?.name ?? p.sku,
+            weightGrams: it?.weightGrams ?? null,
+            karat: it?.karatCode ?? null,
+            storageLocation: null,
+          } satisfies LabelData;
+        });
+        void printer.print(labelsToPrint);
+      }
+
       await Promise.all([
         qc.invalidateQueries({ queryKey: dashboardQueryKey }),
         qc.invalidateQueries({ queryKey: ['products', 'list'] }),
@@ -235,6 +252,7 @@ export function AnkaufBezahlenDialog({
     payoutMethod,
     qc,
     totalEur,
+    printer,
   ]);
 
   const dismissAfterFinalize = useCallback((): void => {

@@ -30,6 +30,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   ApiError,
+  ApiOfflineQueuedError,
   type FinalizeBody,
   type FinalizeLineItem,
   type FinalizeResponse,
@@ -499,10 +500,10 @@ export function BezahlenDialog({
         paymentMethodLabel: paymentLabel,
         cashReceivedEur: cashPayment ? cashReceivedEur || cashPayment.amountEur : null,
         changeEur: cashPayment && cashReceivedEur ? fromCents(changeCentsForPrint()) : null,
-        tseSignatureValue: tse?.signatureValue ?? 'TSE-OFFLINE',
-        tseSignatureCounter: tse?.signatureCounter ?? '0',
-        tseTransactionNumber: tse?.transactionNumber ?? '0',
-        tseQrPayload: tse?.qrPayload ?? `OFFLINE;tx=${result.id}`,
+        tseSignatureValue: tse?.signatureValue ?? 'TSE Ausfall',
+        tseSignatureCounter: tse?.signatureCounter ?? 'TSE Ausfall',
+        tseTransactionNumber: tse?.transactionNumber ?? 'TSE Ausfall',
+        tseQrPayload: tse?.qrPayload ?? 'TSE Ausfall',
         footerLines: [
           'Vielen Dank für Ihren Besuch.',
           'Beleg auf Wunsch elektronisch.',
@@ -579,7 +580,37 @@ export function BezahlenDialog({
         qc.invalidateQueries({ queryKey: currentShiftQueryKey }),
       ]);
     } catch (err) {
-      setError(formatPaymentError(err));
+      if (err instanceof ApiOfflineQueuedError) {
+        const offlineLocator = `OFFLINE-${idempotencyKeyRef.current.slice(0, 8).toUpperCase()}`;
+        const dummyResult: FinalizeResponse = {
+          id: idempotencyKeyRef.current,
+          receiptLocator: offlineLocator,
+          finalizedAt: new Date(err.enqueuedAt).toISOString(),
+          ledgerEventId: -1,
+          direction: 'VERKAUF',
+          totalEur: adjustedTotals.totalEur,
+          storno: false,
+        };
+        setFinalized(dummyResult);
+        addToast({
+          tone: 'info',
+          title: 'Offline gespeichert',
+          body: `Beleg wird synchronisiert (Temp-Nr. ${offlineLocator})`,
+        });
+
+        const payments: FinalizeBody['payments'] = [
+          { paymentMethod: 'CASH', amountEur: adjustedTotals.totalEur },
+        ];
+        firePrintReceipt(dummyResult, payments);
+
+        await Promise.all([
+          qc.invalidateQueries({ queryKey: dashboardQueryKey }),
+          qc.invalidateQueries({ queryKey: ['products', 'list'] }),
+          qc.invalidateQueries({ queryKey: currentShiftQueryKey }),
+        ]);
+      } else {
+        setError(formatPaymentError(err));
+      }
     } finally {
       setSubmitting(false);
       inFlightRef.current = false;
