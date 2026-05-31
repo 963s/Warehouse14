@@ -86,14 +86,14 @@ const settingsRoute: FastifyPluginAsync = async (app) => {
           key: r.key,
           value: r.value,
           description: r.description,
-          updatedAt: r.updated_at.toISOString(),
+          updatedAt: new Date(r.updated_at).toISOString(),
         })),
         devices: deviceRows.map((r) => ({
           id: r.id,
           deviceClass: r.device_class,
           status: r.status,
-          certExpiresAt: r.cert_expires_at.toISOString(),
-          lastSeenAt: r.last_seen_at ? r.last_seen_at.toISOString() : null,
+          certExpiresAt: new Date(r.cert_expires_at).toISOString(),
+          lastSeenAt: r.last_seen_at ? new Date(r.last_seen_at).toISOString() : null,
         })),
       });
     },

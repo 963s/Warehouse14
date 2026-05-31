@@ -90,7 +90,7 @@ function toDatevRow(tx: TxRow): DATEVRow {
     debitCredit: 'S', // Umsatz posts to the debit (Soll) side of Konto.
     account,
     contraAccount,
-    date: tx.finalized_at.toISOString().slice(0, 10), // YYYY-MM-DD → DDMM in exporter
+    date: new Date(tx.finalized_at).toISOString().slice(0, 10), // YYYY-MM-DD → DDMM in exporter
     reference: tx.receipt_locator,
     bookingText: `${tx.direction} ${tx.receipt_locator} (${tx.tax_treatment_code})`,
   };
@@ -140,7 +140,7 @@ const closingExportRoute: FastifyPluginAsync = async (app) => {
         netAnkaufEur: r.net_ankauf_eur,
         cashVarianceEur: r.cash_variance_eur,
         tseFailedCount: Number(r.tse_failed_count),
-        finalizedAt: r.finalized_at ? r.finalized_at.toISOString() : null,
+        finalizedAt: r.finalized_at ? new Date(r.finalized_at).toISOString() : null,
       }));
 
       return reply.status(200).send({ items });

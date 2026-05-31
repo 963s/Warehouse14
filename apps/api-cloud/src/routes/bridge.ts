@@ -180,12 +180,12 @@ type TseExpiringRow = {
 // ── Presentation helpers ────────────────────────────────────────────────────
 
 /** Berlin wall-clock `HH:MM` for a feed timestamp. */
-function berlinHHMM(d: Date): string {
+function berlinHHMM(d: Date | string): string {
   return new Intl.DateTimeFormat('de-DE', {
     timeZone: 'Europe/Berlin',
     hour: '2-digit',
     minute: '2-digit',
-  }).format(d);
+  }).format(new Date(d));
 }
 
 /** German label for the most common ledger event types; falls back to raw. */
@@ -543,7 +543,9 @@ const bridgeRoutes: FastifyPluginAsync = async (app) => {
         intakeDraftsPending: Number(r.intake_drafts_pending),
         approvalsPending,
         whatsappUnreadCount: Number(r.whatsapp_unread_count),
-        nextAppointmentAt: r.next_appointment_at ? r.next_appointment_at.toISOString() : null,
+        nextAppointmentAt: r.next_appointment_at
+          ? new Date(r.next_appointment_at).toISOString()
+          : null,
         todayAppointmentCount: Number(r.today_appointment_count),
         tseCertDaysRemaining,
         workerDlqUnacked,

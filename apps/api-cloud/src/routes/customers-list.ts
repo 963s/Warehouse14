@@ -140,15 +140,16 @@ const customersListRoute: FastifyPluginAsync = async (app) => {
           kycStatus: r.kyc_status as
             | 'NOT_REQUIRED'
             | 'PENDING'
-            | 'COMPLETED'
+            | 'CAPTURED'
+            | 'VERIFIED'
             | 'EXPIRED'
-            | 'FAILED',
-          kycVerifiedAt: r.kyc_verified_at ? r.kyc_verified_at.toISOString() : null,
+            | 'REJECTED',
+          kycVerifiedAt: r.kyc_verified_at ? new Date(r.kyc_verified_at).toISOString() : null,
           trustLevel: r.trust_level as 'NEW' | 'VERIFIED' | 'VIP' | 'SUSPICIOUS' | 'BANNED',
           sanctionsMatch: r.sanctions_match,
           cumulativeAnkaufEur: r.cumulative_ankauf_eur,
           cumulativeSpendEur: r.cumulative_spend_eur,
-          createdAt: r.created_at.toISOString(),
+          createdAt: new Date(r.created_at).toISOString(),
         })),
         total: result.total,
         limit,

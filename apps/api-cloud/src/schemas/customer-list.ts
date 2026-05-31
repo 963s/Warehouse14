@@ -45,9 +45,10 @@ export const CustomerListRow = Type.Object({
   kycStatus: Type.Union([
     Type.Literal('NOT_REQUIRED'),
     Type.Literal('PENDING'),
-    Type.Literal('COMPLETED'),
+    Type.Literal('CAPTURED'),
+    Type.Literal('VERIFIED'),
     Type.Literal('EXPIRED'),
-    Type.Literal('FAILED'),
+    Type.Literal('REJECTED'),
   ]),
   /** Owner's eyeball-verification timestamp (Day-26 column). */
   kycVerifiedAt: Type.Union([Type.String({ format: 'date-time' }), Type.Null()]),
