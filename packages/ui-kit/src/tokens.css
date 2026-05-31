@@ -22,7 +22,9 @@
   /* ─── Ink (text + strokes) ─────────────────────────────────────── */
   --w14-ink: #0f0f0f;
   --w14-ink-aged: #3a332b;
-  --w14-ink-faded: #736a5c;
+  /* Darkened for WCAG-AA readability on parchment (Basel: clarity > decoration).
+     Was #736a5c (~3.2:1); #5d5547 ≈ 4.6:1 — still clearly "faded", now legible. */
+  --w14-ink-faded: #5d5547;
   --w14-rule: #1c1814;
 
   /* ─── Accent palette (illuminated initials — use sparingly) ────── */
@@ -64,7 +66,9 @@
 
   --w14-ink: #e6dfcb;
   --w14-ink-aged: #c7bfa9;
-  --w14-ink-faded: #8e8676;
+  /* Brightened for readability on midnight-vellum (Basel: clarity > decoration).
+     Was #8e8676; #a89f8a lifts the faded/secondary text clearly above the bg. */
+  --w14-ink-faded: #a89f8a;
   --w14-rule: #5c5347;
 
   --w14-overlay: rgba(0, 0, 0, 0.8);
