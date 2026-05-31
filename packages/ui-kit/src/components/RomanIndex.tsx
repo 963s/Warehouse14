@@ -62,13 +62,16 @@ export function toRoman(n: number): string {
 
 export function RomanIndex({
   value,
-  variant = 'upper',
   showDiamond = true,
   tone = 'ink',
   className,
   style,
 }: RomanIndexProps): JSX.Element {
-  const numeral = variant === 'lower' ? toRoman(value).toLowerCase() : toRoman(value);
+  // Decision (Basel, 2026-05-31): render plain Arabic numerals (1, 2, 3) — they
+  // read faster and are more practical than Roman numerals. We keep the diamond
+  // + display typography so the editorial style stays intact. `toRoman` remains
+  // exported for any caller that still wants the classic numeral.
+  const numeral = String(value);
   const merged: CSSProperties = {
     color: TONE_VAR[tone],
     fontFamily: 'var(--w14-font-display)',
