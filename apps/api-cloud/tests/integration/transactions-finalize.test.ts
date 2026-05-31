@@ -134,6 +134,9 @@ describe('POST /api/transactions/finalize — Day 13 vital artery', () => {
       STRIPE_API_VERSION: '2024-12-18.acacia',
       WHATSAPP_APP_SECRET: '',
       WHATSAPP_VERIFY_TOKEN: '',
+      // Empty → endEbayListing() returns a mock success, so the instant-delist
+      // background task flips the listing to BEENDET without real eBay creds.
+      EBAY_API_TOKEN: '',
     };
     app = await buildApp({
       env,
@@ -338,6 +341,49 @@ describe('POST /api/transactions/finalize — Day 13 vital artery', () => {
       SELECT event_type, entity_id FROM ledger_events WHERE id = ${out.ledgerEventId}`;
     expect(ev!.event_type).toBe('transaction.finalized');
     expect(ev!.entity_id).toBe(out.id);
+  });
+
+  // ────────────────────────────────────────────────────────────────────
+  // 1b. Instant eBay delisting (Epic D / Task 6)
+  // ────────────────────────────────────────────────────────────────────
+
+  it('VERKAUF with active eBay listing: triggers instant background delisting to BEENDET', async () => {
+    const sessionId = await reserveProduct(cashierUserId);
+    // Mark the reserved product as live on eBay so finalize must end the listing.
+    await migratorSql`
+      UPDATE products
+         SET ebay_state = 'ONLINE'::ebay_listing_state, ebay_state_changed_at = now()
+       WHERE id = ${productId}`;
+
+    const body = buildBody({ reservationSessionId: sessionId, totalEur: '150.00' });
+    const res = await postFinalize(body);
+    // Checkout must succeed immediately — delisting is detached, never blocking.
+    expect(res.statusCode).toBe(200);
+
+    // The delist runs in a detached background promise; poll until BEENDET.
+    let state = 'ONLINE';
+    for (let i = 0; i < 50; i++) {
+      const [p] = await migratorSql<{ ebay_state: string }[]>`
+        SELECT ebay_state FROM products WHERE id = ${productId}`;
+      state = p?.ebay_state ?? 'ONLINE';
+      if (state === 'BEENDET') break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    expect(state).toBe('BEENDET');
+
+    // A forensic event row recorded the WORKER-sourced ONLINE → BEENDET flip.
+    const [ev] = await migratorSql<
+      { from_state: string; to_state: string; changed_by_source: string; notes: string }[]
+    >`
+      SELECT from_state, to_state, changed_by_source, notes
+        FROM product_ebay_listing_events
+       WHERE product_id = ${productId}
+       ORDER BY id DESC
+       LIMIT 1`;
+    expect(ev?.from_state).toBe('ONLINE');
+    expect(ev?.to_state).toBe('BEENDET');
+    expect(ev?.changed_by_source).toBe('WORKER');
+    expect(ev?.notes).toContain('retail counter');
   });
 
   // ────────────────────────────────────────────────────────────────────

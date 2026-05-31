@@ -46,7 +46,17 @@ export interface WhatsAppThreadDetail {
   phone: string;
   linkedCustomerId: string | null;
   linkedCustomerName: string | null;
+  /** Whether the AI assistant currently answers this thread. */
+  aiActive: boolean;
+  /** ISO timestamp the human-takeover cooldown ends, or null. */
+  cooldownUntil: string | null;
   messages: WhatsAppMessage[];
+}
+
+export interface WhatsAppAiStatusResponse {
+  phone: string;
+  aiActive: boolean;
+  cooldownUntil: string | null;
 }
 
 export interface WhatsAppSendBody {
@@ -104,6 +114,17 @@ export const whatsappApi = {
       'PATCH',
       `/api/whatsapp/messages/${encodeURIComponent(messageId)}/link-customer`,
       { customerId },
+    );
+  },
+  updateAiStatus(
+    client: ApiClient,
+    phone: string,
+    aiActive: boolean,
+  ): Promise<WhatsAppAiStatusResponse> {
+    return client.request<WhatsAppAiStatusResponse>(
+      'PATCH',
+      `/api/whatsapp/threads/${encodeURIComponent(phone)}/ai-status`,
+      { aiActive },
     );
   },
 };

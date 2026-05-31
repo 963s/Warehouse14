@@ -173,12 +173,25 @@ export function classifyCartProductTax(product: {
   finenessDecimal: string | null;
   acquiredFromCustomerId: string | null;
   isCommission: boolean;
+  yearMintedFrom?: number | null;
 }): TaxTreatmentCode {
-  if (product.itemType === 'gold_bar') {
-    const purity = product.finenessDecimal ? Number.parseFloat(product.finenessDecimal) : 0;
-    if (purity >= 0.995) {
-      return 'INVESTMENT_GOLD_25C';
-    }
+  const purity = product.finenessDecimal ? Number.parseFloat(product.finenessDecimal) : 0;
+
+  // §25c investment gold — bars at ≥ 99.5% fineness. Checked first so an
+  // investment-grade piece is NEVER mis-classified as a §25a margin item.
+  if (product.itemType === 'gold_bar' && purity >= 0.995) {
+    return 'INVESTMENT_GOLD_25C';
+  }
+  // §25c investment gold — coins at ≥ 90.0% fineness minted after 1800 (the
+  // BMF "modern bullion coin" test). A second-hand investment coin is still
+  // §25c, so this precedes the margin-scheme fallback below.
+  if (
+    product.itemType === 'gold_coin' &&
+    purity >= 0.9 &&
+    typeof product.yearMintedFrom === 'number' &&
+    product.yearMintedFrom >= 1800
+  ) {
+    return 'INVESTMENT_GOLD_25C';
   }
 
   const isSecondHand = product.acquiredFromCustomerId !== null || product.isCommission;

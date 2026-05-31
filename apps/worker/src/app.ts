@@ -35,6 +35,7 @@ import {
   sessionsCleanupJob,
   storefrontCartSweeperJob,
   tseArchiveExporterJob,
+  tseCertCheckerJob,
 } from './jobs/index.js';
 import { createMetalPriceProvider } from './jobs/providers/index.js';
 import { JobRunner } from './lib/job-runner.js';
@@ -146,6 +147,17 @@ export async function buildWorker(opts: BuildWorkerOpts): Promise<WorkerHandle> 
         bucket: opts.env.R2_BUCKET,
         accessKeyId: opts.env.R2_ACCESS_KEY_ID,
         secretAccessKey: opts.env.R2_SECRET_ACCESS_KEY,
+      },
+    }),
+  );
+  // Phase 1.5 #I-1: KassenSichV TSE certificate-expiry monitor. Empty Fiskaly
+  // TSS id → the job skips; near-expiry → alert.tse_cert_expiry (throttled 24h).
+  runner.register(
+    tseCertCheckerJob({
+      fiskaly: {
+        apiKey: opts.env.FISKALY_API_KEY,
+        apiSecret: opts.env.FISKALY_API_SECRET,
+        tssId: opts.env.FISKALY_TSS_ID,
       },
     }),
   );

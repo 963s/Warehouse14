@@ -161,6 +161,7 @@ function VerkaufFloor(): JSX.Element {
           finenessDecimal: detail.finenessDecimal,
           acquiredFromCustomerId: detail.acquiredFromCustomerId,
           isCommission: detail.isCommission,
+          yearMintedFrom: detail.yearMintedFrom,
         });
 
         const newLine: CartLine = {

@@ -21,4 +21,5 @@ export { intakeSweepJob } from './intake-sweep.js';
 export { appointmentNoShowDetectorJob } from './appointment-no-show-detector.js';
 export { appointmentNotificationsJob } from './appointment-notifications.js';
 export { tseArchiveExporterJob } from './tse-archive-exporter.js';
+export { tseCertCheckerJob } from './tse-cert-checker.js';
 export { gdprCleanupJob } from './gdpr-cleanup.js';

@@ -58,6 +58,7 @@ import {
 
 import type { Env } from '../config/env.js';
 import { requireAuth, requireRole, requireStepUp } from '../lib/auth-policy.js';
+import { endEbayListing } from '../lib/ebay-client.js';
 import { runSmurfingDetection } from '../lib/smurfing.js';
 import { totalExceedsStepUpThreshold, validateTransactionMath } from '../lib/transaction-math.js';
 import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
@@ -324,11 +325,25 @@ const transactionsFinalize: FastifyPluginAsync<TransactionsFinalizeOpts> = async
               .limit(1)
           )[0];
 
+          // 3f. Capture any sold products still live on eBay (`ebay_state =
+          // 'ONLINE'`) so we can end those listings INSTANTLY in a detached
+          // background task after commit (Epic D / Task 6) — shrinking the
+          // double-sell window vs the 5-min `ebay_sync` reconciler. Read inside
+          // the tx so it reflects exactly what was finalized here.
+          const ebayProductIds = body.items.map((item) => item.productId);
+          const ebayOnlineProducts = (await tx.execute<{ id: string; sku: string }>(drizzleSql`
+            SELECT id::text AS id, sku
+              FROM products
+             WHERE id = ANY(${ebayProductIds}::uuid[])
+               AND ebay_state = 'ONLINE'
+          `)) as unknown as Array<{ id: string; sku: string }>;
+
           return {
             id: txRow.id,
             receiptLocator: txRow.receiptLocator,
             finalizedAt: txRow.finalizedAt,
             ledgerEventId: ledgerRow ? Number(ledgerRow.id) : 0,
+            ebayOnlineProducts,
           };
         })
         .catch(async (err: unknown) => {
@@ -365,6 +380,9 @@ const transactionsFinalize: FastifyPluginAsync<TransactionsFinalizeOpts> = async
               receiptLocator: winner.receiptLocator,
               finalizedAt: winner.finalizedAt,
               ledgerEventId: ledgerRow ? Number(ledgerRow.id) : 0,
+              // Duplicate-retry path: the ORIGINAL finalize already triggered any
+              // instant delisting — nothing new to end on this idempotent replay.
+              ebayOnlineProducts: [] as Array<{ id: string; sku: string }>,
             };
           }
           throw err;
@@ -396,6 +414,59 @@ const transactionsFinalize: FastifyPluginAsync<TransactionsFinalizeOpts> = async
           // Detection is advisory — never fail the sale on its account.
           req.log.error({ err }, 'smurfing detection failed (non-blocking)');
         }
+      }
+
+      // ──────────────────────────────────────────────────────────────────
+      // 5. Instant eBay delisting (Epic D / Task 6) — DETACHED background task.
+      //
+      // A unique item sold at the till may still be live on eBay; ending the
+      // listing immediately (rather than waiting up to 5 min for `ebay_sync`)
+      // shrinks the double-sell window. This is FULLY detached: the cashier's
+      // HTTP response is already on its way, so a slow/offline eBay API can
+      // NEVER block or fail the sale. Anything still ONLINE after a failure is
+      // reconciled by the 5-min `ebay_sync` worker — this is a best-effort
+      // accelerator, not a new source of truth.
+      // ──────────────────────────────────────────────────────────────────
+      const ebayToken = opts.env.EBAY_API_TOKEN;
+      for (const product of outcome.ebayOnlineProducts) {
+        void (async () => {
+          try {
+            const result = await endEbayListing(ebayToken, product.sku);
+            await app.db.transaction(async (tx) => {
+              // Guarded flip: only transition if STILL ONLINE, so we never
+              // clobber a concurrent Owner action — mirrors `ebay_sync`.
+              const updated = (await tx.execute(drizzleSql`
+                UPDATE products
+                   SET ebay_state = 'BEENDET', ebay_state_changed_at = now()
+                 WHERE id = ${product.id}::uuid AND ebay_state = 'ONLINE'
+                RETURNING id
+              `)) as unknown as Array<{ id: string }>;
+              if (updated.length === 0) return; // already moved — skip the event row
+              await tx.execute(drizzleSql`
+                INSERT INTO product_ebay_listing_events
+                  (product_id, from_state, to_state, changed_by_source, notes, payload)
+                VALUES (
+                  ${product.id}::uuid, 'ONLINE', 'BEENDET', 'WORKER',
+                  'sold at retail counter; eBay listing ended',
+                  ${JSON.stringify({ mock: result.mock, detail: result.detail })}::jsonb
+                )
+              `);
+            });
+            req.log.info(
+              { productId: product.id, sku: product.sku, mock: result.mock },
+              'instant ebay delist: listing ended',
+            );
+          } catch (err) {
+            // Swallow — the sale already succeeded; `ebay_sync` will retry.
+            req.log.warn(
+              {
+                productId: product.id,
+                err: err instanceof Error ? err.message : String(err),
+              },
+              'instant ebay delist failed (non-blocking); ebay_sync will reconcile',
+            );
+          }
+        })();
       }
 
       return {

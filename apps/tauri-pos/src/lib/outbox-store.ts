@@ -107,6 +107,20 @@ export class TauriSqlOutboxStore implements OutboxStore {
     );
   }
 
+  async getStats(): Promise<{ pending: number; conflict: number }> {
+    const db = await this.db();
+    const pendingRows = await db.select<Array<{ count: number }>>(
+      `SELECT COUNT(*) AS count FROM outbox_mutations WHERE status = 'pending'`,
+    );
+    const conflictRows = await db.select<Array<{ count: number }>>(
+      `SELECT COUNT(*) AS count FROM outbox_mutations WHERE status = 'conflict'`,
+    );
+    return {
+      pending: pendingRows[0]?.count ?? 0,
+      conflict: conflictRows[0]?.count ?? 0,
+    };
+  }
+
   async listPending(): Promise<readonly OutboxRecord[]> {
     const db = await this.db();
     const rows = await db.select<OutboxRow[]>(

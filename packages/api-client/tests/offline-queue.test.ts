@@ -49,6 +49,7 @@ function createFakeStore(): OutboxStore & { rows: OutboxRecord[] } {
     markSucceeded: vi.fn(async () => {}),
     markConflict: vi.fn(async () => {}),
     listPending: vi.fn(async () => rows),
+    getStats: vi.fn(async () => ({ pending: rows.length, conflict: 0 })),
   };
 }
 
@@ -86,6 +87,7 @@ function createReplayStore(pending: OutboxRecord[]): OutboxStore & {
       conflicts.push(key);
     }),
     listPending: vi.fn(async () => pending),
+    getStats: vi.fn(async () => ({ pending: pending.length, conflict: conflicts.length })),
   };
 }
 
