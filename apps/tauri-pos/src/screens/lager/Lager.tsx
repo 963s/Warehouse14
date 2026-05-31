@@ -19,11 +19,11 @@
  * not shift presence.
  */
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { type ProductListRow, type ProductStatus, productsApi } from '@warehouse14/api-client';
-import { DiamondRule, MagnifierIcon, ParchmentCard, Seal } from '@warehouse14/ui-kit';
+import { Button, DiamondRule, MagnifierIcon, ParchmentCard, Seal } from '@warehouse14/ui-kit';
 
 import { useBarcodeScanner } from '../../hooks/useBarcodeScanner.js';
 import { useApiClient } from '../../lib/api-context.js';
@@ -32,6 +32,7 @@ import { useToastStore } from '../../state/toast-store.js';
 
 import { InventoryAdjustmentDialog } from './InventoryAdjustmentDialog.js';
 import { LagerTable } from './LagerTable.js';
+import { NeuesProduktDialog } from './NeuesProduktDialog.js';
 
 const STATUS_CHIPS: Array<{ value: StatusFilter; label: string }> = [
   { value: 'ALL', label: 'Alle' },
@@ -50,8 +51,10 @@ export function Lager(): JSX.Element {
   const setStatus = useLagerFilterStore((s) => s.setStatus);
   const setQ = useLagerFilterStore((s) => s.setQ);
   const setBarcode = useLagerFilterStore((s) => s.setBarcode);
+  const queryClient = useQueryClient();
 
   // ── Local UX state ──
+  const [newOpen, setNewOpen] = useState<boolean>(false);
   const [searchInput, setSearchInput] = useState<string>('');
   const [pageOffset, setPageOffset] = useState<number>(0);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
@@ -171,16 +174,21 @@ export function Lager(): JSX.Element {
             Tresor · Fach · Position
           </span>
         </div>
-        <span
-          className="w14-tabular"
-          style={{
-            fontFamily: 'var(--w14-font-mono)',
-            fontSize: '0.82rem',
-            color: 'var(--w14-ink-faded)',
-          }}
-        >
-          {q.isFetching ? 'lädt…' : `${total} Stück${total === 1 ? '' : 'e'}`}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <span
+            className="w14-tabular"
+            style={{
+              fontFamily: 'var(--w14-font-mono)',
+              fontSize: '0.82rem',
+              color: 'var(--w14-ink-faded)',
+            }}
+          >
+            {q.isFetching ? 'lädt…' : `${total} Stück${total === 1 ? '' : 'e'}`}
+          </span>
+          <Button variant="primary" size="sm" onClick={() => setNewOpen(true)}>
+            + Neues Produkt
+          </Button>
+        </div>
       </header>
 
       <DiamondRule />
@@ -272,6 +280,14 @@ export function Lager(): JSX.Element {
         open={dialogProduct !== null}
         product={dialogProduct}
         onClose={() => setDialogProduct(null)}
+      />
+
+      <NeuesProduktDialog
+        open={newOpen}
+        onClose={() => setNewOpen(false)}
+        onCreated={() => {
+          void queryClient.invalidateQueries({ queryKey: ['products', 'list'] });
+        }}
       />
     </section>
   );
