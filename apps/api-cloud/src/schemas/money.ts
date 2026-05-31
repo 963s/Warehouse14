@@ -36,6 +36,13 @@ export const SignedDecimalString = Type.String({
   description: 'Signed amount in EUR as a decimal string (NUMERIC(18,2)).',
 });
 
+/** Weight in grams as a decimal string. NUMERIC(10,4)-compatible (up to 4 dp). */
+export const WeightString = Type.String({
+  pattern: '^\\d{1,10}(\\.\\d{1,4})?$',
+  examples: ['7.9650', '50.0000', '480.0000'],
+  description: 'Weight in grams as a decimal string (NUMERIC(10,4)).',
+});
+
 /** VAT rate — 0–1 inclusive, up to 4 fractional digits (e.g. `'0.1900'`). */
 export const VatRateString = Type.String({
   pattern: '^(0(\\.\\d{1,4})?|1(\\.0{1,4})?)$',

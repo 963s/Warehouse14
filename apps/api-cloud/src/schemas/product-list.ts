@@ -12,7 +12,7 @@
 
 import { type Static, Type } from '@sinclair/typebox';
 
-import { DecimalString } from './money.js';
+import { DecimalString, WeightString } from './money.js';
 import { ItemType, ProductCondition } from './product.js';
 
 export const ProductStatus = Type.Union([
@@ -78,7 +78,7 @@ export const ProductListItem = Type.Object({
     Type.Literal('palladium'),
     Type.Null(),
   ]),
-  weightGrams: Type.Union([DecimalString, Type.Null()]),
+  weightGrams: Type.Union([WeightString, Type.Null()]),
   listPriceEur: DecimalString,
   name: Type.String(),
   descriptionDe: Type.Union([Type.String(), Type.Null()]),
