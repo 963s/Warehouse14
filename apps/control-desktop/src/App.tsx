@@ -15,6 +15,10 @@ import { useApiClient } from './api-context.js';
 import { StatusDot, type StatusTone } from './components/StatusDot.js';
 import { ApprovalsPanel } from './panels/ApprovalsPanel.js';
 import { ClosingsPanel } from './panels/ClosingsPanel.js';
+import { KonformitaetPanel } from './panels/KonformitaetPanel.js';
+import { KundenPanel } from './panels/KundenPanel.js';
+import { LagerPanel } from './panels/LagerPanel.js';
+import { TerminePanel } from './panels/TerminePanel.js';
 import { BridgeDashboard } from './screens/übersicht/BridgeDashboard.js';
 
 /** The Owner's back-office surfaces, ordered by frequency. */
@@ -190,6 +194,14 @@ export function App(): JSX.Element {
           <ApprovalsPanel />
         ) : active === 3 ? (
           <ClosingsPanel />
+        ) : active === 4 ? (
+          <KundenPanel />
+        ) : active === 5 ? (
+          <LagerPanel />
+        ) : active === 6 ? (
+          <TerminePanel />
+        ) : active === 7 ? (
+          <KonformitaetPanel />
         ) : (
           <PlaceholderSurface digit={activeSurface.digit} label={activeSurface.label} />
         )}
