@@ -81,6 +81,7 @@ import productsEbayRoutes from './routes/products-ebay.js';
 import productsListRoute from './routes/products-list.js';
 import productsRoutes from './routes/products.js';
 // Day 21 — Retail Core
+import settingsRoute from './routes/settings.js';
 import shiftsRoutes from './routes/shifts.js';
 import shippingRoutes from './routes/shipping.js';
 import sseLedger from './routes/sse-ledger.js';
@@ -246,6 +247,7 @@ export async function buildApp(opts: BuildAppOpts): Promise<FastifyInstance> {
   await app.register(dashboardRoutes);
   await app.register(bridgeRoutes);
   await app.register(approvalsRoutes);
+  await app.register(settingsRoute);
   await app.register(ledgerRoutes);
   // ── Epic K: DSFinV-K / DATEV fiscal exports ──────────────────────
   await app.register(closingExportRoute);

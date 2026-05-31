@@ -15,6 +15,7 @@ import { useApiClient } from './api-context.js';
 import { StatusDot, type StatusTone } from './components/StatusDot.js';
 import { ApprovalsPanel } from './panels/ApprovalsPanel.js';
 import { ClosingsPanel } from './panels/ClosingsPanel.js';
+import { EinstellungenPanel } from './panels/EinstellungenPanel.js';
 import { KonformitaetPanel } from './panels/KonformitaetPanel.js';
 import { KundenPanel } from './panels/KundenPanel.js';
 import { LagerPanel } from './panels/LagerPanel.js';
@@ -202,6 +203,8 @@ export function App(): JSX.Element {
           <TerminePanel />
         ) : active === 7 ? (
           <KonformitaetPanel />
+        ) : active === 8 ? (
+          <EinstellungenPanel />
         ) : (
           <PlaceholderSurface digit={activeSurface.digit} label={activeSurface.label} />
         )}
