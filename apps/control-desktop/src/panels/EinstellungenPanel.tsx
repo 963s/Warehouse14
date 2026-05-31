@@ -1,15 +1,20 @@
 /**
- * EinstellungenPanel — the Einstellungen surface (digit 8). Owner read-only
- * view on `GET /api/settings`: the system_settings tunables (step-up threshold,
- * anomaly sigma, eBay/duress config …) and the paired device fleet with cert
- * headroom. Editing tunables / revoking devices is a follow-up.
+ * EinstellungenPanel — the Einstellungen surface (digit 8).
+ *
+ * Reads `GET /api/settings` (system_settings tunables + paired device fleet).
+ * The operator-tunable knobs — headlined by the Anomalie-Z-Wert-Schwelle —
+ * are editable inline via `PATCH /api/settings/:key` (Owner + step-up, server
+ * allow-list + range check). Everything else is shown read-only: the remaining
+ * worker-/system-owned parameters and the device fleet (mTLS cert revocation is
+ * a security-sensitive operation without an endpoint, so devices stay glance-only).
  */
 
-import type { CSSProperties } from 'react';
+import { type CSSProperties, useState } from 'react';
 
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
+import { ApiError } from '@warehouse14/api-client';
+import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../api-context.js';
 import { StatusDot, type StatusTone } from '../components/StatusDot.js';
@@ -34,6 +39,76 @@ interface SettingsResponse {
   devices: DeviceItem[];
 }
 
+/**
+ * The operator-tunable settings the Owner may edit here. Must stay in lockstep
+ * with the server allow-list in `apps/api-cloud/src/routes/settings.ts`.
+ */
+interface EditableSpec {
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+  /** Unit suffix shown next to the input (e.g. "%", "EUR", "Tage"). */
+  unit?: string;
+}
+const EDITABLE: Record<string, EditableSpec> = {
+  'anomaly.sigma_threshold': {
+    label: 'Z-Wert-Schwelle für Anomalie-Alarm',
+    min: 2.0,
+    max: 4.0,
+    step: 0.1,
+    unit: 'σ',
+  },
+  'ai_budget.daily_eur.total': {
+    label: 'KI-Tagesbudget',
+    min: 0,
+    max: 100_000,
+    step: 1,
+    unit: 'EUR',
+  },
+  'ai_budget.alert_threshold_pct': {
+    label: 'KI-Warnschwelle',
+    min: 1,
+    max: 100,
+    step: 1,
+    unit: '%',
+  },
+  'ai_budget.hard_stop_threshold_pct': {
+    label: 'KI-Stoppschwelle',
+    min: 50,
+    max: 300,
+    step: 5,
+    unit: '%',
+  },
+  'appointment.no_show_grace_minutes': {
+    label: 'Kulanz bis No-Show',
+    min: 0,
+    max: 240,
+    step: 5,
+    unit: 'Min.',
+  },
+  'smurfing.ankauf_count_window_days': {
+    label: 'Smurfing-Beobachtungsfenster',
+    min: 1,
+    max: 90,
+    step: 1,
+    unit: 'Tage',
+  },
+  'smurfing.ankauf_count_threshold': {
+    label: 'Smurfing-Schwellenanzahl',
+    min: 1,
+    max: 20,
+    step: 1,
+  },
+  'cash_drawer.variance_alert_threshold_eur': {
+    label: 'Kassendifferenz-Alarm',
+    min: 0,
+    max: 1_000,
+    step: 1,
+    unit: 'EUR',
+  },
+};
+
 const caption: CSSProperties = { margin: 0, color: 'var(--w14-ink-faded)', fontSize: '0.9rem' };
 const th: CSSProperties = {
   textAlign: 'left',
@@ -50,6 +125,12 @@ const td: CSSProperties = {
   borderBottom: '1px solid var(--w14-parchment-3)',
   verticalAlign: 'middle',
 };
+
+/** Strip the JSON-string quotes money values carry ("5.00" → 5). */
+function parseSettingValue(raw: string): number {
+  const unquoted = raw.replace(/^"|"$/g, '');
+  return Number.parseFloat(unquoted);
+}
 
 /** Days until a device cert expires → status tone. */
 function certTone(certExpiresAt: string): StatusTone {
@@ -68,6 +149,125 @@ function formatDate(iso: string): string {
   }).format(new Date(iso));
 }
 
+function germanError(err: unknown): string {
+  if (err instanceof ApiError) {
+    switch (err.code) {
+      case 'STEP_UP_REQUIRED':
+        return 'PIN-Bestätigung wurde abgebrochen.';
+      case 'DEVICE_NOT_AUTHORIZED':
+        return 'Diese Änderung erfordert ein gekoppeltes Gerät (mTLS).';
+      case 'FORBIDDEN':
+        return 'Keine Berechtigung (ADMIN erforderlich).';
+      default:
+        return err.message;
+    }
+  }
+  return 'Verbindung gestört — bitte erneut versuchen.';
+}
+
+/** One editable tunable: number input + Speichern, with inline feedback. */
+function EditableSettingRow({
+  setting,
+  spec,
+}: { setting: SettingItem; spec: EditableSpec }): JSX.Element {
+  const { client } = useApiClient();
+  const qc = useQueryClient();
+  const current = parseSettingValue(setting.value);
+  const [draft, setDraft] = useState<string>(String(current));
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState<boolean>(false);
+
+  const mutation = useMutation({
+    mutationFn: (value: number) =>
+      client.request('PATCH', `/api/settings/${encodeURIComponent(setting.key)}`, { value }),
+    onSuccess: async () => {
+      setSaved(true);
+      setError(null);
+      await qc.invalidateQueries({ queryKey: ['settings'] });
+    },
+    onError: (err) => {
+      setSaved(false);
+      setError(germanError(err));
+    },
+  });
+
+  const parsed = Number.parseFloat(draft);
+  const inRange = Number.isFinite(parsed) && parsed >= spec.min && parsed <= spec.max;
+  const dirty = inRange && parsed !== current;
+
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'minmax(0, 1fr) auto',
+        gap: 16,
+        alignItems: 'center',
+        padding: '12px 4px',
+        borderBottom: '1px solid var(--w14-parchment-3)',
+      }}
+    >
+      <div>
+        <div style={{ fontFamily: 'var(--w14-font-display)', fontSize: '1rem' }}>{spec.label}</div>
+        <div style={{ color: 'var(--w14-ink-faded)', fontSize: '0.78rem', marginTop: 2 }}>
+          {setting.description ?? setting.key} · zulässig {spec.min}–{spec.max}
+          {spec.unit ? ` ${spec.unit}` : ''}
+        </div>
+        {error && (
+          <div
+            role="alert"
+            style={{ color: 'var(--w14-wax-red)', fontSize: '0.8rem', marginTop: 4 }}
+          >
+            {error}
+          </div>
+        )}
+        {saved && !dirty && !error && (
+          <div style={{ color: 'var(--w14-verdigris)', fontSize: '0.8rem', marginTop: 4 }}>
+            Gespeichert.
+          </div>
+        )}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <input
+          className="w14cd-focusable"
+          type="number"
+          inputMode="decimal"
+          value={draft}
+          min={spec.min}
+          max={spec.max}
+          step={spec.step}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            setSaved(false);
+          }}
+          style={{
+            width: 96,
+            padding: '7px 10px',
+            textAlign: 'right',
+            border: `1px solid ${inRange ? 'var(--w14-ink-faded)' : 'var(--w14-wax-red)'}`,
+            borderRadius: 'var(--w14-radius-button)',
+            background: 'var(--w14-parchment)',
+            color: 'var(--w14-ink)',
+            fontFamily: 'var(--w14-font-mono)',
+          }}
+        />
+        {spec.unit && (
+          <span style={{ color: 'var(--w14-ink-faded)', fontSize: '0.82rem', minWidth: 28 }}>
+            {spec.unit}
+          </span>
+        )}
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={() => mutation.mutate(parsed)}
+          disabled={!dirty || mutation.isPending}
+        >
+          {mutation.isPending ? 'Speichert…' : 'Speichern'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function EinstellungenPanel(): JSX.Element {
   const { baseUrl, client } = useApiClient();
 
@@ -79,12 +279,14 @@ export function EinstellungenPanel(): JSX.Element {
 
   const settings = query.data?.settings ?? [];
   const devices = query.data?.devices ?? [];
+  const editable = settings.filter((s) => EDITABLE[s.key]);
+  const readOnly = settings.filter((s) => !EDITABLE[s.key]);
 
   return (
     <>
       <DiamondRule tone="gold" label="Einstellungen" />
       <p style={{ ...caption, marginTop: 8, marginBottom: 20 }}>
-        Systemparameter und gekoppelte Geräte (nur Ansicht in V1).
+        Schwellenwerte und Alarme bearbeiten, weitere Parameter und gekoppelte Geräte einsehen.
       </p>
 
       {query.isLoading ? (
@@ -93,12 +295,33 @@ export function EinstellungenPanel(): JSX.Element {
         </ParchmentCard>
       ) : (
         <div style={{ display: 'grid', gap: 24, maxWidth: 920 }}>
-          {/* System settings */}
+          {/* Editable thresholds + alarms */}
           <div>
-            <DiamondRule tone="faded" label="Parameter" />
+            <DiamondRule tone="faded" label="Schwellenwerte & Alarme" />
+            <ParchmentCard tone="parchment" padding="md">
+              {editable.length === 0 ? (
+                <p style={caption}>Keine bearbeitbaren Schwellenwerte gefunden.</p>
+              ) : (
+                editable.map((s) => (
+                  <EditableSettingRow
+                    key={s.key}
+                    setting={s}
+                    spec={EDITABLE[s.key] as EditableSpec}
+                  />
+                ))
+              )}
+              <p style={{ ...caption, fontSize: '0.78rem', marginTop: 12 }}>
+                Jede Änderung verlangt eine frische PIN-Bestätigung und wird im Protokoll erfasst.
+              </p>
+            </ParchmentCard>
+          </div>
+
+          {/* Read-only system/worker parameters */}
+          <div>
+            <DiamondRule tone="faded" label="Weitere Parameter" />
             <ParchmentCard tone="parchment" padding="md" style={{ overflowX: 'auto' }}>
-              {settings.length === 0 ? (
-                <p style={caption}>Keine Parameter hinterlegt.</p>
+              {readOnly.length === 0 ? (
+                <p style={caption}>Keine weiteren Parameter hinterlegt.</p>
               ) : (
                 <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
                   <thead>
@@ -109,7 +332,7 @@ export function EinstellungenPanel(): JSX.Element {
                     </tr>
                   </thead>
                   <tbody>
-                    {settings.map((s) => (
+                    {readOnly.map((s) => (
                       <tr key={s.key}>
                         <td
                           style={{ ...td, fontFamily: 'var(--w14-font-mono)', fontSize: '0.82rem' }}
@@ -132,7 +355,7 @@ export function EinstellungenPanel(): JSX.Element {
             </ParchmentCard>
           </div>
 
-          {/* Devices */}
+          {/* Devices — read-only fleet */}
           <div>
             <DiamondRule tone="faded" label="Geräte" />
             <ParchmentCard tone="parchment" padding="md" style={{ overflowX: 'auto' }}>

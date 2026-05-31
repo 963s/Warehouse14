@@ -13,6 +13,7 @@ import { DiamondRule, MagnifierIcon, ParchmentCard, RomanIndex, Seal } from '@wa
 
 import { useApiClient } from './api-context.js';
 import { StatusDot, type StatusTone } from './components/StatusDot.js';
+import { StepUpModal } from './components/StepUpModal.js';
 import { ApprovalsPanel } from './panels/ApprovalsPanel.js';
 import { ClosingsPanel } from './panels/ClosingsPanel.js';
 import { EinstellungenPanel } from './panels/EinstellungenPanel.js';
@@ -82,20 +83,50 @@ function berlinTime(): string {
   }).format(new Date());
 }
 
+type ThemeMode = 'light' | 'dark';
+
+const THEME_KEY = 'w14.control.theme';
+
+/** OS-aware initial theme (mirrors the POS), persisted across launches. */
+function readInitialTheme(): ThemeMode {
+  if (typeof window === 'undefined') return 'light';
+  const stored = window.localStorage.getItem(THEME_KEY);
+  if (stored === 'light' || stored === 'dark') return stored;
+  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
 export function App(): JSX.Element {
   const { baseUrl, client } = useApiClient();
   const [active, setActive] = useState(1);
   const [connection, setConnection] = useState<ConnectionState>('unbekannt');
   const [clock, setClock] = useState<string>(() => berlinTime());
+  const [theme, setTheme] = useState<ThemeMode>(readInitialTheme);
 
   useEffect(() => {
     const id = setInterval(() => setClock(berlinTime()), 30_000);
     return () => clearInterval(id);
   }, []);
 
+  // B1 — share the POS's high-end visual language: reflect the theme onto
+  // <html data-theme> and honour Cmd/Ctrl+Shift+D, persisted across launches.
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    window.localStorage.setItem(THEME_KEY, theme);
+  }, [theme]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'd') {
+        e.preventDefault();
+        setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   const checkConnection = useCallback(() => {
     client
-      .request<{ ok?: boolean }>('GET', '/api/health')
+      .request<{ ok?: boolean }>('GET', '/health')
       .then(() => setConnection('verbunden'))
       .catch(() => setConnection('nicht erreichbar'));
   }, [client]);
@@ -181,6 +212,32 @@ export function App(): JSX.Element {
           </span>
         </button>
 
+        {/* Hell/Dunkel — same high-end theme switch as the POS (Cmd+Shift+D). */}
+        <button
+          type="button"
+          className="w14cd-focusable"
+          onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+          title={theme === 'dark' ? 'Zu heller Ansicht wechseln' : 'Zu dunkler Ansicht wechseln'}
+          aria-label={theme === 'dark' ? 'Helle Ansicht' : 'Dunkle Ansicht'}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            background: 'none',
+            border: '1px solid var(--w14-ink-faded)',
+            borderRadius: 'var(--w14-radius-button)',
+            padding: '5px 11px',
+            cursor: 'pointer',
+            color: 'var(--w14-ink)',
+            fontFamily: 'var(--w14-font-display)',
+          }}
+        >
+          <span aria-hidden="true" style={{ fontSize: '0.95rem', lineHeight: 1 }}>
+            {theme === 'dark' ? '☾' : '☀'}
+          </span>
+          <span className="w14-smallcaps">{theme === 'dark' ? 'Dunkel' : 'Hell'}</span>
+        </button>
+
         <MagnifierIcon size={22} tone="ink" aria-label="Spotlight" />
       </header>
 
@@ -209,6 +266,9 @@ export function App(): JSX.Element {
           <PlaceholderSurface digit={activeSurface.digit} label={activeSurface.label} />
         )}
       </main>
+
+      {/* Global PIN re-confirmation — opens on any STEP_UP_REQUIRED. */}
+      <StepUpModal />
     </div>
   );
 }

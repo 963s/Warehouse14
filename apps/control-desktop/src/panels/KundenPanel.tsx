@@ -1,8 +1,9 @@
 /**
  * KundenPanel — the Kunden surface (digit 4). Owner customer overview on
  * `GET /api/customers`: name, KYC status, trust level, sanctions flag, and
- * cumulative Ankauf/spend. Read-only V1 (search + glance). Answers "who are my
- * customers and is anyone flagged?".
+ * cumulative Ankauf/spend. A row opens the AML/Trust editor (trust level +
+ * KYC stamp), guarded by Owner + step-up. Answers "who are my customers, is
+ * anyone flagged, and let me act on it".
  */
 
 import { type CSSProperties, useState } from 'react';
@@ -12,6 +13,7 @@ import { useQuery } from '@tanstack/react-query';
 import { DiamondRule, MoneyAmount, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../api-context.js';
+import { CustomerEditDialog } from '../components/CustomerEditDialog.js';
 import { StatusDot, type StatusTone } from '../components/StatusDot.js';
 
 interface CustomerRow {
@@ -55,6 +57,7 @@ function trustTone(trust: string, sanctions: boolean): StatusTone {
 export function KundenPanel(): JSX.Element {
   const { baseUrl, client } = useApiClient();
   const [q, setQ] = useState('');
+  const [editing, setEditing] = useState<CustomerRow | null>(null);
 
   const query = useQuery<CustomersResponse>({
     queryKey: ['customers', baseUrl],
@@ -80,7 +83,9 @@ export function KundenPanel(): JSX.Element {
           maxWidth: 920,
         }}
       >
-        <p style={caption}>Kundenstamm — KYC, Vertrauensstufe, Sanktionen, Umsätze.</p>
+        <p style={caption}>
+          Kundenstamm — KYC, Vertrauensstufe, Sanktionen, Umsätze. Zeile wählen zum Bearbeiten.
+        </p>
         <input
           className="w14cd-focusable"
           type="search"
@@ -121,7 +126,19 @@ export function KundenPanel(): JSX.Element {
             </thead>
             <tbody>
               {items.map((c) => (
-                <tr key={c.id}>
+                <tr
+                  key={c.id}
+                  className="w14cd-focusable"
+                  tabIndex={0}
+                  onClick={() => setEditing(c)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setEditing(c);
+                    }
+                  }}
+                  style={{ cursor: 'pointer' }}
+                >
                   <td style={{ ...td, fontFamily: 'var(--w14-font-display)' }}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                       <StatusDot tone={trustTone(c.trustLevel, c.sanctionsMatch)} size={9} />
@@ -155,6 +172,8 @@ export function KundenPanel(): JSX.Element {
           </table>
         </ParchmentCard>
       )}
+
+      {editing && <CustomerEditDialog customer={editing} onClose={() => setEditing(null)} />}
     </>
   );
 }
