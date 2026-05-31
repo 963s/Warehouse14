@@ -17,21 +17,14 @@ import {
   type AnkaufMetal,
   ApiError,
   type AppraisalItemBody,
+  type MetalRatesResponse,
   appraisalsApi,
+  metalPricesApi,
 } from '@warehouse14/api-client';
 import { Button, DiamondRule, MoneyAmount, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
 import { computeSchmelzwertEur } from '../../lib/bewertung-math.js';
-
-interface MetalPrice {
-  metal: AnkaufMetal;
-  pricePerGramEur: string;
-  fetchedAt: string;
-}
-interface MetalPricesResponse {
-  prices: MetalPrice[];
-}
 
 const ITEM_TYPE_OPTIONS: Array<{ value: AnkaufItemType; label: string }> = [
   { value: 'gold_coin', label: 'Goldmünze' },
@@ -77,19 +70,20 @@ export function AppraisalItemForm({ appraisalId }: AppraisalItemFormProps): JSX.
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Live metal-prices (degrade gracefully if unavailable).
-  const pricesQ = useQuery<MetalPricesResponse>({
-    queryKey: ['metal-prices', 'current'],
-    queryFn: () => api.request<MetalPricesResponse>('GET', '/api/metal-prices/current'),
+  // Live metal RATES. Ankauf is asymmetric (Decision #69): the buy hint uses the
+  // safe 10-day time-weighted buy rate (`ankaufRatePerGramEur`), NOT current spot.
+  const ratesQ = useQuery<MetalRatesResponse>({
+    queryKey: ['metal-prices', 'rates'],
+    queryFn: () => metalPricesApi.rates(api),
     staleTime: 5 * 60_000,
     retry: 1,
   });
 
-  const currentPriceForSelectedMetal = useMemo<string | null>(() => {
+  const ankaufRateForSelectedMetal = useMemo<string | null>(() => {
     if (metal === '' || metal === null) return null;
-    const found = pricesQ.data?.prices.find((p) => p.metal === metal);
-    return found?.pricePerGramEur ?? null;
-  }, [metal, pricesQ.data]);
+    const found = ratesQ.data?.rates.find((r) => r.metal === metal);
+    return found?.ankaufRatePerGramEur ?? null;
+  }, [metal, ratesQ.data]);
 
   const schmelzwertEur = useMemo(
     () =>
@@ -97,9 +91,9 @@ export function AppraisalItemForm({ appraisalId }: AppraisalItemFormProps): JSX.
         metal: metal === '' ? null : metal,
         weightGrams,
         finenessDecimal,
-        pricePerGramEur: currentPriceForSelectedMetal,
+        pricePerGramEur: ankaufRateForSelectedMetal,
       }),
-    [metal, weightGrams, finenessDecimal, currentPriceForSelectedMetal],
+    [metal, weightGrams, finenessDecimal, ankaufRateForSelectedMetal],
   );
 
   const reset = (): void => {
@@ -230,9 +224,9 @@ export function AppraisalItemForm({ appraisalId }: AppraisalItemFormProps): JSX.
       {/* Schmelzwert hint */}
       <SchmelzwertHint
         eur={schmelzwertEur}
-        priceEur={currentPriceForSelectedMetal}
+        priceEur={ankaufRateForSelectedMetal}
         metal={metal === '' ? null : metal}
-        loading={pricesQ.isLoading}
+        loading={ratesQ.isLoading}
       />
 
       <DiamondRule label="Individuelle Schätzung" />
@@ -301,7 +295,7 @@ function SchmelzwertHint({
         className="w14-smallcaps"
         style={{ color: 'var(--w14-ink-faded)', fontSize: '0.78rem', letterSpacing: '0.08em' }}
       >
-        Schmelzwert
+        Schmelzwert (Ankauf)
         {metal && priceEur && (
           <span style={{ marginLeft: 8, fontFamily: 'var(--w14-font-mono)', fontSize: '0.72rem' }}>
             {metal} @ {priceEur} €/g

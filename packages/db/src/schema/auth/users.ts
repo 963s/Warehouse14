@@ -66,6 +66,11 @@ export const users = pgTable(
     posPinFailedAttempts: integer('pos_pin_failed_attempts').notNull().default(0),
     posPinLockedUntil: timestamp('pos_pin_locked_until', { withTimezone: true }),
 
+    // Migration 0042 (Decision #37): duress PIN — a distinct second PIN that
+    // logs in normally while firing a silent alarm.
+    duressPinHash: text('duress_pin_hash'),
+    duressPinSetAt: timestamp('duress_pin_set_at', { withTimezone: true }),
+
     ...timestamps(),
   },
   (table) => ({
@@ -103,6 +108,17 @@ export const users = pgTable(
         OR (${table.posPinHash} IS NOT NULL AND ${table.posPinSetAt} IS NOT NULL)`,
     ),
     pinAttemptsNonneg: check('users_pin_attempts_nonneg', sql`${table.posPinFailedAttempts} >= 0`),
+
+    // Migration 0042 (Decision #37): duress PIN constraints.
+    duressPinHashSetTogether: check(
+      'users_duress_pin_hash_set_together',
+      sql`(${table.duressPinHash} IS NULL AND ${table.duressPinSetAt} IS NULL)
+        OR (${table.duressPinHash} IS NOT NULL AND ${table.duressPinSetAt} IS NOT NULL)`,
+    ),
+    duressPinDistinct: check(
+      'users_duress_pin_distinct',
+      sql`${table.duressPinHash} IS NULL OR ${table.duressPinHash} <> ${table.posPinHash}`,
+    ),
     posPinActiveIdx: index('users_pos_pin_active_idx')
       .on(table.id)
       .where(sql`${table.posPinHash} IS NOT NULL AND ${table.softDeletedAt} IS NULL`),

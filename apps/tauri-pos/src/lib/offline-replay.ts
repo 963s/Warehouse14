@@ -24,6 +24,7 @@ import {
   drainOutbox,
 } from '@warehouse14/api-client';
 
+import { useSyncStore } from '../state/sync-store.js';
 import { useToastStore } from '../state/toast-store.js';
 import { outboxStore, useApiClient } from './api-context.js';
 
@@ -68,6 +69,8 @@ export function createOfflineReplay(
   async function trigger(): Promise<void> {
     if (running || !isOnline()) return;
     running = true;
+    // Surface "Synchronisiert" while the queue drains (header badge, ADR-0044 §6).
+    useSyncStore.getState().setSyncing(true);
     try {
       const outcome = await drainOutbox({
         store,
@@ -83,6 +86,10 @@ export function createOfflineReplay(
       // connectivity event retries. Never throw from a background listener.
     } finally {
       running = false;
+      const sync = useSyncStore.getState();
+      sync.setSyncing(false);
+      // Refresh after every drain — captures successful / failed / conflict rows.
+      void sync.refreshStats();
     }
   }
 
@@ -121,6 +128,8 @@ export function useOfflineReplay(enabled: boolean): void {
     if (!enabled) return;
     const controller = createOfflineReplay(client, outboxStore, {
       onConflict: (record, serverCode) => {
+        // A halted-queue conflict — refresh the badge so it flips to red.
+        void useSyncStore.getState().refreshStats();
         addToast({
           tone: 'alert',
           title: 'Synchronisierungskonflikt',
@@ -131,4 +140,19 @@ export function useOfflineReplay(enabled: boolean): void {
     controller.start();
     return () => controller.stop();
   }, [enabled, client, addToast]);
+
+  // Lightweight 5s heartbeat: keep the header badge counts + online flag fresh
+  // (covers enqueues, which happen inside the api-client middleware out-of-band).
+  useEffect(() => {
+    if (!enabled) return;
+    const sync = useSyncStore.getState();
+    sync.setOnline(isOnline());
+    void sync.refreshStats();
+    const id = setInterval(() => {
+      const s = useSyncStore.getState();
+      s.setOnline(isOnline());
+      void s.refreshStats();
+    }, 5000);
+    return () => clearInterval(id);
+  }, [enabled]);
 }

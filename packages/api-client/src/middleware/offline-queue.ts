@@ -89,6 +89,12 @@ export interface OutboxStore {
   markConflict(idempotencyKey: string, error: unknown): Promise<void>;
   /** Pending rows in FIFO (enqueue) order — drained by the replay loop. */
   listPending(): Promise<readonly OutboxRecord[]>;
+  /**
+   * Optional queue-health snapshot for the offline-status UI: how many rows are
+   * still `pending` and how many are `conflict` (halted, awaiting the Compliance
+   * Inbox). Stores that cannot cheaply compute it may omit this method.
+   */
+  getStats?(): Promise<{ pending: number; conflict: number }>;
 }
 
 /**

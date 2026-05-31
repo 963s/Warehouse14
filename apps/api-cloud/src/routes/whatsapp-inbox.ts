@@ -122,7 +122,20 @@ const ThreadDetailResponse = Type.Object({
   phone: Type.String(),
   linkedCustomerId: Type.Union([Type.String({ format: 'uuid' }), Type.Null()]),
   linkedCustomerName: Type.Union([Type.String(), Type.Null()]),
+  aiActive: Type.Boolean(),
+  cooldownUntil: Type.Union([Type.String(), Type.Null()]),
   messages: Type.Array(ThreadMessage),
+});
+
+const AiStatusBody = Type.Object({
+  aiActive: Type.Boolean(),
+});
+type TAiStatusBody = Static<typeof AiStatusBody>;
+
+const AiStatusResponse = Type.Object({
+  phone: Type.String(),
+  aiActive: Type.Boolean(),
+  cooldownUntil: Type.Union([Type.String(), Type.Null()]),
 });
 
 const SendBody = Type.Object({
@@ -367,11 +380,90 @@ const whatsappInboxRoutes: FastifyPluginAsync<WhatsAppInboxOpts> = async (app, o
         handledAt: r.handled_at,
       }));
 
+      // AI-assistant status for this thread. Default to active / no cooldown
+      // when no conversation row exists yet (the bot is on by default).
+      const convRows = (await app.db.execute<{
+        ai_active: boolean;
+        cooldown_until: string | null;
+      }>(sql`
+        SELECT ai_active, cooldown_until::text AS cooldown_until
+        FROM whatsapp_conversations
+        WHERE customer_phone_e164 = ${phone}
+        LIMIT 1
+      `)) as unknown as Array<{ ai_active: boolean; cooldown_until: string | null }>;
+      const conv = convRows[0];
+
       return reply.status(200).send({
         phone,
         linkedCustomerId: detail.linkedCustomerId,
         linkedCustomerName: detail.linkedCustomerName,
+        aiActive: conv ? conv.ai_active : true,
+        cooldownUntil: conv ? conv.cooldown_until : null,
         messages,
+      });
+    },
+  );
+
+  // ──────────────────────────────────────────────────────────────────────
+  // PATCH /api/whatsapp/threads/:phone/ai-status — operator takeover toggle
+  //
+  // Pause (aiActive=false) or resume (aiActive=true) the AI assistant for a
+  // thread. Either way clears any takeover cooldown so the operator's explicit
+  // choice wins over the implicit 12h silence. Audited for compliance.
+  // ──────────────────────────────────────────────────────────────────────
+  app.patch<{ Params: TPhoneParams; Body: TAiStatusBody }>(
+    '/api/whatsapp/threads/:phone/ai-status',
+    {
+      schema: {
+        tags: ['whatsapp'],
+        summary: 'Toggle the AI assistant for a thread (operator takeover).',
+        params: PhoneParams,
+        body: AiStatusBody,
+        response: {
+          200: AiStatusResponse,
+          401: ErrorResponse,
+          403: ErrorResponse,
+        },
+      },
+    },
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'ADMIN');
+
+      const phone = req.params.phone;
+      const aiActive = req.body.aiActive;
+      const actorId = req.actor.id;
+      const ip = req.ip || null;
+
+      const rows = (await app.db.execute<{
+        ai_active: boolean;
+        cooldown_until: string | null;
+      }>(sql`
+        INSERT INTO whatsapp_conversations (customer_phone_e164, ai_active, cooldown_until)
+        VALUES (${phone}, ${aiActive}, NULL)
+        ON CONFLICT (customer_phone_e164)
+        DO UPDATE SET ai_active = ${aiActive}, cooldown_until = NULL
+        RETURNING ai_active, cooldown_until::text AS cooldown_until
+      `)) as unknown as Array<{ ai_active: boolean; cooldown_until: string | null }>;
+
+      const row = rows[0];
+      if (!row) throw new Error('whatsapp_conversations upsert returned no row');
+
+      // Forensic audit — who flipped the bot on/off for which thread, when.
+      await app.db.execute(sql`
+        INSERT INTO audit_log (event_type, actor_user_id, ip_address, payload)
+        VALUES (
+          'whatsapp.ai_status.updated',
+          ${actorId}::uuid,
+          ${ip}::inet,
+          ${JSON.stringify({ phone, aiActive })}::jsonb
+        )
+      `);
+
+      return reply.status(200).send({
+        phone,
+        aiActive: row.ai_active,
+        cooldownUntil: row.cooldown_until,
       });
     },
   );

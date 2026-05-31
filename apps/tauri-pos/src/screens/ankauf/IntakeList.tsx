@@ -11,17 +11,21 @@
  * enforces this server-side; the UI lock prevents wasted data entry.
  */
 
+import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 
-import type {
-  AnkaufCondition,
-  AnkaufItemType,
-  AnkaufMetal,
-  TaxTreatmentCode,
+import {
+  type AnkaufCondition,
+  type AnkaufItemType,
+  type AnkaufMetal,
+  type MetalRatesResponse,
+  type TaxTreatmentCode,
+  metalPricesApi,
 } from '@warehouse14/api-client';
 import { Button, DiamondRule, MoneyAmount, ParchmentCard, RomanIndex } from '@warehouse14/ui-kit';
 
-import { fromCents, sumNegotiatedCents } from '../../lib/intake-math.js';
+import { useApiClient } from '../../lib/api-context.js';
+import { computeSchmelzwertEur, fromCents, sumNegotiatedCents } from '../../lib/intake-math.js';
 import { TAX_TREATMENT_LABEL } from '../../lib/tax-treatment-label.js';
 import {
   type IntakeItem,
@@ -206,6 +210,31 @@ function AddItemForm({
   const [listPriceEur, setListPriceEur] = useState<string>('');
   const [publishImmediately, setPublishImmediately] = useState<boolean>(true);
 
+  // Live Ankauf rate (Decision #69): the buy-side Schmelzwert hint uses the safe
+  // 10-day time-weighted buy rate, NOT current spot. Degrades gracefully.
+  const api = useApiClient();
+  const ratesQ = useQuery<MetalRatesResponse>({
+    queryKey: ['metal-prices', 'rates'],
+    queryFn: () => metalPricesApi.rates(api),
+    staleTime: 5 * 60_000,
+    retry: 1,
+  });
+  const ankaufRateForSelectedMetal = useMemo<string | null>(() => {
+    if (metal === '') return null;
+    const found = ratesQ.data?.rates.find((r) => r.metal === metal);
+    return found?.ankaufRatePerGramEur ?? null;
+  }, [metal, ratesQ.data]);
+  const schmelzwertEur = useMemo(
+    () =>
+      computeSchmelzwertEur({
+        metal: metal === '' ? null : metal,
+        weightGrams,
+        finenessDecimal,
+        pricePerGramEur: ankaufRateForSelectedMetal,
+      }),
+    [metal, weightGrams, finenessDecimal, ankaufRateForSelectedMetal],
+  );
+
   const reset = (): void => {
     setSku('');
     setName('');
@@ -328,6 +357,14 @@ function AddItemForm({
         />
       </div>
 
+      {/* Live Schmelzwert (Ankauf) hint — under weight/fineness, before prices. */}
+      <SchmelzwertHint
+        eur={schmelzwertEur}
+        priceEur={ankaufRateForSelectedMetal}
+        metal={metal === '' ? null : metal}
+        loading={ratesQ.isLoading}
+      />
+
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 14 }}>
         <EuroInput
           label="Ankaufpreis (bar bezahlt)"
@@ -368,6 +405,48 @@ function AddItemForm({
         </Button>
       </div>
     </ParchmentCard>
+  );
+}
+
+function SchmelzwertHint({
+  eur,
+  priceEur,
+  metal,
+  loading,
+}: {
+  eur: string | null;
+  priceEur: string | null;
+  metal: AnkaufMetal | null;
+  loading: boolean;
+}): JSX.Element | null {
+  if (loading) return null;
+  if (eur === null) return null;
+  return (
+    <div
+      style={{
+        marginTop: 14,
+        padding: '10px 14px',
+        background: 'var(--w14-parchment-2)',
+        border: '1px solid var(--w14-rule)',
+        borderRadius: 'var(--w14-radius-card)',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'baseline',
+      }}
+    >
+      <span
+        className="w14-smallcaps"
+        style={{ color: 'var(--w14-ink-faded)', fontSize: '0.78rem', letterSpacing: '0.08em' }}
+      >
+        Schmelzwert (Ankauf)
+        {metal && priceEur && (
+          <span style={{ marginLeft: 8, fontFamily: 'var(--w14-font-mono)', fontSize: '0.72rem' }}>
+            {metal} @ {priceEur} €/g
+          </span>
+        )}
+      </span>
+      <MoneyAmount valueEur={eur} emphasis />
+    </div>
   );
 }
 

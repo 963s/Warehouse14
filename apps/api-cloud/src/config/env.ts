@@ -221,6 +221,20 @@ const EnvSchema = Type.Object({
     default: '',
     description: 'Fiskaly DSFinV-K API secret (Basic auth password). Empty → push skipped.',
   }),
+  // ── Duress PIN silent alarm (Decision #37) ───────────────────────────
+  // Optional outbound webhook fired in the background on a duress login.
+  // Empty → the alarm still hits audit_log + the alert.duress ledger event.
+  DURESS_ALARM_WEBHOOK_URL: Type.String({
+    default: '',
+    description: 'POST target for the silent duress alarm. Empty → no external webhook.',
+  }),
+  // ── eBay Trading API (Epic D) — instant POS delisting ────────────────
+  // Empty → endEbayListing() returns a mock success so checkout works without
+  // eBay credentials (the listing is still flipped to BEENDET locally).
+  EBAY_API_TOKEN: Type.String({
+    default: '',
+    description: 'eBay Trading API token (Epic D).',
+  }),
 });
 
 export type Env = Static<typeof EnvSchema>;

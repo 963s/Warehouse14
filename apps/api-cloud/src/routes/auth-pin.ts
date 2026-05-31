@@ -1,28 +1,31 @@
 /**
- * POS PIN auth routes — Day 12b.
+ * POS PIN auth routes — Day 12b + Duress PIN (Decision #37).
  *
- *   POST /api/auth/pin-login    — start a session from a PIN on a paired device
- *   POST /api/auth/step-up      — refresh sessions.last_pin_step_up_at via PIN
- *   POST /api/auth/pin/set      — create or change a PIN (requires Full Login)
+ *   POST /api/auth/pin-login       — start a session from a PIN on a paired device
+ *   POST /api/auth/step-up         — refresh sessions.last_pin_step_up_at via PIN
+ *   POST /api/auth/pin/set         — create or change the POS PIN (requires Full Login)
+ *   POST /api/auth/duress-pin/set  — set the duress PIN (requires auth; distinct from POS PIN)
  *
- * All three call into `@warehouse14/auth-pin` for argon2id + state machine,
+ * All call into `@warehouse14/auth-pin` for argon2id + the lockout state machine,
  * and emit `audit_log` rows for the observability surface in ADR-0022 §8.
  *
- * Discipline:
- *   • Every PIN read/write is wrapped in a `db.transaction` so the user-row
- *     state (failed_attempts / locked_until) is atomic with the audit row.
- *   • Failed PINs respond with the SAME shape and timing as success — no
- *     username enumeration through pin-login (the device cert already
- *     identifies the user; the PIN is the proof).
- *   • Lockout returns 423 PIN_LOCKED with `lockedUntil` so the UI can show
- *     a countdown; the front-end then routes the user to Full Login.
+ * Duress discipline (Decision #37):
+ *   • Login/step-up verify the PIN against BOTH the POS hash and the duress hash
+ *     (constant work — a dummy hash is verified when no duress PIN is set, so the
+ *     perceived latency is identical). A match against EITHER counts as correct,
+ *     so a duress login NEVER ticks the lockout counter and gives no branch/timing
+ *     hint to a coercing attacker.
+ *   • A duress match logs in normally, then fires a SILENT alarm in the background
+ *     (audit_log + `alert.duress` ledger event + optional webhook) — the response
+ *     to the operator is byte-for-byte identical to a normal login.
  */
 
 import { randomUUID } from 'node:crypto';
 import { type Static, Type } from '@sinclair/typebox';
 import { and, eq, isNull } from 'drizzle-orm';
-import type { FastifyPluginAsync } from 'fastify';
+import type { FastifyInstance, FastifyPluginAsync } from 'fastify';
 
+import { emit } from '@warehouse14/audit';
 import {
   PIN_FAILED_THRESHOLD,
   PIN_LOCKOUT_MINUTES,
@@ -33,7 +36,9 @@ import {
 } from '@warehouse14/auth-pin';
 import { auditLog, devices, sessions, users } from '@warehouse14/db/schema';
 
+import type { Env } from '../config/env.js';
 import { PinLockedError, UnauthorizedError, requireAuth } from '../lib/auth-policy.js';
+import { type PinMatch, classifyPinAttempt } from '../lib/duress.js';
 
 // ────────────────────────────────────────────────────────────────────────
 // Shared schemas
@@ -72,17 +77,8 @@ const PinSetResponse = Type.Object({
 // Helpers
 // ────────────────────────────────────────────────────────────────────────
 
-/**
- * Resolve the user behind the current PIN attempt.
- *
- * Today (V1, single cashier per terminal) → devices.paired_by_user_id.
- * Tomorrow (V1.x, avatar list per terminal) → request body would carry an
- * actorId hint and we'd validate it belongs to one of the device's allowed
- * users. We design the function signature for the future so the call sites
- * don't change.
- */
 async function resolveCandidateUser(
-  app: import('fastify').FastifyInstance,
+  app: FastifyInstance,
   deviceId: string | null,
 ): Promise<{ userId: string } | null> {
   if (!deviceId) return null;
@@ -101,12 +97,13 @@ interface PinUserState {
   role: 'ADMIN' | 'CASHIER' | 'READONLY';
   isOwner: boolean;
   posPinHash: string | null;
+  duressPinHash: string | null;
   posPinFailedAttempts: number;
   posPinLockedUntil: Date | null;
 }
 
 async function loadPinUserState(
-  app: import('fastify').FastifyInstance,
+  app: FastifyInstance,
   userId: string,
 ): Promise<PinUserState | null> {
   const rows = await app.db
@@ -115,6 +112,7 @@ async function loadPinUserState(
       role: users.role,
       isOwner: users.isOwner,
       posPinHash: users.posPinHash,
+      duressPinHash: users.duressPinHash,
       posPinFailedAttempts: users.posPinFailedAttempts,
       posPinLockedUntil: users.posPinLockedUntil,
     })
@@ -124,9 +122,9 @@ async function loadPinUserState(
   return (rows[0] as PinUserState | undefined) ?? null;
 }
 
-// Audit emission — purely fire-and-include in the active transaction.
+// Audit emission — include in the active transaction (or autocommit).
 async function emitAudit(
-  app: import('fastify').FastifyInstance,
+  app: FastifyInstance,
   opts: {
     event: string;
     actorUserId: string | null;
@@ -144,11 +142,93 @@ async function emitAudit(
   });
 }
 
+/**
+ * Memoized dummy hash so login verifies TWO hashes even when the user has no
+ * duress PIN — keeping the perceived latency identical (Decision #37).
+ */
+let dummyHashPromise: Promise<string> | null = null;
+function getDummyHash(): Promise<string> {
+  if (!dummyHashPromise) dummyHashPromise = hashPin('0000');
+  return dummyHashPromise;
+}
+
+/** Verify the entered PIN against BOTH hashes (constant two-verify work). */
+async function verifyPinPair(
+  pin: string,
+  posHash: string,
+  duressHash: string | null,
+): Promise<PinMatch> {
+  const duressTarget = duressHash ?? (await getDummyHash());
+  const [matchesPos, duressVerify] = await Promise.all([
+    verifyPin(pin, posHash),
+    verifyPin(pin, duressTarget),
+  ]);
+  return { matchesPos, matchesDuress: duressHash !== null && duressVerify };
+}
+
+/**
+ * Fire the silent alarm in the BACKGROUND — never blocks or fails the login.
+ * Three best-effort legs, each independently guarded: audit_log row →
+ * `alert.duress` ledger event (broadcasts to the SSE feed) → optional webhook.
+ */
+function triggerSilentAlarm(
+  app: FastifyInstance,
+  webhookUrl: string,
+  ctx: {
+    userId: string;
+    deviceId: string | null;
+    ip: string | null;
+    sessionId: string;
+    route: 'pin-login' | 'step-up';
+  },
+): void {
+  void (async () => {
+    const at = new Date().toISOString();
+    try {
+      await app.db.insert(auditLog).values({
+        eventType: 'security.duress_login_alert',
+        actorUserId: ctx.userId,
+        deviceId: ctx.deviceId,
+        ipAddress: ctx.ip,
+        payload: { route: ctx.route, session_id: ctx.sessionId, at },
+      });
+    } catch (err) {
+      app.log.error({ err }, 'duress alarm: audit_log insert failed');
+    }
+    try {
+      await emit(app.db, {
+        eventType: 'alert.duress',
+        entityTable: 'users',
+        entityId: ctx.userId,
+        actorUserId: ctx.userId,
+        deviceId: ctx.deviceId,
+        ipAddress: ctx.ip,
+        payload: { route: ctx.route, at },
+      });
+    } catch (err) {
+      app.log.error({ err }, 'duress alarm: ledger emit failed');
+    }
+    if (webhookUrl) {
+      try {
+        await fetch(webhookUrl, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ type: 'duress', userId: ctx.userId, route: ctx.route, at }),
+        });
+      } catch (err) {
+        app.log.error({ err }, 'duress alarm: webhook POST failed');
+      }
+    }
+  })();
+}
+
 // ────────────────────────────────────────────────────────────────────────
 // Routes
 // ────────────────────────────────────────────────────────────────────────
 
-const authPinRoutes: FastifyPluginAsync = async (app) => {
+const authPinRoutes: FastifyPluginAsync<{ env: Env }> = async (app, opts) => {
+  const duressWebhookUrl = opts.env.DURESS_ALARM_WEBHOOK_URL;
+
   // ────────────────────────────────────────────────────────────────────
   // POST /api/auth/pin-login
   // ────────────────────────────────────────────────────────────────────
@@ -175,9 +255,9 @@ const authPinRoutes: FastifyPluginAsync = async (app) => {
         throw new UnauthorizedError('PIN not set for this user');
       }
 
-      // Constant work first — verify PIN. The state machine then decides
-      // success / fail / lockout / already-locked.
-      const pinCorrect = await verifyPin(pin, state.posPinHash);
+      // Verify against BOTH hashes (constant work), then classify.
+      const match = await verifyPinPair(pin, state.posPinHash, state.duressPinHash);
+      const { pinCorrect, isDuress } = classifyPinAttempt(match);
       const decision = decideAttemptOutcome({
         state: { failedAttempts: state.posPinFailedAttempts, lockedUntil: state.posPinLockedUntil },
         now: new Date(),
@@ -228,6 +308,7 @@ const authPinRoutes: FastifyPluginAsync = async (app) => {
 
       if (decision.kind === 'failed_now_locked') {
         // The lockout starts NOW. Surface it to the UI immediately.
+        // biome-ignore lint/style/noNonNullAssertion: failed_now_locked always carries a lockedUntil.
         throw new PinLockedError(decision.newState.lockedUntil!);
       }
       if (decision.kind === 'failed') {
@@ -263,6 +344,17 @@ const authPinRoutes: FastifyPluginAsync = async (app) => {
         expires: expiresAt,
       });
 
+      // Duress: log in normally, then fire the silent alarm in the background.
+      if (isDuress) {
+        triggerSilentAlarm(app, duressWebhookUrl, {
+          userId: state.id,
+          deviceId: req.deviceId,
+          ip,
+          sessionId,
+          route: 'pin-login',
+        });
+      }
+
       return {
         ok: true as const,
         sessionExpiresAt: expiresAt.toISOString(),
@@ -294,7 +386,8 @@ const authPinRoutes: FastifyPluginAsync = async (app) => {
         throw new UnauthorizedError('PIN not set for this user');
       }
 
-      const pinCorrect = await verifyPin(pin, state.posPinHash);
+      const match = await verifyPinPair(pin, state.posPinHash, state.duressPinHash);
+      const { pinCorrect, isDuress } = classifyPinAttempt(match);
       const decision = decideAttemptOutcome({
         state: { failedAttempts: state.posPinFailedAttempts, lockedUntil: state.posPinLockedUntil },
         now: new Date(),
@@ -341,6 +434,7 @@ const authPinRoutes: FastifyPluginAsync = async (app) => {
       });
 
       if (decision.kind === 'failed_now_locked') {
+        // biome-ignore lint/style/noNonNullAssertion: failed_now_locked always carries a lockedUntil.
         throw new PinLockedError(decision.newState.lockedUntil!);
       }
       if (decision.kind === 'failed') {
@@ -349,16 +443,23 @@ const authPinRoutes: FastifyPluginAsync = async (app) => {
         );
       }
 
+      // Duress at step-up: refresh the window normally, then alarm in background.
+      if (isDuress) {
+        triggerSilentAlarm(app, duressWebhookUrl, {
+          userId: state.id,
+          deviceId: req.deviceId,
+          ip,
+          sessionId: req.session.sessionId,
+          route: 'step-up',
+        });
+      }
+
       return { ok: true as const, lastPinStepUpAt: now.toISOString() };
     },
   );
 
   // ────────────────────────────────────────────────────────────────────
-  // POST /api/auth/pin/set — set or change PIN (requires Full Login session)
-  //
-  // For V1 we accept the current session is enough proof — better-auth
-  // already enforced email/password (+ TOTP if enabled) to issue it.
-  // The CHECK constraint + the auth-pin policy enforce the rest.
+  // POST /api/auth/pin/set — set or change the POS PIN (requires Full Login)
   // ────────────────────────────────────────────────────────────────────
   app.post(
     '/api/auth/pin/set',
@@ -400,14 +501,80 @@ const authPinRoutes: FastifyPluginAsync = async (app) => {
             posPinFailedAttempts: 0,
             posPinLockedUntil: null,
           })
-          .where(eq(users.id, req.actor!.id));
+          .where(eq(users.id, req.actor.id));
 
         await tx.insert(auditLog).values({
           eventType: 'pin.set',
-          actorUserId: req.actor!.id,
+          actorUserId: req.actor.id,
           deviceId: req.deviceId,
           ipAddress: ip,
           payload: { lockout_minutes: PIN_LOCKOUT_MINUTES, threshold: PIN_FAILED_THRESHOLD },
+        });
+      });
+
+      return { ok: true as const, setAt: now.toISOString() };
+    },
+  );
+
+  // ────────────────────────────────────────────────────────────────────
+  // POST /api/auth/duress-pin/set — register/rotate the duress PIN
+  //
+  // Requires a valid session. The new PIN must pass the policy (blacklist in
+  // prod) AND differ from the user's current POS PIN — verified in-app since
+  // argon2id salts every hash (the DB CHECK only catches a literal hash copy).
+  // ────────────────────────────────────────────────────────────────────
+  app.post(
+    '/api/auth/duress-pin/set',
+    {
+      schema: {
+        tags: ['auth'],
+        summary: 'Set or rotate the duress PIN (must differ from the POS PIN)',
+        body: PinSetBody,
+        response: { 200: PinSetResponse },
+      },
+    },
+    async (req) => {
+      requireAuth(req);
+      const { newPin } = req.body as Static<typeof PinSetBody>;
+      const ip = req.ip || null;
+
+      const isProd = process.env.NODE_ENV === 'production';
+      const err = PinPolicy.validate(newPin, { enforceBlacklist: isProd });
+      if (err) {
+        throw new UnauthorizedError(
+          err.code === 'BLACKLISTED'
+            ? 'PIN is in the blacklist of common weak PINs'
+            : err.code === 'WRONG_LENGTH'
+              ? 'PIN must be exactly 4 digits'
+              : 'PIN must be all digits',
+        );
+      }
+
+      const state = await loadPinUserState(app, req.actor.id);
+      if (!state || !state.posPinHash) {
+        throw new UnauthorizedError('Set a POS PIN before registering a duress PIN');
+      }
+
+      // Distinctness: the duress PIN must not equal the POS PIN.
+      const sameAsPos = await verifyPin(newPin, state.posPinHash);
+      if (sameAsPos) {
+        throw new UnauthorizedError('Duress PIN must differ from your POS PIN');
+      }
+
+      const hash = await hashPin(newPin);
+      const now = new Date();
+      await app.db.transaction(async (tx) => {
+        await tx
+          .update(users)
+          .set({ duressPinHash: hash, duressPinSetAt: now })
+          .where(eq(users.id, req.actor.id));
+
+        await tx.insert(auditLog).values({
+          eventType: 'pin.set_duress',
+          actorUserId: req.actor.id,
+          deviceId: req.deviceId,
+          ipAddress: ip,
+          payload: { duress: true },
         });
       });
 

@@ -617,6 +617,14 @@ function ThreadSidebar({ phone }: { phone: string | null }): JSX.Element {
   );
 }
 
+/** "noch 11 Std 23 Min" / "noch 7 Min" — remaining time of a takeover cooldown. */
+function formatCooldownRemaining(ms: number): string {
+  const totalMinutes = Math.max(0, Math.floor(ms / 60_000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return hours > 0 ? `noch ${hours} Std ${minutes} Min` : `noch ${minutes} Min`;
+}
+
 function ThreadSidebarBody({ phone }: { phone: string }): JSX.Element {
   const api = useApiClient();
   const qc = useQueryClient();
@@ -671,6 +679,27 @@ function ThreadSidebarBody({ phone }: { phone: string }): JSX.Element {
     },
   });
 
+  const aiStatus = useMutation({
+    mutationFn: (next: boolean) => whatsappApi.updateAiStatus(api, phone, next),
+    onSuccess: async () => {
+      addToast({ tone: 'success', title: 'AI-Status aktualisiert' });
+      await qc.invalidateQueries({ queryKey: ['whatsapp'] });
+    },
+    onError: (err) => {
+      addToast({
+        tone: 'alert',
+        title: 'AI-Status fehlgeschlagen',
+        body: err instanceof ApiError ? err.message : 'Bitte erneut versuchen.',
+      });
+    },
+  });
+
+  // AI-assistant state for this thread (default: bot active, no cooldown).
+  const aiActive = thread?.aiActive ?? true;
+  const cooldownUntil = thread?.cooldownUntil ?? null;
+  const cooldownRemainingMs = cooldownUntil ? new Date(cooldownUntil).getTime() - Date.now() : 0;
+  const onCooldown = cooldownRemainingMs > 0;
+
   const targetMessageForLink: WhatsAppMessage | null = useMemo(() => {
     if (!thread) return null;
     // Prefer the newest inbound for linking (most likely to be the operator's
@@ -698,6 +727,75 @@ function ThreadSidebarBody({ phone }: { phone: string }): JSX.Element {
         >
           {phone}
         </p>
+      </ParchmentCard>
+
+      <ParchmentCard padding="md">
+        <SidebarLabel>AI-Assistent</SidebarLabel>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+          <span
+            aria-hidden
+            style={{
+              width: 9,
+              height: 9,
+              borderRadius: '50%',
+              display: 'inline-block',
+              background: onCooldown
+                ? 'var(--w14-gold)'
+                : aiActive
+                  ? 'var(--w14-verdigris)'
+                  : 'var(--w14-ink-faded)',
+              boxShadow: `0 0 6px -1px ${
+                onCooldown
+                  ? 'var(--w14-gold)'
+                  : aiActive
+                    ? 'var(--w14-verdigris)'
+                    : 'var(--w14-ink-faded)'
+              }`,
+            }}
+          />
+          <span
+            style={{
+              fontFamily: 'var(--w14-font-display)',
+              fontSize: '0.92rem',
+              color: 'var(--w14-ink)',
+            }}
+          >
+            {onCooldown ? 'Human Cooldown' : aiActive ? 'Aktiv' : 'Ausgeschaltet'}
+          </span>
+        </div>
+        {onCooldown && (
+          <p
+            style={{
+              margin: '4px 0 0',
+              fontSize: '0.8rem',
+              fontStyle: 'italic',
+              color: 'var(--w14-ink-faded)',
+            }}
+          >
+            Mensch übernimmt — {formatCooldownRemaining(cooldownRemainingMs)}
+          </p>
+        )}
+        <div style={{ marginTop: 10 }}>
+          {onCooldown || !aiActive ? (
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={aiStatus.isPending}
+              onClick={() => aiStatus.mutate(true)}
+            >
+              {onCooldown ? 'AI jetzt reaktivieren' : 'AI aktivieren'}
+            </Button>
+          ) : (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={aiStatus.isPending}
+              onClick={() => aiStatus.mutate(false)}
+            >
+              AI ausschalten
+            </Button>
+          )}
+        </div>
       </ParchmentCard>
 
       <ParchmentCard padding="md">
