@@ -91,6 +91,8 @@ const securityHeadersPlugin: FastifyPluginAsync<SecurityHeadersPluginOpts> = asy
       'last-event-id', // SSE reconnect
       'x-dev-device-fingerprint', // dev mTLS bypass
       'x-request-id', // correlation
+      'idempotency-key', // offline-queue mutation key (ADR-0044) — sent on every POST/PATCH/PUT/DELETE
+      'x-step-up-token', // PIN step-up token (auth-policy)
     ],
     exposedHeaders: ['x-request-id', 'ratelimit-limit', 'ratelimit-remaining', 'ratelimit-reset'],
     maxAge: 600,
