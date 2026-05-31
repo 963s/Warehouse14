@@ -31,6 +31,7 @@ import { useDashboardSummary } from '../../hooks/useDashboardSummary.js';
 import { useLedgerStream } from '../../hooks/useLedgerStream.js';
 import { useSessionStore } from '../../state/session-store.js';
 
+import { DayControl } from './DayControl.js';
 import { EdelmetallkursPanel } from './EdelmetallkursPanel.js';
 import { TagebuchFeed } from './TagebuchFeed.js';
 import { UebersichtPanel } from './UebersichtPanel.js';
@@ -79,6 +80,11 @@ export function Werkstatt(): JSX.Element {
         sseStatus={sseStatus}
         todayLabel={todayLabel}
       />
+
+      {/* A4: guided start/end of day — one clear control on the landing screen. */}
+      <div style={{ padding: '4px 28px 0' }}>
+        <DayControl />
+      </div>
 
       <main
         style={{
