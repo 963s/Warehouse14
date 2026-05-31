@@ -89,8 +89,9 @@ export function EuroInput({
     background: 'transparent',
     color: 'var(--w14-ink)',
     fontFamily: 'var(--w14-font-mono)',
-    fontSize: '1.4rem',
-    padding: '8px 4px',
+    fontSize: '1.65rem', // A1: larger for fast-paced retail readability
+    padding: '14px 8px', // A1: taller tap target (~52px) for touch
+    minHeight: 52,
     transition: 'border-color var(--w14-dur-short) var(--w14-ease-curator)',
     opacity: disabled ? 0.55 : 1,
   };

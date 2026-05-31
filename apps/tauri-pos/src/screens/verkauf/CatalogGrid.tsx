@@ -181,7 +181,8 @@ function ProductTile({
         display: 'flex',
         flexDirection: 'column',
         gap: 6,
-        padding: '14px 14px 12px',
+        padding: '16px 16px 14px', // A1: roomier touch target for fast-paced retail
+        minHeight: 108, // A1: consistent, comfortable tap area
         border: '1px solid transparent',
         borderRadius: 'var(--w14-radius-card)',
         backgroundColor: inCart ? 'var(--w14-parchment-3)' : 'var(--w14-parchment-2)',
