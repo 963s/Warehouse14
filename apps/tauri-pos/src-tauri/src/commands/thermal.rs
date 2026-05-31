@@ -88,8 +88,18 @@ pub async fn print_thermal_receipt(
     .map_err(HardwareError::from)??;
 
     let bytes = build_escpos(&data);
-    stream.write_all(&bytes).await?;
-    stream.flush().await?;
+    let write_fut = async {
+        stream.write_all(&bytes).await?;
+        stream.flush().await?;
+        Ok::<(), std::io::Error>(())
+    };
+    timeout(
+        Duration::from_millis(DEFAULT_TCP_TIMEOUT_MS),
+        write_fut,
+    )
+    .await
+    .map_err(HardwareError::from)??;
+
     Ok(())
 }
 

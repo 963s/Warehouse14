@@ -41,6 +41,8 @@ import {
 import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
+import type { LabelData } from '../../lib/hardware-client.js';
+import { useLabelPrinter } from '../../lib/use-label-printer.js';
 import { useToastStore } from '../../state/toast-store.js';
 
 import { WebSeoPanel } from './WebSeoPanel.js';
@@ -69,6 +71,7 @@ export function InventoryAdjustmentDialog({
   const api = useApiClient();
   const qc = useQueryClient();
   const addToast = useToastStore((s) => s.addToast);
+  const printer = useLabelPrinter();
 
   const [reason, setReason] = useState<InventoryAdjustmentReason>('LOCATION_CHANGE');
   const [notes, setNotes] = useState<string>('');
@@ -374,7 +377,34 @@ export function InventoryAdjustmentDialog({
               </p>
             )}
 
-            <div style={{ marginTop: 22, display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+            <div style={{ marginTop: 22, display: 'flex', gap: 12, alignItems: 'center' }}>
+              {product && product.status !== 'SOLD' && !product.archivedAt && (
+                <Button
+                  variant="ghost"
+                  type="button"
+                  onClick={() => {
+                    void printer.print([
+                      {
+                        sku: product.sku,
+                        productName: product.name,
+                        weightGrams: product.weightGrams,
+                        karat: null,
+                        storageLocation:
+                          [
+                            product.locationStorageUnit,
+                            product.locationDrawer,
+                            product.locationPosition,
+                          ]
+                            .filter((s): s is string => s !== null && s.length > 0)
+                            .join(' · ') || null,
+                      } satisfies LabelData,
+                    ]);
+                  }}
+                >
+                  Label drucken
+                </Button>
+              )}
+              <div style={{ flex: 1 }} />
               <Button variant="ghost" onClick={onClose} disabled={submitting}>
                 Abbrechen
               </Button>

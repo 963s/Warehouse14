@@ -29,6 +29,8 @@ import { dashboardQueryKey } from '../../hooks/useDashboardSummary.js';
 import { GWG_IDENTITY_THRESHOLD_EUR } from '../../lib/ankauf-thresholds.js';
 import { useApiClient } from '../../lib/api-context.js';
 import { toCents } from '../../lib/bewertung-math.js';
+import type { LabelData } from '../../lib/hardware-client.js';
+import { useLabelPrinter } from '../../lib/use-label-printer.js';
 import { useBewertungStore } from '../../state/bewertung-store.js';
 import { useToastStore } from '../../state/toast-store.js';
 
@@ -48,6 +50,7 @@ export function AcceptanceDialog({
   const navigate = useNavigate();
   const addToast = useToastStore((s) => s.addToast);
   const resetBewertung = useBewertungStore((s) => s.reset);
+  const printer = useLabelPrinter();
 
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -103,12 +106,30 @@ export function AcceptanceDialog({
     setSubmitting(true);
     setError(null);
     try {
-      await appraisalsApi.accept(api, appraisal.id);
+      const result = await appraisalsApi.accept(api, appraisal.id);
       addToast({
         tone: 'success',
         title: 'Konvolut angenommen',
         body: `${appraisal.items.length} Stücke ins Lager überführt.`,
       });
+
+      const labels = result.items
+        .filter((i) => i.productId !== null)
+        .map(
+          (i) =>
+            ({
+              sku: i.productId as string,
+              productName: i.name,
+              weightGrams: i.weightGrams ?? null,
+              karat: i.karatCode ?? null,
+              storageLocation: null,
+            }) satisfies LabelData,
+        );
+
+      if (labels.length > 0) {
+        void printer.print(labels);
+      }
+
       // Invalidate everything the acceptance touched.
       await Promise.all([
         qc.invalidateQueries({ queryKey: ['appraisals', appraisal.id] }),
@@ -142,6 +163,7 @@ export function AcceptanceDialog({
     canAccept,
     onClose,
     qc,
+    printer,
   ]);
 
   const reject = useCallback(async (): Promise<void> => {

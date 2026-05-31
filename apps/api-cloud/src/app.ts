@@ -49,6 +49,7 @@ import appraisalRoutes from './routes/appraisals.js';
 import authPinRoutes from './routes/auth-pin.js';
 import authSessionRoutes from './routes/auth-session.js';
 import belegtextRoutes from './routes/belegtext.js';
+import bridgeRoutes from './routes/bridge.js';
 import categoriesRoutes from './routes/categories.js';
 import closingExportRoute from './routes/closing-export.js';
 import customerKycDocumentsRoute from './routes/customer-kyc-documents.js';
@@ -242,6 +243,7 @@ export async function buildApp(opts: BuildAppOpts): Promise<FastifyInstance> {
   await app.register(productsEbayRoutes);
   await app.register(shippingRoutes, { env: opts.env });
   await app.register(dashboardRoutes);
+  await app.register(bridgeRoutes);
   await app.register(ledgerRoutes);
   // ── Epic K: DSFinV-K / DATEV fiscal exports ──────────────────────
   await app.register(closingExportRoute);

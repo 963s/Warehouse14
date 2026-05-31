@@ -11,17 +11,21 @@
  * enforces this server-side; the UI lock prevents wasted data entry.
  */
 
+import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 
-import type {
-  AnkaufCondition,
-  AnkaufItemType,
-  AnkaufMetal,
-  TaxTreatmentCode,
+import {
+  type AnkaufCondition,
+  type AnkaufItemType,
+  type AnkaufMetal,
+  type TaxTreatmentCode,
+  metalPricesApi,
+  type MetalRatesResponse,
 } from '@warehouse14/api-client';
 import { Button, DiamondRule, MoneyAmount, ParchmentCard, RomanIndex } from '@warehouse14/ui-kit';
 
-import { fromCents, sumNegotiatedCents } from '../../lib/intake-math.js';
+import { fromCents, sumNegotiatedCents, computeSchmelzwertEur } from '../../lib/intake-math.js';
+import { useApiClient } from '../../lib/api-context.js';
 import { TAX_TREATMENT_LABEL } from '../../lib/tax-treatment-label.js';
 import {
   type IntakeItem,

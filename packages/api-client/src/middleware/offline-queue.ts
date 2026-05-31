@@ -108,7 +108,8 @@ export const FISCAL_PATH_PREFIXES: readonly string[] = [
 
 /** True when `path` is a fiscal route (exact match or a sub-path). */
 export function isGobdRelevantPath(path: string): boolean {
-  return FISCAL_PATH_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`));
+  const normalized = path.startsWith('/api') ? path.slice(4) : path;
+  return FISCAL_PATH_PREFIXES.some((p) => normalized === p || normalized.startsWith(`${p}/`));
 }
 
 export interface OfflineQueueDependencies {

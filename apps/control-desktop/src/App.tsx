@@ -12,6 +12,7 @@ import { useCallback, useState } from 'react';
 import { DiamondRule, MagnifierIcon, ParchmentCard, RomanIndex, Seal } from '@warehouse14/ui-kit';
 
 import { useApiClient } from './api-context.js';
+import { BridgeDashboard } from './screens/übersicht/BridgeDashboard.js';
 
 /** The Owner's back-office surfaces, ordered by frequency. */
 const SURFACES = [
@@ -110,46 +111,57 @@ export function App(): JSX.Element {
       {/* ── Active surface ──────────────────────────────────────────────── */}
       <main style={{ flex: 1, padding: 32, maxWidth: 960, width: '100%', margin: '0 auto' }}>
         <DiamondRule tone="gold" label="Kommandozentrale" />
-        <ParchmentCard tone="parchment" padding="lg" style={{ marginTop: 24 }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
-            <RomanIndex value={activeSurface.digit} tone="gold" />
-            <h1 style={{ margin: 0, fontFamily: 'var(--w14-font-display, serif)' }}>
-              {activeSurface.label}
-            </h1>
-          </div>
-          <p style={{ color: 'var(--w14-ink-faded)', marginTop: 12 }}>
-            Owner-Kommandozentrale (Gerüst). Diese Oberfläche wird mit dem jeweiligen
-            Back-Office-Workflow gefüllt.
-          </p>
+        {active === 1 ? (
+          <BridgeDashboard />
+        ) : (
+          <ParchmentCard tone="parchment" padding="lg" style={{ marginTop: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+              <RomanIndex value={activeSurface.digit} tone="gold" />
+              <h1 style={{ margin: 0, fontFamily: 'var(--w14-font-display, serif)' }}>
+                {activeSurface.label}
+              </h1>
+            </div>
+            <p style={{ color: 'var(--w14-ink-faded)', marginTop: 12 }}>
+              Owner-Kommandozentrale (Gerüst). Diese Oberfläche wird mit dem jeweiligen
+              Back-Office-Workflow gefüllt.
+            </p>
 
-          <DiamondRule tone="faded" style={{ margin: '24px 0' }} />
+            <DiamondRule tone="faded" style={{ margin: '24px 0' }} />
 
-          <dl
-            style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px 16px', margin: 0 }}
-          >
-            <dt style={{ color: 'var(--w14-ink-faded)' }}>API</dt>
-            <dd style={{ margin: 0, fontFamily: 'var(--w14-font-mono, monospace)' }}>{baseUrl}</dd>
-            <dt style={{ color: 'var(--w14-ink-faded)' }}>Verbindung</dt>
-            <dd style={{ margin: 0 }}>{connection}</dd>
-          </dl>
+            <dl
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'auto 1fr',
+                gap: '6px 16px',
+                margin: 0,
+              }}
+            >
+              <dt style={{ color: 'var(--w14-ink-faded)' }}>API</dt>
+              <dd style={{ margin: 0, fontFamily: 'var(--w14-font-mono, monospace)' }}>
+                {baseUrl}
+              </dd>
+              <dt style={{ color: 'var(--w14-ink-faded)' }}>Verbindung</dt>
+              <dd style={{ margin: 0 }}>{connection}</dd>
+            </dl>
 
-          <button
-            type="button"
-            onClick={checkConnection}
-            style={{
-              marginTop: 20,
-              padding: '8px 16px',
-              cursor: 'pointer',
-              background: 'var(--w14-ink)',
-              color: 'var(--w14-parchment)',
-              border: 'none',
-              borderRadius: 4,
-              fontFamily: 'var(--w14-font-display, serif)',
-            }}
-          >
-            Verbindung prüfen
-          </button>
-        </ParchmentCard>
+            <button
+              type="button"
+              onClick={checkConnection}
+              style={{
+                marginTop: 20,
+                padding: '8px 16px',
+                cursor: 'pointer',
+                background: 'var(--w14-ink)',
+                color: 'var(--w14-parchment)',
+                border: 'none',
+                borderRadius: 4,
+                fontFamily: 'var(--w14-font-display, serif)',
+              }}
+            >
+              Verbindung prüfen
+            </button>
+          </ParchmentCard>
+        )}
       </main>
     </div>
   );

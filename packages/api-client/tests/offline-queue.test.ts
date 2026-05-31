@@ -292,7 +292,7 @@ describe('uuidv7', () => {
 });
 
 describe('isGobdRelevantPath (ADR-0044 §5 / action item 7)', () => {
-  it('flags sales, storno, ankauf, cash-movements, shift-close and finalize as fiscal', () => {
+  it('flags sales, storno, ankauf, cash-movements, shift-close and finalize as fiscal (with and without /api)', () => {
     for (const p of [
       '/ankauf',
       '/ankauf/4711',
@@ -302,13 +302,22 @@ describe('isGobdRelevantPath (ADR-0044 §5 / action item 7)', () => {
       '/cash-movements',
       '/shifts/close',
       '/transactions/finalize',
+      '/api/ankauf',
+      '/api/transactions/finalize',
+      '/api/storno',
     ]) {
       expect(isGobdRelevantPath(p)).toBe(true);
     }
   });
 
   it('does not flag non-fiscal reads/mutations', () => {
-    for (const p of ['/products', '/inventory/adjust', '/dashboard/summary', '/ankaufer']) {
+    for (const p of [
+      '/products',
+      '/inventory/adjust',
+      '/dashboard/summary',
+      '/ankaufer',
+      '/api/products',
+    ]) {
       expect(isGobdRelevantPath(p)).toBe(false);
     }
   });
