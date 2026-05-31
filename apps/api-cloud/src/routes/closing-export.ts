@@ -32,6 +32,38 @@ const ErrorResponse = Type.Object({
   }),
 });
 
+// ── GET /api/closings — list daily closings for the owner's Kassenabschluss ──
+
+const ClosingListItem = Type.Object({
+  id: Type.String({ format: 'uuid' }),
+  businessDay: Type.String(),
+  state: Type.Union([Type.Literal('COUNTING'), Type.Literal('FINALIZED')]),
+  verkaufCount: Type.Integer(),
+  ankaufCount: Type.Integer(),
+  stornoCount: Type.Integer(),
+  netVerkaufEur: Type.String(),
+  netAnkaufEur: Type.String(),
+  cashVarianceEur: Type.Union([Type.String(), Type.Null()]),
+  tseFailedCount: Type.Integer(),
+  finalizedAt: Type.Union([Type.String({ format: 'date-time' }), Type.Null()]),
+});
+
+const ClosingListResponse = Type.Object({ items: Type.Array(ClosingListItem) });
+
+type ClosingRow = {
+  id: string;
+  business_day: string;
+  state: string;
+  verkauf_count: number;
+  ankauf_count: number;
+  storno_count: number;
+  net_verkauf_eur: string;
+  net_ankauf_eur: string;
+  cash_variance_eur: string | null;
+  tse_failed_count: number;
+  finalized_at: Date | null;
+};
+
 /** Standard SKR03 accounts for a counter-trade business (gold/coins/antiques). */
 const KONTO_KASSE = '1000'; // Kasse
 const KONTO_ERLOESE = '8400'; // Erlöse 19% USt
@@ -65,6 +97,56 @@ function toDatevRow(tx: TxRow): DATEVRow {
 }
 
 const closingExportRoute: FastifyPluginAsync = async (app) => {
+  // ── GET /api/closings — recent daily closings (ADMIN) ────────────────────
+  app.get(
+    '/api/closings',
+    {
+      schema: {
+        tags: ['closings'],
+        summary: 'List recent daily closings for the Owner Kassenabschluss surface (ADMIN).',
+        description:
+          'Newest-first (by business_day) snapshot of each daily closing: counts, net ' +
+          'totals, cash-drawer variance, TSE health, and finalization state.',
+        response: { 200: ClosingListResponse, 401: ErrorResponse, 403: ErrorResponse },
+      },
+    },
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'ADMIN');
+
+      const rows = (await app.db.execute<ClosingRow>(sql`
+        SELECT id::text AS id,
+               business_day::text AS business_day,
+               state::text AS state,
+               verkauf_count, ankauf_count, storno_count,
+               net_verkauf_eur::text AS net_verkauf_eur,
+               net_ankauf_eur::text  AS net_ankauf_eur,
+               cash_drawer_variance_eur::text AS cash_variance_eur,
+               tse_failed_count,
+               finalized_at
+          FROM daily_closings
+         ORDER BY business_day DESC
+         LIMIT 90
+      `)) as unknown as ClosingRow[];
+
+      const items = rows.map((r) => ({
+        id: r.id,
+        businessDay: r.business_day,
+        state: r.state === 'FINALIZED' ? ('FINALIZED' as const) : ('COUNTING' as const),
+        verkaufCount: Number(r.verkauf_count),
+        ankaufCount: Number(r.ankauf_count),
+        stornoCount: Number(r.storno_count),
+        netVerkaufEur: r.net_verkauf_eur,
+        netAnkaufEur: r.net_ankauf_eur,
+        cashVarianceEur: r.cash_variance_eur,
+        tseFailedCount: Number(r.tse_failed_count),
+        finalizedAt: r.finalized_at ? r.finalized_at.toISOString() : null,
+      }));
+
+      return reply.status(200).send({ items });
+    },
+  );
+
   app.get<{ Params: { id: string } }>(
     '/api/closings/:id/export/datev',
     {

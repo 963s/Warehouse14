@@ -14,6 +14,7 @@ import { DiamondRule, MagnifierIcon, ParchmentCard, RomanIndex, Seal } from '@wa
 import { useApiClient } from './api-context.js';
 import { StatusDot, type StatusTone } from './components/StatusDot.js';
 import { ApprovalsPanel } from './panels/ApprovalsPanel.js';
+import { ClosingsPanel } from './panels/ClosingsPanel.js';
 import { BridgeDashboard } from './screens/übersicht/BridgeDashboard.js';
 
 /** The Owner's back-office surfaces, ordered by frequency. */
@@ -187,6 +188,8 @@ export function App(): JSX.Element {
           </>
         ) : active === 2 ? (
           <ApprovalsPanel />
+        ) : active === 3 ? (
+          <ClosingsPanel />
         ) : (
           <PlaceholderSurface digit={activeSurface.digit} label={activeSurface.label} />
         )}
