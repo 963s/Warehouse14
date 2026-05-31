@@ -164,6 +164,19 @@ const transactionsFinalize: FastifyPluginAsync<TransactionsFinalizeOpts> = async
         throw new ValidationError(mathErr.message, mathErr);
       }
 
+      // Rabatt discipline (migration 0019 CHECK): a non-zero line discount
+      // requires a reason. We surface a clean field-pathed VALIDATION_ERROR
+      // before the DB CHECK fires so the POS can point at the offending line.
+      for (const [idx, item] of body.items.entries()) {
+        const discount = item.lineDiscountEur ? Number(item.lineDiscountEur) : 0;
+        if (discount > 0 && !item.lineDiscountReason?.trim()) {
+          throw new ValidationError('Ein Rabatt erfordert eine Begründung.', {
+            field: `items[${idx}].lineDiscountReason`,
+            message: 'line_discount_eur > 0 requires line_discount_reason',
+          });
+        }
+      }
+
       // ──────────────────────────────────────────────────────────────────
       // 3-PRE. §19.2 C-4 idempotency dedup.
       //
@@ -293,6 +306,8 @@ const transactionsFinalize: FastifyPluginAsync<TransactionsFinalizeOpts> = async
               appliedVatRate: item.appliedVatRate,
               acquisitionCostEurSnapshot: item.acquisitionCostEurSnapshot,
               marginEur: item.marginEur,
+              lineDiscountEur: item.lineDiscountEur ?? '0',
+              lineDiscountReason: item.lineDiscountReason ?? null,
               displayOrder: item.displayOrder ?? idx,
             })),
           );

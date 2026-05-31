@@ -150,6 +150,7 @@ export function BezahlenDialog({
         taxTreatmentCode: actualTaxCode,
         listPriceEur: line.listPriceEur,
         acquisitionCostEur: line.acquisitionCostEur,
+        discountEur: line.discountEur,
       });
     });
   }, [lines, perLineMath, b2bActive]);
@@ -354,6 +355,12 @@ export function BezahlenDialog({
               ? fromCents(math.acquisitionCostSnapshotCents)
               : null,
           marginEur: math.marginCents !== null ? fromCents(math.marginCents) : null,
+          ...(math.lineDiscountCents > 0n
+            ? {
+                lineDiscountEur: fromCents(math.lineDiscountCents),
+                lineDiscountReason: line.discountReason ?? 'Rabatt',
+              }
+            : {}),
           displayOrder: idx + 1,
         };
         return item;
@@ -482,8 +489,12 @@ export function BezahlenDialog({
         shiftId: null,
         items: lines.map((line, idx) => {
           const math = adjustedPerLineMath[idx];
+          const discountSuffix =
+            math && math.lineDiscountCents > 0n
+              ? ` (Rabatt −${fromCents(math.lineDiscountCents)} €)`
+              : '';
           return {
-            name: line.name,
+            name: `${line.name}${discountSuffix}`,
             quantity: 1,
             unitPriceEur: math ? fromCents(math.lineTotalCents) : line.listPriceEur,
             lineTotalEur: math ? fromCents(math.lineTotalCents) : line.listPriceEur,

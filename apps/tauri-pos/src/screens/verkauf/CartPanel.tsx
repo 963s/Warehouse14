@@ -20,13 +20,13 @@
  * (a) finalize-success, (b) explicit "Karte leeren", or (c) sign-out cascade.
  */
 
-import { useMemo, useState } from 'react';
+import { type CSSProperties, useMemo, useState } from 'react';
 
 import { Button, DiamondRule, MoneyAmount, ParchmentCard, RomanIndex } from '@warehouse14/ui-kit';
 
 import { type LineMath, computeLineMath, fromCents, sumHeader } from '../../lib/cart-math.js';
 import { TAX_TREATMENT_LABEL } from '../../lib/tax-treatment-label.js';
-import type { CartLine } from '../../state/cart-store.js';
+import { type CartLine, useCartStore } from '../../state/cart-store.js';
 
 import { BezahlenDialog } from './BezahlenDialog.js';
 
@@ -60,6 +60,7 @@ export function CartPanel({
           taxTreatmentCode: line.taxTreatmentCode,
           listPriceEur: line.listPriceEur,
           acquisitionCostEur: line.acquisitionCostEur,
+          discountEur: line.discountEur,
         }),
       })),
     [lines],
@@ -312,30 +313,180 @@ function CartRow({
           alignItems: 'flex-end',
         }}
       >
-        <MoneyAmount valueEur={line.listPriceEur} emphasis />
-        <button
-          type="button"
-          onClick={onRemove}
-          disabled={releasing}
-          aria-label={`Position ${index} entfernen`}
-          title="Entfernen"
-          style={{
-            background: 'transparent',
-            border: 'none',
-            color: 'var(--w14-ink-faded)',
-            fontFamily: 'var(--w14-font-display)',
-            fontStyle: 'italic',
-            fontSize: '0.78rem',
-            cursor: releasing ? 'default' : 'pointer',
-            padding: 0,
-            textDecoration: 'underline',
-            textUnderlineOffset: 2,
-          }}
-        >
-          {releasing ? 'gibt frei…' : 'entfernen'}
-        </button>
+        {math.lineDiscountCents > 0n ? (
+          <>
+            <span
+              className="w14-tabular"
+              style={{
+                fontFamily: 'var(--w14-font-mono)',
+                fontSize: '0.78rem',
+                color: 'var(--w14-ink-faded)',
+                textDecoration: 'line-through',
+              }}
+            >
+              {line.listPriceEur} €
+            </span>
+            <MoneyAmount valueEur={fromCents(math.lineTotalCents)} emphasis />
+            <span
+              style={{
+                color: 'var(--w14-wax-red)',
+                fontFamily: 'var(--w14-font-display)',
+                fontStyle: 'italic',
+                fontSize: '0.78rem',
+              }}
+            >
+              Rabatt −{fromCents(math.lineDiscountCents)} €
+            </span>
+          </>
+        ) : (
+          <MoneyAmount valueEur={line.listPriceEur} emphasis />
+        )}
+        <div style={{ display: 'flex', gap: 10 }}>
+          <DiscountEditor line={line} disabled={releasing} />
+          <button
+            type="button"
+            onClick={onRemove}
+            disabled={releasing}
+            aria-label={`Position ${index} entfernen`}
+            title="Entfernen"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--w14-ink-faded)',
+              fontFamily: 'var(--w14-font-display)',
+              fontStyle: 'italic',
+              fontSize: '0.78rem',
+              cursor: releasing ? 'default' : 'pointer',
+              padding: 0,
+              textDecoration: 'underline',
+              textUnderlineOffset: 2,
+            }}
+          >
+            {releasing ? 'gibt frei…' : 'entfernen'}
+          </button>
+        </div>
       </div>
     </ParchmentCard>
+  );
+}
+
+/**
+ * DiscountEditor — a per-line Rabatt control. Collapsed it's a "Rabatt"/"Rabatt
+ * ändern" link; expanded it offers a EUR-off amount + a mandatory reason. The
+ * amount is clamped to the list price by the cart math; an empty/zero amount
+ * clears the discount. Reason is required (the backend + DB enforce it).
+ */
+function DiscountEditor({ line, disabled }: { line: CartLine; disabled: boolean }): JSX.Element {
+  const setLineDiscount = useCartStore((s) => s.setLineDiscount);
+  const [open, setOpen] = useState<boolean>(false);
+  const [amount, setAmount] = useState<string>(line.discountEur ?? '');
+  const [reason, setReason] = useState<string>(line.discountReason ?? '');
+
+  const amountValid = /^\d{1,16}(\.\d{1,2})?$/.test(amount);
+  const positive = amountValid && Number(amount) > 0;
+  const reasonValid = reason.trim().length >= 3;
+  const canApply = positive && reasonValid;
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => {
+          setAmount(line.discountEur ?? '');
+          setReason(line.discountReason ?? '');
+          setOpen(true);
+        }}
+        style={{
+          background: 'transparent',
+          border: 'none',
+          color: line.discountEur ? 'var(--w14-wax-red)' : 'var(--w14-gold)',
+          fontFamily: 'var(--w14-font-display)',
+          fontStyle: 'italic',
+          fontSize: '0.78rem',
+          cursor: disabled ? 'default' : 'pointer',
+          padding: 0,
+          textDecoration: 'underline',
+          textUnderlineOffset: 2,
+        }}
+      >
+        {line.discountEur ? 'Rabatt ändern' : 'Rabatt'}
+      </button>
+    );
+  }
+
+  const inputStyle: CSSProperties = {
+    padding: '5px 8px',
+    border: '1px solid var(--w14-ink-faded)',
+    borderRadius: 'var(--w14-radius-button)',
+    background: 'var(--w14-parchment)',
+    color: 'var(--w14-ink)',
+    fontFamily: 'var(--w14-font-body)',
+    fontSize: '0.82rem',
+  };
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 6,
+        alignItems: 'stretch',
+        marginTop: 6,
+        padding: 8,
+        border: '1px solid var(--w14-rule)',
+        borderRadius: 'var(--w14-radius-card)',
+        background: 'var(--w14-parchment-2)',
+        minWidth: 200,
+      }}
+    >
+      <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ fontSize: '0.74rem', color: 'var(--w14-ink-faded)' }}>Rabatt €</span>
+        <input
+          type="text"
+          inputMode="decimal"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          placeholder="0,00"
+          style={{ ...inputStyle, flex: 1, textAlign: 'right', fontFamily: 'var(--w14-font-mono)' }}
+        />
+      </label>
+      <input
+        type="text"
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        placeholder="Begründung (Pflicht)"
+        style={inputStyle}
+      />
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        {line.discountEur && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setLineDiscount(line.productId, null, '');
+              setOpen(false);
+            }}
+          >
+            Entfernen
+          </Button>
+        )}
+        <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
+          Abbrechen
+        </Button>
+        <Button
+          variant="primary"
+          size="sm"
+          disabled={!canApply}
+          onClick={() => {
+            setLineDiscount(line.productId, amount, reason);
+            setOpen(false);
+          }}
+        >
+          Übernehmen
+        </Button>
+      </div>
+    </div>
   );
 }
 

@@ -39,6 +39,10 @@ export interface FinalizeLineItem {
   appliedVatRate: string | null;
   acquisitionCostEurSnapshot: string | null;
   marginEur: string | null;
+  /** Rabatt — GoBD-reported separately. Line money fields are already net of it. */
+  lineDiscountEur?: string;
+  /** Required by the DB CHECK whenever lineDiscountEur > 0. */
+  lineDiscountReason?: string | null;
   displayOrder?: number;
 }
 

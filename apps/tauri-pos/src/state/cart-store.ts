@@ -73,6 +73,16 @@ export interface CartLine {
   acquisitionCostEur: string;
   taxTreatmentCode: TaxTreatmentCode;
 
+  /**
+   * Rabatt on this line, as a non-negative EUR decimal string ("5.00"), or
+   * undefined for no discount. Tax is recomputed on the net price; the amount
+   * is reported separately (GoBD, migration 0019). A non-zero discount REQUIRES
+   * `discountReason` — the backend rejects otherwise.
+   */
+  discountEur?: string | undefined;
+  /** Operator's reason for the Rabatt — mandatory whenever discountEur > 0. */
+  discountReason?: string | undefined;
+
   /** Wall-clock when the item was added — diagnostics + ordering tiebreak. */
   addedAt: string;
 }
@@ -93,6 +103,13 @@ interface CartState {
 
   /** Remove a line by productId. Returns the line (so caller can release). */
   removeLine: (productId: string) => CartLine | null;
+
+  /**
+   * Set or clear the Rabatt on a line. Passing `eur === null` (or '0') clears
+   * it. The store does no tax math — it only records intent; `cart-math`
+   * recomputes the line from `discountEur`.
+   */
+  setLineDiscount: (productId: string, eur: string | null, reason: string) => void;
 
   /**
    * Snapshot every line and clear the store atomically. Returns the
@@ -140,6 +157,19 @@ export const useCartStore = create<CartState>()(
         if (!target) return null;
         set((s) => ({ lines: s.lines.filter((l) => l.productId !== productId) }));
         return target;
+      },
+
+      setLineDiscount: (productId, eur, reason) => {
+        const clear = eur === null || eur === '' || Number(eur) <= 0;
+        set((s) => ({
+          lines: s.lines.map((l) =>
+            l.productId === productId
+              ? clear
+                ? { ...l, discountEur: undefined, discountReason: undefined }
+                : { ...l, discountEur: eur, discountReason: reason.trim() }
+              : l,
+          ),
+        }));
       },
 
       snapshotAndClear: () => {

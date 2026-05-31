@@ -80,6 +80,17 @@ export const FinalizeLineItem = Type.Object({
   acquisitionCostEurSnapshot: Type.Union([DecimalString, Type.Null()]),
   marginEur: Type.Union([SignedDecimalString, Type.Null()]),
 
+  /**
+   * Rabatt (line discount), GoBD-reported separately (migration 0019). The
+   * line money fields above are already NET of this amount — this records HOW
+   * MUCH was knocked off so the receipt + DSFinV-K can show it. The DB CHECK
+   * `line_discount_eur = 0 OR line_discount_reason IS NOT NULL` requires a
+   * reason whenever the discount is non-zero; the route surfaces a clean
+   * VALIDATION_ERROR before the DB does.
+   */
+  lineDiscountEur: Type.Optional(DecimalString),
+  lineDiscountReason: Type.Optional(Type.Union([Type.String({ maxLength: 256 }), Type.Null()])),
+
   displayOrder: Type.Optional(Type.Integer({ minimum: 0, maximum: 32767 })),
 });
 export type FinalizeLineItem = Static<typeof FinalizeLineItem>;

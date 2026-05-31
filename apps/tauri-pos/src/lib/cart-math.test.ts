@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { classifyCartProductTax } from './cart-math.js';
+import { classifyCartProductTax, computeLineMath, fromCents } from './cart-math.js';
 
 /** Product shape `classifyCartProductTax` consumes, with sensible defaults. */
 type ClassifyInput = Parameters<typeof classifyCartProductTax>[0];
@@ -100,6 +100,56 @@ describe('classifyCartProductTax — §25a margin scheme', () => {
     expect(classifyCartProductTax(product({ itemType: 'antique', isCommission: true }))).toBe(
       'MARGIN_25A',
     );
+  });
+});
+
+describe('computeLineMath — Rabatt (line discount)', () => {
+  it('applies a discount on the net price and reports the amount (STANDARD_19)', () => {
+    // 119.00 list, 19.00 off → 100.00 net; VAT = 100 × 19/119 = 15.97.
+    const m = computeLineMath({
+      taxTreatmentCode: 'STANDARD_19',
+      listPriceEur: '119.00',
+      acquisitionCostEur: '0.00',
+      discountEur: '19.00',
+    });
+    expect(fromCents(m.lineTotalCents)).toBe('100.00');
+    expect(fromCents(m.lineVatCents)).toBe('15.97');
+    expect(fromCents(m.lineDiscountCents)).toBe('19.00');
+  });
+
+  it('treats no discount as zero', () => {
+    const m = computeLineMath({
+      taxTreatmentCode: 'STANDARD_19',
+      listPriceEur: '119.00',
+      acquisitionCostEur: '0.00',
+    });
+    expect(m.lineDiscountCents).toBe(0n);
+    expect(fromCents(m.lineTotalCents)).toBe('119.00');
+  });
+
+  it('clamps a discount larger than the list price to the list price (net = 0)', () => {
+    const m = computeLineMath({
+      taxTreatmentCode: 'STANDARD_19',
+      listPriceEur: '50.00',
+      acquisitionCostEur: '0.00',
+      discountEur: '999.00',
+    });
+    expect(fromCents(m.lineTotalCents)).toBe('0.00');
+    expect(fromCents(m.lineDiscountCents)).toBe('50.00');
+  });
+
+  it('reduces the §25a margin when the net price drops below cost (VAT floors at 0)', () => {
+    // list 200, cost 180 → margin 20; with 30 off, net 170 < cost → margin 0, VAT 0.
+    const m = computeLineMath({
+      taxTreatmentCode: 'MARGIN_25A',
+      listPriceEur: '200.00',
+      acquisitionCostEur: '180.00',
+      discountEur: '30.00',
+    });
+    expect(fromCents(m.lineTotalCents)).toBe('170.00');
+    expect(m.marginCents).toBe(0n);
+    expect(fromCents(m.lineVatCents)).toBe('0.00');
+    expect(fromCents(m.lineDiscountCents)).toBe('30.00');
   });
 });
 

@@ -88,17 +88,38 @@ export interface LineMath {
   appliedVatRate: string | null;
   /** Snapshot of acquisition cost (only for §25a). */
   acquisitionCostSnapshotCents: bigint | null;
+  /** Rabatt knocked off this line (≥ 0). GoBD-reported separately. */
+  lineDiscountCents: bigint;
 }
 
 export function computeLineMath(params: {
   taxTreatmentCode: TaxTreatmentCode;
   listPriceEur: string;
   acquisitionCostEur: string;
+  /** Rabatt to knock off the list price before tax. Clamped to [0, listPrice]. */
+  discountEur?: string | undefined;
 }): LineMath {
-  const total = toCents(params.listPriceEur);
-  const cost = toCents(params.acquisitionCostEur);
+  const listTotal = toCents(params.listPriceEur);
+  let discount = params.discountEur ? toCents(params.discountEur) : 0n;
+  if (discount < 0n) discount = 0n;
+  if (discount > listTotal) discount = listTotal;
 
-  switch (params.taxTreatmentCode) {
+  // Tax is computed on the NET (post-discount) price; the discount amount is
+  // carried alongside for the receipt + GoBD reporting (line_discount_eur).
+  const breakdown = computeTaxBreakdown(
+    params.taxTreatmentCode,
+    listTotal - discount,
+    toCents(params.acquisitionCostEur),
+  );
+  return { ...breakdown, lineDiscountCents: discount };
+}
+
+function computeTaxBreakdown(
+  taxTreatmentCode: TaxTreatmentCode,
+  total: bigint,
+  cost: bigint,
+): Omit<LineMath, 'lineDiscountCents'> {
+  switch (taxTreatmentCode) {
     case 'STANDARD_19': {
       const vat = roundHalfEven(total * 19n, 119n);
       return {
