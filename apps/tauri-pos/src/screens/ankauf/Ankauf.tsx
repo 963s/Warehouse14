@@ -16,6 +16,7 @@
  */
 
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 import { DiamondRule, ParchmentCard, Seal } from '@warehouse14/ui-kit';
 
@@ -53,6 +54,7 @@ export function Ankauf(): JSX.Element {
 // ────────────────────────────────────────────────────────────────────────
 
 function AnkaufFloor(): JSX.Element {
+  const navigate = useNavigate();
   const customerId = useAnkaufCartStore(selectAnkaufCustomerId);
   const items = useAnkaufCartStore(selectAnkaufItems);
   const [bezahlenOpen, setBezahlenOpen] = useState<boolean>(false);
@@ -62,16 +64,54 @@ function AnkaufFloor(): JSX.Element {
 
   return (
     <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: 'minmax(360px, 1fr) minmax(0, 1.6fr)',
-        height: '100%',
-        minHeight: 0,
-        flex: 1,
-      }}
+      style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, flex: 1 }}
     >
-      <CustomerPanel />
-      <IntakeList customerSelected={hasCustomer} onOpenBezahlen={() => setBezahlenOpen(true)} />
+      {/* A2 merge: the appraisal flow lives inside Ankauf — a lot is just a
+          draft purchase with pro-rata distribution. */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 12,
+          padding: '8px 16px',
+          borderBottom: '1px solid var(--w14-rule)',
+          background: 'var(--w14-parchment-2)',
+        }}
+      >
+        <span style={{ color: 'var(--w14-ink-faded)', fontSize: '0.82rem' }}>
+          Einzelankauf — Stück für Stück.
+        </span>
+        <button
+          type="button"
+          onClick={() => navigate('/bewertung')}
+          className="w14-smallcaps"
+          style={{
+            background: 'none',
+            border: '1px solid var(--w14-gold)',
+            color: 'var(--w14-gold)',
+            borderRadius: 'var(--w14-radius-button)',
+            padding: '7px 14px',
+            fontSize: '0.8rem',
+            letterSpacing: '0.06em',
+            cursor: 'pointer',
+            minHeight: 40,
+          }}
+        >
+          Konvolut bewerten (mehrere Stücke) →
+        </button>
+      </div>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'minmax(360px, 1fr) minmax(0, 1.6fr)',
+          flex: 1,
+          minHeight: 0,
+        }}
+      >
+        <CustomerPanel />
+        <IntakeList customerSelected={hasCustomer} onOpenBezahlen={() => setBezahlenOpen(true)} />
+      </div>
       {bezahlenOpen && hasCustomer && hasItems && (
         <AnkaufBezahlenDialog open={bezahlenOpen} onClose={() => setBezahlenOpen(false)} />
       )}

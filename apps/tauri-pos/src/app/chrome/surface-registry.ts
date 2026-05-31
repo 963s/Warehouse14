@@ -77,21 +77,15 @@ import { Verkauf } from '../../screens/verkauf/Verkauf.js';
 import { Werkstatt } from '../../screens/werkstatt/Werkstatt.js';
 
 export const SURFACES: readonly SurfaceDescriptor[] = [
-  // ── Tier 1 — 8 chips, frequency-ordered ─────────────────────────────
-  {
-    path: '/werkstatt',
-    label: 'Werkstatt',
-    description: 'Übersicht, Tagebuch und Edelmetallkurs.',
-    digit: 1,
-    tier: 'primary',
-    component: Werkstatt,
-    searchAliases: ['home', 'dashboard', 'übersicht', 'startseite'],
-  },
+  // ── Tier 1 — 6 frontline chips, action-frequency order (ADR Option B) ─
+  // Verkauf → Ankauf → Kasse lead; Lager/Kunden/Werkstatt follow. Aufgaben +
+  // Bewertung are demoted to Spotlight (Bewertung now lives inside the Ankauf
+  // buy-flow — an appraisal is just a draft purchase).
   {
     path: '/verkauf',
     label: 'Verkauf',
     description: 'Verkauf an Kunden — Beleg, Zahlung, Kasse.',
-    digit: 2,
+    digit: 1,
     tier: 'primary',
     component: Verkauf,
     searchAliases: ['sale', 'rechnung', 'belegnummer', 'pos'],
@@ -99,35 +93,26 @@ export const SURFACES: readonly SurfaceDescriptor[] = [
   {
     path: '/ankauf',
     label: 'Ankauf',
-    description: 'Ankauf von Kunden — Ausweis, AML, Ankaufbeleg.',
-    digit: 3,
+    description: 'Ankauf & Bewertung — Ausweis, AML, Ankaufbeleg.',
+    digit: 2,
     tier: 'primary',
     component: Ankauf,
-    searchAliases: ['kauf', 'erwerb', 'einkauf', 'aml'],
+    searchAliases: ['kauf', 'erwerb', 'einkauf', 'aml', 'bewertung', 'konvolut'],
   },
   {
     path: '/kasse',
     label: 'Kasse',
     description: 'Schicht öffnen und schließen, Z-Bon, Geldtransit.',
-    digit: 4,
+    digit: 3,
     tier: 'primary',
     component: Kasse,
     searchAliases: ['z-bon', 'schicht', 'shift', 'kassensturz', 'tagesabschluss'],
   },
   {
-    path: '/aufgaben',
-    label: 'Aufgaben',
-    description: 'Tagesliste der offenen Posten.',
-    digit: 5,
-    tier: 'primary',
-    component: Aufgaben,
-    searchAliases: ['tasks', 'todo', 'erinnerungen'],
-  },
-  {
     path: '/lager',
     label: 'Lager',
     description: 'Bestand mit Lagerort und Schmelzwert.',
-    digit: 6,
+    digit: 4,
     tier: 'primary',
     component: Lager,
     searchAliases: ['inventar', 'bestand', 'tresor', 'fach', 'inventory'],
@@ -136,19 +121,36 @@ export const SURFACES: readonly SurfaceDescriptor[] = [
     path: '/kunden',
     label: 'Kunden',
     description: 'Kundenakte, KYC-Stempel, Vertrauen.',
-    digit: 7,
+    digit: 5,
     tier: 'primary',
     component: Kunden,
     searchAliases: ['customer', 'kunde', 'kundenakte', 'crm'],
   },
   {
-    path: '/bewertung',
-    label: 'Bewertung',
-    description: 'Konvolut-Bewertung mit Pro-rata-Verteilung.',
-    digit: 8,
+    path: '/werkstatt',
+    label: 'Werkstatt',
+    description: 'Übersicht, Tagebuch und Edelmetallkurs.',
+    digit: 6,
     tier: 'primary',
+    component: Werkstatt,
+    searchAliases: ['home', 'dashboard', 'übersicht', 'startseite'],
+  },
+  // ── Tier 2 — Spotlight-only (demoted from the frontline rail) ─────────
+  {
+    path: '/aufgaben',
+    label: 'Aufgaben',
+    description: 'Tagesliste der offenen Posten.',
+    tier: 'secondary',
+    component: Aufgaben,
+    searchAliases: ['tasks', 'todo', 'erinnerungen'],
+  },
+  {
+    path: '/bewertung',
+    label: 'Konvolut-Bewertung',
+    description: 'Konvolut-Bewertung mit Pro-rata-Verteilung — Teil des Ankaufs.',
+    tier: 'secondary',
     component: Bewertung,
-    searchAliases: ['appraisal', 'expertise', 'gutachten', 'konvolut'],
+    searchAliases: ['appraisal', 'expertise', 'gutachten', 'konvolut', 'ankauf', 'bewertung'],
   },
 
   // ── Tier 2 — Spotlight-only ─────────────────────────────────────────
