@@ -110,6 +110,13 @@ const sseLedger: FastifyPluginAsync = async (app) => {
       //    Fastify's `reply.hijack()` hands the socket to us — Fastify will
       //    not try to serialize/serialize-end the response itself.
       // ──────────────────────────────────────────────────────────────────
+      // Forward the CORS headers @fastify/cors already computed (it validated
+      // the Origin against TRUSTED_ORIGINS). reply.hijack() + raw.writeHead
+      // would otherwise drop them, and a credentialed cross-origin EventSource
+      // (the POS live feed) gets rejected by the browser → endless
+      // "Wiederverbinden" reconnect loop.
+      const corsOrigin = reply.getHeader('access-control-allow-origin');
+      const corsCreds = reply.getHeader('access-control-allow-credentials');
       reply.hijack();
       const raw = reply.raw;
       raw.writeHead(200, {
@@ -117,6 +124,8 @@ const sseLedger: FastifyPluginAsync = async (app) => {
         'Cache-Control': 'no-cache, no-transform',
         Connection: 'keep-alive',
         'X-Accel-Buffering': 'no',
+        ...(corsOrigin ? { 'Access-Control-Allow-Origin': String(corsOrigin) } : {}),
+        ...(corsCreds ? { 'Access-Control-Allow-Credentials': String(corsCreds) } : {}),
       });
 
       // ──────────────────────────────────────────────────────────────────
