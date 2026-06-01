@@ -22,6 +22,7 @@ import {
   type LbmaSnapshot,
   type VisionClassification,
   classifyTaxTreatment,
+  estimateDraftPrices,
 } from '@warehouse14/intake-pipeline';
 
 const ITEM_TYPES: ReadonlySet<string> = new Set([
@@ -135,6 +136,8 @@ export async function processIntakeSession(
         marketingAngles: null,
         embedding: null,
         lbmaGold: null,
+        suggestedAcquisitionEur: null,
+        suggestedSaleEur: null,
         pipelineErrors,
       });
       await db.execute(drizzleSql`
@@ -159,6 +162,15 @@ export async function processIntakeSession(
     });
     const embedding = await vision.embed({ text: description.description });
 
+    // Phase B — suggested acquisition/sale price hints from melt + LBMA spot.
+    const prices = estimateDraftPrices({
+      itemType: attrs.item_type,
+      estimatedFineGrams: attrs.estimated_fine_grams,
+      observedMarketPriceEur: attrs.observed_market_price_eur,
+      goldEurPerGram: lbma.goldEurPerGram,
+      silverEurPerGram: lbma.silverEurPerGram,
+    });
+
     await upsertDraft(db, sessionId, {
       bgKeys,
       visionClassification,
@@ -170,6 +182,8 @@ export async function processIntakeSession(
       marketingAngles: description.marketingAngles,
       embedding: embedding.vector,
       lbmaGold: lbma.goldEurPerGram,
+      suggestedAcquisitionEur: prices.suggestedAcquisitionEur,
+      suggestedSaleEur: prices.suggestedSaleEur,
       pipelineErrors,
     });
 
@@ -200,6 +214,9 @@ interface DraftFields {
   marketingAngles: unknown;
   embedding: number[] | null;
   lbmaGold: number | null;
+  /** Phase B price hints — null when not a precious-metal item / no weight. */
+  suggestedAcquisitionEur: number | null;
+  suggestedSaleEur: number | null;
   pipelineErrors: Record<string, string>;
 }
 
@@ -216,12 +233,14 @@ async function upsertDraft(db: WorkerDb, sessionId: string, f: DraftFields): Pro
     INSERT INTO intake_drafts
       (session_id, bg_removed_photo_keys, vision_classification, vision_hallmark_detection,
        vision_scale_reading, lbma_price_snapshot_eur_per_g, tax_treatment_code,
-       classifier_explanation, german_description, marketing_angles, embedding, pipeline_errors)
+       classifier_explanation, german_description, marketing_angles, embedding,
+       suggested_acquisition_eur, suggested_sale_eur, pipeline_errors)
     VALUES
       (${sessionId}::uuid, ${f.bgKeys}, ${visionJson}::jsonb, ${hallmarkJson}::jsonb,
        ${scaleJson}::jsonb, ${f.lbmaGold}, ${f.taxCode},
        ${f.taxExplanation}, ${f.germanDescription}, ${anglesJson}::jsonb,
-       ${embeddingLiteral}::vector, ${errorsJson}::jsonb)
+       ${embeddingLiteral}::vector,
+       ${f.suggestedAcquisitionEur}, ${f.suggestedSaleEur}, ${errorsJson}::jsonb)
     ON CONFLICT (session_id) DO UPDATE SET
       bg_removed_photo_keys         = EXCLUDED.bg_removed_photo_keys,
       vision_classification         = EXCLUDED.vision_classification,
@@ -233,6 +252,8 @@ async function upsertDraft(db: WorkerDb, sessionId: string, f: DraftFields): Pro
       german_description            = EXCLUDED.german_description,
       marketing_angles              = EXCLUDED.marketing_angles,
       embedding                     = EXCLUDED.embedding,
+      suggested_acquisition_eur     = EXCLUDED.suggested_acquisition_eur,
+      suggested_sale_eur            = EXCLUDED.suggested_sale_eur,
       pipeline_errors               = EXCLUDED.pipeline_errors,
       updated_at                    = now()
   `);

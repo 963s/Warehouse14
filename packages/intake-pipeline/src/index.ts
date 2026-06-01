@@ -13,3 +13,4 @@ export * from './tax-treatment-classifier.js';
 export * from './parser/overrideCommands.js';
 export * from './grouping.js';
 export * from './status-messages.js';
+export * from './price-estimate.js';
