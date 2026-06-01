@@ -80,6 +80,7 @@ import {
 } from '../../lib/tse-service.js';
 import { type CartLine, useCartStore } from '../../state/cart-store.js';
 import { useHardwareStore } from '../../state/hardware-store.js';
+import { useLastReceiptStore } from '../../state/last-receipt-store.js';
 import { useSessionStore } from '../../state/session-store.js';
 import { useToastStore } from '../../state/toast-store.js';
 
@@ -114,6 +115,7 @@ export function BezahlenDialog({
   const hardwareCfg = useHardwareStore((s) => s.config);
   const sessionActor = useSessionStore((s) => s.actor);
   const { data: shopApi } = useShopInfo();
+  const setLastReceipt = useLastReceiptStore((s) => s.setLastReceipt);
 
   const [paymentChoice, setPaymentChoice] = useState<'CASH' | 'ZVT_CARD'>('CASH');
   const [cashReceivedEur, setCashReceivedEur] = useState<string>('');
@@ -506,7 +508,7 @@ export function BezahlenDialog({
       // Shop identity: Owner-editable via GET /api/shop-info (system_settings,
       // migration 0044), with the bundled SHOP_INFO constant as the fallback.
       const shop = resolveShopInfo(shopApi);
-      return {
+      const data: ThermalReceiptData = {
         shopName: shop.name,
         shopAddress: [...shop.address],
         shopVatId: shop.vatId,
@@ -552,8 +554,21 @@ export function BezahlenDialog({
           ...legalFooters,
         ],
       };
+      // Remember it so the operator can re-print after closing the preview.
+      setLastReceipt(data);
+      return data;
     },
-    [cashReceivedEur, lines, adjustedPerLineMath, adjustedTotals, b2bActive, sessionActor, shopApi, dueCents],
+    [
+      cashReceivedEur,
+      lines,
+      adjustedPerLineMath,
+      adjustedTotals,
+      b2bActive,
+      sessionActor,
+      shopApi,
+      dueCents,
+      setLastReceipt,
+    ],
   );
 
   /** Whether a thermal print can actually be attempted right now. */

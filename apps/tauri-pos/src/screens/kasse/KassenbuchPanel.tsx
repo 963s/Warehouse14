@@ -15,6 +15,10 @@ import type { ShiftView } from '@warehouse14/api-client';
 import { Button, DiamondRule, MoneyAmount, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { useDashboardSummary } from '../../hooks/useDashboardSummary.js';
+import { useReceiptPrinter } from '../../hooks/useReceiptPrinter.js';
+import { useLastReceiptStore } from '../../state/last-receipt-store.js';
+
+import { ReceiptPreview } from '../verkauf/ReceiptPreview.js';
 
 import { CashMovementDialog, type MovementKind } from './CashMovementDialog.js';
 import { ZBonDialog } from './ZBonDialog.js';
@@ -38,6 +42,9 @@ export function KassenbuchPanel({ shift }: KassenbuchPanelProps): JSX.Element {
   const { data: dashboard } = useDashboardSummary();
   const [cashKind, setCashKind] = useState<MovementKind | null>(null);
   const [zbonOpen, setZbonOpen] = useState<boolean>(false);
+  const [reprintOpen, setReprintOpen] = useState<boolean>(false);
+  const lastReceipt = useLastReceiptStore((s) => s.lastReceipt);
+  const { canPrint, printing, print } = useReceiptPrinter();
 
   // Live revenue from dashboard summary (sums VERKAUF on this shift via the
   // SQL aggregator). It refreshes whenever the SSE bridge invalidates the
@@ -160,6 +167,17 @@ export function KassenbuchPanel({ shift }: KassenbuchPanelProps): JSX.Element {
           </Button>
         </div>
 
+        <div style={{ marginTop: 12, display: 'flex', justifyContent: 'center' }}>
+          <Button
+            variant="ghost"
+            size="md"
+            onClick={() => setReprintOpen(true)}
+            disabled={lastReceipt === null}
+          >
+            Letzten Beleg erneut drucken
+          </Button>
+        </div>
+
         <DiamondRule label="Tagesabschluss" />
 
         <ParchmentCard padding="md">
@@ -189,6 +207,20 @@ export function KassenbuchPanel({ shift }: KassenbuchPanelProps): JSX.Element {
         onClose={() => setCashKind(null)}
       />
       <ZBonDialog open={zbonOpen} shiftId={shift.id} onClose={() => setZbonOpen(false)} />
+
+      {reprintOpen && lastReceipt && (
+        <ReceiptPreview
+          data={lastReceipt}
+          printing={printing}
+          canPrint={canPrint}
+          onPrint={() => {
+            void print(lastReceipt).then((ok) => {
+              if (ok) setReprintOpen(false);
+            });
+          }}
+          onClose={() => setReprintOpen(false)}
+        />
+      )}
     </div>
   );
 }
