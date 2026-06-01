@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { classifyCartProductTax, computeLineMath, fromCents } from './cart-math.js';
+import { classifyCartProductTax, computeLineMath, computeTender, fromCents } from './cart-math.js';
 
 /** Product shape `classifyCartProductTax` consumes, with sensible defaults. */
 type ClassifyInput = Parameters<typeof classifyCartProductTax>[0];
@@ -150,6 +150,42 @@ describe('computeLineMath — Rabatt (line discount)', () => {
     expect(m.marginCents).toBe(0n);
     expect(fromCents(m.lineVatCents)).toBe('0.00');
     expect(fromCents(m.lineDiscountCents)).toBe('30.00');
+  });
+});
+
+describe('computeTender — voucher + cash split', () => {
+  const T = (eur: number) => BigInt(Math.round(eur * 100));
+
+  it('no voucher: full total due in cash, change on overpay', () => {
+    const r = computeTender({ totalCents: T(50), voucherBalanceCents: null, cashCents: T(60) });
+    expect(r.appliedVoucherCents).toBe(0n);
+    expect(fromCents(r.dueCents)).toBe('50.00');
+    expect(r.cashCovered).toBe(true);
+    expect(fromCents(r.changeCents)).toBe('10.00');
+  });
+
+  it('partial voucher: cash covers the remainder', () => {
+    // total 50, voucher 20 → due 30; pay 30 cash → change 0.
+    const r = computeTender({ totalCents: T(50), voucherBalanceCents: T(20), cashCents: T(30) });
+    expect(fromCents(r.appliedVoucherCents)).toBe('20.00');
+    expect(fromCents(r.dueCents)).toBe('30.00');
+    expect(r.cashCovered).toBe(true);
+    expect(fromCents(r.changeCents)).toBe('0.00');
+  });
+
+  it('voucher larger than total is capped at the total (no negative cash due)', () => {
+    const r = computeTender({ totalCents: T(50), voucherBalanceCents: T(80), cashCents: 0n });
+    expect(fromCents(r.appliedVoucherCents)).toBe('50.00');
+    expect(r.dueCents).toBe(0n);
+    expect(r.cashCovered).toBe(true);
+    expect(r.changeCents).toBe(0n);
+  });
+
+  it('insufficient cash after voucher is not covered', () => {
+    const r = computeTender({ totalCents: T(50), voucherBalanceCents: T(20), cashCents: T(10) });
+    expect(fromCents(r.dueCents)).toBe('30.00');
+    expect(r.cashCovered).toBe(false);
+    expect(r.changeCents).toBe(0n);
   });
 });
 

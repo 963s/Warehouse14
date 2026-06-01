@@ -58,6 +58,7 @@ import {
   type HeaderTotals,
   type LineMath,
   computeLineMath,
+  computeTender,
   fromCents,
   sumHeader,
   toCents,
@@ -85,6 +86,7 @@ import { useToastStore } from '../../state/toast-store.js';
 import { EuroInput } from '../kasse/EuroInput.js';
 
 import { ReceiptPreview } from './ReceiptPreview.js';
+import { type AppliedVoucher, VoucherField } from './VoucherField.js';
 
 export interface BezahlenDialogProps {
   open: boolean;
@@ -122,6 +124,8 @@ export function BezahlenDialog({
   /** The finalized receipt awaiting the operator's print confirmation (preview). */
   const [previewData, setPreviewData] = useState<ThermalReceiptData | null>(null);
   const [printing, setPrinting] = useState<boolean>(false);
+  /** Applied gift voucher (Phase C2) — covers up to the full total; rest in cash. */
+  const [appliedVoucher, setAppliedVoucher] = useState<AppliedVoucher | null>(null);
 
   // B2B state
   const [isB2b, setIsB2b] = useState<boolean>(false);
@@ -243,6 +247,7 @@ export function BezahlenDialog({
       setZvtBusy(false);
       setPreviewData(null);
       setPrinting(false);
+      setAppliedVoucher(null);
       inFlightRef.current = false;
       idempotencyKeyRef.current = newIntentionId();
 
@@ -279,8 +284,21 @@ export function BezahlenDialog({
     }
   }, [cashReceivedEur]);
   const validCash = /^\d{1,16}(\.\d{1,2})?$/.test(cashReceivedEur);
-  const enoughCash = validCash && cashCents >= totalCents;
-  const changeCents = enoughCash ? cashCents - totalCents : 0n;
+
+  // Voucher + cash split: the voucher covers up to the full total, the cash leg
+  // pays the remainder, and change is computed on that remainder.
+  const voucherBalanceCents = useMemo(
+    () => (appliedVoucher ? toCents(appliedVoucher.balanceEur) : null),
+    [appliedVoucher],
+  );
+  const tender = useMemo(
+    () => computeTender({ totalCents, voucherBalanceCents, cashCents }),
+    [totalCents, voucherBalanceCents, cashCents],
+  );
+  const dueCents = tender.dueCents;
+  // When the voucher covers the whole sale (due === 0) no cash entry is needed.
+  const enoughCash = dueCents === 0n ? true : validCash && tender.cashCovered;
+  const changeCents = tender.changeCents;
 
   const b2bValid =
     !isB2b ||
@@ -463,11 +481,12 @@ export function BezahlenDialog({
       const tse = lastTseSignatureRef.current;
       const cashPayment = payments.find((p) => p.paymentMethod === 'CASH');
       const cardPayment = payments.find((p) => p.paymentMethod === 'ZVT_CARD');
-      const paymentLabel = cashPayment
-        ? 'Bar'
-        : cardPayment
-          ? `Karte ${cardPayment.zvtCardBrand ?? ''}`.trim()
-          : 'Zahlung';
+      const voucherPayment = payments.find((p) => p.paymentMethod === 'VOUCHER');
+      const labelParts: string[] = [];
+      if (cashPayment) labelParts.push('Bar');
+      if (cardPayment) labelParts.push(`Karte ${cardPayment.zvtCardBrand ?? ''}`.trim());
+      if (voucherPayment) labelParts.push('Gutschein');
+      const paymentLabel = labelParts.join(' + ') || 'Zahlung';
 
       const activeTaxCodes = Array.from(
         new Set(
@@ -526,13 +545,14 @@ export function BezahlenDialog({
         tseTransactionNumber: tse?.transactionNumber ?? 'TSE Ausfall',
         tseQrPayload: tse?.qrPayload ?? 'TSE Ausfall',
         footerLines: [
+          ...(voucherPayment ? [`Gutschein eingelöst: −${voucherPayment.amountEur} €`] : []),
           'Vielen Dank für Ihren Besuch.',
           'Beleg auf Wunsch elektronisch.',
           ...legalFooters,
         ],
       };
     },
-    [cashReceivedEur, lines, adjustedPerLineMath, adjustedTotals, b2bActive, sessionActor, shopApi],
+    [cashReceivedEur, lines, adjustedPerLineMath, adjustedTotals, b2bActive, sessionActor, shopApi, dueCents],
   );
 
   /** Whether a thermal print can actually be attempted right now. */
@@ -575,12 +595,11 @@ export function BezahlenDialog({
     [addToast, canPrint, hardwareCfg.thermal.ip, hardwareCfg.thermal.port],
   );
 
-  /** Helper for the print path — recomputes change from cash + total. */
+  /** Helper for the print path — change is cash minus the post-voucher due. */
   function changeCentsForPrint(): bigint {
     try {
       const cash = toCents(cashReceivedEur || '0');
-      const total = toCents(adjustedTotals.totalEur);
-      return cash >= total ? cash - total : 0n;
+      return cash >= dueCents ? cash - dueCents : 0n;
     } catch {
       return 0n;
     }
@@ -601,16 +620,41 @@ export function BezahlenDialog({
     setSubmitting(true);
     setError(null);
     try {
-      const payments: FinalizeBody['payments'] = [
-        { paymentMethod: 'CASH', amountEur: adjustedTotals.totalEur },
-      ];
-      const result = await finalizeWithTse(payments, 'Bar');
+      // Voucher leg (if any) first, then the cash remainder — Σ = total.
+      const payments: FinalizeBody['payments'] = [];
+      if (appliedVoucher && tender.appliedVoucherCents > 0n) {
+        payments.push({
+          paymentMethod: 'VOUCHER',
+          amountEur: fromCents(tender.appliedVoucherCents),
+          externalRef: appliedVoucher.code,
+        });
+      }
+      if (tender.dueCents > 0n) {
+        payments.push({ paymentMethod: 'CASH', amountEur: fromCents(tender.dueCents) });
+      }
+      const result = await finalizeWithTse(payments, tender.dueCents > 0n ? 'Bar' : 'Unbar');
       setFinalized(result);
       addToast({
         tone: 'success',
         title: 'Beleg ausgegeben',
         body: `Beleg-Nr. ${result.receiptLocator}`,
       });
+      // Redeem the voucher against the now-finalized transaction (decrements its
+      // balance). A failure here doesn't undo the sale — surface it for manual fix.
+      if (appliedVoucher && tender.appliedVoucherCents > 0n) {
+        try {
+          await api.request('POST', `/api/vouchers/${encodeURIComponent(appliedVoucher.code)}/redeem`, {
+            transactionId: result.id,
+            amountEur: fromCents(tender.appliedVoucherCents),
+          });
+        } catch {
+          addToast({
+            tone: 'alert',
+            title: 'Gutschein-Verbuchung',
+            body: 'Beleg ausgegeben, aber der Gutschein konnte nicht verbucht werden — bitte manuell prüfen.',
+          });
+        }
+      }
       // §19.3 W-7 — pop the receipt preview; the operator confirms the print.
       setPreviewData(buildReceiptData(result, payments));
       await Promise.all([
@@ -637,9 +681,23 @@ export function BezahlenDialog({
           body: `Beleg wird synchronisiert (Temp-Nr. ${offlineLocator})`,
         });
 
-        const payments: FinalizeBody['payments'] = [
-          { paymentMethod: 'CASH', amountEur: adjustedTotals.totalEur },
-        ];
+        const payments: FinalizeBody['payments'] = [];
+        if (appliedVoucher && tender.appliedVoucherCents > 0n) {
+          payments.push({
+            paymentMethod: 'VOUCHER',
+            amountEur: fromCents(tender.appliedVoucherCents),
+            externalRef: appliedVoucher.code,
+          });
+          // Offline: the voucher can't be redeemed now (no transaction id yet).
+          addToast({
+            tone: 'alert',
+            title: 'Gutschein offline',
+            body: 'Gutschein wird erst beim Synchronisieren verbucht — bitte später prüfen.',
+          });
+        }
+        if (tender.dueCents > 0n) {
+          payments.push({ paymentMethod: 'CASH', amountEur: fromCents(tender.dueCents) });
+        }
         setPreviewData(buildReceiptData(dummyResult, payments));
 
         await Promise.all([
@@ -654,7 +712,17 @@ export function BezahlenDialog({
       setSubmitting(false);
       inFlightRef.current = false;
     }
-  }, [addToast, canSubmit, finalizeWithTse, buildReceiptData, qc, adjustedTotals.totalEur]);
+  }, [
+    addToast,
+    canSubmit,
+    finalizeWithTse,
+    buildReceiptData,
+    qc,
+    api,
+    appliedVoucher,
+    tender,
+    adjustedTotals.totalEur,
+  ]);
 
   /**
    * CARD (ZVT) path — opens spinner, authorises on the terminal, then
@@ -808,6 +876,9 @@ export function BezahlenDialog({
             paymentChoice={paymentChoice}
             setPaymentChoice={setPaymentChoice}
             totalEur={adjustedTotals.totalEur}
+            dueEur={fromCents(dueCents)}
+            appliedVoucher={appliedVoucher}
+            onApplyVoucher={setAppliedVoucher}
             cashReceivedEur={cashReceivedEur}
             setCashReceivedEur={setCashReceivedEur}
             changeEur={fromCents(changeCents)}
@@ -867,6 +938,9 @@ function PaymentInput({
   paymentChoice,
   setPaymentChoice,
   totalEur,
+  dueEur,
+  appliedVoucher,
+  onApplyVoucher,
   cashReceivedEur,
   setCashReceivedEur,
   changeEur,
@@ -894,6 +968,9 @@ function PaymentInput({
   paymentChoice: 'CASH' | 'ZVT_CARD';
   setPaymentChoice: (next: 'CASH' | 'ZVT_CARD') => void;
   totalEur: string;
+  dueEur: string;
+  appliedVoucher: AppliedVoucher | null;
+  onApplyVoucher: (v: AppliedVoucher | null) => void;
   cashReceivedEur: string;
   setCashReceivedEur: (v: string) => void;
   changeEur: string;
@@ -1149,15 +1226,46 @@ function PaymentInput({
 
       {paymentChoice === 'CASH' ? (
         <>
-          <div style={{ marginTop: 16 }}>
-            <EuroInput
-              label="Erhaltener Betrag (bar)"
-              valueEur={cashReceivedEur}
-              onValueChange={setCashReceivedEur}
-              autoFocus
-              disabled={submitting}
-            />
-          </div>
+          {/* Gift voucher — covers up to the full total; the rest is paid in cash. */}
+          <VoucherField applied={appliedVoucher} onApplied={onApplyVoucher} disabled={submitting} />
+          {appliedVoucher && (
+            <table
+              className="w14-tabular"
+              style={{
+                marginTop: 12,
+                width: '100%',
+                borderCollapse: 'collapse',
+                fontFamily: 'var(--w14-font-mono)',
+              }}
+            >
+              <tbody>
+                <Row
+                  label="Gutschein"
+                  value={
+                    <MoneyAmount valueEur={`-${fromCents(toCents(totalEur) - toCents(dueEur))}`} />
+                  }
+                  valueColor="var(--w14-gold)"
+                />
+                <Row
+                  label="Zu zahlen (bar)"
+                  value={<MoneyAmount valueEur={dueEur} emphasis />}
+                  emphasised
+                />
+              </tbody>
+            </table>
+          )}
+
+          {toCents(dueEur) > 0n && (
+            <div style={{ marginTop: 16 }}>
+              <EuroInput
+                label="Erhaltener Betrag (bar)"
+                valueEur={cashReceivedEur}
+                onValueChange={setCashReceivedEur}
+                autoFocus
+                disabled={submitting}
+              />
+            </div>
+          )}
 
           <table
             className="w14-tabular"

@@ -244,6 +244,39 @@ export interface HeaderTotals {
   totalEur: string;
 }
 
+// ────────────────────────────────────────────────────────────────────────
+// Tender split — voucher + cash (Phase C2). A voucher covers up to the full
+// total; the cash leg pays the remainder; change is computed on the remainder.
+// ────────────────────────────────────────────────────────────────────────
+
+export interface TenderSplit {
+  /** Voucher amount actually applied (≤ total, ≤ balance, ≥ 0). */
+  appliedVoucherCents: bigint;
+  /** Amount still due after the voucher (paid in cash). */
+  dueCents: bigint;
+  /** Change to hand back (0 when cash doesn't yet cover the due). */
+  changeCents: bigint;
+  /** True once the cash received covers the post-voucher due. */
+  cashCovered: boolean;
+}
+
+export function computeTender(params: {
+  totalCents: bigint;
+  /** null when no voucher is applied. */
+  voucherBalanceCents: bigint | null;
+  cashCents: bigint;
+}): TenderSplit {
+  const { totalCents, voucherBalanceCents, cashCents } = params;
+  let applied = 0n;
+  if (voucherBalanceCents !== null && voucherBalanceCents > 0n) {
+    applied = voucherBalanceCents >= totalCents ? totalCents : voucherBalanceCents;
+  }
+  const dueCents = totalCents - applied;
+  const cashCovered = cashCents >= dueCents;
+  const changeCents = cashCovered ? cashCents - dueCents : 0n;
+  return { appliedVoucherCents: applied, dueCents, changeCents, cashCovered };
+}
+
 export function sumHeader(lines: readonly LineMath[]): HeaderTotals {
   let sub = 0n;
   let vat = 0n;
