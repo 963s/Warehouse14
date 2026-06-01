@@ -84,6 +84,8 @@ import { useToastStore } from '../../state/toast-store.js';
 
 import { EuroInput } from '../kasse/EuroInput.js';
 
+import { ReceiptPreview } from './ReceiptPreview.js';
+
 export interface BezahlenDialogProps {
   open: boolean;
   onClose: () => void;
@@ -116,6 +118,9 @@ export function BezahlenDialog({
   const [finalized, setFinalized] = useState<FinalizeResponse | null>(null);
   /** Set while the ZVT terminal owns the cardholder's attention. */
   const [zvtBusy, setZvtBusy] = useState<boolean>(false);
+  /** The finalized receipt awaiting the operator's print confirmation (preview). */
+  const [previewData, setPreviewData] = useState<ThermalReceiptData | null>(null);
+  const [printing, setPrinting] = useState<boolean>(false);
 
   // B2B state
   const [isB2b, setIsB2b] = useState<boolean>(false);
@@ -235,6 +240,8 @@ export function BezahlenDialog({
       setError(null);
       setFinalized(null);
       setZvtBusy(false);
+      setPreviewData(null);
+      setPrinting(false);
       inFlightRef.current = false;
       idempotencyKeyRef.current = newIntentionId();
 
@@ -447,11 +454,11 @@ export function BezahlenDialog({
    *   • thermal printer IP is unset (operator hasn't configured it)
    *   • running outside Tauri (e.g. Vitest)
    */
-  const firePrintReceipt = useCallback(
-    (result: FinalizeResponse, payments: NonNullable<FinalizeBody['payments']>): void => {
-      if (!isRunningInTauri()) return;
-      if (!hardwareCfg.thermal.ip) return;
-
+  const buildReceiptData = useCallback(
+    (
+      result: FinalizeResponse,
+      payments: NonNullable<FinalizeBody['payments']>,
+    ): ThermalReceiptData => {
       const tse = lastTseSignatureRef.current;
       const cashPayment = payments.find((p) => p.paymentMethod === 'CASH');
       const cardPayment = payments.find((p) => p.paymentMethod === 'ZVT_CARD');
@@ -475,7 +482,7 @@ export function BezahlenDialog({
         .map((code) => TAX_LEGAL_TEXTS[code])
         .filter(Boolean) as string[];
 
-      const data: ThermalReceiptData = {
+      return {
         // Shop identity (Schorndorf) — single source of truth in lib/shop-info.ts.
         // Phase 1.5 will pull this from `system_settings` so it's editable in the
         // Owner Desktop without a rebuild (memory.md §18.6).
@@ -523,30 +530,48 @@ export function BezahlenDialog({
           ...legalFooters,
         ],
       };
-
-      void thermalClient
-        .print({ ip: hardwareCfg.thermal.ip, port: hardwareCfg.thermal.port }, data)
-        .catch((err) => {
-          addToast({
-            tone: 'alert',
-            title: 'Druck fehlgeschlagen',
-            body: isHardwareError(err)
-              ? describeHardwareError(err)
-              : 'Drucker prüfen — Beleg digital ausgegeben.',
-          });
-        });
     },
-    [
-      addToast,
-      cashReceivedEur,
-      hardwareCfg.thermal.ip,
-      hardwareCfg.thermal.port,
-      lines,
-      adjustedPerLineMath,
-      adjustedTotals,
-      b2bActive,
-      sessionActor,
-    ],
+    [cashReceivedEur, lines, adjustedPerLineMath, adjustedTotals, b2bActive, sessionActor],
+  );
+
+  /** Whether a thermal print can actually be attempted right now. */
+  const canPrint = isRunningInTauri() && hardwareCfg.thermal.ip.length > 0;
+
+  /**
+   * Send an already-built receipt to the thermal printer. Called from the
+   * preview's "Drucken" button. On success the preview closes; on failure a
+   * toast surfaces and the operator can retry or hand over a digital copy.
+   */
+  const printReceipt = useCallback(
+    async (data: ThermalReceiptData): Promise<void> => {
+      if (!canPrint) {
+        addToast({
+          tone: 'info',
+          title: 'Kein Drucker',
+          body: 'Beleg nur als Vorschau — Drucker unter „Geräte" einrichten.',
+        });
+        return;
+      }
+      setPrinting(true);
+      try {
+        await thermalClient.print(
+          { ip: hardwareCfg.thermal.ip, port: hardwareCfg.thermal.port },
+          data,
+        );
+        setPreviewData(null);
+      } catch (err) {
+        addToast({
+          tone: 'alert',
+          title: 'Druck fehlgeschlagen',
+          body: isHardwareError(err)
+            ? describeHardwareError(err)
+            : 'Drucker prüfen — Beleg digital ausgegeben.',
+        });
+      } finally {
+        setPrinting(false);
+      }
+    },
+    [addToast, canPrint, hardwareCfg.thermal.ip, hardwareCfg.thermal.port],
   );
 
   /** Helper for the print path — recomputes change from cash + total. */
@@ -585,8 +610,8 @@ export function BezahlenDialog({
         title: 'Beleg ausgegeben',
         body: `Beleg-Nr. ${result.receiptLocator}`,
       });
-      // §19.3 W-7 — fire-and-forget thermal print.
-      firePrintReceipt(result, payments);
+      // §19.3 W-7 — pop the receipt preview; the operator confirms the print.
+      setPreviewData(buildReceiptData(result, payments));
       await Promise.all([
         qc.invalidateQueries({ queryKey: dashboardQueryKey }),
         qc.invalidateQueries({ queryKey: ['products', 'list'] }),
@@ -614,7 +639,7 @@ export function BezahlenDialog({
         const payments: FinalizeBody['payments'] = [
           { paymentMethod: 'CASH', amountEur: adjustedTotals.totalEur },
         ];
-        firePrintReceipt(dummyResult, payments);
+        setPreviewData(buildReceiptData(dummyResult, payments));
 
         await Promise.all([
           qc.invalidateQueries({ queryKey: dashboardQueryKey }),
@@ -628,7 +653,7 @@ export function BezahlenDialog({
       setSubmitting(false);
       inFlightRef.current = false;
     }
-  }, [addToast, canSubmit, finalizeWithTse, firePrintReceipt, qc, adjustedTotals.totalEur]);
+  }, [addToast, canSubmit, finalizeWithTse, buildReceiptData, qc, adjustedTotals.totalEur]);
 
   /**
    * CARD (ZVT) path — opens spinner, authorises on the terminal, then
@@ -704,8 +729,8 @@ export function BezahlenDialog({
         title: 'Karte autorisiert · Beleg ausgegeben',
         body: `Auth ${zvt.authorizationCode ?? '—'}`,
       });
-      // §19.3 W-7 — fire-and-forget thermal print.
-      firePrintReceipt(result, payments);
+      // §19.3 W-7 — pop the receipt preview; the operator confirms the print.
+      setPreviewData(buildReceiptData(result, payments));
       await Promise.all([
         qc.invalidateQueries({ queryKey: dashboardQueryKey }),
         qc.invalidateQueries({ queryKey: ['products', 'list'] }),
@@ -725,12 +750,12 @@ export function BezahlenDialog({
     addToast,
     finalized,
     finalizeWithTse,
-    firePrintReceipt,
     hardwareCfg.zvt.ip,
     hardwareCfg.zvt.port,
     lines.length,
     qc,
     adjustedTotals.totalEur,
+    buildReceiptData,
   ]);
 
   const closeAfterFinalize = useCallback(() => {
@@ -818,6 +843,17 @@ export function BezahlenDialog({
 
       {/* ZVT terminal owns the cardholder's attention — block the UI. */}
       {zvtBusy && <ZvtSpinner amountEur={adjustedTotals.totalEur} />}
+
+      {/* Receipt preview — pops up after finalize; operator confirms the print. */}
+      {previewData && (
+        <ReceiptPreview
+          data={previewData}
+          printing={printing}
+          canPrint={canPrint}
+          onPrint={() => void printReceipt(previewData)}
+          onClose={() => setPreviewData(null)}
+        />
+      )}
     </div>
   );
 }
