@@ -156,6 +156,12 @@ importers:
       '@tauri-apps/api':
         specifier: 2.1.1
         version: 2.1.1
+      '@tauri-apps/plugin-process':
+        specifier: 2.2.0
+        version: 2.2.0
+      '@tauri-apps/plugin-updater':
+        specifier: 2.5.1
+        version: 2.5.1
       '@warehouse14/api-client':
         specifier: workspace:*
         version: link:../../packages/api-client

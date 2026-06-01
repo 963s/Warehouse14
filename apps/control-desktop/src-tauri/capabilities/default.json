@@ -3,5 +3,11 @@
   "identifier": "default",
   "description": "Default capability for the Warehouse14 Control main window — core + native notifications.",
   "windows": ["main"],
-  "permissions": ["core:default", "notification:default"]
+  "permissions": [
+    "core:default",
+    "notification:default",
+    "updater:default",
+    "process:allow-restart",
+    "process:allow-exit"
+  ]
 }

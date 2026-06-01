@@ -49,6 +49,17 @@
         "languages": ["English", "German"],
         "displayLanguageSelector": false
       }
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "active": true,
+      "dialog": false,
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQxMDE4MTMxRUEyQ0Q4MkQKUldRdDJDenFNWUVCUWRteFY4elhqUjZNV0xKTGNDcEJLZUdYQXFualV2akEwYjRWa0ZhYVRoTTIK",
+      "endpoints": [
+        "https://github.com/__GITHUB_OWNER__/__GITHUB_REPO__/releases/latest/download/latest-control.json"
+      ]
     }
   }
 }

@@ -14,6 +14,7 @@ import { DiamondRule, MagnifierIcon, ParchmentCard, RomanIndex, Seal } from '@wa
 import { useApiClient } from './api-context.js';
 import { StatusDot, type StatusTone } from './components/StatusDot.js';
 import { StepUpModal } from './components/StepUpModal.js';
+import { UpdateBanner } from './components/UpdateBanner.js';
 import { ApprovalsPanel } from './panels/ApprovalsPanel.js';
 import { ClosingsPanel } from './panels/ClosingsPanel.js';
 import { EinstellungenPanel } from './panels/EinstellungenPanel.js';
@@ -269,6 +270,9 @@ export function App(): JSX.Element {
 
       {/* Global PIN re-confirmation — opens on any STEP_UP_REQUIRED. */}
       <StepUpModal />
+
+      {/* Auto-update notice — gold banner when a new version is available. */}
+      <UpdateBanner />
     </div>
   );
 }

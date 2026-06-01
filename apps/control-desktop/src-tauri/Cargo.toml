@@ -21,3 +21,8 @@ tauri-plugin-notification = "2"
 # Refuse a second concurrent launch — the back-office is single-window; a
 # re-launch attempt focuses the existing window instead (Decision #41).
 tauri-plugin-single-instance = "2"
+# Auto-update: reads tauri.conf.json plugins.updater.* and exposes check() +
+# download_and_install() to the frontend (same minisign key as the POS).
+tauri-plugin-updater = "2"
+# Lets the React side relaunch the process after an update is applied.
+tauri-plugin-process = "2"

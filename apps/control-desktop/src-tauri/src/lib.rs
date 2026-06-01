@@ -32,6 +32,11 @@ pub fn run() {
                 .show();
         }))
         .plugin(tauri_plugin_notification::init())
+        // Auto-update — same minisign key + GitHub Releases manifest family as
+        // the POS (its own `latest-control.json`). The React <UpdateBanner/>
+        // drives check() + download_and_install(); process enables the relaunch.
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
             // ── Native system tray with a minimal Öffnen / Beenden menu ──────
             let show = MenuItem::with_id(app, "show", "Öffnen", true, None::<&str>)?;
