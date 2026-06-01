@@ -9,6 +9,7 @@
  */
 
 import { type CSSProperties, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 import type { ApiClient, TaxTreatmentCode } from '@warehouse14/api-client';
 import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
@@ -109,6 +110,7 @@ export function NeuesProduktDialog({
 }): JSX.Element | null {
   const client = useApiClient() as ApiClient;
   const addToast = useToastStore((s) => s.addToast);
+  const navigate = useNavigate();
 
   const [name, setName] = useState('');
   const [sku, setSku] = useState('');
@@ -160,10 +162,17 @@ export function NeuesProduktDialog({
       if (weightGrams.trim().length > 0) body.weightGrams = weightGrams.trim();
 
       const res = await client.request<CreatedResponse>('POST', '/api/products', body);
-      addToast({ tone: 'success', title: 'Produkt angelegt', body: `${res.sku} (Entwurf)` });
+      addToast({
+        tone: 'success',
+        title: 'Produkt angelegt',
+        body: `${res.sku} (Entwurf) — jetzt Fotos aufnehmen`,
+      });
       reset();
       onCreated();
       onClose();
+      // Hand straight over to the photo workflow, bound to the new product
+      // (mode=produkt → each capture registers against this productId).
+      navigate(`/fotos?mode=produkt&productId=${encodeURIComponent(res.id)}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unbekannter Fehler';
       if (/step[_-]?up/i.test(msg)) {

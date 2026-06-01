@@ -70,6 +70,7 @@ import {
   thermalClient,
   zvtClient,
 } from '../../lib/hardware-client.js';
+import { SHOP_INFO } from '../../lib/shop-info.js';
 import {
   type TseSessionResult,
   closeTseSession,
@@ -475,12 +476,13 @@ export function BezahlenDialog({
         .filter(Boolean) as string[];
 
       const data: ThermalReceiptData = {
-        // V1: shop info is constant in code. Phase 1.5 will pull from
-        // `system_settings` once that API exists (memory.md §18.6).
-        shopName: 'WAREHOUSE 14',
-        shopAddress: ['Musterstraße 1', '10115 Berlin'],
-        shopVatId: 'DE000000000',
-        shopPhone: null,
+        // Shop identity (Schorndorf) — single source of truth in lib/shop-info.ts.
+        // Phase 1.5 will pull this from `system_settings` so it's editable in the
+        // Owner Desktop without a rebuild (memory.md §18.6).
+        shopName: SHOP_INFO.name,
+        shopAddress: [...SHOP_INFO.address],
+        shopVatId: SHOP_INFO.vatId,
+        shopPhone: SHOP_INFO.phone,
         receiptLocator: result.receiptLocator,
         printedAt: new Date(result.finalizedAt).toLocaleString('de-DE', {
           timeZone: 'Europe/Berlin',
