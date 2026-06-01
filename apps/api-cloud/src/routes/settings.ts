@@ -31,13 +31,17 @@ import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
  * `kind` mirrors the stored jsonb shape so we round-trip it faithfully:
  *   • 'number' → a bare JSON number  ('3.0'::jsonb)
  *   • 'money'  → a JSON string with 2 decimals  ('"5.00"'::jsonb)
+ *   • 'text'   → a free JSON string  ('"WAREHOUSE 14"'::jsonb), max `maxLen`
  */
-type EditableKind = 'number' | 'money';
+type EditableKind = 'number' | 'money' | 'text';
 interface EditableSetting {
   kind: EditableKind;
+  /** number/money: numeric bounds. text: ignored. */
   min: number;
   max: number;
-  /** German one-liner shown if the value is out of range. */
+  /** text only: max characters (default 200). */
+  maxLen?: number;
+  /** German one-liner shown if the value is invalid. */
   label: string;
 }
 const EDITABLE_SETTINGS: Record<string, EditableSetting> = {
@@ -84,6 +88,13 @@ const EDITABLE_SETTINGS: Record<string, EditableSetting> = {
     max: 1_000,
     label: 'Kassendifferenz-Schwelle',
   },
+  // Shop identity printed on the receipt header (migration 0044).
+  'shop.name': { kind: 'text', min: 0, max: 0, maxLen: 80, label: 'Geschäftsname' },
+  'shop.tagline': { kind: 'text', min: 0, max: 0, maxLen: 80, label: 'Slogan' },
+  'shop.address_line1': { kind: 'text', min: 0, max: 0, maxLen: 100, label: 'Adresse Zeile 1' },
+  'shop.address_line2': { kind: 'text', min: 0, max: 0, maxLen: 100, label: 'Adresse Zeile 2' },
+  'shop.vat_id': { kind: 'text', min: 0, max: 0, maxLen: 20, label: 'USt-IdNr.' },
+  'shop.phone': { kind: 'text', min: 0, max: 0, maxLen: 32, label: 'Telefon' },
 };
 
 class SettingNotEditableError extends DomainError {
@@ -130,8 +141,8 @@ const ErrorResponse = Type.Object({
 
 const UpdateSettingParams = Type.Object({ key: Type.String({ minLength: 1, maxLength: 120 }) });
 const UpdateSettingBody = Type.Object({
-  /** New numeric value. Money keys are persisted as a 2-decimal string. */
-  value: Type.Number(),
+  /** New value. Number/money keys take a number; text keys take a string. */
+  value: Type.Union([Type.Number(), Type.String({ maxLength: 200 })]),
 });
 const UpdateSettingResponse = Type.Object({
   key: Type.String(),
@@ -140,7 +151,7 @@ const UpdateSettingResponse = Type.Object({
   updatedAt: Type.String({ format: 'date-time' }),
 });
 type TUpdateSettingParams = { key: string };
-type TUpdateSettingBody = { value: number };
+type TUpdateSettingBody = { value: number | string };
 
 type SettingRow = { key: string; value: string; description: string | null; updated_at: Date };
 type DeviceRow = {
@@ -234,19 +245,36 @@ const settingsRoute: FastifyPluginAsync = async (app) => {
       }
 
       const { value } = req.body;
-      if (!Number.isFinite(value) || value < spec.min || value > spec.max) {
-        throw new SettingRangeError(
-          `${spec.label}: Wert muss zwischen ${spec.min} und ${spec.max} liegen.`,
-        );
-      }
 
-      // Round-trip the stored jsonb shape: number keys as a bare JSON number,
-      // money keys as a 2-decimal JSON string. to_jsonb() builds it safely from
-      // a bound parameter — never string-concatenated jsonb.
-      const jsonbValue =
-        spec.kind === 'money'
-          ? sql`to_jsonb(${value.toFixed(2)}::text)`
-          : sql`to_jsonb(${value}::numeric)`;
+      // Round-trip the stored jsonb shape from a BOUND parameter (never
+      // string-concatenated jsonb): number → bare JSON number, money →
+      // 2-decimal JSON string, text → free JSON string.
+      let jsonbValue: ReturnType<typeof sql>;
+      if (spec.kind === 'text') {
+        if (typeof value !== 'string') {
+          throw new SettingRangeError(`${spec.label}: Text erforderlich.`);
+        }
+        const maxLen = spec.maxLen ?? 200;
+        if (value.length > maxLen) {
+          throw new SettingRangeError(`${spec.label}: höchstens ${maxLen} Zeichen.`);
+        }
+        jsonbValue = sql`to_jsonb(${value}::text)`;
+      } else {
+        if (
+          typeof value !== 'number' ||
+          !Number.isFinite(value) ||
+          value < spec.min ||
+          value > spec.max
+        ) {
+          throw new SettingRangeError(
+            `${spec.label}: Wert muss zwischen ${spec.min} und ${spec.max} liegen.`,
+          );
+        }
+        jsonbValue =
+          spec.kind === 'money'
+            ? sql`to_jsonb(${value.toFixed(2)}::text)`
+            : sql`to_jsonb(${value}::numeric)`;
+      }
 
       const updated = (await app.db.execute<SettingRow>(sql`
         UPDATE system_settings

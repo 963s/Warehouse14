@@ -109,6 +109,31 @@ const EDITABLE: Record<string, EditableSpec> = {
   },
 };
 
+/**
+ * Free-text shop identity printed on the receipt header (migration 0044). Must
+ * stay in lockstep with the `shop.*` text keys in the server allow-list.
+ */
+interface TextSpec {
+  label: string;
+  maxLen: number;
+}
+const TEXT_EDITABLE: Record<string, TextSpec> = {
+  'shop.name': { label: 'Geschäftsname', maxLen: 80 },
+  'shop.tagline': { label: 'Slogan', maxLen: 80 },
+  'shop.address_line1': { label: 'Adresse — Zeile 1 (Straße)', maxLen: 100 },
+  'shop.address_line2': { label: 'Adresse — Zeile 2 (PLZ Ort)', maxLen: 100 },
+  'shop.vat_id': { label: 'USt-IdNr.', maxLen: 20 },
+  'shop.phone': { label: 'Telefon', maxLen: 32 },
+};
+const SHOP_ORDER = [
+  'shop.name',
+  'shop.tagline',
+  'shop.address_line1',
+  'shop.address_line2',
+  'shop.vat_id',
+  'shop.phone',
+];
+
 const caption: CSSProperties = { margin: 0, color: 'var(--w14-ink-faded)', fontSize: '0.9rem' };
 const th: CSSProperties = {
   textAlign: 'left',
@@ -268,6 +293,92 @@ function EditableSettingRow({
   );
 }
 
+/** One editable free-text setting: text input + Speichern, inline feedback. */
+function TextSettingRow({ setting, spec }: { setting: SettingItem; spec: TextSpec }): JSX.Element {
+  const { client } = useApiClient();
+  const qc = useQueryClient();
+  const current = setting.value.replace(/^"|"$/g, '');
+  const [draft, setDraft] = useState<string>(current);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState<boolean>(false);
+
+  const mutation = useMutation({
+    mutationFn: (value: string) =>
+      client.request('PATCH', `/api/settings/${encodeURIComponent(setting.key)}`, { value }),
+    onSuccess: async () => {
+      setSaved(true);
+      setError(null);
+      await qc.invalidateQueries({ queryKey: ['settings'] });
+    },
+    onError: (err) => {
+      setSaved(false);
+      setError(germanError(err));
+    },
+  });
+
+  const trimmed = draft.trim();
+  const valid = trimmed.length > 0 && trimmed.length <= spec.maxLen;
+  const dirty = valid && trimmed !== current;
+
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'minmax(0, 0.9fr) minmax(0, 1.1fr) auto',
+        gap: 12,
+        alignItems: 'center',
+        padding: '10px 4px',
+        borderBottom: '1px solid var(--w14-parchment-3)',
+      }}
+    >
+      <div>
+        <div style={{ fontFamily: 'var(--w14-font-display)', fontSize: '0.95rem' }}>
+          {spec.label}
+        </div>
+        {error && (
+          <div
+            role="alert"
+            style={{ color: 'var(--w14-wax-red)', fontSize: '0.78rem', marginTop: 2 }}
+          >
+            {error}
+          </div>
+        )}
+        {saved && !dirty && !error && (
+          <div style={{ color: 'var(--w14-verdigris)', fontSize: '0.78rem', marginTop: 2 }}>
+            Gespeichert.
+          </div>
+        )}
+      </div>
+      <input
+        className="w14cd-focusable"
+        type="text"
+        value={draft}
+        maxLength={spec.maxLen}
+        onChange={(e) => {
+          setDraft(e.target.value);
+          setSaved(false);
+        }}
+        style={{
+          padding: '7px 10px',
+          border: `1px solid ${valid ? 'var(--w14-ink-faded)' : 'var(--w14-wax-red)'}`,
+          borderRadius: 'var(--w14-radius-button)',
+          background: 'var(--w14-parchment)',
+          color: 'var(--w14-ink)',
+          fontFamily: 'var(--w14-font-body)',
+        }}
+      />
+      <Button
+        variant="primary"
+        size="sm"
+        onClick={() => mutation.mutate(trimmed)}
+        disabled={!dirty || mutation.isPending}
+      >
+        {mutation.isPending ? 'Speichert…' : 'Speichern'}
+      </Button>
+    </div>
+  );
+}
+
 export function EinstellungenPanel(): JSX.Element {
   const { baseUrl, client } = useApiClient();
 
@@ -280,7 +391,10 @@ export function EinstellungenPanel(): JSX.Element {
   const settings = query.data?.settings ?? [];
   const devices = query.data?.devices ?? [];
   const editable = settings.filter((s) => EDITABLE[s.key]);
-  const readOnly = settings.filter((s) => !EDITABLE[s.key]);
+  const shopSettings = SHOP_ORDER.map((key) => settings.find((s) => s.key === key)).filter(
+    (s): s is SettingItem => s !== undefined,
+  );
+  const readOnly = settings.filter((s) => !EDITABLE[s.key] && !TEXT_EDITABLE[s.key]);
 
   return (
     <>
@@ -295,6 +409,24 @@ export function EinstellungenPanel(): JSX.Element {
         </ParchmentCard>
       ) : (
         <div style={{ display: 'grid', gap: 24, maxWidth: 920 }}>
+          {/* Shop identity (receipt header) */}
+          <div>
+            <DiamondRule tone="faded" label="Geschäftsdaten (Beleg)" />
+            <ParchmentCard tone="parchment" padding="md">
+              {shopSettings.length === 0 ? (
+                <p style={caption}>Keine Geschäftsdaten hinterlegt.</p>
+              ) : (
+                shopSettings.map((s) => (
+                  <TextSettingRow key={s.key} setting={s} spec={TEXT_EDITABLE[s.key] as TextSpec} />
+                ))
+              )}
+              <p style={{ ...caption, fontSize: '0.78rem', marginTop: 12 }}>
+                Erscheint im Belegkopf. USt-IdNr. und Telefon sind vorläufig — bitte durch die
+                echten Werte ersetzen. Jede Änderung verlangt eine PIN-Bestätigung.
+              </p>
+            </ParchmentCard>
+          </div>
+
           {/* Editable thresholds + alarms */}
           <div>
             <DiamondRule tone="faded" label="Schwellenwerte & Alarme" />

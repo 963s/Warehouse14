@@ -52,6 +52,7 @@ import { Button, DiamondRule, MoneyAmount, ParchmentCard } from '@warehouse14/ui
 import { ZvtSpinner } from '../../components/hardware/ZvtSpinner.js';
 import { currentShiftQueryKey } from '../../hooks/useCurrentShift.js';
 import { dashboardQueryKey } from '../../hooks/useDashboardSummary.js';
+import { resolveShopInfo, useShopInfo } from '../../hooks/useShopInfo.js';
 import { useApiClient } from '../../lib/api-context.js';
 import {
   type HeaderTotals,
@@ -70,7 +71,6 @@ import {
   thermalClient,
   zvtClient,
 } from '../../lib/hardware-client.js';
-import { SHOP_INFO } from '../../lib/shop-info.js';
 import {
   type TseSessionResult,
   closeTseSession,
@@ -110,6 +110,7 @@ export function BezahlenDialog({
   const addToast = useToastStore((s) => s.addToast);
   const hardwareCfg = useHardwareStore((s) => s.config);
   const sessionActor = useSessionStore((s) => s.actor);
+  const { data: shopApi } = useShopInfo();
 
   const [paymentChoice, setPaymentChoice] = useState<'CASH' | 'ZVT_CARD'>('CASH');
   const [cashReceivedEur, setCashReceivedEur] = useState<string>('');
@@ -482,14 +483,14 @@ export function BezahlenDialog({
         .map((code) => TAX_LEGAL_TEXTS[code])
         .filter(Boolean) as string[];
 
+      // Shop identity: Owner-editable via GET /api/shop-info (system_settings,
+      // migration 0044), with the bundled SHOP_INFO constant as the fallback.
+      const shop = resolveShopInfo(shopApi);
       return {
-        // Shop identity (Schorndorf) — single source of truth in lib/shop-info.ts.
-        // Phase 1.5 will pull this from `system_settings` so it's editable in the
-        // Owner Desktop without a rebuild (memory.md §18.6).
-        shopName: SHOP_INFO.name,
-        shopAddress: [...SHOP_INFO.address],
-        shopVatId: SHOP_INFO.vatId,
-        shopPhone: SHOP_INFO.phone,
+        shopName: shop.name,
+        shopAddress: [...shop.address],
+        shopVatId: shop.vatId,
+        shopPhone: shop.phone,
         receiptLocator: result.receiptLocator,
         printedAt: new Date(result.finalizedAt).toLocaleString('de-DE', {
           timeZone: 'Europe/Berlin',
@@ -531,7 +532,7 @@ export function BezahlenDialog({
         ],
       };
     },
-    [cashReceivedEur, lines, adjustedPerLineMath, adjustedTotals, b2bActive, sessionActor],
+    [cashReceivedEur, lines, adjustedPerLineMath, adjustedTotals, b2bActive, sessionActor, shopApi],
   );
 
   /** Whether a thermal print can actually be attempted right now. */
