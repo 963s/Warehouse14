@@ -86,6 +86,7 @@ import { useToastStore } from '../../state/toast-store.js';
 import { EuroInput } from '../kasse/EuroInput.js';
 
 import { ReceiptPreview } from './ReceiptPreview.js';
+import { StornoDialog } from './StornoDialog.js';
 import { type AppliedVoucher, VoucherField } from './VoucherField.js';
 
 export interface BezahlenDialogProps {
@@ -1389,6 +1390,10 @@ function ReceiptResult({
   changeEur: string;
   onDismiss: () => void;
 }): JSX.Element {
+  const [stornoOpen, setStornoOpen] = useState(false);
+  // Offline-queued sales have no server-side transaction yet (locator OFFLINE-…)
+  // — storno would 404, so it's only offered once the sale is really finalized.
+  const canStorno = !finalized.receiptLocator.startsWith('OFFLINE-');
   return (
     <>
       <h2
@@ -1459,11 +1464,28 @@ function ReceiptResult({
         {finalized.id.slice(0, 8)}…
       </p>
 
-      <div style={{ marginTop: 22, display: 'flex', justifyContent: 'center' }}>
+      <div style={{ marginTop: 22, display: 'flex', justifyContent: 'center', gap: 12 }}>
+        {canStorno && (
+          <Button variant="ghost" size="lg" onClick={() => setStornoOpen(true)}>
+            Stornieren
+          </Button>
+        )}
         <Button variant="primary" size="lg" onClick={onDismiss}>
           Neue Karte
         </Button>
       </div>
+
+      {stornoOpen && (
+        <StornoDialog
+          transactionId={finalized.id}
+          receiptLocator={finalized.receiptLocator}
+          onClose={() => setStornoOpen(false)}
+          onStornoed={() => {
+            setStornoOpen(false);
+            onDismiss();
+          }}
+        />
+      )}
     </>
   );
 }
