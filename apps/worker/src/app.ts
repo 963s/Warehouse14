@@ -38,6 +38,7 @@ import {
   tseCertCheckerJob,
 } from './jobs/index.js';
 import { createMetalPriceProvider } from './jobs/providers/index.js';
+import { createAnthropicVisionClient } from './lib/anthropic-vision-client.js';
 import { JobRunner } from './lib/job-runner.js';
 import { type WorkerMetrics, createMetrics } from './lib/metrics.js';
 
@@ -178,8 +179,19 @@ export async function buildWorker(opts: BuildWorkerOpts): Promise<WorkerHandle> 
   // Epic D: end eBay listings for items sold at the retail counter.
   runner.register(ebaySyncJob({ token: opts.env.EBAY_API_TOKEN }));
   // Epic F: AI Intake Pipeline — close grouping windows + process sessions.
-  // Uses the deterministic mock vision client until real credentials are wired.
-  runner.register(intakeSweepJob());
+  // Real Anthropic vision when ANTHROPIC_API_KEY is set; else the mock (Phase B).
+  const intakeVision = opts.env.ANTHROPIC_API_KEY
+    ? createAnthropicVisionClient({
+        apiKey: opts.env.ANTHROPIC_API_KEY,
+        r2: {
+          accountId: opts.env.R2_ACCOUNT_ID,
+          bucket: opts.env.R2_BUCKET,
+          accessKeyId: opts.env.R2_ACCESS_KEY_ID,
+          secretAccessKey: opts.env.R2_SECRET_ACCESS_KEY,
+        },
+      })
+    : undefined;
+  runner.register(intakeSweepJob(intakeVision ? { vision: intakeVision } : {}));
   // Epic G: Smart Appointment System — reminder dispatch + no-show grace release.
   runner.register(appointmentNotificationsJob);
   runner.register(appointmentNoShowDetectorJob);

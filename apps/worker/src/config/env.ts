@@ -98,6 +98,11 @@ const EnvSchema = Type.Object({
   R2_BUCKET: Type.String({ default: '', description: 'R2 bucket for TSE archives + media.' }),
   R2_ACCESS_KEY_ID: Type.String({ default: '', description: 'R2 API token access key id.' }),
   R2_SECRET_ACCESS_KEY: Type.String({ default: '', description: 'R2 API token secret.' }),
+  // Empty → the intake pipeline uses the deterministic mock vision client.
+  ANTHROPIC_API_KEY: Type.String({
+    default: '',
+    description: 'Anthropic API key for the real intake VisionClient (Phase B). Empty → mock.',
+  }),
   R2_PUBLIC_URL_BASE: Type.String({
     default: '',
     description: 'Public CDN base for served R2 objects.',
