@@ -30,7 +30,7 @@ export interface ShopInfo {
 
 export const SHOP_INFO: ShopInfo = {
   name: 'WAREHOUSE 14',
-  tagline: 'Gold · Münzen · Antiquitäten',
+  tagline: 'Antiquitäten · Briefmarken · Münzen',
   address: ['Schornbacher Weg 66', '73614 Schorndorf'],
   // DUMMY — replace with the real USt-IdNr. before go-live.
   vatId: 'DE123456789',

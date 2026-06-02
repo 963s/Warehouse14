@@ -111,15 +111,25 @@ pub async fn print_thermal_receipt(
 const ESC: u8 = 0x1B;
 const GS: u8 = 0x1D;
 
+/// The shop logo as a ready-made ESC/POS raster (`GS v 0` command), generated
+/// from the brand asset (`assets/logo-escpos.bin`, 384 px wide, 1-bit). Printed
+/// centred at the top of every receipt. Regenerate with scripts that pack the
+/// PNG into `GS v 0` if the logo changes.
+const LOGO_ESCPOS: &[u8] = include_bytes!("../../assets/logo-escpos.bin");
+
 fn build_escpos(data: &ThermalReceiptData) -> Vec<u8> {
-    let mut b = Vec::with_capacity(2048);
+    let mut b = Vec::with_capacity(16384);
 
     // Initialize + set codepage to PC858 (Euro + German umlauts).
     b.extend_from_slice(&[ESC, b'@']);
     b.extend_from_slice(&[ESC, b't', 19]); // PC858
 
-    // Header: centred, bold, double height.
+    // Engraved shop logo (GS v 0 raster from the brand asset), centred.
     align_center(&mut b);
+    b.extend_from_slice(LOGO_ESCPOS);
+    feed(&mut b, 1);
+
+    // Shop name (kept as a text fallback for printers that skip the raster).
     bold_on(&mut b);
     double_size(&mut b);
     text_line(&mut b, &data.shop_name);

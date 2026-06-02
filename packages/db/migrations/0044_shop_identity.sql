@@ -14,7 +14,7 @@
 
 INSERT INTO system_settings (key, value, description) VALUES
   ('shop.name',          '"WAREHOUSE 14"'::jsonb,                 'Shop name printed on the receipt header.'),
-  ('shop.tagline',       '"Gold · Münzen · Antiquitäten"'::jsonb, 'Short trade line under the shop name on the receipt.'),
+  ('shop.tagline',       '"Antiquitäten · Briefmarken · Münzen"'::jsonb, 'Short trade line under the shop name on the receipt.'),
   ('shop.address_line1', '"Schornbacher Weg 66"'::jsonb,          'Receipt address line 1 (street + number).'),
   ('shop.address_line2', '"73614 Schorndorf"'::jsonb,             'Receipt address line 2 (PLZ + Ort).'),
   ('shop.vat_id',        '"DE123456789"'::jsonb,                  'USt-IdNr. printed on the receipt. PROVISIONAL — replace with the real id.'),

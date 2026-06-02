@@ -13,10 +13,9 @@
  * the POS bundle).
  */
 
-import { Button, Seal } from '@warehouse14/ui-kit';
+import { Button } from '@warehouse14/ui-kit';
 
 import type { ThermalReceiptData } from '../../lib/hardware-client.js';
-import { SHOP_INFO } from '../../lib/shop-info.js';
 
 const PAPER = '#fbf8f1';
 const INK = '#1c1814';
@@ -95,24 +94,13 @@ export function ReceiptPreview({
             padding: '22px 20px 26px',
           }}
         >
-          {/* Engraved seal + shop identity */}
+          {/* Engraved shop logo + identity */}
           <div style={{ display: 'grid', placeItems: 'center', gap: 6, textAlign: 'center' }}>
-            <Seal label="14" size="md" tone="ink" title={data.shopName} />
-            <div
-              style={{
-                fontFamily: 'var(--w14-font-display, serif)',
-                fontSize: '1.25rem',
-                fontWeight: 600,
-                letterSpacing: '0.06em',
-              }}
-            >
-              {data.shopName}
-            </div>
-            {SHOP_INFO.tagline && (
-              <div style={{ fontSize: '0.72rem', color: FADED, letterSpacing: '0.12em' }}>
-                {SHOP_INFO.tagline.toUpperCase()}
-              </div>
-            )}
+            <img
+              src="/shop-logo.svg"
+              alt={data.shopName}
+              style={{ width: 240, maxWidth: '100%', height: 'auto', marginBottom: 4 }}
+            />
             <div style={{ fontFamily: 'var(--w14-font-mono, monospace)', fontSize: '0.74rem' }}>
               {data.shopAddress.map((line) => (
                 <div key={line}>{line}</div>
