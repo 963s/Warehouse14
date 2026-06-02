@@ -8,7 +8,6 @@ name: warehouse14
 # identity). All secrets come from the sibling .env file.
 # ──────────────────────────────────────────────────────────────────────────
 
-x-ghcr: &ghcr ghcr.io/${GHCR_OWNER:-963s}
 
 services:
   postgres:
@@ -49,7 +48,7 @@ services:
 
   # One-shot: applies the SQL migrations (as the migrator role), then exits 0.
   migrate:
-    image: *ghcr/warehouse14-migrate:${IMAGE_TAG:-latest}
+    image: ghcr.io/${GHCR_OWNER:-963s}/warehouse14-migrate:${IMAGE_TAG:-latest}
     container_name: warehouse14-migrate
     restart: 'no'
     depends_on:
@@ -59,7 +58,7 @@ services:
       DATABASE_URL: postgresql://warehouse14_migrator:${MIGRATOR_PASSWORD}@postgres:5432/warehouse14
 
   api:
-    image: *ghcr/warehouse14-api:${IMAGE_TAG:-latest}
+    image: ghcr.io/${GHCR_OWNER:-963s}/warehouse14-api:${IMAGE_TAG:-latest}
     container_name: warehouse14-api
     restart: unless-stopped
     depends_on:
@@ -78,7 +77,7 @@ services:
     # Reached only by cloudflared on the internal network (no host port).
 
   worker:
-    image: *ghcr/warehouse14-worker:${IMAGE_TAG:-latest}
+    image: ghcr.io/${GHCR_OWNER:-963s}/warehouse14-worker:${IMAGE_TAG:-latest}
     container_name: warehouse14-worker
     restart: unless-stopped
     depends_on:

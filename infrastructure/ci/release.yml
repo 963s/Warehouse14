@@ -1,0 +1,156 @@
+# ──────────────────────────────────────────────────────────────────────
+# Warehouse14 POS — release pipeline.
+#
+# Triggers on a SemVer tag push (`v0.1.0`, `v1.2.3`, etc.) and:
+#   1. Builds the desktop bundle on three native runners simultaneously:
+#        macos-14    (Apple Silicon, arm64)
+#        macos-13    (Intel,        x86_64)
+#        windows-latest (x86_64)
+#   2. Each runner signs its bundle with TAURI_SIGNING_PRIVATE_KEY
+#      (held in repo secrets). Tauri emits matching `.sig` files
+#      next to every artifact for the updater's minisign verification.
+#   3. `tauri-apps/tauri-action` aggregates artifacts into a single
+#      GitHub Release and generates `latest.json` — the manifest the
+#      auto-updater (configured in tauri.conf.json) polls.
+#   4. The next time any installed copy of the POS checks for updates,
+#      it pulls `latest.json` from this release, verifies the signature
+#      against the embedded public key, downloads the right bundle for
+#      its platform, and prompts the operator to install.
+#
+# Operator action required:
+#   • Set the two repo secrets:
+#       TAURI_SIGNING_PRIVATE_KEY          ← contents of warehouse14_updater.key
+#       TAURI_SIGNING_PRIVATE_KEY_PASSWORD ← empty string (we generated no-pw)
+#   • Tag + push:
+#       git tag v0.1.0 && git push --tags
+# ──────────────────────────────────────────────────────────────────────
+
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  # Manual trigger for testing — won't create a release, only artifacts.
+  workflow_dispatch:
+
+permissions:
+  contents: write    # required to create the GitHub Release
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-14
+            rust-target: aarch64-apple-darwin
+            label: macos-arm64
+          - platform: macos-13
+            rust-target: x86_64-apple-darwin
+            label: macos-x64
+          - platform: windows-latest
+            rust-target: x86_64-pc-windows-msvc
+            label: windows-x64
+          - platform: ubuntu-22.04
+            rust-target: x86_64-unknown-linux-gnu
+            label: linux-x64
+
+    runs-on: ${{ matrix.platform }}
+    name: build (${{ matrix.label }})
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-target }}
+
+      - name: Cache Cargo registry + build target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/tauri-pos/src-tauri/target
+          key: cargo-${{ matrix.rust-target }}-${{ hashFiles('apps/tauri-pos/src-tauri/Cargo.lock') }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+
+      - name: Install Linux build deps
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Build all internal packages (Drizzle, ui-kit, api-client)
+        run: |
+          pnpm --filter @warehouse14/inventory-lock build
+          pnpm --filter @warehouse14/db build
+          pnpm --filter @warehouse14/ui-kit build
+          pnpm --filter @warehouse14/api-client build
+
+      - name: Patch updater endpoint with this repo's coordinates
+        # The committed tauri.conf.json carries __GITHUB_OWNER__ /
+        # __GITHUB_REPO__ placeholders so a local build never accidentally
+        # points at a stranger's releases. CI substitutes the real values
+        # here, just before `tauri build`, using the repo metadata.
+        shell: bash
+        run: |
+          OWNER="${GITHUB_REPOSITORY%%/*}"
+          REPO="${GITHUB_REPOSITORY##*/}"
+          CONF="apps/tauri-pos/src-tauri/tauri.conf.json"
+          sed -i.bak \
+            -e "s|__GITHUB_OWNER__|${OWNER}|g" \
+            -e "s|__GITHUB_REPO__|${REPO}|g" \
+            "$CONF"
+          rm -f "${CONF}.bak"
+          echo "Patched updater endpoint:"
+          grep -A1 endpoints "$CONF" | head -3
+
+      - name: Build + bundle + release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN:                          ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY:             ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD:    ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: apps/tauri-pos
+          args: --target ${{ matrix.rust-target }}
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Warehouse14 POS ${{ github.ref_name }}'
+          releaseBody: |
+            ## Warehouse14 POS — ${{ github.ref_name }}
+
+            Auto-update target. Every installed copy that polls this
+            release will pick it up within an hour (manual "Check for
+            updates" via the in-app banner triggers it immediately).
+
+            Built for:
+              • macOS Apple Silicon (arm64)  →  `.dmg` + `.app.tar.gz`
+              • macOS Intel (x86_64)         →  `.dmg` + `.app.tar.gz`
+              • Windows x86_64               →  `.exe` (NSIS) + `.exe.sig`
+              • Linux x86_64                 →  `.AppImage` + `.deb`
+
+            See `CHANGELOG.md` for the full change list.
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: true
