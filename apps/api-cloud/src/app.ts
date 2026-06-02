@@ -95,6 +95,7 @@ import storefrontWebhookRoutes from './routes/storefront-webhook.js';
 import tasksRoutes from './routes/tasks.js';
 import transactionsAnkauf from './routes/transactions-ankauf.js';
 import transactionsFinalize from './routes/transactions-finalize.js';
+import transactionsRecent from './routes/transactions-recent.js';
 import transactionsReturn from './routes/transactions-return.js';
 import transactionsStorno from './routes/transactions-storno.js';
 import voucherRoutes from './routes/vouchers.js';
@@ -214,6 +215,7 @@ export async function buildApp(opts: BuildAppOpts): Promise<FastifyInstance> {
   await app.register(transactionsFinalize, { env: opts.env });
   await app.register(transactionsAnkauf, { env: opts.env });
   await app.register(transactionsStorno);
+  await app.register(transactionsRecent);
   await app.register(sseLedger);
   // ── Day 19: storefront commerce ────────────────────────────────────
   await app.register(storefrontAuthRoutes);

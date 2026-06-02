@@ -21,6 +21,7 @@ import { useLastReceiptStore } from '../../state/last-receipt-store.js';
 import { ReceiptPreview } from '../verkauf/ReceiptPreview.js';
 
 import { CashMovementDialog, type MovementKind } from './CashMovementDialog.js';
+import { RecentSalesPanel } from './RecentSalesPanel.js';
 import { ZBonDialog } from './ZBonDialog.js';
 
 export interface KassenbuchPanelProps {
@@ -177,6 +178,8 @@ export function KassenbuchPanel({ shift }: KassenbuchPanelProps): JSX.Element {
             Letzten Beleg erneut drucken
           </Button>
         </div>
+
+        <RecentSalesPanel />
 
         <DiamondRule label="Tagesabschluss" />
 
