@@ -1,0 +1,112 @@
+name: warehouse14
+
+# ──────────────────────────────────────────────────────────────────────────
+# Warehouse14 production stack — runs on the Oracle Ubuntu (arm64) server.
+#   docker compose -f docker-compose.prod.yml up -d
+# Images are pulled from GHCR (built by CI). Cloudflare Tunnel fronts the API
+# with TLS + mTLS (the api reads the Cf-Client-Cert-Sha256 header for device
+# identity). All secrets come from the sibling .env file.
+# ──────────────────────────────────────────────────────────────────────────
+
+x-ghcr: &ghcr ghcr.io/${GHCR_OWNER:-963s}
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: warehouse14-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: warehouse14
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:?set in .env}
+      POSTGRES_DB: warehouse14
+      POSTGRES_INITDB_ARGS: '--locale=C --encoding=UTF8'
+      # Consumed once by the initdb role-bootstrap script.
+      MIGRATOR_PASSWORD: ${MIGRATOR_PASSWORD:?set in .env}
+      APP_PASSWORD: ${APP_PASSWORD:?set in .env}
+    command: [postgres, -c, shared_preload_libraries=pg_stat_statements]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/prod-initdb.d:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U warehouse14 -d warehouse14']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    # Not published to the host — only the internal docker network reaches it.
+
+  redis:
+    image: redis:7-alpine
+    container_name: warehouse14-redis
+    restart: unless-stopped
+    command: [redis-server, --appendonly, 'yes']
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # One-shot: applies the SQL migrations (as the migrator role), then exits 0.
+  migrate:
+    image: *ghcr/warehouse14-migrate:${IMAGE_TAG:-latest}
+    container_name: warehouse14-migrate
+    restart: 'no'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://warehouse14_migrator:${MIGRATOR_PASSWORD}@postgres:5432/warehouse14
+
+  api:
+    image: *ghcr/warehouse14-api:${IMAGE_TAG:-latest}
+    container_name: warehouse14-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    env_file: [.env]
+    environment:
+      NODE_ENV: production
+      PORT: '3001'
+      DATABASE_URL: postgresql://warehouse14_app:${APP_PASSWORD}@postgres:5432/warehouse14
+      REDIS_URL: redis://redis:6379
+    # Reached only by cloudflared on the internal network (no host port).
+
+  worker:
+    image: *ghcr/warehouse14-worker:${IMAGE_TAG:-latest}
+    container_name: warehouse14-worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    env_file: [.env]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://warehouse14_app:${APP_PASSWORD}@postgres:5432/warehouse14
+      REDIS_URL: redis://redis:6379
+
+  # Cloudflare Tunnel — public TLS + mTLS for api.warehouse14.de → api:3001.
+  # Configure the route (api.warehouse14.de → http://api:3001) in the Cloudflare
+  # Zero Trust dashboard, and put mTLS on it (Access → mutual TLS).
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: warehouse14-cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:?set in .env}
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+    name: warehouse14-pgdata
+  redisdata:
+    name: warehouse14-redisdata
