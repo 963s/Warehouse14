@@ -117,7 +117,13 @@ export function PinLogin(): JSX.Element {
         <img
           src="/shop-logo.svg"
           alt="WAREHOUSE 14"
-          style={{ width: 300, maxWidth: '100%', height: 'auto', margin: '0 auto 10px', display: 'block' }}
+          style={{
+            width: 300,
+            maxWidth: '100%',
+            height: 'auto',
+            margin: '0 auto 10px',
+            display: 'block',
+          }}
         />
         <p
           style={{
