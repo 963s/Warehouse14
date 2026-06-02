@@ -17,7 +17,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { ApiError, authPin } from '@warehouse14/api-client';
-import { DiamondRule, ParchmentCard, PinPad, RomanIndex, Seal } from '@warehouse14/ui-kit';
+import { DiamondRule, ParchmentCard, PinPad, RomanIndex } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../lib/api-context.js';
 import { useSessionStore } from '../state/session-store.js';
@@ -114,20 +114,11 @@ export function PinLogin(): JSX.Element {
       className="w14-paper-noise"
     >
       <ParchmentCard padding="lg" style={{ width: 'min(440px, 100%)', textAlign: 'center' }}>
-        <div style={{ display: 'flex', justifyContent: 'center' }}>
-          <Seal size="lg" />
-        </div>
-        <h1
-          style={{
-            fontFamily: 'var(--w14-font-display)',
-            fontWeight: 500,
-            fontSize: '1.8rem',
-            margin: '20px 0 4px',
-            letterSpacing: '0.02em',
-          }}
-        >
-          Warehouse14
-        </h1>
+        <img
+          src="/shop-logo.svg"
+          alt="WAREHOUSE 14"
+          style={{ width: 300, maxWidth: '100%', height: 'auto', margin: '0 auto 10px', display: 'block' }}
+        />
         <p
           style={{
             fontFamily: 'var(--w14-font-display)',
