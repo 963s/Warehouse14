@@ -50,6 +50,13 @@ const EnvSchema = Type.Object({
     default: '',
     description: 'Comma-separated list of allowed origins for CORS + better-auth',
   }),
+  TEST_DEVICE_FINGERPRINT: Type.String({
+    default: '',
+    description:
+      'TEST-ONLY pre-mTLS escape hatch. When set (production), device-gated requests ' +
+      'with no Cloudflare client cert are treated as coming from this single seeded ' +
+      'device fingerprint. Empty = off. MUST be unset once Cloudflare Access mTLS is live.',
+  }),
   TRANSACTION_STEP_UP_THRESHOLD_EUR: Type.String({
     default: '1000.00',
     pattern: '^\\d{1,10}(\\.\\d{1,2})?$',

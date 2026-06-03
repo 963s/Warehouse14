@@ -46,7 +46,15 @@ class DeviceNotAuthorizedError extends DomainError {
 function extractCertFingerprint(req: FastifyRequest, env: Env): string | null {
   const headers = req.headers as Record<string, string | undefined>;
   if (env.NODE_ENV === 'production') {
-    return headers['cf-client-cert-sha256'] ?? null;
+    const cf = headers['cf-client-cert-sha256'];
+    if (cf) return cf;
+    // TEST-ONLY pre-mTLS fallback. Until Cloudflare Access mTLS is enabled at
+    // go-live, there is no client cert, so every device-gated request would be
+    // hard-refused. When (and ONLY when) TEST_DEVICE_FINGERPRINT is set, treat
+    // an uncerted request as coming from that single seeded test device. Unset
+    // this env the moment real mTLS is turned on. Empty default = off.
+    if (env.TEST_DEVICE_FINGERPRINT) return env.TEST_DEVICE_FINGERPRINT;
+    return null;
   }
   return headers['x-dev-device-fingerprint'] ?? null;
 }
