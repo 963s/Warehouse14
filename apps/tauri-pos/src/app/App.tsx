@@ -24,6 +24,7 @@ import { PinLogin } from '../screens/PinLogin.js';
 import { useLedgerFeed } from '../state/ledger-feed-store.js';
 import { useSessionStore } from '../state/session-store.js';
 import { useToastStore } from '../state/toast-store.js';
+import { AppFooter } from './chrome/AppFooter.js';
 import { Splash } from './chrome/Splash.js';
 import { ThemeToggle } from './chrome/ThemeToggle.js';
 import { AppRouter } from './router.js';
@@ -63,6 +64,7 @@ export function App(): JSX.Element {
     <ErrorBoundary>
       {body}
       <ThemeToggle />
+      <AppFooter />
     </ErrorBoundary>
   );
 }
