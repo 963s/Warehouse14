@@ -22,6 +22,7 @@ services:
       # Consumed once by the initdb role-bootstrap script.
       MIGRATOR_PASSWORD: ${MIGRATOR_PASSWORD:?set in .env}
       APP_PASSWORD: ${APP_PASSWORD:?set in .env}
+      WORKER_PASSWORD: ${WORKER_PASSWORD:?set in .env}
     command: [postgres, -c, shared_preload_libraries=pg_stat_statements]
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -90,7 +91,8 @@ services:
     env_file: [.env]
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://warehouse14_app:${APP_PASSWORD}@postgres:5432/warehouse14
+      # The worker runs under its OWN least-privilege role (enforced at boot).
+      DATABASE_URL: postgresql://warehouse14_worker:${WORKER_PASSWORD}@postgres:5432/warehouse14
       REDIS_URL: redis://redis:6379
 
   # Cloudflare Tunnel — public TLS + mTLS for api.warehouse14.de → api:3001.

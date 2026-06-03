@@ -246,10 +246,13 @@ export type Env = Static<typeof EnvSchema>;
  */
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   const coerced: Record<string, unknown> = { ...source };
-  // Convert the numeric-typed vars from string → number BEFORE validation,
-  // because process.env is `Record<string, string | undefined>`.
-  for (const key of ['PORT', 'DB_POOL_MAX'] as const) {
-    if (typeof coerced[key] === 'string' && coerced[key] !== '') {
+  // Convert EVERY integer/number-typed var from string → number BEFORE
+  // validation, because process.env is `Record<string, string | undefined>`.
+  // Derived from the schema so a new numeric field can't be forgotten here
+  // (the bug that crashed boot when STRIPE_WEBHOOK_TOLERANCE_SECONDS was set).
+  for (const [key, propSchema] of Object.entries(EnvSchema.properties)) {
+    const t = (propSchema as { type?: string }).type;
+    if ((t === 'integer' || t === 'number') && typeof coerced[key] === 'string' && coerced[key] !== '') {
       const n = Number(coerced[key]);
       if (!Number.isNaN(n)) coerced[key] = n;
     }

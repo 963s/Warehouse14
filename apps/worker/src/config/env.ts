@@ -113,15 +113,12 @@ export type Env = Static<typeof EnvSchema>;
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   const coerced: Record<string, unknown> = { ...source };
-  for (const key of [
-    'METRICS_PORT',
-    'DB_POOL_MAX',
-    'WORKER_DEFAULT_MAX_RETRIES',
-    'WORKER_DEFAULT_TIMEOUT_MS',
-  ] as const) {
-    const v = coerced[key];
-    if (typeof v === 'string' && v !== '') {
-      const n = Number(v);
+  // Coerce EVERY integer/number-typed var from string → number, derived from
+  // the schema so a newly-added numeric field can't be forgotten here.
+  for (const [key, propSchema] of Object.entries(EnvSchema.properties)) {
+    const t = (propSchema as { type?: string }).type;
+    if ((t === 'integer' || t === 'number') && typeof coerced[key] === 'string' && coerced[key] !== '') {
+      const n = Number(coerced[key]);
       if (!Number.isNaN(n)) coerced[key] = n;
     }
   }

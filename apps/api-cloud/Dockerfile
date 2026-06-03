@@ -31,6 +31,10 @@ FROM node:20-bookworm-slim AS runtime
 ENV NODE_ENV=production PORT=3001 NODE_OPTIONS=--enable-source-maps
 WORKDIR /app
 COPY --from=build /app ./
+# Normalise read/traverse perms: some source package.json files ship 0600,
+# which Node (running as the non-root `node` user) can't read — that silently
+# breaks ESM `exports` resolution. Make everything world-readable.
+RUN chmod -R go+rX /app
 EXPOSE 3001
 USER node
 # /health is the readiness probe (no DB dependency).

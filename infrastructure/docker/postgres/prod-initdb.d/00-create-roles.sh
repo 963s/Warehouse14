@@ -13,12 +13,18 @@
 #     `SET ROLE warehouse14_security` to own SECURITY DEFINER objects).
 #
 # Passwords come from the environment (compose .env), never hardcoded:
-#   MIGRATOR_PASSWORD · APP_PASSWORD
+#   MIGRATOR_PASSWORD · APP_PASSWORD · WORKER_PASSWORD
+#
+# warehouse14_worker is created by migration 0017 (LOGIN NOINHERIT) but WITHOUT
+# a password, so apps/worker could never authenticate. We pre-create it here
+# WITH its password (0017's IF NOT EXISTS guard then no-ops). The worker enforces
+# `DATABASE_URL` points at this exact role and refuses to start otherwise.
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
 : "${MIGRATOR_PASSWORD:?MIGRATOR_PASSWORD is required}"
 : "${APP_PASSWORD:?APP_PASSWORD is required}"
+: "${WORKER_PASSWORD:?WORKER_PASSWORD is required}"
 
 psql --variable=ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
   -- Extensions (superuser-only) — migration 0001 then no-ops them.
@@ -32,11 +38,16 @@ psql --variable=ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_
   CREATE ROLE warehouse14_migrator LOGIN NOINHERIT CREATEROLE PASSWORD '${MIGRATOR_PASSWORD}';
   CREATE ROLE warehouse14_security NOLOGIN NOINHERIT;
   CREATE ROLE warehouse14_app LOGIN NOINHERIT PASSWORD '${APP_PASSWORD}';
+  -- Daemon role for apps/worker (migration 0017 also guards-creates it, without
+  -- a password). USAGE on public + per-table grants come from the migrations.
+  CREATE ROLE warehouse14_worker LOGIN NOINHERIT PASSWORD '${WORKER_PASSWORD}';
 
-  -- All three need CREATE on public: migrations SET ROLE to security/app to
-  -- create objects they should OWN (SECURITY DEFINER triggers, etc.). The
-  -- migrations' own GRANT/REVOKE statements then tighten runtime privileges.
-  GRANT ALL ON SCHEMA public TO warehouse14_migrator, warehouse14_security, warehouse14_app;
+  -- migrator/security/app need CREATE on public: migrations SET ROLE to
+  -- security/app to create objects they should OWN (SECURITY DEFINER triggers,
+  -- etc.). The migrations' own GRANT/REVOKE then tighten runtime privileges.
+  -- The worker only ever reads/writes existing tables, so USAGE is enough.
+  GRANT ALL   ON SCHEMA public TO warehouse14_migrator, warehouse14_security, warehouse14_app;
+  GRANT USAGE ON SCHEMA public TO warehouse14_worker;
 
   -- Membership lets the migrator SET ROLE to these AND act as owner of the
   -- objects they own (INHERIT TRUE) — migrations create SECURITY DEFINER
@@ -45,4 +56,4 @@ psql --variable=ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_
   GRANT warehouse14_app      TO warehouse14_migrator WITH SET TRUE, INHERIT TRUE;
 EOSQL
 
-echo "[initdb] extensions + warehouse14_{migrator,security,app} roles ready."
+echo "[initdb] extensions + warehouse14_{migrator,security,app,worker} roles ready."

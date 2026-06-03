@@ -23,6 +23,9 @@ FROM node:20-bookworm-slim AS runtime
 ENV NODE_ENV=production METRICS_PORT=3100 NODE_OPTIONS=--enable-source-maps
 WORKDIR /app
 COPY --from=build /app ./
+# Some source package.json files ship 0600 — unreadable by the non-root `node`
+# user, which silently breaks ESM `exports` resolution. Make all readable.
+RUN chmod -R go+rX /app
 EXPOSE 3100
 USER node
 # The worker binds its /health to 127.0.0.1:METRICS_PORT (same container).
