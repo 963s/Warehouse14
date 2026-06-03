@@ -14,6 +14,10 @@ import '@warehouse14/ui-kit/styles.css';
 
 import { App } from './app/App.js';
 import { ApiClientProvider } from './lib/api-context.js';
+import { initTheme } from './lib/theme.js';
+
+// Apply the persisted light/dark theme before the first paint.
+initTheme();
 
 const queryClient = new QueryClient({
   defaultOptions: {

@@ -25,6 +25,7 @@ import { useLedgerFeed } from '../state/ledger-feed-store.js';
 import { useSessionStore } from '../state/session-store.js';
 import { useToastStore } from '../state/toast-store.js';
 import { Splash } from './chrome/Splash.js';
+import { ThemeToggle } from './chrome/ThemeToggle.js';
 import { AppRouter } from './router.js';
 
 export function App(): JSX.Element {
@@ -58,5 +59,10 @@ export function App(): JSX.Element {
     body = <PinLogin />;
   }
 
-  return <ErrorBoundary>{body}</ErrorBoundary>;
+  return (
+    <ErrorBoundary>
+      {body}
+      <ThemeToggle />
+    </ErrorBoundary>
+  );
 }
