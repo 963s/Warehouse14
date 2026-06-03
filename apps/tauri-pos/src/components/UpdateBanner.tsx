@@ -51,8 +51,11 @@ export function UpdateBanner(): JSX.Element | null {
     try {
       // Dynamic import — the plugin's wire is only available inside Tauri.
       const { check } = await import('@tauri-apps/plugin-updater');
+      // check() returns an Update when one is available, else null. The v2
+      // Update has NO `.available` field — the old `!result.available` guard
+      // was always true, so the banner never appeared. Just null-check.
       const result = await check();
-      if (result === null || !result.available) {
+      if (result === null) {
         return;
       }
       setUpdate({

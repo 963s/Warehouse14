@@ -51,8 +51,10 @@ export function AppFooter(): JSX.Element {
     addToast({ tone: 'info', title: 'Suche nach Updates…', body: `Aktuelle Version: v${version}` });
     try {
       const { check } = await import('@tauri-apps/plugin-updater');
+      // check() returns an Update object when one is available, or null. (There
+      // is NO `.available` property on the v2 Update — checking it was the bug.)
       const result = await check();
-      if (result?.available) {
+      if (result) {
         addToast({
           tone: 'success',
           title: `Update ${result.version} verfügbar`,
