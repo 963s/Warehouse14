@@ -105,8 +105,8 @@ jobs:
 
       - name: Build internal packages (Drizzle, ui-kit, api-client)
         run: |
-          pnpm --filter @warehouse14/inventory-lock build
           pnpm --filter @warehouse14/db build
+          pnpm --filter @warehouse14/inventory-lock build
           pnpm --filter @warehouse14/ui-kit build
           pnpm --filter @warehouse14/api-client build
 
@@ -220,8 +220,8 @@ jobs:
 
       - name: Build internal packages (Drizzle, ui-kit, api-client)
         run: |
-          pnpm --filter @warehouse14/inventory-lock build
           pnpm --filter @warehouse14/db build
+          pnpm --filter @warehouse14/inventory-lock build
           pnpm --filter @warehouse14/ui-kit build
           pnpm --filter @warehouse14/api-client build
 

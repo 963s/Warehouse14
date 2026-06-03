@@ -23,6 +23,7 @@
   "files": ["dist", "migrations"],
   "scripts": {
     "build": "tsc",
+    "prepare": "tsc",
     "dev": "tsc --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests --exclude '**/tests/audit/**' --exclude '**/tests/inventory-lock/**' --exclude '**/tests/migrations/**'",

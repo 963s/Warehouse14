@@ -8,6 +8,7 @@
     "dev": "vite",
     "dev:tauri": "tauri dev",
     "build": "vite build",
+    "tauri": "tauri",
     "build:tauri": "tauri build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
