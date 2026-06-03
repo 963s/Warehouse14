@@ -55,9 +55,12 @@ export interface ZvtTerminalConfig {
 export interface TseFiskalyConfig {
   tssId: string;
   clientId: string;
-  /** The raw key — never logged, never sent to the React layer except here. */
-  apiKey: string;
-  apiSecret: string;
+  /**
+   * The Fiskaly api_key/api_secret are NO LONGER stored here. They live in the
+   * OS keychain (written via `tseClient.storeCredentials`, hydrated inside Rust).
+   * This is a non-secret UI hint: are credentials present in the keychain?
+   */
+  credentialsStored: boolean;
   /** Last status returned by `tse_status`. */
   lastReachable: boolean | null;
   lastCheckedAt: string | null;
@@ -88,8 +91,7 @@ const DEFAULT: HardwareConfig = {
   tse: {
     tssId: '',
     clientId: '',
-    apiKey: '',
-    apiSecret: '',
+    credentialsStored: false,
     lastReachable: null,
     lastCheckedAt: null,
     lastSyncAt: null,

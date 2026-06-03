@@ -72,6 +72,10 @@ pub fn run() {
             commands::tse::tse_start_transaction,
             commands::tse::tse_finish_transaction,
             commands::tse::tse_status,
+            // TSE credentials — OS-keychain backed (never in localStorage)
+            commands::tse::tse_store_credentials,
+            commands::tse::tse_credentials_present,
+            commands::tse::tse_clear_credentials,
             // Mandate 2-B — ZVT card terminal
             commands::zvt::zvt_check_connection,
             commands::zvt::zvt_authorize_payment,

@@ -10,6 +10,7 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use zeroize::Zeroize;
 
 use crate::config::{self, FISKALY_HTTP_TIMEOUT_MS};
 use crate::error::{HardwareError, HwResult};
@@ -32,9 +33,13 @@ pub struct TseConfig {
     pub tss_id: String,
     /// Fiskaly Client UUID (one per terminal).
     pub client_id: String,
-    /// Long-lived API key — stored encrypted in `system_settings`,
-    /// decrypted only inside Rust before this call.
+    /// Long-lived API key. The React layer no longer holds this — it lives in
+    /// the OS keychain and is hydrated into this struct INSIDE Rust right
+    /// before each Fiskaly call (`hydrate_secrets_from_keyring`). `#[serde(default)]`
+    /// lets the frontend send an empty/absent value.
+    #[serde(default)]
     pub api_key: String,
+    #[serde(default)]
     pub api_secret: String,
 }
 
@@ -116,11 +121,12 @@ pub struct TseStatus {
 /// state machine in `Active` state. The terminal must call `tse_finish_transaction`
 /// before the transaction expires (Fiskaly default ≈ 24 h).
 #[tauri::command]
-pub async fn tse_start_transaction(params: TseStartParams) -> HwResult<TseIntention> {
+pub async fn tse_start_transaction(mut params: TseStartParams) -> HwResult<TseIntention> {
     if config::is_mock_mode() {
         return tse_mock::start_transaction(params).await;
     }
 
+    hydrate_secrets_from_keyring(&mut params.config)?;
     validate_config(&params.config)?;
 
     let url = format!(
@@ -170,11 +176,12 @@ pub async fn tse_start_transaction(params: TseStartParams) -> HwResult<TseIntent
 /// `state=FINISHED`. The response carries the signature counter + value
 /// that must land on the printed receipt.
 #[tauri::command]
-pub async fn tse_finish_transaction(params: TseFinishParams) -> HwResult<TseSignature> {
+pub async fn tse_finish_transaction(mut params: TseFinishParams) -> HwResult<TseSignature> {
     if config::is_mock_mode() {
         return tse_mock::finish_transaction(params).await;
     }
 
+    hydrate_secrets_from_keyring(&mut params.config)?;
     validate_config(&params.config)?;
 
     let url = format!(
@@ -252,10 +259,12 @@ pub async fn tse_finish_transaction(params: TseFinishParams) -> HwResult<TseSign
 /// Cheap health-probe — does the Fiskaly endpoint answer + is the TSS in
 /// state `INITIALIZED`? Drives the green/red TSE badge in the Gerätemanager.
 #[tauri::command]
-pub async fn tse_status(config: TseConfig) -> HwResult<TseStatus> {
+pub async fn tse_status(mut config: TseConfig) -> HwResult<TseStatus> {
     if crate::config::is_mock_mode() {
         return tse_mock::status(config).await;
     }
+
+    hydrate_secrets_from_keyring(&mut config)?;
 
     if config.tss_id.is_empty() {
         return Ok(TseStatus {
@@ -328,4 +337,95 @@ fn format_cents(cents: u64) -> String {
 #[allow(dead_code)]
 fn _link_mock() {
     let _ = mock::mock_delay(0);
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// OS-keychain–backed Fiskaly credentials (KassenSichV hardening)
+//
+// The TSE API key + secret are fiscal-grade secrets. They MUST NOT sit in
+// the webview's localStorage (plaintext on disk, readable by any JS). They
+// live ONLY in the OS keychain (macOS Keychain / Windows Credential Manager /
+// libsecret), mirroring the KYC master-key pattern in `kyc.rs`. The React
+// layer writes them once via `tse_store_credentials` and never reads them
+// back; every live Fiskaly call hydrates them inside Rust.
+// ════════════════════════════════════════════════════════════════════════
+
+const TSE_KEYRING_SERVICE: &str = "warehouse14-tse";
+const TSE_KEY_USER: &str = "fiskaly_api_key";
+const TSE_SECRET_USER: &str = "fiskaly_api_secret";
+
+fn keyring_entry(user: &str) -> HwResult<keyring::Entry> {
+    keyring::Entry::new(TSE_KEYRING_SERVICE, user)
+        .map_err(|e| HardwareError::Internal(format!("keyring entry: {e}")))
+}
+
+fn read_keyring(user: &str) -> HwResult<Option<String>> {
+    match keyring_entry(user)?.get_password() {
+        Ok(v) if !v.is_empty() => Ok(Some(v)),
+        Ok(_) => Ok(None),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(e) => Err(HardwareError::Internal(format!("keyring read: {e}"))),
+    }
+}
+
+/// Fill empty credential fields from the keychain. Called by every live
+/// Fiskaly command so the React layer never has to hold the secrets.
+fn hydrate_secrets_from_keyring(cfg: &mut TseConfig) -> HwResult<()> {
+    if cfg.api_key.is_empty() {
+        if let Some(k) = read_keyring(TSE_KEY_USER)? {
+            cfg.api_key = k;
+        }
+    }
+    if cfg.api_secret.is_empty() {
+        if let Some(s) = read_keyring(TSE_SECRET_USER)? {
+            cfg.api_secret = s;
+        }
+    }
+    Ok(())
+}
+
+/// Persist the Fiskaly credential pair into the OS keychain. The plaintext
+/// halves are `zeroize`d from our buffers immediately after the store.
+/// Mock mode is a no-op success so local testing never touches the keychain.
+#[tauri::command]
+pub async fn tse_store_credentials(mut api_key: String, mut api_secret: String) -> HwResult<()> {
+    if config::is_mock_mode() {
+        api_key.zeroize();
+        api_secret.zeroize();
+        return Ok(());
+    }
+    keyring_entry(TSE_KEY_USER)?
+        .set_password(&api_key)
+        .map_err(|e| HardwareError::Internal(format!("keyring store key: {e}")))?;
+    keyring_entry(TSE_SECRET_USER)?
+        .set_password(&api_secret)
+        .map_err(|e| HardwareError::Internal(format!("keyring store secret: {e}")))?;
+    api_key.zeroize();
+    api_secret.zeroize();
+    Ok(())
+}
+
+/// True when BOTH halves of the credential pair are present in the keychain.
+#[tauri::command]
+pub async fn tse_credentials_present() -> HwResult<bool> {
+    if config::is_mock_mode() {
+        return Ok(true);
+    }
+    Ok(read_keyring(TSE_KEY_USER)?.is_some() && read_keyring(TSE_SECRET_USER)?.is_some())
+}
+
+/// Remove the credential pair from the keychain (operator "löschen").
+#[tauri::command]
+pub async fn tse_clear_credentials() -> HwResult<()> {
+    if config::is_mock_mode() {
+        return Ok(());
+    }
+    for user in [TSE_KEY_USER, TSE_SECRET_USER] {
+        match keyring_entry(user)?.delete_credential() {
+            Ok(()) => {}
+            Err(keyring::Error::NoEntry) => {}
+            Err(e) => return Err(HardwareError::Internal(format!("keyring clear: {e}"))),
+        }
+    }
+    Ok(())
 }

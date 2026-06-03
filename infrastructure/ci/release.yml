@@ -1,28 +1,28 @@
 # ──────────────────────────────────────────────────────────────────────
-# Warehouse14 POS — release pipeline.
+# Warehouse14 — desktop release pipeline (POS + Owner Desktop).
 #
-# Triggers on a SemVer tag push (`v0.1.0`, `v1.2.3`, etc.) and:
-#   1. Builds the desktop bundle on three native runners simultaneously:
-#        macos-14    (Apple Silicon, arm64)
-#        macos-13    (Intel,        x86_64)
-#        windows-latest (x86_64)
-#   2. Each runner signs its bundle with TAURI_SIGNING_PRIVATE_KEY
-#      (held in repo secrets). Tauri emits matching `.sig` files
-#      next to every artifact for the updater's minisign verification.
-#   3. `tauri-apps/tauri-action` aggregates artifacts into a single
-#      GitHub Release and generates `latest.json` — the manifest the
-#      auto-updater (configured in tauri.conf.json) polls.
-#   4. The next time any installed copy of the POS checks for updates,
-#      it pulls `latest.json` from this release, verifies the signature
-#      against the embedded public key, downloads the right bundle for
-#      its platform, and prompts the operator to install.
+# Triggers on a SemVer tag push (`v0.1.0`, …) and publishes ONE GitHub
+# Release containing BOTH apps' bundles + their updater manifests:
 #
-# Operator action required:
-#   • Set the two repo secrets:
+#   • apps/tauri-pos       → `latest.json`          (POS auto-updater)
+#   • apps/control-desktop → `latest-control.json`  (Owner Desktop updater)
+#
+# Both apps' tauri.conf.json point their updater endpoint at
+#   …/releases/latest/download/<manifest>
+# so they MUST live in the same "latest" release with DISTINCT manifest
+# names — that is why control-desktop does NOT use tauri-action's built-in
+# `latest.json` (it would collide with the POS one). Instead each control
+# build emits a signed per-platform fragment, and a final job assembles
+# `latest-control.json` and uploads it to the same release.
+#
+# Operator action required (one-time):
+#   • Repo secrets:
 #       TAURI_SIGNING_PRIVATE_KEY          ← contents of warehouse14_updater.key
-#       TAURI_SIGNING_PRIVATE_KEY_PASSWORD ← empty string (we generated no-pw)
-#   • Tag + push:
-#       git tag v0.1.0 && git push --tags
+#       TAURI_SIGNING_PRIVATE_KEY_PASSWORD ← '' (no-pw key)
+#   • Tag + push:  git tag v0.1.0 && git push --tags
+#
+# NOTE: this workflow has not yet had a live tag run — validate once on a
+# throwaway tag (e.g. v0.0.1-rc1) before relying on it for production OTA.
 # ──────────────────────────────────────────────────────────────────────
 
 name: release
@@ -31,14 +31,16 @@ on:
   push:
     tags:
       - 'v*.*.*'
-  # Manual trigger for testing — won't create a release, only artifacts.
   workflow_dispatch:
 
 permissions:
-  contents: write    # required to create the GitHub Release
+  contents: write    # required to create the GitHub Release + upload assets
 
 jobs:
-  build:
+  # ────────────────────────────────────────────────────────────────────
+  # POS — apps/tauri-pos. tauri-action publishes bundles + `latest.json`.
+  # ────────────────────────────────────────────────────────────────────
+  build-pos:
     strategy:
       fail-fast: false
       matrix:
@@ -57,7 +59,7 @@ jobs:
             label: linux-x64
 
     runs-on: ${{ matrix.platform }}
-    name: build (${{ matrix.label }})
+    name: pos (${{ matrix.label }})
 
     steps:
       - name: Checkout
@@ -75,7 +77,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             apps/tauri-pos/src-tauri/target
-          key: cargo-${{ matrix.rust-target }}-${{ hashFiles('apps/tauri-pos/src-tauri/Cargo.lock') }}
+          key: cargo-pos-${{ matrix.rust-target }}-${{ hashFiles('apps/tauri-pos/src-tauri/Cargo.lock') }}
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -101,56 +103,229 @@ jobs:
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile=false
 
-      - name: Build all internal packages (Drizzle, ui-kit, api-client)
+      - name: Build internal packages (Drizzle, ui-kit, api-client)
         run: |
           pnpm --filter @warehouse14/inventory-lock build
           pnpm --filter @warehouse14/db build
           pnpm --filter @warehouse14/ui-kit build
           pnpm --filter @warehouse14/api-client build
 
-      - name: Patch updater endpoint with this repo's coordinates
-        # The committed tauri.conf.json carries __GITHUB_OWNER__ /
-        # __GITHUB_REPO__ placeholders so a local build never accidentally
-        # points at a stranger's releases. CI substitutes the real values
-        # here, just before `tauri build`, using the repo metadata.
+      - name: Patch POS updater endpoint with this repo's coordinates
         shell: bash
         run: |
           OWNER="${GITHUB_REPOSITORY%%/*}"
           REPO="${GITHUB_REPOSITORY##*/}"
           CONF="apps/tauri-pos/src-tauri/tauri.conf.json"
-          sed -i.bak \
-            -e "s|__GITHUB_OWNER__|${OWNER}|g" \
-            -e "s|__GITHUB_REPO__|${REPO}|g" \
-            "$CONF"
+          sed -i.bak -e "s|__GITHUB_OWNER__|${OWNER}|g" -e "s|__GITHUB_REPO__|${REPO}|g" "$CONF"
           rm -f "${CONF}.bak"
-          echo "Patched updater endpoint:"
           grep -A1 endpoints "$CONF" | head -3
 
-      - name: Build + bundle + release
+      - name: Build + bundle + release (POS)
         uses: tauri-apps/tauri-action@v0
         env:
-          GITHUB_TOKEN:                          ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY:             ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD:    ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          GITHUB_TOKEN:                       ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY:          ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Bake the production API endpoint into the bundle. A process-env
+          # VITE_* var beats every .env file, so release builds always target
+          # the Cloudflare tunnel while local dev keeps using .env.local.
+          VITE_API_BASE_URL: https://api.warehouse14.de
         with:
           projectPath: apps/tauri-pos
           args: --target ${{ matrix.rust-target }}
           tagName: ${{ github.ref_name }}
-          releaseName: 'Warehouse14 POS ${{ github.ref_name }}'
+          releaseName: 'Warehouse14 ${{ github.ref_name }}'
           releaseBody: |
-            ## Warehouse14 POS — ${{ github.ref_name }}
+            ## Warehouse14 — ${{ github.ref_name }}
 
-            Auto-update target. Every installed copy that polls this
-            release will pick it up within an hour (manual "Check for
-            updates" via the in-app banner triggers it immediately).
-
-            Built for:
-              • macOS Apple Silicon (arm64)  →  `.dmg` + `.app.tar.gz`
-              • macOS Intel (x86_64)         →  `.dmg` + `.app.tar.gz`
-              • Windows x86_64               →  `.exe` (NSIS) + `.exe.sig`
-              • Linux x86_64                 →  `.AppImage` + `.deb`
-
-            See `CHANGELOG.md` for the full change list.
+            Auto-update target for the POS (`latest.json`) and the Owner
+            Desktop (`latest-control.json`). Installed copies pick it up
+            within an hour, or immediately via the in-app "Check for updates".
           releaseDraft: false
           prerelease: false
-          includeUpdaterJson: true
+          includeUpdaterJson: true   # POS owns latest.json
+
+  # ────────────────────────────────────────────────────────────────────
+  # Owner Desktop — apps/control-desktop. Bundles uploaded to the SAME
+  # release; updater manifest is NOT emitted here (would clobber the POS
+  # latest.json). Each job emits a signed per-platform fragment instead.
+  # ────────────────────────────────────────────────────────────────────
+  build-control:
+    needs: build-pos    # the release already exists → just append assets
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-14
+            rust-target: aarch64-apple-darwin
+            label: macos-arm64
+            updater_key: darwin-aarch64
+          - platform: macos-13
+            rust-target: x86_64-apple-darwin
+            label: macos-x64
+            updater_key: darwin-x86_64
+          - platform: windows-latest
+            rust-target: x86_64-pc-windows-msvc
+            label: windows-x64
+            updater_key: windows-x86_64
+          - platform: ubuntu-22.04
+            rust-target: x86_64-unknown-linux-gnu
+            label: linux-x64
+            updater_key: linux-x86_64
+
+    runs-on: ${{ matrix.platform }}
+    name: control (${{ matrix.label }})
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-target }}
+
+      - name: Cache Cargo registry + build target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/control-desktop/src-tauri/target
+          key: cargo-control-${{ matrix.rust-target }}-${{ hashFiles('apps/control-desktop/src-tauri/Cargo.lock') }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+
+      - name: Install Linux build deps
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Build internal packages (Drizzle, ui-kit, api-client)
+        run: |
+          pnpm --filter @warehouse14/inventory-lock build
+          pnpm --filter @warehouse14/db build
+          pnpm --filter @warehouse14/ui-kit build
+          pnpm --filter @warehouse14/api-client build
+
+      - name: Patch Owner Desktop updater endpoint with this repo's coordinates
+        shell: bash
+        run: |
+          OWNER="${GITHUB_REPOSITORY%%/*}"
+          REPO="${GITHUB_REPOSITORY##*/}"
+          CONF="apps/control-desktop/src-tauri/tauri.conf.json"
+          sed -i.bak -e "s|__GITHUB_OWNER__|${OWNER}|g" -e "s|__GITHUB_REPO__|${REPO}|g" "$CONF"
+          rm -f "${CONF}.bak"
+          grep -A1 endpoints "$CONF" | head -3
+
+      - name: Build + bundle + upload (Owner Desktop, no manifest)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN:                       ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY:          ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          VITE_API_BASE_URL: https://api.warehouse14.de
+        with:
+          projectPath: apps/control-desktop
+          args: --target ${{ matrix.rust-target }}
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Warehouse14 ${{ github.ref_name }}'
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: false   # control-desktop manifest is assembled below
+
+      - name: Emit signed updater fragment
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUNDLE_DIR="apps/control-desktop/src-tauri/target/${{ matrix.rust-target }}/release/bundle"
+          SIG=$(find "$BUNDLE_DIR" -name '*.sig' | head -n1 || true)
+          if [ -z "$SIG" ]; then
+            echo "::error::no .sig found under $BUNDLE_DIR (createUpdaterArtifacts on?)"; exit 1
+          fi
+          BUNDLE="${SIG%.sig}"
+          mkdir -p frags
+          python3 - "${{ matrix.updater_key }}" "$SIG" "$(basename "$BUNDLE")" > "frags/${{ matrix.updater_key }}.json" <<'PY'
+          import json, sys, os
+          key, sig_path, base = sys.argv[1], sys.argv[2], sys.argv[3]
+          sig = open(sig_path).read().strip()
+          repo = os.environ["GITHUB_REPOSITORY"]
+          tag  = os.environ["GITHUB_REF_NAME"]
+          # GitHub normalises release-asset names: spaces (and other non
+          # [A-Za-z0-9._-] chars) become '.'. productName is "Warehouse14
+          # Control" → asset name uses a dot. Mirror that so the URL resolves.
+          import re
+          asset = re.sub(r"[^A-Za-z0-9._-]", ".", base)
+          url = f"https://github.com/{repo}/releases/download/{tag}/{asset}"
+          print(json.dumps({key: {"signature": sig, "url": url}}))
+          PY
+
+      - name: Upload fragment artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: control-frag-${{ matrix.updater_key }}
+          path: frags/${{ matrix.updater_key }}.json
+          retention-days: 1
+
+  # ────────────────────────────────────────────────────────────────────
+  # Assemble latest-control.json from the per-platform fragments and
+  # upload it to the same release.
+  # ────────────────────────────────────────────────────────────────────
+  control-updater-manifest:
+    needs: build-control
+    runs-on: ubuntu-22.04
+    name: control (latest-control.json)
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all fragments
+        uses: actions/download-artifact@v4
+        with:
+          path: frags
+          pattern: control-frag-*
+          merge-multiple: true
+
+      - name: Assemble latest-control.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, glob, datetime
+          conf = json.load(open("apps/control-desktop/src-tauri/tauri.conf.json"))
+          platforms = {}
+          for f in glob.glob("frags/*.json"):
+              platforms.update(json.load(open(f)))
+          if not platforms:
+              raise SystemExit("no updater fragments found")
+          manifest = {
+              "version": conf["version"],
+              "notes": "Warehouse14 Owner Desktop update",
+              "pub_date": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "platforms": platforms,
+          }
+          open("latest-control.json", "w").write(json.dumps(manifest, indent=2))
+          print(open("latest-control.json").read())
+          PY
+
+      - name: Upload latest-control.json to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${GITHUB_REF_NAME}" latest-control.json --clobber

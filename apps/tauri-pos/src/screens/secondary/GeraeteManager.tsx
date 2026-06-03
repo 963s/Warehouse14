@@ -563,27 +563,88 @@ function TseSection(): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [tssDraft, setTssDraft] = useState(cfg.tssId);
   const [clientDraft, setClientDraft] = useState(cfg.clientId);
-  const [keyDraft, setKeyDraft] = useState(cfg.apiKey);
-  const [secretDraft, setSecretDraft] = useState(cfg.apiSecret);
+  // Secret drafts are transient: typed once, pushed to the OS keychain, then
+  // cleared. They never enter the store or localStorage.
+  const [keyDraft, setKeyDraft] = useState('');
+  const [secretDraft, setSecretDraft] = useState('');
+
+  const save = useCallback((patch: Partial<TseFiskalyConfig>) => setTse(patch), [setTse]);
 
   useEffect(() => {
     setTssDraft(cfg.tssId);
     setClientDraft(cfg.clientId);
-    setKeyDraft(cfg.apiKey);
-    setSecretDraft(cfg.apiSecret);
-  }, [cfg.tssId, cfg.clientId, cfg.apiKey, cfg.apiSecret]);
+  }, [cfg.tssId, cfg.clientId]);
 
-  const save = useCallback((patch: Partial<TseFiskalyConfig>) => setTse(patch), [setTse]);
+  // Reconcile the "stored?" hint with the real OS keychain on mount.
+  useEffect(() => {
+    let alive = true;
+    void tseClient
+      .credentialsPresent()
+      .then((present) => {
+        if (alive) save({ credentialsStored: present });
+      })
+      .catch(() => {
+        /* keychain unavailable (browser mode) — leave the hint untouched */
+      });
+    return () => {
+      alive = false;
+    };
+  }, [save]);
+
+  const storeCredentials = useCallback(async () => {
+    const key = keyDraft.trim();
+    const secret = secretDraft.trim();
+    if (!key || !secret) {
+      addToast({
+        tone: 'alert',
+        title: 'TSE-Zugangsdaten unvollständig',
+        body: 'API-Key und API-Secret sind beide erforderlich.',
+      });
+      return;
+    }
+    try {
+      await tseClient.storeCredentials(key, secret);
+      save({ credentialsStored: true });
+      setKeyDraft('');
+      setSecretDraft('');
+      setEditingKey(false);
+      addToast({
+        tone: 'success',
+        title: 'TSE-Schlüssel gespeichert',
+        body: 'Sicher im OS-Schlüsselbund hinterlegt — nicht im Browserspeicher.',
+      });
+    } catch (err) {
+      addToast({
+        tone: 'alert',
+        title: 'Speichern fehlgeschlagen',
+        body: isHardwareError(err) ? describeHardwareError(err) : String(err),
+      });
+    }
+  }, [addToast, keyDraft, secretDraft, save]);
+
+  const clearCredentials = useCallback(async () => {
+    try {
+      await tseClient.clearCredentials();
+      save({ credentialsStored: false });
+      addToast({
+        tone: 'success',
+        title: 'TSE-Schlüssel gelöscht',
+        body: 'Aus dem OS-Schlüsselbund entfernt.',
+      });
+    } catch (err) {
+      addToast({
+        tone: 'alert',
+        title: 'Löschen fehlgeschlagen',
+        body: isHardwareError(err) ? describeHardwareError(err) : String(err),
+      });
+    }
+  }, [addToast, save]);
 
   const checkStatus = useCallback(async () => {
     setBusy(true);
     try {
-      const s = await tseClient.status({
-        tssId: cfg.tssId,
-        clientId: cfg.clientId,
-        apiKey: cfg.apiKey,
-        apiSecret: cfg.apiSecret,
-      });
+      // Secrets are hydrated inside Rust from the keychain — not sent here.
+      const s = await tseClient.status({ tssId: cfg.tssId, clientId: cfg.clientId });
       save({
         lastReachable: s.reachable,
         lastCheckedAt: s.lastCheckedAt,
@@ -603,7 +664,7 @@ function TseSection(): JSX.Element {
     } finally {
       setBusy(false);
     }
-  }, [addToast, cfg.tssId, cfg.clientId, cfg.apiKey, cfg.apiSecret, save]);
+  }, [addToast, cfg.tssId, cfg.clientId, save]);
 
   return (
     <Card title="TSE (Technische Sicherheitseinrichtung)">
@@ -638,21 +699,19 @@ function TseSection(): JSX.Element {
               value={keyDraft}
               onChange={(e) => setKeyDraft(e.target.value)}
               placeholder="API-Key"
+              type="password"
+              autoComplete="off"
               style={inputStyle()}
             />
             <input
               value={secretDraft}
               onChange={(e) => setSecretDraft(e.target.value)}
               placeholder="API-Secret"
+              type="password"
+              autoComplete="off"
               style={inputStyle()}
             />
-            <Button
-              variant="primary"
-              onClick={() => {
-                save({ apiKey: keyDraft.trim(), apiSecret: secretDraft.trim() });
-                setEditingKey(false);
-              }}
-            >
+            <Button variant="primary" onClick={() => void storeCredentials()}>
               Speichern
             </Button>
           </>
@@ -661,11 +720,16 @@ function TseSection(): JSX.Element {
             <span
               style={{ flex: 1, fontFamily: 'var(--w14-font-mono)', color: 'var(--w14-ink-faded)' }}
             >
-              {cfg.apiKey ? '••••••••••••' : '— nicht gesetzt —'}
+              {cfg.credentialsStored ? '•••••••••••• (im Schlüsselbund)' : '— nicht gesetzt —'}
             </span>
             <Button variant="ghost" onClick={() => setEditingKey(true)}>
-              Bearbeiten
+              {cfg.credentialsStored ? 'Ändern' : 'Hinterlegen'}
             </Button>
+            {cfg.credentialsStored ? (
+              <Button variant="ghost" onClick={() => void clearCredentials()}>
+                Löschen
+              </Button>
+            ) : null}
           </>
         )}
       </Row>
@@ -673,7 +737,7 @@ function TseSection(): JSX.Element {
         <Button
           variant="ghost"
           onClick={() => void checkStatus()}
-          disabled={busy || !cfg.tssId || !cfg.apiKey}
+          disabled={busy || !cfg.tssId || !cfg.credentialsStored}
         >
           {busy ? 'Prüft…' : 'TSE-Verbindung prüfen'}
         </Button>

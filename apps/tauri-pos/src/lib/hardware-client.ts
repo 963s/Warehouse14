@@ -67,7 +67,6 @@ export function describeHardwareError(err: HardwareError): string {
       return `Lokaler Dateifehler: ${err.details}`;
     case 'invalid_argument':
       return `Ungültiger Aufruf: ${err.details}`;
-    case 'internal':
     default:
       return `Interner Fehler: ${err.details}`;
   }
@@ -124,8 +123,13 @@ export async function compressToWebpBlob(
 export interface TseConfig {
   tssId: string;
   clientId: string;
-  apiKey: string;
-  apiSecret: string;
+  /**
+   * Fiskaly secrets are NO LONGER carried by the React layer — they live in
+   * the OS keychain and are hydrated INSIDE Rust before each call. These stay
+   * optional only for a rare explicit override; normal flows omit them.
+   */
+  apiKey?: string;
+  apiSecret?: string;
 }
 
 export interface TseStartParams {
@@ -176,6 +180,20 @@ export const tseClient = {
   },
   status(config: TseConfig): Promise<TseStatus> {
     return invoke('tse_status', { config });
+  },
+
+  // ── OS-keychain credential management (secrets never touch localStorage) ──
+  /** Store the Fiskaly key+secret in the OS keychain (write-only from JS). */
+  storeCredentials(apiKey: string, apiSecret: string): Promise<void> {
+    return invoke('tse_store_credentials', { apiKey, apiSecret });
+  },
+  /** True when both halves are present in the keychain. */
+  credentialsPresent(): Promise<boolean> {
+    return invoke('tse_credentials_present');
+  },
+  /** Remove the credential pair from the keychain. */
+  clearCredentials(): Promise<void> {
+    return invoke('tse_clear_credentials');
   },
 };
 
