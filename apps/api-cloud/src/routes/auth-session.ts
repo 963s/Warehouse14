@@ -123,14 +123,18 @@ const authSessionRoutes: FastifyPluginAsync = async (app) => {
         });
       });
 
-      // Clear the cookie. `clearCookie` mirrors the path + secure flags so
-      // the browser actually overwrites the existing cookie.
-      reply.clearCookie('warehouse14.session', {
-        path: '/',
-        httpOnly: true,
-        secure: req.protocol === 'https',
-        sameSite: 'lax',
-      });
+      // Clear the cookie. Mirror the set-cookie attributes (SameSite=None +
+      // Secure in prod, for the cross-site Tauri webview) so the browser
+      // actually matches + overwrites the existing cookie.
+      {
+        const crossSite = process.env.NODE_ENV === 'production';
+        reply.clearCookie('warehouse14.session', {
+          path: '/',
+          httpOnly: true,
+          secure: crossSite ? true : req.protocol === 'https',
+          sameSite: crossSite ? 'none' : 'lax',
+        });
+      }
 
       return { ok: true as const };
     },

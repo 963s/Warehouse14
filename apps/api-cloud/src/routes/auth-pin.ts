@@ -336,13 +336,22 @@ const authPinRoutes: FastifyPluginAsync<{ env: Env }> = async (app, opts) => {
         lastPinStepUpAt: new Date(), // Fresh PIN = fresh step-up.
       });
 
-      reply.setCookie('warehouse14.session', token, {
-        httpOnly: true,
-        secure: req.protocol === 'https',
-        sameSite: 'lax',
-        path: '/',
-        expires: expiresAt,
-      });
+      // The desktop apps run in a Tauri webview (origin `tauri.localhost`),
+      // which is a DIFFERENT site from api.warehouse14.de — so the session
+      // cookie must be SameSite=None (+Secure) or the browser drops it on
+      // every cross-site data fetch and the whole app reads as empty. In prod
+      // the public edge is HTTPS (Cloudflare), even though the internal hop to
+      // the container is plain http, so force Secure there.
+      {
+        const crossSite = process.env.NODE_ENV === 'production';
+        reply.setCookie('warehouse14.session', token, {
+          httpOnly: true,
+          secure: crossSite ? true : req.protocol === 'https',
+          sameSite: crossSite ? 'none' : 'lax',
+          path: '/',
+          expires: expiresAt,
+        });
+      }
 
       // Duress: log in normally, then fire the silent alarm in the background.
       if (isDuress) {
