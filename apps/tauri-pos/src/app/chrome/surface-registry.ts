@@ -70,6 +70,7 @@ import { Ebay } from '../../screens/secondary/Ebay.js';
 import { Einstellungen } from '../../screens/secondary/Einstellungen.js';
 import { Fotos } from '../../screens/secondary/Fotos.js';
 import { Kurse } from '../../screens/secondary/Kurse.js';
+import { Schreiben } from '../../screens/secondary/Schreiben.js';
 import { Tagebuch } from '../../screens/secondary/Tagebuch.js';
 import { WhatsApp } from '../../screens/secondary/WhatsApp.js';
 import { Verkauf } from '../../screens/verkauf/Verkauf.js';
@@ -162,6 +163,16 @@ export const SURFACES: readonly SurfaceDescriptor[] = [
     tier: 'primary',
     component: Kurse,
     searchAliases: ['kurs', 'gold', 'silber', 'platin', 'metallpreis', 'lbma', 'chart', 'börse'],
+  },
+  // ── Tier 1 (#8) — A4 document studio (contracts / invoices / letters) ─
+  {
+    path: '/schreiben',
+    label: 'Schreiben',
+    description: 'Verträge, Rechnungen und Briefe auf A4 erstellen — mit KI-Assistent.',
+    digit: 8,
+    tier: 'primary',
+    component: Schreiben,
+    searchAliases: ['brief', 'vertrag', 'ankaufvertrag', 'rechnung', 'dokument', 'a4', 'schreiben', 'ki'],
   },
   {
     path: '/ebay',

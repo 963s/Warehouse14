@@ -85,6 +85,7 @@ import settingsRoute from './routes/settings.js';
 import shiftsRoutes from './routes/shifts.js';
 import shippingRoutes from './routes/shipping.js';
 import shopInfoRoute from './routes/shop-info.js';
+import aiComposeRoute from './routes/ai-compose.js';
 import sseLedger from './routes/sse-ledger.js';
 import storefrontAuthRoutes from './routes/storefront-auth.js';
 import storefrontCartRoutes from './routes/storefront-cart.js';
@@ -252,6 +253,7 @@ export async function buildApp(opts: BuildAppOpts): Promise<FastifyInstance> {
   await app.register(approvalsRoutes);
   await app.register(settingsRoute);
   await app.register(shopInfoRoute);
+  await app.register(aiComposeRoute, { env: opts.env });
   await app.register(ledgerRoutes);
   // ── Epic K: DSFinV-K / DATEV fiscal exports ──────────────────────
   await app.register(closingExportRoute);
