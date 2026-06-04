@@ -14,42 +14,42 @@
 
 :root,
 :root[data-theme="light"] {
-  /* ─── Parchment surfaces ───────────────────────────────────────── */
-  --w14-parchment: #f1ece0;
-  --w14-parchment-2: #eae4d5;
-  --w14-parchment-3: #ded6c2;
+  /* ─── Neutral surfaces (modern clean) ──────────────────────────── */
+  /* var names kept for compat; values are now a cool neutral system:
+     app background → white card → subtle raised. */
+  --w14-parchment: #f5f6f8; /* app background */
+  --w14-parchment-2: #ffffff; /* cards / panels */
+  --w14-parchment-3: #eef0f3; /* inputs / hover / raised */
 
-  /* ─── Ink (text + strokes) ─────────────────────────────────────── */
-  --w14-ink: #0f0f0f;
-  --w14-ink-aged: #3a332b;
-  /* Darkened for WCAG-AA readability on parchment (Basel: clarity > decoration).
-     Was #736a5c (~3.2:1); #5d5547 ≈ 4.6:1 — still clearly "faded", now legible. */
-  --w14-ink-faded: #5d5547;
-  --w14-rule: #1c1814;
+  /* ─── Ink (text + strokes) — high contrast for clarity ─────────── */
+  --w14-ink: #16191d;
+  --w14-ink-aged: #3a3f47;
+  --w14-ink-faded: #6b7280;
+  --w14-rule: #e3e6eb; /* hairline borders */
 
-  /* ─── Accent palette (illuminated initials — use sparingly) ────── */
-  --w14-gold: #a8853e;
-  --w14-gold-soft: #c4a56e;
-  --w14-wax-red: #8c2e2c;
-  --w14-wax-red-soft: #b95a56;
-  --w14-verdigris: #3e605c;
+  /* ─── Accent palette — gold as a sparing accent, modern semantics ─ */
+  --w14-gold: #bf9430;
+  --w14-gold-soft: #ddc486;
+  --w14-wax-red: #d63d49; /* destructive / price-down */
+  --w14-wax-red-soft: #ef8a92;
+  --w14-verdigris: #1f9d62; /* positive / price-up */
 
   /* ─── Scrims + utility ─────────────────────────────────────────── */
-  --w14-overlay: rgba(15, 15, 15, 0.8);
-  --w14-focus-ring: #a8853e;
+  --w14-overlay: rgba(17, 21, 28, 0.45);
+  --w14-focus-ring: #bf9430;
 
-  /* ─── Typography stack (loaded by @font-face — see typography.css) */
-  --w14-font-display: "Cormorant Garamond", "Times New Roman", serif;
+  /* ─── Typography — clean modern sans primary ───────────────────── */
+  --w14-font-display: "Inter", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   --w14-font-body: "Inter", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   --w14-font-mono: "JetBrains Mono", "Menlo", "Consolas", monospace;
 
-  /* ─── Grid + radii + shadow ────────────────────────────────────── */
+  /* ─── Grid + radii + shadow (softer, more breathing room) ──────── */
   --w14-unit: 4px;
   --w14-radius-sharp: 0px; /* receipt-like surfaces */
-  --w14-radius-button: 4px;
-  --w14-radius-card: 6px;
-  --w14-shadow-card: 0 1px 0 var(--w14-rule);
-  --w14-shadow-modal: 0 4px 24px rgba(15, 15, 15, 0.2);
+  --w14-radius-button: 8px;
+  --w14-radius-card: 12px;
+  --w14-shadow-card: 0 1px 2px rgba(16, 24, 40, 0.05), 0 1px 3px rgba(16, 24, 40, 0.08);
+  --w14-shadow-modal: 0 18px 44px rgba(16, 24, 40, 0.2);
 
   /* ─── Motion ──────────────────────────────────────────────────── */
   --w14-ease-curator: cubic-bezier(0.16, 1, 0.3, 1); /* drawer slide */
@@ -59,19 +59,24 @@
 }
 
 :root[data-theme="dark"] {
-  /* Midnight-vellum — invert with same accent hues. */
-  --w14-parchment: #1a1614;
-  --w14-parchment-2: #221c18;
-  --w14-parchment-3: #2a231d;
+  /* Modern dark — near-black neutrals, same accent hues. */
+  --w14-parchment: #131519;
+  --w14-parchment-2: #1b1e24;
+  --w14-parchment-3: #242831;
 
-  --w14-ink: #e6dfcb;
-  --w14-ink-aged: #c7bfa9;
-  /* Brightened for readability on midnight-vellum (Basel: clarity > decoration).
-     Was #8e8676; #a89f8a lifts the faded/secondary text clearly above the bg. */
-  --w14-ink-faded: #a89f8a;
-  --w14-rule: #5c5347;
+  --w14-ink: #e9ebee;
+  --w14-ink-aged: #c4c8ce;
+  --w14-ink-faded: #939aa3;
+  --w14-rule: #2c313a;
 
-  --w14-overlay: rgba(0, 0, 0, 0.8);
+  --w14-gold: #cda94a;
+  --w14-gold-soft: #e2c98c;
+  --w14-wax-red: #e15862;
+  --w14-verdigris: #2fb277;
+
+  --w14-overlay: rgba(0, 0, 0, 0.6);
+  --w14-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
+  --w14-shadow-modal: 0 18px 44px rgba(0, 0, 0, 0.55);
 }
 
 /* ────────────────────────────────────────────────────────────────────
@@ -105,7 +110,8 @@ body {
   letter-spacing: 0.08em;
 }
 
-/* Marbled paper noise overlay (svg encoded). */
+/* Paper-noise overlay — retired in the modern theme (kept as a no-op so the
+   `w14-paper-noise` class on existing screens stays harmless). */
 .w14-paper-noise {
   position: relative;
   isolation: isolate;
@@ -115,7 +121,7 @@ body {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  opacity: 0.04;
+  opacity: 0;
   background-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   background-size: 200px 200px;
   z-index: -1;
