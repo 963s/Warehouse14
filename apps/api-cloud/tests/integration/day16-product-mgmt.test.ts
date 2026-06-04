@@ -355,6 +355,73 @@ describe('Day 16 — Product Management + audit fixes', () => {
   });
 
   // ════════════════════════════════════════════════════════════════════
+  // New product → sellable visibility flow (regression for the
+  // "added a product but can't sell it" fix — POS publishes on create).
+  // ════════════════════════════════════════════════════════════════════
+
+  describe('new product → sellable visibility', () => {
+    async function availableIds(): Promise<string[]> {
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/products?status=AVAILABLE&limit=200',
+        headers: headers(ownerTokenStepUp),
+      });
+      expect(res.statusCode).toBe(200);
+      return (res.json() as { items: Array<{ id: string }> }).items.map((i) => i.id);
+    }
+
+    it('is DRAFT and hidden from the AVAILABLE feed until published, then visible', async () => {
+      const created = await app.inject({
+        method: 'POST',
+        url: '/api/products',
+        headers: headers(ownerTokenStepUp),
+        payload: createBody(),
+      });
+      expect(created.statusCode).toBe(200);
+      const out = created.json() as { id: string; status: string };
+      expect(out.status).toBe('DRAFT');
+
+      // Not yet sellable — absent from the cashier feed.
+      expect(await availableIds()).not.toContain(out.id);
+
+      // Publish (DRAFT → AVAILABLE) as ADMIN.
+      const pub = await app.inject({
+        method: 'PUT',
+        url: `/api/products/${out.id}`,
+        headers: headers(ownerTokenStepUp),
+        payload: { status: 'AVAILABLE' },
+      });
+      expect(pub.statusCode).toBe(200);
+
+      const [row] = await migratorSql<{ status: string; published_at: Date | null }[]>`
+        SELECT status, published_at FROM products WHERE id = ${out.id}`;
+      expect(row?.status).toBe('AVAILABLE');
+      expect(row?.published_at).toBeInstanceOf(Date);
+
+      // Now sellable — present in the cashier feed.
+      expect(await availableIds()).toContain(out.id);
+    });
+
+    it('a CASHIER may not publish (DRAFT → AVAILABLE) → 403', async () => {
+      const created = await app.inject({
+        method: 'POST',
+        url: '/api/products',
+        headers: headers(ownerTokenStepUp),
+        payload: createBody(),
+      });
+      const id = (created.json() as { id: string }).id;
+
+      const res = await app.inject({
+        method: 'PUT',
+        url: `/api/products/${id}`,
+        headers: headers(cashierToken),
+        payload: { status: 'AVAILABLE' },
+      });
+      expect(res.statusCode).toBe(403);
+    });
+  });
+
+  // ════════════════════════════════════════════════════════════════════
   // POST /api/products/:id/archive
   // ════════════════════════════════════════════════════════════════════
 
