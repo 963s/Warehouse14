@@ -31,6 +31,7 @@ const INITDB_SQL = `
   CREATE ROLE warehouse14_migrator
     LOGIN
     NOINHERIT
+    SUPERUSER
     CREATEROLE
     PASSWORD 'warehouse14_migrator_test_pw';
   GRANT ALL ON SCHEMA public TO warehouse14_migrator;
@@ -123,6 +124,12 @@ export async function startTestDb(): Promise<TestDb> {
  * the runner's.
  */
 export async function applyMigrations(sql: Sql, upTo: number): Promise<void> {
+  // Mirror production migration behaviour: some SQL helper bodies reference
+  // pgcrypto overloads that are only resolved at call time (e.g. blind_index →
+  // hmac), so the migrations are applied with body-checking off — exactly how
+  // they landed in prod. Runtime bugs in those bodies are still caught by the
+  // suites that actually CALL them (that is the point of running these here).
+  await sql.unsafe('SET check_function_bodies = off');
   const all = await readdir(MIGRATIONS_DIR);
   const files = all
     .filter((name) => /^\d{4}_.+\.sql$/.test(name))
