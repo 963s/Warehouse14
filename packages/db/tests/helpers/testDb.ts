@@ -127,8 +127,9 @@ export async function applyMigrations(sql: Sql, upTo: number): Promise<void> {
   // Mirror production migration behaviour: some SQL helper bodies reference
   // pgcrypto overloads that are only resolved at call time (e.g. blind_index →
   // hmac), so the migrations are applied with body-checking off — exactly how
-  // they landed in prod. Runtime bugs in those bodies are still caught by the
-  // suites that actually CALL them (that is the point of running these here).
+  // they landed in prod (migrate.sh exports PGOPTIONS=-c check_function_bodies=off).
+  // Set once at session level on the single pooled connection (max:1) so it
+  // persists across every file/statement below.
   await sql.unsafe('SET check_function_bodies = off');
   const all = await readdir(MIGRATIONS_DIR);
   const files = all
@@ -137,8 +138,154 @@ export async function applyMigrations(sql: Sql, upTo: number): Promise<void> {
     .sort();
   for (const file of files) {
     const sqlText = await readFile(join(MIGRATIONS_DIR, file), 'utf8');
-    await sql.unsafe(sqlText);
+    // Apply each statement separately — psql -f semantics (migrate.sh, no -1).
+    // Sending a whole file as ONE postgres.js message wraps it in a single
+    // implicit transaction, which breaks files that do `ALTER TYPE … ADD VALUE`
+    // and then USE that value in the same file (0039): Postgres rejects "unsafe
+    // use of new value …". psql commits the ADD VALUE first because it
+    // autocommits per statement; files that need atomicity open their own
+    // explicit BEGIN/COMMIT (honoured here since max:1 keeps one connection).
+    for (const statement of splitSqlStatements(sqlText)) {
+      await sql.unsafe(statement);
+    }
   }
+}
+
+/**
+ * Split a SQL migration file into individual statements the way `psql -f` does,
+ * so each runs autocommitted unless the file opens an explicit BEGIN/COMMIT.
+ * This is the production fidelity fix: migrate.sh applies via `psql -f` (no -1),
+ * where an `ALTER TYPE … ADD VALUE` commits before a later statement uses it.
+ *
+ * Only a semicolon in *normal* context terminates a statement. The scanner skips
+ * over the constructs where a `;` is not a terminator:
+ *   • line comments  -- … ⏎
+ *   • block comments /* … *​/  (these NEST in PostgreSQL)
+ *   • single-quoted strings '…'  (with '' escapes)
+ *   • double-quoted identifiers "…"  (with "" escapes)
+ *   • dollar-quoted bodies $$ … $$ and $tag$ … $tag$ (function bodies — which
+ *     also contain their own BEGIN/COMMIT/semicolons that must NOT split)
+ * Exported for direct unit testing.
+ */
+export function splitSqlStatements(text: string): string[] {
+  const statements: string[] = [];
+  let buf = '';
+  let i = 0;
+  const n = text.length;
+
+  while (i < n) {
+    const ch = text[i];
+    const next = i + 1 < n ? text[i + 1] : '';
+
+    // line comment → consume to end of line
+    if (ch === '-' && next === '-') {
+      const nl = text.indexOf('\n', i);
+      const stop = nl === -1 ? n : nl;
+      buf += text.slice(i, stop);
+      i = stop;
+      continue;
+    }
+
+    // block comment (nestable in PostgreSQL)
+    if (ch === '/' && next === '*') {
+      let depth = 1;
+      buf += '/*';
+      let j = i + 2;
+      while (j < n && depth > 0) {
+        if (text[j] === '/' && text[j + 1] === '*') {
+          depth++;
+          buf += '/*';
+          j += 2;
+        } else if (text[j] === '*' && text[j + 1] === '/') {
+          depth--;
+          buf += '*/';
+          j += 2;
+        } else {
+          buf += text[j];
+          j++;
+        }
+      }
+      i = j;
+      continue;
+    }
+
+    // single-quoted string ('' is an escaped quote)
+    if (ch === "'") {
+      buf += ch;
+      i++;
+      while (i < n) {
+        if (text[i] === "'" && text[i + 1] === "'") {
+          buf += "''";
+          i += 2;
+          continue;
+        }
+        if (text[i] === "'") {
+          buf += "'";
+          i++;
+          break;
+        }
+        buf += text[i];
+        i++;
+      }
+      continue;
+    }
+
+    // double-quoted identifier ("" is an escaped quote)
+    if (ch === '"') {
+      buf += ch;
+      i++;
+      while (i < n) {
+        if (text[i] === '"' && text[i + 1] === '"') {
+          buf += '""';
+          i += 2;
+          continue;
+        }
+        if (text[i] === '"') {
+          buf += '"';
+          i++;
+          break;
+        }
+        buf += text[i];
+        i++;
+      }
+      continue;
+    }
+
+    // dollar-quoted string: $$ … $$ or $tag$ … $tag$ (tag = empty or identifier)
+    if (ch === '$') {
+      const m = /^\$([A-Za-z_][A-Za-z0-9_]*)?\$/.exec(text.slice(i));
+      if (m) {
+        const tag = m[0];
+        const close = text.indexOf(tag, i + tag.length);
+        if (close !== -1) {
+          const end = close + tag.length;
+          buf += text.slice(i, end);
+          i = end;
+          continue;
+        }
+      }
+      // not a dollar quote (e.g. a $1 placeholder) — treat as a normal char
+      buf += ch;
+      i++;
+      continue;
+    }
+
+    // statement terminator
+    if (ch === ';') {
+      const trimmed = buf.trim();
+      if (trimmed.length > 0) statements.push(trimmed);
+      buf = '';
+      i++;
+      continue;
+    }
+
+    buf += ch;
+    i++;
+  }
+
+  const tail = buf.trim();
+  if (tail.length > 0) statements.push(tail);
+  return statements;
 }
 
 /**
