@@ -1,0 +1,66 @@
+# ──────────────────────────────────────────────────────────────────────────
+# db-suites — PROPOSAL / NON-BLOCKING.
+#
+# Boots Postgres (via @testcontainers/postgresql on the ubuntu runner, which has
+# Docker preinstalled) and runs the Docker/DB-backed suites that the normal
+# `pnpm test` excludes (db integration + migration chain). Today these have ~99
+# pre-existing failures (mostly test bit-rot — minute-precision timestamps,
+# lower(enum), the `?:` SQL ternary, timestamp-as-string, blind_index@0007 which
+# is red-by-design), so the run is informational only:
+#   • `continue-on-error: true` on the test step → the JOB always succeeds, so
+#     this workflow can NEVER block a merge. It exists for visibility.
+#   • It is also NOT a required status check (that is configured in branch
+#     protection, not here), so even the job's pass/fail is advisory.
+#
+# HOW TO PROMOTE TO A REAL GATE (once the bit-rot is triaged down):
+#   1. Commit a baseline allowlist of the known-failing test ids (a JSON/txt
+#      snapshot of today's failures).
+#   2. Replace the raw `vitest run` with a wrapper that diffs the current
+#      failures against the baseline and exits non-zero ONLY on a NEW failure
+#      (so the 99 known ones don't block, but regressions do). Drop
+#      `continue-on-error`.
+#   3. Mark `db-suites / integration` as a required check in branch protection.
+# Until then this file is a no-op gate that only surfaces a report in the logs.
+# ──────────────────────────────────────────────────────────────────────────
+name: db-suites
+
+on:
+  pull_request:
+    paths:
+      - 'packages/db/**'
+      - 'packages/audit/**'
+      - 'packages/inventory-lock/**'
+      - 'apps/api-cloud/**'
+      - '.github/workflows/db-suites.yml'
+
+# Don't pile up runs on a busy PR.
+concurrency:
+  group: db-suites-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest # Docker is preinstalled → testcontainers works
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # The migration chain + db-backed suites (testcontainers manages Postgres).
+      # continue-on-error keeps this informational until the baseline allowlist
+      # (see header) is in place.
+      - name: db integration + migration suites
+        continue-on-error: true
+        env:
+          TESTCONTAINERS_RYUK_DISABLED: 'true'
+        run: pnpm --filter @warehouse14/db test:integration
