@@ -19,8 +19,10 @@ import { useEffect } from 'react';
 import { ErrorBoundary } from '@warehouse14/ui-kit';
 
 import { useSessionProbe } from '../hooks/useSessionProbe.js';
+import { applyChatwoot } from '../lib/chatwoot.js';
 import { useOfflineReplay } from '../lib/offline-replay.js';
 import { PinLogin } from '../screens/PinLogin.js';
+import { useIntegrationSettings } from '../state/integration-settings-store.js';
 import { useLedgerFeed } from '../state/ledger-feed-store.js';
 import { useSessionStore } from '../state/session-store.js';
 import { useToastStore } from '../state/toast-store.js';
@@ -49,6 +51,13 @@ export function App(): JSX.Element {
       clearToasts();
     }
   }, [status, clearLedger, clearToasts]);
+
+  // Customer-service widget (Chatwoot) — load/teardown to match the operator's
+  // settings; only mount it once authenticated so the login screen stays clean.
+  const chatwoot = useIntegrationSettings((s) => s.settings.chatwoot);
+  useEffect(() => {
+    applyChatwoot(status === 'authenticated' ? chatwoot : { ...chatwoot, enabled: false });
+  }, [status, chatwoot]);
 
   let body: JSX.Element;
   if (status === 'unknown') {

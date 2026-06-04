@@ -7,6 +7,7 @@
 import { useState } from 'react';
 
 import { type Theme, getTheme, toggleTheme } from '../../lib/theme.js';
+import { IconMoon, IconSun } from './Icons.js';
 
 export function ThemeToggle(): JSX.Element {
   const [theme, setThemeState] = useState<Theme>(getTheme());
@@ -34,7 +35,7 @@ export function ThemeToggle(): JSX.Element {
         cursor: 'pointer',
       }}
     >
-      <span aria-hidden="true">{dark ? '☀' : '☾'}</span>
+      {dark ? <IconSun size={18} /> : <IconMoon size={18} />}
     </button>
   );
 }

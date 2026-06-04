@@ -29,6 +29,7 @@ import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 import { useApiClient } from '../../lib/api-context.js';
 import { useSessionStore } from '../../state/session-store.js';
 import { useToastStore } from '../../state/toast-store.js';
+import { LivePriceChart } from './LivePriceChart.js';
 
 const METAL_LABEL: Record<MetalKind, string> = {
   gold: 'Gold',
@@ -68,6 +69,8 @@ export function Kurse(): JSX.Element {
 
   // Chart range (days of history) — drives the advanced chart per metal.
   const [rangeDays, setRangeDays] = useState<number>(30);
+  // Which metal the big trading chart is showing.
+  const [selectedMetal, setSelectedMetal] = useState<MetalKind>('gold');
 
   // Four parallel history queries, one per metal — context for the chart.
   const historyQs = useQueries({
@@ -146,6 +149,89 @@ export function Kurse(): JSX.Element {
       </header>
 
       <DiamondRule />
+
+      {/* ── Big interactive trading chart for the selected metal ───────── */}
+      <ParchmentCard padding="lg">
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            flexWrap: 'wrap',
+            gap: 12,
+            marginBottom: 12,
+          }}
+        >
+          {/* Metal tabs */}
+          <div style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
+            {METAL_KIND_ORDER.map((m) => {
+              const active = m === selectedMetal;
+              return (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setSelectedMetal(m)}
+                  className="w14-smallcaps"
+                  style={{
+                    padding: '6px 14px',
+                    fontSize: '0.8rem',
+                    letterSpacing: '0.06em',
+                    cursor: 'pointer',
+                    borderRadius: 'var(--w14-radius-button)',
+                    border: `1px solid ${active ? METAL_ACCENT[m] : 'var(--w14-rule)'}`,
+                    background: active ? METAL_ACCENT[m] : 'transparent',
+                    color: active ? '#fff' : 'var(--w14-ink-faded)',
+                    transition: 'all 160ms ease',
+                  }}
+                >
+                  {METAL_LABEL[m]}
+                </button>
+              );
+            })}
+          </div>
+          {/* Current price headline for the selected metal */}
+          {(() => {
+            const cur = currentQ.data?.prices.find((p) => p.metal === selectedMetal);
+            return (
+              <div style={{ textAlign: 'right' }}>
+                <div
+                  className="w14-tabular"
+                  style={{
+                    fontFamily: 'var(--w14-font-mono)',
+                    fontWeight: 600,
+                    fontSize: '1.9rem',
+                    color: 'var(--w14-ink)',
+                    lineHeight: 1.1,
+                  }}
+                >
+                  {cur?.pricePerGramEur ? formatPrice(cur.pricePerGramEur) : '—'}{' '}
+                  <span style={{ fontSize: '0.8rem', color: 'var(--w14-ink-faded)' }}>€/g</span>
+                </div>
+                <div
+                  className="w14-smallcaps"
+                  style={{
+                    fontSize: '0.72rem',
+                    letterSpacing: '0.06em',
+                    color: 'var(--w14-ink-faded)',
+                    marginTop: 2,
+                  }}
+                >
+                  <span style={{ color: METAL_ACCENT[selectedMetal] }}>● Verkauf</span>
+                  {'   '}
+                  <span>┄ Ankauf</span>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+        <LivePriceChart
+          metalLabel={METAL_LABEL[selectedMetal]}
+          accent={METAL_ACCENT[selectedMetal]}
+          history={historyQs[METAL_KIND_ORDER.indexOf(selectedMetal)]?.data?.items ?? []}
+          safetyMarginPct={safetyMarginPct}
+          fetching={currentQ.isFetching}
+        />
+      </ParchmentCard>
 
       <div
         style={{
