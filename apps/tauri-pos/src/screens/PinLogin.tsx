@@ -19,6 +19,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ApiError, authPin } from '@warehouse14/api-client';
 import { DiamondRule, ParchmentCard, PinPad, RomanIndex } from '@warehouse14/ui-kit';
 
+import { ThemeToggle } from '../app/chrome/ThemeToggle.js';
 import { useApiClient } from '../lib/api-context.js';
 import { useSessionStore } from '../state/session-store.js';
 
@@ -113,6 +114,9 @@ export function PinLogin(): JSX.Element {
       }}
       className="w14-paper-noise"
     >
+      <div style={{ position: 'fixed', top: 16, right: 16, zIndex: 10 }}>
+        <ThemeToggle />
+      </div>
       <ParchmentCard padding="lg" style={{ width: 'min(440px, 100%)', textAlign: 'center' }}>
         <img
           src="/shop-logo.svg"

@@ -19,6 +19,7 @@ import { MagnifierIcon, Seal } from '@warehouse14/ui-kit';
 import { useSyncStore } from '../../state/sync-store.js';
 import { SignOutButton } from './SignOutButton.js';
 import { SurfaceChip } from './SurfaceChip.js';
+import { ThemeToggle } from './ThemeToggle.js';
 import { HOME_PATH, PRIMARY_SURFACES } from './surface-registry.js';
 
 export interface AppShellHeaderProps {
@@ -87,6 +88,7 @@ export function AppShellHeader({ onOpenSpotlight, onSignOut }: AppShellHeaderPro
 
       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 16 }}>
         <SyncStatusBadge />
+        <ThemeToggle />
         <button
           type="button"
           title="Suchen — Cmd+K"

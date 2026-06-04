@@ -11,7 +11,7 @@
  */
 
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 
 import {
   ApiError,
@@ -49,25 +49,33 @@ export function Kurse(): JSX.Element {
   const actor = useSessionStore((s) => s.actor);
   const isAdmin = actor?.role === 'ADMIN';
 
+  // Live: poll the market price every 20 s so the room reflects the market.
   const currentQ = useQuery({
     queryKey: ['metal-prices', 'current'],
     queryFn: () => metalPricesApi.current(api),
-    staleTime: 60_000,
+    staleTime: 20_000,
+    refetchInterval: 20_000,
+    refetchIntervalInBackground: true,
   });
 
   // Rates: current + time-weighted 10-day average + Ankauf buy rate per metal.
   const ratesQ = useQuery({
     queryKey: ['metal-prices', 'rates'],
     queryFn: () => metalPricesApi.rates(api),
-    staleTime: 60_000,
+    staleTime: 20_000,
+    refetchInterval: 20_000,
   });
 
-  // Four parallel history queries, one per metal — 30 days of context for sparklines.
+  // Chart range (days of history) — drives the advanced chart per metal.
+  const [rangeDays, setRangeDays] = useState<number>(30);
+
+  // Four parallel history queries, one per metal — context for the chart.
   const historyQs = useQueries({
     queries: METAL_KIND_ORDER.map((metal) => ({
-      queryKey: ['metal-prices', 'history', metal] as const,
-      queryFn: () => metalPricesApi.history(api, { metal, limit: 30 }),
-      staleTime: 5 * 60_000,
+      queryKey: ['metal-prices', 'history', metal, rangeDays] as const,
+      queryFn: () => metalPricesApi.history(api, { metal, limit: rangeDays }),
+      staleTime: 60_000,
+      refetchInterval: 60_000,
     })),
   });
 
@@ -107,10 +115,31 @@ export function Kurse(): JSX.Element {
               {safetyMarginPct !== null ? ` · ${formatPct(safetyMarginPct)}` : ''}
             </Button>
           )}
+          <RangeToggle value={rangeDays} onChange={setRangeDays} />
           <span
             className="w14-smallcaps"
-            style={{ color: 'var(--w14-ink-faded)', fontSize: '0.78rem', letterSpacing: '0.1em' }}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              color: 'var(--w14-ink-faded)',
+              fontSize: '0.78rem',
+              letterSpacing: '0.1em',
+            }}
           >
+            <span
+              aria-hidden="true"
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: '50%',
+                background:
+                  currentQ.isFetching || ratesQ.isFetching
+                    ? 'var(--w14-gold)'
+                    : 'var(--w14-verdigris)',
+                boxShadow: '0 0 0 3px color-mix(in srgb, var(--w14-verdigris) 25%, transparent)',
+              }}
+            />
             {currentQ.isFetching || ratesQ.isFetching ? 'aktualisiert…' : 'live'}
           </span>
         </div>
@@ -137,6 +166,7 @@ export function Kurse(): JSX.Element {
               rate={rate}
               safetyMarginPct={safetyMarginPct}
               history={history}
+              rangeDays={rangeDays}
               loading={currentQ.isLoading || historyQs[i]?.isLoading === true}
               isAdmin={isAdmin}
               onOverride={() => setOverrideOpen(metal)}
@@ -172,6 +202,7 @@ function PriceTile({
   rate,
   safetyMarginPct,
   history,
+  rangeDays,
   loading,
   isAdmin,
   onOverride,
@@ -181,6 +212,7 @@ function PriceTile({
   rate: MetalRate | undefined;
   safetyMarginPct: number | null;
   history: MetalPriceHistoryRow[];
+  rangeDays: number;
   loading: boolean;
   isAdmin: boolean;
   onOverride: () => void;
@@ -278,7 +310,12 @@ function PriceTile({
 
           <RatesBlock rate={rate} safetyMarginPct={safetyMarginPct} />
 
-          <Sparkline history={history} accent={accent} avg={rate?.avg10dPricePerGramEur ?? null} />
+          <PriceChart
+            history={history}
+            accent={accent}
+            avg={rate?.avg10dPricePerGramEur ?? null}
+            rangeDays={rangeDays}
+          />
         </>
       )}
 
@@ -386,47 +423,142 @@ function SourceBadge({ source }: { source: string }): JSX.Element {
   );
 }
 
-function Sparkline({
+/** Range selector (days of history) for the advanced chart. */
+function RangeToggle({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (d: number) => void;
+}): JSX.Element {
+  const options = [
+    { d: 7, label: '7T' },
+    { d: 30, label: '30T' },
+    { d: 90, label: '90T' },
+  ];
+  return (
+    <div
+      role="group"
+      aria-label="Zeitraum"
+      style={{
+        display: 'inline-flex',
+        border: '1px solid var(--w14-rule)',
+        borderRadius: 'var(--w14-radius-button)',
+        overflow: 'hidden',
+      }}
+    >
+      {options.map((o) => {
+        const active = o.d === value;
+        return (
+          <button
+            key={o.d}
+            type="button"
+            onClick={() => onChange(o.d)}
+            className="w14-smallcaps"
+            style={{
+              padding: '4px 10px',
+              fontSize: '0.7rem',
+              letterSpacing: '0.06em',
+              border: 'none',
+              cursor: 'pointer',
+              background: active ? 'var(--w14-ink)' : 'transparent',
+              color: active ? 'var(--w14-parchment)' : 'var(--w14-ink-faded)',
+            }}
+          >
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * PriceChart — an advanced area chart: gradient fill under the line, min/max
+ * y-axis labels, first/last date labels, the 10-day mean (dashed), and a
+ * highlighted last point. Pure SVG, no chart dependency.
+ */
+function PriceChart({
   history,
   accent,
   avg,
+  rangeDays,
 }: {
   history: MetalPriceHistoryRow[];
   accent: string;
   avg?: string | null;
+  rangeDays: number;
 }): JSX.Element | null {
+  const gradId = useId();
   if (history.length < 2) return null;
 
-  // History is DESC; we want ASC for x-axis time-order.
-  const ordered = [...history].reverse();
-  const values = ordered.map((r) => Number.parseFloat(r.pricePerGramEur)).filter(Number.isFinite);
-  if (values.length < 2) return null;
+  // History is DESC → ASC for time order.
+  const rows = [...history]
+    .reverse()
+    .map((r) => ({ v: Number.parseFloat(r.pricePerGramEur), t: r.validFrom }))
+    .filter((p) => Number.isFinite(p.v));
+  if (rows.length < 2) return null;
 
+  const values = rows.map((p) => p.v);
   const avgNum = avg != null ? Number.parseFloat(avg) : Number.NaN;
   const hasAvg = Number.isFinite(avgNum);
 
-  // Include the average in the domain so its line is always on-canvas.
   const domain = hasAvg ? [...values, avgNum] : values;
   const min = Math.min(...domain);
   const max = Math.max(...domain);
   const range = max - min || 1;
 
-  const W = 260;
-  const H = 56;
+  const W = 300;
+  const H = 120;
+  const top = 8;
+  const bottom = 96;
+  const plotH = bottom - top;
   const step = values.length > 1 ? W / (values.length - 1) : W;
-  const yOf = (v: number): number => H - ((v - min) / range) * (H - 4) - 2;
+  const xOf = (i: number): number => i * step;
+  const yOf = (v: number): number => bottom - ((v - min) / range) * plotH;
 
-  const points = values.map((v, i) => `${(i * step).toFixed(1)},${yOf(v).toFixed(1)}`).join(' ');
+  const linePts = values.map((v, i) => `${xOf(i).toFixed(1)},${yOf(v).toFixed(1)}`).join(' ');
+  const areaPath = `M0,${bottom} ${values
+    .map((v, i) => `L${xOf(i).toFixed(1)},${yOf(v).toFixed(1)}`)
+    .join(' ')} L${W},${bottom} Z`;
   const avgY = hasAvg ? yOf(avgNum) : null;
+  // biome-ignore lint/style/noNonNullAssertion: values.length >= 2 guarded above.
+  const lastV = values[values.length - 1]!;
+
+  const fmtDate = (s: string): string => {
+    const d = new Date(s);
+    return Number.isNaN(d.getTime())
+      ? ''
+      : d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+  };
 
   return (
     <svg
       viewBox={`0 0 ${W} ${H}`}
       width="100%"
-      height={H}
+      height={120}
+      preserveAspectRatio="none"
+      role="img"
       style={{ marginTop: 12, display: 'block' }}
     >
-      <title>30-Tage-Verlauf{hasAvg ? ' mit 10-Tage-Mittel (gestrichelt)' : ''}</title>
+      <title>
+        {rangeDays}-Tage-Verlauf{hasAvg ? ' · 10-Tage-Mittel (gestrichelt)' : ''}
+      </title>
+      <defs>
+        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" style={{ stopColor: accent, stopOpacity: 0.3 }} />
+          <stop offset="100%" style={{ stopColor: accent, stopOpacity: 0 }} />
+        </linearGradient>
+      </defs>
+      <line
+        x1={0}
+        x2={W}
+        y1={bottom}
+        y2={bottom}
+        stroke="var(--w14-rule)"
+        strokeWidth={0.75}
+        opacity={0.5}
+      />
       {avgY !== null && (
         <line
           x1={0}
@@ -436,17 +568,62 @@ function Sparkline({
           stroke="var(--w14-ink-faded)"
           strokeWidth={1}
           strokeDasharray="3 3"
-          opacity={0.7}
+          opacity={0.6}
         />
       )}
+      <path d={areaPath} fill={`url(#${gradId})`} />
       <polyline
         fill="none"
         stroke={accent}
-        strokeWidth={1.4}
+        strokeWidth={1.8}
         strokeLinejoin="round"
         strokeLinecap="round"
-        points={points}
+        points={linePts}
+        vectorEffect="non-scaling-stroke"
       />
+      <circle
+        cx={xOf(values.length - 1).toFixed(1)}
+        cy={yOf(lastV).toFixed(1)}
+        r={3}
+        fill={accent}
+      />
+      <text
+        x={2}
+        y={top + 4}
+        fontSize={8}
+        fontFamily="var(--w14-font-mono)"
+        fill="var(--w14-ink-faded)"
+      >
+        {max.toFixed(2)}
+      </text>
+      <text
+        x={2}
+        y={bottom - 3}
+        fontSize={8}
+        fontFamily="var(--w14-font-mono)"
+        fill="var(--w14-ink-faded)"
+      >
+        {min.toFixed(2)}
+      </text>
+      <text
+        x={2}
+        y={H - 3}
+        fontSize={8}
+        fontFamily="var(--w14-font-mono)"
+        fill="var(--w14-ink-faded)"
+      >
+        {fmtDate(rows[0]?.t ?? '')}
+      </text>
+      <text
+        x={W - 2}
+        y={H - 3}
+        fontSize={8}
+        textAnchor="end"
+        fontFamily="var(--w14-font-mono)"
+        fill="var(--w14-ink-faded)"
+      >
+        {fmtDate(rows[rows.length - 1]?.t ?? '')}
+      </text>
     </svg>
   );
 }

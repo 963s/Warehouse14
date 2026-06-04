@@ -26,7 +26,6 @@ import { useSessionStore } from '../state/session-store.js';
 import { useToastStore } from '../state/toast-store.js';
 import { AppFooter } from './chrome/AppFooter.js';
 import { Splash } from './chrome/Splash.js';
-import { ThemeToggle } from './chrome/ThemeToggle.js';
 import { AppRouter } from './router.js';
 
 export function App(): JSX.Element {
@@ -63,7 +62,6 @@ export function App(): JSX.Element {
   return (
     <ErrorBoundary>
       {body}
-      <ThemeToggle />
       <AppFooter />
     </ErrorBoundary>
   );
