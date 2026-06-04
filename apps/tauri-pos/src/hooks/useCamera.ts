@@ -1,20 +1,16 @@
 /**
- * useCamera — MediaDevices wrapper for the Day-12 Foto-Werkstatt.
+ * useCamera — MediaDevices wrapper for the Foto-Werkstatt.
  *
  * Responsibilities:
  *   1. Acquire a MediaStream via `navigator.mediaDevices.getUserMedia`.
  *   2. Enumerate available video inputs for the device-switcher UX.
- *   3. Stop the current stream's tracks before requesting a new one
- *      (otherwise the laptop camera light stays lit + the previous
- *      capture session can hold the device).
- *   4. Surface `permission` + `error` states so the UI can render a
- *      "Erlaubnis erneut anfragen" empty state without crashing.
- *   5. `captureBlob()` draws the current frame to an off-screen canvas
- *      and produces a `image/jpeg` blob at the native resolution.
- *
- * The hook returns refs the caller attaches to a `<video autoPlay
- * playsInline muted>` element. The video element receives `srcObject`,
- * NOT a URL — feeding MediaStream into `src` is incorrect.
+ *   3. REMEMBER the operator's chosen camera (localStorage) and open it by
+ *      default next time — never silently snap back to the OS default. If the
+ *      saved camera is gone (unplugged), fall back to the default cleanly.
+ *   4. Stop the current stream's tracks before requesting a new one.
+ *   5. Surface `permission` + `error` states for the empty-state UI.
+ *   6. `captureBlob()` draws the current frame to an off-screen canvas
+ *      and produces an `image/jpeg` blob at the native resolution.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -27,28 +23,46 @@ export interface CameraDevice {
 }
 
 export interface UseCameraResult {
-  /** Attach to <video ref={videoRef} autoPlay playsInline muted />. */
   videoRef: React.RefObject<HTMLVideoElement>;
   permission: CameraPermission;
   error: string | null;
   devices: readonly CameraDevice[];
   activeDeviceId: string | null;
-  /** Request a fresh permission grant. Re-prompt safe (browser remembers but op can retry). */
   requestPermission: () => Promise<void>;
-  /** Switch to a different camera device. Stops the current stream first. */
+  /** Switch camera + remember the choice for next time. */
   switchDevice: (deviceId: string) => Promise<void>;
-  /** Stop streaming. Safe to call multiple times. */
+  /** Re-enumerate the available cameras (e.g. after plugging one in). */
+  refreshDevices: () => Promise<void>;
   stop: () => void;
-  /**
-   * Snapshot the current frame as a JPEG blob (~0.92 quality, native
-   * resolution). Returns null if the stream isn't active.
-   */
   captureBlob: () => Promise<Blob | null>;
 }
 
 export interface UseCameraOptions {
-  /** Disable the hook entirely (e.g. when a modal needs Enter for submit). */
   enabled?: boolean;
+}
+
+const CAMERA_KEY = 'warehouse14.camera.deviceId';
+
+function readSavedDevice(): string | null {
+  try {
+    return localStorage.getItem(CAMERA_KEY);
+  } catch {
+    return null;
+  }
+}
+function saveDevice(deviceId: string): void {
+  try {
+    localStorage.setItem(CAMERA_KEY, deviceId);
+  } catch {
+    // private mode / quota — non-fatal.
+  }
+}
+function clearSavedDevice(): void {
+  try {
+    localStorage.removeItem(CAMERA_KEY);
+  } catch {
+    // non-fatal.
+  }
 }
 
 export function useCamera(opts: UseCameraOptions = {}): UseCameraResult {
@@ -72,18 +86,17 @@ export function useCamera(opts: UseCameraOptions = {}): UseCameraResult {
     }
   }, []);
 
+  /** Acquire a stream. Returns true on success. */
   const attachStream = useCallback(
-    async (deviceId: string | null): Promise<void> => {
+    async (deviceId: string | null): Promise<boolean> => {
       if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
         setPermission('unavailable');
         setError('MediaDevices API nicht verfügbar in dieser Umgebung.');
-        return;
+        return false;
       }
 
       setPermission('pending');
       setError(null);
-
-      // Stop existing stream BEFORE requesting a new one.
       stop();
 
       const constraints: MediaStreamConstraints = {
@@ -104,21 +117,23 @@ export function useCamera(opts: UseCameraOptions = {}): UseCameraResult {
         const settings = track?.getSettings();
         setActiveDeviceId(settings?.deviceId ?? deviceId ?? null);
         setPermission('granted');
+        return true;
       } catch (err) {
         if (err instanceof DOMException) {
           if (err.name === 'NotAllowedError' || err.name === 'SecurityError') {
             setPermission('denied');
             setError('Kamera-Zugriff verweigert. Bitte in den Systemeinstellungen erlauben.');
-            return;
+            return false;
           }
           if (err.name === 'NotFoundError' || err.name === 'OverconstrainedError') {
             setPermission('unavailable');
             setError('Keine Kamera gefunden.');
-            return;
+            return false;
           }
         }
         setPermission('denied');
         setError(err instanceof Error ? err.message : 'Unbekannter Kamera-Fehler.');
+        return false;
       }
     },
     [stop],
@@ -136,28 +151,35 @@ export function useCamera(opts: UseCameraOptions = {}): UseCameraResult {
         }));
       setDevices(cams);
     } catch {
-      // Best effort — enumerateDevices can fail in headless env.
+      // Best effort.
     }
   }, []);
 
-  // Initial mount: attempt to acquire the default camera + enumerate.
+  // Mount: open the SAVED camera if any; fall back to default if it's gone.
   useEffect(() => {
     if (!enabled) return;
     void (async (): Promise<void> => {
-      await attachStream(null);
+      const saved = readSavedDevice();
+      const ok = await attachStream(saved);
+      if (!ok && saved) {
+        // saved camera vanished — drop the stale pref + open default.
+        clearSavedDevice();
+        await attachStream(null);
+      }
       await refreshDevices();
     })();
     return stop;
   }, [enabled, attachStream, refreshDevices, stop]);
 
   const requestPermission = useCallback(async (): Promise<void> => {
-    await attachStream(activeDeviceId);
+    await attachStream(activeDeviceId ?? readSavedDevice());
     await refreshDevices();
   }, [attachStream, activeDeviceId, refreshDevices]);
 
   const switchDevice = useCallback(
     async (deviceId: string): Promise<void> => {
-      await attachStream(deviceId);
+      const ok = await attachStream(deviceId);
+      if (ok) saveDevice(deviceId); // remember the choice for next time
     },
     [attachStream],
   );
@@ -189,6 +211,7 @@ export function useCamera(opts: UseCameraOptions = {}): UseCameraResult {
     activeDeviceId,
     requestPermission,
     switchDevice,
+    refreshDevices,
     stop,
     captureBlob,
   };

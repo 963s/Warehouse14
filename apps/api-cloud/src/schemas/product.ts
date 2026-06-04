@@ -104,6 +104,13 @@ export const CreateProductBody = Type.Object({
   // Initial channel flags (default off — Owner publishes later via PUT)
   listedOnStorefront: Type.Boolean({ default: false }),
   listedOnEbay: Type.Boolean({ default: false }),
+
+  // Storage location (Lagerort) — assignable at intake so every item has a
+  // designated place. Three-level: unit (Tresor/Vitrine) → drawer (Fach) →
+  // position (Box). All optional.
+  locationStorageUnit: Type.Optional(Type.String({ maxLength: 64 })),
+  locationDrawer: Type.Optional(Type.String({ maxLength: 64 })),
+  locationPosition: Type.Optional(Type.String({ maxLength: 64 })),
 });
 export type CreateProductBody = Static<typeof CreateProductBody>;
 

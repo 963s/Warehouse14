@@ -224,6 +224,38 @@ export function CropStudio({
           />
         </div>
 
+        {/* Quick actions: rotate 90° + reset */}
+        <div style={{ marginTop: 12, display: 'flex', gap: 8, justifyContent: 'center' }}>
+          <Button
+            variant="ghost"
+            size="md"
+            onClick={() => setRotation((r) => (r + 270) % 360)}
+            disabled={busy}
+          >
+            ↺ 90°
+          </Button>
+          <Button
+            variant="ghost"
+            size="md"
+            onClick={() => setRotation((r) => (r + 90) % 360)}
+            disabled={busy}
+          >
+            ↻ 90°
+          </Button>
+          <Button
+            variant="ghost"
+            size="md"
+            onClick={() => {
+              setCrop({ x: 0, y: 0 });
+              setZoom(1);
+              setRotation(0);
+            }}
+            disabled={busy}
+          >
+            Zurücksetzen
+          </Button>
+        </div>
+
         {error && (
           <p
             role="alert"

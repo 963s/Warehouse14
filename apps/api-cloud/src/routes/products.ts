@@ -149,6 +149,14 @@ const productsRoutes: FastifyPluginAsync<ProductsRoutesOpts> = async (app, opts)
             marketingAttributes: body.marketingAttributes ?? [],
             listedOnStorefront: body.listedOnStorefront,
             listedOnEbay: body.listedOnEbay,
+            // Storage location (Lagerort) — optional at intake.
+            locationStorageUnit: body.locationStorageUnit ?? null,
+            locationDrawer: body.locationDrawer ?? null,
+            locationPosition: body.locationPosition ?? null,
+            locationAssignedAt:
+              body.locationStorageUnit || body.locationDrawer || body.locationPosition
+                ? new Date()
+                : null,
             status: 'DRAFT',
           })
           .returning({

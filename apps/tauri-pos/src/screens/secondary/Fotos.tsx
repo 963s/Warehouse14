@@ -506,37 +506,47 @@ function Viewfinder({
       {/* Controls — only when live */}
       {live && (
         <>
-          {/* Camera switcher */}
-          {devices.length > 1 && (
+          {/* Camera switcher — always shown so the operator can confirm/choose
+              which camera (the choice is remembered for next time). */}
+          {devices.length >= 1 && (
             <div
               style={{
                 position: 'absolute',
                 top: 12,
                 right: 12,
-                background: 'rgba(20, 14, 10, 0.78)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                background: 'rgba(16, 18, 22, 0.82)',
                 borderRadius: 'var(--w14-radius-button)',
-                padding: '4px 8px',
-                border: '1px solid var(--w14-gold)',
+                padding: '5px 10px',
+                border: '1px solid rgba(255,255,255,0.18)',
+                backdropFilter: 'blur(2px)',
               }}
             >
+              <span aria-hidden="true" style={{ fontSize: '0.9rem' }}>
+                📷
+              </span>
               <select
                 value={activeDeviceId ?? ''}
                 onChange={(ev) => onSwitchDevice(ev.target.value)}
+                title="Kamera auswählen"
                 style={{
                   background: 'transparent',
                   border: 'none',
                   outline: 'none',
-                  color: 'var(--w14-gold)',
-                  fontFamily: 'var(--w14-font-display)',
+                  color: '#fff',
+                  fontFamily: 'var(--w14-font-body)',
                   fontSize: '0.82rem',
                   cursor: 'pointer',
+                  maxWidth: 220,
                 }}
               >
                 {devices.map((d) => (
                   <option
                     key={d.deviceId}
                     value={d.deviceId}
-                    style={{ background: '#1c1410', color: 'var(--w14-gold)' }}
+                    style={{ background: '#16181c', color: '#fff' }}
                   >
                     {d.label}
                   </option>
