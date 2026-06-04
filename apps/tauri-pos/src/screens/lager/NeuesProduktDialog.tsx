@@ -212,10 +212,6 @@ export function NeuesProduktDialog({
 
       const res = await client.request<CreatedResponse>('POST', '/api/products', body);
 
-      // Refresh the catalogue everywhere (Verkauf grid + Lager) immediately, so
-      // the new article shows up without a reload / stale-time wait.
-      void qc.invalidateQueries({ queryKey: ['products', 'list'] });
-
       // Auto-print the shelf label (SKU + name + weight + location) when a
       // label printer is configured — so the item is tagged at intake.
       if (printer.configured) {
@@ -241,7 +237,6 @@ export function NeuesProduktDialog({
       if (decision.kind === 'publish') {
         try {
           await client.request('PUT', `/api/products/${res.id}`, { status: 'AVAILABLE' });
-          void qc.invalidateQueries({ queryKey: ['products', 'list'] });
           outcome = 'published';
         } catch (e) {
           outcome = 'publish-failed';
@@ -250,6 +245,11 @@ export function NeuesProduktDialog({
       } else if (decision.kind === 'draft-no-price') {
         outcome = 'no-price';
       }
+
+      // Refresh the catalogue everywhere (Verkauf grid + Lager) once, now that
+      // the final status (DRAFT or AVAILABLE) is known — so the new article
+      // shows up without a reload / stale-time wait.
+      void qc.invalidateQueries({ queryKey: ['products', 'list'] });
 
       if (outcome === 'published') {
         addToast({

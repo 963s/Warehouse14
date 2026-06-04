@@ -11,10 +11,15 @@
 
 import { normalizeDecimal } from './decimal.js';
 
-/** True only when `listPriceEur` parses to a strictly-positive amount. */
+/**
+ * True only when `listPriceEur` is a strictly-positive amount.
+ *
+ * No float math on money (memory.md money rule): a normalized dot-decimal is
+ * positive iff it contains at least one non-zero digit. "0" / "0,00" / "0.00" /
+ * "" → false; "0,01" / "10,20" / "150,00" → true.
+ */
 export function isPositivePrice(listPriceEur: string): boolean {
-  const value = Number.parseFloat(normalizeDecimal(listPriceEur));
-  return Number.isFinite(value) && value > 0;
+  return /[1-9]/.test(normalizeDecimal(listPriceEur));
 }
 
 export type PublishDecision =
