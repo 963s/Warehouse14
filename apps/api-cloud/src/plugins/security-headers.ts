@@ -83,7 +83,7 @@ const securityHeadersPlugin: FastifyPluginAsync<SecurityHeadersPluginOpts> = asy
   await app.register(fastifyCors, {
     origin: origins.length > 0 ? origins : false,
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: [
       'content-type',
       'authorization',

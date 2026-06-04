@@ -250,7 +250,7 @@ const dashboardRoutes: FastifyPluginAsync = async (app) => {
         watchlistCustomerCount: Number(r.watchlist_customer_count ?? 0),
         workerJobsRunning: Array.isArray(r.worker_jobs_running) ? r.worker_jobs_running : [],
         lastChainVerifiedAt: r.last_chain_verified_at
-          ? r.last_chain_verified_at.toISOString()
+          ? new Date(r.last_chain_verified_at).toISOString()
           : null,
         workerDlqUnacked: Number(r.worker_dlq_unacked ?? 0),
         currentMetalPrices: {
