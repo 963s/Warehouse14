@@ -53,6 +53,7 @@ const EnvSchema = Type.Object({
       Type.Literal('json_url'),
       Type.Literal('metalpriceapi'),
       Type.Literal('goldapi'),
+      Type.Literal('stooq'),
       Type.Literal('disabled'),
     ],
     { default: 'mock' },

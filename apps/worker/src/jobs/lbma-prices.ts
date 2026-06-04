@@ -38,7 +38,7 @@ export interface LbmaPricesJobOptions {
 export function lbmaPricesJob(opts: LbmaPricesJobOptions): JobDefinition {
   return {
     name: 'lbma_prices',
-    schedule: '*/15 * * * *', // every 15 minutes
+    schedule: '*/5 * * * *', // every 5 minutes (stooq is key-less / quota-free)
     timeoutMs: 30_000,
     async run({ sql: dbSql, jobRunId, signal, log }) {
       const { provider } = opts;

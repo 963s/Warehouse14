@@ -17,9 +17,16 @@ import { GoldApiProvider } from './goldapi-provider.js';
 import { JsonUrlProvider } from './json-url-provider.js';
 import { MetalPriceApiProvider } from './metalpriceapi-provider.js';
 import { MockProvider } from './mock-provider.js';
+import { StooqProvider } from './stooq-provider.js';
 import type { MetalPriceProvider } from './types.js';
 
-export type MetalPriceProviderKind = 'mock' | 'json_url' | 'metalpriceapi' | 'goldapi' | 'disabled';
+export type MetalPriceProviderKind =
+  | 'mock'
+  | 'json_url'
+  | 'metalpriceapi'
+  | 'goldapi'
+  | 'stooq'
+  | 'disabled';
 
 export interface ProviderFactoryConfig {
   provider: MetalPriceProviderKind;
@@ -40,6 +47,8 @@ export function createMetalPriceProvider(config: ProviderFactoryConfig): MetalPr
       return config.apiKey ? new MetalPriceApiProvider({ apiKey: config.apiKey }) : null;
     case 'goldapi':
       return config.apiKey ? new GoldApiProvider({ apiKey: config.apiKey }) : null;
+    case 'stooq':
+      return new StooqProvider();
     default: {
       // Exhaustiveness guard — a new kind must be handled above.
       const _never: never = config.provider;
@@ -52,6 +61,7 @@ export { GoldApiProvider } from './goldapi-provider.js';
 export { JsonUrlProvider } from './json-url-provider.js';
 export { MetalPriceApiProvider } from './metalpriceapi-provider.js';
 export { MockProvider } from './mock-provider.js';
+export { StooqProvider } from './stooq-provider.js';
 export { perOunceToPerGram, toDecimalString, TROY_OUNCE_GRAMS } from './convert.js';
 export {
   METAL_KEYS,
