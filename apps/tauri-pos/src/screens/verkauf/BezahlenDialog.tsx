@@ -64,6 +64,7 @@ import {
   sumHeader,
   toCents,
 } from '../../lib/cart-math.js';
+import { isMoneyInput } from '../../lib/decimal.js';
 import {
   type ThermalReceiptData,
   type ZvtResult,
@@ -288,7 +289,7 @@ export function BezahlenDialog({
       return 0n;
     }
   }, [cashReceivedEur]);
-  const validCash = /^\d{1,16}(\.\d{1,2})?$/.test(cashReceivedEur);
+  const validCash = isMoneyInput(cashReceivedEur);
 
   // Voucher + cash split: the voucher covers up to the full total, the cash leg
   // pays the remainder, and change is computed on that remainder.

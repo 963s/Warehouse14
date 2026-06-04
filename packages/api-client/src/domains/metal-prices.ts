@@ -84,6 +84,8 @@ export interface MetalRate {
   ankaufRatePerGramEur: string | null;
   /** Sell melt baseline per gram (= current spot). null when no row yet. */
   verkaufBasePerGramEur: string | null;
+  /** Per-metal Ankauf safety margin in effect for THIS metal (0.10 = 10%). */
+  safetyMarginPct: number;
 }
 
 export interface MetalRatesResponse {
@@ -95,11 +97,14 @@ export interface MetalRatesResponse {
 }
 
 export interface UpdateMarginBody {
+  /** Metal to set. Omit for the global/default margin. */
+  metal?: MetalKind;
   /** Safety margin fraction in [0, 0.5]. 0.12 = 12%. */
   marginPct: number;
 }
 
 export interface UpdateMarginResponse {
+  metal: MetalKind | null;
   marginPct: number;
 }
 

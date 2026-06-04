@@ -15,6 +15,7 @@ import type { ApiClient, TaxTreatmentCode } from '@warehouse14/api-client';
 import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
+import { isMoneyInput, normalizeDecimal } from '../../lib/decimal.js';
 import { TAX_TREATMENT_LABEL } from '../../lib/tax-treatment-label.js';
 import { useLabelPrinter } from '../../lib/use-label-printer.js';
 import { useToastStore } from '../../state/toast-store.js';
@@ -73,8 +74,6 @@ const TAX_OPTIONS: TaxTreatmentCode[] = [
   'MIXED',
   'REVERSE_CHARGE_13B',
 ];
-
-const DECIMAL_RE = /^\d+(\.\d{1,2})?$/;
 
 /** Per-type SKU prefix → a readable, sortable article number. */
 const TYPE_PREFIX: Record<ItemType, string> = {
@@ -172,9 +171,9 @@ export function NeuesProduktDialog({
   const valid =
     name.trim().length > 0 &&
     sku.trim().length > 0 &&
-    DECIMAL_RE.test(acquisitionCostEur.trim()) &&
-    DECIMAL_RE.test(listPriceEur.trim()) &&
-    (weightGrams.trim().length === 0 || DECIMAL_RE.test(weightGrams.trim()));
+    isMoneyInput(acquisitionCostEur.trim()) &&
+    isMoneyInput(listPriceEur.trim()) &&
+    (weightGrams.trim().length === 0 || isMoneyInput(weightGrams.trim(), 3));
 
   async function submit(): Promise<void> {
     if (!valid || busy) return;
@@ -186,14 +185,14 @@ export function NeuesProduktDialog({
         itemType,
         condition,
         taxTreatmentCode: tax,
-        acquisitionCostEur: acquisitionCostEur.trim(),
-        listPriceEur: listPriceEur.trim(),
+        acquisitionCostEur: normalizeDecimal(acquisitionCostEur.trim()),
+        listPriceEur: normalizeDecimal(listPriceEur.trim()),
         hallmarkStamps: [],
         isCommission: false,
         listedOnStorefront: false,
         listedOnEbay: false,
       };
-      if (weightGrams.trim().length > 0) body.weightGrams = weightGrams.trim();
+      if (weightGrams.trim().length > 0) body.weightGrams = normalizeDecimal(weightGrams.trim(), 3);
       if (locUnit.trim().length > 0) body.locationStorageUnit = locUnit.trim();
       if (locDrawer.trim().length > 0) body.locationDrawer = locDrawer.trim();
       if (locPosition.trim().length > 0) body.locationPosition = locPosition.trim();

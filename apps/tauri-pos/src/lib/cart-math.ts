@@ -26,9 +26,11 @@ import type { TaxTreatmentCode } from '@warehouse14/api-client';
 // Cent <-> decimal-string conversion
 // ────────────────────────────────────────────────────────────────────────
 
-export function toCents(eur: string): bigint {
+export function toCents(input: string): bigint {
+  // Tolerate the German decimal comma ("10,20") anywhere a price string flows.
+  const eur = input.replace(',', '.');
   if (!/^-?\d+(\.\d+)?$/.test(eur)) {
-    throw new Error(`toCents: invalid decimal string "${eur}"`);
+    throw new Error(`toCents: invalid decimal string "${input}"`);
   }
   const sign = eur.startsWith('-') ? -1n : 1n;
   const abs = eur.startsWith('-') ? eur.slice(1) : eur;

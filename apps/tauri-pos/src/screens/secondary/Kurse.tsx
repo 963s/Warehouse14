@@ -21,12 +21,12 @@ import {
   type MetalKind,
   type MetalPriceHistoryRow,
   type MetalRate,
-  type UpdateMarginBody,
   metalPricesApi,
 } from '@warehouse14/api-client';
 import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
+import { isMoneyInput, normalizeDecimal } from '../../lib/decimal.js';
 import { useSessionStore } from '../../state/session-store.js';
 import { useToastStore } from '../../state/toast-store.js';
 import { TradingTerminal } from './TradingTerminal.js';
@@ -114,8 +114,7 @@ export function Kurse(): JSX.Element {
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           {isAdmin && (
             <Button variant="ghost" size="md" onClick={() => setMarginOpen(true)}>
-              Sicherheitsmarge
-              {safetyMarginPct !== null ? ` · ${formatPct(safetyMarginPct)}` : ''}
+              Margen je Metall
             </Button>
           )}
           <span
@@ -230,7 +229,10 @@ export function Kurse(): JSX.Element {
           currentPrice={
             currentQ.data?.prices.find((p) => p.metal === selectedMetal)?.pricePerGramEur ?? null
           }
-          safetyMarginPct={safetyMarginPct}
+          safetyMarginPct={
+            ratesQ.data?.rates.find((r) => r.metal === selectedMetal)?.safetyMarginPct ??
+            safetyMarginPct
+          }
           fetching={currentQ.isFetching}
         />
       </ParchmentCard>
@@ -252,7 +254,6 @@ export function Kurse(): JSX.Element {
               metal={metal}
               current={current}
               rate={rate}
-              safetyMarginPct={safetyMarginPct}
               history={history}
               loading={currentQ.isLoading || historyQs[i]?.isLoading === true}
               isAdmin={isAdmin}
@@ -273,7 +274,7 @@ export function Kurse(): JSX.Element {
       )}
 
       {marginOpen && (
-        <MarginModal currentMarginPct={safetyMarginPct} onClose={() => setMarginOpen(false)} />
+        <MarginModal rates={ratesQ.data?.rates ?? []} onClose={() => setMarginOpen(false)} />
       )}
     </section>
   );
@@ -287,7 +288,6 @@ function PriceTile({
   metal,
   current,
   rate,
-  safetyMarginPct,
   history,
   loading,
   isAdmin,
@@ -296,7 +296,6 @@ function PriceTile({
   metal: MetalKind;
   current: CurrentMetalPrice | undefined;
   rate: MetalRate | undefined;
-  safetyMarginPct: number | null;
   history: MetalPriceHistoryRow[];
   loading: boolean;
   isAdmin: boolean;
@@ -393,7 +392,7 @@ function PriceTile({
             zuletzt {current.fetchedAt ? new Date(current.fetchedAt).toLocaleString('de-DE') : '—'}
           </p>
 
-          <RatesBlock rate={rate} safetyMarginPct={safetyMarginPct} />
+          <RatesBlock rate={rate} />
 
           <PriceChart history={history} accent={accent} avg={rate?.avg10dPricePerGramEur ?? null} />
         </>
@@ -430,17 +429,10 @@ function DeltaRow({ delta }: { delta: { abs: number; pct: number } }): JSX.Eleme
   );
 }
 
-function RatesBlock({
-  rate,
-  safetyMarginPct,
-}: {
-  rate: MetalRate | undefined;
-  safetyMarginPct: number | null;
-}): JSX.Element | null {
+function RatesBlock({ rate }: { rate: MetalRate | undefined }): JSX.Element | null {
   if (!rate) return null;
   const spot = rate.verkaufBasePerGramEur ?? rate.currentPricePerGramEur;
-  const ankaufLabel =
-    safetyMarginPct !== null ? `Ankauf-Kurs (−${formatPct(safetyMarginPct)})` : 'Ankauf-Kurs';
+  const ankaufLabel = `Ankauf-Kurs (−${formatPct(rate.safetyMarginPct ?? 0.1)})`;
   return (
     <div style={{ marginTop: 12, display: 'grid', gap: 4 }}>
       <RateRow label="Spot-Kurs (Verkauf)" value={spot} />
@@ -699,7 +691,7 @@ function ManualOverrideModal({
     },
   });
 
-  const priceValid = /^\d{1,11}(\.\d{1,4})?$/.test(price.trim());
+  const priceValid = isMoneyInput(price.trim(), 4);
   const reasonValid = reason.trim().length >= 8;
 
   return (
@@ -784,7 +776,11 @@ function ManualOverrideModal({
             variant="primary"
             disabled={!priceValid || !reasonValid || override.isPending}
             onClick={() =>
-              override.mutate({ metal, pricePerGramEur: price.trim(), reason: reason.trim() })
+              override.mutate({
+                metal,
+                pricePerGramEur: normalizeDecimal(price.trim(), 4),
+                reason: reason.trim(),
+              })
             }
           >
             {override.isPending ? 'Speichert…' : 'Übernehmen'}
@@ -811,25 +807,58 @@ const inputStyle: React.CSSProperties = {
 // Safety-Margin Modal (Owner / step-up)
 // ════════════════════════════════════════════════════════════════════════
 
-function MarginModal({
-  currentMarginPct,
-  onClose,
-}: {
-  currentMarginPct: number | null;
-  onClose: () => void;
-}): JSX.Element {
+function MarginModal({ rates, onClose }: { rates: MetalRate[]; onClose: () => void }): JSX.Element {
   const api = useApiClient();
   const qc = useQueryClient();
   const addToast = useToastStore((s) => s.addToast);
-  // The field edits a PERCENT (e.g. 10); the API stores a fraction (0.10).
-  const [pctStr, setPctStr] = useState<string>(
-    currentMarginPct !== null ? String(Number((currentMarginPct * 100).toFixed(2))) : '10',
-  );
 
-  const update = useMutation({
-    mutationFn: (body: UpdateMarginBody) => metalPricesApi.updateMargin(api, body),
+  // Each field edits a PERCENT (e.g. 10); the API stores a fraction (0.10).
+  const initial = useMemo(() => {
+    const m = {} as Record<MetalKind, string>;
+    for (const mk of METAL_KIND_ORDER) {
+      const r = rates.find((x) => x.metal === mk);
+      m[mk] = r ? String(Number(((r.safetyMarginPct ?? 0.1) * 100).toFixed(2))) : '10';
+    }
+    return m;
+  }, [rates]);
+  const [pcts, setPcts] = useState<Record<MetalKind, string>>(initial);
+
+  const numOf = (mk: MetalKind): number => Number(pcts[mk].replace(',', '.'));
+  const validOf = (mk: MetalKind): boolean => {
+    const n = numOf(mk);
+    return Number.isFinite(n) && n >= 0 && n <= 50;
+  };
+  const allValid = METAL_KIND_ORDER.every(validOf);
+
+  // Live Ankauf preview from the metal's 10-day mean (matches the server math).
+  const previewAnkauf = (mk: MetalKind): string => {
+    const r = rates.find((x) => x.metal === mk);
+    const base = r?.avg10dPricePerGramEur ?? r?.currentPricePerGramEur ?? null;
+    const n = numOf(mk);
+    if (base === null || !Number.isFinite(n)) return '—';
+    const v = Number.parseFloat(base) * (1 - n / 100);
+    return `${v.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} €/g`;
+  };
+
+  const save = useMutation({
+    mutationFn: async () => {
+      // PATCH only the metals whose margin changed. The first call triggers the
+      // step-up modal; the elevated session covers the rest of the burst.
+      for (const mk of METAL_KIND_ORDER) {
+        const r = rates.find((x) => x.metal === mk);
+        const cur = r ? Number((r.safetyMarginPct * 100).toFixed(2)) : null;
+        const n = numOf(mk);
+        if (validOf(mk) && n !== cur) {
+          await metalPricesApi.updateMargin(api, { metal: mk, marginPct: n / 100 });
+        }
+      }
+    },
     onSuccess: async () => {
-      addToast({ tone: 'success', title: 'Sicherheitsmarge gespeichert' });
+      addToast({
+        tone: 'success',
+        title: 'Margen gespeichert',
+        body: 'Ankaufskurse aktualisiert.',
+      });
       await qc.invalidateQueries({ queryKey: ['metal-prices', 'rates'] });
       onClose();
     },
@@ -842,15 +871,12 @@ function MarginModal({
     },
   });
 
-  const pctNum = Number(pctStr.replace(',', '.'));
-  const valid = Number.isFinite(pctNum) && pctNum >= 0 && pctNum <= 50;
-
   return (
     // biome-ignore lint/a11y/useSemanticElements: backdrop overlay uses role="dialog" to match the existing modal pattern in this screen
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Sicherheitsmarge"
+      aria-label="Sicherheitsmargen je Metall"
       tabIndex={-1}
       style={{
         position: 'fixed',
@@ -869,7 +895,7 @@ function MarginModal({
       <ParchmentCard
         padding="lg"
         onClick={(e) => e.stopPropagation()}
-        style={{ width: 'min(440px, 100%)' }}
+        style={{ width: 'min(520px, 100%)' }}
       >
         <h2
           style={{
@@ -879,51 +905,76 @@ function MarginModal({
             fontSize: '1.3rem',
           }}
         >
-          Sicherheitsmarge (Ankauf)
+          Sicherheitsmargen je Metall
         </h2>
         <DiamondRule />
 
         <p style={{ margin: '8px 0 0', fontSize: '0.84rem', color: 'var(--w14-ink-aged)' }}>
-          Ankauf-Kurs = 10-Tage-Mittel × (1 − Marge). Bereich 0–50 %.
+          Ankauf-Kurs = 10-Tage-Mittel × (1 − Marge). Jede Marge ist einzeln einstellbar (0–50 %).
         </p>
 
-        <label
-          htmlFor="w14-margin-pct"
-          className="w14-smallcaps"
-          style={{
-            display: 'block',
-            color: 'var(--w14-ink-aged)',
-            fontSize: '0.78rem',
-            letterSpacing: '0.08em',
-            marginTop: 12,
-          }}
-        >
-          Marge · %
-        </label>
-        <input
-          id="w14-margin-pct"
-          value={pctStr}
-          onChange={(e) => setPctStr(e.target.value)}
-          placeholder="10"
-          inputMode="decimal"
-          style={{ ...inputStyle, fontFamily: 'var(--w14-font-mono)' }}
-        />
-        {!valid && (
-          <p style={{ margin: '6px 0 0', fontSize: '0.76rem', color: 'var(--w14-wax-red)' }}>
-            Bitte einen Wert zwischen 0 und 50 eingeben.
+        <div style={{ display: 'grid', gap: 12, marginTop: 14 }}>
+          {METAL_KIND_ORDER.map((mk) => (
+            <div
+              key={mk}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '90px 96px 1fr',
+                gap: 12,
+                alignItems: 'center',
+              }}
+            >
+              <span
+                className="w14-smallcaps"
+                style={{ color: METAL_ACCENT[mk], fontWeight: 600, letterSpacing: '0.06em' }}
+              >
+                {METAL_LABEL[mk]}
+              </span>
+              <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 4 }}>
+                <input
+                  value={pcts[mk]}
+                  onChange={(e) => setPcts((s) => ({ ...s, [mk]: e.target.value }))}
+                  inputMode="decimal"
+                  aria-label={`Marge ${METAL_LABEL[mk]} in Prozent`}
+                  style={{
+                    ...inputStyle,
+                    fontFamily: 'var(--w14-font-mono)',
+                    textAlign: 'right',
+                    borderColor: validOf(mk) ? 'var(--w14-rule)' : 'var(--w14-wax-red)',
+                  }}
+                />
+                <span style={{ color: 'var(--w14-ink-faded)' }}>%</span>
+              </span>
+              <span
+                className="w14-tabular"
+                style={{
+                  fontFamily: 'var(--w14-font-mono)',
+                  fontSize: '0.86rem',
+                  color: 'var(--w14-wax-red)',
+                }}
+              >
+                Ankauf {previewAnkauf(mk)}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {!allValid && (
+          <p style={{ margin: '8px 0 0', fontSize: '0.76rem', color: 'var(--w14-wax-red)' }}>
+            Bitte je Metall einen Wert zwischen 0 und 50 eingeben.
           </p>
         )}
 
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 16 }}>
-          <Button variant="ghost" onClick={onClose} disabled={update.isPending}>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 18 }}>
+          <Button variant="ghost" onClick={onClose} disabled={save.isPending}>
             Abbrechen
           </Button>
           <Button
             variant="primary"
-            disabled={!valid || update.isPending}
-            onClick={() => update.mutate({ marginPct: pctNum / 100 })}
+            disabled={!allValid || save.isPending}
+            onClick={() => save.mutate()}
           >
-            {update.isPending ? 'Speichert…' : 'Übernehmen'}
+            {save.isPending ? 'Speichert…' : 'Übernehmen'}
           </Button>
         </div>
       </ParchmentCard>

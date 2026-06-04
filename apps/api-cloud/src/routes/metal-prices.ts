@@ -68,20 +68,36 @@ const MARGIN_MIN = 0;
 const MARGIN_MAX = 0.5;
 const AVG_WINDOW_DAYS = 10;
 
-/**
- * Read the Ankauf safety margin from system_settings. Returns the default when
- * the key is missing or the stored value is out of the accepted [0, 0.5] range.
- */
-async function readAnkaufMarginPct(db: AppDb): Promise<number> {
-  const rows = await db
-    .select({ value: systemSettings.value })
-    .from(systemSettings)
-    .where(eq(systemSettings.key, MARGIN_KEY))
-    .limit(1);
-  const v = rows[0]?.value;
+function clampMargin(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) && v >= MARGIN_MIN && v <= MARGIN_MAX
     ? v
-    : DEFAULT_ANKAUF_SAFETY_MARGIN_PCT;
+    : null;
+}
+
+/** The system_settings key holding a metal's margin override. */
+function marginKeyFor(metal: MetalKind): string {
+  return `${MARGIN_KEY}.${metal}`;
+}
+
+/**
+ * Read the global Ankauf safety margin plus any per-metal overrides in one
+ * round-trip. A metal without its own valid override inherits the global value;
+ * the global itself falls back to the default when missing/out-of-range.
+ */
+async function readMargins(
+  db: AppDb,
+): Promise<{ global: number; perMetal: Record<MetalKind, number> }> {
+  const rows = await db
+    .select({ key: systemSettings.key, value: systemSettings.value })
+    .from(systemSettings)
+    .where(drizzleSql`${systemSettings.key} LIKE ${`${MARGIN_KEY}%`}`);
+  const byKey = new Map(rows.map((r) => [r.key, r.value]));
+  const global = clampMargin(byKey.get(MARGIN_KEY)) ?? DEFAULT_ANKAUF_SAFETY_MARGIN_PCT;
+  const perMetal = {} as Record<MetalKind, number>;
+  for (const m of METAL_KIND) {
+    perMetal[m] = clampMargin(byKey.get(marginKeyFor(m))) ?? global;
+  }
+  return { global, perMetal };
 }
 
 class ProductNotFoundError extends DomainError {
@@ -188,11 +204,13 @@ const metalPricesRoutes: FastifyPluginAsync = async (app) => {
       requireAuth(req);
       requireRole(req, 'ADMIN', 'CASHIER');
 
-      // Owner-configured safety margin (system_settings), default 0.10.
-      const safetyMarginPct = await readAnkaufMarginPct(app.db);
+      // Owner-configured margins: global default + per-metal overrides.
+      const { global: safetyMarginPct, perMetal } = await readMargins(app.db);
 
       // One round-trip: compute current / 10d-avg / Ankauf for all 4 metals via
       // the SQL helpers so rounding matches every other read of the same value.
+      // Each metal carries its OWN margin into the VALUES list so the Ankauf
+      // rate is ROUND-ed in SQL with that metal's discount.
       const rows = await app.db.execute<{
         metal: string;
         current_price: string | null;
@@ -205,10 +223,15 @@ const metalPricesRoutes: FastifyPluginAsync = async (app) => {
         metal_price_avg_eur_per_gram(m.metal, ${AVG_WINDOW_DAYS}::int)      AS avg10d,
         ROUND(
           metal_price_avg_eur_per_gram(m.metal, ${AVG_WINDOW_DAYS}::int)
-            * (1 - ${String(safetyMarginPct)}::numeric),
+            * (1 - m.margin),
           4
         )                                                                  AS ankauf
-      FROM (VALUES ('gold'), ('silver'), ('platinum'), ('palladium')) AS m(metal)`);
+      FROM (VALUES
+        ('gold',      ${String(perMetal.gold)}::numeric),
+        ('silver',    ${String(perMetal.silver)}::numeric),
+        ('platinum',  ${String(perMetal.platinum)}::numeric),
+        ('palladium', ${String(perMetal.palladium)}::numeric)
+      ) AS m(metal, margin)`);
 
       const list = rows as unknown as Array<{
         metal: string;
@@ -226,6 +249,7 @@ const metalPricesRoutes: FastifyPluginAsync = async (app) => {
           avg10dPricePerGramEur: r?.avg10d ?? null,
           ankaufRatePerGramEur: r?.ankauf ?? null,
           verkaufBasePerGramEur: r?.current_price ?? null,
+          safetyMarginPct: perMetal[m],
         };
       });
 
@@ -263,25 +287,25 @@ const metalPricesRoutes: FastifyPluginAsync = async (app) => {
       requireAuth(req); // narrows req.actor
       requireOwnerStepUp(req); // Owner role + valid step-up token
 
-      const { marginPct } = req.body;
+      const { metal, marginPct } = req.body;
+      const key = metal ? marginKeyFor(metal) : MARGIN_KEY;
+      const description = metal
+        ? `Ankauf safety margin for ${metal} as a fraction (0.10 = 10%). Owner-editable.`
+        : 'Ankauf safety margin (global default) as a fraction (0.10 = 10%). Owner-editable.';
 
       // Upsert: app holds INSERT (default privilege) + column UPDATE on
-      // system_settings. The key is also seeded in migration 0034, so this is
-      // normally an UPDATE. updated_at is set by the BEFORE-UPDATE trigger.
+      // system_settings. The global key is seeded in migration 0034; per-metal
+      // override keys are created on first write. updated_at is set by the
+      // BEFORE-UPDATE trigger; the AFTER-write trigger audits the change.
       await app.db
         .insert(systemSettings)
-        .values({
-          key: MARGIN_KEY,
-          value: marginPct,
-          description: 'Ankauf safety margin as a fraction (0.10 = 10%). Owner-editable.',
-          updatedByUserId: req.actor.id,
-        })
+        .values({ key, value: marginPct, description, updatedByUserId: req.actor.id })
         .onConflictDoUpdate({
           target: systemSettings.key,
           set: { value: marginPct, updatedByUserId: req.actor.id },
         });
 
-      return reply.status(200).send({ marginPct });
+      return reply.status(200).send({ metal: metal ?? null, marginPct });
     },
   );
 

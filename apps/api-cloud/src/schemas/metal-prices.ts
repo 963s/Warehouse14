@@ -127,10 +127,15 @@ export const MetalRate = Type.Object({
    * GET /api/products/:id/valuation.
    */
   verkaufBasePerGramEur: Type.Union([PricePerGramString, Type.Null()]),
+  /** Per-metal Ankauf safety margin in effect for THIS metal (0.10 = 10%). */
+  safetyMarginPct: Type.Number(),
 });
 
 export const MetalRatesResponse = Type.Object({
-  /** Ankauf safety margin applied (0.10 = 10%). Owner-editable (Phase A3). */
+  /**
+   * Default/global Ankauf safety margin (0.10 = 10%). Per-metal overrides are
+   * returned on each rate's `safetyMarginPct`. Owner-editable (Phase A3).
+   */
   safetyMarginPct: Type.Number(),
   /** Averaging window in days (10). */
   windowDays: Type.Integer(),
@@ -142,6 +147,11 @@ export const MetalRatesResponse = Type.Object({
 // ────────────────────────────────────────────────────────────────────────
 
 export const MarginBody = Type.Object({
+  /**
+   * Metal this margin applies to. Omit to set the global/default margin used
+   * by any metal without its own override.
+   */
+  metal: Type.Optional(METAL_ENUM),
   /** Safety margin as a fraction: 0.12 = 12%. Range [0, 0.50] (max 50% discount). */
   marginPct: Type.Number({
     minimum: 0,
@@ -151,6 +161,7 @@ export const MarginBody = Type.Object({
 });
 
 export const MarginResponse = Type.Object({
+  metal: Type.Union([METAL_ENUM, Type.Null()]),
   marginPct: Type.Number(),
 });
 

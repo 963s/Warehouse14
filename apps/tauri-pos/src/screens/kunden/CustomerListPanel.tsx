@@ -28,6 +28,7 @@ import {
 } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
+import { CustomerCreateDialog } from './CustomerCreateDialog.js';
 
 type FilterTab = 'ALL' | 'KYC_VERIFIED' | 'VIP' | 'WATCHLIST' | 'BLOCKED';
 
@@ -49,6 +50,7 @@ export function CustomerListPanel({ selectedId, onSelect }: CustomerListPanelPro
   const [searchInput, setSearchInput] = useState<string>('');
   const [debouncedQ, setDebouncedQ] = useState<string>('');
   const [filter, setFilter] = useState<FilterTab>('ALL');
+  const [createOpen, setCreateOpen] = useState<boolean>(false);
   const timer = useRef<number | null>(null);
 
   useEffect(() => {
@@ -159,6 +161,10 @@ export function CustomerListPanel({ selectedId, onSelect }: CustomerListPanelPro
         />
       </div>
 
+      <Button variant="primary" size="md" onClick={() => setCreateOpen(true)}>
+        + Neuer Kunde
+      </Button>
+
       {/* Filter chips */}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         {FILTER_CHIPS.map((chip) => (
@@ -203,6 +209,12 @@ export function CustomerListPanel({ selectedId, onSelect }: CustomerListPanelPro
           Auswahl aufheben
         </Button>
       )}
+
+      <CustomerCreateDialog
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={(id) => onSelect(id)}
+      />
     </section>
   );
 }

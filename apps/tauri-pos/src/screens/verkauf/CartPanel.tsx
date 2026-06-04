@@ -25,6 +25,7 @@ import { type CSSProperties, useMemo, useState } from 'react';
 import { Button, DiamondRule, MoneyAmount, ParchmentCard, RomanIndex } from '@warehouse14/ui-kit';
 
 import { type LineMath, computeLineMath, fromCents, sumHeader } from '../../lib/cart-math.js';
+import { isMoneyInput, normalizeDecimal } from '../../lib/decimal.js';
 import { TAX_TREATMENT_LABEL } from '../../lib/tax-treatment-label.js';
 import { type CartLine, useCartStore } from '../../state/cart-store.js';
 
@@ -382,8 +383,8 @@ function DiscountEditor({ line, disabled }: { line: CartLine; disabled: boolean 
   const [amount, setAmount] = useState<string>(line.discountEur ?? '');
   const [reason, setReason] = useState<string>(line.discountReason ?? '');
 
-  const amountValid = /^\d{1,16}(\.\d{1,2})?$/.test(amount);
-  const positive = amountValid && Number(amount) > 0;
+  const amountValid = isMoneyInput(amount);
+  const positive = amountValid && Number(normalizeDecimal(amount)) > 0;
   const reasonValid = reason.trim().length >= 3;
   const canApply = positive && reasonValid;
 
@@ -479,7 +480,7 @@ function DiscountEditor({ line, disabled }: { line: CartLine; disabled: boolean 
           size="sm"
           disabled={!canApply}
           onClick={() => {
-            setLineDiscount(line.productId, amount, reason);
+            setLineDiscount(line.productId, normalizeDecimal(amount), reason);
             setOpen(false);
           }}
         >

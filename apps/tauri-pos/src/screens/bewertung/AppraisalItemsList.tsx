@@ -18,6 +18,7 @@ import {
 import { Button, DiamondRule, MoneyAmount, ParchmentCard, RomanIndex } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
+import { isMoneyInput, normalizeDecimal } from '../../lib/decimal.js';
 import { useToastStore } from '../../state/toast-store.js';
 
 const ITEM_TYPE_LABEL: Record<string, string> = {
@@ -71,14 +72,16 @@ export function AppraisalItemsList({
   };
 
   const completeAppraisal = async (): Promise<void> => {
-    if (!/^\d+(\.\d{1,2})?$/.test(offerEur) || Number(offerEur) <= 0) {
+    if (!isMoneyInput(offerEur) || Number(normalizeDecimal(offerEur)) <= 0) {
       setCompleteError('Bitte Angebotswert > 0 eingeben.');
       return;
     }
     setCompleting(true);
     setCompleteError(null);
     try {
-      const next = await appraisalsApi.complete(api, appraisal.id, { totalOfferedEur: offerEur });
+      const next = await appraisalsApi.complete(api, appraisal.id, {
+        totalOfferedEur: normalizeDecimal(offerEur),
+      });
       qc.setQueryData(['appraisals', appraisal.id], next);
       setCompleteOpen(false);
       onOpenAcceptance();
