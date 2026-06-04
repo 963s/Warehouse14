@@ -5,9 +5,14 @@
  * flow; there was no way to enter shop-original / manual stock. This dialog
  * fills that gap: a focused form → `POST /api/products` (ADMIN; the api-client
  * step-up middleware prompts for a PIN when the acquisition cost crosses the
- * threshold). Created as DRAFT — the Owner publishes to AVAILABLE from Lager.
+ * threshold). Creation always lands as DRAFT server-side; the "Sofort
+ * verkaufsbereit" option (default on) immediately PUTs status=AVAILABLE so the
+ * article is sellable at the Kasse right away, and invalidates the products
+ * cache so it shows in the Verkauf grid + Lager without a reload. Unchecked →
+ * it stays a DRAFT and the operator is handed to the photo workflow.
  */
 
+import { useQueryClient } from '@tanstack/react-query';
 import { type CSSProperties, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -136,6 +141,7 @@ export function NeuesProduktDialog({
   const client = useApiClient() as ApiClient;
   const addToast = useToastStore((s) => s.addToast);
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const printer = useLabelPrinter();
 
   const [name, setName] = useState('');
@@ -150,6 +156,7 @@ export function NeuesProduktDialog({
   const [locUnit, setLocUnit] = useState('');
   const [locDrawer, setLocDrawer] = useState('');
   const [locPosition, setLocPosition] = useState('');
+  const [publishNow, setPublishNow] = useState<boolean>(true);
   const [busy, setBusy] = useState(false);
 
   if (!open) return null;
@@ -199,6 +206,22 @@ export function NeuesProduktDialog({
 
       const res = await client.request<CreatedResponse>('POST', '/api/products', body);
 
+      // Creation always lands as DRAFT server-side. Publish immediately so the
+      // article is sellable at the Kasse right away (Owner-only PUT). If it
+      // fails, the article simply stays a draft and the toast says so.
+      let published = false;
+      if (publishNow) {
+        try {
+          await client.request('PUT', `/api/products/${res.id}`, { status: 'AVAILABLE' });
+          published = true;
+        } catch {
+          // keep as draft — surfaced in the toast below
+        }
+      }
+      // Refresh the catalogue everywhere (Verkauf grid + Lager) immediately, so
+      // the new article shows up without a reload / stale-time wait.
+      void qc.invalidateQueries({ queryKey: ['products', 'list'] });
+
       // Auto-print the shelf label (SKU + name + weight + location) when a
       // label printer is configured — so the item is tagged at intake.
       if (printer.configured) {
@@ -218,17 +241,21 @@ export function NeuesProduktDialog({
 
       addToast({
         tone: 'success',
-        title: 'Produkt angelegt',
-        body: printer.configured
-          ? `${res.sku} (Entwurf) — Etikett gedruckt, jetzt Fotos`
-          : `${res.sku} (Entwurf) — jetzt Fotos aufnehmen`,
+        title: published ? 'Produkt verkaufsbereit' : 'Produkt angelegt',
+        body: published
+          ? `${res.sku} — sofort im Verkauf sichtbar`
+          : printer.configured
+            ? `${res.sku} (Entwurf) — Etikett gedruckt, jetzt Fotos`
+            : `${res.sku} (Entwurf) — jetzt Fotos aufnehmen`,
       });
       reset();
       onCreated();
       onClose();
-      // Hand straight over to the photo workflow, bound to the new product
-      // (mode=produkt → each capture registers against this productId).
-      navigate(`/fotos?mode=produkt&productId=${encodeURIComponent(res.id)}`);
+      // Drafts hand straight to the photo workflow; a published article can get
+      // photos later from Lager — don't yank the operator away from a quick sale.
+      if (!published) {
+        navigate(`/fotos?mode=produkt&productId=${encodeURIComponent(res.id)}`);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unbekannter Fehler';
       if (/step[_-]?up/i.test(msg)) {
@@ -435,6 +462,26 @@ export function NeuesProduktDialog({
 
         <DiamondRule style={{ margin: '18px 0' }} />
 
+        <label
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            marginBottom: 14,
+            cursor: 'pointer',
+            fontSize: '0.92rem',
+            color: 'var(--w14-ink-aged)',
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={publishNow}
+            onChange={(e) => setPublishNow(e.target.checked)}
+            style={{ width: 18, height: 18, accentColor: 'var(--w14-gold)' }}
+          />
+          Sofort verkaufsbereit — direkt im Verkauf sichtbar (sonst nur Entwurf)
+        </label>
+
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
           <Button variant="ghost" size="md" disabled={busy} onClick={onClose}>
             Abbrechen
@@ -447,7 +494,7 @@ export function NeuesProduktDialog({
               void submit();
             }}
           >
-            {busy ? 'Speichert…' : 'Anlegen'}
+            {busy ? 'Speichert…' : publishNow ? 'Anlegen & verkaufsbereit' : 'Als Entwurf anlegen'}
           </Button>
         </div>
       </ParchmentCard>
