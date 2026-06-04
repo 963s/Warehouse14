@@ -34,6 +34,14 @@
 
 BEGIN;
 
+-- 0. Block concurrent ledger_events INSERTs for the duration of this migration
+--    so nothing can land BETWEEN the head seed (step 2) and the trigger swap
+--    (step 3) — such a row would chain off the old trigger and fork the chain
+--    once. SHARE ROW EXCLUSIVE conflicts with the ROW EXCLUSIVE that INSERT
+--    takes, so emits wait for COMMIT. Makes 0048 correct even without an
+--    external write-quiescent window.
+LOCK TABLE ledger_events IN SHARE ROW EXCLUSIVE MODE;
+
 -- 1. Singleton chain-head pointer.
 CREATE TABLE IF NOT EXISTS ledger_chain_head (
   only_row      BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (only_row),
