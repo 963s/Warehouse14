@@ -153,14 +153,15 @@ export const SURFACES: readonly SurfaceDescriptor[] = [
     searchAliases: ['appraisal', 'expertise', 'gutachten', 'konvolut', 'ankauf', 'bewertung'],
   },
 
-  // ── Tier 2 — Spotlight-only ─────────────────────────────────────────
+  // ── Tier 1 (#7) — the live Edelmetall trading terminal ───────────────
   {
     path: '/kurse',
-    label: 'Edelmetallkursraum',
-    description: 'Live-Kurse für Gold, Silber, Platin, Palladium.',
-    tier: 'secondary',
+    label: 'Kurse',
+    description: 'Live-Kurse für Gold, Silber, Platin, Palladium — Handelsterminal.',
+    digit: 7,
+    tier: 'primary',
     component: Kurse,
-    searchAliases: ['kurs', 'gold', 'silber', 'platin', 'metallpreis', 'lbma'],
+    searchAliases: ['kurs', 'gold', 'silber', 'platin', 'metallpreis', 'lbma', 'chart', 'börse'],
   },
   {
     path: '/ebay',

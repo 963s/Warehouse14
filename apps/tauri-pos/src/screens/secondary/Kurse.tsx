@@ -29,7 +29,7 @@ import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 import { useApiClient } from '../../lib/api-context.js';
 import { useSessionStore } from '../../state/session-store.js';
 import { useToastStore } from '../../state/toast-store.js';
-import { LivePriceChart } from './LivePriceChart.js';
+import { TradingTerminal } from './TradingTerminal.js';
 
 const METAL_LABEL: Record<MetalKind, string> = {
   gold: 'Gold',
@@ -67,16 +67,16 @@ export function Kurse(): JSX.Element {
     refetchInterval: 20_000,
   });
 
-  // Chart range (days of history) — drives the advanced chart per metal.
-  const [rangeDays, setRangeDays] = useState<number>(30);
-  // Which metal the big trading chart is showing.
+  // Which metal the big trading terminal is showing.
   const [selectedMetal, setSelectedMetal] = useState<MetalKind>('gold');
 
-  // Four parallel history queries, one per metal — context for the chart.
+  // Four parallel history queries, one per metal — context for the terminal.
+  // We pull the full window (server cap 200) and let the terminal bucket it
+  // into the selected range (1T/1W/1M/6M/1J) client-side.
   const historyQs = useQueries({
     queries: METAL_KIND_ORDER.map((metal) => ({
-      queryKey: ['metal-prices', 'history', metal, rangeDays] as const,
-      queryFn: () => metalPricesApi.history(api, { metal, limit: rangeDays }),
+      queryKey: ['metal-prices', 'history', metal] as const,
+      queryFn: () => metalPricesApi.history(api, { metal, limit: 200 }),
       staleTime: 60_000,
       refetchInterval: 60_000,
     })),
@@ -118,7 +118,6 @@ export function Kurse(): JSX.Element {
               {safetyMarginPct !== null ? ` · ${formatPct(safetyMarginPct)}` : ''}
             </Button>
           )}
-          <RangeToggle value={rangeDays} onChange={setRangeDays} />
           <span
             className="w14-smallcaps"
             style={{
@@ -224,10 +223,13 @@ export function Kurse(): JSX.Element {
             );
           })()}
         </div>
-        <LivePriceChart
+        <TradingTerminal
           metalLabel={METAL_LABEL[selectedMetal]}
           accent={METAL_ACCENT[selectedMetal]}
           history={historyQs[METAL_KIND_ORDER.indexOf(selectedMetal)]?.data?.items ?? []}
+          currentPrice={
+            currentQ.data?.prices.find((p) => p.metal === selectedMetal)?.pricePerGramEur ?? null
+          }
           safetyMarginPct={safetyMarginPct}
           fetching={currentQ.isFetching}
         />
@@ -252,7 +254,6 @@ export function Kurse(): JSX.Element {
               rate={rate}
               safetyMarginPct={safetyMarginPct}
               history={history}
-              rangeDays={rangeDays}
               loading={currentQ.isLoading || historyQs[i]?.isLoading === true}
               isAdmin={isAdmin}
               onOverride={() => setOverrideOpen(metal)}
@@ -288,7 +289,6 @@ function PriceTile({
   rate,
   safetyMarginPct,
   history,
-  rangeDays,
   loading,
   isAdmin,
   onOverride,
@@ -298,7 +298,6 @@ function PriceTile({
   rate: MetalRate | undefined;
   safetyMarginPct: number | null;
   history: MetalPriceHistoryRow[];
-  rangeDays: number;
   loading: boolean;
   isAdmin: boolean;
   onOverride: () => void;
@@ -396,12 +395,7 @@ function PriceTile({
 
           <RatesBlock rate={rate} safetyMarginPct={safetyMarginPct} />
 
-          <PriceChart
-            history={history}
-            accent={accent}
-            avg={rate?.avg10dPricePerGramEur ?? null}
-            rangeDays={rangeDays}
-          />
+          <PriceChart history={history} accent={accent} avg={rate?.avg10dPricePerGramEur ?? null} />
         </>
       )}
 
@@ -509,56 +503,6 @@ function SourceBadge({ source }: { source: string }): JSX.Element {
   );
 }
 
-/** Range selector (days of history) for the advanced chart. */
-function RangeToggle({
-  value,
-  onChange,
-}: {
-  value: number;
-  onChange: (d: number) => void;
-}): JSX.Element {
-  const options = [
-    { d: 7, label: '7T' },
-    { d: 30, label: '30T' },
-    { d: 90, label: '90T' },
-  ];
-  return (
-    <div
-      role="group"
-      aria-label="Zeitraum"
-      style={{
-        display: 'inline-flex',
-        border: '1px solid var(--w14-rule)',
-        borderRadius: 'var(--w14-radius-button)',
-        overflow: 'hidden',
-      }}
-    >
-      {options.map((o) => {
-        const active = o.d === value;
-        return (
-          <button
-            key={o.d}
-            type="button"
-            onClick={() => onChange(o.d)}
-            className="w14-smallcaps"
-            style={{
-              padding: '4px 10px',
-              fontSize: '0.7rem',
-              letterSpacing: '0.06em',
-              border: 'none',
-              cursor: 'pointer',
-              background: active ? 'var(--w14-ink)' : 'transparent',
-              color: active ? 'var(--w14-parchment)' : 'var(--w14-ink-faded)',
-            }}
-          >
-            {o.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 /**
  * PriceChart — an advanced area chart: gradient fill under the line, min/max
  * y-axis labels, first/last date labels, the 10-day mean (dashed), and a
@@ -568,12 +512,10 @@ function PriceChart({
   history,
   accent,
   avg,
-  rangeDays,
 }: {
   history: MetalPriceHistoryRow[];
   accent: string;
   avg?: string | null;
-  rangeDays: number;
 }): JSX.Element | null {
   const gradId = useId();
   if (history.length < 2) return null;
@@ -627,9 +569,7 @@ function PriceChart({
       role="img"
       style={{ marginTop: 12, display: 'block' }}
     >
-      <title>
-        {rangeDays}-Tage-Verlauf{hasAvg ? ' · 10-Tage-Mittel (gestrichelt)' : ''}
-      </title>
+      <title>Verlauf{hasAvg ? ' · 10-Tage-Mittel (gestrichelt)' : ''}</title>
       <defs>
         <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" style={{ stopColor: accent, stopOpacity: 0.3 }} />
