@@ -52,6 +52,7 @@ import { Button, DiamondRule, MoneyAmount, ParchmentCard } from '@warehouse14/ui
 import { ZvtSpinner } from '../../components/hardware/ZvtSpinner.js';
 import { currentShiftQueryKey } from '../../hooks/useCurrentShift.js';
 import { dashboardQueryKey } from '../../hooks/useDashboardSummary.js';
+import { useReceiptFooterLines } from '../../hooks/useReceiptFooter.js';
 import { resolveShopInfo, useShopInfo } from '../../hooks/useShopInfo.js';
 import { useApiClient } from '../../lib/api-context.js';
 import {
@@ -115,6 +116,7 @@ export function BezahlenDialog({
   const hardwareCfg = useHardwareStore((s) => s.config);
   const sessionActor = useSessionStore((s) => s.actor);
   const { data: shopApi } = useShopInfo();
+  const customFooter = useReceiptFooterLines();
   const setLastReceipt = useLastReceiptStore((s) => s.setLastReceipt);
 
   const [paymentChoice, setPaymentChoice] = useState<'CASH' | 'ZVT_CARD'>('CASH');
@@ -510,7 +512,7 @@ export function BezahlenDialog({
       const shop = resolveShopInfo(shopApi);
       const data: ThermalReceiptData = {
         shopName: shop.name,
-        shopAddress: [...shop.address],
+        shopAddress: [shop.tagline, ...shop.address].filter((l) => l.trim().length > 0),
         shopVatId: shop.vatId,
         shopPhone: shop.phone,
         receiptLocator: result.receiptLocator,
@@ -549,8 +551,9 @@ export function BezahlenDialog({
         tseQrPayload: tse?.qrPayload ?? 'TSE Ausfall',
         footerLines: [
           ...(voucherPayment ? [`Gutschein eingelöst: −${voucherPayment.amountEur} €`] : []),
-          'Vielen Dank für Ihren Besuch.',
-          'Beleg auf Wunsch elektronisch.',
+          ...(customFooter && customFooter.length > 0
+            ? customFooter
+            : ['Vielen Dank für Ihren Besuch.', 'Beleg auf Wunsch elektronisch.']),
           ...legalFooters,
         ],
       };
@@ -566,6 +569,7 @@ export function BezahlenDialog({
       b2bActive,
       sessionActor,
       shopApi,
+      customFooter,
       dueCents,
       setLastReceipt,
     ],
@@ -659,10 +663,14 @@ export function BezahlenDialog({
       // balance). A failure here doesn't undo the sale — surface it for manual fix.
       if (appliedVoucher && tender.appliedVoucherCents > 0n) {
         try {
-          await api.request('POST', `/api/vouchers/${encodeURIComponent(appliedVoucher.code)}/redeem`, {
-            transactionId: result.id,
-            amountEur: fromCents(tender.appliedVoucherCents),
-          });
+          await api.request(
+            'POST',
+            `/api/vouchers/${encodeURIComponent(appliedVoucher.code)}/redeem`,
+            {
+              transactionId: result.id,
+              amountEur: fromCents(tender.appliedVoucherCents),
+            },
+          );
         } catch {
           addToast({
             tone: 'alert',

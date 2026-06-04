@@ -24,9 +24,9 @@ import {
 } from '../../app/chrome/Icons.js';
 import { useApiClient } from '../../lib/api-context.js';
 import { openChatwoot } from '../../lib/chatwoot.js';
-import { SHOP_INFO } from '../../lib/shop-info.js';
 import { useIntegrationSettings } from '../../state/integration-settings-store.js';
 import { useToastStore } from '../../state/toast-store.js';
+import { Belegdesigner } from './Belegdesigner.js';
 import { GeraeteManager } from './GeraeteManager.js';
 
 type SectionId = 'hardware' | 'ai' | 'server' | 'social' | 'chatwoot' | 'beleg';
@@ -482,27 +482,8 @@ function ChatwootSection(): JSX.Element {
 
 function BelegSection(): JSX.Element {
   return (
-    <div style={pad}>
-      <SectionTitle
-        title="Beleg & Shop"
-        subtitle="Geschäftsdaten auf dem Beleg. Änderungen erfolgen im Owner-Desktop (auditiert)."
-      />
-      <div style={card}>
-        <Row k="Geschäft" v={SHOP_INFO.name} />
-        <Row k="Linie" v={SHOP_INFO.tagline} />
-        <Row k="Adresse" v={SHOP_INFO.address.join(' · ')} />
-        <Row k="USt-IdNr." v={SHOP_INFO.vatId} />
-        <Row k="Telefon" v={SHOP_INFO.phone ?? '—'} />
-      </div>
-    </div>
-  );
-}
-
-function Row({ k, v }: { k: string; v: string }): JSX.Element {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
-      <span style={labelStyle}>{k}</span>
-      <span style={{ color: 'var(--w14-ink)', fontSize: '0.92rem' }}>{v}</span>
+    <div style={{ padding: 24 }}>
+      <Belegdesigner />
     </div>
   );
 }
