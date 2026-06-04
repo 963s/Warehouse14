@@ -9,13 +9,27 @@ use chrono::Utc;
 use crate::commands::tse::{
     TseConfig, TseFinishParams, TseIntention, TseSignature, TseStartParams, TseStatus,
 };
-use crate::error::HwResult;
+use crate::error::{HardwareError, HwResult};
 use crate::mock;
 
 static MOCK_COUNTER: AtomicU64 = AtomicU64::new(1);
 static MOCK_TX_NUMBER: AtomicU64 = AtomicU64::new(1);
 
+/// NO FACADE: the mock must reject the SAME misconfiguration the real Fiskaly
+/// path rejects in `commands::tse::validate_config`. Otherwise a no-credentials
+/// operator gets a fabricated signature in dev/mock and only discovers the gap
+/// on the first REAL sale at go-live. Mirrors the real check exactly.
+fn validate_mock_config(cfg: &TseConfig) -> HwResult<()> {
+    if cfg.tss_id.is_empty() || cfg.api_key.is_empty() {
+        return Err(HardwareError::NotConfigured(
+            "TSE: TSS-ID oder API-Key fehlt".into(),
+        ));
+    }
+    Ok(())
+}
+
 pub async fn start_transaction(params: TseStartParams) -> HwResult<TseIntention> {
+    validate_mock_config(&params.config)?;
     mock::mock_delay(450).await;
     mock::maybe_inject_failure("TSE start_transaction (mock)")?;
 
@@ -27,6 +41,20 @@ pub async fn start_transaction(params: TseStartParams) -> HwResult<TseIntention>
 }
 
 pub async fn finish_transaction(params: TseFinishParams) -> HwResult<TseSignature> {
+    validate_mock_config(&params.config)?;
+    // A real TSE will not sign a zero-amount fiscal record, and KassenSichV only
+    // recognises Bar/Unbar payment types — reject both here too.
+    if params.amount_cents == 0 {
+        return Err(HardwareError::InvalidArgument(
+            "TSE: Betrag 0 kann nicht signiert werden".into(),
+        ));
+    }
+    if params.payment_kind != "Bar" && params.payment_kind != "Unbar" {
+        return Err(HardwareError::InvalidArgument(format!(
+            "TSE: payment_kind '{}' ungültig (erwartet Bar|Unbar)",
+            params.payment_kind
+        )));
+    }
     mock::mock_delay(950).await;
     mock::maybe_inject_failure("TSE finish_transaction (mock)")?;
 

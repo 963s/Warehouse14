@@ -87,10 +87,14 @@ pub async fn zvt_authorize_payment(
 
     // Cardholder interaction can take up to 60 s — use a deliberately
     // looser read timeout here (separate from the 5 s connect timeout).
+    // Default 75 s; `WAREHOUSE14_ZVT_READ_TIMEOUT_MS` lets the HIL tests shrink it.
     let mut buf = vec![0u8; 1024];
-    let n = timeout(Duration::from_secs(75), stream.read(&mut buf))
-        .await
-        .map_err(HardwareError::from)??;
+    let n = timeout(
+        Duration::from_millis(config::zvt_read_timeout_ms()),
+        stream.read(&mut buf),
+    )
+    .await
+    .map_err(HardwareError::from)??;
     buf.truncate(n);
 
     parse_authorisation_response(&buf)
@@ -135,7 +139,10 @@ pub async fn zvt_reverse_payment(
 
 /// Build a `06 01` Authorisation APDU. Amount is BCD-encoded, 6 bytes
 /// (cents), big-endian per ZVT 1.10 §8.
-fn build_authorisation_frame(amount_cents: u64) -> Vec<u8> {
+///
+/// `pub` so the HIL test server + the hardened mock validate against the SAME
+/// canonical frame (no mock-vs-real divergence).
+pub fn build_authorisation_frame(amount_cents: u64) -> Vec<u8> {
     let bcd = bcd_amount(amount_cents);
     let mut payload = Vec::with_capacity(16);
     payload.extend_from_slice(&[0x04, 0x06]); // TLV: amount tag
@@ -262,8 +269,8 @@ fn find_tlv(buf: &[u8], tag: u8) -> Option<Vec<u8>> {
     None
 }
 
-/// CRC-CCITT-16 (XModem polynomial 0x1021), seed 0x0000.
-fn crc_ccitt(data: &[u8]) -> u16 {
+/// CRC-CCITT-16 (XModem polynomial 0x1021), seed 0x0000. `pub` for HIL tests.
+pub fn crc_ccitt(data: &[u8]) -> u16 {
     let mut crc: u16 = 0x0000;
     for &b in data {
         crc ^= (b as u16) << 8;
@@ -290,5 +297,120 @@ fn mask_to_last_four(pan: String) -> String {
         "****".into()
     } else {
         format!("****{}", &digits[digits.len() - 4..])
+    }
+}
+
+/// Independently validate + decode the amount from a `06 01` authorisation
+/// frame produced by [`build_authorisation_frame`]. Used by the HIL test server
+/// and the mock self-check — it re-derives everything (header, the 0x04 6-byte
+/// BCD amount TLV, and the trailing CRC-CCITT) so it catches a builder
+/// regression instead of rubber-stamping it. Returns the decoded cents, or a
+/// human-readable description of the first protocol violation.
+pub fn parse_auth_frame_amount(frame: &[u8]) -> Result<u64, String> {
+    if frame.len() < 5 {
+        return Err(format!("frame too short: {}b", frame.len()));
+    }
+    if frame[0] != 0x06 {
+        return Err(format!("bad CLASS {:#04x} (want 0x06)", frame[0]));
+    }
+    if frame[1] != 0x01 {
+        return Err(format!("bad INS {:#04x} (want 0x01)", frame[1]));
+    }
+    let declared = frame[2] as usize;
+    // Layout: [06][01][LEN][..payload(LEN)..][crc_lo][crc_hi]
+    if frame.len() != 3 + declared + 2 {
+        return Err(format!(
+            "length mismatch: header declares {declared}b payload, frame carries {}b",
+            frame.len().saturating_sub(5)
+        ));
+    }
+    let body = &frame[..frame.len() - 2];
+    let got_crc = u16::from(frame[frame.len() - 2]) | (u16::from(frame[frame.len() - 1]) << 8);
+    let want_crc = crc_ccitt(body);
+    if got_crc != want_crc {
+        return Err(format!("CRC mismatch: got {got_crc:#06x}, want {want_crc:#06x}"));
+    }
+    // Scan the payload TLVs (after the 3-byte header) for the amount tag 0x04.
+    let payload = &frame[3..3 + declared];
+    let mut i = 0;
+    while i + 2 <= payload.len() {
+        let tag = payload[i];
+        let len = payload[i + 1] as usize;
+        if i + 2 + len > payload.len() {
+            return Err("truncated TLV in payload".into());
+        }
+        if tag == 0x04 {
+            let val = &payload[i + 2..i + 2 + len];
+            if val.len() != 6 {
+                return Err(format!("amount TLV is {}b BCD (want 6)", val.len()));
+            }
+            return Ok(bcd_to_u64(val));
+        }
+        i += 2 + len;
+    }
+    Err("amount TLV (tag 0x04) not found".into())
+}
+
+/// Decode big-endian packed BCD into an integer (inverse of `bcd_amount`).
+fn bcd_to_u64(bcd: &[u8]) -> u64 {
+    let mut n = 0u64;
+    for &b in bcd {
+        n = n * 100 + u64::from((b >> 4) * 10 + (b & 0x0F));
+    }
+    n
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Published CRC-CCITT/XMODEM check value for "123456789" is 0x31C3.
+    /// Pins our `crc_ccitt` against an INDEPENDENT reference vector (not the
+    /// builder), so a CRC regression can't hide.
+    #[test]
+    fn crc_ccitt_matches_xmodem_reference_vector() {
+        assert_eq!(crc_ccitt(b"123456789"), 0x31C3);
+    }
+
+    #[test]
+    fn auth_frame_has_correct_header_and_bcd_amount() {
+        let frame = build_authorisation_frame(12_345);
+        // [CLASS 06][INS 01][LEN 0x0B][04 06 <000000012345 BCD>][cur 49 09 78][crc lo hi]
+        assert_eq!(
+            &frame[..14],
+            &[0x06, 0x01, 0x0B, 0x04, 0x06, 0x00, 0x00, 0x00, 0x01, 0x23, 0x45, 0x49, 0x09, 0x78]
+        );
+        let crc = crc_ccitt(&frame[..14]);
+        assert_eq!(frame[14], (crc & 0xFF) as u8);
+        assert_eq!(frame[15], ((crc >> 8) & 0xFF) as u8);
+    }
+
+    #[test]
+    fn independent_decoder_roundtrips_amounts() {
+        for cents in [1u64, 99, 100, 12_345, 999_999_999_999] {
+            let frame = build_authorisation_frame(cents);
+            assert_eq!(parse_auth_frame_amount(&frame), Ok(cents), "cents={cents}");
+        }
+    }
+
+    #[test]
+    fn decoder_rejects_corrupted_crc() {
+        let mut frame = build_authorisation_frame(5_000);
+        let last = frame.len() - 1;
+        frame[last] ^= 0xFF; // corrupt the CRC high byte
+        assert!(parse_auth_frame_amount(&frame).unwrap_err().contains("CRC"));
+    }
+
+    /// mock-vs-real PARITY: the hardened mock builds its on-wire frame via the
+    /// SAME canonical builder, so the two cannot drift apart.
+    #[test]
+    fn mock_and_real_agree_on_the_frame() {
+        for cents in [1u64, 4_200, 12_345] {
+            assert_eq!(
+                crate::mock::zvt_mock::authorisation_frame_for_test(cents),
+                build_authorisation_frame(cents),
+                "cents={cents}"
+            );
+        }
     }
 }

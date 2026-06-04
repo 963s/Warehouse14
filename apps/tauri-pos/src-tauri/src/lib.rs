@@ -5,10 +5,13 @@
 // (env `WAREHOUSE14_MOCK_HARDWARE=1`). See memory.md §18 for the
 // architecture-of-record.
 
-mod commands;
-mod config;
-mod error;
-mod mock;
+// `pub` so the in-repo hardware-in-the-loop integration tests (src-tauri/tests/)
+// can drive the REAL command paths (commands::zvt / commands::tse) and match on
+// `error::HardwareError`. Widening visibility only — no runtime behaviour change.
+pub mod commands;
+pub mod config;
+pub mod error;
+pub mod mock;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
