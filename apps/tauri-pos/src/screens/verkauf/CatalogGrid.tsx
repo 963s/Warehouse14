@@ -31,6 +31,15 @@ export interface CatalogGridProps {
   onSelect: (product: ProductListRow) => void;
 }
 
+const METAL_FILTERS: ReadonlyArray<{ key: string; label: string }> = [
+  { key: 'ALL', label: 'Alle' },
+  { key: 'gold', label: 'Gold' },
+  { key: 'silver', label: 'Silber' },
+  { key: 'platinum', label: 'Platin' },
+  { key: 'palladium', label: 'Palladium' },
+  { key: 'other', label: 'Sonstiges' },
+];
+
 export function CatalogGrid({
   reservingProductIds,
   inCart,
@@ -39,6 +48,7 @@ export function CatalogGrid({
   const api = useApiClient();
   const [searchInput, setSearchInput] = useState<string>('');
   const [debouncedQ, setDebouncedQ] = useState<string>('');
+  const [metalFilter, setMetalFilter] = useState<string>('ALL');
 
   // 240ms debounce on the search input.
   const timer = useRef<number | null>(null);
@@ -64,7 +74,12 @@ export function CatalogGrid({
     refetchOnWindowFocus: false,
   });
 
-  const items = useMemo(() => q.data?.items ?? [], [q.data]);
+  const allItems = useMemo(() => q.data?.items ?? [], [q.data]);
+  const items = useMemo(() => {
+    if (metalFilter === 'ALL') return allItems;
+    if (metalFilter === 'other') return allItems.filter((i) => i.metal == null);
+    return allItems.filter((i) => i.metal === metalFilter);
+  }, [allItems, metalFilter]);
 
   return (
     <section
@@ -120,6 +135,35 @@ export function CatalogGrid({
             sucht…
           </span>
         )}
+      </div>
+
+      {/* Quick metal filters */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {METAL_FILTERS.map((f) => {
+          const active = f.key === metalFilter;
+          return (
+            <button
+              key={f.key}
+              type="button"
+              onClick={() => setMetalFilter(f.key)}
+              className="w14-smallcaps"
+              style={{
+                padding: '7px 16px',
+                fontSize: '0.84rem',
+                letterSpacing: '0.04em',
+                borderRadius: 999,
+                cursor: 'pointer',
+                border: `1px solid ${active ? 'var(--w14-gold)' : 'var(--w14-rule)'}`,
+                background: active ? 'var(--w14-gold)' : 'var(--w14-parchment-2)',
+                color: active ? '#fff' : 'var(--w14-ink-faded)',
+                fontWeight: active ? 600 : 500,
+                transition: 'background 140ms ease',
+              }}
+            >
+              {f.label}
+            </button>
+          );
+        })}
       </div>
 
       {/* Results */}
