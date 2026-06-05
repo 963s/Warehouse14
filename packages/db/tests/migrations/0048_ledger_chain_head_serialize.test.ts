@@ -93,7 +93,9 @@ describe('migration 0048_ledger_chain_head_serialize', () => {
     expect(results).toHaveLength(100);
 
     // GROUND TRUTH from the actual table — not the RETURNING values.
-    const [counts] = await migratorSql<{ total: string; distinct_prev: string; distinct_row: string }[]>`
+    const [counts] = await migratorSql<
+      { total: string; distinct_prev: string; distinct_row: string }[]
+    >`
       SELECT count(*)::text AS total,
              count(DISTINCT prev_hash)::text AS distinct_prev,
              count(DISTINCT row_hash)::text  AS distinct_row

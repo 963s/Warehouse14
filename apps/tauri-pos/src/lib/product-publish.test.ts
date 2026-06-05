@@ -34,7 +34,9 @@ describe('isPositivePrice', () => {
 
 describe('decidePublish', () => {
   it('publishes when requested and the price is positive', () => {
-    expect(decidePublish({ publishNow: true, listPriceEur: '150,00' })).toEqual({ kind: 'publish' });
+    expect(decidePublish({ publishNow: true, listPriceEur: '150,00' })).toEqual({
+      kind: 'publish',
+    });
   });
 
   it('keeps a draft when publish is not requested', () => {
