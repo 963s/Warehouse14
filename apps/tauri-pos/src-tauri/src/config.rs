@@ -46,6 +46,19 @@ pub fn fiskaly_base_url() -> String {
 /// always to retry or skip.
 pub const DEFAULT_TCP_TIMEOUT_MS: u64 = 5_000;
 
+/// Read-timeout (ms) for the ZVT cardholder-interaction phase. Defaults to
+/// 75 s — a cardholder can take that long to enter a PIN. Overridable via
+/// `WAREHOUSE14_ZVT_READ_TIMEOUT_MS` (same env-config style as the mock/base-URL
+/// switches) so the HIL integration tests can exercise the timeout path against
+/// a deliberately-silent terminal without a 75 s wait. Production never sets it.
+pub fn zvt_read_timeout_ms() -> u64 {
+    std::env::var("WAREHOUSE14_ZVT_READ_TIMEOUT_MS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .filter(|&v| v > 0)
+        .unwrap_or(75_000)
+}
+
 /// Fiskaly HTTPS calls get a longer budget — the EU endpoint can take 4 s
 /// to issue a signature under load. 10 s leaves headroom without making
 /// the operator feel the wait beyond the spinner.

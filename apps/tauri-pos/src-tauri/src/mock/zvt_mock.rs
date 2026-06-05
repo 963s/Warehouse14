@@ -2,9 +2,20 @@
 //! fail-rate knob (`WAREHOUSE14_MOCK_FAIL_RATE`) lets us exercise the
 //! Bezahlen "Nochmal versuchen" / "Bar zahlen" recovery paths.
 
-use crate::commands::zvt::{ZvtEndpoint, ZvtResult};
-use crate::error::HwResult;
+use crate::commands::zvt::{
+    build_authorisation_frame, parse_auth_frame_amount, ZvtEndpoint, ZvtResult,
+};
+use crate::error::{HardwareError, HwResult};
 use crate::mock;
+
+/// Largest amount representable in the 6-byte (12 nibble) BCD amount field.
+const MAX_BCD_CENTS: u64 = 999_999_999_999;
+
+/// Expose the exact frame the mock would put on the wire, for the mock-vs-real
+/// parity unit test. It is — by construction — the canonical builder's output.
+pub fn authorisation_frame_for_test(amount_cents: u64) -> Vec<u8> {
+    build_authorisation_frame(amount_cents)
+}
 
 pub async fn check_connection(_endpoint: ZvtEndpoint) -> HwResult<bool> {
     mock::mock_delay(120).await;
@@ -12,6 +23,38 @@ pub async fn check_connection(_endpoint: ZvtEndpoint) -> HwResult<bool> {
 }
 
 pub async fn authorize_payment(_endpoint: ZvtEndpoint, amount_cents: u64) -> HwResult<ZvtResult> {
+    // NO FACADE: catch the SAME input errors a real terminal would BEFORE
+    // pretending to authorise. A real ZVT terminal rejects a 0 amount and
+    // cannot encode more than the 6-byte BCD amount field holds.
+    if amount_cents == 0 {
+        return Err(HardwareError::InvalidArgument(
+            "ZVT: Betrag 0 ist ungültig".into(),
+        ));
+    }
+    if amount_cents > MAX_BCD_CENTS {
+        return Err(HardwareError::InvalidArgument(format!(
+            "ZVT: Betrag {amount_cents} überschreitet das 6-Byte-BCD-Limit"
+        )));
+    }
+
+    // Actually BUILD the on-wire frame the real path would send, and validate
+    // it round-trips to this amount — so the mock exercises (and would surface
+    // a regression in) the real framing logic instead of blindly returning Ok.
+    let frame = build_authorisation_frame(amount_cents);
+    match parse_auth_frame_amount(&frame) {
+        Ok(decoded) if decoded == amount_cents => {}
+        Ok(decoded) => {
+            return Err(HardwareError::Device(format!(
+                "ZVT mock self-check: frame encodes {decoded}, expected {amount_cents}"
+            )));
+        }
+        Err(e) => {
+            return Err(HardwareError::Device(format!(
+                "ZVT mock self-check: built frame is not spec-valid: {e}"
+            )));
+        }
+    }
+
     // Realistic cardholder PIN-entry latency.
     mock::mock_delay(2_400).await;
 
