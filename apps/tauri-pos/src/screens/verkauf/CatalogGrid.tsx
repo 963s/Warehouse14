@@ -29,6 +29,12 @@ export interface CatalogGridProps {
   /** Set of product ids already in cart — render with subdued look. */
   inCart: ReadonlySet<string>;
   onSelect: (product: ProductListRow) => void;
+  /**
+   * Incremented by the parent after a sale finalizes and its dialog closes —
+   * refocuses the search input so the next scan/typing lands here. Ignored on
+   * the initial render (autoFocus handles first mount).
+   */
+  focusToken?: number;
 }
 
 const METAL_FILTERS: ReadonlyArray<{ key: string; label: string }> = [
@@ -44,11 +50,23 @@ export function CatalogGrid({
   reservingProductIds,
   inCart,
   onSelect,
+  focusToken,
 }: CatalogGridProps): JSX.Element {
   const api = useApiClient();
+  const searchRef = useRef<HTMLInputElement>(null);
   const [searchInput, setSearchInput] = useState<string>('');
   const [debouncedQ, setDebouncedQ] = useState<string>('');
   const [metalFilter, setMetalFilter] = useState<string>('ALL');
+
+  // P2: when the parent bumps `focusToken` (after a successful finalize closes
+  // the Bezahlen dialog), refocus + select the search so the next USB-scanner
+  // burst or keystroke lands here — no clicking required to start the next sale.
+  useEffect(() => {
+    if (focusToken && focusToken > 0) {
+      searchRef.current?.focus();
+      searchRef.current?.select();
+    }
+  }, [focusToken]);
 
   // 240ms debounce on the search input.
   const timer = useRef<number | null>(null);
@@ -107,6 +125,7 @@ export function CatalogGrid({
       >
         <MagnifierIcon size={20} tone="ink" />
         <input
+          ref={searchRef}
           type="text"
           value={searchInput}
           onChange={(ev) => setSearchInput(ev.target.value)}
