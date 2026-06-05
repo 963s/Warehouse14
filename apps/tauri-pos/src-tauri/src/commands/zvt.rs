@@ -185,52 +185,238 @@ fn build_reversal_frame(authorization_code: &str) -> Vec<u8> {
     frame
 }
 
-/// Parse the terminal's `04 0F` Completion APDU. We pull out the auth code,
-/// masked PAN, and brand from the TLV body.
-fn parse_authorisation_response(buf: &[u8]) -> HwResult<ZvtResult> {
-    if buf.len() < 4 {
+/// Parse the terminal's response APDU — spec-accurate to ZVT 13.13.
+///
+/// The authorisation result does NOT come back as a clean `[tag][len][val]`
+/// stream from a fixed offset. It arrives in a `04 0F` Status-Information (or
+/// `06 0F` Completion) whose data block is a **BMP stream** — each field is its
+/// 1-byte BMP id followed by a value encoded per the ZVT bitmap table:
+///   • result-code = BMP `0x27` (1 binary byte; `0x00` = approved)
+///   • masked PAN  = BMP `0x22` (LLVAR; packed BCD, nibble `0xE` = masked digit)
+///   • card-name / brand = BMP `0x8B` (LLVAR ASCII)
+///   • receipt-no  = BMP `0x87` (2-byte BCD) — the reversal reference
+///   • additional-text = BMP `0x3C` (LLLVAR)
+/// `06 1E` is an Abort (1-byte result-code); `80 00` is a bare positive ACK.
+/// Field formats/lengths transcribed from the ZVT bitmap table (ecrterm /
+/// ZVT 13.13) — see tests for the golden fixtures.
+pub fn parse_authorisation_response(buf: &[u8]) -> HwResult<ZvtResult> {
+    if buf.len() < 2 {
         return Err(HardwareError::Device(format!(
             "ZVT response too short: {}b",
             buf.len()
         )));
     }
-    // Status bytes are typically at offsets 4-5 in the response.
-    let success = buf.len() >= 6 && buf[4] == 0x00 && buf[5] == 0x00;
-    if !success {
-        return Ok(ZvtResult {
-            success: false,
-            authorization_code: None,
-            card_pan_masked: None,
-            card_brand: None,
-            receipt_text: None,
-            error_message: Some(format!(
-                "Terminal lehnte ab (status {:#04x} {:#04x})",
-                buf.get(4).copied().unwrap_or(0xFF),
-                buf.get(5).copied().unwrap_or(0xFF),
-            )),
-        });
+    match (buf[0], buf[1]) {
+        // Bare positive ACK. The Status-Information arrives in a SEPARATE
+        // message, so a single read that saw only the ACK has no result yet.
+        // (The full flow is ACK → 04 0F → 06 0F across reads — see the runbook
+        // Layer-2 note; the single-read command model is a real-hardware gap.)
+        (0x80, 0x00) => Err(HardwareError::Device(
+            "ZVT: nur positiver ACK (80 00) empfangen, noch keine Status-Information".into(),
+        )),
+        (0x84, n) => Err(HardwareError::Device(format!("ZVT: Terminal-NAK (84 {n:02X})"))),
+        // Abort APDU: [06 1E LEN result-code …].
+        (0x06, 0x1E) => Ok(decline_result(buf.get(3).copied().unwrap_or(0xFF))),
+        // Status-Information / Completion → walk the BMP block.
+        (0x04, 0x0F) | (0x06, 0x0F) => {
+            let data = bmp_block_after_length(buf)?;
+            let b = parse_bmp_block(data);
+            let code = b.result_code.ok_or_else(|| {
+                HardwareError::Device("ZVT 04 0F ohne Ergebnis-Code (BMP 0x27)".into())
+            })?;
+            if code != 0x00 {
+                let mut r = decline_result(code);
+                r.card_pan_masked = b.pan_masked.map(mask_to_last_four);
+                r.card_brand = b.brand;
+                return Ok(r);
+            }
+            Ok(ZvtResult {
+                success: true,
+                // Receipt-number is the value a reversal (06 30, BMP 0x87)
+                // references; fall back to the trace-number if absent.
+                authorization_code: b.receipt_no.or(b.trace_no),
+                card_pan_masked: b.pan_masked.map(mask_to_last_four),
+                card_brand: b.brand,
+                receipt_text: b.additional_text,
+                error_message: None,
+            })
+        }
+        (c, i) => Err(HardwareError::Device(format!(
+            "ZVT: unerwartete Antwort-APDU {c:02X} {i:02X}"
+        ))),
     }
+}
 
-    // Look for the well-known TLV tags; failure to find one isn't fatal —
-    // some terminals omit the brand for unbranded debit cards.
-    let auth_code = find_tlv(buf, 0x60).map(|v| hex_string(&v));
-    let pan = find_tlv(buf, 0x22)
-        .map(|v| {
-            // ZVT delivers masked PAN as ASCII digits + stars.
-            String::from_utf8_lossy(&v).into_owned()
-        })
-        .map(mask_to_last_four);
-    let brand = find_tlv(buf, 0x8A).and_then(|v| String::from_utf8(v).ok());
-    let receipt = find_tlv(buf, 0x3C).and_then(|v| String::from_utf8(v).ok());
+fn decline_result(code: u8) -> ZvtResult {
+    ZvtResult {
+        success: false,
+        authorization_code: None,
+        card_pan_masked: None,
+        card_brand: None,
+        receipt_text: None,
+        error_message: Some(format!(
+            "Terminal lehnte ab: {} (Code {code:#04X})",
+            zvt_result_message(code)
+        )),
+    }
+}
 
-    Ok(ZvtResult {
-        success: true,
-        authorization_code: auth_code,
-        card_pan_masked: pan,
-        card_brand: brand,
-        receipt_text: receipt,
-        error_message: None,
+/// Subset of the ZVT result-code table (BMP 0x27 / Abort result byte).
+fn zvt_result_message(code: u8) -> &'static str {
+    match code {
+        0x00 => "genehmigt",
+        0x05 => "Zahlung nicht möglich",
+        0x6C => "Abbruch",
+        0x6F => "Karte ungültig",
+        0x9C => "bitte Karte erneut vorlegen",
+        0xA0 => "Empfangsfehler",
+        _ => "Terminal-Fehler",
+    }
+}
+
+/// The BMP data block = the bytes after the APDU length field (1 byte, or `0xFF`
+/// followed by a 2-byte little-endian length, per ZVT).
+fn bmp_block_after_length(buf: &[u8]) -> HwResult<&[u8]> {
+    if buf.len() < 3 {
+        return Err(HardwareError::Device("ZVT APDU ohne Längenfeld".into()));
+    }
+    let start = if buf[2] == 0xFF {
+        if buf.len() < 5 {
+            return Err(HardwareError::Device(
+                "ZVT APDU: defektes 3-Byte-Längenfeld".into(),
+            ));
+        }
+        5
+    } else {
+        3
+    };
+    Ok(&buf[start..])
+}
+
+#[derive(Default)]
+struct ZvtBmps {
+    result_code: Option<u8>,
+    pan_masked: Option<String>,
+    brand: Option<String>,
+    receipt_no: Option<String>,
+    trace_no: Option<String>,
+    additional_text: Option<String>,
+}
+
+/// Walk a ZVT BMP data block, collecting the fields the POS needs. Stops at the
+/// first BMP id whose length it cannot determine (returns what it gathered).
+fn parse_bmp_block(mut data: &[u8]) -> ZvtBmps {
+    let mut out = ZvtBmps::default();
+    while let Some((id, val, consumed)) = next_bmp(data) {
+        match id {
+            0x27 => out.result_code = val.first().copied(),
+            0x22 => out.pan_masked = Some(decode_masked_pan(val)),
+            0x8B => out.brand = String::from_utf8(val.to_vec()).ok(),
+            0x87 => out.receipt_no = Some(bcd_digits(val)),
+            0x0B => out.trace_no = Some(bcd_digits(val)),
+            0x3C => out.additional_text = String::from_utf8(val.to_vec()).ok(),
+            _ => {}
+        }
+        data = &data[consumed..];
+    }
+    out
+}
+
+/// Per-BMP wire format from the ZVT bitmap table (fixed length in bytes, the
+/// `Fx Fy`-prefixed LLVAR/LLLVAR, or the `0x06` TLV container).
+enum BmpFmt {
+    Fixed(usize),
+    Llvar,
+    Lllvar,
+    Tlv,
+}
+
+fn bmp_format(id: u8) -> Option<BmpFmt> {
+    Some(match id {
+        0x01 | 0x02 | 0x03 | 0x05 | 0x19 | 0x27 | 0x8A | 0x8C | 0xA0 | 0xD0 | 0xD2 | 0xD3 => {
+            BmpFmt::Fixed(1)
+        }
+        0x0D | 0x0E | 0x17 | 0x3A | 0x49 | 0x87 => BmpFmt::Fixed(2),
+        0x0B | 0x0C | 0x37 | 0x88 | 0x3D | 0xAA => BmpFmt::Fixed(3),
+        0x29 => BmpFmt::Fixed(4),
+        0xBA => BmpFmt::Fixed(5),
+        0x3B | 0xEB => BmpFmt::Fixed(8),
+        0x2A => BmpFmt::Fixed(15),
+        0x04 => BmpFmt::Fixed(6),
+        0x22 | 0x23 | 0x2D | 0x8B | 0xA7 | 0xD1 | 0xE1..=0xE8 | 0xF1..=0xF9 => BmpFmt::Llvar,
+        0x24 | 0x2E | 0x3C | 0x60 | 0x92 | 0x9A | 0xAF => BmpFmt::Lllvar,
+        0x06 => BmpFmt::Tlv,
+        _ => return None,
     })
+}
+
+/// Read one BMP: `(id, value_bytes, total_bytes_consumed)`, or `None` if the id
+/// is unknown (length undeterminable) or the field is truncated.
+fn next_bmp(data: &[u8]) -> Option<(u8, &[u8], usize)> {
+    let id = *data.first()?;
+    let rest = &data[1..];
+    match bmp_format(id)? {
+        BmpFmt::Fixed(n) => (rest.len() >= n).then(|| (id, &rest[..n], 1 + n)),
+        BmpFmt::Llvar => read_lvar(id, rest, 2),
+        BmpFmt::Lllvar => read_lvar(id, rest, 3),
+        BmpFmt::Tlv => {
+            // ZVT length: 1 byte, or 0xFF + 2-byte little-endian.
+            let (vstart, vlen) = match *rest.first()? {
+                0xFF => (
+                    3usize,
+                    u16::from_le_bytes([*rest.get(1)?, *rest.get(2)?]) as usize,
+                ),
+                n => (1usize, n as usize),
+            };
+            (rest.len() >= vstart + vlen).then(|| (id, &rest[vstart..vstart + vlen], 1 + vstart + vlen))
+        }
+    }
+}
+
+/// Read an LLVAR (`ll=2`) / LLLVAR (`ll=3`): `ll` length bytes each encoded
+/// `0xF0 | digit` (ZVT "Fx Fy"), then that many VALUE bytes.
+fn read_lvar(id: u8, rest: &[u8], ll: usize) -> Option<(u8, &[u8], usize)> {
+    if rest.len() < ll {
+        return None;
+    }
+    let mut len = 0usize;
+    for &b in &rest[..ll] {
+        if !(0xF0..=0xF9).contains(&b) {
+            return None;
+        }
+        len = len * 10 + (b & 0x0F) as usize;
+    }
+    (rest.len() >= ll + len).then(|| (id, &rest[ll..ll + len], 1 + ll + len))
+}
+
+/// Decode a packed-BCD card number where nibble `0xE` marks a masked digit and
+/// `0xF` is odd-length padding — e.g. → "457302******1234".
+fn decode_masked_pan(val: &[u8]) -> String {
+    let mut s = String::with_capacity(val.len() * 2);
+    for &b in val {
+        for nib in [b >> 4, b & 0x0F] {
+            match nib {
+                0x0..=0x9 => s.push((b'0' + nib) as char),
+                0xE => s.push('*'),
+                0xF => {} // padding
+                _ => s.push('?'),
+            }
+        }
+    }
+    s
+}
+
+/// Decode packed BCD into its digit string (`0xF` padding skipped).
+fn bcd_digits(val: &[u8]) -> String {
+    let mut s = String::with_capacity(val.len() * 2);
+    for &b in val {
+        for nib in [b >> 4, b & 0x0F] {
+            if nib <= 9 {
+                s.push((b'0' + nib) as char);
+            }
+        }
+    }
+    s
 }
 
 fn bcd_amount(cents: u64) -> Vec<u8> {
@@ -251,24 +437,6 @@ fn bcd_from_str(s: &str) -> Vec<u8> {
     out
 }
 
-/// Find a TLV(tag, ...) sequence in the payload. Returns the value bytes
-/// or `None` if absent. Naive scan — fine for our small APDUs.
-fn find_tlv(buf: &[u8], tag: u8) -> Option<Vec<u8>> {
-    let mut i = 3; // skip CLASS/INS/LENGTH
-    while i + 2 < buf.len() {
-        let t = buf[i];
-        let len = buf[i + 1] as usize;
-        if i + 2 + len > buf.len() {
-            return None;
-        }
-        if t == tag {
-            return Some(buf[i + 2..i + 2 + len].to_vec());
-        }
-        i += 2 + len;
-    }
-    None
-}
-
 /// CRC-CCITT-16 (XModem polynomial 0x1021), seed 0x0000. `pub` for HIL tests.
 pub fn crc_ccitt(data: &[u8]) -> u16 {
     let mut crc: u16 = 0x0000;
@@ -283,10 +451,6 @@ pub fn crc_ccitt(data: &[u8]) -> u16 {
         }
     }
     crc
-}
-
-fn hex_string(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02X}")).collect()
 }
 
 /// Reduce `1234********5678` → `****5678`. PCI: the full PAN must never
@@ -412,5 +576,90 @@ mod tests {
                 "cents={cents}"
             );
         }
+    }
+
+    // ── Response-parser golden fixtures ─────────────────────────────────────
+    // Spec-accurate ZVT 04 0F / 06 1E / 80 00 APDUs hand-transcribed from the
+    // ZVT 13.13 bitmap table (cross-checked against the ecrterm reference impl:
+    // result-code BMP 0x27 = 1 byte; amount 0x04 = 6 BCD; currency 0x49 = 2 BCD;
+    // trace 0x0B = 3 BCD; receipt-no 0x87 = 2 BCD; card-type 0x8A = 1 byte;
+    // card-name 0x8B = LLVAR; PAN 0x22 = LLVAR packed-BCD with 0xE = masked;
+    // additional-text 0x3C = LLLVAR). These are NOT shaped to the parser — they
+    // are the bytes a spec-conformant terminal emits.
+
+    /// Approved authorisation with masked PAN + brand + receipt text.
+    const APPROVED_0F: &[u8] = &[
+        0x04, 0x0F, 0x35, // Status-Information APDU; 53-byte BMP block
+        0x27, 0x00, // BMP 27 result-code = 00 (approved)
+        0x04, 0x00, 0x00, 0x00, 0x01, 0x23, 0x45, // BMP 04 amount 123.45 (6 BCD)
+        0x49, 0x09, 0x78, // BMP 49 currency EUR 978 (2 BCD)
+        0x0B, 0x00, 0x12, 0x34, // BMP 0B trace-number (3 BCD)
+        0x87, 0x00, 0x42, // BMP 87 receipt-number 0042 (2 BCD) — reversal ref
+        0x8A, 0x05, // BMP 8A card-type id
+        0x8B, 0xF0, 0xF4, 0x56, 0x49, 0x53, 0x41, // BMP 8B card-name "VISA" (LLVAR, len 4)
+        0x22, 0xF0, 0xF8, 0x45, 0x73, 0x02, 0xEE, 0xEE, 0xEE, 0x12,
+        0x34, // BMP 22 PAN 457302******1234 (LLVAR, len 8; 0xE=masked)
+        0x3C, 0xF0, 0xF1, 0xF0, 0x5A, 0x61, 0x68, 0x6C, 0x75, 0x6E, 0x67, 0x20, 0x4F,
+        0x4B, // BMP 3C additional-text "Zahlung OK" (LLLVAR, len 10)
+    ];
+
+    /// Declined authorisation: result-code 0x6C (Abbruch) + amount.
+    const DECLINED_0F: &[u8] = &[
+        0x04, 0x0F, 0x09, // 9-byte BMP block
+        0x27, 0x6C, // BMP 27 result-code = 6C (declined)
+        0x04, 0x00, 0x00, 0x00, 0x00, 0x12, 0x34, // BMP 04 amount (6 BCD)
+    ];
+
+    /// Abort APDU 06 1E with result-code 0x6F (Karte ungültig).
+    const ABORT_1E: &[u8] = &[0x06, 0x1E, 0x01, 0x6F];
+
+    #[test]
+    fn parses_approved_status_information() {
+        let r = parse_authorisation_response(APPROVED_0F).expect("approved parses");
+        assert!(r.success);
+        assert_eq!(r.authorization_code.as_deref(), Some("0042")); // receipt-no
+        assert_eq!(r.card_pan_masked.as_deref(), Some("****1234")); // last 4 only
+        assert_eq!(r.card_brand.as_deref(), Some("VISA"));
+        assert_eq!(r.receipt_text.as_deref(), Some("Zahlung OK"));
+    }
+
+    #[test]
+    fn parses_declined_status_information() {
+        let r = parse_authorisation_response(DECLINED_0F).expect("decline is Ok(success=false)");
+        assert!(!r.success);
+        let msg = r.error_message.unwrap();
+        assert!(msg.contains("0x6C"), "{msg}");
+    }
+
+    #[test]
+    fn parses_abort_apdu() {
+        let r = parse_authorisation_response(ABORT_1E).expect("abort is Ok(success=false)");
+        assert!(!r.success);
+        assert!(r.error_message.unwrap().contains("ungültig"));
+    }
+
+    #[test]
+    fn bare_ack_is_not_a_result() {
+        // 80 00 = positive ACK only; the Status-Information comes separately.
+        let err = parse_authorisation_response(&[0x80, 0x00]).unwrap_err();
+        assert!(matches!(err, HardwareError::Device(_)));
+    }
+
+    #[test]
+    fn llvar_length_uses_value_bytes_not_digits() {
+        // BMP 0x8B "MAESTRO" (7 chars) → length F0 F7, then 7 ASCII bytes.
+        let frame = [
+            0x04, 0x0F, 0x0C, 0x27, 0x00, 0x8B, 0xF0, 0xF7, b'M', b'A', b'E', b'S', b'T', b'R',
+            b'O',
+        ];
+        let r = parse_authorisation_response(&frame).unwrap();
+        assert_eq!(r.card_brand.as_deref(), Some("MAESTRO"));
+    }
+
+    #[test]
+    fn masked_pan_skips_f_padding_for_odd_digit_counts() {
+        // 5 digits "12345" packed-BCD with trailing 0xF padding → nibbles
+        // 1 2 3 4 5 F → "12345"; last-four masking keeps the real digits.
+        assert_eq!(decode_masked_pan(&[0x12, 0x34, 0x5F]), "12345");
     }
 }

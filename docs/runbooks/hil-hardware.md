@@ -39,12 +39,34 @@ Point the app at the emulator via the same env switches; **mock mode OFF**.
 - In the Gerätemanager set the thermal printer IP to the emulator host, port `9100`.
 
 ### ZVT card terminal — `panda-zvt-simulator`
-- Emulator: a ZVT 1.10 TCP simulator on `:20007` with REST error injection
-  (decline / timeout / partial-frame), e.g. <https://github.com/yo-no/zvt> tooling
-  or the vendor's PA/ZVT test simulator.
+- Emulator: a ZVT 1.10/13.13 TCP simulator on `:20007` with REST error injection
+  (decline / timeout / partial-frame), e.g. the panda-zvt-simulator from
+  <https://github.com/kaplanerkan/kotlin-zvt-library> ("same binary responses as a
+  real CCV A920") or the vendor's PA/ZVT test simulator.
 - Set the terminal IP/port in the Hardware tab to the simulator. Drive a sale;
   use the simulator's REST endpoint to inject a decline and confirm the POS shows
   "Nochmal versuchen / Bar zahlen", not a crash.
+
+#### ⚠️ Two ZVT items that still need a REAL terminal / simulator to confirm
+The response parser (`parse_authorisation_response`) is now spec-accurate to the
+ZVT 13.13 **BMP** encoding (result-code BMP 0x27, amount 0x04, PAN 0x22 LLVAR with
+`0xE`-masked nibbles, brand 0x8B, receipt-no 0x87, additional-text 0x3C), proven
+against golden fixtures transcribed from the ZVT bitmap table (cross-checked vs
+the `ecrterm` reference implementation). Two things the spec alone can't settle:
+
+1. **Multi-message flow / read loop.** A real terminal answers `06 01` with a
+   positive ACK (`80 00`) FIRST, then sends the `04 0F` Status-Information, then a
+   `06 0F` Completion — across SEPARATE TCP messages, each ACK'd. The current
+   command does a SINGLE `read()`; the parser correctly reports "only ACK
+   received" if that read returns `80 00`, but the command does not yet loop
+   ACK → status → completion. **Confirm against the simulator and, if needed,
+   extend the read loop** (Phase 1.5). This is a real gap, not a parser bug.
+2. **Exact PAN masking + the acquirer approval code.** We decode BMP 0x22 packed
+   BCD with `0xE` = masked and surface the receipt-number (0x87) as the
+   reversal/authorisation reference. Whether a given terminal puts the masked PAN
+   in BMP 0x22 vs the `0x06` TLV container, and where the 6-digit acquirer
+   approval code lands, varies by terminal — **verify the captured bytes from the
+   simulator/A920 before go-live.**
 
 ### TSE — Fiskaly test sandbox
 - Use Fiskaly's **test** TSS (not production): set

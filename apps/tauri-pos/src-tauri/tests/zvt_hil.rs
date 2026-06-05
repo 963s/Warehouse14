@@ -32,6 +32,7 @@ static SERIAL: AsyncMutex<()> = AsyncMutex::const_new(());
 enum Mode {
     Approved,
     Declined,
+    Abort,
     Eof,
     Hang,
 }
@@ -42,30 +43,63 @@ struct Captured {
     decoded: Result<u64, String>,
 }
 
-fn tlv(tag: u8, val: &[u8]) -> Vec<u8> {
-    let mut v = vec![tag, val.len() as u8];
+// ── Spec-accurate ZVT response builders (ZVT 13.13 bitmap table) ────────────
+// These emit what a real terminal sends — NOT bytes shaped to the parser.
+// LLVAR/LLLVAR length is the `Fx Fy` (digit-per-byte) prefix; value length is
+// in BYTES. BMP ids per the bitmap table: 27 result, 87 receipt-no, 8B
+// card-name, 22 PAN (packed BCD, 0xE = masked), 3C additional-text.
+
+fn llvar(tag: u8, val: &[u8]) -> Vec<u8> {
+    let l = val.len();
+    let mut v = vec![tag, 0xF0 | (l / 10) as u8, 0xF0 | (l % 10) as u8];
     v.extend_from_slice(val);
     v
 }
 
-/// A realistic approved `04 0F` completion the production parser can read:
-/// status `00 00` then TLVs 0x60 (auth code), 0x22 (masked PAN), 0x8A (brand),
-/// 0x3C (receipt). The four leading zero bytes are the status field that the
-/// parser reads at offsets 4-5 and walks past as empty TLVs.
-fn approved_response() -> Vec<u8> {
-    let mut payload = vec![0x00u8, 0x00, 0x00, 0x00];
-    payload.extend(tlv(0x60, &[0xAB, 0xCD, 0xEF]));
-    payload.extend(tlv(0x22, b"1234********5678"));
-    payload.extend(tlv(0x8A, b"VISA"));
-    payload.extend(tlv(0x3C, b"Zahlung genehmigt"));
-    let mut frame = vec![0x04, 0x0F, payload.len() as u8];
-    frame.extend(payload);
+fn lllvar(tag: u8, val: &[u8]) -> Vec<u8> {
+    let l = val.len();
+    let mut v = vec![
+        tag,
+        0xF0 | (l / 100) as u8,
+        0xF0 | (l / 10 % 10) as u8,
+        0xF0 | (l % 10) as u8,
+    ];
+    v.extend_from_slice(val);
+    v
+}
+
+/// Wrap BMP fields in a `04 0F` Status-Information APDU with the real length byte.
+fn status_info(bmps: &[Vec<u8>]) -> Vec<u8> {
+    let block: Vec<u8> = bmps.iter().flatten().copied().collect();
+    let mut frame = vec![0x04, 0x0F, block.len() as u8];
+    frame.extend(block);
     frame
 }
 
-/// Declined: a non-`00 00` status (here 0x05 0x6C).
+/// Approved auth with masked PAN (last 4 = 5678), brand VISA, receipt-no 0042,
+/// and a receipt-text line — each in its real BMP.
+fn approved_response() -> Vec<u8> {
+    status_info(&[
+        vec![0x27, 0x00],       // result-code = approved
+        vec![0x87, 0x00, 0x42], // receipt-number 0042 (BCD)
+        llvar(0x8B, b"VISA"),   // card-name / brand
+        // PAN as packed BCD, 0xE nibbles = masked → 457302******5678
+        llvar(0x22, &[0x45, 0x73, 0x02, 0xEE, 0xEE, 0xEE, 0x56, 0x78]),
+        lllvar(0x3C, b"Zahlung genehmigt"), // additional-text
+    ])
+}
+
+/// Declined: result-code BMP 0x27 = 0x6C (Abbruch).
 fn declined_response() -> Vec<u8> {
-    vec![0x04, 0x0F, 0x03, 0x00, 0x05, 0x6C]
+    status_info(&[
+        vec![0x27, 0x6C],
+        vec![0x04, 0x00, 0x00, 0x00, 0x00, 0x12, 0x34],
+    ])
+}
+
+/// Abort APDU 06 1E with result-code 0x6F (Karte ungültig).
+fn abort_response() -> Vec<u8> {
+    vec![0x06, 0x1E, 0x01, 0x6F]
 }
 
 async fn spawn_server(mode: Mode) -> (SocketAddr, Arc<Mutex<Option<Captured>>>) {
@@ -90,6 +124,10 @@ async fn spawn_server(mode: Mode) -> (SocketAddr, Arc<Mutex<Option<Captured>>>) 
                 }
                 Mode::Declined => {
                     let _ = sock.write_all(&declined_response()).await;
+                    let _ = sock.flush().await;
+                }
+                Mode::Abort => {
+                    let _ = sock.write_all(&abort_response()).await;
                     let _ = sock.flush().await;
                 }
                 Mode::Eof => {
@@ -122,12 +160,12 @@ async fn approval_sends_spec_correct_frame_and_parses_completion() {
         .await
         .expect("authorisation should resolve Ok");
 
-    // Parsed completion carries the terminal's data.
+    // Parsed completion carries the terminal's data, decoded from real BMPs.
     assert!(res.success, "expected approval, got {res:?}");
-    assert_eq!(res.authorization_code.as_deref(), Some("ABCDEF"));
-    assert_eq!(res.card_pan_masked.as_deref(), Some("****5678"));
-    assert_eq!(res.card_brand.as_deref(), Some("VISA"));
-    assert_eq!(res.receipt_text.as_deref(), Some("Zahlung genehmigt"));
+    assert_eq!(res.authorization_code.as_deref(), Some("0042")); // BMP 0x87 receipt-no
+    assert_eq!(res.card_pan_masked.as_deref(), Some("****5678")); // BMP 0x22, last 4 only
+    assert_eq!(res.card_brand.as_deref(), Some("VISA")); // BMP 0x8B
+    assert_eq!(res.receipt_text.as_deref(), Some("Zahlung genehmigt")); // BMP 0x3C
 
     // GROUND TRUTH: the server validated a spec-correct frame carrying 12345.
     let cap = captured
@@ -162,6 +200,20 @@ async fn decline_surfaces_a_clean_unsuccessful_result() {
     // The frame the terminal saw was still spec-correct.
     let cap = captured.lock().unwrap().take().expect("captured");
     assert_eq!(cap.decoded, Ok(4_200));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn abort_apdu_surfaces_a_clean_unsuccessful_result() {
+    let _g = SERIAL.lock().await;
+    std::env::set_var("WAREHOUSE14_MOCK_HARDWARE", "0");
+    std::env::set_var("WAREHOUSE14_ZVT_READ_TIMEOUT_MS", "5000");
+
+    let (addr, _cap) = spawn_server(Mode::Abort).await;
+    let res = zvt_authorize_payment(endpoint(addr), 700)
+        .await
+        .expect("an abort (06 1E) resolves to success=false, not Err");
+    assert!(!res.success);
+    assert!(res.error_message.unwrap().contains("ungültig"));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
