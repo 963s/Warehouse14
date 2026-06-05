@@ -36,4 +36,5 @@ Plus: harness boots (SUPERUSER + `check_function_bodies=off` mirrors prod) + psq
 - Roman's 4 doc templates (Briefpapier / Bewertung / Ankauf / Expertise) — Documents phase; tooling: pdfme / TipTap vs extend satori.
 
 ## Pre-go-live gate
-One **hardware validation session** on the real devices (card terminal + receipt/label printer + camera) to close the HIL quarantines before launch.
+- One **hardware validation session** on the real devices (card terminal + receipt/label printer + camera) to close the HIL quarantines before launch.
+- **Apple Notarization** (Developer ID + notarize, ~$99/yr) — **DEFERRED by Basel** (adhoc signing is fine for internal testing; fresh installs are the ordinary "unidentified developer" right-click→Open). Adopt before public go-live for a friction-free first launch. (Windows Authenticode/EV is a separate, pricier track if you also want to kill SmartScreen.)
