@@ -98,6 +98,8 @@ export interface BezahlenDialogProps {
   lines: readonly CartLine[];
   perLineMath: readonly LineMath[];
   totals: HeaderTotals;
+  /** Fired ONLY on the genuine finalize-success → "Neue Karte" close path. */
+  onFinalizeSuccess?: (() => void) | undefined;
 }
 
 export function BezahlenDialog({
@@ -106,6 +108,7 @@ export function BezahlenDialog({
   lines,
   perLineMath,
   totals: _totals,
+  onFinalizeSuccess,
 }: BezahlenDialogProps): JSX.Element | null {
   const api = useApiClient();
   const qc = useQueryClient();
@@ -853,9 +856,13 @@ export function BezahlenDialog({
   ]);
 
   const closeAfterFinalize = useCallback(() => {
+    // Genuine finalize-SUCCESS close only (the result phase's "Neue Karte" CTA).
+    // Cancel/Esc go through onClose directly; an error keeps the dialog open —
+    // so this fires exactly when a sale really completed.
+    if (finalized !== null) onFinalizeSuccess?.();
     clearCart();
     onClose();
-  }, [clearCart, onClose]);
+  }, [clearCart, finalized, onClose, onFinalizeSuccess]);
 
   // Submit dispatcher — picks CASH vs ZVT_CARD based on toggle.
   const dispatchSubmit = useCallback(() => {

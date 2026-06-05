@@ -26,6 +26,11 @@ import { Button, DiamondRule, MoneyAmount, ParchmentCard, RomanIndex } from '@wa
 
 import { type LineMath, computeLineMath, fromCents, sumHeader } from '../../lib/cart-math.js';
 import { isMoneyInput, normalizeDecimal } from '../../lib/decimal.js';
+import {
+  MIN_DISCOUNT_REASON_LEN,
+  discountReasonShortfall,
+  isDiscountReasonValid,
+} from '../../lib/discount-reason.js';
 import { TAX_TREATMENT_LABEL } from '../../lib/tax-treatment-label.js';
 import { type CartLine, useCartStore } from '../../state/cart-store.js';
 
@@ -41,6 +46,8 @@ export interface CartPanelProps {
   onClearCart: () => void;
   /** True if a clear-cart batch is in progress. */
   clearingCart: boolean;
+  /** Fired after a sale finalizes + the dialog closes (parent refocuses search). */
+  onAfterFinalize?: () => void;
 }
 
 export function CartPanel({
@@ -49,6 +56,7 @@ export function CartPanel({
   releasingProductIds,
   onClearCart,
   clearingCart,
+  onAfterFinalize,
 }: CartPanelProps): JSX.Element {
   const [bezahlenOpen, setBezahlenOpen] = useState<boolean>(false);
 
@@ -214,6 +222,7 @@ export function CartPanel({
         lines={lines}
         perLineMath={perLine.map((p) => p.math)}
         totals={header}
+        onFinalizeSuccess={onAfterFinalize}
       />
     </section>
   );
@@ -385,7 +394,9 @@ function DiscountEditor({ line, disabled }: { line: CartLine; disabled: boolean 
 
   const amountValid = isMoneyInput(amount);
   const positive = amountValid && Number(normalizeDecimal(amount)) > 0;
-  const reasonValid = reason.trim().length >= 3;
+  const reasonValid = isDiscountReasonValid(reason);
+  const reasonShortfall = discountReasonShortfall(reason);
+  const reasonTouched = reason.length > 0;
   const canApply = positive && reasonValid;
 
   if (!open) {
@@ -416,14 +427,15 @@ function DiscountEditor({ line, disabled }: { line: CartLine; disabled: boolean 
     );
   }
 
+  // Enlarged for the 21" touchscreen: taller hit area + ≥0.9rem text.
   const inputStyle: CSSProperties = {
-    padding: '5px 8px',
+    padding: '10px 12px',
     border: '1px solid var(--w14-ink-faded)',
     borderRadius: 'var(--w14-radius-button)',
     background: 'var(--w14-parchment)',
     color: 'var(--w14-ink)',
     fontFamily: 'var(--w14-font-body)',
-    fontSize: '0.82rem',
+    fontSize: '0.95rem',
   };
 
   return (
@@ -434,11 +446,11 @@ function DiscountEditor({ line, disabled }: { line: CartLine; disabled: boolean 
         gap: 6,
         alignItems: 'stretch',
         marginTop: 6,
-        padding: 8,
+        padding: 12,
         border: '1px solid var(--w14-rule)',
         borderRadius: 'var(--w14-radius-card)',
         background: 'var(--w14-parchment-2)',
-        minWidth: 200,
+        minWidth: 320,
       }}
     >
       <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -452,18 +464,39 @@ function DiscountEditor({ line, disabled }: { line: CartLine; disabled: boolean 
           style={{ ...inputStyle, flex: 1, textAlign: 'right', fontFamily: 'var(--w14-font-mono)' }}
         />
       </label>
-      <input
-        type="text"
-        value={reason}
-        onChange={(e) => setReason(e.target.value)}
-        placeholder="Begründung (Pflicht)"
-        style={inputStyle}
-      />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+        <input
+          type="text"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder={`Begründung (Pflicht, mind. ${MIN_DISCOUNT_REASON_LEN} Zeichen)`}
+          aria-invalid={reasonTouched && !reasonValid}
+          style={{
+            ...inputStyle,
+            border:
+              reasonTouched && !reasonValid ? '1px solid var(--w14-wax-red)' : inputStyle.border,
+          }}
+        />
+        {/* Live inline feedback — no more silently-disabled button. */}
+        <span
+          style={{
+            fontSize: '0.78rem',
+            color: reasonTouched && !reasonValid ? 'var(--w14-wax-red)' : 'var(--w14-ink-faded)',
+          }}
+        >
+          {reasonValid
+            ? 'Begründung ✓'
+            : reasonTouched
+              ? `Noch ${reasonShortfall} Zeichen (mind. ${MIN_DISCOUNT_REASON_LEN})`
+              : `Pflichtfeld — mind. ${MIN_DISCOUNT_REASON_LEN} Zeichen`}
+        </span>
+      </div>
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
         {line.discountEur && (
           <Button
             variant="ghost"
-            size="sm"
+            size="md"
+            style={{ minHeight: 48 }}
             onClick={() => {
               setLineDiscount(line.productId, null, '');
               setOpen(false);
@@ -472,12 +505,13 @@ function DiscountEditor({ line, disabled }: { line: CartLine; disabled: boolean 
             Entfernen
           </Button>
         )}
-        <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
+        <Button variant="ghost" size="md" style={{ minHeight: 48 }} onClick={() => setOpen(false)}>
           Abbrechen
         </Button>
         <Button
           variant="primary"
-          size="sm"
+          size="md"
+          style={{ minHeight: 48 }}
           disabled={!canApply}
           onClick={() => {
             setLineDiscount(line.productId, normalizeDecimal(amount), reason);

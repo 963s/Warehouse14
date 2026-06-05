@@ -114,6 +114,9 @@ function VerkaufFloor(): JSX.Element {
     () => new Set(),
   );
   const [clearingCart, setClearingCart] = useState<boolean>(false);
+  // P2: bumped after a successful finalize closes the Bezahlen dialog →
+  // CatalogGrid refocuses its search input so the next scan lands there.
+  const [searchFocusToken, setSearchFocusToken] = useState<number>(0);
 
   // Derived: which productIds are currently in the cart. Memoized so
   // CatalogGrid's `inCart` prop is referentially stable as long as
@@ -188,7 +191,9 @@ function VerkaufFloor(): JSX.Element {
         addToast({
           tone: 'info',
           title: 'Bereits in der Karte',
-          body: detail.sku,
+          // Unique inventory — one product = one physical piece (no quantity to
+          // raise). Tell the operator it is already reserved + where to find it.
+          body: `${detail.sku} — Einzelstück, bereits reserviert (rechts in der Karte).`,
         });
       } catch (err) {
         if (err instanceof ApiError && err.code === 'PRODUCT_NOT_RESERVABLE') {
@@ -343,6 +348,7 @@ function VerkaufFloor(): JSX.Element {
         reservingProductIds={reservingProductIds}
         inCart={inCart}
         onSelect={(p) => void onSelectProduct(p)}
+        focusToken={searchFocusToken}
       />
       <CartPanel
         lines={lines}
@@ -350,6 +356,12 @@ function VerkaufFloor(): JSX.Element {
         releasingProductIds={releasingProductIds}
         onClearCart={() => void onClearCart()}
         clearingCart={clearingCart}
+        onAfterFinalize={() => {
+          // Fires only on a genuine finalize-success → dialog close. Refocus the
+          // catalog search so the next scan starts the next sale immediately.
+          setSearchFocusToken((t) => t + 1);
+          addToast({ tone: 'info', title: 'Neue Karte bereit', body: 'weiter mit Scan' });
+        }}
       />
     </div>
   );
