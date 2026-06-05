@@ -47,26 +47,32 @@ Point the app at the emulator via the same env switches; **mock mode OFF**.
   use the simulator's REST endpoint to inject a decline and confirm the POS shows
   "Nochmal versuchen / Bar zahlen", not a crash.
 
-#### ⚠️ Two ZVT items that still need a REAL terminal / simulator to confirm
-The response parser (`parse_authorisation_response`) is now spec-accurate to the
-ZVT 13.13 **BMP** encoding (result-code BMP 0x27, amount 0x04, PAN 0x22 LLVAR with
-`0xE`-masked nibbles, brand 0x8B, receipt-no 0x87, additional-text 0x3C), proven
-against golden fixtures transcribed from the ZVT bitmap table (cross-checked vs
-the `ecrterm` reference implementation). Two things the spec alone can't settle:
+#### ✅ Implemented: the full multi-message authorisation conversation
+`zvt_authorize_payment` now drives the real ECR-side dialog (grounded in
+`ecrterm transmission/zvt.py` + `base_packets.py::handle_response`): after `06 01`
+it loops — `80 00` command-ACK (not re-ACK'd) → zero-or-more `04 FF` intermediate-
+status → `04 0F` Status-Information (result captured) → `06 0F` Completion (or
+`06 1E` Abort), sending an `80 00` ECR-ACK after every terminal message except the
+command-ACK. Each message gets the full read window, so an "insert card / PIN"
+wait can't trip a premature timeout. Proven by the HIL suite (approved full-flow,
+declined, abort, mid-flow timeout, peer-drop). The response parser is spec-accurate
+to the ZVT 13.13 BMP encoding (result BMP 0x27, amount 0x04, PAN 0x22 LLVAR with
+`0xE`-masked nibbles, brand 0x8B, receipt-no 0x87, additional-text 0x3C).
 
-1. **Multi-message flow / read loop.** A real terminal answers `06 01` with a
-   positive ACK (`80 00`) FIRST, then sends the `04 0F` Status-Information, then a
-   `06 0F` Completion — across SEPARATE TCP messages, each ACK'd. The current
-   command does a SINGLE `read()`; the parser correctly reports "only ACK
-   received" if that read returns `80 00`, but the command does not yet loop
-   ACK → status → completion. **Confirm against the simulator and, if needed,
-   extend the read loop** (Phase 1.5). This is a real gap, not a parser bug.
-2. **Exact PAN masking + the acquirer approval code.** We decode BMP 0x22 packed
+#### ⚠️ Still needs a REAL terminal / simulator before go-live (NOT faked)
+1. **Exact PAN masking + the acquirer approval code.** We decode BMP 0x22 packed
    BCD with `0xE` = masked and surface the receipt-number (0x87) as the
    reversal/authorisation reference. Whether a given terminal puts the masked PAN
    in BMP 0x22 vs the `0x06` TLV container, and where the 6-digit acquirer
-   approval code lands, varies by terminal — **verify the captured bytes from the
-   simulator/A920 before go-live.**
+   approval code lands, varies by terminal — **capture the bytes from the
+   simulator/A920 and confirm the field locations.**
+2. **Real timing + the intermediate-status set.** Our HIL emits a minimal length-0
+   `04 FF`; real terminals send a sequence of intermediate statuses with content
+   ("Bitte Karte", "PIN", "bitte warten") and real inter-message latency. The
+   conversation logic (ACK-each, capture-on-`04 0F`, end-on-`06 0F`/`06 1E`) is
+   spec-grounded, but **observe a real run** to confirm the status cadence and
+   that 75 s/message is the right cardholder window. The `MAX_MESSAGES=64` guard
+   should comfortably cover a real flow — verify.
 
 ### TSE — Fiskaly test sandbox
 - Use Fiskaly's **test** TSS (not production): set

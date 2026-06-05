@@ -85,19 +85,99 @@ pub async fn zvt_authorize_payment(
     stream.write_all(&frame).await?;
     stream.flush().await?;
 
-    // Cardholder interaction can take up to 60 s — use a deliberately
-    // looser read timeout here (separate from the 5 s connect timeout).
-    // Default 75 s; `WAREHOUSE14_ZVT_READ_TIMEOUT_MS` lets the HIL tests shrink it.
-    let mut buf = vec![0u8; 1024];
-    let n = timeout(
-        Duration::from_millis(config::zvt_read_timeout_ms()),
-        stream.read(&mut buf),
-    )
-    .await
-    .map_err(HardwareError::from)??;
-    buf.truncate(n);
+    run_authorisation_conversation(&mut stream).await
+}
 
-    parse_authorisation_response(&buf)
+/// Drive the ECR side of the ZVT authorisation conversation after `06 01` was
+/// sent. Grounded in ZVT 13.13 via ecrterm (`transmission/zvt.py` +
+/// `packets/base_packets.py::Packet.handle_response`): the terminal first ACKs
+/// the command with `80 00`, then streams zero-or-more `04 FF` intermediate-
+/// status messages, the `04 0F` Status-Information (the result), and finally a
+/// `06 0F` Completion (or a `06 1E` Abort). The ECR sends an `80 00` ACK after
+/// every terminal message EXCEPT the terminal's own `80 00`. The result is
+/// captured from the `04 0F`; the conversation ends on Completion / Abort / NAK.
+/// Each message gets the full (cardholder) read window, so an intermediate
+/// "insert card / enter PIN" wait cannot trip a premature timeout.
+async fn run_authorisation_conversation(stream: &mut TcpStream) -> HwResult<ZvtResult> {
+    const ECR_ACK: [u8; 3] = [0x80, 0x00, 0x00];
+    const MAX_MESSAGES: usize = 64; // guard against an endless intermediate-status stream
+
+    let timeout_ms = config::zvt_read_timeout_ms();
+    let mut result: Option<ZvtResult> = None;
+
+    for _ in 0..MAX_MESSAGES {
+        let apdu = read_apdu(stream, timeout_ms).await?;
+        match (apdu[0], apdu[1]) {
+            // Terminal ACK of our 06 01 — the ECR does NOT ACK an ACK.
+            (0x80, 0x00) => {}
+            // Negative ACK / NAK ends the conversation with an error.
+            (0x84, n) => {
+                return Err(HardwareError::Device(format!("ZVT: Terminal-NAK (84 {n:02X})")))
+            }
+            // Intermediate status ("Bitte Karte", "PIN" …): ACK and keep waiting.
+            (0x04, 0xFF) => send_ack(stream, &ECR_ACK).await?,
+            // Status-Information: the result. Capture it, ACK, keep reading for Completion.
+            (0x04, 0x0F) => {
+                result = Some(parse_authorisation_response(&apdu)?);
+                send_ack(stream, &ECR_ACK).await?;
+            }
+            // Completion: ACK and finish — return the captured Status result.
+            (0x06, 0x0F) => {
+                send_ack(stream, &ECR_ACK).await?;
+                return result.ok_or_else(|| {
+                    HardwareError::Device("ZVT: Completion ohne vorherige Status-Information".into())
+                });
+            }
+            // Abort: ACK and finish with an unsuccessful result.
+            (0x06, 0x1E) => {
+                send_ack(stream, &ECR_ACK).await?;
+                return parse_authorisation_response(&apdu);
+            }
+            (c, i) => {
+                return Err(HardwareError::Device(format!(
+                    "ZVT: unerwartete APDU {c:02X} {i:02X} im Autorisierungs-Dialog"
+                )))
+            }
+        }
+    }
+    Err(HardwareError::Device(
+        "ZVT: zu viele Zwischenmeldungen ohne Abschluss".into(),
+    ))
+}
+
+async fn send_ack(stream: &mut TcpStream, payload: &[u8]) -> HwResult<()> {
+    stream.write_all(payload).await?;
+    stream.flush().await?;
+    Ok(())
+}
+
+/// Read exactly one ZVT APDU `[CLASS, INS, LEN, …data…]` (LEN is 1 byte, or
+/// `0xFF` + 2-byte little-endian extended length) within the per-message
+/// timeout window. Returns a clean `Timeout` on a silent terminal.
+async fn read_apdu(stream: &mut TcpStream, timeout_ms: u64) -> HwResult<Vec<u8>> {
+    let read = async {
+        let mut head = [0u8; 3];
+        stream.read_exact(&mut head).await?;
+        let mut apdu = Vec::with_capacity(3 + head[2] as usize);
+        apdu.extend_from_slice(&head);
+        let data_len = if head[2] == 0xFF {
+            let mut ext = [0u8; 2];
+            stream.read_exact(&mut ext).await?;
+            apdu.extend_from_slice(&ext);
+            u16::from_le_bytes(ext) as usize
+        } else {
+            head[2] as usize
+        };
+        if data_len > 0 {
+            let mut data = vec![0u8; data_len];
+            stream.read_exact(&mut data).await?;
+            apdu.extend_from_slice(&data);
+        }
+        Ok::<Vec<u8>, HardwareError>(apdu)
+    };
+    timeout(Duration::from_millis(timeout_ms), read)
+        .await
+        .map_err(HardwareError::from)?
 }
 
 /// Reverse a previously-authorized payment (e.g. operator pressed "Storno"

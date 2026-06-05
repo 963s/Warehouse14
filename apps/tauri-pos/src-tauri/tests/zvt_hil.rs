@@ -7,8 +7,11 @@
 //!   - the 0x04 amount TLV is a 6-byte BCD == the cents we asked to charge
 //!   - the trailing CRC-CCITT is valid over the frame body
 //!
-//! and only then returns a realistic `04 0F` completion (approved/declined) or
-//! exercises the error paths (peer EOF, silent hang → read timeout).
+//! and then conducts the FULL ZVT authorisation conversation (grounded in
+//! ecrterm / ZVT 13.13): `80 00` command-ACK → `04 FF` intermediate-status →
+//! `04 0F` Status-Information → `06 0F` Completion (or `06 1E` Abort), reading
+//! the ECR's `80 00` ACK after each terminal message. Error paths: a peer that
+//! drops after the ACK, and a terminal that goes silent mid-flow (→ timeout).
 //!
 //! Env (`WAREHOUSE14_MOCK_HARDWARE`, `WAREHOUSE14_ZVT_READ_TIMEOUT_MS`) is
 //! process-global, so every test holds `SERIAL` for its whole body.
@@ -33,8 +36,10 @@ enum Mode {
     Approved,
     Declined,
     Abort,
-    Eof,
-    Hang,
+    /// Drop the connection right after ACKing the command.
+    EofAfterAck,
+    /// ACK + one intermediate status, then go silent (→ ECR read timeout).
+    TimeoutMidFlow,
 }
 
 /// What the server actually received off the wire, for ground-truth assertions.
@@ -102,6 +107,36 @@ fn abort_response() -> Vec<u8> {
     vec![0x06, 0x1E, 0x01, 0x6F]
 }
 
+/// Read the ECR's `06 01` request frame: header [06 01 LEN] + LEN payload bytes
+/// + 2 CRC bytes.
+async fn read_request(sock: &mut tokio::net::TcpStream) -> Vec<u8> {
+    let mut head = [0u8; 3];
+    if sock.read_exact(&mut head).await.is_err() {
+        return Vec::new();
+    }
+    let mut rest = vec![0u8; head[2] as usize + 2]; // payload + CRC
+    let _ = sock.read_exact(&mut rest).await;
+    let mut frame = head.to_vec();
+    frame.extend_from_slice(&rest);
+    frame
+}
+
+/// Consume one ECR `80 00 00` ACK (best-effort — the final one may race teardown).
+async fn read_ecr_ack(sock: &mut tokio::net::TcpStream) {
+    let mut ack = [0u8; 3];
+    let _ = sock.read_exact(&mut ack).await;
+}
+
+async fn send(sock: &mut tokio::net::TcpStream, bytes: &[u8]) {
+    let _ = sock.write_all(bytes).await;
+    let _ = sock.flush().await;
+}
+
+// Minimal terminal APDUs: 04 FF intermediate-status (len 0) and 06 0F Completion.
+const INTERMEDIATE_STATUS: &[u8] = &[0x04, 0xFF, 0x00];
+const COMPLETION: &[u8] = &[0x06, 0x0F, 0x00];
+const COMMAND_ACK: &[u8] = &[0x80, 0x00, 0x00];
+
 async fn spawn_server(mode: Mode) -> (SocketAddr, Arc<Mutex<Option<Captured>>>) {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -109,32 +144,44 @@ async fn spawn_server(mode: Mode) -> (SocketAddr, Arc<Mutex<Option<Captured>>>) 
     let cap = captured.clone();
     tokio::spawn(async move {
         if let Ok((mut sock, _)) = listener.accept().await {
-            let mut buf = vec![0u8; 512];
-            let n = sock.read(&mut buf).await.unwrap_or(0);
-            buf.truncate(n);
-            let decoded = parse_auth_frame_amount(&buf);
-            *cap.lock().unwrap() = Some(Captured {
-                frame: buf,
-                decoded,
-            });
+            // 1. Receive + validate the 06 01 authorisation request.
+            let frame = read_request(&mut sock).await;
+            let decoded = parse_auth_frame_amount(&frame);
+            *cap.lock().unwrap() = Some(Captured { frame, decoded });
+
+            // 2. ACK the command (terminal → ECR; the ECR does NOT ACK this).
+            send(&mut sock, COMMAND_ACK).await;
+
+            // 3. Conduct the rest of the conversation; read the ECR ACK that
+            //    follows each terminal message.
             match mode {
                 Mode::Approved => {
-                    let _ = sock.write_all(&approved_response()).await;
-                    let _ = sock.flush().await;
+                    send(&mut sock, INTERMEDIATE_STATUS).await;
+                    read_ecr_ack(&mut sock).await;
+                    send(&mut sock, &approved_response()).await; // 04 0F status
+                    read_ecr_ack(&mut sock).await;
+                    send(&mut sock, COMPLETION).await; // 06 0F
+                    read_ecr_ack(&mut sock).await;
                 }
                 Mode::Declined => {
-                    let _ = sock.write_all(&declined_response()).await;
-                    let _ = sock.flush().await;
+                    send(&mut sock, &declined_response()).await; // 04 0F status (6C)
+                    read_ecr_ack(&mut sock).await;
+                    send(&mut sock, COMPLETION).await;
+                    read_ecr_ack(&mut sock).await;
                 }
                 Mode::Abort => {
-                    let _ = sock.write_all(&abort_response()).await;
-                    let _ = sock.flush().await;
+                    send(&mut sock, INTERMEDIATE_STATUS).await;
+                    read_ecr_ack(&mut sock).await;
+                    send(&mut sock, &abort_response()).await; // 06 1E
+                    read_ecr_ack(&mut sock).await;
                 }
-                Mode::Eof => {
-                    drop(sock); // close without answering → peer reads 0 bytes
+                Mode::TimeoutMidFlow => {
+                    send(&mut sock, INTERMEDIATE_STATUS).await;
+                    read_ecr_ack(&mut sock).await;
+                    tokio::time::sleep(Duration::from_secs(30)).await; // never send the status
                 }
-                Mode::Hang => {
-                    tokio::time::sleep(Duration::from_secs(30)).await; // never answer
+                Mode::EofAfterAck => {
+                    drop(sock); // close right after the command-ACK
                 }
             }
         }
@@ -217,18 +264,23 @@ async fn abort_apdu_surfaces_a_clean_unsuccessful_result() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn peer_eof_surfaces_a_device_error_without_panic() {
+async fn peer_drop_after_ack_surfaces_a_clean_error_without_panic() {
     let _g = SERIAL.lock().await;
     std::env::set_var("WAREHOUSE14_MOCK_HARDWARE", "0");
     std::env::set_var("WAREHOUSE14_ZVT_READ_TIMEOUT_MS", "5000");
 
-    let (addr, _cap) = spawn_server(Mode::Eof).await;
+    // Terminal ACKs the command then drops → the next APDU read hits EOF.
+    let (addr, _cap) = spawn_server(Mode::EofAfterAck).await;
     let err = zvt_authorize_payment(endpoint(addr), 100)
         .await
-        .expect_err("a peer that closes must surface an error, not Ok");
+        .expect_err("a peer that closes mid-conversation must surface an error, not Ok");
+    // A clean surfaced error (EOF → LocalIo/Network), never Timeout, never panic.
     assert!(
-        matches!(err, HardwareError::Device(_)),
-        "expected Device(too short), got {err:?}"
+        matches!(
+            err,
+            HardwareError::LocalIo(_) | HardwareError::Network(_) | HardwareError::Device(_)
+        ),
+        "expected a clean connection error, got {err:?}"
     );
 }
 
@@ -239,11 +291,11 @@ async fn silent_terminal_times_out_cleanly() {
     // Shrink the 75 s cardholder read-timeout so the hang path is provable fast.
     std::env::set_var("WAREHOUSE14_ZVT_READ_TIMEOUT_MS", "700");
 
-    let (addr, _cap) = spawn_server(Mode::Hang).await;
+    let (addr, _cap) = spawn_server(Mode::TimeoutMidFlow).await;
     let start = Instant::now();
     let err = zvt_authorize_payment(endpoint(addr), 100)
         .await
-        .expect_err("a silent terminal must time out, not hang forever");
+        .expect_err("a terminal that goes silent mid-flow must time out, not hang forever");
     let elapsed = start.elapsed();
 
     assert!(
