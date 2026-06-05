@@ -136,12 +136,24 @@ machine:
 | macOS Intel | `Warehouse14.POS_<ver>_x64.dmg` |
 | Windows 10/11 (x64) | `Warehouse14.POS_<ver>_x64-setup.exe` |
 
-**macOS first-launch:** the build is not Apple-signed
-(see `SECURITY.md` for rationale). Strip the Gatekeeper quarantine
-flag once after install:
-```
-sudo xattr -dr com.apple.quarantine "/Applications/Warehouse14 POS.app"
-```
+**macOS first-launch:** the build is ad-hoc–codesigned but not Apple
+Developer-ID–signed (see `SECURITY.md` for the rationale). macOS shows a
+one-time **"unidentified developer"** prompt — **not** "is damaged and
+can't be opened": the bundle carries an internally consistent ad-hoc
+signature (`_CodeSignature/CodeResources` sealed), so Gatekeeper treats
+it as unsigned-but-intact rather than tampered. Clear the prompt once,
+either way:
+
+- **Recommended (no terminal):** in Finder, right-click (or Control-click)
+  **Warehouse14 POS.app** → **Open** → confirm **Open** in the dialog.
+  macOS remembers the approval for every later launch.
+- **Or** strip the Gatekeeper quarantine flag from a terminal:
+  ```
+  sudo xattr -dr com.apple.quarantine "/Applications/Warehouse14 POS.app"
+  ```
+
+Auto-updates apply without any of this — the updater verifies its own
+minisign signature independently of macOS code-signing.
 
 **Windows first-launch:** SmartScreen shows "Windows protected your PC".
 Click "More info" → "Run anyway". The NSIS installer places the

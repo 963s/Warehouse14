@@ -63,6 +63,37 @@ the key is a deliberate breaking change: every installed copy stops
 accepting updates until they are re-installed manually. The Phase 1.5
 backlog (#I-42) carries the runbook for graceful key rotation.
 
+## macOS code-signing (ad-hoc, not Apple Developer ID)
+
+The desktop bundles are **ad-hoc codesigned** (`codesign -s -`, configured
+via `bundle.macOS.signingIdentity = "-"`), **not** Apple Developer-ID
+signed or notarized. This is a deliberate cost/scope choice for the
+current phase, with one hard requirement: the signature must be
+*internally consistent*.
+
+- **Why ad-hoc and not nothing.** On Apple Silicon every Mach-O must
+  carry at least an ad-hoc signature to execute, so the linker always
+  emits one on the main binary. If the surrounding `.app` is then never
+  bundle-signed, the executable advertises sealed resources that do not
+  exist (`Contents/_CodeSignature/CodeResources` is absent) — an
+  *inconsistent* state Gatekeeper reports as **"is damaged and can't be
+  opened"**. Bundle-signing ad-hoc generates `CodeResources`, making the
+  signature consistent, so a fresh install shows the ordinary
+  **"unidentified developer"** prompt instead — resolvable by the user
+  (Finder right-click → Open, or the `xattr` quarantine strip documented
+  in `README.md`).
+- **CI gate.** `.github/workflows/release.yml` runs
+  `codesign --verify --deep --strict` on the built `.app` and asserts
+  `Contents/_CodeSignature/CodeResources` exists, failing the release if
+  the bundle ever regresses to the inconsistent ("damaged") state.
+- **Auto-updates are unaffected.** The Tauri updater verifies its own
+  minisign signature (see above) independently of macOS code-signing.
+- **Go-live upgrade path.** For a friction-free first launch (no prompt
+  at all), the bundles must be Apple Developer-ID signed **and**
+  notarized — an Apple Developer account + a Developer-ID certificate +
+  notary credentials in CI. Tracked as a go-live decision; until then
+  the documented one-time first-launch step stands.
+
 ## DSGVO / GoBD context
 
 The POS handles PII (customer KYC documents, payment details) and

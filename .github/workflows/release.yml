@@ -150,3 +150,29 @@ jobs:
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true
+
+      # The bundle is adhoc-codesigned by Tauri (bundle.macOS.signingIdentity
+      # = "-") between .app assembly and DMG/updater-tar packaging, so BOTH
+      # shipped artifacts carry the SAME internally-consistent signature. This
+      # step is the regression gate: a fresh install must be "unidentified
+      # developer" (the documented xattr flow), never "damaged". It fails the
+      # job if the bundle has the linker-only adhoc Mach-O signature without a
+      # sealed _CodeSignature/CodeResources (the inconsistency that triggers
+      # "is damaged and can't be opened").
+      - name: Verify macOS bundle signature is consistent (not "damaged")
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUNDLE_DIR="apps/tauri-pos/src-tauri/target/${{ matrix.rust-target }}/release/bundle/macos"
+          APP="$(find "$BUNDLE_DIR" -maxdepth 1 -name '*.app' | head -1)"
+          echo "Bundle under test: $APP"
+          if [ -z "$APP" ]; then
+            echo "::error::no .app found under $BUNDLE_DIR"; exit 1
+          fi
+          if [ ! -f "$APP/Contents/_CodeSignature/CodeResources" ]; then
+            echo "::error::missing Contents/_CodeSignature/CodeResources — bundle was not codesigned; a fresh install will show 'is damaged and can't be opened'"
+            exit 1
+          fi
+          codesign --verify --deep --strict --verbose=4 "$APP"
+          echo "✓ codesign --verify --deep --strict passed AND _CodeSignature/CodeResources is present"
