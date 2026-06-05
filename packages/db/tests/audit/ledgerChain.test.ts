@@ -183,9 +183,15 @@ describe('migration 0008_audit_chain + @warehouse14/audit', () => {
 
   describe('append-only grants on ledger_events', () => {
     it('app has SELECT + INSERT, NOT UPDATE, NOT DELETE', async () => {
+      // 0008 deliberately REVOKES table-level INSERT and re-grants it
+      // COLUMN-restricted (so the app can append rows but never fabricate
+      // prev_hash/row_hash/created_at). Hence table-level INSERT is FALSE — the
+      // append capability lives at the column level and is asserted right below
+      // (and exhaustively in the per-column test that follows). This is the
+      // hardened posture, stronger than a table-wide INSERT grant.
       const probes = [
         ['SELECT', true],
-        ['INSERT', true],
+        ['INSERT', false],
         ['UPDATE', false],
         ['DELETE', false],
       ] as const;
@@ -194,6 +200,10 @@ describe('migration 0008_audit_chain + @warehouse14/audit', () => {
           SELECT has_table_privilege('warehouse14_app', 'ledger_events', ${priv}) AS has`;
         expect(row.has, priv).toBe(expected);
       }
+      // The app CAN still append (column-level INSERT on a non-hash column):
+      const [canAppend] = await migratorSql<{ has: boolean }[]>`
+        SELECT has_column_privilege('warehouse14_app', 'ledger_events', 'payload', 'INSERT') AS has`;
+      expect(canAppend?.has, 'column-level INSERT(payload)').toBe(true);
     });
 
     it.each([
@@ -277,7 +287,8 @@ describe('migration 0008_audit_chain + @warehouse14/audit', () => {
 
       // Simulate a malicious DBA tampering with row #3's payload.
       // Only the migrator role (or a superuser) could do this in production.
-      const target = events[2]!;
+      const target = events[2];
+      if (!target) throw new Error('expected 5 emitted events');
       await migratorSql`
         UPDATE ledger_events
            SET payload = '{"sequence": 3, "sensitive": "tampered"}'::jsonb
@@ -295,10 +306,13 @@ describe('migration 0008_audit_chain + @warehouse14/audit', () => {
         expect(Buffer.from(after.expectedHash).equals(Buffer.from(after.actualHash))).toBe(false);
       }
 
-      // Repair the row so subsequent tests start from a clean chain.
+      // Repair the row so subsequent tests start from a clean chain. Use a SQL
+      // literal (like the tamper UPDATE above): `${JSON.stringify(obj)}::jsonb`
+      // double-encodes via postgres.js into a jsonb *string*, which violates the
+      // ledger_events_payload_object CHECK (payload must be a jsonb object).
       await migratorSql`
         UPDATE ledger_events
-           SET payload = ${JSON.stringify({ sequence: 3, sensitive: 'original' })}::jsonb
+           SET payload = '{"sequence": 3, "sensitive": "original"}'::jsonb
          WHERE id = ${target.id.toString()}::bigint
       `;
       // Now the chain should be valid again because the payload is restored.

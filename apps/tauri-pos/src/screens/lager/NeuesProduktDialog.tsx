@@ -21,6 +21,7 @@ import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
 import { isMoneyInput, normalizeDecimal } from '../../lib/decimal.js';
+import { decidePublish, isPositivePrice } from '../../lib/product-publish.js';
 import { TAX_TREATMENT_LABEL } from '../../lib/tax-treatment-label.js';
 import { useLabelPrinter } from '../../lib/use-label-printer.js';
 import { useToastStore } from '../../state/toast-store.js';
@@ -182,6 +183,11 @@ export function NeuesProduktDialog({
     isMoneyInput(listPriceEur.trim()) &&
     (weightGrams.trim().length === 0 || isMoneyInput(weightGrams.trim(), 3));
 
+  // A non-positive price can never be auto-published (a 0,00 € AVAILABLE article
+  // would be sellable for free). Drives the checkbox enablement + button label.
+  const pricePositive = isPositivePrice(listPriceEur);
+  const willPublish = publishNow && pricePositive;
+
   async function submit(): Promise<void> {
     if (!valid || busy) return;
     setBusy(true);
@@ -206,22 +212,6 @@ export function NeuesProduktDialog({
 
       const res = await client.request<CreatedResponse>('POST', '/api/products', body);
 
-      // Creation always lands as DRAFT server-side. Publish immediately so the
-      // article is sellable at the Kasse right away (Owner-only PUT). If it
-      // fails, the article simply stays a draft and the toast says so.
-      let published = false;
-      if (publishNow) {
-        try {
-          await client.request('PUT', `/api/products/${res.id}`, { status: 'AVAILABLE' });
-          published = true;
-        } catch {
-          // keep as draft — surfaced in the toast below
-        }
-      }
-      // Refresh the catalogue everywhere (Verkauf grid + Lager) immediately, so
-      // the new article shows up without a reload / stale-time wait.
-      void qc.invalidateQueries({ queryKey: ['products', 'list'] });
-
       // Auto-print the shelf label (SKU + name + weight + location) when a
       // label printer is configured — so the item is tagged at intake.
       if (printer.configured) {
@@ -239,21 +229,65 @@ export function NeuesProduktDialog({
         ]);
       }
 
-      addToast({
-        tone: 'success',
-        title: published ? 'Produkt verkaufsbereit' : 'Produkt angelegt',
-        body: published
-          ? `${res.sku} — sofort im Verkauf sichtbar`
-          : printer.configured
+      // Creation always lands as DRAFT server-side. "Sofort verkaufsbereit"
+      // flips it to AVAILABLE — but never for a non-positive price.
+      const decision = decidePublish({ publishNow, listPriceEur });
+      let outcome: 'published' | 'publish-failed' | 'no-price' | 'draft' = 'draft';
+      let publishErr = '';
+      if (decision.kind === 'publish') {
+        try {
+          await client.request('PUT', `/api/products/${res.id}`, { status: 'AVAILABLE' });
+          outcome = 'published';
+        } catch (e) {
+          outcome = 'publish-failed';
+          publishErr = e instanceof Error ? e.message : '';
+        }
+      } else if (decision.kind === 'draft-no-price') {
+        outcome = 'no-price';
+      }
+
+      // Refresh the catalogue everywhere (Verkauf grid + Lager) once, now that
+      // the final status (DRAFT or AVAILABLE) is known — so the new article
+      // shows up without a reload / stale-time wait.
+      void qc.invalidateQueries({ queryKey: ['products', 'list'] });
+
+      if (outcome === 'published') {
+        addToast({
+          tone: 'success',
+          title: 'Produkt verkaufsbereit',
+          body: `${res.sku} — sofort im Verkauf sichtbar`,
+        });
+      } else if (outcome === 'publish-failed') {
+        // The operator must never think a hidden draft is live.
+        addToast({
+          tone: 'alert',
+          title: 'Angelegt, aber NICHT verkaufsbereit',
+          body: `${res.sku} ist nur ein Entwurf — in Lager veröffentlichen.${
+            publishErr ? ` (${publishErr})` : ''
+          }`,
+        });
+      } else if (outcome === 'no-price') {
+        addToast({
+          tone: 'alert',
+          title: 'Kein Verkaufspreis — als Entwurf gespeichert',
+          body: `${res.sku}: ein Verkaufspreis über 0 € ist nötig, um sofort zu verkaufen.`,
+        });
+      } else {
+        addToast({
+          tone: 'success',
+          title: 'Produkt angelegt',
+          body: printer.configured
             ? `${res.sku} (Entwurf) — Etikett gedruckt, jetzt Fotos`
             : `${res.sku} (Entwurf) — jetzt Fotos aufnehmen`,
-      });
+        });
+      }
+
       reset();
       onCreated();
       onClose();
-      // Drafts hand straight to the photo workflow; a published article can get
-      // photos later from Lager — don't yank the operator away from a quick sale.
-      if (!published) {
+      // Only an INTENTIONAL draft hands over to the photo workflow; a published,
+      // failed, or no-price outcome must not silently yank the operator away.
+      if (outcome === 'draft') {
         navigate(`/fotos?mode=produkt&productId=${encodeURIComponent(res.id)}`);
       }
     } catch (err) {
@@ -467,20 +501,34 @@ export function NeuesProduktDialog({
             display: 'flex',
             alignItems: 'center',
             gap: 10,
-            marginBottom: 14,
-            cursor: 'pointer',
+            marginBottom: pricePositive ? 14 : 4,
+            cursor: pricePositive ? 'pointer' : 'not-allowed',
             fontSize: '0.92rem',
-            color: 'var(--w14-ink-aged)',
+            color: pricePositive ? 'var(--w14-ink-aged)' : 'var(--w14-ink-faded)',
+            opacity: pricePositive ? 1 : 0.6,
           }}
         >
           <input
             type="checkbox"
-            checked={publishNow}
+            checked={willPublish}
+            disabled={!pricePositive}
             onChange={(e) => setPublishNow(e.target.checked)}
             style={{ width: 18, height: 18, accentColor: 'var(--w14-gold)' }}
           />
           Sofort verkaufsbereit — direkt im Verkauf sichtbar (sonst nur Entwurf)
         </label>
+        {!pricePositive && (
+          <p
+            style={{
+              margin: '0 0 14px',
+              fontSize: '0.8rem',
+              color: 'var(--w14-ink-faded)',
+              fontStyle: 'italic',
+            }}
+          >
+            Ein Verkaufspreis über 0 € ist nötig, um das Produkt sofort verkaufsbereit zu machen.
+          </p>
+        )}
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
           <Button variant="ghost" size="md" disabled={busy} onClick={onClose}>
@@ -494,7 +542,7 @@ export function NeuesProduktDialog({
               void submit();
             }}
           >
-            {busy ? 'Speichert…' : publishNow ? 'Anlegen & verkaufsbereit' : 'Als Entwurf anlegen'}
+            {busy ? 'Speichert…' : willPublish ? 'Anlegen & verkaufsbereit' : 'Als Entwurf anlegen'}
           </Button>
         </div>
       </ParchmentCard>
