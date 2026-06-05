@@ -11,7 +11,7 @@
  * enforces this server-side; the UI lock prevents wasted data entry.
  */
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 
 import {
@@ -20,15 +20,18 @@ import {
   type AnkaufMetal,
   type MetalRatesResponse,
   type TaxTreatmentCode,
+  customersApi,
   metalPricesApi,
 } from '@warehouse14/api-client';
 import { Button, DiamondRule, MoneyAmount, ParchmentCard, RomanIndex } from '@warehouse14/ui-kit';
 
+import { evaluateKycGate } from '../../lib/ankauf-kyc-gate.js';
 import { useApiClient } from '../../lib/api-context.js';
 import { computeSchmelzwertEur, fromCents, sumNegotiatedCents } from '../../lib/intake-math.js';
 import { TAX_TREATMENT_LABEL } from '../../lib/tax-treatment-label.js';
 import {
   type IntakeItem,
+  selectAnkaufCustomerId,
   selectAnkaufItems,
   useAnkaufCartStore,
 } from '../../state/ankauf-cart-store.js';
@@ -74,6 +77,7 @@ export interface IntakeListProps {
 
 export function IntakeList({ customerSelected, onOpenBezahlen }: IntakeListProps): JSX.Element {
   const items = useAnkaufCartStore(selectAnkaufItems);
+  const customerId = useAnkaufCartStore(selectAnkaufCustomerId);
   const removeItem = useAnkaufCartStore((s) => s.removeItem);
   const clearItems = useAnkaufCartStore((s) => s.clearItems);
 
@@ -116,6 +120,12 @@ export function IntakeList({ customerSelected, onOpenBezahlen }: IntakeListProps
         <CustomerRequiredLock />
       ) : (
         <>
+          {/* P1: surface the GwG §10 KYC requirement EARLY — as soon as the
+              running total crosses €2.000 — so the operator can stamp the
+              Ausweis up front instead of backtracking at Bezahlen. */}
+          {customerId !== null && (
+            <KycEarlyBanner customerId={customerId} totalCents={totalCents} />
+          )}
           <AddItemForm existingTreatment={items[0]?.taxTreatmentCode ?? null} />
 
           <div
@@ -182,6 +192,118 @@ export function IntakeList({ customerSelected, onOpenBezahlen }: IntakeListProps
 }
 
 // ────────────────────────────────────────────────────────────────────────
+// Early KYC banner (P1) — surfaces the GwG §10 requirement the moment the
+// running total crosses the threshold, with an up-front "KYC bestätigen".
+// UI-surfacing only; the server re-enforces KYC on finalize.
+// ────────────────────────────────────────────────────────────────────────
+
+function KycEarlyBanner({
+  customerId,
+  totalCents,
+}: {
+  customerId: string;
+  totalCents: bigint;
+}): JSX.Element | null {
+  const api = useApiClient();
+  const qc = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  const [stamping, setStamping] = useState<boolean>(false);
+
+  const customerQ = useQuery({
+    queryKey: ['customers', customerId],
+    queryFn: () => customersApi.get(api, customerId),
+    staleTime: 5_000,
+  });
+  const customer = customerQ.data;
+  const gate = evaluateKycGate(totalCents, customer ?? null);
+
+  // Below the GwG threshold there is nothing to surface.
+  if (!gate.thresholdReached) return null;
+
+  const stamp = async (): Promise<void> => {
+    if (!customer || stamping) return;
+    setStamping(true);
+    try {
+      // PATCH requires step-up — the api-client interceptor opens the PIN modal.
+      await customersApi.stampKyc(
+        api,
+        customer.id,
+        customer.trustLevel === 'NEW' ? { promoteTrustLevelTo: 'VERIFIED' } : {},
+      );
+      addToast({ tone: 'success', title: 'KYC bestätigt', body: customer.fullName });
+      await qc.invalidateQueries({ queryKey: ['customers', customer.id] });
+    } catch {
+      addToast({
+        tone: 'alert',
+        title: 'KYC nicht bestätigt',
+        body: 'Bitte erneut versuchen.',
+      });
+    } finally {
+      setStamping(false);
+    }
+  };
+
+  if (gate.kycVerified) {
+    return (
+      <output
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '8px 12px',
+          borderRadius: 'var(--w14-radius-button)',
+          border: '1px solid var(--w14-rule)',
+          background: 'var(--w14-parchment-2)',
+          color: 'var(--w14-ink-aged)',
+          fontSize: '0.85rem',
+          flexShrink: 0,
+        }}
+      >
+        <span aria-hidden style={{ color: 'var(--w14-gold)' }}>
+          ✓
+        </span>
+        <span>KYC bestätigt — Ausweis geprüft. Auszahlung über 2.000&nbsp;€ zulässig.</span>
+      </output>
+    );
+  }
+
+  return (
+    <div
+      role="alert"
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 12,
+        padding: '12px 14px',
+        borderRadius: 'var(--w14-radius-button)',
+        border: '2px solid var(--w14-gold)',
+        background: 'var(--w14-parchment-2)',
+        flexShrink: 0,
+      }}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <strong style={{ fontFamily: 'var(--w14-font-display)', fontSize: '0.95rem' }}>
+          Ausweisprüfung erforderlich
+        </strong>
+        <span style={{ color: 'var(--w14-ink-aged)', fontSize: '0.82rem' }}>
+          Ankauf über 2.000&nbsp;€ — § 10 GwG verlangt eine persönliche Ausweisprüfung des
+          Verkäufers. Jetzt erledigen, nicht erst beim Bezahlen.
+        </span>
+      </div>
+      <Button
+        variant="primary"
+        size="md"
+        onClick={stamp}
+        disabled={stamping || customer === undefined}
+      >
+        {stamping ? 'Wird bestätigt…' : 'KYC bestätigen'}
+      </Button>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────
 // Add-item form (inline)
 // ────────────────────────────────────────────────────────────────────────
 
@@ -193,7 +315,10 @@ function AddItemForm({
   const addItem = useAnkaufCartStore((s) => s.addItem);
   const addToast = useToastStore((s) => s.addToast);
 
-  const [expanded, setExpanded] = useState<boolean>(false);
+  // P2: expanded by default so the operator can type the first item immediately
+  // (no extra click). The metal + Steuerklasse selections are intentionally NOT
+  // cleared by reset() below, so they stick (pre-filled) for the next item.
+  const [expanded, setExpanded] = useState<boolean>(true);
   const [sku, setSku] = useState<string>('');
   const [name, setName] = useState<string>('');
   const [descriptionDe, setDescriptionDe] = useState<string>('');
@@ -276,8 +401,8 @@ function AddItemForm({
     });
     if (result === null) {
       addToast({ tone: 'success', title: 'Stück hinzugefügt', body: sku.trim() });
+      // P2: keep the form open + the metal/Steuerklasse sticky for the next item.
       reset();
-      setExpanded(false);
       return;
     }
     if (result.kind === 'MIXED_TAX_TREATMENT') {
@@ -367,12 +492,12 @@ function AddItemForm({
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 14 }}>
         <EuroInput
-          label="Ankaufpreis (bar bezahlt)"
+          label="Ankaufspreis (an Verkäufer zahlen)"
           valueEur={negotiatedPriceEur}
           onValueChange={setNegotiatedPriceEur}
         />
         <EuroInput
-          label="Listenpreis (Wiederverkauf)"
+          label="Verkaufspreis (bei Veröffentlichung)"
           valueEur={listPriceEur}
           onValueChange={setListPriceEur}
         />
@@ -401,7 +526,7 @@ function AddItemForm({
           Abbrechen
         </Button>
         <Button variant="primary" size="md" onClick={submit} disabled={!canSubmit}>
-          Hinzufügen
+          + Stück hinzufügen
         </Button>
       </div>
     </ParchmentCard>
