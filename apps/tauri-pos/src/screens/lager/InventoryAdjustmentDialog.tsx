@@ -40,6 +40,11 @@ import {
 } from '@warehouse14/api-client';
 import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 
+import {
+  MIN_ADJUSTMENT_NOTE_LEN,
+  adjustmentNoteShortfall,
+  isAdjustmentNoteValid,
+} from '../../lib/adjustment-notes.js';
 import { useApiClient } from '../../lib/api-context.js';
 import type { LabelData } from '../../lib/hardware-client.js';
 import { useLabelPrinter } from '../../lib/use-label-printer.js';
@@ -113,7 +118,10 @@ export function InventoryAdjustmentDialog({
   const requiresLocation = reason === 'LOCATION_CHANGE';
   const locationValid =
     storageUnit.trim().length > 0 && drawer.trim().length > 0 && position.trim().length > 0;
-  const notesValid = notes.trim().length >= 8;
+  // The audit note (extracted predicate — server re-enforces; not weakened here).
+  const notesValid = isAdjustmentNoteValid(notes);
+  const notesShortfall = adjustmentNoteShortfall(notes);
+  const notesTouched = notes.length > 0;
   const canSubmit =
     notesValid && (!requiresLocation || locationValid) && !submitting && product !== null;
 
@@ -339,6 +347,14 @@ export function InventoryAdjustmentDialog({
                     onChange={setPosition}
                   />
                 </div>
+                {/* The server requires all three for LOCATION_CHANGE (it stores
+                    them verbatim — a partial would blank the others). Clarify so
+                    the operator knows why Speichern stays disabled. */}
+                {!locationValid && (
+                  <span style={{ fontSize: '0.78rem', color: 'var(--w14-ink-faded)' }}>
+                    Alle drei Felder (Standort · Fach · Position) sind erforderlich.
+                  </span>
+                )}
               </>
             )}
 
@@ -362,6 +378,19 @@ export function InventoryAdjustmentDialog({
                 color: 'var(--w14-ink)',
               }}
             />
+            {/* Live inline feedback for the ≥8-char audit note (was silent). */}
+            <span
+              style={{
+                fontSize: '0.78rem',
+                color: notesTouched && !notesValid ? 'var(--w14-wax-red)' : 'var(--w14-ink-faded)',
+              }}
+            >
+              {notesValid
+                ? 'Anmerkung ✓'
+                : notesTouched
+                  ? `Noch ${notesShortfall} Zeichen (mind. ${MIN_ADJUSTMENT_NOTE_LEN})`
+                  : `Anmerkung — mind. ${MIN_ADJUSTMENT_NOTE_LEN} Zeichen (Audit-Begründung)`}
+            </span>
 
             {error && (
               <p

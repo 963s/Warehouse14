@@ -60,6 +60,8 @@ export function Lager(): JSX.Element {
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [dialogProduct, setDialogProduct] = useState<ProductListRow | null>(null);
   const tableContainerRef = useRef<HTMLDivElement | null>(null);
+  /** Barcode we already auto-opened the dialog for — so a re-render can't reopen it. */
+  const autoOpenedBarcodeRef = useRef<string | null>(null);
 
   // Debounce free-text q.
   const debounceTimerRef = useRef<number | null>(null);
@@ -121,10 +123,13 @@ export function Lager(): JSX.Element {
 
   useBarcodeScanner({ enabled: scannerEnabled, onScan });
 
-  // Auto-highlight + scroll first row after a scan resolves.
+  // Auto-highlight + scroll first row after a scan resolves; on a genuine
+  // SINGLE-product match also auto-open the adjustment dialog (P1). A no-match
+  // (0 rows) or an ambiguous multi-match (>1) keeps the highlight-only behaviour.
   useEffect(() => {
     if (filters.barcode === null) {
       setHighlightedId(null);
+      autoOpenedBarcodeRef.current = null;
       return;
     }
     const first = rows[0];
@@ -133,7 +138,20 @@ export function Lager(): JSX.Element {
       const node = tableContainerRef.current?.querySelector(`[data-product-id="${first.id}"]`);
       if (node instanceof HTMLElement) node.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
-  }, [filters.barcode, rows]);
+    // NO FACADE: open only when the scan resolved (not mid-fetch) to EXACTLY one
+    // product, and only once per scanned barcode (a re-render must not reopen
+    // after a manual close). The scanner is disabled while a dialog is open, so
+    // there is no race with an in-flight edit.
+    if (
+      !q.isFetching &&
+      rows.length === 1 &&
+      first &&
+      autoOpenedBarcodeRef.current !== filters.barcode
+    ) {
+      autoOpenedBarcodeRef.current = filters.barcode;
+      setDialogProduct(first);
+    }
+  }, [filters.barcode, rows, q.isFetching]);
 
   return (
     <section
