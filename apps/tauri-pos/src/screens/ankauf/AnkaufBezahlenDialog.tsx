@@ -37,9 +37,10 @@ import type { IntakeItem } from '../../state/ankauf-cart-store.js';
 
 import { currentShiftQueryKey } from '../../hooks/useCurrentShift.js';
 import { dashboardQueryKey } from '../../hooks/useDashboardSummary.js';
+import { evaluateKycGate } from '../../lib/ankauf-kyc-gate.js';
 import { GWG_IDENTITY_THRESHOLD_EUR } from '../../lib/ankauf-thresholds.js';
 import { useApiClient } from '../../lib/api-context.js';
-import { fromCents, sumNegotiatedCents, toCents } from '../../lib/intake-math.js';
+import { fromCents, sumNegotiatedCents } from '../../lib/intake-math.js';
 import {
   selectAnkaufCustomerId,
   selectAnkaufItems,
@@ -108,9 +109,10 @@ export function AnkaufBezahlenDialog({
 
   const totalCents = useMemo(() => sumNegotiatedCents(items), [items]);
   const totalEur = fromCents(totalCents);
-  const gwgThresholdCents = toCents(GWG_IDENTITY_THRESHOLD_EUR);
-  const triggersGwgGate = totalCents >= gwgThresholdCents;
-  const kycVerified = customer?.kycVerifiedAt !== null && customer?.kycVerifiedAt !== undefined;
+  // Single source of truth shared with the early IntakeList banner.
+  const kycGate = evaluateKycGate(totalCents, customer ?? null);
+  const triggersGwgGate = kycGate.thresholdReached;
+  const kycVerified = kycGate.kycVerified;
   const blocked = customer?.sanctionsMatch === true || customer?.trustLevel === 'BANNED';
   const needsKycStamp = triggersGwgGate && !kycVerified;
 
