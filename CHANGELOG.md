@@ -6,6 +6,40 @@ and the project adheres to [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+## [0.2.2] — 2026-06-05
+
+Kasse usability pass for Roman's daily flow (reviewed + integrated
+consolidation of the four `claude/kasse-*` + `test-gate` branches).
+
+### Kasse
+
+- **Ankauf — KYC surfaced early.** The GwG §10 identification gate
+  (≥ €2.000) is shown up front via the pure, tested `evaluateKycGate`;
+  enforcement is behaviour-identical (not weakened). Faster item entry:
+  expanded form with sticky metal/tax and clearer price-direction labels.
+- **Verkauf — clearer discounts + faster turnaround.** Live
+  discount-reason feedback with touch-sized controls (pure, tested
+  `isDiscountReasonValid`); the catalog search auto-refocuses the moment
+  a sale finalizes so the next scan/keystroke lands without a click.
+- **Lager — scan-to-adjust + clearer notes.** A barcode scan auto-opens
+  the inventory-adjustment dialog; the adjustment note shows a live
+  minimum-length hint before submit.
+
+### Hardware (software-complete, awaiting the device day)
+
+- **ZVT card path** hardened to a spec-accurate BMP parser
+  (ecrterm-grounded) driving the full multi-message authorisation
+  conversation; mocks promoted from facade to validating. Proven by the
+  in-repo HIL suite (`cargo test`). Real-terminal field-location +
+  status-cadence confirmation remain quarantined for the go-live day.
+
+### Backend (ships separately)
+
+Database migrations **0045–0048** (blind-index HMAC, cumulative SELECT
+grant, `DEBT` payment method, ledger hash-chain serialization) deploy via
+the migrate service per `docs/runbooks/0045-0048-prod-apply.md` — **not**
+bundled in this desktop binary.
+
 ## [0.1.0] — 2026-05-27
 
 First public release of the desktop POS bundle.
@@ -67,5 +101,6 @@ requires applying the three migrations that landed in this cycle:
 - The PDF invoice prints the textual TSE block; QR raster embed lands
   once `printpdf`'s image API stabilises.
 
-[Unreleased]: https://github.com/__GITHUB_OWNER__/__GITHUB_REPO__/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/__GITHUB_OWNER__/__GITHUB_REPO__/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/__GITHUB_OWNER__/__GITHUB_REPO__/compare/v0.1.0...v0.2.2
 [0.1.0]: https://github.com/__GITHUB_OWNER__/__GITHUB_REPO__/releases/tag/v0.1.0
