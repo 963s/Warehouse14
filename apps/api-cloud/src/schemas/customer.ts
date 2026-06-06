@@ -117,6 +117,16 @@ export const CustomerDetailResponse = Type.Object({
   cumulativeSpendEur: DecimalString,
   cumulativeAnkaufEur: DecimalString,
   cumulativeDebtEur: DecimalString,
+  /**
+   * §10 GwG aggregation context: the sum of this customer's ANKAUF buys inside
+   * the configured rolling window (the smurfing window), so the POS KYC gate can
+   * require ID when the running window crosses the threshold even if the current
+   * buy is under it. `priorAnkaufEur` excludes the cart being built now.
+   */
+  gwgRollingAnkauf: Type.Object({
+    windowDays: Type.Integer(),
+    priorAnkaufEur: DecimalString,
+  }),
   retentionUntil: Type.String({ format: 'date' }),
   createdAt: Type.String({ format: 'date-time' }),
 });

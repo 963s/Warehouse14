@@ -34,6 +34,7 @@ import {
   metalFromItemType,
   suggestedBuyEur,
   sumNegotiatedCents,
+  toCents,
 } from '../../lib/intake-math.js';
 import { TAX_TREATMENT_LABEL } from '../../lib/tax-treatment-label.js';
 import {
@@ -224,10 +225,20 @@ function KycEarlyBanner({
     staleTime: 5_000,
   });
   const customer = customerQ.data;
-  const gate = evaluateKycGate(totalCents, customer ?? null);
+  // §10 GwG aggregation: feed the customer's rolling-window ANKAUF sum so the
+  // gate requires ID when the running window crosses the line even if THIS buy
+  // is under it (the linked-transaction rule smurfing exploits).
+  const aggregate = customer
+    ? {
+        priorWindowAnkaufCents: toCents(customer.gwgRollingAnkauf.priorAnkaufEur),
+        windowDays: customer.gwgRollingAnkauf.windowDays,
+      }
+    : undefined;
+  const gate = evaluateKycGate(totalCents, customer ?? null, aggregate);
 
-  // Below the GwG threshold there is nothing to surface.
-  if (!gate.thresholdReached) return null;
+  // Nothing to surface unless either the single buy OR the rolling window
+  // reaches the GwG identity line.
+  if (!gate.thresholdReached && !gate.aggregateReached) return null;
 
   const stamp = async (): Promise<void> => {
     if (!customer || stamping) return;
@@ -296,8 +307,19 @@ function KycEarlyBanner({
           Ausweisprüfung erforderlich
         </strong>
         <span style={{ color: 'var(--w14-ink-aged)', fontSize: '0.82rem' }}>
-          Ankauf über 2.000&nbsp;€ — § 10 GwG verlangt eine persönliche Ausweisprüfung des
-          Verkäufers. Jetzt erledigen, nicht erst beim Bezahlen.
+          {gate.reason === 'aggregate' ? (
+            <>
+              Die Summe der Ankäufe dieses Kunden der letzten{' '}
+              {customer?.gwgRollingAnkauf.windowDays ?? 0} Tage erreicht 2.000&nbsp;€ — § 10 GwG
+              (verknüpfte Geschäfte) verlangt eine Ausweisprüfung, auch wenn dieser Ankauf einzeln
+              darunter liegt. Jetzt erledigen.
+            </>
+          ) : (
+            <>
+              Ankauf über 2.000&nbsp;€ — § 10 GwG verlangt eine persönliche Ausweisprüfung des
+              Verkäufers. Jetzt erledigen, nicht erst beim Bezahlen.
+            </>
+          )}
         </span>
       </div>
       <Button

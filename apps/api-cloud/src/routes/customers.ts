@@ -27,6 +27,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { auditLog, products, transactions } from '@warehouse14/db/schema';
 
 import { requireAuth, requireRole } from '../lib/auth-policy.js';
+import { loadSmurfingThresholds } from '../lib/smurfing.js';
 import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 import {
   CreateCustomerBody,
@@ -245,6 +246,19 @@ const customersRoutes: FastifyPluginAsync = async (app) => {
         throw new CustomerNotFoundError(`Customer ${id} not found.`);
       }
 
+      // §10 GwG rolling-window ANKAUF aggregate (prior finalized buys only — the
+      // cart being built now is not yet a transaction). The POS KYC gate adds the
+      // current cart and requires ID when the running window crosses the line.
+      const thresholds = await loadSmurfingThresholds(app.db);
+      const aggRows = await app.db.execute<{ prior: string }>(sql`
+        SELECT COALESCE(SUM(total_eur), 0)::numeric(18,2)::text AS prior
+          FROM transactions
+         WHERE customer_id = ${id}::uuid
+           AND direction = 'ANKAUF'
+           AND storno_of_transaction_id IS NULL
+           AND finalized_at >= now() - (${thresholds.windowDays} || ' days')::interval`);
+      const priorAnkaufEur = aggRows[0]?.prior ?? '0.00';
+
       return reply.status(200).send({
         id: row.id,
         customerNumber: row.customer_number,
@@ -271,6 +285,7 @@ const customersRoutes: FastifyPluginAsync = async (app) => {
         cumulativeSpendEur: row.cumulative_spend_eur,
         cumulativeAnkaufEur: row.cumulative_ankauf_eur,
         cumulativeDebtEur: row.cumulative_debt_eur,
+        gwgRollingAnkauf: { windowDays: thresholds.windowDays, priorAnkaufEur },
         retentionUntil: row.retention_until,
         createdAt: row.created_at.toISOString(),
       });

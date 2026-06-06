@@ -108,6 +108,54 @@ describe('detectSmurfing — rolling window', () => {
   });
 });
 
+describe('detectSmurfing — exact threshold boundary (≥, decimal-exact)', () => {
+  it('aggregate EXACTLY at the €2.000 line crosses (≥), each buy under the line', () => {
+    const v = detectSmurfing({
+      incoming: txn('1000.00', '2026-05-29T10:00:00Z'),
+      priors: [txn('1000.00', '2026-05-28T10:00:00Z')], // sum = 2000.00 exactly
+      thresholds: T,
+    });
+    expect(v.aggregateCents).toBe(200_000n);
+    expect(v.reasons).toContain('AGGREGATE_CROSSES_KYC_LIMIT');
+  });
+
+  it('one cent under the line does NOT cross', () => {
+    const v = detectSmurfing({
+      incoming: txn('999.99', '2026-05-29T10:00:00Z'),
+      priors: [txn('1000.00', '2026-05-28T10:00:00Z')], // sum = 1999.99
+      thresholds: T,
+    });
+    expect(v.aggregateCents).toBe(199_999n);
+    expect(v.reasons).not.toContain('AGGREGATE_CROSSES_KYC_LIMIT');
+  });
+
+  it('decimal-exact aggregation: 666,67 × 3 = 2000,01 crosses (no float drift)', () => {
+    const v = detectSmurfing({
+      incoming: txn('666.67', '2026-05-29T10:00:00Z'),
+      priors: [txn('666.67', '2026-05-28T10:00:00Z'), txn('666.67', '2026-05-27T10:00:00Z')],
+      thresholds: T,
+    });
+    expect(v.aggregateCents).toBe(200_001n); // exact bigint sum, not 2000.0099999
+    expect(v.reasons).toContain('AGGREGATE_CROSSES_KYC_LIMIT');
+  });
+});
+
+describe('detectSmurfing — configurable aggregate threshold (gwg.identity_threshold_eur)', () => {
+  it('a window clean at €2.000 flags when the configured line is lowered to €1.500', () => {
+    const window = {
+      incoming: txn('500.00', '2026-05-29T10:00:00Z'),
+      priors: [txn('500.00', '2026-05-28T10:00:00Z'), txn('500.00', '2026-05-27T10:00:00Z')],
+    };
+    // Σ = €1.500. Clean at the default €2.000 line…
+    expect(detectSmurfing({ ...window, thresholds: T }).flagged).toBe(false);
+    // …but flagged once the Steuerberater lowers the aggregate line to €1.500.
+    const lowered: SmurfingThresholds = { ...T, kycLimitCents: 150_000n };
+    const v = detectSmurfing({ ...window, thresholds: lowered });
+    expect(v.aggregateCents).toBe(150_000n);
+    expect(v.reasons).toContain('AGGREGATE_CROSSES_KYC_LIMIT');
+  });
+});
+
 describe('runSmurfingDetection — emits the critical ledger alert', () => {
   const makeDb = (priors: Array<{ total_eur: string; finalized_at: Date }>): AnyDb =>
     ({ execute: vi.fn().mockResolvedValue(priors) }) as unknown as AnyDb;

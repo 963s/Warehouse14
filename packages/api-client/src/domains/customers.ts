@@ -108,6 +108,16 @@ export interface CustomerDetail {
   cumulativeSpendEur: string;
   cumulativeAnkaufEur: string;
   cumulativeDebtEur: string;
+  /**
+   * §10 GwG aggregation context — the sum of this customer's ANKAUF buys inside
+   * the configured rolling window (prior buys only, excluding the cart being
+   * built now). The POS KYC gate adds the current cart and requires ID when the
+   * running window crosses the threshold even if the current buy is under it.
+   */
+  gwgRollingAnkauf: {
+    windowDays: number;
+    priorAnkaufEur: string;
+  };
   retentionUntil: string;
   createdAt: string;
 }

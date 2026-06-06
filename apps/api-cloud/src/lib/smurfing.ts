@@ -1,9 +1,14 @@
 /**
  * Smurfing (structuring) detection — GwG / §259 StGB AML defense (memory.md §3).
  *
- * Weil am Rhein sits on the DE/CH/FR border, so structuring — splitting one
- * large Ankauf into several sub-€2,000 buys to dodge the GwG identity-recording
- * threshold — is a realistic attack. This module flags it.
+ * Structuring — splitting one large Ankauf into several sub-€2,000 buys to dodge
+ * the GwG identity-recording threshold — is a realistic AML risk in a cash-heavy
+ * precious-metals trade. This module flags it.
+ *
+ * THRESHOLDS ARE PLACEHOLDERS: the window, the "small" ceiling, the linked-txn
+ * count, and the €2.000 aggregate line all live in `system_settings` (see
+ * `loadSmurfingThresholds`) with conservative defaults. The REAL numbers must be
+ * confirmed with the Steuerberater + bank before go-live — never hardcode them.
  *
  * V1 is DETECT-AND-ALERT, never block: a finalized sale is sacrosanct. The
  * detection runs AFTER the finalize transaction commits, so a bug here can
@@ -177,9 +182,18 @@ function parseEurSetting(value: string | undefined, fallback: bigint): bigint {
 }
 
 /**
- * Load the three ADMIN-tunable thresholds from `system_settings`, falling back
- * to the defaults when a key is absent (the keys are seedable later without a
- * migration; the table accepts arbitrary dotted keys).
+ * Load the ADMIN-tunable thresholds from `system_settings`, falling back to the
+ * conservative PLACEHOLDER defaults when a key is absent (the table accepts
+ * arbitrary dotted keys, so they are seedable without a migration).
+ *
+ * ⚠️ PLACEHOLDERS — the REAL numbers come from Basel's Steuerberater + bank and
+ * MUST be confirmed before go-live. The four keys:
+ *   • smurfing.ankauf_count_window_days        — rolling lookback (days)
+ *   • smurfing.ankauf_amount_near_threshold_eur — per-tx "small" ceiling (€)
+ *   • smurfing.ankauf_count_threshold           — min linked-txn count
+ *   • gwg.identity_threshold_eur                — the §10 aggregate ID line (€)
+ * The aggregate line is NO LONGER hardcoded — it reads the same GwG identity
+ * threshold the KYC gate uses (#I-41), so one setting governs both.
  */
 export async function loadSmurfingThresholds(db: AnyDb): Promise<SmurfingThresholds> {
   const rows = await db.execute<{ key: string; value: string }>(drizzleSql`
@@ -188,7 +202,8 @@ export async function loadSmurfingThresholds(db: AnyDb): Promise<SmurfingThresho
      WHERE key IN (
        'smurfing.ankauf_count_window_days',
        'smurfing.ankauf_count_threshold',
-       'smurfing.ankauf_amount_near_threshold_eur'
+       'smurfing.ankauf_amount_near_threshold_eur',
+       'gwg.identity_threshold_eur'
      )`);
   const map = new Map<string, string>();
   for (const r of rows) map.set(r.key, r.value);
@@ -205,7 +220,8 @@ export async function loadSmurfingThresholds(db: AnyDb): Promise<SmurfingThresho
       map.get('smurfing.ankauf_amount_near_threshold_eur'),
       DEFAULT_SMURFING_THRESHOLDS.nearThresholdCents,
     ),
-    kycLimitCents: KYC_LIMIT_CENTS,
+    // The §10 aggregate ID line — configurable (default €2.000), not hardcoded.
+    kycLimitCents: parseEurSetting(map.get('gwg.identity_threshold_eur'), KYC_LIMIT_CENTS),
   };
 }
 
