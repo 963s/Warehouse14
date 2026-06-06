@@ -65,6 +65,7 @@ const PER_OPERATOR_STORAGE_KEYS = [
 ] as const;
 
 import { AppShellHeader } from './AppShellHeader.js';
+import { MetalTicker } from './MetalTicker.js';
 import { Spotlight } from './Spotlight.js';
 import { StepUpModal } from './StepUpModal.js';
 import { SubBreadcrumb } from './SubBreadcrumb.js';
@@ -242,6 +243,10 @@ export function AppShell(): JSX.Element {
       />
 
       {secondarySurface && <SubBreadcrumb label={secondarySurface.label} />}
+
+      {/* Always-visible metal-price ticker (UX P2) — below header, above the
+          routed surface, on every screen. Replaces the Kurse primary tab. */}
+      <MetalTicker />
 
       <main
         style={{

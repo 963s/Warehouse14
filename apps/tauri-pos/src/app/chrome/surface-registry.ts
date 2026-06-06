@@ -154,25 +154,48 @@ export const SURFACES: readonly SurfaceDescriptor[] = [
     searchAliases: ['appraisal', 'expertise', 'gutachten', 'konvolut', 'ankauf', 'bewertung'],
   },
 
-  // ── Tier 1 (#7) — the live Edelmetall trading terminal ───────────────
+  // ── Tier 2 — Edelmetall trading terminal (UX P2: DEMOTED off the rail). The
+  //    daily glance now lives in the always-visible chrome ticker; the deep
+  //    candlestick charts AND the ADMIN "Manueller Override" stay here, reached
+  //    via Spotlight or the ticker popover's "Details / Verlauf" link. ─────────
   {
     path: '/kurse',
     label: 'Kurse',
     description: 'Live-Kurse für Gold, Silber, Platin, Palladium — Handelsterminal.',
-    digit: 7,
-    tier: 'primary',
+    tier: 'secondary',
     component: Kurse,
-    searchAliases: ['kurs', 'gold', 'silber', 'platin', 'metallpreis', 'lbma', 'chart', 'börse'],
+    searchAliases: [
+      'kurs',
+      'gold',
+      'silber',
+      'platin',
+      'palladium',
+      'metallpreis',
+      'lbma',
+      'chart',
+      'börse',
+      'edelmetall',
+      'terminal',
+    ],
   },
-  // ── Tier 1 (#8) — A4 document studio (contracts / invoices / letters) ─
+  // ── Tier 1 (#7) — A4 document studio (contracts / invoices / letters) ─
   {
     path: '/schreiben',
     label: 'Schreiben',
     description: 'Verträge, Rechnungen und Briefe auf A4 erstellen — mit KI-Assistent.',
-    digit: 8,
+    digit: 7,
     tier: 'primary',
     component: Schreiben,
-    searchAliases: ['brief', 'vertrag', 'ankaufvertrag', 'rechnung', 'dokument', 'a4', 'schreiben', 'ki'],
+    searchAliases: [
+      'brief',
+      'vertrag',
+      'ankaufvertrag',
+      'rechnung',
+      'dokument',
+      'a4',
+      'schreiben',
+      'ki',
+    ],
   },
   {
     path: '/ebay',

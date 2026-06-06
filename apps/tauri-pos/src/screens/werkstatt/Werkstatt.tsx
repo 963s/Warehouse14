@@ -32,7 +32,6 @@ import { useLedgerStream } from '../../hooks/useLedgerStream.js';
 import { useSessionStore } from '../../state/session-store.js';
 
 import { DayControl } from './DayControl.js';
-import { EdelmetallkursPanel } from './EdelmetallkursPanel.js';
 import { TagebuchFeed } from './TagebuchFeed.js';
 import { UebersichtPanel } from './UebersichtPanel.js';
 import { WerkstattFooter } from './WerkstattFooter.js';
@@ -96,10 +95,9 @@ export function Werkstatt(): JSX.Element {
           padding: '8px 28px 24px',
         }}
       >
-        {/* Left column — Übersicht + Edelmetallkurs */}
+        {/* Left column — Übersicht (Edelmetallkurs now lives in the chrome ticker, UX P2) */}
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           <UebersichtPanel data={data} isLoading={isLoading} />
-          <EdelmetallkursPanel data={data} isLoading={isLoading} />
 
           {/* Tiny seal in the negative space at the bottom — anchoring brand */}
           <div style={{ flex: 1, display: 'grid', placeItems: 'center', paddingTop: 36 }}>
