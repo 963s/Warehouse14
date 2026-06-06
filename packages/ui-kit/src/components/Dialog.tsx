@@ -19,6 +19,7 @@
  * Touch-first: the close affordance and any footer actions are ≥48px.
  */
 
+import { X } from 'lucide-react';
 import {
   type CSSProperties,
   type ReactNode,
@@ -28,6 +29,8 @@ import {
   useRef,
 } from 'react';
 import { createPortal } from 'react-dom';
+
+import { Icon } from './Icon.js';
 
 export type ModalSize = 'sm' | 'md' | 'lg' | 'xl';
 
@@ -397,7 +400,7 @@ function DialogCloseButton({ onClose }: { onClose: () => void }): JSX.Element {
         ev.currentTarget.style.backgroundColor = 'transparent';
       }}
     >
-      <span aria-hidden="true">✕</span>
+      <Icon icon={X} size={18} />
     </button>
   );
 }

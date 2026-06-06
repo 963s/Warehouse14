@@ -40,10 +40,12 @@ import {
   DialogFooter,
   DialogHeader,
   Field,
+  Icon,
   Input,
   Select,
   Sheet,
   Textarea,
+  X,
 } from '@warehouse14/ui-kit';
 
 import {
@@ -176,7 +178,7 @@ function SheetHeaderRow({
           fontSize: '1.25rem',
         }}
       >
-        <span aria-hidden="true">✕</span>
+        <Icon icon={X} size={18} />
       </button>
     </DialogHeader>
   );

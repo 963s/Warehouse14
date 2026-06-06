@@ -1,3 +1,4 @@
+import type { LucideIcon } from 'lucide-react';
 /**
  * IconButton — an icon-only button for universal actions. ALWAYS requires an
  * accessible name (`label` → aria-label + title). Touch-first: ≥44px target,
@@ -5,13 +6,13 @@
  * add/print/back/edit; anything non-obvious must use a label, not an icon alone.
  */
 import { type ButtonHTMLAttributes, type CSSProperties, forwardRef, useState } from 'react';
-import type { LucideIcon } from 'lucide-react';
 
 import { Icon } from './Icon.js';
 
 export type IconButtonTone = 'default' | 'muted' | 'danger';
 
-export interface IconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'aria-label'> {
+export interface IconButtonProps
+  extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'aria-label'> {
   icon: LucideIcon;
   /** REQUIRED accessible name — becomes aria-label + the hover title. */
   label: string;
@@ -43,7 +44,19 @@ const BASE: CSSProperties = {
 };
 
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton(
-  { icon, label, iconSize = 20, tone = 'default', disabled, style, onMouseEnter, onMouseLeave, onFocus, onBlur, ...rest },
+  {
+    icon,
+    label,
+    iconSize = 20,
+    tone = 'default',
+    disabled,
+    style,
+    onMouseEnter,
+    onMouseLeave,
+    onFocus,
+    onBlur,
+    ...rest
+  },
   ref,
 ) {
   const [hover, setHover] = useState(false);

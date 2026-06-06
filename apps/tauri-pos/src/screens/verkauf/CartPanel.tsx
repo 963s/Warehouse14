@@ -22,7 +22,15 @@
 
 import { type CSSProperties, useMemo, useState } from 'react';
 
-import { Button, DiamondRule, MoneyAmount, ParchmentCard, RomanIndex } from '@warehouse14/ui-kit';
+import {
+  Button,
+  DiamondRule,
+  IconButton,
+  MoneyAmount,
+  ParchmentCard,
+  RomanIndex,
+  Trash2,
+} from '@warehouse14/ui-kit';
 
 import { type LineMath, computeLineMath, fromCents, sumHeader } from '../../lib/cart-math.js';
 import { isMoneyInput, normalizeDecimal } from '../../lib/decimal.js';
@@ -353,27 +361,15 @@ function CartRow({
         )}
         <div style={{ display: 'flex', gap: 10 }}>
           <DiscountEditor line={line} disabled={releasing} />
-          <button
-            type="button"
+          {/* UX icons: universal delete action → icon-only IconButton (aria-label). */}
+          <IconButton
+            icon={Trash2}
+            label={releasing ? 'Wird freigegeben…' : `Position ${index} entfernen`}
+            tone="danger"
+            iconSize={18}
             onClick={onRemove}
             disabled={releasing}
-            aria-label={`Position ${index} entfernen`}
-            title="Entfernen"
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: 'var(--w14-ink-faded)',
-              fontFamily: 'var(--w14-font-display)',
-              fontStyle: 'italic',
-              fontSize: '0.78rem',
-              cursor: releasing ? 'default' : 'pointer',
-              padding: 0,
-              textDecoration: 'underline',
-              textUnderlineOffset: 2,
-            }}
-          >
-            {releasing ? 'gibt frei…' : 'entfernen'}
-          </button>
+          />
         </div>
       </div>
     </ParchmentCard>

@@ -25,7 +25,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import { type ProductStatus, productsApi } from '@warehouse14/api-client';
-import { Button, DiamondRule, MagnifierIcon, ParchmentCard, Seal } from '@warehouse14/ui-kit';
+import {
+  Button,
+  DiamondRule,
+  Icon,
+  MagnifierIcon,
+  ParchmentCard,
+  Plus,
+  Seal,
+} from '@warehouse14/ui-kit';
 
 import { useBarcodeScanner } from '../../hooks/useBarcodeScanner.js';
 import { useApiClient } from '../../lib/api-context.js';
@@ -227,7 +235,9 @@ export function Lager(): JSX.Element {
               setSheetOpen(true);
             }}
           >
-            + Neues Produkt
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <Icon icon={Plus} size={16} /> Neues Produkt
+            </span>
           </Button>
         </div>
       </header>

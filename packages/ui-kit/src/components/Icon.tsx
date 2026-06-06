@@ -15,7 +15,12 @@ export interface IconProps extends Omit<LucideProps, 'ref'> {
   icon: LucideIcon;
 }
 
-export function Icon({ icon: IconComponent, size = 20, strokeWidth = 1.75, ...rest }: IconProps): JSX.Element {
+export function Icon({
+  icon: IconComponent,
+  size = 20,
+  strokeWidth = 1.75,
+  ...rest
+}: IconProps): JSX.Element {
   return (
     <IconComponent
       size={size}
