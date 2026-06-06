@@ -62,6 +62,12 @@ export {
 // MagnifierIcon) stay; Icon/IconButton are for universal actions.
 export { Icon, type IconProps } from './components/Icon.js';
 export {
+  AmountPad,
+  type AmountPadProps,
+  type AmountPadKey,
+  amountPadReduce,
+} from './components/AmountPad.js';
+export {
   IconButton,
   type IconButtonProps,
   type IconButtonTone,
