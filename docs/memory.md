@@ -11,7 +11,7 @@
 >
 > **Append, do not rewrite.** Superseded decisions stay visible with a strike-through and a pointer to what replaced them.
 
-**Last updated:** Phase 0.1 — Foundation delivery + branding & hosting pivot (Warehouse14 / Oracle Cloud)
+**Last updated:** Phase 1.5 — UX redesign + core-cashier hardening + the "can't sell" root-cause fix (2026-06-06). See **§27** (Decisions **#89–#99**).
 **Lead:** Basel
 **Architect role:** Claude (Lead Software Architect & Technical Co-Founder)
 
@@ -2896,6 +2896,8 @@ Result: the painful OS warning happens exactly ONCE per machine, ever.
 
 ## 26. [ACTIVE_SPRINT]
 
+> ▶ **Superseded as the active sprint by §27 (2026-06-06).** Kept for history. Its carried-forward gaps (Smurfing AML, TSE cert/archive tables, Owner Control Desktop) remain open and are re-listed in §27.6.
+
 **Status (2026-05-29, branch `claude/jolly-elbakyan-e0ac6b`):** All **Epics A–K**
 + infrastructure **Phases 1–5** are complete and now recorded as Decisions
 **#78–#88** above. The Fastify API, PG-native worker, and Tauri POS carry the
@@ -2923,3 +2925,84 @@ minimization (#I-4) + KYC purge (#I-5); TSE Ausfallbeleg / offline-queue drainer
 (#I-16); duress-PIN + alarm (Decision #37, designed, unbuilt); POS card payments
 (ZVT/SumUp, cash-only today); real LBMA price provider (#I-8); MCP SEO/appraise
 tools still stubs; Apple Developer ID signing.
+
+---
+
+## 27. [PHASE 1.5 — UX REDESIGN, CORE CASHIER & STABILIZATION] (2026-06-06)
+
+> The active sprint (supersedes §26). After Basel live-tested the POS in the salon: a deep UX
+> redesign + core-cashier hardening, plus discovery & fix of the real "can't sell" bug. The
+> strategist (Claude) wrote the prompts and **reviewed every phase against the real code with the
+> gates re-run independently — never rubber-stamping**; the executor (Claude Code) built on stacked
+> `claude/ux-*` branches. Full UX study: `docs/UX-REDESIGN.md`. Running log + git/deploy state of
+> truth: `docs/BACKLOG.md`.
+
+### 27.1 The real "can't sell" — root cause + dev-env (Decisions #89–#90)
+- **#89 — `reserve()` returned a STRING, not a `Date`.** drizzle `db.execute()` returns `timestamptz`
+  as a raw string; `packages/inventory-lock/reserve.ts` `rowToReservation` typed it `Date`, so the
+  route's `result.reservedAt.toISOString()` threw → **HTTP 500 on EVERY reserve**, AFTER the row had
+  committed RESERVED (product stranded → 409 on retry). Latent prod bug, every channel. Fix: a
+  `toDate()` coerce. → branch `fix-reserve-sell-bug` = **PR #2** (open; merge + redeploy api-cloud
+  before go-live). Follow-up: a testcontainers regression test + an audit of other raw-`execute()`
+  timestamp→Date callers.
+- **#90 — local-dev env had 4 layered facades** (a true `docker compose down -v && pnpm dev` never
+  worked): nothing created the `warehouse14` app DB (compose only makes the `warehouse14_dev`
+  maintenance DB); the migrator wasn't a superuser (0001's untrusted `vector`/`pg_stat_statements`);
+  no `check_function_bodies=off`; root `.env` pointed at the empty `warehouse14_dev` and env was
+  shell-sourced, not file-loaded. The live server was on the empty DB → that was the SURFACE "can't
+  sell" (compounding #89). Fixes: initdb creates the DB + a dev-only SUPERUSER migrator;
+  `dev-bootstrap.ensureMigratorAndDatabase()` self-heals; `--env-file-if-exists` on the dev scripts.
+
+### 27.2 Design-system foundation (Decisions #91–#92)
+- **#91 — ui-kit gains real primitives:** `Dialog`/`Sheet` (focus-trap/restore, scroll-lock,
+  ESC/backdrop, a11y), `Form` (Field/Input/Select/Textarea/Checkbox), `Accordion`, `Popover`,
+  `Sparkline`, `AmountPad` — all behaviour-tested. Every dialog was hand-rolled before (the
+  "unfinished" feel the owner reported). Number-key surface nav bound (pure resolver + input/dialog guards).
+- **#92 — icons = `lucide-react`** (Feather-style, stroke-adjustable to the parchment/ink/gold
+  aesthetic, MIT, tree-shakeable) via `Icon`/`IconButton` (a11y, ≥44px) + `packages/ui-kit/UI-CONVENTIONS.md`
+  (icon-only ONLY for universal actions). Brand motifs (Seal/DiamondRule/MagnifierIcon) kept.
+
+### 27.3 Unified flows (Decisions #93–#95)
+- **#93 — unified `ProductSheet`** (one slide-over: Details→Fotos→Preis→Bestand→Web&SEO→Etikett→Handel)
+  replaces NeuesProduktDialog + InventoryAdjustmentDialog; pure `deriveLifecycleStage` chip; kills the
+  `/fotos` dead-end (round-trip breadcrumb); reuses every locked guard (publish/€0, notes≥8, label
+  gating) verbatim. ⚠️ create→manage **in-place** still pending (today it closes + forces a re-click).
+- **#94 — metal prices are a TICKER, not a screen.** Always-visible price strip in the chrome + a
+  detail popover; `Kurse` demoted primary→secondary (full terminal + ADMIN override preserved). Δ =
+  vs the 10-day avg (labelled). ⚠️ a per-metal margin edit must propagate the derived buy/sell price
+  to ALL consumers (ticker/Ankauf) — pending (server already derives `ankauf = avg×(1−margin)`).
+- **#95 — Ankauf guided Estimator + Schmelzwert.** A 3-step guide replaces the silent customer-lock;
+  live Schmelzwert (`computeSchmelzwertEur`, bigint, German-comma) → an **editable** suggested buy
+  price from the server ankauf rate (margin baked in). KYC gate (`evaluateKycGate`) reused verbatim.
+
+### 27.4 Core cashier — the owner's top priority (Decisions #96–#98)
+- **#96 — on-screen `AmountPad`** for cash tendered + a prominent Rückgeld (touch-POS, keyboard-free).
+  ⚠️ the keypad's height pushed the finalize button below the dialog fold → **cash-confirm fix in
+  progress** (`ux-cashier-confirm`): a pinned, prominent "Zahlung abschließen".
+- **#97 — discounts:** per-line AND invoice-level, %-or-€, bigint-cent, **Σ-exact** distribution,
+  capped to base; reason still required; the `computeLineMath` VAT math is untouched.
+- **#98 — the label IS the barcode.** Code128 of the SKU via the printer's NATIVE command (ZPL `^BC` /
+  ESC-POS `GS k 73`) — ONE label serves storage AND sale; Verkauf scan → `classifyScanMatch` →
+  existing reserve → cart (the till scanner was previously unwired). **HIL gate:** the physical
+  print + real-scanner round-trip on the actual printer/scanner.
+
+### 27.5 Kasse plain-language (Decision #99)
+- **#99 — "Tag beginnen / Tag abschließen"** + an Erwartet·Gezählt·Differenz close-out readout
+  (`classifyDifferenz`); jargon → subtitle. The **blind-count guarantee + the TSE/Z-Bon/variance
+  enforcement are UNTOUCHED** (language/clarity only). ⚠️ the owner STILL finds Kasse unclear → a
+  deeper reframe (its purpose vs the checkout, the €200 opening float, its link to the sale) is pending.
+
+### 27.6 Readiness + active blockers (the current go-live picture)
+**NOT yet ready for real paying customers.** Blockers, in order:
+1. Cash-confirm button (#96 — WIP).
+2. Kasse deeper reframe (#99).
+3. **Hardware-in-the-loop session** — ZVT card terminal (**still cash-only**), label printer + hand
+   scanner (#98), TSE/Fiskaly in prod, camera.
+4. **Deploy to prod** — the reserve fix (PR #2) + the 0045–0048 migrations are NOT on prod yet.
+- **Pending UX feedback:** ProductSheet create→manage in-place (#93); metal-margin global propagation
+  (#94); DATEV/Kassenbericht export UI (the DATEV EXTF exists server-side — **no POS UI**).
+- **Git/deploy:** the POS ships via OTA, SEPARATE from the server container. Pushed: `ux-p0..p3` +
+  `fix-reserve-sell-bug`. Not pushed: `ux-kasse-plain-language` / `ux-icons-foundation` /
+  `ux-cashier-keypad` / `ux-cashier-discount` / `ux-cashier-barcode` / `ux-cashier-confirm`.
+- **Still-open carried-forward from §26 (unchanged):** Smurfing AML middleware (go-live blocker, §3);
+  TSE cert/archive tables (#I-1/#I-2); Owner Control Desktop (unbuilt); GDPR audit-log IP-min / KYC purge.
