@@ -47,7 +47,15 @@ const TAX_LEGAL_TEXTS: Record<string, string> = {
   INVESTMENT_GOLD_25C: 'Steuerfreie Lieferung von Anlagegold gemäß § 25c UStG.',
   REVERSE_CHARGE_13B: 'Steuerschuldnerschaft des Leistungsempfängers nach §13b Abs. 2 Nr. 9 UStG.',
 };
-import { AmountPad, Button, DiamondRule, MoneyAmount, ParchmentCard } from '@warehouse14/ui-kit';
+import {
+  AmountPad,
+  Button,
+  Check,
+  DiamondRule,
+  Icon,
+  MoneyAmount,
+  ParchmentCard,
+} from '@warehouse14/ui-kit';
 
 import { ZvtSpinner } from '../../components/hardware/ZvtSpinner.js';
 import { currentShiftQueryKey } from '../../hooks/useCurrentShift.js';
@@ -899,6 +907,19 @@ export function BezahlenDialog({
         style={{
           width: 'min(520px, 100%)',
           boxShadow: 'var(--w14-shadow-modal)',
+          // Cashier-confirm fix: during the input phase bound the card to the
+          // viewport and make it a flex column so the payment body can scroll
+          // while the action footer stays pinned + reachable (the tall AmountPad
+          // used to push the confirm button below the fold). The receipt phase
+          // keeps its natural sizing.
+          ...(finalized === null
+            ? {
+                maxHeight: 'calc(100vh - 48px)',
+                display: 'flex',
+                flexDirection: 'column',
+                minHeight: 0,
+              }
+            : {}),
         }}
       >
         {finalized === null ? (
@@ -1027,7 +1048,9 @@ function PaymentInput({
 }): JSX.Element {
   const buttonLabel = (() => {
     if (submitting) return 'Schließt ab…';
-    if (paymentChoice === 'CASH') return 'Beleg ausgeben';
+    // Explicit "this RECORDS the sale" wording — the old "Beleg ausgeben" read
+    // like a print action, not a finalize.
+    if (paymentChoice === 'CASH') return 'Zahlung abschließen';
     return 'Karte autorisieren';
   })();
 
@@ -1035,361 +1058,412 @@ function PaymentInput({
 
   return (
     <>
-      <h2
-        style={{
-          margin: 0,
-          fontFamily: 'var(--w14-font-display)',
-          fontWeight: 500,
-          fontSize: '1.5rem',
-          textAlign: 'center',
-        }}
-      >
-        Bezahlen · {paymentChoice === 'CASH' ? 'Bar' : 'Karte'}
-      </h2>
-
-      {/* Payment-method toggle */}
-      <div
-        role="tablist"
-        aria-label="Zahlungsart"
-        style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 10 }}
-      >
-        <MethodChip
-          active={paymentChoice === 'CASH'}
-          label="Barzahlung"
-          onClick={() => setPaymentChoice('CASH')}
-          disabled={submitting}
-        />
-        <MethodChip
-          active={paymentChoice === 'ZVT_CARD'}
-          label="Kartenzahlung"
-          onClick={() => setPaymentChoice('ZVT_CARD')}
-          disabled={submitting || !cardConfigured}
-          {...(!cardConfigured
-            ? { disabledReason: 'Terminal nicht konfiguriert (Einstellungen → Hardware)' }
-            : {})}
-        />
-      </div>
-
-      {/* B2B Reverse Charge Toggle & Panel */}
-      <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <label
+      {/* Scrollable payment body — overflows independently so the pinned footer
+          below stays reachable no matter how tall the AmountPad is. Plain block
+          flow inside, so the existing spacing is unchanged. */}
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+        <h2
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            cursor: submitting ? 'not-allowed' : 'pointer',
+            margin: 0,
             fontFamily: 'var(--w14-font-display)',
-            fontSize: '0.9rem',
-            color: 'var(--w14-ink-aged)',
+            fontWeight: 500,
+            fontSize: '1.5rem',
+            textAlign: 'center',
           }}
         >
-          <input
-            type="checkbox"
-            checked={isB2b}
-            onChange={(e) => setIsB2b(e.target.checked)}
-            disabled={submitting}
-            style={{
-              accentColor: 'var(--w14-gold)',
-              cursor: submitting ? 'not-allowed' : 'pointer',
-              width: 16,
-              height: 16,
-            }}
-          />
-          <span>B2B Reverse Charge (§ 13b UStG)</span>
-        </label>
+          Bezahlen · {paymentChoice === 'CASH' ? 'Bar' : 'Karte'}
+        </h2>
 
-        {isB2b && (
-          <div
+        {/* Payment-method toggle */}
+        <div
+          role="tablist"
+          aria-label="Zahlungsart"
+          style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 10 }}
+        >
+          <MethodChip
+            active={paymentChoice === 'CASH'}
+            label="Barzahlung"
+            onClick={() => setPaymentChoice('CASH')}
+            disabled={submitting}
+          />
+          <MethodChip
+            active={paymentChoice === 'ZVT_CARD'}
+            label="Kartenzahlung"
+            onClick={() => setPaymentChoice('ZVT_CARD')}
+            disabled={submitting || !cardConfigured}
+            {...(!cardConfigured
+              ? { disabledReason: 'Terminal nicht konfiguriert (Einstellungen → Hardware)' }
+              : {})}
+          />
+        </div>
+
+        {/* B2B Reverse Charge Toggle & Panel */}
+        <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <label
             style={{
-              padding: 12,
-              borderRadius: 6,
-              backgroundColor: 'var(--w14-parchment-2)',
-              border: '1px dashed var(--w14-rule)',
               display: 'flex',
-              flexDirection: 'column',
-              gap: 10,
+              alignItems: 'center',
+              gap: 8,
+              cursor: submitting ? 'not-allowed' : 'pointer',
+              fontFamily: 'var(--w14-font-display)',
+              fontSize: '0.9rem',
+              color: 'var(--w14-ink-aged)',
             }}
           >
-            <div style={{ display: 'flex', gap: 8 }}>
-              <div style={{ flex: 1 }}>
-                <input
-                  type="text"
-                  placeholder="USt-IdNr. (z.B. DE123456789)"
-                  value={vatId}
-                  onChange={(e) => setVatId(e.target.value)}
-                  disabled={submitting || viesStatus === 'checking'}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    borderRadius: 4,
-                    border: '1px solid var(--w14-rule)',
-                    backgroundColor: 'var(--w14-parchment-1)',
-                    color: 'var(--w14-ink-aged)',
-                    fontFamily: 'var(--w14-font-mono)',
-                    fontSize: '0.9rem',
-                  }}
-                />
-              </div>
-              <Button
-                variant="ghost"
-                onClick={verifyVat}
-                disabled={submitting || viesStatus === 'checking' || !vatId.trim()}
-                style={{ alignSelf: 'stretch', padding: '0 16px' }}
-              >
-                {viesStatus === 'checking' ? 'Prüft...' : 'Prüfen'}
-              </Button>
-            </div>
-
-            {/* VIES Status display */}
-            {viesStatus !== 'idle' && (
-              <div style={{ fontSize: '0.85rem', fontFamily: 'var(--w14-font-display)' }}>
-                {viesStatus === 'checking' && (
-                  <span style={{ color: 'var(--w14-ink-faded)', fontStyle: 'italic' }}>
-                    USt-IdNr. wird über EU-VIES validiert…
-                  </span>
-                )}
-                {viesStatus === 'valid' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <span style={{ color: 'var(--w14-gold)', fontWeight: 600 }}>
-                      ✓ USt-IdNr. gültig
-                    </span>
-                    {viesCompany && viesCompany !== '---' && (
-                      <div style={{ color: 'var(--w14-ink-aged)' }}>
-                        <strong>Firma:</strong> {viesCompany}
-                      </div>
-                    )}
-                    {viesAddress && viesAddress !== '---' && (
-                      <div style={{ color: 'var(--w14-ink-faded)' }}>
-                        <strong>Adresse:</strong> {viesAddress}
-                      </div>
-                    )}
-                  </div>
-                )}
-                {viesStatus === 'invalid' && (
-                  <span style={{ color: 'var(--w14-wax-red)', fontWeight: 600 }}>
-                    ✗ Ungültige USt-IdNr. laut EU-VIES-Datenbank.
-                  </span>
-                )}
-                {viesStatus === 'unavailable' && (
-                  <span style={{ color: 'var(--w14-wax-red)' }}>
-                    ⚠ VIES-Dienst nicht erreichbar. Manuelle Prüfung erforderlich.
-                  </span>
-                )}
-                {viesStatus === 'timeout' && (
-                  <span style={{ color: 'var(--w14-wax-red)' }}>
-                    ⚠ Zeitüberschreitung bei VIES-Prüfung. Manuelle Prüfung erforderlich.
-                  </span>
-                )}
-              </div>
-            )}
-
-            {/* Manual fallback fields if name/address is masked or VIES is down/timeout */}
-            {(viesStatus === 'unavailable' ||
-              viesStatus === 'timeout' ||
-              (viesStatus === 'valid' && (!viesCompany || viesCompany === '---'))) && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
-                <div
-                  style={{
-                    fontSize: '0.8rem',
-                    color: 'var(--w14-ink-faded)',
-                    fontStyle: 'italic',
-                  }}
-                >
-                  {viesStatus === 'valid'
-                    ? 'Daten durch EU-Datenschutz ausgeblendet. Bitte manuell ergänzen:'
-                    : 'Bitte Firmenname und Adresse manuell eintragen:'}
-                </div>
-                <input
-                  type="text"
-                  placeholder="Firmenname"
-                  value={manualCompany}
-                  onChange={(e) => setManualCompany(e.target.value)}
-                  disabled={submitting}
-                  style={{
-                    width: '100%',
-                    padding: '6px 10px',
-                    borderRadius: 4,
-                    border: '1px solid var(--w14-rule)',
-                    backgroundColor: 'var(--w14-parchment-1)',
-                    color: 'var(--w14-ink-aged)',
-                    fontFamily: 'var(--w14-font-display)',
-                    fontSize: '0.85rem',
-                  }}
-                />
-                <input
-                  type="text"
-                  placeholder="Adresse (z.B. Str, PLZ, Ort)"
-                  value={manualAddress}
-                  onChange={(e) => setManualAddress(e.target.value)}
-                  disabled={submitting}
-                  style={{
-                    width: '100%',
-                    padding: '6px 10px',
-                    borderRadius: 4,
-                    border: '1px solid var(--w14-rule)',
-                    backgroundColor: 'var(--w14-parchment-1)',
-                    color: 'var(--w14-ink-aged)',
-                    fontFamily: 'var(--w14-font-display)',
-                    fontSize: '0.85rem',
-                  }}
-                />
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      <DiamondRule label="Beleg" />
-
-      <table
-        className="w14-tabular"
-        style={{
-          width: '100%',
-          borderCollapse: 'collapse',
-          fontFamily: 'var(--w14-font-mono)',
-        }}
-      >
-        <tbody>
-          <Row label="Zu zahlen" value={<MoneyAmount valueEur={totalEur} emphasis />} emphasised />
-        </tbody>
-      </table>
-
-      {paymentChoice === 'CASH' ? (
-        <>
-          {/* Gift voucher — covers up to the full total; the rest is paid in cash. */}
-          <VoucherField applied={appliedVoucher} onApplied={onApplyVoucher} disabled={submitting} />
-          {appliedVoucher && (
-            <table
-              className="w14-tabular"
+            <input
+              type="checkbox"
+              checked={isB2b}
+              onChange={(e) => setIsB2b(e.target.checked)}
+              disabled={submitting}
               style={{
-                marginTop: 12,
-                width: '100%',
-                borderCollapse: 'collapse',
-                fontFamily: 'var(--w14-font-mono)',
+                accentColor: 'var(--w14-gold)',
+                cursor: submitting ? 'not-allowed' : 'pointer',
+                width: 16,
+                height: 16,
+              }}
+            />
+            <span>B2B Reverse Charge (§ 13b UStG)</span>
+          </label>
+
+          {isB2b && (
+            <div
+              style={{
+                padding: 12,
+                borderRadius: 6,
+                backgroundColor: 'var(--w14-parchment-2)',
+                border: '1px dashed var(--w14-rule)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 10,
               }}
             >
-              <tbody>
-                <Row
-                  label="Gutschein"
-                  value={
-                    <MoneyAmount valueEur={`-${fromCents(toCents(totalEur) - toCents(dueEur))}`} />
-                  }
-                  valueColor="var(--w14-gold)"
-                />
-                <Row
-                  label="Zu zahlen (bar)"
-                  value={<MoneyAmount valueEur={dueEur} emphasis />}
-                  emphasised
-                />
-              </tbody>
-            </table>
-          )}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ flex: 1 }}>
+                  <input
+                    type="text"
+                    placeholder="USt-IdNr. (z.B. DE123456789)"
+                    value={vatId}
+                    onChange={(e) => setVatId(e.target.value)}
+                    disabled={submitting || viesStatus === 'checking'}
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      borderRadius: 4,
+                      border: '1px solid var(--w14-rule)',
+                      backgroundColor: 'var(--w14-parchment-1)',
+                      color: 'var(--w14-ink-aged)',
+                      fontFamily: 'var(--w14-font-mono)',
+                      fontSize: '0.9rem',
+                    }}
+                  />
+                </div>
+                <Button
+                  variant="ghost"
+                  onClick={verifyVat}
+                  disabled={submitting || viesStatus === 'checking' || !vatId.trim()}
+                  style={{ alignSelf: 'stretch', padding: '0 16px' }}
+                >
+                  {viesStatus === 'checking' ? 'Prüft...' : 'Prüfen'}
+                </Button>
+              </div>
 
-          {toCents(dueEur) > 0n && (
-            <div style={{ marginTop: 16 }}>
+              {/* VIES Status display */}
+              {viesStatus !== 'idle' && (
+                <div style={{ fontSize: '0.85rem', fontFamily: 'var(--w14-font-display)' }}>
+                  {viesStatus === 'checking' && (
+                    <span style={{ color: 'var(--w14-ink-faded)', fontStyle: 'italic' }}>
+                      USt-IdNr. wird über EU-VIES validiert…
+                    </span>
+                  )}
+                  {viesStatus === 'valid' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <span style={{ color: 'var(--w14-gold)', fontWeight: 600 }}>
+                        ✓ USt-IdNr. gültig
+                      </span>
+                      {viesCompany && viesCompany !== '---' && (
+                        <div style={{ color: 'var(--w14-ink-aged)' }}>
+                          <strong>Firma:</strong> {viesCompany}
+                        </div>
+                      )}
+                      {viesAddress && viesAddress !== '---' && (
+                        <div style={{ color: 'var(--w14-ink-faded)' }}>
+                          <strong>Adresse:</strong> {viesAddress}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {viesStatus === 'invalid' && (
+                    <span style={{ color: 'var(--w14-wax-red)', fontWeight: 600 }}>
+                      ✗ Ungültige USt-IdNr. laut EU-VIES-Datenbank.
+                    </span>
+                  )}
+                  {viesStatus === 'unavailable' && (
+                    <span style={{ color: 'var(--w14-wax-red)' }}>
+                      ⚠ VIES-Dienst nicht erreichbar. Manuelle Prüfung erforderlich.
+                    </span>
+                  )}
+                  {viesStatus === 'timeout' && (
+                    <span style={{ color: 'var(--w14-wax-red)' }}>
+                      ⚠ Zeitüberschreitung bei VIES-Prüfung. Manuelle Prüfung erforderlich.
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Manual fallback fields if name/address is masked or VIES is down/timeout */}
+              {(viesStatus === 'unavailable' ||
+                viesStatus === 'timeout' ||
+                (viesStatus === 'valid' && (!viesCompany || viesCompany === '---'))) && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
+                  <div
+                    style={{
+                      fontSize: '0.8rem',
+                      color: 'var(--w14-ink-faded)',
+                      fontStyle: 'italic',
+                    }}
+                  >
+                    {viesStatus === 'valid'
+                      ? 'Daten durch EU-Datenschutz ausgeblendet. Bitte manuell ergänzen:'
+                      : 'Bitte Firmenname und Adresse manuell eintragen:'}
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Firmenname"
+                    value={manualCompany}
+                    onChange={(e) => setManualCompany(e.target.value)}
+                    disabled={submitting}
+                    style={{
+                      width: '100%',
+                      padding: '6px 10px',
+                      borderRadius: 4,
+                      border: '1px solid var(--w14-rule)',
+                      backgroundColor: 'var(--w14-parchment-1)',
+                      color: 'var(--w14-ink-aged)',
+                      fontFamily: 'var(--w14-font-display)',
+                      fontSize: '0.85rem',
+                    }}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Adresse (z.B. Str, PLZ, Ort)"
+                    value={manualAddress}
+                    onChange={(e) => setManualAddress(e.target.value)}
+                    disabled={submitting}
+                    style={{
+                      width: '100%',
+                      padding: '6px 10px',
+                      borderRadius: 4,
+                      border: '1px solid var(--w14-rule)',
+                      backgroundColor: 'var(--w14-parchment-1)',
+                      color: 'var(--w14-ink-aged)',
+                      fontFamily: 'var(--w14-font-display)',
+                      fontSize: '0.85rem',
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <DiamondRule label="Beleg" />
+
+        <table
+          className="w14-tabular"
+          style={{
+            width: '100%',
+            borderCollapse: 'collapse',
+            fontFamily: 'var(--w14-font-mono)',
+          }}
+        >
+          <tbody>
+            <Row
+              label="Zu zahlen"
+              value={<MoneyAmount valueEur={totalEur} emphasis />}
+              emphasised
+            />
+          </tbody>
+        </table>
+
+        {paymentChoice === 'CASH' ? (
+          <>
+            {/* Gift voucher — covers up to the full total; the rest is paid in cash. */}
+            <VoucherField
+              applied={appliedVoucher}
+              onApplied={onApplyVoucher}
+              disabled={submitting}
+            />
+            {appliedVoucher && (
+              <table
+                className="w14-tabular"
+                style={{
+                  marginTop: 12,
+                  width: '100%',
+                  borderCollapse: 'collapse',
+                  fontFamily: 'var(--w14-font-mono)',
+                }}
+              >
+                <tbody>
+                  <Row
+                    label="Gutschein"
+                    value={
+                      <MoneyAmount
+                        valueEur={`-${fromCents(toCents(totalEur) - toCents(dueEur))}`}
+                      />
+                    }
+                    valueColor="var(--w14-gold)"
+                  />
+                  <Row
+                    label="Zu zahlen (bar)"
+                    value={<MoneyAmount valueEur={dueEur} emphasis />}
+                    emphasised
+                  />
+                </tbody>
+              </table>
+            )}
+
+            {toCents(dueEur) > 0n && (
+              <div style={{ marginTop: 16 }}>
+                <span
+                  className="w14-smallcaps"
+                  style={{
+                    display: 'block',
+                    marginBottom: 8,
+                    fontSize: '0.78rem',
+                    letterSpacing: '0.08em',
+                    color: 'var(--w14-ink-faded)',
+                  }}
+                >
+                  Erhaltener Betrag (bar)
+                </span>
+                {/* On-screen keypad — feeds the SAME cashReceivedEur the keyboard did. */}
+                <div
+                  style={{
+                    opacity: submitting ? 0.5 : 1,
+                    pointerEvents: submitting ? 'none' : 'auto',
+                  }}
+                >
+                  <AmountPad
+                    value={cashReceivedEur}
+                    onChange={setCashReceivedEur}
+                    dueEur={dueEur}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Prominent live Rückgeld — verdigris when the cash covers the total. */}
+            <div
+              style={{
+                marginTop: 16,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'baseline',
+                gap: 12,
+                padding: '12px 16px',
+                background: 'var(--w14-parchment-2)',
+                border: '1px solid var(--w14-rule)',
+                borderRadius: 'var(--w14-radius-card)',
+              }}
+            >
               <span
                 className="w14-smallcaps"
                 style={{
-                  display: 'block',
-                  marginBottom: 8,
-                  fontSize: '0.78rem',
+                  fontSize: '0.95rem',
                   letterSpacing: '0.08em',
-                  color: 'var(--w14-ink-faded)',
+                  color: 'var(--w14-ink-aged)',
                 }}
               >
-                Erhaltener Betrag (bar)
+                Rückgeld
               </span>
-              {/* On-screen keypad — feeds the SAME cashReceivedEur the keyboard did. */}
-              <div
+              <span
+                className="w14-tabular"
                 style={{
-                  opacity: submitting ? 0.5 : 1,
-                  pointerEvents: submitting ? 'none' : 'auto',
+                  fontFamily: 'var(--w14-font-mono)',
+                  fontSize: '1.8rem',
+                  fontWeight: 700,
+                  color: enoughCash ? 'var(--w14-verdigris)' : 'var(--w14-ink-faded)',
                 }}
               >
-                <AmountPad value={cashReceivedEur} onChange={setCashReceivedEur} dueEur={dueEur} />
-              </div>
+                <MoneyAmount valueEur={enoughCash ? changeEur : '0.00'} emphasis />
+              </span>
             </div>
-          )}
-
-          {/* Prominent live Rückgeld — verdigris when the cash covers the total. */}
-          <div
+          </>
+        ) : (
+          <p
             style={{
-              marginTop: 16,
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'baseline',
-              gap: 12,
-              padding: '12px 16px',
-              background: 'var(--w14-parchment-2)',
-              border: '1px solid var(--w14-rule)',
-              borderRadius: 'var(--w14-radius-card)',
+              margin: '18px 0 0',
+              color: 'var(--w14-ink-faded)',
+              fontFamily: 'var(--w14-font-display)',
+              fontStyle: 'italic',
+              fontSize: '0.92rem',
+              textAlign: 'center',
             }}
           >
-            <span
-              className="w14-smallcaps"
-              style={{
-                fontSize: '0.95rem',
-                letterSpacing: '0.08em',
-                color: 'var(--w14-ink-aged)',
-              }}
-            >
-              Rückgeld
-            </span>
-            <span
-              className="w14-tabular"
-              style={{
-                fontFamily: 'var(--w14-font-mono)',
-                fontSize: '1.8rem',
-                fontWeight: 700,
-                color: enoughCash ? 'var(--w14-verdigris)' : 'var(--w14-ink-faded)',
-              }}
-            >
-              <MoneyAmount valueEur={enoughCash ? changeEur : '0.00'} emphasis />
-            </span>
-          </div>
-        </>
-      ) : (
-        <p
-          style={{
-            margin: '18px 0 0',
-            color: 'var(--w14-ink-faded)',
-            fontFamily: 'var(--w14-font-display)',
-            fontStyle: 'italic',
-            fontSize: '0.92rem',
-            textAlign: 'center',
-          }}
-        >
-          Bei Klick wird das Karten-Terminal angesprochen. Der Kunde bestätigt am Terminal.
-        </p>
-      )}
+            Bei Klick wird das Karten-Terminal angesprochen. Der Kunde bestätigt am Terminal.
+          </p>
+        )}
 
-      {error && (
-        <p
-          role="alert"
-          style={{
-            color: 'var(--w14-wax-red)',
-            margin: '14px 0 0',
-            fontSize: '0.92rem',
-            textAlign: 'center',
-          }}
-        >
-          {error}
-        </p>
-      )}
+        {error && (
+          <p
+            role="alert"
+            style={{
+              color: 'var(--w14-wax-red)',
+              margin: '14px 0 0',
+              fontSize: '0.92rem',
+              textAlign: 'center',
+            }}
+          >
+            {error}
+          </p>
+        )}
+      </div>
 
+      {/* Pinned action footer — never scrolls, stays reachable no matter how
+          tall the body is. Serves BOTH panels: CASH (finalize once cash ≥ due)
+          and ZVT_CARD (authorize). canSubmit already encodes the per-panel
+          guard, so the wiring is unchanged — only its position + the label. */}
       <div
         style={{
-          marginTop: 22,
+          flexShrink: 0,
           display: 'flex',
           gap: 12,
-          justifyContent: 'flex-end',
+          alignItems: 'stretch',
+          marginTop: 14,
+          paddingTop: 14,
+          borderTop: '1px solid var(--w14-rule)',
         }}
       >
-        <Button variant="ghost" onClick={onCancel} disabled={submitting}>
+        <Button variant="ghost" size="lg" onClick={onCancel} disabled={submitting}>
           Abbrechen
         </Button>
-        <Button variant="primary" onClick={onSubmit} disabled={!canSubmit}>
+        <Button
+          variant="primary"
+          size="lg"
+          iconLeft={<Icon icon={Check} size={18} />}
+          onClick={onSubmit}
+          disabled={!canSubmit}
+          style={{
+            flex: 1,
+            // Goes solid gold the moment it can record the sale — an
+            // unmistakable "ready to finalize" affordance (matches the active
+            // gold treatment used elsewhere).
+            ...(canSubmit
+              ? {
+                  backgroundColor: 'var(--w14-gold)',
+                  borderColor: 'var(--w14-gold)',
+                  color: '#fff',
+                }
+              : {}),
+          }}
+        >
           {buttonLabel}
+          {paymentChoice === 'CASH' && !submitting ? (
+            <>
+              {' · '}
+              <MoneyAmount valueEur={totalEur} />
+            </>
+          ) : null}
         </Button>
       </div>
     </>
