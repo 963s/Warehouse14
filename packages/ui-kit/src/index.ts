@@ -85,6 +85,11 @@ export {
   Check,
   Percent,
   Tag,
+  Wallet,
+  LogIn,
+  Lock,
+  ArrowDownToLine,
+  ArrowUpFromLine,
 } from 'lucide-react';
 export { Field, type FieldProps } from './components/Field.js';
 export { Input, type InputProps } from './components/Input.js';

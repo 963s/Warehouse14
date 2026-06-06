@@ -12,7 +12,15 @@
 import { useMemo, useState } from 'react';
 
 import type { ShiftView } from '@warehouse14/api-client';
-import { Button, DiamondRule, MoneyAmount, ParchmentCard } from '@warehouse14/ui-kit';
+import {
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  Button,
+  DiamondRule,
+  Icon,
+  MoneyAmount,
+  ParchmentCard,
+} from '@warehouse14/ui-kit';
 
 import { useDashboardSummary } from '../../hooks/useDashboardSummary.js';
 import { useReceiptPrinter } from '../../hooks/useReceiptPrinter.js';
@@ -84,7 +92,7 @@ export function KassenbuchPanel({ shift }: KassenbuchPanelProps): JSX.Element {
                 fontSize: '1.8rem',
               }}
             >
-              Kasse
+              Kassentag
             </h1>
             <p
               style={{
@@ -115,7 +123,7 @@ export function KassenbuchPanel({ shift }: KassenbuchPanelProps): JSX.Element {
         </header>
 
         <ParchmentCard padding="lg">
-          <DiamondRule label="Aktueller Stand" />
+          <DiamondRule label="Erwarteter Kassenbestand" />
           <table
             className="w14-tabular"
             style={{
@@ -126,13 +134,16 @@ export function KassenbuchPanel({ shift }: KassenbuchPanelProps): JSX.Element {
           >
             <tbody>
               <Row
-                label="Wechselgeld (Eröffnung)"
+                label="Startgeld (Tagesbeginn)"
                 value={<MoneyAmount valueEur={shift.openingFloatEur} />}
               />
-              <Row label="Bareinnahmen heute" value={<MoneyAmount valueEur={cashRevenueEur} />} />
+              <Row
+                label="+ Bareinnahmen (aus Verkauf)"
+                value={<MoneyAmount valueEur={cashRevenueEur} />}
+              />
               <RowSeparator />
               <Row
-                label="Geschätzter Stand"
+                label="= Erwarteter Kassenbestand"
                 value={<MoneyAmount valueEur={estimatedExpectedEur} emphasis />}
                 emphasised
               />
@@ -140,15 +151,26 @@ export function KassenbuchPanel({ shift }: KassenbuchPanelProps): JSX.Element {
           </table>
           <p
             style={{
-              margin: '8px 0 0',
+              margin: '10px 0 0',
+              color: 'var(--w14-ink-aged)',
+              fontFamily: 'var(--w14-font-body)',
+              fontSize: '0.84rem',
+              lineHeight: 1.4,
+            }}
+          >
+            Jeder Barverkauf aus <strong style={{ color: 'var(--w14-ink)' }}>Verkauf</strong> landet
+            automatisch hier.
+          </p>
+          <p
+            style={{
+              margin: '4px 0 0',
               color: 'var(--w14-ink-faded)',
               fontFamily: 'var(--w14-font-display)',
               fontStyle: 'italic',
               fontSize: '0.78rem',
-              textAlign: 'right',
             }}
           >
-            Schätzung — Einlagen und Entnahmen werden im Z-Bon endgültig verrechnet.
+            Geschätzt — Einlagen und Entnahmen werden im Z-Bon endgültig verrechnet.
           </p>
         </ParchmentCard>
 
@@ -163,11 +185,21 @@ export function KassenbuchPanel({ shift }: KassenbuchPanelProps): JSX.Element {
             gap: 12,
           }}
         >
-          <Button variant="primary" size="lg" onClick={() => setCashKind('einlage')}>
-            + Einlage
+          <Button
+            variant="primary"
+            size="lg"
+            iconLeft={<Icon icon={ArrowDownToLine} size={18} />}
+            onClick={() => setCashKind('einlage')}
+          >
+            Einlage (Geld rein)
           </Button>
-          <Button variant="primary" size="lg" onClick={() => setCashKind('entnahme')}>
-            − Entnahme
+          <Button
+            variant="primary"
+            size="lg"
+            iconLeft={<Icon icon={ArrowUpFromLine} size={18} />}
+            onClick={() => setCashKind('entnahme')}
+          >
+            Entnahme (Geld raus)
           </Button>
         </div>
 

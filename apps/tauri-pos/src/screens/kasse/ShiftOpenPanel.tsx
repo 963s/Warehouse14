@@ -106,12 +106,25 @@ export function ShiftOpenPanel(): JSX.Element {
         <DiamondRule label="Eröffnung" />
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20, textAlign: 'left' }}>
-          <EuroInput
-            label="Startgeld in der Schublade (Wechselgeld)"
-            valueEur={openingFloatEur}
-            onValueChange={setOpeningFloatEur}
-            autoFocus
-          />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <EuroInput
+              label="Startgeld"
+              valueEur={openingFloatEur}
+              onValueChange={setOpeningFloatEur}
+              autoFocus
+            />
+            <p
+              style={{
+                margin: 0,
+                color: 'var(--w14-ink-faded)',
+                fontSize: '0.82rem',
+                lineHeight: 1.4,
+              }}
+            >
+              Das Wechselgeld, mit dem du den Tag beginnst (z. B. 200 €) — damit du Kunden
+              herausgeben kannst.
+            </p>
+          </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <label

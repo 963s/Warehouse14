@@ -102,12 +102,21 @@ export const SURFACES: readonly SurfaceDescriptor[] = [
   },
   {
     path: '/kasse',
-    label: 'Kasse',
-    description: 'Schicht öffnen und schließen, Z-Bon, Geldtransit.',
+    label: 'Tageskasse',
+    description: 'Die Bargeld-Schublade des Tages: öffnen, Bargeld im Blick, Z-Bon.',
     digit: 3,
     tier: 'primary',
     component: Kasse,
-    searchAliases: ['z-bon', 'schicht', 'shift', 'kassensturz', 'tagesabschluss'],
+    // Keep the old term searchable so muscle memory still lands here.
+    searchAliases: [
+      'kasse',
+      'z-bon',
+      'schicht',
+      'shift',
+      'kassensturz',
+      'tagesabschluss',
+      'startgeld',
+    ],
   },
   {
     path: '/lager',

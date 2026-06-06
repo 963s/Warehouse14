@@ -21,6 +21,7 @@ import { DiamondRule, ParchmentCard, Seal } from '@warehouse14/ui-kit';
 
 import { useCurrentShift } from '../../hooks/useCurrentShift.js';
 
+import { KassePurposeBanner } from './KassePurposeBanner.js';
 import { KassenbuchPanel } from './KassenbuchPanel.js';
 import { ShiftOpenPanel } from './ShiftOpenPanel.js';
 
@@ -29,10 +30,16 @@ export function Kasse(): JSX.Element {
 
   if (isLoading && data === undefined) return <KasseLoadingSplash />;
 
-  if (data === null || data === undefined) {
-    return <ShiftOpenPanel />;
-  }
-  return <KassenbuchPanel shift={data} />;
+  // The purpose banner sits above BOTH sub-views — the owner has to meet the
+  // "Tageskasse ≠ checkout" concept no matter which state the day is in.
+  return (
+    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ padding: '20px 32px 0' }}>
+        <KassePurposeBanner />
+      </div>
+      {data === null || data === undefined ? <ShiftOpenPanel /> : <KassenbuchPanel shift={data} />}
+    </div>
+  );
 }
 
 function KasseLoadingSplash(): JSX.Element {
