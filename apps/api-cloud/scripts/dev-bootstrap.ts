@@ -173,6 +173,54 @@ async function applyMigrationsIfEmpty(sql: Sql): Promise<void> {
 }
 
 // ────────────────────────────────────────────────────────────────────────
+// 3.5 Ensure the app database + a dev-privileged migrator exist
+//
+// The postgres image auto-creates ONLY POSTGRES_DB (`warehouse14_dev`, a
+// throwaway maintenance DB used by initdb to create the roles). The actual
+// application database `warehouse14` is created by NOTHING on a fresh volume —
+// so after `docker compose down -v` it is simply absent and the migrator
+// connection below fails with `database "warehouse14" does not exist`.
+//
+// Two more facts make a true fresh apply impossible without this step:
+//   • Migration 0001 creates the `vector` + `pg_stat_statements` extensions,
+//     both of which are UNTRUSTED → only a SUPERUSER can `CREATE EXTENSION`
+//     them. The migrator from initdb is not a superuser.
+//   • Migration 0003 does `ALTER DEFAULT PRIVILEGES FOR ROLE
+//     warehouse14_migrator …` — so the migrator MUST own the tables it creates
+//     for `warehouse14_app` to inherit SELECT/INSERT. Running migrations as the
+//     POSTGRES_USER superuser instead would silently strip every app grant.
+//
+// Therefore: migrations must run AS the migrator, and the migrator must be a
+// dev-only SUPERUSER (exactly the "local-dev superuser" migration 0001's header
+// anticipates). Both elevation + CREATE DATABASE need superuser, so we run them
+// through the POSTGRES_USER (`warehouse14`) connection against the always-present
+// maintenance DB. Fully idempotent — a no-op on an already-provisioned volume.
+// ────────────────────────────────────────────────────────────────────────
+async function ensureMigratorAndDatabase(): Promise<void> {
+  const adminUrl =
+    process.env.SUPERUSER_DATABASE_URL ??
+    'postgres://warehouse14:warehouse14_dev_pw@localhost:5432/warehouse14_dev';
+  const admin = postgres(adminUrl, { max: 1, prepare: false, onnotice: () => {} });
+  try {
+    // Dev-only elevation: untrusted extensions in 0001 need superuser, and the
+    // migrator must remain the object-owner so 0003's default privileges apply.
+    await admin.unsafe('ALTER ROLE warehouse14_migrator SUPERUSER');
+    const exists = await admin<{ one: number }[]>`
+      SELECT 1 AS one FROM pg_database WHERE datname = 'warehouse14'`;
+    if (exists.length === 0) {
+      log('database', 'app database "warehouse14" missing — creating (owner=warehouse14_migrator)…');
+      // CREATE DATABASE cannot run inside a transaction block; unsafe() issues it standalone.
+      await admin.unsafe('CREATE DATABASE warehouse14 OWNER warehouse14_migrator');
+      log('database', '  ✓ created warehouse14');
+    } else {
+      log('database', 'app database "warehouse14" present');
+    }
+  } finally {
+    await admin.end({ timeout: 5 }).catch(() => {});
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────
 // 4. Self-signed dev cert
 // ────────────────────────────────────────────────────────────────────────
 interface DevCert {
@@ -321,12 +369,23 @@ async function main(): Promise<void> {
   refuseInProduction();
 
   ensurePostgresUp();
+  await ensureMigratorAndDatabase();
 
   // Connect as migrator (which exists from the docker initdb step).
   const migratorUrl =
     process.env.MIGRATOR_DATABASE_URL ??
     'postgres://warehouse14_migrator:warehouse14_migrator_dev_pw@localhost:5432/warehouse14';
-  const sql = postgres(migratorUrl, { max: 1, onnotice: () => {} });
+  // check_function_bodies=off mirrors infrastructure/docker/migrate.sh: several
+  // migrations CREATE functions whose bodies reference signatures Postgres only
+  // resolves at call time (e.g. the pgcrypto hmac text-key signature in 0045).
+  // Without it a fresh apply throws while validating those bodies. prepare:false:
+  // DDL via prepared statements is fragile across PG versions (mirrors connectMigrator).
+  const sql = postgres(migratorUrl, {
+    max: 1,
+    prepare: false,
+    connection: { options: '-c check_function_bodies=off' },
+    onnotice: () => {},
+  });
 
   try {
     await applyMigrationsIfEmpty(sql);
