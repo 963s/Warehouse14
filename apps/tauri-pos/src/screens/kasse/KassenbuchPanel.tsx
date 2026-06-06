@@ -152,9 +152,12 @@ export function KassenbuchPanel({ shift }: KassenbuchPanelProps): JSX.Element {
           </p>
         </ParchmentCard>
 
+        {/* The Kassenbuch in plain language: today's money in / out (UX §4.3 D). */}
+        <DiamondRule label="Heute · Ein- und Auszahlungen" />
+
         <div
           style={{
-            marginTop: 20,
+            marginTop: 4,
             display: 'grid',
             gridTemplateColumns: '1fr 1fr',
             gap: 12,
@@ -193,12 +196,31 @@ export function KassenbuchPanel({ shift }: KassenbuchPanelProps): JSX.Element {
               textAlign: 'center',
             }}
           >
-            Der Z-Bon schließt die Schicht endgültig. PIN-Bestätigung erforderlich.
+            Der Z-Bon ist der gesetzliche Tagesabschluss (KassenSichV) — er schließt die Schicht
+            endgültig. PIN-Bestätigung erforderlich.
           </p>
-          <div style={{ marginTop: 14, display: 'flex', justifyContent: 'center' }}>
+          <div
+            style={{
+              marginTop: 14,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 4,
+            }}
+          >
             <Button variant="destructive" size="lg" onClick={() => setZbonOpen(true)}>
-              Tagesabschluss (Z-Bon)
+              Tag abschließen
             </Button>
+            <span
+              className="w14-smallcaps"
+              style={{
+                color: 'var(--w14-ink-faded)',
+                fontSize: '0.74rem',
+                letterSpacing: '0.08em',
+              }}
+            >
+              Tagesabschluss · Z-Bon
+            </span>
           </div>
         </ParchmentCard>
       </div>
@@ -284,7 +306,7 @@ function RowSeparator(): JSX.Element {
 function addEur(a: string, b: string): string {
   const toCents = (s: string): bigint => {
     const [whole = '0', frac = ''] = s.split('.');
-    return BigInt(whole) * 100n + BigInt((frac + '00').slice(0, 2) || '0');
+    return BigInt(whole) * 100n + BigInt(`${frac}00`.slice(0, 2) || '0');
   };
   const total = toCents(a) + toCents(b);
   return `${total / 100n}.${String(total % 100n).padStart(2, '0')}`;

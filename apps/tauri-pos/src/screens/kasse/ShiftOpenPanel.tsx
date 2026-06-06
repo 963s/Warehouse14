@@ -77,26 +77,37 @@ export function ShiftOpenPanel(): JSX.Element {
             fontFamily: 'var(--w14-font-display)',
             fontWeight: 500,
             fontSize: '2rem',
-            margin: '20px 0 4px',
+            margin: '20px 0 2px',
           }}
         >
-          Kasse geschlossen
+          Tag beginnen
         </h1>
         <p
+          className="w14-smallcaps"
           style={{
             margin: 0,
+            color: 'var(--w14-ink-faded)',
+            letterSpacing: '0.08em',
+            fontSize: '0.82rem',
+          }}
+        >
+          Schicht öffnen
+        </p>
+        <p
+          style={{
+            margin: '8px 0 0',
             color: 'var(--w14-ink-faded)',
             fontFamily: 'var(--w14-font-display)',
             fontStyle: 'italic',
           }}
         >
-          Ein neuer Tag beginnt mit einem leeren Beleg.
+          Zähle dein Startgeld in der Schublade.
         </p>
         <DiamondRule label="Eröffnung" />
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20, textAlign: 'left' }}>
           <EuroInput
-            label="Wechselgeld (Anfangsbestand)"
+            label="Startgeld in der Schublade (Wechselgeld)"
             valueEur={openingFloatEur}
             onValueChange={setOpeningFloatEur}
             autoFocus
@@ -153,7 +164,7 @@ export function ShiftOpenPanel(): JSX.Element {
             disabled={!valid || submitting}
             fullWidth
           >
-            {submitting ? 'Eröffnet…' : 'Schicht eröffnen'}
+            {submitting ? 'Beginne…' : 'Tag beginnen'}
           </Button>
         </div>
       </ParchmentCard>

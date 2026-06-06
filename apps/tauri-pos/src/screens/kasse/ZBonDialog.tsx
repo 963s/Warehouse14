@@ -24,6 +24,7 @@ import { Button, DiamondRule, MoneyAmount, ParchmentCard } from '@warehouse14/ui
 
 import { useCurrentShift } from '../../hooks/useCurrentShift.js';
 import { useApiClient } from '../../lib/api-context.js';
+import { classifyDifferenz } from '../../lib/kassensturz.js';
 import { useToastStore } from '../../state/toast-store.js';
 
 import { EuroInput } from './EuroInput.js';
@@ -278,6 +279,14 @@ function BlindsturzInput({
   );
 }
 
+/**
+ * Visible comfort tolerance for the close-out readout. Mirrors the server
+ * setting `cash_drawer.variance_alert_threshold_eur` (which drives the alert,
+ * not enforcement). The signed Differenz is ALWAYS shown regardless — this only
+ * frames whether the difference is worth worrying about.
+ */
+const VARIANCE_TOLERANCE_EUR = '5.00';
+
 function ZBonResult({
   shift,
   onDismiss,
@@ -285,8 +294,25 @@ function ZBonResult({
   shift: ShiftView;
   onDismiss: () => void;
 }): JSX.Element {
-  const varianceCents = parseCents(shift.varianceEur);
-  const hasVariance = varianceCents !== 0n;
+  // Differenz from the SAME fiscal numbers the server returned
+  // (systemExpectedEur, blindCountEur) — a math identity equal to the server's
+  // generated varianceEur. Never recomputed-and-substituted, never hidden.
+  const diff = classifyDifferenz({
+    countedEur: shift.blindCountEur,
+    expectedEur: shift.systemExpectedEur,
+    toleranceEur: VARIANCE_TOLERANCE_EUR,
+  });
+  const diffColor =
+    diff.tone === 'short'
+      ? 'var(--w14-wax-red)'
+      : diff.tone === 'over'
+        ? 'var(--w14-gold)'
+        : 'var(--w14-verdigris)';
+  const statusLabel = diff.withinTolerance
+    ? 'Im Rahmen'
+    : diff.tone === 'short'
+      ? 'Fehlbetrag'
+      : 'Überschuss';
 
   return (
     <>
@@ -303,25 +329,58 @@ function ZBonResult({
       </h2>
       <DiamondRule />
 
-      <table
-        className="w14-tabular"
+      {/* Plain close-out readout (UX §4.3 B): Erwartet · Gezählt · Differenz. */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <ReadoutRow label="Erwartet" hint="laut System" valueEur={shift.systemExpectedEur ?? '0'} />
+        <ReadoutRow label="Gezählt" hint="in der Schublade" valueEur={shift.blindCountEur ?? '0'} />
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'baseline',
+            paddingTop: 12,
+            borderTop: '1px solid var(--w14-rule)',
+          }}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span
+              className="w14-smallcaps"
+              style={{ fontSize: '0.82rem', letterSpacing: '0.08em', color: 'var(--w14-ink-aged)' }}
+            >
+              Differenz
+            </span>
+            <span className="w14-smallcaps" style={{ fontSize: '0.72rem', color: diffColor }}>
+              {statusLabel}
+            </span>
+          </div>
+          <span
+            className="w14-tabular"
+            style={{
+              fontFamily: 'var(--w14-font-mono)',
+              fontSize: '1.5rem',
+              fontWeight: 600,
+              color: diffColor,
+            }}
+          >
+            {diff.differenzEur !== null ? (
+              <MoneyAmount valueEur={diff.differenzEur} signed emphasis />
+            ) : (
+              '—'
+            )}
+          </span>
+        </div>
+      </div>
+
+      <p
         style={{
-          width: '100%',
-          borderCollapse: 'collapse',
-          fontFamily: 'var(--w14-font-mono)',
+          margin: '10px 0 0',
+          textAlign: 'center',
+          fontSize: '0.8rem',
+          color: 'var(--w14-ink-faded)',
         }}
       >
-        <tbody>
-          <Row label="Gezählt" value={<MoneyAmount valueEur={shift.blindCountEur ?? '0'} />} />
-          <Row label="Erwartet" value={<MoneyAmount valueEur={shift.systemExpectedEur ?? '0'} />} />
-          <Row label="Wechselgeld" value={<MoneyAmount valueEur={shift.openingFloatEur} />} />
-          <Row
-            label="Varianz"
-            valueColor={hasVariance ? 'var(--w14-wax-red)' : 'var(--w14-ink-aged)'}
-            value={<MoneyAmount valueEur={shift.varianceEur ?? '0'} signed emphasis />}
-          />
-        </tbody>
-      </table>
+        Differenz bis ±5,00 € ist im Rahmen.
+      </p>
 
       <p
         style={{
@@ -347,39 +406,38 @@ function ZBonResult({
   );
 }
 
-function Row({
+/** A prominent close-out readout line: label (+ plain hint) and a large value. */
+function ReadoutRow({
   label,
-  value,
-  valueColor,
+  hint,
+  valueEur,
 }: {
   label: string;
-  value: JSX.Element;
-  valueColor?: string;
+  hint: string;
+  valueEur: string;
 }): JSX.Element {
   return (
-    <tr>
-      <td
-        style={{
-          padding: '8px 0',
-          color: 'var(--w14-ink-faded)',
-          fontFamily: 'var(--w14-font-display)',
-          fontVariant: 'all-small-caps',
-          letterSpacing: '0.08em',
-          fontSize: '0.85rem',
-        }}
+    <div
+      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span
+          className="w14-smallcaps"
+          style={{ fontSize: '0.82rem', letterSpacing: '0.08em', color: 'var(--w14-ink-aged)' }}
+        >
+          {label}
+        </span>
+        <span style={{ fontSize: '0.72rem', color: 'var(--w14-ink-faded)', fontStyle: 'italic' }}>
+          {hint}
+        </span>
+      </div>
+      <span
+        className="w14-tabular"
+        style={{ fontFamily: 'var(--w14-font-mono)', fontSize: '1.3rem', fontWeight: 600 }}
       >
-        {label}
-      </td>
-      <td
-        style={{
-          padding: '8px 0',
-          textAlign: 'right',
-          color: valueColor ?? 'var(--w14-ink-aged)',
-        }}
-      >
-        {value}
-      </td>
-    </tr>
+        <MoneyAmount valueEur={valueEur} />
+      </span>
+    </div>
   );
 }
 
