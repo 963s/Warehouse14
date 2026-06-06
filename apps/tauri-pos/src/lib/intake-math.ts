@@ -9,6 +9,18 @@
  * rounding, bigint-cents only, no JS-number arithmetic).
  */
 
+/**
+ * Tolerate the German comma WITHOUT misreading a plain dot-decimal. A value
+ * with a comma is German ("1.234,56" / "0,585") → strip dots, comma → dot. A
+ * value with no comma is already a dot-decimal (API rates like "62.4500") →
+ * leave it untouched. (Unlike `normalizeDecimal`, which treats "." as a
+ * thousands separator and would mangle the API values.)
+ */
+function commaToDot(s: string): string {
+  if (s.includes(',')) return s.replace(/\./g, '').replace(',', '.');
+  return s;
+}
+
 // ────────────────────────────────────────────────────────────────────────
 // Cent ↔ decimal-string conversion (mirror cart-math.ts)
 // ────────────────────────────────────────────────────────────────────────
@@ -120,8 +132,87 @@ export function computeSchmelzwertEur(input: SchmelzwertInput): string | null {
 }
 
 function parseScaled(s: string, decimals: number): bigint {
-  if (!/^\d+(\.\d+)?$/.test(s)) throw new Error(`invalid decimal "${s}"`);
-  const [whole = '0', frac = ''] = s.split('.');
+  // Tolerate the German comma (memory.md money rule) before the strict check.
+  const n = commaToDot(s);
+  if (!/^\d+(\.\d+)?$/.test(n)) throw new Error(`invalid decimal "${s}"`);
+  const [whole = '0', frac = ''] = n.split('.');
   const fracPadded = frac.padEnd(decimals, '0').slice(0, decimals);
   return BigInt(whole) * BigInt(10 ** decimals) + BigInt(fracPadded || '0');
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Estimator helpers (UX P3) — itemType → metal, fineness presets, and the
+// suggested buy-price derivation (the buy-rate decision lives here).
+// ────────────────────────────────────────────────────────────────────────
+
+export type EstimatorMetal = 'gold' | 'silver' | 'platinum' | 'palladium';
+
+/** Infer the precious metal from an itemType prefix; non-metal types → null. */
+export function metalFromItemType(itemType: string): EstimatorMetal | null {
+  if (itemType.startsWith('gold')) return 'gold';
+  if (itemType.startsWith('silver')) return 'silver';
+  if (itemType.startsWith('platinum')) return 'platinum';
+  if (itemType.startsWith('palladium')) return 'palladium';
+  return null;
+}
+
+/** Common hallmark finenesses per metal (per mille) for the quick-pick. */
+export const COMMON_FINENESS_PER_MILLE: Record<EstimatorMetal, readonly number[]> = {
+  gold: [999, 916, 750, 585, 375],
+  silver: [999, 925, 800],
+  platinum: [999, 950],
+  palladium: [999, 950],
+};
+
+/** "585" → "0.585" (the 0..1 decimal the valuation core consumes). */
+export function finenessDecimalForPerMille(perMille: number): string {
+  return (perMille / 1000).toFixed(3);
+}
+
+export interface SuggestedBuyInput {
+  metal: EstimatorMetal | null;
+  weightGrams: string | null;
+  finenessDecimal: string | null;
+  /** Per-gram buy rate (margin already baked in). Preferred when present. */
+  ankaufRatePerGramEur: string | null;
+  /** Per-gram current spot — the gross-melt + the margin-fallback basis. */
+  currentRatePerGramEur: string | null;
+  /** Safety margin fraction (0.10 = 10%) for the fallback. */
+  safetyMarginPct: number;
+}
+
+export interface SuggestedBuy {
+  /** Decimal-string EUR, or null when no rate is available (no fake 0). */
+  value: string | null;
+  /** Which basis produced the value — surfaced in the UI. */
+  basis: 'ankauf' | 'margin' | 'none';
+}
+
+/**
+ * Suggested buy price for a precious-metal item. Prefers the server's
+ * `ankaufRatePerGramEur` (margin baked in); falls back to current spot ×
+ * (1 − safetyMargin); yields null when neither rate is available.
+ */
+export function suggestedBuyEur(input: SuggestedBuyInput): SuggestedBuy {
+  const common = {
+    metal: input.metal,
+    weightGrams: input.weightGrams,
+    finenessDecimal: input.finenessDecimal,
+  };
+
+  if (input.ankaufRatePerGramEur !== null) {
+    const v = computeSchmelzwertEur({ ...common, pricePerGramEur: input.ankaufRatePerGramEur });
+    if (v !== null) return { value: v, basis: 'ankauf' };
+  }
+
+  if (input.currentRatePerGramEur !== null) {
+    const melt = computeSchmelzwertEur({ ...common, pricePerGramEur: input.currentRatePerGramEur });
+    if (melt !== null) {
+      const marginScaled = BigInt(Math.round(input.safetyMarginPct * 10_000));
+      const suggested = roundHalfEven(toCents(melt) * (10_000n - marginScaled), 10_000n);
+      return { value: fromCents(suggested), basis: 'margin' };
+    }
+  }
+
+  return { value: null, basis: 'none' };
 }
