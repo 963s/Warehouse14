@@ -47,7 +47,7 @@ const TAX_LEGAL_TEXTS: Record<string, string> = {
   INVESTMENT_GOLD_25C: 'Steuerfreie Lieferung von Anlagegold gemäß § 25c UStG.',
   REVERSE_CHARGE_13B: 'Steuerschuldnerschaft des Leistungsempfängers nach §13b Abs. 2 Nr. 9 UStG.',
 };
-import { Button, DiamondRule, MoneyAmount, ParchmentCard } from '@warehouse14/ui-kit';
+import { AmountPad, Button, DiamondRule, MoneyAmount, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { ZvtSpinner } from '../../components/hardware/ZvtSpinner.js';
 import { currentShiftQueryKey } from '../../hooks/useCurrentShift.js';
@@ -85,8 +85,6 @@ import { useHardwareStore } from '../../state/hardware-store.js';
 import { useLastReceiptStore } from '../../state/last-receipt-store.js';
 import { useSessionStore } from '../../state/session-store.js';
 import { useToastStore } from '../../state/toast-store.js';
-
-import { EuroInput } from '../kasse/EuroInput.js';
 
 import { ReceiptPreview } from './ReceiptPreview.js';
 import { StornoDialog } from './StornoDialog.js';
@@ -1289,34 +1287,66 @@ function PaymentInput({
 
           {toCents(dueEur) > 0n && (
             <div style={{ marginTop: 16 }}>
-              <EuroInput
-                label="Erhaltener Betrag (bar)"
-                valueEur={cashReceivedEur}
-                onValueChange={setCashReceivedEur}
-                autoFocus
-                disabled={submitting}
-              />
+              <span
+                className="w14-smallcaps"
+                style={{
+                  display: 'block',
+                  marginBottom: 8,
+                  fontSize: '0.78rem',
+                  letterSpacing: '0.08em',
+                  color: 'var(--w14-ink-faded)',
+                }}
+              >
+                Erhaltener Betrag (bar)
+              </span>
+              {/* On-screen keypad — feeds the SAME cashReceivedEur the keyboard did. */}
+              <div
+                style={{
+                  opacity: submitting ? 0.5 : 1,
+                  pointerEvents: submitting ? 'none' : 'auto',
+                }}
+              >
+                <AmountPad value={cashReceivedEur} onChange={setCashReceivedEur} dueEur={dueEur} />
+              </div>
             </div>
           )}
 
-          <table
-            className="w14-tabular"
+          {/* Prominent live Rückgeld — verdigris when the cash covers the total. */}
+          <div
             style={{
               marginTop: 16,
-              width: '100%',
-              borderCollapse: 'collapse',
-              fontFamily: 'var(--w14-font-mono)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'baseline',
+              gap: 12,
+              padding: '12px 16px',
+              background: 'var(--w14-parchment-2)',
+              border: '1px solid var(--w14-rule)',
+              borderRadius: 'var(--w14-radius-card)',
             }}
           >
-            <tbody>
-              <Row
-                label="Wechselgeld"
-                value={<MoneyAmount valueEur={enoughCash ? changeEur : '0.00'} emphasis />}
-                emphasised
-                valueColor={enoughCash ? 'var(--w14-gold)' : 'var(--w14-ink-faded)'}
-              />
-            </tbody>
-          </table>
+            <span
+              className="w14-smallcaps"
+              style={{
+                fontSize: '0.95rem',
+                letterSpacing: '0.08em',
+                color: 'var(--w14-ink-aged)',
+              }}
+            >
+              Rückgeld
+            </span>
+            <span
+              className="w14-tabular"
+              style={{
+                fontFamily: 'var(--w14-font-mono)',
+                fontSize: '1.8rem',
+                fontWeight: 700,
+                color: enoughCash ? 'var(--w14-verdigris)' : 'var(--w14-ink-faded)',
+              }}
+            >
+              <MoneyAmount valueEur={enoughCash ? changeEur : '0.00'} emphasis />
+            </span>
+          </div>
         </>
       ) : (
         <p
