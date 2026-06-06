@@ -68,7 +68,8 @@ import { AppShellHeader } from './AppShellHeader.js';
 import { Spotlight } from './Spotlight.js';
 import { StepUpModal } from './StepUpModal.js';
 import { SubBreadcrumb } from './SubBreadcrumb.js';
-import { SECONDARY_SURFACES, findSurfaceByPath } from './surface-registry.js';
+import { isAnyDialogOpen, isTextEntryElement, resolveDigitNavPath } from './digit-nav.js';
+import { PRIMARY_SURFACES, SECONDARY_SURFACES, findSurfaceByPath } from './surface-registry.js';
 
 export function AppShell(): JSX.Element {
   const location = useLocation();
@@ -108,7 +109,8 @@ export function AppShell(): JSX.Element {
     if (s) pushRecent(s.path);
   }, [location.pathname, pushRecent]);
 
-  // Global key bindings — Cmd+K opens Spotlight; Cmd+Shift+D toggles theme.
+  // Global key bindings — Cmd+K opens Spotlight; Cmd+Shift+D toggles theme;
+  // bare 1–8 jump to the primary surfaces the rail labels (UX P0).
   useEffect(() => {
     const onKey = (ev: KeyboardEvent): void => {
       const isMod = ev.metaKey || ev.ctrlKey;
@@ -120,11 +122,28 @@ export function AppShell(): JSX.Element {
       if (isMod && ev.shiftKey && (ev.key === 'd' || ev.key === 'D')) {
         ev.preventDefault();
         toggleTheme();
+        return;
+      }
+      // Number-key surface navigation. The guards (modifier held, a text field
+      // focused, or any modal/Spotlight open) live in the pure resolver so
+      // typing "3" into a price field or inside a dialog never navigates.
+      const digitPath = resolveDigitNavPath(
+        {
+          key: ev.key,
+          hasModifier: ev.metaKey || ev.ctrlKey || ev.altKey,
+          isTextEntry: isTextEntryElement(document.activeElement),
+          isDialogOpen: isAnyDialogOpen(),
+        },
+        PRIMARY_SURFACES,
+      );
+      if (digitPath) {
+        ev.preventDefault();
+        navigate(digitPath);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [toggleTheme]);
+  }, [toggleTheme, navigate]);
 
   const handleSignOut = useCallback(async () => {
     // §19.2 C-2 + C-3 fix — the full sign-out cascade.

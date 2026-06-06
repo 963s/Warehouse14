@@ -31,3 +31,22 @@ export {
   ErrorBoundary,
   type ErrorBoundaryProps,
 } from './components/ErrorBoundary.js';
+
+// UX P0 — Foundation: shared Dialog/Sheet + Form primitives. Every dialog
+// used to be hand-rolled; these give one consistent, accessible core.
+export {
+  Dialog,
+  type DialogProps,
+  DialogHeader,
+  DialogBody,
+  DialogFooter,
+  ModalShell,
+  type ModalShellProps,
+  type ModalSize,
+} from './components/Dialog.js';
+export { Sheet, type SheetProps } from './components/Sheet.js';
+export { Field, type FieldProps } from './components/Field.js';
+export { Input, type InputProps } from './components/Input.js';
+export { Textarea, type TextareaProps } from './components/Textarea.js';
+export { Select, type SelectProps } from './components/Select.js';
+export { Checkbox, type CheckboxProps } from './components/Checkbox.js';

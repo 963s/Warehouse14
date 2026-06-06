@@ -16,7 +16,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { ApiError, authPin } from '@warehouse14/api-client';
-import { DiamondRule, ParchmentCard, PinPad, RomanIndex, Seal } from '@warehouse14/ui-kit';
+import { Dialog, DiamondRule, PinPad, RomanIndex, Seal } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
 import { useSessionStore } from '../../state/session-store.js';
@@ -66,18 +66,7 @@ export function StepUpModal(): JSX.Element | null {
     }
   }, [lockedUntilIso, lockoutSecondsLeft]);
 
-  // Esc anywhere cancels.
-  useEffect(() => {
-    if (!active) return;
-    const onKey = (ev: KeyboardEvent): void => {
-      if (ev.key === 'Escape') {
-        ev.preventDefault();
-        cancel();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [active, cancel]);
+  // Esc + backdrop cancel are now handled by the shared <Dialog/> core.
 
   async function handleSubmit(): Promise<void> {
     if (locked || submitting || pin.length !== 4) return;
@@ -120,33 +109,9 @@ export function StepUpModal(): JSX.Element | null {
     return `${m}:${String(s).padStart(2, '0')}`;
   }, [locked, lockoutSecondsLeft]);
 
-  if (!active) return null;
-
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="PIN-Bestätigung"
-      onClick={cancel}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        backgroundColor: 'var(--w14-overlay)',
-        zIndex: 1100,
-        display: 'grid',
-        placeItems: 'center',
-        padding: 24,
-      }}
-    >
-      <ParchmentCard
-        padding="lg"
-        onClick={(ev) => ev.stopPropagation()}
-        style={{
-          width: 'min(420px, 100%)',
-          textAlign: 'center',
-          boxShadow: 'var(--w14-shadow-modal)',
-        }}
-      >
+    <Dialog open={active} onClose={cancel} ariaLabel="PIN-Bestätigung" size="sm" showClose={false}>
+      <div style={{ padding: 24, textAlign: 'center' }}>
         <div style={{ display: 'flex', justifyContent: 'center' }}>
           <Seal size="md" tone="gold" label="🔒" />
         </div>
@@ -233,7 +198,7 @@ export function StepUpModal(): JSX.Element | null {
         >
           Abbrechen (Esc)
         </button>
-      </ParchmentCard>
-    </div>
+      </div>
+    </Dialog>
   );
 }

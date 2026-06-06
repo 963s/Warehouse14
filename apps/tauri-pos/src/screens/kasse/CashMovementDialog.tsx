@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { ApiError, type CashMovementDirection, shifts as shiftsApi } from '@warehouse14/api-client';
-import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
+import { Button, Dialog, DialogBody, DialogFooter, Field, Input } from '@warehouse14/ui-kit';
 
 import { useCurrentShift } from '../../hooks/useCurrentShift.js';
 import { useApiClient } from '../../lib/api-context.js';
@@ -68,18 +68,7 @@ export function CashMovementDialog({
     }
   }, [open]);
 
-  // Esc closes.
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (ev: KeyboardEvent): void => {
-      if (ev.key === 'Escape') {
-        ev.preventDefault();
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+  // Esc + backdrop close are now handled by the shared <Dialog/> core.
 
   const validAmount = /^\d{1,16}(\.\d{1,2})?$/.test(amountEur) && Number(amountEur) > 0;
   const validReason = reason.trim().length >= 3;
@@ -113,70 +102,25 @@ export function CashMovementDialog({
     }
   }, [addToast, amountEur, api, canSubmit, invalidateShiftScope, kind, onClose, reason, shiftId]);
 
-  if (!open) return null;
-
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={KIND_TITLE[kind]}
-      onClick={onClose}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        backgroundColor: 'var(--w14-overlay)',
-        zIndex: 1050,
-        display: 'grid',
-        placeItems: 'center',
-        padding: 24,
-      }}
-    >
-      <ParchmentCard
-        padding="lg"
-        onClick={(ev) => ev.stopPropagation()}
-        style={{
-          width: 'min(460px, 100%)',
-          boxShadow: 'var(--w14-shadow-modal)',
-        }}
-      >
-        <h2
-          style={{
-            margin: 0,
-            fontFamily: 'var(--w14-font-display)',
-            fontWeight: 500,
-            fontSize: '1.5rem',
-            textAlign: 'center',
-          }}
-        >
-          {KIND_TITLE[kind]}
-        </h2>
+    <Dialog open={open} onClose={onClose} title={KIND_TITLE[kind]} size="md">
+      <DialogBody>
         <p
           style={{
-            margin: '4px 0 0',
+            margin: '0 0 16px',
             color: 'var(--w14-ink-faded)',
             fontFamily: 'var(--w14-font-display)',
             fontStyle: 'italic',
             fontSize: '0.88rem',
-            textAlign: 'center',
           }}
         >
           {KIND_HINT[kind]}
         </p>
-        <DiamondRule />
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           <EuroInput label="Betrag" valueEur={amountEur} onValueChange={setAmountEur} autoFocus />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <label
-              htmlFor="cm-reason"
-              className="w14-smallcaps"
-              style={{ color: 'var(--w14-ink-faded)', fontSize: '0.78rem' }}
-            >
-              Grund (mindestens 3 Zeichen)
-            </label>
-            <input
-              id="cm-reason"
-              type="text"
+          <Field label="Grund (mindestens 3 Zeichen)">
+            <Input
               value={reason}
               onChange={(ev) => setReason(ev.target.value)}
               disabled={submitting}
@@ -184,19 +128,8 @@ export function CashMovementDialog({
               placeholder={
                 kind === 'einlage' ? 'z. B. Tresor-Übernahme' : 'z. B. Bürobedarf — Tinte'
               }
-              style={{
-                width: '100%',
-                border: 'none',
-                outline: 'none',
-                borderBottom: '2px solid var(--w14-rule)',
-                background: 'transparent',
-                color: 'var(--w14-ink)',
-                fontFamily: 'var(--w14-font-body)',
-                fontSize: '0.95rem',
-                padding: '8px 4px',
-              }}
             />
-          </div>
+          </Field>
         </div>
 
         {error && (
@@ -204,30 +137,23 @@ export function CashMovementDialog({
             role="alert"
             style={{
               color: 'var(--w14-wax-red)',
-              margin: '14px 0 0',
+              margin: '16px 0 0',
               fontSize: '0.92rem',
             }}
           >
             {error}
           </p>
         )}
+      </DialogBody>
 
-        <div
-          style={{
-            marginTop: 24,
-            display: 'flex',
-            gap: 12,
-            justifyContent: 'flex-end',
-          }}
-        >
-          <Button variant="ghost" onClick={onClose} disabled={submitting}>
-            Abbrechen
-          </Button>
-          <Button variant="primary" onClick={() => void submit()} disabled={!canSubmit}>
-            {submitting ? 'Buche…' : 'Buchen'}
-          </Button>
-        </div>
-      </ParchmentCard>
-    </div>
+      <DialogFooter>
+        <Button variant="ghost" onClick={onClose} disabled={submitting}>
+          Abbrechen
+        </Button>
+        <Button variant="primary" onClick={() => void submit()} disabled={!canSubmit}>
+          {submitting ? 'Buche…' : 'Buchen'}
+        </Button>
+      </DialogFooter>
+    </Dialog>
   );
 }

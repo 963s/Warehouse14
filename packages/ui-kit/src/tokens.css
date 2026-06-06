@@ -135,3 +135,37 @@ body {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ────────────────────────────────────────────────────────────────────
+ * Modal motion — Dialog (centered) + Sheet (right slide-over) enter anims.
+ * Used by @warehouse14/ui-kit Dialog/Sheet; honour prefers-reduced-motion
+ * via the rule above.
+ * ──────────────────────────────────────────────────────────────────── */
+@keyframes w14-modal-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes w14-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes w14-sheet-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: none;
+  }
+}
