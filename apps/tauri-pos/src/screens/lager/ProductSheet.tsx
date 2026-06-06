@@ -71,18 +71,33 @@ export interface ProductSheetProps {
 }
 
 export function ProductSheet({ open, productId, onClose }: ProductSheetProps): JSX.Element | null {
-  const isCreate = productId === null;
+  // After a successful create the sheet stays open and transitions IN-PLACE to
+  // manage mode for the new product — no close + re-click. `createdId` holds
+  // that just-created id; it resets on close so the next "+ Neues Produkt"
+  // opens a fresh create form.
+  const [createdId, setCreatedId] = useState<string | null>(null);
+
+  const handleClose = (): void => {
+    setCreatedId(null);
+    onClose();
+  };
+
+  // productId (Lager row-click / ?produkt= deep-open) wins; otherwise a just-
+  // created id transitions us into manage mode.
+  const manageId = productId ?? createdId;
+  const justCreated = productId === null && createdId !== null;
+
   return (
     <Sheet
       open={open}
-      onClose={onClose}
-      ariaLabel={isCreate ? 'Neues Produkt' : 'Produkt verwalten'}
+      onClose={handleClose}
+      ariaLabel={manageId ? 'Produkt verwalten' : 'Neues Produkt'}
       size="lg"
     >
-      {isCreate ? (
-        <CreateBody onClose={onClose} />
+      {manageId ? (
+        <ManageBody productId={manageId} onClose={handleClose} justCreated={justCreated} />
       ) : (
-        <ManageBody productId={productId} onClose={onClose} />
+        <CreateBody onCreated={setCreatedId} onClose={handleClose} />
       )}
     </Sheet>
   );
@@ -272,10 +287,18 @@ interface CreatedResponse {
   status: string;
 }
 
-function CreateBody({ onClose }: { onClose: () => void }): JSX.Element {
+function CreateBody({
+  onCreated,
+  onClose,
+}: {
+  /** Called with the new product id on a successful POST — the sheet then
+   *  transitions IN-PLACE to manage mode (no close + re-click). */
+  onCreated: (productId: string) => void;
+  /** Cancel / header-X — closes the sheet without creating. */
+  onClose: () => void;
+}): JSX.Element {
   const client = useApiClient() as ApiClient;
   const addToast = useToastStore((s) => s.addToast);
-  const navigate = useNavigate();
   const qc = useQueryClient();
   const printer = useLabelPrinter();
 
@@ -392,12 +415,11 @@ function CreateBody({ onClose }: { onClose: () => void }): JSX.Element {
         });
       }
 
-      onClose();
-      // Only an INTENTIONAL draft hands over to the photo workflow — and now it
-      // round-trips back to THIS product's sheet (no dead-end).
-      if (outcome === 'draft') {
-        navigate(fotosHref(res.id));
-      }
+      // Stay open and transition IN-PLACE to manage mode for the just-created
+      // product — the operator continues with Fotos / Preis / Etikett in this
+      // same sheet (no close + re-click, no auto-navigate to /fotos). Finishing
+      // is now explicit via the header close X.
+      onCreated(res.id);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unbekannter Fehler';
       if (/step[_-]?up/i.test(msg)) {
@@ -582,7 +604,8 @@ function CreateBody({ onClose }: { onClose: () => void }): JSX.Element {
 function ManageBody({
   productId,
   onClose,
-}: { productId: string; onClose: () => void }): JSX.Element {
+  justCreated = false,
+}: { productId: string; onClose: () => void; justCreated?: boolean }): JSX.Element {
   const api = useApiClient();
   const detailQ = useQuery({
     queryKey: productDetailQueryKey(productId),
@@ -612,10 +635,29 @@ function ManageBody({
           </p>
         ) : (
           <Accordion>
-            <AccordionItem id="details" title="Details" defaultOpen>
+            {justCreated && (
+              <p
+                aria-live="polite"
+                style={{
+                  margin: '0 0 4px',
+                  padding: '10px 14px',
+                  borderRadius: 'var(--w14-radius-card)',
+                  background: 'var(--w14-parchment-3)',
+                  border: '1px solid var(--w14-gold)',
+                  color: 'var(--w14-ink-aged)',
+                  fontSize: '0.88rem',
+                  lineHeight: 1.4,
+                }}
+              >
+                <strong style={{ color: 'var(--w14-ink)' }}>Produkt angelegt.</strong> Weiter geht's
+                hier im selben Fenster: <strong>Fotos</strong>, <strong>Preis</strong>,{' '}
+                <strong>Etikett</strong>. Schließen mit dem ✕ oben, wenn du fertig bist.
+              </p>
+            )}
+            <AccordionItem id="details" title="Details" defaultOpen={!justCreated}>
               <DetailsSection product={product} />
             </AccordionItem>
-            <AccordionItem id="fotos" title="Fotos">
+            <AccordionItem id="fotos" title="Fotos" defaultOpen={justCreated}>
               <FotosSection product={product} />
             </AccordionItem>
             <AccordionItem id="preis" title="Preis & Veröffentlichen">
