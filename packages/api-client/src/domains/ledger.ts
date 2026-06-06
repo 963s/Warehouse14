@@ -47,7 +47,11 @@ export type LedgerEventType =
   | 'alert.ebay_sale_conflict'
   | 'alert.ebay_double_sale_attempt'
   | 'alert.customer_marked_suspicious'
-  | 'alert.customer_banned';
+  | 'alert.customer_banned'
+  // TSE/KassenSichV criticals — ALREADY emitted by the worker (tse-cert-checker
+  // / tse-archive-exporter); declared here for type-safety, NOT new alert types.
+  | 'alert.tse_cert_expiry'
+  | 'alert.tse_critical_failure';
 
 export interface LedgerEvent {
   /** bigserial as a JS number (route normalizes via Number(bigint)). */

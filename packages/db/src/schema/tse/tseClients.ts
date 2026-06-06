@@ -26,8 +26,14 @@ export const tseClients = pgTable(
     certValidTo: timestamp('cert_valid_to', { withTimezone: true }).notNull(),
     /** When the checker last refreshed this row from Fiskaly. */
     lastChecked: timestamp('last_checked', { withTimezone: true }),
-    /** When the most recent expiry alert was emitted (24h throttle). */
+    /** When the most recent expiry alert was emitted. */
     alertSentAt: timestamp('alert_sent_at', { withTimezone: true }),
+    /**
+     * The cert-expiry escalation tier (T-30/T-7/T-1/expired) most recently
+     * alerted on; NULL = never alerted. Drives escalation-only re-alerting
+     * (migration 0049). See apps/worker/src/lib/cert-expiry-tier.ts.
+     */
+    lastAlertTier: text('last_alert_tier'),
     ...timestamps(),
   },
   (table) => ({

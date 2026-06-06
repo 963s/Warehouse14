@@ -2,12 +2,17 @@
  * tse_cert_checker — TSE/TSS certificate-expiry monitor (KassenSichV, #I-1).
  *
  * Daily, the job queries the Fiskaly SIGN DE V2 API for the configured TSS's
- * certificate validity, records it in `tse_clients`, and — when the certificate
- * is within 30 days of expiry — emits the critical `alert.tse_cert_expiry`
- * ledger event (an expired TSE certificate invalidates the register's legality).
+ * certificate validity, records it in `tse_clients`, and emits the critical
+ * `alert.tse_cert_expiry` ledger event when the certificate crosses into a more
+ * urgent expiry band (an expired TSE certificate invalidates the register's
+ * legality).
  *
- * The alert is throttled: at most one per 24h via the `alert_sent_at` stamp, so
- * the operator isn't spammed every day for the whole final month.
+ * Re-alerting is ESCALATION-driven, not time-throttled: the cert is classified
+ * into a tier (T-30 → T-7 → T-1 → expired; see lib/cert-expiry-tier.ts) and an
+ * alert fires only when the current tier is MORE urgent than the last one we
+ * alerted at (persisted in `last_alert_tier`). So the operator is warned afresh
+ * at each escalation but never re-spammed while sitting in the same band. No new
+ * alert TYPE is introduced — the existing event carries the tier (memory.md #45).
  *
  * The Fiskaly client is injected so `runTseCertCheck` is unit-testable without
  * the network; the job is fail-safe (an unconfigured TSS or an API error logs
@@ -19,6 +24,7 @@ import { sql as drizzleSql } from 'drizzle-orm';
 import { emit } from '@warehouse14/audit';
 import type { AnyDb } from '@warehouse14/db/client';
 
+import { type CertExpiryTier, certExpiryTier, tierRank } from '../lib/cert-expiry-tier.js';
 import type { JobContext, JobDefinition } from '../lib/job-runner.js';
 
 // ────────────────────────────────────────────────────────────────────────
@@ -55,9 +61,6 @@ export interface TseCertCheckOptions {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const HOUR_MS = 60 * 60 * 1000;
-const DEFAULT_THRESHOLD_DAYS = 30;
-const DEFAULT_COOLDOWN_HOURS = 24;
 
 // ────────────────────────────────────────────────────────────────────────
 // Orchestrator
@@ -77,6 +80,8 @@ export interface TseCertCheckOutcome {
   tssId: string;
   certValidTo?: string;
   daysUntilExpiry?: number;
+  /** The current escalation tier (null when > 30 days out). */
+  tier?: CertExpiryTier | null;
   alerted?: boolean;
   reason?: string;
 }
@@ -85,14 +90,12 @@ export interface TseCertCheckOutcome {
 // constraint on `db.execute<T>` (interfaces lack an implicit index signature).
 type TseClientLookupRow = {
   id: string;
-  alert_sent_at: Date | null;
+  last_alert_tier: string | null;
 };
 
 export async function runTseCertCheck(deps: TseCertCheckDeps): Promise<TseCertCheckOutcome> {
   const { db, log, fiskaly, client } = deps;
   const now = deps.now ?? new Date();
-  const thresholdDays = deps.thresholdDays ?? DEFAULT_THRESHOLD_DAYS;
-  const cooldownMs = (deps.cooldownHours ?? DEFAULT_COOLDOWN_HOURS) * HOUR_MS;
   const tssId = fiskaly.tssId;
 
   if (!isFiskalyTseConfigured(fiskaly)) {
@@ -112,17 +115,18 @@ export async function runTseCertCheck(deps: TseCertCheckDeps): Promise<TseCertCh
   const certValidToIso = info.certValidTo.toISOString();
   const nowIso = now.toISOString();
   const daysUntilExpiry = Math.floor((info.certValidTo.getTime() - now.getTime()) / DAY_MS);
+  const tier = certExpiryTier(info.certValidTo, now);
 
-  // Upsert the row for this TSS.
+  // Upsert the row for this TSS, reading the last tier we alerted at.
   const existing = await db.execute<TseClientLookupRow>(drizzleSql`
-    SELECT id, alert_sent_at FROM tse_clients WHERE tss_id = ${tssId} LIMIT 1`);
+    SELECT id, last_alert_tier FROM tse_clients WHERE tss_id = ${tssId} LIMIT 1`);
   const existingRow = existing[0];
 
   let rowId: string;
-  let lastAlert: Date | null;
+  let lastTier: CertExpiryTier | null;
   if (existingRow) {
     rowId = existingRow.id;
-    lastAlert = existingRow.alert_sent_at;
+    lastTier = (existingRow.last_alert_tier as CertExpiryTier | null) ?? null;
   } else {
     const inserted = await db.execute<{ id: string }>(drizzleSql`
       INSERT INTO tse_clients (tss_id, description, cert_valid_to, last_checked)
@@ -131,22 +135,22 @@ export async function runTseCertCheck(deps: TseCertCheckDeps): Promise<TseCertCh
     const insertedRow = inserted[0];
     if (!insertedRow) throw new Error('tse_clients INSERT returned no row');
     rowId = insertedRow.id;
-    lastAlert = null;
+    lastTier = null;
   }
 
-  // Decide whether to alert: within threshold AND outside the cooldown window.
-  const withinThreshold = daysUntilExpiry <= thresholdDays;
-  const cooldownElapsed = lastAlert === null || now.getTime() - lastAlert.getTime() >= cooldownMs;
-  const alerted = withinThreshold && cooldownElapsed;
+  // Alert ONLY on escalation into a more-urgent tier (never re-spam the same
+  // band; never alert when > 30 days out).
+  const alerted = tier !== null && tierRank(tier) > tierRank(lastTier);
 
-  // Refresh the row (+ stamp alert_sent_at when we alert).
+  // Refresh the row (+ stamp alert_sent_at / last_alert_tier when we alert).
   if (alerted) {
     await db.execute(drizzleSql`
       UPDATE tse_clients
          SET description = ${info.description},
              cert_valid_to = ${certValidToIso}::timestamptz,
              last_checked = ${nowIso}::timestamptz,
-             alert_sent_at = ${nowIso}::timestamptz
+             alert_sent_at = ${nowIso}::timestamptz,
+             last_alert_tier = ${tier}
        WHERE id = ${rowId}::uuid`);
   } else {
     await db.execute(drizzleSql`
@@ -159,27 +163,24 @@ export async function runTseCertCheck(deps: TseCertCheckDeps): Promise<TseCertCh
 
   if (alerted) {
     // Critical ledger alert (append-only emit; DND-bypass per memory.md #45).
+    // Same event type as before — the tier rides in the payload (no new alert).
     await emit(db, {
       eventType: 'alert.tse_cert_expiry',
       entityTable: 'tse_clients',
       entityId: rowId,
-      payload: { tssId, certValidTo: certValidToIso, daysUntilExpiry, thresholdDays },
+      payload: { tssId, certValidTo: certValidToIso, daysUntilExpiry, tier },
     });
-    log.error('tse cert checker: certificate near expiry — alert emitted', {
+    log.error('tse cert checker: certificate escalated — alert emitted', {
       tssId,
+      tier,
       daysUntilExpiry,
       certValidTo: certValidToIso,
     });
   } else {
-    log.info('tse cert checker: certificate checked', {
-      tssId,
-      daysUntilExpiry,
-      withinThreshold,
-      alertThrottled: withinThreshold && !cooldownElapsed,
-    });
+    log.info('tse cert checker: certificate checked', { tssId, tier, daysUntilExpiry });
   }
 
-  return { status: 'CHECKED', tssId, certValidTo: certValidToIso, daysUntilExpiry, alerted };
+  return { status: 'CHECKED', tssId, certValidTo: certValidToIso, daysUntilExpiry, tier, alerted };
 }
 
 // ────────────────────────────────────────────────────────────────────────

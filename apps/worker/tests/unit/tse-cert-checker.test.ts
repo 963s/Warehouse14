@@ -32,13 +32,12 @@ function makeClient(certValidTo: Date): FiskalyTseClient {
 }
 
 const daysFromNow = (d: number): Date => new Date(NOW.getTime() + d * 24 * 60 * 60 * 1000);
-const hoursAgo = (h: number): Date => new Date(NOW.getTime() - h * 60 * 60 * 1000);
 
 describe('runTseCertCheck — happy path (far from expiry)', () => {
   it('updates the row and does NOT alert when expiry is > 30 days out', async () => {
     emitMock.mockClear();
-    // SELECT existing → one row, no prior alert.
-    const { db, execute } = makeDb([[{ id: 'c1', alert_sent_at: null }]]);
+    // SELECT existing → one row, no prior alert tier.
+    const { db, execute } = makeDb([[{ id: 'c1', last_alert_tier: null }]]);
 
     const outcome = await runTseCertCheck({
       db,
@@ -50,6 +49,7 @@ describe('runTseCertCheck — happy path (far from expiry)', () => {
 
     expect(outcome.status).toBe('CHECKED');
     expect(outcome.daysUntilExpiry).toBe(60);
+    expect(outcome.tier).toBeNull();
     expect(outcome.alerted).toBe(false);
     expect(emitMock).not.toHaveBeenCalled();
     // SELECT + UPDATE (no INSERT — row existed).
@@ -57,59 +57,84 @@ describe('runTseCertCheck — happy path (far from expiry)', () => {
   });
 });
 
-describe('runTseCertCheck — alert path (near expiry, never alerted)', () => {
-  it('emits alert.tse_cert_expiry and stamps alert_sent_at', async () => {
+describe('runTseCertCheck — alert path (enters a tier, never alerted)', () => {
+  it('emits alert.tse_cert_expiry with the tier when entering T-7 from null', async () => {
     emitMock.mockClear();
-    const { db } = makeDb([[{ id: 'c1', alert_sent_at: null }]]);
+    const { db } = makeDb([[{ id: 'c1', last_alert_tier: null }]]);
 
     const outcome = await runTseCertCheck({
       db,
       log,
       fiskaly: CONFIGURED,
-      client: makeClient(daysFromNow(10)),
+      client: makeClient(daysFromNow(5)), // 5 days → T-7
       now: NOW,
     });
 
     expect(outcome.alerted).toBe(true);
-    expect(outcome.daysUntilExpiry).toBe(10);
+    expect(outcome.tier).toBe('T-7');
     expect(emitMock).toHaveBeenCalledTimes(1);
-    const arg = emitMock.mock.calls[0]?.[1] as { eventType: string; entityTable: string };
+    const arg = emitMock.mock.calls[0]?.[1] as {
+      eventType: string;
+      entityTable: string;
+      payload: { tier: string };
+    };
     expect(arg.eventType).toBe('alert.tse_cert_expiry');
     expect(arg.entityTable).toBe('tse_clients');
+    expect(arg.payload.tier).toBe('T-7');
   });
 });
 
-describe('runTseCertCheck — alert throttling (alerted 12h ago)', () => {
-  it('does NOT re-emit within the 24h cooldown', async () => {
+describe('runTseCertCheck — same tier already alerted (no re-spam)', () => {
+  it('does NOT re-emit while still inside the same band', async () => {
     emitMock.mockClear();
-    const { db } = makeDb([[{ id: 'c1', alert_sent_at: hoursAgo(12) }]]);
+    // Already alerted at T-7; still 5 days out → still T-7 → no escalation.
+    const { db } = makeDb([[{ id: 'c1', last_alert_tier: 'T-7' }]]);
 
     const outcome = await runTseCertCheck({
       db,
       log,
       fiskaly: CONFIGURED,
-      client: makeClient(daysFromNow(10)),
+      client: makeClient(daysFromNow(5)),
       now: NOW,
     });
 
+    expect(outcome.tier).toBe('T-7');
     expect(outcome.alerted).toBe(false);
     expect(emitMock).not.toHaveBeenCalled();
   });
 });
 
-describe('runTseCertCheck — cooldown reset (alerted 25h ago)', () => {
-  it('re-emits the alert once the 24h cooldown has elapsed', async () => {
+describe('runTseCertCheck — escalation re-alerts', () => {
+  it('re-emits when the cert crosses from T-30 into the more urgent T-7', async () => {
     emitMock.mockClear();
-    const { db } = makeDb([[{ id: 'c1', alert_sent_at: hoursAgo(25) }]]);
+    const { db } = makeDb([[{ id: 'c1', last_alert_tier: 'T-30' }]]);
 
     const outcome = await runTseCertCheck({
       db,
       log,
       fiskaly: CONFIGURED,
-      client: makeClient(daysFromNow(10)),
+      client: makeClient(daysFromNow(5)), // 5 days → T-7 (> T-30)
       now: NOW,
     });
 
+    expect(outcome.tier).toBe('T-7');
+    expect(outcome.alerted).toBe(true);
+    expect(emitMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('alerts when an already-warned cert finally EXPIRES (escalates past T-1)', async () => {
+    emitMock.mockClear();
+    const { db } = makeDb([[{ id: 'c1', last_alert_tier: 'T-1' }]]);
+
+    const outcome = await runTseCertCheck({
+      db,
+      log,
+      fiskaly: CONFIGURED,
+      client: makeClient(daysFromNow(-1)), // already expired
+      now: NOW,
+    });
+
+    expect(outcome.tier).toBe('expired');
     expect(outcome.alerted).toBe(true);
     expect(emitMock).toHaveBeenCalledTimes(1);
   });
