@@ -19,7 +19,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import {
   ApiError,
@@ -65,6 +65,7 @@ export function Fotos(): JSX.Element {
   const api = useApiClient();
   const addToast = useToastStore((s) => s.addToast);
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
 
   const mode: Mode = (() => {
     const raw = searchParams.get('mode');
@@ -72,6 +73,10 @@ export function Fotos(): JSX.Element {
   })();
   const productId = searchParams.get('productId');
   const customerId = searchParams.get('customerId');
+  // Round-trip return (UX P1): when the ProductSheet sent the operator here it
+  // passes `returnTo` so this is a STEP, not a dead-end. Internal paths only.
+  const returnToRaw = searchParams.get('returnTo');
+  const returnTo = returnToRaw?.startsWith('/') ? returnToRaw : null;
 
   const intent: PhotoUploadIntent =
     mode === 'kyc' ? 'kyc' : mode === 'produkt' ? 'product' : 'orphan';
@@ -274,6 +279,28 @@ export function Fotos(): JSX.Element {
         gap: 14,
       }}
     >
+      {/* Round-trip back link — lands on the SAME product sheet (no dead-end). */}
+      {returnTo && (
+        <button
+          type="button"
+          onClick={() => navigate(returnTo)}
+          className="w14-smallcaps"
+          style={{
+            alignSelf: 'flex-start',
+            background: 'transparent',
+            border: '1px solid var(--w14-rule)',
+            borderRadius: 'var(--w14-radius-button)',
+            color: 'var(--w14-ink-aged)',
+            cursor: 'pointer',
+            padding: '6px 12px',
+            fontSize: '0.78rem',
+            letterSpacing: '0.06em',
+          }}
+        >
+          ← Zurück zum Produkt
+        </button>
+      )}
+
       {/* Header */}
       <header
         style={{

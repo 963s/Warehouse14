@@ -6,8 +6,9 @@
  *   • idle → load page (TanStack Query keyed on filters)
  *   • filter change → re-query (cached if seen before)
  *   • barcode scan → exact-match query → row auto-highlights + scrolls into view
- *   • row click → InventoryAdjustmentDialog
- *   • dialog success → catalog query invalidates; row updates in place
+ *   • row click → ProductSheet (manage mode); "+ Neues Produkt" → ProductSheet (create)
+ *   • sheet success → catalog query invalidates; row updates in place
+ *   • ?produkt=<id> → re-opens the ProductSheet (round-trip back from /fotos)
  *
  * Audit posture: every mutation goes through
  * `POST /api/products/:id/inventory-adjustment` (Day 9 additive). NEVER
@@ -19,10 +20,11 @@
  * not shift presence.
  */
 
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
-import { type ProductListRow, type ProductStatus, productsApi } from '@warehouse14/api-client';
+import { type ProductStatus, productsApi } from '@warehouse14/api-client';
 import { Button, DiamondRule, MagnifierIcon, ParchmentCard, Seal } from '@warehouse14/ui-kit';
 
 import { useBarcodeScanner } from '../../hooks/useBarcodeScanner.js';
@@ -30,9 +32,8 @@ import { useApiClient } from '../../lib/api-context.js';
 import { type StatusFilter, useLagerFilterStore } from '../../state/lager-filter-store.js';
 import { useToastStore } from '../../state/toast-store.js';
 
-import { InventoryAdjustmentDialog } from './InventoryAdjustmentDialog.js';
 import { LagerTable } from './LagerTable.js';
-import { NeuesProduktDialog } from './NeuesProduktDialog.js';
+import { ProductSheet } from './ProductSheet.js';
 
 const STATUS_CHIPS: Array<{ value: StatusFilter; label: string }> = [
   { value: 'ALL', label: 'Alle' },
@@ -51,15 +52,29 @@ export function Lager(): JSX.Element {
   const setStatus = useLagerFilterStore((s) => s.setStatus);
   const setQ = useLagerFilterStore((s) => s.setQ);
   const setBarcode = useLagerFilterStore((s) => s.setBarcode);
-  const queryClient = useQueryClient();
 
   // ── Local UX state ──
-  const [newOpen, setNewOpen] = useState<boolean>(false);
+  // One unified ProductSheet: productId === null ⇒ create, a id ⇒ manage.
+  const [sheetOpen, setSheetOpen] = useState<boolean>(false);
+  const [sheetProductId, setSheetProductId] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
   const [searchInput, setSearchInput] = useState<string>('');
   const [pageOffset, setPageOffset] = useState<number>(0);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
-  const [dialogProduct, setDialogProduct] = useState<ProductListRow | null>(null);
   const tableContainerRef = useRef<HTMLDivElement | null>(null);
+
+  // Deep-open: returning from the Foto-Werkstatt (returnTo=/lager?produkt=<id>)
+  // re-opens the SAME product's sheet, then clears the param so a later close
+  // doesn't reopen it.
+  useEffect(() => {
+    const pid = searchParams.get('produkt');
+    if (!pid) return;
+    setSheetProductId(pid);
+    setSheetOpen(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete('produkt');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
   /** Barcode we already auto-opened the dialog for — so a re-render can't reopen it. */
   const autoOpenedBarcodeRef = useRef<string | null>(null);
 
@@ -108,8 +123,8 @@ export function Lager(): JSX.Element {
   const hasMore = q.data?.hasMore ?? false;
 
   // ── Barcode scanner integration ──
-  // Disable scanner while the adjustment dialog wants Enter for submit.
-  const scannerEnabled = dialogProduct === null;
+  // Disable scanner while the product sheet wants Enter for its own fields.
+  const scannerEnabled = !sheetOpen;
 
   const onScan = useCallback(
     (code: string) => {
@@ -149,7 +164,8 @@ export function Lager(): JSX.Element {
       autoOpenedBarcodeRef.current !== filters.barcode
     ) {
       autoOpenedBarcodeRef.current = filters.barcode;
-      setDialogProduct(first);
+      setSheetProductId(first.id);
+      setSheetOpen(true);
     }
   }, [filters.barcode, rows, q.isFetching]);
 
@@ -203,7 +219,14 @@ export function Lager(): JSX.Element {
           >
             {q.isFetching ? 'lädt…' : `${total} Stück${total === 1 ? '' : 'e'}`}
           </span>
-          <Button variant="primary" size="sm" onClick={() => setNewOpen(true)}>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => {
+              setSheetProductId(null);
+              setSheetOpen(true);
+            }}
+          >
             + Neues Produkt
           </Button>
         </div>
@@ -289,22 +312,20 @@ export function Lager(): JSX.Element {
             total={total}
             hasMore={hasMore}
             onLoadMore={() => setPageOffset((prev) => prev + PAGE_SIZE)}
-            onRowClick={(row) => setDialogProduct(row)}
+            onRowClick={(row) => {
+              setSheetProductId(row.id);
+              setSheetOpen(true);
+            }}
           />
         )}
       </div>
 
-      <InventoryAdjustmentDialog
-        open={dialogProduct !== null}
-        product={dialogProduct}
-        onClose={() => setDialogProduct(null)}
-      />
-
-      <NeuesProduktDialog
-        open={newOpen}
-        onClose={() => setNewOpen(false)}
-        onCreated={() => {
-          void queryClient.invalidateQueries({ queryKey: ['products', 'list'] });
+      <ProductSheet
+        open={sheetOpen}
+        productId={sheetProductId}
+        onClose={() => {
+          setSheetOpen(false);
+          setSheetProductId(null);
         }}
       />
     </section>

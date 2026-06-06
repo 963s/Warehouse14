@@ -23,11 +23,12 @@ validation/guards) — only the wrapper changes.
 - [ ] `screens/kunden/CustomerTrustDialog.tsx`
 - [ ] `screens/bewertung/AcceptanceDialog.tsx`
 
-## Deliberately NOT migrated (rewritten in P1 — porting now is wasted work)
-- `screens/lager/NeuesProduktDialog.tsx`
-- `screens/lager/InventoryAdjustmentDialog.tsx`
-- `screens/ankauf/AnkaufBezahlenDialog.tsx`
-  → all three are replaced by the P1 **Unified Product Lifecycle** product `Sheet`.
+## Replaced by the P1 Unified Product Lifecycle `ProductSheet`
+- [x] `screens/lager/NeuesProduktDialog.tsx` — **DELETED** → `ProductSheet` (create mode).
+- [x] `screens/lager/InventoryAdjustmentDialog.tsx` — **DELETED** → `ProductSheet` (manage mode:
+      Bestand + Web&SEO + Etikett + Fotos round-trip + Handel, on the P0 `Sheet`/`Accordion`).
+- [ ] `screens/ankauf/AnkaufBezahlenDialog.tsx` — **P1b** (next): wire the same `ProductSheet` into
+      the Ankauf post-buy flow and retire `IntakeDraftsTray`.
 
 ## Stays bespoke
 - `app/chrome/Spotlight.tsx` — a command palette (combobox/listbox), not a form
