@@ -29,8 +29,9 @@ type ReservationRow = {
   reserved_by_channel: Channel;
   reserved_by_session_id: string;
   reserved_by_user_id: string | null;
-  reserved_at: Date;
-  reservation_expires_at: Date | null;
+  // drizzle's db.execute() returns timestamptz columns as raw strings, not Date.
+  reserved_at: Date | string;
+  reservation_expires_at: Date | string | null;
 } & Record<string, unknown>;
 
 export async function reserve(db: AnyDb, input: ReserveInput): Promise<ReserveResult> {
@@ -66,13 +67,22 @@ export async function reserve(db: AnyDb, input: ReserveInput): Promise<ReserveRe
   return rowToReservation(row);
 }
 
+// drizzle's db.execute() hands back timestamptz as a raw string, not a Date — so
+// coerce here to honour the Reservation contract (reservedAt/expiresAt: Date).
+// Without this, the reserve route's `result.reservedAt.toISOString()` throws a
+// TypeError (HTTP 500) AFTER the row has already committed to RESERVED, which
+// strands the product (client sees 500, retry sees "already reserved").
+function toDate(value: Date | string): Date {
+  return value instanceof Date ? value : new Date(value);
+}
+
 function rowToReservation(row: ReservationRow): Reservation {
   return {
     productId: row.id,
     channel: row.reserved_by_channel,
     sessionId: row.reserved_by_session_id,
     userId: row.reserved_by_user_id,
-    reservedAt: row.reserved_at,
-    expiresAt: row.reservation_expires_at,
+    reservedAt: toDate(row.reserved_at),
+    expiresAt: row.reservation_expires_at == null ? null : toDate(row.reservation_expires_at),
   };
 }
