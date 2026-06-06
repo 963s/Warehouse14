@@ -74,6 +74,66 @@ function roundHalfEven(num: bigint, den: bigint): bigint {
 }
 
 // ────────────────────────────────────────────────────────────────────────
+// Discount math (percent → EUR; invoice-discount distribution).
+//
+// Money: bigint-cents, HALF_EVEN, capped, Σ-EXACT (no rounding drift). The
+// per-line TAX math (computeLineMath) is REUSED — these only produce the
+// discountEur it consumes.
+// ────────────────────────────────────────────────────────────────────────
+
+/** Discount cents from a percentage of `baseCents`, HALF_EVEN, clamped to [0, base]. */
+export function percentToEur(baseCents: bigint, pct: number): bigint {
+  if (baseCents <= 0n || !Number.isFinite(pct) || pct <= 0) return 0n;
+  const pctBp = BigInt(Math.round(pct * 100)); // basis points: 10% → 1000
+  if (pctBp <= 0n) return 0n;
+  let d = roundHalfEven(baseCents * pctBp, 10_000n);
+  if (d < 0n) d = 0n;
+  if (d > baseCents) d = baseCents;
+  return d;
+}
+
+/**
+ * Distribute a total invoice discount across line bases proportionally, using
+ * the largest-remainder method so Σ(shares) === min(totalCents, Σbases) EXACTLY
+ * (no drift) and no share exceeds its own base.
+ */
+export function distributeInvoiceDiscount(
+  bases: readonly bigint[],
+  totalCents: bigint,
+): bigint[] {
+  const n = bases.length;
+  if (n === 0) return [];
+  const totalBase = bases.reduce((acc, b) => acc + (b > 0n ? b : 0n), 0n);
+  if (totalBase <= 0n || totalCents <= 0n) return bases.map(() => 0n);
+
+  const target = totalCents > totalBase ? totalBase : totalCents;
+  const shares = new Array<bigint>(n);
+  const remainders = new Array<bigint>(n);
+  let allocated = 0n;
+  for (let i = 0; i < n; i++) {
+    const b = (bases[i] as bigint) > 0n ? (bases[i] as bigint) : 0n;
+    const num = b * target;
+    const floor = num / totalBase;
+    shares[i] = floor;
+    remainders[i] = num - floor * totalBase;
+    allocated += floor;
+  }
+
+  let leftover = target - allocated; // ∈ [0, n)
+  const order = Array.from({ length: n }, (_, i) => i).sort((a, b) => {
+    const ra = remainders[a] as bigint;
+    const rb = remainders[b] as bigint;
+    if (ra !== rb) return ra > rb ? -1 : 1;
+    return a - b; // tie → lower index
+  });
+  for (let k = 0; k < order.length && leftover > 0n; k++) {
+    shares[order[k] as number] += 1n;
+    leftover -= 1n;
+  }
+  return shares;
+}
+
+// ────────────────────────────────────────────────────────────────────────
 // Per-line tax breakdown
 // ────────────────────────────────────────────────────────────────────────
 
