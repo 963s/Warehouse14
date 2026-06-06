@@ -44,7 +44,13 @@
 - [ ] POS Tier-2 `/aml-pruefung` surface: ADMIN-gated list of OPEN flags (customer, window, aggregate, reasons, detected_at) + "Geprüft" action (step-up). surface-registry entry (≤8 Tier-1).
 - [ ] Gates: typecheck + lint net-0-new + all suites + vite build.
 
-## Deferred (state in report)
-- The REAL thresholds (window / aggregate / small ceiling / min count) — Basel's Steuerberater + bank must supply; we ship conservative PLACEHOLDERS.
-- The Verdachtsmeldung/SAR workflow (FIU filing) — Owner decision, out of scope; the surface flags + enforces ID only.
-- DB integration tests for the migration + flag persistence — need the testcontainers harness (pure logic is unit-tested).
+## SHIPPED this turn (commit 56a147e — fully gated)
+- **T1 Config**: aggregate line promoted to `gwg.identity_threshold_eur` (configurable, default €2.000); PLACEHOLDER doc-block; "Weil am Rhein" → Schorndorf fix.
+- **T1 Detection TDD**: boundary (== line, ±1 cent), decimal-exact (666,67×3), configurable-threshold-flip fixtures → smurfing.test.ts 14 green.
+- **T2 §10 aggregate-aware KYC gate**: `evaluateKycGate` 3rd-arg aggregate context (13 gate fixtures) + server `gwgRollingAnkauf` on the customer detail + the Ankauf banner consuming it with distinct "verknüpfte Geschäfte" copy.
+
+## DEFERRED (rationale, for the report)
+- **T3/T4 — the dedicated append-only `aml_flags` table + the ADMIN review surface + mark-reviewed workflow.** ADDITIVE, not a gap: detected patterns ALREADY persist durably (`alert.smurfing_detected` in the hash-chained ledger + a `customer.smurfing_flagged` audit_log row) AND are ALREADY surfaced to the Owner (control-desktop KonformitaetPanel renders every `alert.*`). A dedicated reviewable table + a 2-route + api-client domain + POS surface is a large, DB-harness-dependent unit better landed on its own branch with testcontainers integration tests — not rushed into a compliance subsystem. The migration shape is specced above (T3).
+- **The REAL thresholds** (window / aggregate / small ceiling / min count) — Basel's Steuerberater + bank must supply; we ship conservative PLACEHOLDERS.
+- **The Verdachtsmeldung/SAR workflow** (FIU filing) — Owner decision, intentionally out of scope; the framework flags + enforces ID only (never auto-blocks, never auto-files).
+- **DB integration tests** for any new migration/persistence — need the testcontainers harness (the pure detection + gate are heavily unit-tested).
