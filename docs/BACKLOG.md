@@ -1,58 +1,66 @@
 # Warehouse14 — Working Backlog & Decisions
 
-> Shared memory between the strategist (Claude) and Basel. Updated 2026-06-05.
-> ⚠️ **This file MUST stay committed** — it was previously an untracked working-tree file and branch switches wiped it.
+> Shared memory between the strategist (Claude) and Basel. Updated 2026-06-06.
+> ⚠️ **This file MUST stay committed** — branch switches wiped it once when it was untracked.
 
 ## Operating model
-- **Strategist/reviewer (Claude):** owns technical decisions, reviews every executor claim against the real code, writes the prompts. Full technical authority — brings Basel only goals/product decisions.
-- **Basel:** direction/goals; relays prompts; triggers deploys.
-- **Executor (Claude Code, `claude/*` branches):** implementation/commits.
+- **Strategist/reviewer (Claude):** owns technical decisions; reviews EVERY executor claim against the real code and **re-runs the gates independently — never rubber-stamps**; writes the deep prompts. Full technical authority — brings Basel only goals/product decisions.
+- **Basel:** direction/goals; relays prompts to the executor; triggers deploys; live-tests on the real Mac.
+- **Executor (Claude Code, `claude/*` branches):** implementation/commits; TDD + plan-first per prompt.
 - **Doctrine:** no facade — nothing ships that looks strong but is hollow; prove under real pressure; tests = disaster discovery; "green" must prove correctness vs the real world, not self-consistency.
 
-## ✅ SHIPPABLE NOW — Foundation / test-gate (`claude/test-gate`, not pushed)
-Four real, latent (prod: 0 customers / 0 transactions), go-live-blocking prod bugs caught + fixed, each reviewed + proven red→green:
-- **0045** `blind_index` — customer email/phone save+search threw (hmac signature).
-- **0046** `security` SELECT on cumulative counters — every customer-attributed sale aborted.
-- **0047** `DEBT` `payment_method` enum — first payment of any kind threw.
-- **0048** ledger hash-chain serialize — GoBD fork under concurrency; + `LOCK TABLE` hardening (statement 0, verified).
-Plus: harness boots (SUPERUSER + `check_function_bodies=off` mirrors prod) + psql-fidelity splitter (full chain boots); non-blocking CI `db-suites` workflow; ledger test bit-rot fixes; runbook `docs/runbooks/0045-0048-prod-apply.md` (PRE/APPLY/POST-VERIFY/ROLLBACK).
-**SHIP:** merge `claude/test-gate` → main → deploy (migrate service applies per runbook). Deploy = Basel's trigger.
+## 📍 WHERE WE ARE (2026-06-06)
+The core sell path + a deep UX redesign are SOFTWARE-COMPLETE and reviewed, on stacked branches.
+**Readiness (honest): NOT yet ready for real paying customers.** Go-live blockers:
+1. **Cash-confirm button** — the new AmountPad keypad pushed the Bezahlen button below the dialog fold → operator can't finalize a cash sale. *(IN PROGRESS — `claude/ux-cashier-confirm`.)*
+2. **Kasse still unclear to the owner** (twice-flagged) — needs a deeper reframe (purpose / the €200 opening float / its link to checkout), not just language.
+3. **Real-hardware validation (HIL session):** ZVT card terminal (no card payments without it), label printer + hand scanner (receipt/label/barcode round-trip), TSE/Fiskaly in prod, camera.
+4. **Deploy to prod:** the reserve fix (PR #2) + the 0045–0048 migrations are NOT on prod yet.
 
-## Kasse (Phase 1) — Roman's visible value
-- ✅ **Ankauf batch DONE** (`claude/kasse-ankauf`, `efaa5b1`): KYC surfaced early (pure tested `evaluateKycGate`, GwG §10 ≥€2.000) — reviewed compliance-sound, enforcement behaviour-identical (NOT weakened); faster item entry (expanded + sticky metal/tax); clear price-direction labels.
-- ✅ **Verkauf batch DONE** (`claude/kasse-verkauf`, `4c28ecb`): live discount-reason feedback + touch sizing (pure tested `isDiscountReasonValid`) · auto-refocus catalog search on the real finalize-success close · accurate "bereits in der Karte" (unique-item — no quantity).
-- ⏳ **Lager (THIS, `claude/kasse-lager`):** barcode → auto-open adjustment dialog · notes-min feedback (pure tested) · partial location (server-gated). Then cross-cutting (network-error specificity · Enter-to-submit).
+A preliminary **cash-only dev demo** is ~1 fix away (the cash-confirm button).
 
-## Hardware-in-the-loop / no-facade (`claude/hil-hardware`, not pushed)
-- ✅ **ZVT card path SOFTWARE-COMPLETE:** spec BMP parser (ecrterm-grounded) · multi-message conversation · robust `read_exact` framing · mocks hardened facade→validating. **TSE solid** (config validation + monotonic counter).
-- 🔦 **Quarantined for the REAL terminal (CCV A920) go-live session:** exact PAN/approval-code field location; real status cadence/timing.
-- ⏳ **Phase 2:** label + receipt printers (ESC/POS/ZPL HIL asserting SKU + TSE block), camera→inventory.
-- 🔦 **Barcode label = sale label (cashier 3/3) — SOFTWARE-COMPLETE, awaits the printer+scanner session:** the label now emits a **Code128 of the SKU** via the printer's native command (ZPL `^BC` / ESC/POS `GS k 73`) alongside the human text; Verkauf scans it → `classifyScanMatch` → existing reserve→add. Unit-tested: Code128 construction (`commands::label` Rust tests) + scan→SKU normalization/classification (`scan-resolve.test.ts`). **HIL GATE (needs the real Zebra/Epson label printer + the USB hand scanner):** (1) the printer rasterises a **physically scannable** Code128 at the chosen module width/height on the real label stock (tune `^BY`/`GS w`+`GS h` + label dimensions to the media); (2) the **real hand scanner decodes that printed barcode** and emits exactly the SKU (verify the scanner's suffix is Enter, no prefix/AIM-ID, ≥6 chars <200ms so `useBarcodeScanner` fires); (3) end-to-end: print a real tag → scan it at the till → the right product reserves + lands in the cart. Code-set B covers the SKU charset (A–Z/0–9/`-`); confirm on-device.
+## 🌿 GIT / DEPLOY STATE (source of truth)
+- **main** base = `d3869c7` (macOS-signing merge). **Prod (api.warehouse14.de) runs OLD code.**
+- **PR #2** `claude/fix-reserve-sell-bug` → main = the reserve sell-bug fix, isolated for a clean merge. **OPEN / not merged / not deployed.** Prod-critical (latent — 0 customers). Merge + redeploy api-cloud before go-live.
+- **Pushed** (consolidated 06-06): `ux-p0-foundation`, `ux-p1-product-lifecycle`, `ux-p2-metal-ticker`, `ux-p3-ankauf-estimator`, `fix-reserve-sell-bug`.
+- **NOT pushed** (local, stacked in this order on top of p0): `ux-kasse-plain-language` → `ux-icons-foundation` → `ux-cashier-keypad` → `ux-cashier-discount` → `ux-cashier-barcode` (current HEAD) → *(next)* `ux-cashier-confirm`. Push for backup when Basel says.
+- The **reserve + dev-env fixes** ride in the stack (committed on `ux-p0-foundation`); the reserve fix is ALSO cherry-picked onto `fix-reserve-sell-bug` for the clean main merge.
+- **The POS app ships via OTA (Tauri desktop), SEPARATE from the server container.** All UX work = a POS app release; only the reserve fix + migrations touch the server.
 
-## Deferred
-- ~49 mechanical db-test bit-rot fixes (minute-precision, `lower(enum)`, `?:`, timestamp-as-string) — background drip; needed before the CI db-suites gate can be made *required*.
-- **✅ macOS code-signing FIXED (`claude/fix-macos-signing`, not pushed):** root cause was `bundle.macOS` with no `signingIdentity` → Tauri never bundle-codesigned the `.app`, leaving only the linker's adhoc Mach-O sig that claims sealed resources while `Contents/_CodeSignature/CodeResources` was absent → `codesign --verify` failed ("code has no resources but signature indicates they must be present") → macOS "is damaged and can't be opened" on every fresh (quarantined) install. Fix: set `bundle.macOS.signingIdentity = "-"` so Tauri adhoc-signs the bundle *between* `.app` assembly and DMG/updater-tar packaging — both shipped artifacts now carry a consistent signature with sealed `CodeResources`. **Proven by a real local `tauri build`:** source bundle, DMG `.app`, and updater `.app.tar.gz` all pass `codesign --verify --deep --strict` with `CodeResources` present. `release.yml` gains a `codesign --verify` gate. Fresh install is now the ordinary "unidentified developer" prompt (README first-launch note updated), not "damaged". **Go-live:** Apple Developer ID + notarization for a friction-free first launch (Basel's call — see report). **Sibling:** `apps/control-desktop` (Owner Desktop) has the same latent gap — flagged as a separate task.
-- **Release pipeline — Intel CI leg (tech-debt, NOT a blocker):** the `macos-x64` (Intel) leg of the OTA release workflow hangs → the whole run shows "cancelled" at the 24h timeout, while `windows-x86_64` + `darwin-aarch64` legs still build + publish all OTA assets. Confirmed pre-existing (v0.2.0, v0.2.2). Consequence: `latest.json` omits `darwin-x86_64`, so **Intel-Mac clients get no OTA** (fine for now — Roman's POS is Apple Silicon + Windows). Fix the Intel matrix leg so the run completes cleanly (and stops masking real failures + burning 24h CI).
-- Auto-pricer (Schmelzwert = weight × fineness × live metal rate − margin) — Phase 1+ Kasse; data exists; solves the €0 case.
-- Roman's 4 doc templates (Briefpapier / Bewertung / Ankauf / Expertise) — Documents phase; tooling: pdfme / TipTap vs extend satori.
+## 🎨 UX REDESIGN — study + phases
+Full study: **`docs/UX-REDESIGN.md`** (code-grounded audit + researched principles + IA map + phased plan). **Reframe:** the app isn't soulless by design (parchment/ink/gold/wax-seal + Spotlight palette + a real design-token system) — the pain was IA mis-priority, unfinished affordances, dead-ends, jargon, fragmentation. Fix = coherence + focus + guidance, not a rebrand. **Tools (researched + integrated):** Lucide icons; Shopify/Square/NN-G POS patterns (keypad/discount/barcode); DATEV/GoBD/GDPdU for the export phase.
 
-## Pre-go-live gate
-- One **hardware validation session** on the real devices (card terminal + receipt/label printer + camera) to close the HIL quarantines before launch.
-- **Apple Notarization** (Developer ID + notarize, ~$99/yr) — **DEFERRED by Basel** (adhoc signing is fine for internal testing; fresh installs are the ordinary "unidentified developer" right-click→Open). Adopt before public go-live for a friction-free first launch. (Windows Authenticode/EV is a separate, pricier track if you also want to kill SmartScreen.)
+Every phase below was **reviewed by the strategist against the real code with the gates re-run independently** (typecheck · ui-kit+tauri-pos tests · vite build · lint:all net-0-new). Each on its own branch.
+- ✅ **P0 foundation** (`ux-p0-foundation`): ui-kit `Dialog`/`Sheet` + `Form` primitives (focus-trap/restore, scroll-lock, a11y) + bound number-key nav (pure resolver + input/dialog guards) + migrated 2 stable dialogs. The "feels finished" foundation — every dialog used to be hand-rolled.
+- ✅ **P1 unified ProductSheet** (`ux-p1-product-lifecycle`): ONE slide-over replaces NeuesProduktDialog + InventoryAdjustmentDialog (Details → Fotos → Preis → Bestand → Web&SEO → Etikett → Handel); pure `deriveLifecycleStage` chip; kills the /fotos dead-end (round-trip breadcrumb); reuses ALL locked guards (publish/€0, notes≥8, label gating) verbatim.
+- ✅ **P2 metal ticker** (`ux-p2-metal-ticker`): always-visible price strip in the chrome + detail popover (new ui-kit `Popover` + `Sparkline`); Kurse demoted primary→secondary (full terminal + ADMIN override preserved); removed the redundant Werkstatt price panel. Δ = vs 10-day avg (labelled "ggü. Ø 10 Tage").
+- ✅ **P3 Ankauf guided Estimator** (`ux-p3-ankauf-estimator`): 3-step guide replaces the silent lock; live Schmelzwert (`computeSchmelzwertEur`, bigint, German-comma fix) → editable suggested buy price (server ankauf rate, margin baked in). KYC gate reused verbatim.
+- ✅ **Kasse plain-language** (`ux-kasse-plain-language`): "Tag beginnen/abschließen", Erwartet·Gezählt·Differenz readout (`classifyDifferenz`), jargon→subtitle. **Blind-count + TSE/Z-Bon/variance enforcement untouched.** ⚠️ Owner STILL finds it unclear → deeper reframe pending (blocker #2).
+- ✅ **Icons foundation** (`ux-icons-foundation`): `lucide-react` + `Icon`/`IconButton` (a11y, ≥44px) + `packages/ui-kit/UI-CONVENTIONS.md`; cart "entfernen" → Trash2; curated sweep (close/add/etc.).
+- ✅ **Core cashier ⭐** (the owner's top priority): **keypad** (`ux-cashier-keypad`) on-screen `AmountPad` (TDD reducer) + Rückgeld in the cash path · **discount** (`ux-cashier-discount`) per-line + invoice %-discount (`percentToEur` + Σ-exact `distributeInvoiceDiscount`, bigint-cent, capped; reason preserved; `computeLineMath` tax untouched) · **barcode** (`ux-cashier-barcode`) label = Code128 of the SKU (printer-native), Verkauf scan → `classifyScanMatch` → reserve → cart (the scanner was unwired at the till before). All finalize/TSE/reserve paths untouched.
 
-## ✅ Local-dev environment FIXED (2026-06-05) — was the real "can't sell" cause
-Basel's `docker compose down -v` exposed **four layered dev-setup facades** that made a true fresh `pnpm dev` impossible — the app only ever "worked" on accumulated volume state. All found by proving the chain in the live container, all fixed + proven end-to-end (`/health`→`db:up`, server confirmed on `warehouse14` via pg_stat_activity, 48 migrations applied clean, app-role grants land, 20 AVAILABLE products seeded):
-1. **App DB never created.** compose's `POSTGRES_DB` is only `warehouse14_dev` (a maintenance DB for initdb); **nothing** created the real app DB `warehouse14`. → `initdb.d/00` now `CREATE DATABASE warehouse14 OWNER warehouse14_migrator`; `dev-bootstrap.ts` `ensureMigratorAndDatabase()` self-heals any existing volume.
-2. **Migrator not superuser.** 0001's `vector` + `pg_stat_statements` are UNTRUSTED → need superuser; initdb migrator wasn't one, so a fresh 0001 apply was impossible. → migrator made dev-only `SUPERUSER` (the "local-dev superuser" 0001's header anticipates). Must run AS migrator (not the `warehouse14` superuser) so 0003's `ALTER DEFAULT PRIVILEGES FOR ROLE warehouse14_migrator` still grants `warehouse14_app` its SELECT/INSERT.
-3. **No `check_function_bodies=off`.** dev-bootstrap's apply didn't mirror migrate.sh → function bodies with call-time signatures (e.g. 0045 hmac) would throw on fresh apply. → added `connection:{options:'-c check_function_bodies=off'}` + `prepare:false`.
-4. **`.env` pointed at the wrong DB.** root `.env` had `DATABASE_URL`/`MIGRATOR_DATABASE_URL` → `warehouse14_dev` (empty) while dev-bootstrap targets `warehouse14`. The live API server was connected to the empty `warehouse14_dev` → every query 500 = **"ماقدر أبيع"** (NOT a reserve-logic bug; `inventory-lock/reserve.ts` is correct — single atomic UPDATE sets status+channel+session+user+reserved_at, satisfies the `products_reserved_has_envelope` CHECK). → `.env` corrected to `warehouse14` (matches `.env.example`).
-- **Bonus root cause: env was shell-sourced, not file-loaded.** No `--env-file`/dotenv existed; the server only booted because Basel had `warehouse14_dev` vars exported in his shell (Node/tsx `--env-file` does NOT override existing shell vars — verified). → added `--env-file-if-exists=../../.env` to api-cloud `dev`/`dev:bootstrap`/`dev:seed` (completes server.ts's stated "launcher reads .env" intent). **A clean/fresh terminal now `pnpm dev`s with zero env steps.** A terminal with stale `DATABASE_URL`/`MIGRATOR_DATABASE_URL` exports still wins → use a fresh terminal or `unset` them.
-- **Files (uncommitted, tracked):** `apps/api-cloud/scripts/dev-bootstrap.ts`, `infrastructure/docker/postgres/initdb.d/00-create-migrator-role.sh`, `apps/api-cloud/package.json`. (`.env` is gitignored — local only.) **Worth committing** so the executor + fresh clones get a working `down -v && pnpm dev`.
+## 🔧 Live-test feedback — PENDING (Basel, from running the build)
+1. **Cash-confirm button** — IN PROGRESS (blocker #1).
+2. **Kasse deeper reframe** — purpose / €200 float / link to checkout (still opaque to the owner).
+3. **ProductSheet create→manage in-place** — after saving the initial create it closes + forces "go back to Lager + re-click the product"; should flow straight into the manage sections.
+4. **Metal-margin global propagation** — the server DOES derive `ankauf = avg×(1−margin)` in SQL; the gaps are the per-metal margin UI + pushing the new derived price to all OPEN consumers (ticker / Ankauf) immediately (owner: "changes in one isolated place").
+5. **DATEV / Kassenbericht export** — DATEV CSV (EXTF) exists server-side (`closing-export.ts`) but there is **NO POS UI**; add GDPdU + a Kassenbericht + an on-demand download surface.
+6. + more as Basel keeps live-testing.
 
-## ✅ "Reservierung fehlgeschlagen — Internal server error" FIXED (2026-06-05) — the real sell-blocker
-With reads working (DB fix above), the POS surfaced the genuine 500 on **reserve** (clicking a product → add to cart). Reproduced exactly against the live DB as `warehouse14_app`:
-- **Root cause:** `packages/inventory-lock/src/reserve.ts` runs the atomic reserve via raw `db.execute(sql\`UPDATE … RETURNING reserved_at …\`)`. drizzle's `db.execute()` returns `timestamptz` as a **raw string**, but `rowToReservation` typed it `Date` and returned it as-is. The route (`inventory-reserve.ts:103`) then calls `result.reservedAt.toISOString()` → **`TypeError: …toISOString is not a function` → HTTP 500**. The UPDATE had ALREADY committed RESERVED → the product is stranded → retry returns 409 "already reserved elsewhere". Explained every toast in Basel's screenshot + the stuck RESERVED rows.
-- **Fix:** `reserve.ts` `rowToReservation` now coerces with a `toDate(v)= v instanceof Date ? v : new Date(v)` helper (defensive — works whether the driver hands back string or Date). Proven: re-ran the real reserve path → `reservedAt` is now a `Date`, route serialize → `{"reservedAt":"…Z"}`, no throw. Rebuilt `dist` (server imports `@warehouse14/inventory-lock` → `dist`, NOT `src` → **a src edit needs a package rebuild + server restart to take effect**). Reset the 6 stranded products → AVAILABLE (back to 20).
-- **Sell flow is otherwise clean:** `finalize.ts` returns only `{id}` (no timestamp); `transactions-finalize.ts` uses TYPED drizzle (`.returning({finalizedAt: transactions.finalizedAt})`) → drizzle maps to Date correctly. So reserve was the only break in reserve→finalize.
-- **Follow-ups (NOT sell-blocking):** (1) **regression test** — a testcontainers test asserting `reserve()` returns `reservedAt instanceof Date` (a mock would flatter it; must hit real PG). (2) **bug-class audit** — other raw `db.execute()` callers that treat a returned `timestamptz` as a Date without a `new Date()` wrap (e.g. some `customers.ts` paths; `closing-export.ts` already wraps correctly). Grep seed: raw `.execute<` + `.toISOString()` on snake_case fields.
-- **File (uncommitted, tracked):** `packages/inventory-lock/src/reserve.ts` — a real production bug (affects POS + storefront + eBay reserve on every channel). **Should be committed + carries a regression test before go-live.**
+## ✅ Foundation already fixed
+- **Reserve sell-bug** (`packages/inventory-lock/src/reserve.ts`, committed): drizzle `db.execute()` returns timestamptz as a STRING; `rowToReservation` typed it `Date` → the route's `.toISOString()` → HTTP 500 on EVERY reserve (after the row already committed RESERVED → stranded → 409 retries). **The real "can't sell".** Fix: `toDate()` coerce. → PR #2 (pending merge+deploy). Follow-ups: a testcontainers regression test asserting `reserve()` returns a `Date`; audit other raw `db.execute()` callers that treat a returned timestamptz as a Date without a `new Date()` wrap.
+- **Local-dev env** (4 layered facades, committed on `ux-p0-foundation`): nothing created the `warehouse14` app DB; migrator wasn't superuser (untrusted `vector`/`pg_stat_statements`); no `check_function_bodies=off`; root `.env` pointed at the empty `warehouse14_dev` and env was shell-sourced not file-loaded. → initdb creates the DB + a dev-only SUPERUSER migrator; `dev-bootstrap.ensureMigratorAndDatabase()` self-heals; `--env-file-if-exists` on the dev scripts. `down -v && pnpm dev` now works from a clean shell (stale shell exports still win → fresh terminal / `unset`).
+- **test-gate (0045–0048)** — 4 latent prod bugs (blind_index hmac / security counter SELECT / DEBT enum / ledger fork) fixed + proven red→green; harness boots; runbook `docs/runbooks/0045-0048-prod-apply.md`. **Confirm these are applied on prod** before go-live.
+- **macOS signing** (`fix-macos-signing`, in main `d3869c7`): `signingIdentity:"-"` adhoc-signs both desktop apps → no more "damaged". control-desktop sibling done.
+
+## 🔌 Hardware-in-the-loop (pre-go-live)
+- ✅ **ZVT card path** software-complete (BMP parser ecrterm-grounded, robust framing, validating mocks); **TSE solid** (config validation + monotonic counter). 🔦 Real CCV A920 session: PAN/approval-code field location, status cadence.
+- 🔦 **Barcode label = sale label** software-complete (Code128 of the SKU via the printer's native cmd — ZPL `^BC` / ESC-POS `GS k 73`; scan→cart). **HIL gate:** real label printer rasterises a physically scannable Code128 (tune `^BY`/`GS w·h` + media); the hand scanner decodes → exactly the SKU (Enter suffix, no prefix/AIM-ID, ≥6 chars <200ms); end-to-end print→scan→cart.
+- ⏳ **Phase 2:** label + receipt printers HIL (assert SKU + TSE block), camera→inventory.
+- **One hardware validation session** (card + printer + scanner + camera) is a go-live gate.
+
+## 📦 Deferred / tech-debt
+- ~49 mechanical db-test bit-rot fixes (before the CI db-suites gate can be made *required*).
+- Intel CI leg of the OTA release hangs (24h timeout) → `latest.json` omits `darwin-x86_64` (fine — Roman is Apple Silicon + Windows). Fix so runs complete cleanly + stop masking failures.
+- **Apple Notarization** (Developer ID + notarize, ~$99/yr) — DEFERRED by Basel; adopt before public go-live for a friction-free first launch.
+- Roman's 4 doc templates (Briefpapier / Bewertung / Ankauf / Expertise) — Documents phase (pdfme / TipTap vs satori).
