@@ -51,6 +51,12 @@ export {
   AccordionItem,
   type AccordionItemProps,
 } from './components/Accordion.js';
+export { Popover, type PopoverProps } from './components/Popover.js';
+export {
+  Sparkline,
+  type SparklineProps,
+  type SparklineTone,
+} from './components/Sparkline.js';
 export { Field, type FieldProps } from './components/Field.js';
 export { Input, type InputProps } from './components/Input.js';
 export { Textarea, type TextareaProps } from './components/Textarea.js';
