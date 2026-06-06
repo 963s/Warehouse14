@@ -16,6 +16,9 @@
     "./typography.css": "./dist/typography.css"
   },
   "files": ["dist"],
+  "dependencies": {
+    "lucide-react": "0.460.0"
+  },
   "scripts": {
     "build": "tsc && node ./scripts/copy-styles.mjs",
     "dev": "tsc --watch",

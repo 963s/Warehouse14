@@ -57,6 +57,27 @@ export {
   type SparklineProps,
   type SparklineTone,
 } from './components/Sparkline.js';
+
+// Generic-action icon system (lucide-react). Brand motifs (Seal, DiamondRule,
+// MagnifierIcon) stay; Icon/IconButton are for universal actions.
+export { Icon, type IconProps } from './components/Icon.js';
+export {
+  IconButton,
+  type IconButtonProps,
+  type IconButtonTone,
+} from './components/IconButton.js';
+export type { LucideIcon } from 'lucide-react';
+// Curated action set — consumers import these from the ui-kit, not lucide directly.
+export {
+  Trash2,
+  Search,
+  Plus,
+  X,
+  ChevronLeft,
+  Printer,
+  Pencil,
+  Check,
+} from 'lucide-react';
 export { Field, type FieldProps } from './components/Field.js';
 export { Input, type InputProps } from './components/Input.js';
 export { Textarea, type TextareaProps } from './components/Textarea.js';
