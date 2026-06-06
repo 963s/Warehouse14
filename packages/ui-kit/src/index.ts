@@ -83,6 +83,8 @@ export {
   Printer,
   Pencil,
   Check,
+  Percent,
+  Tag,
 } from 'lucide-react';
 export { Field, type FieldProps } from './components/Field.js';
 export { Input, type InputProps } from './components/Input.js';

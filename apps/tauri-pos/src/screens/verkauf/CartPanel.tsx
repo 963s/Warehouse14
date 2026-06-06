@@ -25,14 +25,25 @@ import { type CSSProperties, useMemo, useState } from 'react';
 import {
   Button,
   DiamondRule,
+  Icon,
   IconButton,
   MoneyAmount,
   ParchmentCard,
+  Percent,
   RomanIndex,
+  Tag,
   Trash2,
 } from '@warehouse14/ui-kit';
 
-import { type LineMath, computeLineMath, fromCents, sumHeader } from '../../lib/cart-math.js';
+import {
+  type LineMath,
+  computeLineMath,
+  distributeInvoiceDiscount,
+  fromCents,
+  percentToEur,
+  sumHeader,
+  toCents,
+} from '../../lib/cart-math.js';
 import { isMoneyInput, normalizeDecimal } from '../../lib/decimal.js';
 import {
   MIN_DISCOUNT_REASON_LEN,
@@ -196,6 +207,8 @@ export function CartPanel({
             />
           </tbody>
         </table>
+
+        <InvoiceDiscount lines={lines} />
 
         <div
           style={{
@@ -382,11 +395,89 @@ function CartRow({
  * amount is clamped to the list price by the cart math; an empty/zero amount
  * clears the discount. Reason is required (the backend + DB enforce it).
  */
+const PCT_PRESETS = [5, 10, 15, 20] as const;
+const REASON_PRESETS = [
+  'Mitarbeiterrabatt',
+  'Mängelnachlass',
+  'Stammkunde',
+  'Verhandlung',
+] as const;
+
+const CHIP_STYLE: CSSProperties = {
+  minHeight: 36,
+  padding: '6px 12px',
+  border: '1px solid var(--w14-rule)',
+  borderRadius: 999,
+  background: 'var(--w14-parchment)',
+  color: 'var(--w14-ink-aged)',
+  fontFamily: 'var(--w14-font-display)',
+  fontSize: '0.82rem',
+  cursor: 'pointer',
+};
+const CHIP_ACTIVE: CSSProperties = {
+  background: 'var(--w14-gold)',
+  color: '#fff',
+  borderColor: 'var(--w14-gold)',
+};
+
+const DISCOUNT_INPUT: CSSProperties = {
+  padding: '10px 12px',
+  border: '1px solid var(--w14-ink-faded)',
+  borderRadius: 'var(--w14-radius-button)',
+  background: 'var(--w14-parchment)',
+  color: 'var(--w14-ink)',
+  fontFamily: 'var(--w14-font-body)',
+  fontSize: '0.95rem',
+};
+
+/** Small icon+label toggle chip (% vs €). */
+function ModeChip({
+  active,
+  icon,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  icon: typeof Percent;
+  label: string;
+  onClick: () => void;
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      style={{
+        ...CHIP_STYLE,
+        minHeight: 40,
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        ...(active ? CHIP_ACTIVE : null),
+      }}
+    >
+      <Icon icon={icon} size={16} /> {label}
+    </button>
+  );
+}
+
 function DiscountEditor({ line, disabled }: { line: CartLine; disabled: boolean }): JSX.Element {
   const setLineDiscount = useCartStore((s) => s.setLineDiscount);
   const [open, setOpen] = useState<boolean>(false);
+  const [mode, setMode] = useState<'pct' | 'eur'>('pct');
+  const [pct, setPct] = useState<string>('');
   const [amount, setAmount] = useState<string>(line.discountEur ?? '');
   const [reason, setReason] = useState<string>(line.discountReason ?? '');
+
+  // % is a fast way to set the EUR discount — the stored value stays discountEur
+  // (so cart-math + finalize are unchanged); percentToEur does the real math.
+  const setPercent = (raw: string): void => {
+    setPct(raw);
+    const n = Number(normalizeDecimal(raw));
+    setAmount(
+      Number.isFinite(n) && n > 0 ? fromCents(percentToEur(toCents(line.listPriceEur), n)) : '',
+    );
+  };
 
   const amountValid = isMoneyInput(amount);
   const positive = amountValid && Number(normalizeDecimal(amount)) > 0;
@@ -449,17 +540,82 @@ function DiscountEditor({ line, disabled }: { line: CartLine; disabled: boolean 
         minWidth: 320,
       }}
     >
-      <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span style={{ fontSize: '0.74rem', color: 'var(--w14-ink-faded)' }}>Rabatt €</span>
-        <input
-          type="text"
-          inputMode="decimal"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          placeholder="0,00"
-          style={{ ...inputStyle, flex: 1, textAlign: 'right', fontFamily: 'var(--w14-font-mono)' }}
+      {/* % (default) vs € entry */}
+      <div style={{ display: 'flex', gap: 6 }}>
+        <ModeChip
+          active={mode === 'pct'}
+          icon={Percent}
+          label="Prozent"
+          onClick={() => setMode('pct')}
         />
-      </label>
+        <ModeChip active={mode === 'eur'} icon={Tag} label="Euro" onClick={() => setMode('eur')} />
+      </div>
+
+      {mode === 'pct' ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            {PCT_PRESETS.map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setPercent(String(p))}
+                style={{
+                  ...CHIP_STYLE,
+                  ...(Number(normalizeDecimal(pct)) === p ? CHIP_ACTIVE : null),
+                }}
+              >
+                {p} %
+              </button>
+            ))}
+            <input
+              type="text"
+              inputMode="decimal"
+              value={pct}
+              onChange={(e) => setPercent(e.target.value)}
+              placeholder="%"
+              aria-label="Eigener Prozentsatz"
+              style={{
+                ...inputStyle,
+                width: 72,
+                textAlign: 'right',
+                fontFamily: 'var(--w14-font-mono)',
+              }}
+            />
+          </div>
+          {positive && (
+            <span style={{ fontSize: '0.78rem', color: 'var(--w14-ink-faded)' }}>
+              Rabatt {amount} € · neuer Preis{' '}
+              {fromCents(toCents(line.listPriceEur) - toCents(amount))} €
+            </span>
+          )}
+        </div>
+      ) : (
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: '0.74rem', color: 'var(--w14-ink-faded)' }}>Rabatt €</span>
+          <input
+            type="text"
+            inputMode="decimal"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="0,00"
+            style={{
+              ...inputStyle,
+              flex: 1,
+              textAlign: 'right',
+              fontFamily: 'var(--w14-font-mono)',
+            }}
+          />
+        </label>
+      )}
+
+      {/* Reason preset chips — prefill an EDITABLE, still-required reason. */}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {REASON_PRESETS.map((r) => (
+          <button key={r} type="button" onClick={() => setReason(r)} style={CHIP_STYLE}>
+            {r}
+          </button>
+        ))}
+      </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
         <input
           type="text"
@@ -513,6 +669,163 @@ function DiscountEditor({ line, disabled }: { line: CartLine; disabled: boolean 
             setLineDiscount(line.productId, normalizeDecimal(amount), reason);
             setOpen(false);
           }}
+        >
+          Übernehmen
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * InvoiceDiscount — a whole-cart Rabatt (UX cashier 2/3 B). A % or € is
+ * distributed across the lines (Σ-EXACT, decimal-safe) and LANDS as each line's
+ * own `discountEur` via `setLineDiscount` — so the per-line tax math + finalize
+ * are entirely unchanged. The reason is required (compliance). Applying it
+ * (re)distributes across all lines; "Rabatte entfernen" clears them.
+ */
+function InvoiceDiscount({ lines }: { lines: readonly CartLine[] }): JSX.Element | null {
+  const setLineDiscount = useCartStore((s) => s.setLineDiscount);
+  const [open, setOpen] = useState<boolean>(false);
+  const [mode, setMode] = useState<'pct' | 'eur'>('pct');
+  const [value, setValue] = useState<string>('');
+  const [reason, setReason] = useState<string>('');
+
+  if (lines.length === 0) return null;
+
+  const bases = lines.map((l) => toCents(l.listPriceEur));
+  const totalBase = bases.reduce((a, b) => a + b, 0n);
+  const valueNum = Number(normalizeDecimal(value));
+  const rawTotal =
+    mode === 'pct'
+      ? percentToEur(totalBase, valueNum)
+      : isMoneyInput(value)
+        ? toCents(normalizeDecimal(value))
+        : 0n;
+  const cappedTotal = rawTotal > totalBase ? totalBase : rawTotal;
+  const canApply = cappedTotal > 0n && isDiscountReasonValid(reason);
+
+  const apply = (): void => {
+    if (!canApply) return;
+    const shares = distributeInvoiceDiscount(bases, cappedTotal);
+    lines.forEach((l, i) => {
+      const s = shares[i] ?? 0n;
+      if (s > 0n) setLineDiscount(l.productId, fromCents(s), reason);
+      else setLineDiscount(l.productId, null, '');
+    });
+    setOpen(false);
+    setValue('');
+    setReason('');
+  };
+
+  const clearAll = (): void => {
+    for (const l of lines) setLineDiscount(l.productId, null, '');
+  };
+
+  if (!open) {
+    return (
+      <div
+        style={{
+          marginTop: 10,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 8,
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          style={{
+            ...CHIP_STYLE,
+            minHeight: 40,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+          }}
+        >
+          <Icon icon={Percent} size={16} /> Rechnungsrabatt
+        </button>
+        <button
+          type="button"
+          onClick={clearAll}
+          style={{ ...CHIP_STYLE, minHeight: 40, color: 'var(--w14-wax-red)' }}
+        >
+          Rabatte entfernen
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        marginTop: 10,
+        padding: 12,
+        border: '1px solid var(--w14-gold)',
+        borderRadius: 'var(--w14-radius-card)',
+        background: 'var(--w14-parchment-2)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+      }}
+    >
+      <strong style={{ fontFamily: 'var(--w14-font-display)', fontSize: '0.95rem' }}>
+        Rabatt auf die ganze Rechnung
+      </strong>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <ModeChip
+          active={mode === 'pct'}
+          icon={Percent}
+          label="Prozent"
+          onClick={() => setMode('pct')}
+        />
+        <ModeChip active={mode === 'eur'} icon={Tag} label="Euro" onClick={() => setMode('eur')} />
+        <input
+          type="text"
+          inputMode="decimal"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder={mode === 'pct' ? '%' : '€'}
+          aria-label={mode === 'pct' ? 'Prozent' : 'Euro'}
+          style={{
+            ...DISCOUNT_INPUT,
+            flex: 1,
+            textAlign: 'right',
+            fontFamily: 'var(--w14-font-mono)',
+          }}
+        />
+      </div>
+      {cappedTotal > 0n && (
+        <span style={{ fontSize: '0.78rem', color: 'var(--w14-ink-faded)' }}>
+          Verteilter Rabatt: −{fromCents(cappedTotal)} € auf {lines.length} Position
+          {lines.length === 1 ? '' : 'en'}
+        </span>
+      )}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {REASON_PRESETS.map((r) => (
+          <button key={r} type="button" onClick={() => setReason(r)} style={CHIP_STYLE}>
+            {r}
+          </button>
+        ))}
+      </div>
+      <input
+        type="text"
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        placeholder={`Begründung (Pflicht, mind. ${MIN_DISCOUNT_REASON_LEN} Zeichen)`}
+        style={DISCOUNT_INPUT}
+      />
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <Button variant="ghost" size="md" style={{ minHeight: 48 }} onClick={() => setOpen(false)}>
+          Abbrechen
+        </Button>
+        <Button
+          variant="primary"
+          size="md"
+          style={{ minHeight: 48 }}
+          disabled={!canApply}
+          onClick={apply}
         >
           Übernehmen
         </Button>

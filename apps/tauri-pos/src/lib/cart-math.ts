@@ -97,10 +97,7 @@ export function percentToEur(baseCents: bigint, pct: number): bigint {
  * the largest-remainder method so Σ(shares) === min(totalCents, Σbases) EXACTLY
  * (no drift) and no share exceeds its own base.
  */
-export function distributeInvoiceDiscount(
-  bases: readonly bigint[],
-  totalCents: bigint,
-): bigint[] {
+export function distributeInvoiceDiscount(bases: readonly bigint[], totalCents: bigint): bigint[] {
   const n = bases.length;
   if (n === 0) return [];
   const totalBase = bases.reduce((acc, b) => acc + (b > 0n ? b : 0n), 0n);
@@ -127,7 +124,8 @@ export function distributeInvoiceDiscount(
     return a - b; // tie → lower index
   });
   for (let k = 0; k < order.length && leftover > 0n; k++) {
-    shares[order[k] as number] += 1n;
+    const idx = order[k] as number;
+    shares[idx] = (shares[idx] as bigint) + 1n;
     leftover -= 1n;
   }
   return shares;
