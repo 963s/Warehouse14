@@ -12,7 +12,7 @@
  */
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 
 import {
   type AnkaufCondition,
@@ -27,7 +27,14 @@ import { Button, DiamondRule, MoneyAmount, ParchmentCard, RomanIndex } from '@wa
 
 import { evaluateKycGate } from '../../lib/ankauf-kyc-gate.js';
 import { useApiClient } from '../../lib/api-context.js';
-import { computeSchmelzwertEur, fromCents, sumNegotiatedCents } from '../../lib/intake-math.js';
+import {
+  type SuggestedBuy,
+  computeSchmelzwertEur,
+  fromCents,
+  metalFromItemType,
+  suggestedBuyEur,
+  sumNegotiatedCents,
+} from '../../lib/intake-math.js';
 import { TAX_TREATMENT_LABEL } from '../../lib/tax-treatment-label.js';
 import {
   type IntakeItem,
@@ -115,6 +122,8 @@ export function IntakeList({ customerSelected, onOpenBezahlen }: IntakeListProps
           {items.length === 0 ? 'leer' : `${items.length} Stück${items.length === 1 ? '' : 'e'}`}
         </span>
       </header>
+
+      <AnkaufGuide step={!customerSelected ? 1 : items.length > 0 ? 3 : 2} />
 
       {!customerSelected ? (
         <CustomerRequiredLock />
@@ -344,21 +353,61 @@ function AddItemForm({
     staleTime: 5 * 60_000,
     retry: 1,
   });
-  const ankaufRateForSelectedMetal = useMemo<string | null>(() => {
-    if (metal === '') return null;
-    const found = ratesQ.data?.rates.find((r) => r.metal === metal);
-    return found?.ankaufRatePerGramEur ?? null;
-  }, [metal, ratesQ.data]);
-  const schmelzwertEur = useMemo(
+  // UX P3: infer the metal from the itemType (the operator may still override
+  // the Metall select). Non-metal types (watch/antique/other) → no estimator.
+  useEffect(() => {
+    setMetal(metalFromItemType(itemType) ?? '');
+  }, [itemType]);
+
+  const selectedRate = useMemo(
+    () => (metal === '' ? undefined : ratesQ.data?.rates.find((r) => r.metal === metal)),
+    [metal, ratesQ.data],
+  );
+  const ankaufRateForSelectedMetal = selectedRate?.ankaufRatePerGramEur ?? null;
+  const currentRateForSelectedMetal = selectedRate?.currentPricePerGramEur ?? null;
+  const safetyMarginPct = ratesQ.data?.safetyMarginPct ?? 0;
+
+  // Gross melt — what the metal is worth at current spot (the reference).
+  const grossMeltEur = useMemo(
     () =>
       computeSchmelzwertEur({
         metal: metal === '' ? null : metal,
         weightGrams,
         finenessDecimal,
-        pricePerGramEur: ankaufRateForSelectedMetal,
+        pricePerGramEur: currentRateForSelectedMetal,
       }),
-    [metal, weightGrams, finenessDecimal, ankaufRateForSelectedMetal],
+    [metal, weightGrams, finenessDecimal, currentRateForSelectedMetal],
   );
+
+  // Suggested buy price — prefers the server ankauf rate (margin baked in);
+  // null when no rate is available (never a fake 0).
+  const suggestion = useMemo(
+    () =>
+      suggestedBuyEur({
+        metal: metal === '' ? null : metal,
+        weightGrams,
+        finenessDecimal,
+        ankaufRatePerGramEur: ankaufRateForSelectedMetal,
+        currentRatePerGramEur: currentRateForSelectedMetal,
+        safetyMarginPct,
+      }),
+    [
+      metal,
+      weightGrams,
+      finenessDecimal,
+      ankaufRateForSelectedMetal,
+      currentRateForSelectedMetal,
+      safetyMarginPct,
+    ],
+  );
+
+  // Editable prefill: seed the price with the suggestion only while the operator
+  // hasn't typed one. They stay fully in control — it's a normal editable field.
+  useEffect(() => {
+    if (suggestion.value !== null && negotiatedPriceEur.trim() === '') {
+      setNegotiatedPriceEur(suggestion.value);
+    }
+  }, [suggestion.value, negotiatedPriceEur]);
 
   const reset = (): void => {
     setSku('');
@@ -482,12 +531,14 @@ function AddItemForm({
         />
       </div>
 
-      {/* Live Schmelzwert (Ankauf) hint — under weight/fineness, before prices. */}
+      {/* Live estimator — gross melt + suggested buy price (UX P3). */}
       <SchmelzwertHint
-        eur={schmelzwertEur}
-        priceEur={ankaufRateForSelectedMetal}
+        grossEur={grossMeltEur}
+        suggestion={suggestion}
         metal={metal === '' ? null : metal}
+        ankaufRateEur={ankaufRateForSelectedMetal}
         loading={ratesQ.isLoading}
+        onAccept={setNegotiatedPriceEur}
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 14 }}>
@@ -534,18 +585,23 @@ function AddItemForm({
 }
 
 function SchmelzwertHint({
-  eur,
-  priceEur,
+  grossEur,
+  suggestion,
   metal,
+  ankaufRateEur,
   loading,
+  onAccept,
 }: {
-  eur: string | null;
-  priceEur: string | null;
+  grossEur: string | null;
+  suggestion: SuggestedBuy;
   metal: AnkaufMetal | null;
+  ankaufRateEur: string | null;
   loading: boolean;
+  onAccept: (value: string) => void;
 }): JSX.Element | null {
-  if (loading) return null;
-  if (eur === null) return null;
+  // No estimator for non-metal items, while rates load, or with no data yet.
+  if (loading || metal === null) return null;
+  if (grossEur === null && suggestion.value === null) return null;
   return (
     <div
       style={{
@@ -555,22 +611,80 @@ function SchmelzwertHint({
         border: '1px solid var(--w14-rule)',
         borderRadius: 'var(--w14-radius-card)',
         display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'baseline',
+        flexDirection: 'column',
+        gap: 8,
       }}
     >
-      <span
-        className="w14-smallcaps"
-        style={{ color: 'var(--w14-ink-faded)', fontSize: '0.78rem', letterSpacing: '0.08em' }}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'baseline',
+          gap: 12,
+        }}
       >
-        Schmelzwert (Ankauf)
-        {metal && priceEur && (
-          <span style={{ marginLeft: 8, fontFamily: 'var(--w14-font-mono)', fontSize: '0.72rem' }}>
-            {metal} @ {priceEur} €/g
-          </span>
+        <span
+          className="w14-smallcaps"
+          style={{ color: 'var(--w14-ink-faded)', fontSize: '0.78rem', letterSpacing: '0.08em' }}
+        >
+          Schmelzwert (brutto)
+        </span>
+        {grossEur ? (
+          <MoneyAmount valueEur={grossEur} />
+        ) : (
+          <span style={{ color: 'var(--w14-ink-faded)' }}>—</span>
         )}
-      </span>
-      <MoneyAmount valueEur={eur} emphasis />
+      </div>
+      <div
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}
+      >
+        <span
+          className="w14-smallcaps"
+          style={{ color: 'var(--w14-ink-aged)', fontSize: '0.78rem', letterSpacing: '0.08em' }}
+        >
+          Vorschlag (Ankauf)
+          {suggestion.basis === 'margin' && (
+            <span
+              style={{
+                marginLeft: 6,
+                fontStyle: 'italic',
+                color: 'var(--w14-ink-faded)',
+                fontSize: '0.7rem',
+              }}
+            >
+              — Marge auf Spot
+            </span>
+          )}
+        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {suggestion.value ? (
+            <MoneyAmount valueEur={suggestion.value} emphasis />
+          ) : (
+            <span style={{ color: 'var(--w14-ink-faded)' }}>—</span>
+          )}
+          {suggestion.value !== null && (
+            <Button
+              variant="ghost"
+              size="md"
+              type="button"
+              onClick={() => onAccept(suggestion.value as string)}
+            >
+              Übernehmen
+            </Button>
+          )}
+        </div>
+      </div>
+      {ankaufRateEur && (
+        <span
+          style={{
+            fontFamily: 'var(--w14-font-mono)',
+            fontSize: '0.7rem',
+            color: 'var(--w14-ink-faded)',
+          }}
+        >
+          {metal} · Ankauf {ankaufRateEur} €/g
+        </span>
+      )}
     </div>
   );
 }
@@ -594,6 +708,7 @@ function FormField({
 }): JSX.Element {
   const style = colSpan ? { gridColumn: `span ${colSpan}` } : {};
   return (
+    // biome-ignore lint/a11y/noLabelWithoutControl: the <label> implicitly wraps its control (the input/textarea rendered by the ternary below); biome can't see it through the conditional.
     <label style={{ display: 'flex', flexDirection: 'column', gap: 4, ...style }}>
       <span
         className="w14-smallcaps"
@@ -792,28 +907,116 @@ function ItemRow({
 }
 
 function CustomerRequiredLock(): JSX.Element {
+  // Step 1 active — a clear next-action, never a dead disabled void (UX P3 / §4.2).
   return (
     <ParchmentCard
       padding="lg"
       style={{ textAlign: 'center', flex: 1, display: 'grid', placeItems: 'center' }}
     >
-      <div>
-        <DiamondRule />
+      <div style={{ maxWidth: 360 }}>
+        <div
+          aria-hidden="true"
+          style={{
+            display: 'inline-grid',
+            placeItems: 'center',
+            width: 40,
+            height: 40,
+            borderRadius: 999,
+            background: 'var(--w14-gold)',
+            color: '#fff',
+            fontFamily: 'var(--w14-font-display)',
+            fontSize: '1.1rem',
+            marginBottom: 12,
+          }}
+        >
+          1
+        </div>
+        <p
+          style={{
+            margin: 0,
+            fontFamily: 'var(--w14-font-display)',
+            fontSize: '1.05rem',
+            color: 'var(--w14-ink)',
+          }}
+        >
+          Kunde links wählen, um Stücke zu erfassen.
+        </p>
         <p
           style={{
             margin: '8px 0 0',
             color: 'var(--w14-ink-faded)',
-            fontFamily: 'var(--w14-font-display)',
             fontStyle: 'italic',
-            fontSize: '0.95rem',
+            fontSize: '0.85rem',
           }}
         >
-          Bitte zuerst den Verkäufer auswählen.
-          <br />
           Ein Ankauf ohne identifizierte Person ist nach § 10 GwG nicht zulässig.
         </p>
       </div>
     </ParchmentCard>
+  );
+}
+
+/** Always-visible 3-step guide on the Ankauf pane (UX §4.2). */
+function AnkaufGuide({ step }: { step: 1 | 2 | 3 }): JSX.Element {
+  const steps: ReadonlyArray<{ n: 1 | 2 | 3; label: string }> = [
+    { n: 1, label: 'Kunde wählen' },
+    { n: 2, label: 'Stücke bewerten' },
+    { n: 3, label: 'Auszahlen' },
+  ];
+  return (
+    <div
+      aria-label="Ankauf-Schritte"
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: 8,
+        padding: '8px 12px',
+        background: 'var(--w14-parchment-2)',
+        border: '1px solid var(--w14-rule)',
+        borderRadius: 'var(--w14-radius-card)',
+      }}
+    >
+      {steps.map((s, i) => (
+        <Fragment key={s.n}>
+          <span
+            className="w14-smallcaps"
+            aria-current={step === s.n ? 'step' : undefined}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              fontSize: '0.74rem',
+              letterSpacing: '0.06em',
+              color: step === s.n ? 'var(--w14-ink)' : 'var(--w14-ink-faded)',
+              fontWeight: step === s.n ? 600 : 400,
+            }}
+          >
+            <span
+              aria-hidden="true"
+              style={{
+                display: 'inline-grid',
+                placeItems: 'center',
+                width: 20,
+                height: 20,
+                borderRadius: 999,
+                fontSize: '0.7rem',
+                background: step >= s.n ? 'var(--w14-gold)' : 'var(--w14-parchment-3)',
+                color: step >= s.n ? '#fff' : 'var(--w14-ink-faded)',
+              }}
+            >
+              {s.n}
+            </span>
+            {s.label}
+          </span>
+          {i < steps.length - 1 && (
+            <span aria-hidden="true" style={{ color: 'var(--w14-ink-faded)' }}>
+              →
+            </span>
+          )}
+        </Fragment>
+      ))}
+    </div>
   );
 }
 
