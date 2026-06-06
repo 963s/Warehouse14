@@ -44,6 +44,14 @@ export interface RequestOptions {
    * `idempotencyKey`) to drive requests through the chain without recursion.
    */
   custom?: Record<string, unknown>;
+  /**
+   * Response handling for the SUCCESS (2xx) case. `'json'` (default) parses the
+   * body as JSON; `'text'` returns the raw response text unparsed — used for
+   * file downloads (CSV exports) whose body isn't JSON. Error (non-2xx)
+   * responses are ALWAYS parsed as the JSON error envelope, so middlewares
+   * (e.g. the step-up interceptor) still fire on a 403.
+   */
+  responseType?: 'json' | 'text';
 }
 
 export interface ApiClientConfig {

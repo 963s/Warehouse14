@@ -87,6 +87,7 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
         startedAt: performance.now(),
         ...(opts.routeTemplate !== undefined ? { routeTemplate: opts.routeTemplate } : {}),
         ...(opts.custom !== undefined ? { custom: opts.custom } : {}),
+        ...(opts.responseType !== undefined ? { responseType: opts.responseType } : {}),
       },
     };
 
@@ -143,6 +144,14 @@ function createTerminal(config: ApiClientConfig): Next {
     }
 
     const text = await res.text();
+
+    // File download (CSV exports): on success, return the body verbatim — it is
+    // not JSON, so we must NOT JSON.parse it. Errors still fall through to the
+    // JSON-envelope path below, so the step-up interceptor fires on a 403.
+    if (res.ok && req.meta.responseType === 'text') {
+      return { data: text, status: res.status, headers: res.headers, requestId, traceId };
+    }
+
     let parsed: unknown;
     try {
       parsed = text.length === 0 ? undefined : JSON.parse(text);

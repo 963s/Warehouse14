@@ -100,6 +100,11 @@ export {
   type DashboardSummary,
 } from './domains/dashboard.js';
 export {
+  closingsApi,
+  type ClosingListItem,
+  type ClosingListResponse,
+} from './domains/closings.js';
+export {
   appointments,
   type AppointmentType,
   type AppointmentStatus,

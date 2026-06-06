@@ -40,6 +40,8 @@ export interface RequestMeta {
    *   gobdRelevant      — Phase 3: classify into 10y vs 30d retention
    */
   custom?: Record<string, unknown>;
+  /** Success-body handling: `'text'` returns the raw body unparsed (CSV downloads). */
+  responseType?: 'json' | 'text';
 }
 
 export interface MiddlewareRequest {

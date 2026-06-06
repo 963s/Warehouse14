@@ -71,6 +71,7 @@ import { Einstellungen } from '../../screens/secondary/Einstellungen.js';
 import { Fotos } from '../../screens/secondary/Fotos.js';
 import { Kurse } from '../../screens/secondary/Kurse.js';
 import { Schreiben } from '../../screens/secondary/Schreiben.js';
+import { SteuerExport } from '../../screens/secondary/SteuerExport.js';
 import { Tagebuch } from '../../screens/secondary/Tagebuch.js';
 import { WhatsApp } from '../../screens/secondary/WhatsApp.js';
 import { Verkauf } from '../../screens/verkauf/Verkauf.js';
@@ -261,6 +262,24 @@ export const SURFACES: readonly SurfaceDescriptor[] = [
     tier: 'secondary',
     component: WhatsApp,
     searchAliases: ['whatsapp', 'wa', 'meta', 'chat', 'nachricht', 'inbox'],
+  },
+  {
+    path: '/steuer-export',
+    label: 'Steuer-Export',
+    description: 'Tagesabschlüsse herunterladen: DATEV und Kassenbericht für das Finanzamt.',
+    tier: 'secondary',
+    component: SteuerExport,
+    searchAliases: [
+      'steuer',
+      'export',
+      'datev',
+      'kassenbericht',
+      'dsfinvk',
+      'finanzamt',
+      'steuerberater',
+      'gobd',
+      'abschluss',
+    ],
   },
 ] as const;
 

@@ -1,13 +1,17 @@
 /**
- * DATEV export route (Epic K — Part 2).
+ * Closings + tax-export routes (Epic K — Part 2; Steuer-Export surface).
  *
- *   GET /api/closings/:id/export/datev  — ADMIN + step-up.
+ *   GET /api/closings                              — ADMIN | READONLY
+ *   GET /api/closings/:id/export/datev             — ADMIN | READONLY + step-up
+ *   GET /api/closings/:id/export/kassenbericht      — ADMIN | READONLY + step-up
  *
- * Loads a daily closing, gathers its day's FINALIZED transactions, maps each to
- * a DATEV booking line, and returns a DATEV-importable CSV as a file download.
- *
- * Auth: ADMIN only + a fresh PIN step-up — a full bookkeeping export is exactly
- * the kind of single-actor, sensitive operation §requireStepUp guards.
+ * The DATEV route maps the day's FINALIZED transactions to SKR03 booking lines;
+ * the Kassenbericht route re-expresses the stored daily_closing as a German cash
+ * report. Both return a CSV file download. READONLY = the Steuerberater (read-
+ * only fiscal access). A fresh PIN step-up guards every download — a full
+ * bookkeeping export is exactly the single-actor, sensitive op §requireStepUp
+ * covers — and the access is audit-logged. Exports are READ-ONLY (GoBD): no
+ * fiscal row is ever mutated or recomputed here.
  */
 
 import { Type } from '@sinclair/typebox';
@@ -16,6 +20,7 @@ import type { FastifyPluginAsync } from 'fastify';
 
 import { requireAuth, requireRole, requireStepUp } from '../lib/auth-policy.js';
 import { type DATEVRow, generateDatevCsv } from '../lib/datev-export.js';
+import { type KassenberichtInput, buildKassenberichtCsv } from '../lib/kassenbericht-export.js';
 import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 
 class ClosingNotFoundError extends DomainError {
@@ -60,6 +65,28 @@ type ClosingRow = {
   net_verkauf_eur: string;
   net_ankauf_eur: string;
   cash_variance_eur: string | null;
+  tse_failed_count: number;
+  finalized_at: Date | null;
+};
+
+/** Full closing row for the Kassenbericht (re-expressed, never recomputed). */
+type ClosingFullRow = {
+  business_day: string;
+  state: string;
+  verkauf_count: number;
+  ankauf_count: number;
+  storno_count: number;
+  gross_verkauf_eur: string;
+  gross_ankauf_eur: string;
+  net_verkauf_eur: string;
+  net_ankauf_eur: string;
+  vat_by_treatment: Record<string, string> | null;
+  payments_by_method: Record<string, string> | null;
+  cash_expected_eur: string | null;
+  cash_counted_eur: string | null;
+  cash_variance_eur: string | null;
+  tse_finished_count: number;
+  tse_pending_count: number;
   tse_failed_count: number;
   finalized_at: Date | null;
 };
@@ -112,7 +139,7 @@ const closingExportRoute: FastifyPluginAsync = async (app) => {
     },
     async (req, reply) => {
       requireAuth(req);
-      requireRole(req, 'ADMIN');
+      requireRole(req, 'ADMIN', 'READONLY');
 
       const rows = (await app.db.execute<ClosingRow>(sql`
         SELECT id::text AS id,
@@ -166,7 +193,7 @@ const closingExportRoute: FastifyPluginAsync = async (app) => {
     },
     async (req, reply) => {
       requireAuth(req);
-      requireRole(req, 'ADMIN');
+      requireRole(req, 'ADMIN', 'READONLY');
       requireStepUp(req);
 
       const { id } = req.params;
@@ -193,6 +220,82 @@ const closingExportRoute: FastifyPluginAsync = async (app) => {
       const csv = await generateDatevCsv(datevRows);
 
       const filename = `DATEV_${closing.business_day}.csv`;
+      reply.header('Content-Disposition', `attachment; filename="${filename}"`);
+      reply.type('text/plain; charset=utf-8');
+      return reply.status(200).send(csv);
+    },
+  );
+
+  // ── GET /api/closings/:id/export/kassenbericht — daily cash report CSV ────
+  //    The real `daily_closings` row re-expressed as a German Kassenbericht.
+  //    NO recompute / NO fabrication; READ-ONLY. ADMIN + READONLY + step-up.
+  app.get<{ Params: { id: string } }>(
+    '/api/closings/:id/export/kassenbericht',
+    {
+      schema: {
+        tags: ['closings'],
+        summary:
+          'Download a daily closing as a German Kassenbericht CSV (ADMIN/READONLY + step-up).',
+        description:
+          'Returns text/plain CSV — the KassenSichV daily cash report built verbatim from ' +
+          'the stored daily_closing (counts, net totals, VAT + payment breakdown, cash ' +
+          'count/variance, TSE health). No fiscal figure is recomputed.',
+        params: Type.Object({ id: Type.String({ format: 'uuid' }) }),
+        response: { 401: ErrorResponse, 403: ErrorResponse, 404: ErrorResponse },
+      },
+    },
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'ADMIN', 'READONLY');
+      requireStepUp(req);
+
+      const { id } = req.params;
+
+      const rows = await app.db.execute<ClosingFullRow>(sql`
+        SELECT business_day::text AS business_day,
+               state::text AS state,
+               verkauf_count, ankauf_count, storno_count,
+               gross_verkauf_eur::text AS gross_verkauf_eur,
+               gross_ankauf_eur::text  AS gross_ankauf_eur,
+               net_verkauf_eur::text   AS net_verkauf_eur,
+               net_ankauf_eur::text    AS net_ankauf_eur,
+               vat_by_treatment, payments_by_method,
+               cash_drawer_expected_eur::text AS cash_expected_eur,
+               cash_drawer_counted_eur::text  AS cash_counted_eur,
+               cash_drawer_variance_eur::text AS cash_variance_eur,
+               tse_finished_count, tse_pending_count, tse_failed_count,
+               finalized_at
+          FROM daily_closings
+         WHERE id = ${id}
+         LIMIT 1`);
+      const r = rows[0];
+      if (!r) {
+        throw new ClosingNotFoundError(`Daily closing ${id} not found.`);
+      }
+
+      const input: KassenberichtInput = {
+        businessDay: r.business_day,
+        state: r.state === 'FINALIZED' ? 'FINALIZED' : 'COUNTING',
+        verkaufCount: Number(r.verkauf_count),
+        ankaufCount: Number(r.ankauf_count),
+        stornoCount: Number(r.storno_count),
+        grossVerkaufEur: r.gross_verkauf_eur,
+        grossAnkaufEur: r.gross_ankauf_eur,
+        netVerkaufEur: r.net_verkauf_eur,
+        netAnkaufEur: r.net_ankauf_eur,
+        vatByTreatment: (r.vat_by_treatment ?? {}) as Record<string, string>,
+        paymentsByMethod: (r.payments_by_method ?? {}) as Record<string, string>,
+        cashExpectedEur: r.cash_expected_eur,
+        cashCountedEur: r.cash_counted_eur,
+        cashVarianceEur: r.cash_variance_eur,
+        tseFinishedCount: Number(r.tse_finished_count),
+        tsePendingCount: Number(r.tse_pending_count),
+        tseFailedCount: Number(r.tse_failed_count),
+        finalizedAt: r.finalized_at ? new Date(r.finalized_at).toISOString() : null,
+      };
+
+      const csv = buildKassenberichtCsv(input);
+      const filename = `Kassenbericht_${r.business_day}.csv`;
       reply.header('Content-Disposition', `attachment; filename="${filename}"`);
       reply.type('text/plain; charset=utf-8');
       return reply.status(200).send(csv);
