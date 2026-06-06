@@ -20,7 +20,7 @@
  * (a) finalize-success, (b) explicit "Karte leeren", or (c) sign-out cascade.
  */
 
-import { type CSSProperties, useMemo, useState } from 'react';
+import { type CSSProperties, useEffect, useMemo, useState } from 'react';
 
 import {
   Button,
@@ -67,6 +67,12 @@ export interface CartPanelProps {
   clearingCart: boolean;
   /** Fired after a sale finalizes + the dialog closes (parent refocuses search). */
   onAfterFinalize?: () => void;
+  /**
+   * Notifies the parent when the Bezahlen dialog opens/closes so it can pause
+   * the global barcode scanner — the payment step owns Enter + the AmountPad,
+   * and a stray scan must not reserve another item mid-checkout.
+   */
+  onBezahlenOpenChange?: (open: boolean) => void;
 }
 
 export function CartPanel({
@@ -76,8 +82,15 @@ export function CartPanel({
   onClearCart,
   clearingCart,
   onAfterFinalize,
+  onBezahlenOpenChange,
 }: CartPanelProps): JSX.Element {
   const [bezahlenOpen, setBezahlenOpen] = useState<boolean>(false);
+
+  // Mirror the dialog's open state up to Verkauf (scanner gate). Effect, not an
+  // inline setter call, so it stays correct regardless of how it's toggled.
+  useEffect(() => {
+    onBezahlenOpenChange?.(bezahlenOpen);
+  }, [bezahlenOpen, onBezahlenOpenChange]);
 
   // Per-line math (kept stable across renders so we don't re-allocate cents).
   const perLine: ReadonlyArray<{ line: CartLine; math: LineMath }> = useMemo(

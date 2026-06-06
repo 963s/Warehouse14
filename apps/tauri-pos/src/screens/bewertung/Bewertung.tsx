@@ -158,7 +158,8 @@ function OutcomeView({
   const accepted = appraisal.status === 'ACCEPTED';
   const printer = useLabelPrinter();
   // Accepted items spawn products (productId set). The appraisal item doesn't
-  // expose the spawned SKU, so the product id is used as the QR/scan reference.
+  // expose the spawned SKU, so the product id is used as the barcode/scan
+  // reference (the label encodes it as Code128 — see src-tauri label command).
   const labels: LabelData[] = accepted
     ? appraisal.items
         .filter((i) => i.productId !== null)

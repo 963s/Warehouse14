@@ -35,6 +35,13 @@ export interface CatalogGridProps {
    * the initial render (autoFocus handles first mount).
    */
   focusToken?: number;
+  /**
+   * Incremented by the parent after a barcode scan is handled. The scanner's
+   * keystrokes leak into this input (the hook only swallows the trailing
+   * Enter), so we clear it — otherwise the grid would filter to the just-sold
+   * SKU and show "Keine Treffer" after a successful scan.
+   */
+  searchResetToken?: number;
 }
 
 const METAL_FILTERS: ReadonlyArray<{ key: string; label: string }> = [
@@ -51,6 +58,7 @@ export function CatalogGrid({
   inCart,
   onSelect,
   focusToken,
+  searchResetToken,
 }: CatalogGridProps): JSX.Element {
   const api = useApiClient();
   const searchRef = useRef<HTMLInputElement>(null);
@@ -67,6 +75,16 @@ export function CatalogGrid({
       searchRef.current?.select();
     }
   }, [focusToken]);
+
+  // Clear the search after a handled scan so the leaked SKU keystrokes don't
+  // strand the grid on a now-reserved item. Skip the initial mount.
+  useEffect(() => {
+    if (searchResetToken && searchResetToken > 0) {
+      setSearchInput('');
+      setDebouncedQ('');
+      searchRef.current?.focus();
+    }
+  }, [searchResetToken]);
 
   // 240ms debounce on the search input.
   const timer = useRef<number | null>(null);

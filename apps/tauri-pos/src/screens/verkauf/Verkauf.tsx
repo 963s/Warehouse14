@@ -51,7 +51,7 @@
  */
 
 import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   ApiError,
@@ -61,10 +61,12 @@ import {
 } from '@warehouse14/api-client';
 import { DiamondRule, ParchmentCard, Seal } from '@warehouse14/ui-kit';
 
+import { useBarcodeScanner } from '../../hooks/useBarcodeScanner.js';
 import { useCurrentShift } from '../../hooks/useCurrentShift.js';
 import { useApiClient } from '../../lib/api-context.js';
 import { classifyCartProductTax } from '../../lib/cart-math.js';
 import { releaseCart } from '../../lib/release-cart.js';
+import { classifyScanMatch, normalizeScan } from '../../lib/scan-resolve.js';
 import { type CartLine, selectCartLines, useCartStore } from '../../state/cart-store.js';
 import { useToastStore } from '../../state/toast-store.js';
 
@@ -117,6 +119,14 @@ function VerkaufFloor(): JSX.Element {
   // P2: bumped after a successful finalize closes the Bezahlen dialog →
   // CatalogGrid refocuses its search input so the next scan lands there.
   const [searchFocusToken, setSearchFocusToken] = useState<number>(0);
+  // Cashier 3/3: pause the global barcode scanner while the Bezahlen dialog
+  // owns Enter + the AmountPad (CartPanel notifies us via onBezahlenOpenChange).
+  const [bezahlenOpen, setBezahlenOpen] = useState<boolean>(false);
+  // Bumped after every handled scan → CatalogGrid clears the leaked SKU text.
+  const [searchResetToken, setSearchResetToken] = useState<number>(0);
+  // Guard the scan→reserve window: a SKU mid-lookup (before onSelectProduct has
+  // marked it reserving) must not be resolved twice by a rapid double-scan.
+  const scanResolvingRef = useRef<Set<string>>(new Set());
 
   // Derived: which productIds are currently in the cart. Memoized so
   // CatalogGrid's `inCart` prop is referentially stable as long as
@@ -229,6 +239,96 @@ function VerkaufFloor(): JSX.Element {
     },
     [addLine, addToast, api, findLine, qc],
   );
+
+  // ────────────────────────────────────────────────────────────────────
+  // Barcode scan → cart (cashier 3/3)
+  // ────────────────────────────────────────────────────────────────────
+  // The printed label carries a Code128 of the SKU; the USB scanner emits that
+  // SKU. We look it up (ILIKE on `q`, then pick the exact SKU/barcode row),
+  // classify the status, and either run the SAME reserve→add path as a tile
+  // click or give precise feedback. A per-SKU in-flight guard stops a rapid
+  // double-scan from firing two reserves before onSelectProduct can mark it.
+
+  const onScan = useCallback(
+    async (raw: string): Promise<void> => {
+      const code = normalizeScan(raw);
+      if (code.length < 3) return; // ignore stray/short bursts
+
+      // The scanner's keystrokes leaked into the catalog search — clear them so
+      // the grid doesn't strand on the (soon-reserved) SKU.
+      setSearchResetToken((t) => t + 1);
+
+      let rows: ProductListRow[];
+      try {
+        const res = await productsApi.list(api, { q: code, limit: 10 });
+        rows = res.items;
+      } catch {
+        addToast({
+          tone: 'alert',
+          title: 'Scan-Suche fehlgeschlagen',
+          body: `Artikel ${code} konnte nicht geladen werden.`,
+        });
+        return;
+      }
+
+      const match = classifyScanMatch(code, rows);
+      switch (match.kind) {
+        case 'not-found':
+          addToast({
+            tone: 'alert',
+            title: 'Kein Treffer',
+            body: `Kein Artikel mit Code ${code} gefunden.`,
+          });
+          return;
+        case 'sold':
+          addToast({
+            tone: 'alert',
+            title: 'Bereits verkauft',
+            body: `${match.product.sku} ist bereits verkauft — nicht mehr im Bestand.`,
+          });
+          return;
+        case 'reserved':
+          addToast({
+            tone: 'alert',
+            title: 'Bereits reserviert',
+            body: `${match.product.sku} ist anderswo reserviert (Storefront/eBay).`,
+          });
+          return;
+        case 'draft':
+          addToast({
+            tone: 'info',
+            title: 'Noch nicht verkaufsbereit',
+            body: `${match.product.sku} ist ein Entwurf — erst in Lager veröffentlichen.`,
+          });
+          return;
+        case 'found':
+          break;
+      }
+
+      const product = match.product;
+      // Double-add / race guard: already in the cart, or a reserve for this SKU
+      // is already in flight from a prior scan.
+      if (findLine(product.id) || scanResolvingRef.current.has(product.id)) {
+        addToast({
+          tone: 'info',
+          title: 'Schon in der Karte',
+          body: `${product.sku} — Einzelstück, bereits im Korb.`,
+        });
+        return;
+      }
+      scanResolvingRef.current.add(product.id);
+      try {
+        await onSelectProduct(product);
+      } finally {
+        scanResolvingRef.current.delete(product.id);
+      }
+    },
+    [addToast, api, findLine, onSelectProduct],
+  );
+
+  // Listen globally while a shift is open; pause during payment so the dialog
+  // keeps Enter + the AmountPad for itself.
+  useBarcodeScanner({ enabled: !bezahlenOpen, onScan: (c) => void onScan(c) });
 
   // ────────────────────────────────────────────────────────────────────
   // Release handlers
@@ -349,6 +449,7 @@ function VerkaufFloor(): JSX.Element {
         inCart={inCart}
         onSelect={(p) => void onSelectProduct(p)}
         focusToken={searchFocusToken}
+        searchResetToken={searchResetToken}
       />
       <CartPanel
         lines={lines}
@@ -356,6 +457,7 @@ function VerkaufFloor(): JSX.Element {
         releasingProductIds={releasingProductIds}
         onClearCart={() => void onClearCart()}
         clearingCart={clearingCart}
+        onBezahlenOpenChange={setBezahlenOpen}
         onAfterFinalize={() => {
           // Fires only on a genuine finalize-success → dialog close. Refocus the
           // catalog search so the next scan starts the next sale immediately.

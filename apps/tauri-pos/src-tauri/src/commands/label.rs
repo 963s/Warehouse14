@@ -1,8 +1,14 @@
 //! Epic B — product sticker label printing (ZPL + ESC/POS).
 //!
-//! Prints compact inventory stickers: a QR code carrying the SKU (for scanner
-//! lookups) on the left, human-readable SKU / name / weight / karat / storage
-//! location on the right.
+//! Prints compact inventory stickers: a Code128 barcode carrying the SKU (for
+//! scanner lookups — the SKU IS the barcode, so ONE label serves both storage
+//! and the cashier sale) across the top, with human-readable SKU / name /
+//! weight / karat / storage location below it.
+//!
+//! Symbology is Code128 emitted via the printer's NATIVE barcode command
+//! (ZPL `^BC`, ESC/POS `GS k 73`) — the printer rasterises a crisp, scannable
+//! barcode from the SKU string; we never hand-rasterise pixels. Code128 (vs a
+//! QR) reads on the common 1D handheld laser scanners used at the till.
 //!
 //! Two transports, mirroring the receipt printer:
 //!   • TCP 9100 (AppSocket / JetDirect) — stream bytes to a network label printer.
@@ -154,16 +160,21 @@ fn build_zpl(labels: &[LabelData]) -> Vec<u8> {
         let karat = label.karat.as_deref().unwrap_or("-");
         let location = zpl_sanitize(label.storage_location.as_deref().unwrap_or("-"));
 
-        // ~50 mm x ~30 mm sticker at 8 dots/mm. QR left, text right.
+        // ~50 mm x ~40 mm sticker at 8 dots/mm. Code128 barcode of the SKU
+        // across the top, human-readable rows beneath.
         out.push_str("^XA\n");
         out.push_str("^CI28\n"); // UTF-8 input
-        // QR with the SKU (M error correction, Automatic input mode).
-        out.push_str(&format!("^FO20,20^BQN,2,5^FDMA,{sku}^FS\n"));
-        // Text column.
-        out.push_str(&format!("^FO180,20^A0N,30,30^FD{sku}^FS\n"));
-        out.push_str(&format!("^FO180,58^A0N,26,26^FD{name}^FS\n"));
-        out.push_str(&format!("^FO180,90^A0N,24,24^FD{weight} g · {karat}^FS\n"));
-        out.push_str(&format!("^FO180,120^A0N,22,22^FDLager: {location}^FS\n"));
+        // Code128 of the SKU. `^BY2,3,70` = module 2 dots, wide/narrow 3, height
+        // 70. `^BCN,70,N,N,N` = Normal orientation, height 70, no interpretation
+        // line (we print the SKU ourselves below), no line above, no UCC check.
+        // ZPL auto-selects the Code128 subset for the data.
+        out.push_str("^BY2,3,70\n");
+        out.push_str(&format!("^FO20,20^BCN,70,N,N,N^FD{sku}^FS\n"));
+        // Human-readable rows.
+        out.push_str(&format!("^FO20,110^A0N,30,30^FD{sku}^FS\n"));
+        out.push_str(&format!("^FO20,148^A0N,26,26^FD{name}^FS\n"));
+        out.push_str(&format!("^FO20,180^A0N,24,24^FD{weight} g · {karat}^FS\n"));
+        out.push_str(&format!("^FO20,210^A0N,22,22^FDLager: {location}^FS\n"));
         out.push_str("^XZ\n");
     }
     out.into_bytes()
@@ -182,9 +193,9 @@ fn build_escpos(labels: &[LabelData]) -> Vec<u8> {
     b.extend_from_slice(&[ESC, b't', 19]); // PC858 (Euro + umlauts)
 
     for label in labels {
-        // QR (SKU) centred, then left-aligned text rows.
+        // Code128 (SKU) centred, then left-aligned text rows.
         b.extend_from_slice(&[ESC, b'a', 1]); // center
-        qr_code(&mut b, &label.sku);
+        code128(&mut b, &label.sku);
         b.extend_from_slice(&[ESC, b'a', 0]); // left
 
         b.extend_from_slice(&[ESC, b'E', 1]); // bold on
@@ -211,16 +222,27 @@ fn text_line(out: &mut Vec<u8>, s: &str) {
     out.push(b'\n');
 }
 
-/// QR via the GS ( k ESC/POS extension (same encoding the receipt printer uses).
-fn qr_code(out: &mut Vec<u8>, payload: &str) {
-    let p = payload.as_bytes();
-    out.extend_from_slice(&[GS, b'(', b'k', 0x04, 0x00, 0x31, 0x41, 0x32, 0x00]); // model 2
-    out.extend_from_slice(&[GS, b'(', b'k', 0x03, 0x00, 0x31, 0x43, 0x05]); // module size 5
-    out.extend_from_slice(&[GS, b'(', b'k', 0x03, 0x00, 0x31, 0x45, 0x31]); // ECC level M
-    let plen = p.len() + 3;
-    out.extend_from_slice(&[GS, b'(', b'k', (plen & 0xFF) as u8, ((plen >> 8) & 0xFF) as u8, 0x31, 0x50, 0x30]);
-    out.extend_from_slice(p);
-    out.extend_from_slice(&[GS, b'(', b'k', 0x03, 0x00, 0x31, 0x51, 0x30]); // print
+/// Code128 of the SKU via the ESC/POS `GS k 73` barcode command. The printer
+/// rasterises the barcode from the SKU string — we never draw pixels.
+///
+/// Format: `GS h n` (height), `GS w n` (module width), `GS H 0` (no
+/// human-readable interpretation line — we print the SKU text ourselves), then
+/// `GS k 73 n d1..dn` where the data begins with the `{B` code-set-B selector
+/// (covers the ASCII A–Z / 0–9 / '-' a SKU uses). A literal `{` in the payload
+/// must be doubled per the ESC/POS Code128 data rules.
+fn code128(out: &mut Vec<u8>, payload: &str) {
+    let escaped = payload.replace('{', "{{");
+    let mut data = Vec::with_capacity(escaped.len() + 2);
+    data.extend_from_slice(b"{B"); // select Code128 subset B
+    data.extend_from_slice(escaped.as_bytes());
+    // Guard the GS k length byte (u8) — SKUs are short; truncate hostile input.
+    let n = data.len().min(255) as u8;
+
+    out.extend_from_slice(&[GS, b'h', 80]); // barcode height (dots)
+    out.extend_from_slice(&[GS, b'w', 2]); // module width
+    out.extend_from_slice(&[GS, b'H', 0]); // HRI: none
+    out.extend_from_slice(&[GS, b'k', 73, n]); // CODE128, n data bytes follow
+    out.extend_from_slice(&data[..n as usize]);
     out.push(b'\n');
 }
 
@@ -247,12 +269,14 @@ mod tests {
     }
 
     #[test]
-    fn zpl_has_required_commands_and_sku() {
+    fn zpl_encodes_sku_as_code128_and_keeps_text() {
         let zpl = String::from_utf8(build_zpl(&[sample()])).unwrap();
         assert!(zpl.contains("^XA") && zpl.contains("^XZ"));
-        assert!(zpl.contains("^BQN")); // QR block
-        assert!(zpl.contains("^A0N")); // font
-        assert!(zpl.contains("^FDMA,W14-AU-750-0012")); // QR carries the SKU
+        assert!(zpl.contains("^BC")); // Code128 barcode element (NOT a QR ^BQ)
+        assert!(!zpl.contains("^BQ")); // QR is gone
+        assert!(zpl.contains("^BY")); // module/height defaults for the barcode
+        assert!(zpl.contains("^BCN,70,N,N,N^FDW14-AU-750-0012")); // barcode carries the SKU
+        assert!(zpl.contains("^A0N")); // human-readable font rows
         assert!(zpl.contains("Lager: Tresor-1 / Fach-3"));
     }
 
@@ -272,6 +296,23 @@ mod tests {
         assert!(!bytes.windows(2).any(|w| w == [GS, b'V']));
         // Contains the SKU text.
         assert!(bytes.windows(15).any(|w| w == b"W14-AU-750-0012"));
+    }
+
+    #[test]
+    fn escpos_emits_code128_of_the_sku() {
+        let bytes = build_escpos(&[sample()]);
+        // GS k 73 = the CODE128 barcode command (function B).
+        assert!(bytes.windows(3).any(|w| w == [GS, b'k', 73]));
+        // The data payload selects code-set B and carries the SKU verbatim.
+        assert!(bytes.windows(17).any(|w| w == b"{BW14-AU-750-0012"));
+    }
+
+    #[test]
+    fn code128_doubles_a_literal_brace_in_the_payload() {
+        let mut out = Vec::new();
+        code128(&mut out, "AB{CD");
+        // Selector "{B" then the escaped payload "AB{{CD".
+        assert!(out.windows(8).any(|w| w == b"{BAB{{CD"));
     }
 
     #[test]
