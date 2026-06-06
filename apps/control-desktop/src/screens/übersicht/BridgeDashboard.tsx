@@ -14,6 +14,7 @@ import { type CSSProperties, useCallback, useEffect, useState } from 'react';
 import { Button, DiamondRule, MoneyAmount, ParchmentCard, StatTile } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../api-context.js';
+import { useLedgerStream } from '../../bridge/use-ledger-stream.js';
 
 // ── Types — mirrors GET /api/bridge/summary ─────────────────────────────────
 
@@ -148,6 +149,10 @@ const railLabelStyle: CSSProperties = {
 
 export function BridgeDashboard(): JSX.Element {
   const { data, loading, error, refetch } = useBridgeData();
+  // Live SSE feed layered OVER the 30s poll (poll stays the floor): a ledger
+  // event nudges the same refetch. If SSE never connects (CORS/auth/dev), the
+  // Bridge degrades silently to exactly the polling behaviour from before.
+  useLedgerStream(refetch);
 
   if (loading && !data) {
     return <DiamondRule tone="faded" label="Lade …" />;
