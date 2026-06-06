@@ -45,6 +45,12 @@ export {
   type ModalSize,
 } from './components/Dialog.js';
 export { Sheet, type SheetProps } from './components/Sheet.js';
+export {
+  Accordion,
+  type AccordionProps,
+  AccordionItem,
+  type AccordionItemProps,
+} from './components/Accordion.js';
 export { Field, type FieldProps } from './components/Field.js';
 export { Input, type InputProps } from './components/Input.js';
 export { Textarea, type TextareaProps } from './components/Textarea.js';
