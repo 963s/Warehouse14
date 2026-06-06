@@ -11,7 +11,8 @@
  */
 
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 import {
   ApiError,
@@ -27,6 +28,7 @@ import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
 import { isMoneyInput, normalizeDecimal } from '../../lib/decimal.js';
+import { deriveAnkaufPerGram, formatPerGram } from '../../lib/metal-margin.js';
 import { useSessionStore } from '../../state/session-store.js';
 import { useToastStore } from '../../state/toast-store.js';
 import { TradingTerminal } from './TradingTerminal.js';
@@ -85,6 +87,18 @@ export function Kurse(): JSX.Element {
   const [overrideOpen, setOverrideOpen] = useState<MetalKind | null>(null);
   const [marginOpen, setMarginOpen] = useState(false);
 
+  // Deep-open from the ticker popover's "Ankaufmarge bearbeiten →" link
+  // (/kurse?marge=1). ADMIN only; consume the param so a refresh doesn't reopen.
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    if (isAdmin && searchParams.get('marge') === '1') {
+      setMarginOpen(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete('marge');
+      setSearchParams(next, { replace: true });
+    }
+  }, [isAdmin, searchParams, setSearchParams]);
+
   const safetyMarginPct = ratesQ.data?.safetyMarginPct ?? null;
 
   return (
@@ -113,8 +127,13 @@ export function Kurse(): JSX.Element {
         </h1>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           {isAdmin && (
-            <Button variant="ghost" size="md" onClick={() => setMarginOpen(true)}>
-              Margen je Metall
+            <Button
+              variant="ghost"
+              size="md"
+              onClick={() => setMarginOpen(true)}
+              title="Ankaufmarge je Metall → Ankaufpreis überall (Ticker, Ankauf, Kursraum)"
+            >
+              Ankaufmarge je Metall
             </Button>
           )}
           <span
@@ -399,9 +418,25 @@ function PriceTile({
       )}
 
       {isAdmin && (
-        <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
-          <Button variant="ghost" size="md" onClick={onOverride}>
-            Manueller Override
+        <div
+          style={{
+            marginTop: 12,
+            display: 'flex',
+            justifyContent: 'flex-end',
+            alignItems: 'center',
+            gap: 10,
+          }}
+        >
+          <span style={{ fontSize: '0.74rem', color: 'var(--w14-ink-faded)' }}>
+            setzt den Spot-Kurs (Marktwert)
+          </span>
+          <Button
+            variant="ghost"
+            size="md"
+            onClick={onOverride}
+            title="Spot-Override → setzt den Marktwert dieses Metalls (nicht die Ankaufmarge)"
+          >
+            Spot-Override
           </Button>
         </div>
       )}
@@ -435,7 +470,7 @@ function RatesBlock({ rate }: { rate: MetalRate | undefined }): JSX.Element | nu
   const ankaufLabel = `Ankauf-Kurs (−${formatPct(rate.safetyMarginPct ?? 0.1)})`;
   return (
     <div style={{ marginTop: 12, display: 'grid', gap: 4 }}>
-      <RateRow label="Spot-Kurs (Verkauf)" value={spot} />
+      <RateRow label="Spot-Kurs (Marktwert)" value={spot} />
       <RateRow label={ankaufLabel} value={rate.ankaufRatePerGramEur} tone="wax" />
       <RateRow label="10-Tage-Mittel" value={rate.avg10dPricePerGramEur} muted />
     </div>
@@ -830,15 +865,16 @@ function MarginModal({ rates, onClose }: { rates: MetalRate[]; onClose: () => vo
   };
   const allValid = METAL_KIND_ORDER.every(validOf);
 
-  // Live Ankauf preview from the metal's 10-day mean (matches the server math).
-  const previewAnkauf = (mk: MetalKind): string => {
+  // The base the server applies the margin to: the 10-day time-weighted mean.
+  const baseOf = (mk: MetalKind): string | null => {
     const r = rates.find((x) => x.metal === mk);
-    const base = r?.avg10dPricePerGramEur ?? r?.currentPricePerGramEur ?? null;
-    const n = numOf(mk);
-    if (base === null || !Number.isFinite(n)) return '—';
-    const v = Number.parseFloat(base) * (1 - n / 100);
-    return `${v.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} €/g`;
+    return r?.avg10dPricePerGramEur ?? r?.currentPricePerGramEur ?? null;
   };
+  // Live Ankauf preview via the SAME formula the server uses (deriveAnkaufPerGram
+  // mirrors ROUND(avg × (1 − margin), 4)); the authoritative value still arrives
+  // from the /rates refetch after save.
+  const previewAnkauf = (mk: MetalKind): string =>
+    formatPerGram(deriveAnkaufPerGram(baseOf(mk), numOf(mk) / 100));
 
   const save = useMutation({
     mutationFn: async () => {
@@ -857,9 +893,14 @@ function MarginModal({ rates, onClose }: { rates: MetalRate[]; onClose: () => vo
       addToast({
         tone: 'success',
         title: 'Margen gespeichert',
-        body: 'Ankaufskurse aktualisiert.',
+        body: 'Ankaufskurse überall aktualisiert — Ticker, Ankauf-Vorschlag, Kursraum.',
       });
-      await qc.invalidateQueries({ queryKey: ['metal-prices', 'rates'] });
+      // CORE FIX: invalidate the WHOLE metal-prices family (not just 'rates') so
+      // EVERY consumer refetches the new server-derived Ankauf rate at once. The
+      // chrome ticker (useMetalRates), the Ankauf estimator (IntakeList +
+      // AppraisalItemForm) and this Kursraum all share the ['metal-prices', …]
+      // key prefix → a single invalidation reaches all of them.
+      await qc.invalidateQueries({ queryKey: ['metal-prices'] });
       onClose();
     },
     onError: (err: unknown) => {
@@ -910,7 +951,13 @@ function MarginModal({ rates, onClose }: { rates: MetalRate[]; onClose: () => vo
         <DiamondRule />
 
         <p style={{ margin: '8px 0 0', fontSize: '0.84rem', color: 'var(--w14-ink-aged)' }}>
-          Ankauf-Kurs = 10-Tage-Mittel × (1 − Marge). Jede Marge ist einzeln einstellbar (0–50 %).
+          <strong>Ankaufpreis = 10-Tage-Mittel (Spot) × (1 − Marge).</strong> Jede Marge ist einzeln
+          einstellbar (0–50 %). Speichern wirkt <strong>sofort überall</strong>: Ticker,
+          Ankauf-Vorschlag und Kursraum.
+        </p>
+        <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: 'var(--w14-ink-faded)' }}>
+          Die Marge betrifft nur den <strong>Ankauf</strong>. Verkaufspreise sind je Artikel
+          (Listenpreis) — nicht Spot × Marge.
         </p>
 
         <div style={{ display: 'grid', gap: 12, marginTop: 14 }}>
@@ -948,12 +995,19 @@ function MarginModal({ rates, onClose }: { rates: MetalRate[]; onClose: () => vo
               <span
                 className="w14-tabular"
                 style={{
+                  display: 'flex',
+                  flexDirection: 'column',
                   fontFamily: 'var(--w14-font-mono)',
-                  fontSize: '0.86rem',
-                  color: 'var(--w14-wax-red)',
+                  fontSize: '0.82rem',
+                  lineHeight: 1.3,
                 }}
               >
-                Ankauf {previewAnkauf(mk)}
+                <span style={{ color: 'var(--w14-ink-faded)' }}>
+                  Ø10T {formatPerGram(baseOf(mk))}
+                </span>
+                <span style={{ color: 'var(--w14-wax-red)', fontWeight: 600 }}>
+                  → Ankauf {previewAnkauf(mk)}
+                </span>
               </span>
             </div>
           ))}

@@ -23,7 +23,9 @@ import { Popover, Sparkline, type SparklineTone } from '@warehouse14/ui-kit';
 import { useMetalRates } from '../../hooks/useMetalRates.js';
 import { useApiClient } from '../../lib/api-context.js';
 import { normalizeDecimal } from '../../lib/decimal.js';
+import { formatPerGram } from '../../lib/metal-margin.js';
 import { type TickTone, formatMetalTick } from '../../lib/metal-tick.js';
+import { useSessionStore } from '../../state/session-store.js';
 
 const METAL_LABEL: Record<MetalKind, string> = {
   gold: 'Gold',
@@ -195,10 +197,12 @@ function MetalDetail({
 }: { metal: MetalKind; rate: MetalRate | undefined }): JSX.Element {
   const api = useApiClient();
   const navigate = useNavigate();
+  const isAdmin = useSessionStore((s) => s.actor?.role === 'ADMIN');
   const tick = formatMetalTick(
     rate?.currentPricePerGramEur ?? null,
     rate?.avg10dPricePerGramEur ?? null,
   );
+  const marginPct = rate?.safetyMarginPct ?? null;
 
   // Shares Kurse's history queryKey → cache-deduped. Lazy: only runs while the
   // popover (and thus this component) is mounted.
@@ -240,6 +244,29 @@ function MetalDetail({
         </div>
       )}
 
+      {/* The buy rate, derived server-side from the per-metal margin. Shares the
+          rates query → editing the margin (below) moves this line live, so the
+          ticker reflects the change, not just one isolated screen. */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'baseline',
+          justifyContent: 'space-between',
+          gap: 12,
+          fontSize: '0.8rem',
+        }}
+      >
+        <span style={{ color: 'var(--w14-ink-faded)' }}>
+          Ankauf{marginPct != null ? ` (−${(marginPct * 100).toFixed(1)} %)` : ''}
+        </span>
+        <span
+          className="w14-tabular"
+          style={{ fontFamily: 'var(--w14-font-mono)', color: 'var(--w14-wax-red)' }}
+        >
+          {formatPerGram(rate?.ankaufRatePerGramEur ?? null)}
+        </span>
+      </div>
+
       {histQ.isLoading ? (
         <div
           style={{
@@ -270,6 +297,27 @@ function MetalDetail({
         >
           Kein Verlauf verfügbar
         </div>
+      )}
+
+      {isAdmin && (
+        <button
+          type="button"
+          onClick={() => navigate('/kurse?marge=1')}
+          className="w14-smallcaps"
+          style={{
+            alignSelf: 'flex-start',
+            minHeight: 44,
+            background: 'transparent',
+            border: 'none',
+            color: 'var(--w14-gold)',
+            cursor: 'pointer',
+            fontSize: '0.74rem',
+            letterSpacing: '0.06em',
+            padding: 0,
+          }}
+        >
+          Ankaufmarge bearbeiten →
+        </button>
       )}
 
       <div
