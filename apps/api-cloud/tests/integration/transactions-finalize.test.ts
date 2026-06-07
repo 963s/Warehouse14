@@ -18,6 +18,8 @@
  *   ✓ Decimal math: line totals not summing → 400 VALIDATION_ERROR
  *   ✓ DB CHECK enforced: ANKAUF without customer_id → 400 (mig 0013 C-1)
  *   ✓ Sanctions: flagged customer → 403 SANCTIONS_BLOCK (mig 0013 C-2)
+ *   ✓ GwG KYC route pre-check: ANKAUF unverified → 403 KYC_REQUIRED (§259);
+ *     VERKAUF ≥ €2.000 unverified/no-customer → 403; verified → 200 (mig 0050)
  *   ✓ Step-up gating: total ≥ threshold without fresh step-up → 403 STEP_UP_REQUIRED
  *   ✓ Step-up gating: same request with fresh step-up → 200 OK
  *   ✓ mTLS gate: missing device header → 403 DEVICE_NOT_AUTHORIZED
@@ -473,6 +475,62 @@ describe('POST /api/transactions/finalize — Day 13 vital artery', () => {
     const [p] = await migratorSql<{ status: string }[]>`
       SELECT status FROM products WHERE id = ${productId}`;
     expect(p!.status).toBe('RESERVED');
+  });
+
+  // ────────────────────────────────────────────────────────────────────
+  // 5b. GwG KYC enforcement (route pre-check → 403 KYC_REQUIRED)
+  //     The DB trigger is integration-proven in 0050_gwg_kyc_enforcement; here
+  //     we prove the FRIENDLY route 403 end-to-end through the real app.
+  // ────────────────────────────────────────────────────────────────────
+
+  it('ANKAUF with an UN-verified seller → 403 KYC_REQUIRED (§259 StGB, from €0,01)', async () => {
+    // The seeded customer is never KYC-stamped. The pre-check fires before the
+    // reserve/insert, so a small Ankauf (no step-up) is rejected on identity.
+    const body = buildBody({
+      direction: 'ANKAUF',
+      totalEur: '100.00',
+      reservationSessionId: randomUUID(),
+    });
+    const res = await postFinalize(body);
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toMatchObject({ error: { code: 'KYC_REQUIRED' } });
+  });
+
+  it('VERKAUF ≥ €2.000 with an UN-verified customer → 403 KYC_REQUIRED (§10 GwG)', async () => {
+    const sessionId = await reserveProduct(cashierUserId);
+    // Owner session carries a fresh step-up so we get PAST the step-up gate and
+    // hit the KYC pre-check (€2.000 ≥ the €1.000 step-up threshold).
+    const body = buildBody({ reservationSessionId: sessionId, totalEur: '2000.00' });
+    const res = await postFinalize(body, { sessionToken: ownerSessionToken });
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toMatchObject({ error: { code: 'KYC_REQUIRED' } });
+
+    const [p] = await migratorSql<{ status: string }[]>`
+      SELECT status FROM products WHERE id = ${productId}`;
+    expect(p?.status).toBe('RESERVED'); // rolled back / never sold
+  });
+
+  it('VERKAUF ≥ €2.000 with NO customer → 403 KYC_REQUIRED (§10 GwG)', async () => {
+    const sessionId = await reserveProduct(cashierUserId);
+    const body = buildBody({
+      reservationSessionId: sessionId,
+      totalEur: '2000.00',
+      customerId: null,
+    });
+    const res = await postFinalize(body, { sessionToken: ownerSessionToken });
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toMatchObject({ error: { code: 'KYC_REQUIRED' } });
+  });
+
+  it('VERKAUF ≥ €2.000 with a KYC-verified customer → 200 OK', async () => {
+    await migratorSql`
+      UPDATE customers SET kyc_verified_at = now(), kyc_verified_by_user_id = ${ownerUserId}
+       WHERE id = ${customerId}`;
+    const sessionId = await reserveProduct(cashierUserId);
+    const body = buildBody({ reservationSessionId: sessionId, totalEur: '2000.00' });
+    const res = await postFinalize(body, { sessionToken: ownerSessionToken });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { totalEur: string }).totalEur).toBe('2000.00');
   });
 
   // ────────────────────────────────────────────────────────────────────

@@ -96,6 +96,19 @@ const KONTO_KASSE = '1000'; // Kasse
 const KONTO_ERLOESE = '8400'; // Erlöse 19% USt
 const KONTO_WARENEINGANG = '3200'; // Wareneingang
 
+// TODO(steuerberater, pre-go-live): EVERY VERKAUF currently posts to the single
+// revenue account 8400 (KONTO_ERLOESE) REGARDLESS of tax_treatment_code. This is
+// almost certainly wrong for the differently-taxed sales:
+//   • STANDARD_19          → 19% Erlöse  (8400 is plausible)
+//   • REDUCED_7            → 7%  Erlöse
+//   • MARGIN_25A           → Differenzbesteuerung §25a (separate revenue account)
+//   • INVESTMENT_GOLD_25C  → steuerfreie Anlagegold-Lieferung §25c (separate account)
+// QUESTION FOR THE ACCOUNTANT: which SKR03 revenue account should each
+// tax_treatment_code map to? Once answered, replace this single constant with a
+// per-treatment lookup. Do NOT guess the account numbers here.
+// See docs/samples/README.md + the generated DATEV sample (all three treatments
+// visibly share contra 8400 today).
+
 // A `type` (not `interface`) so it satisfies the `Record<string, unknown>`
 // constraint on `db.execute<T>` (interfaces lack an implicit index signature).
 type TxRow = {

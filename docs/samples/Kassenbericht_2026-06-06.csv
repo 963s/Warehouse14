@@ -1,0 +1,28 @@
+Kassenbericht;2026-06-06
+Status;abgeschlossen
+
+Belege;Verkäufe;3
+Belege;Ankäufe;1
+Belege;Stornos;0
+
+Umsatz;Verkauf brutto;4240,00 EUR
+Umsatz;Verkauf netto;4240,00 EUR
+Umsatz;Ankauf brutto;600,00 EUR
+Umsatz;Ankauf netto;600,00 EUR
+
+USt;STANDARD_19;190,00 EUR
+USt;MARGIN_25A;127,73 EUR
+USt;INVESTMENT_GOLD_25C;0,00 EUR
+
+Zahlung;CASH;3640,00 EUR
+Zahlung;ZVT_CARD;600,00 EUR
+
+Kasse;Erwartet (bar);3840,00 EUR
+Kasse;Gezählt (bar);3838,00 EUR
+Kasse;Differenz;-2,00 EUR
+
+TSE;Signiert;4
+TSE;Ausstehend;0
+TSE;Fehlgeschlagen;0
+
+Abschluss;Finalisiert am;2026-06-06T20:05:00.000Z
