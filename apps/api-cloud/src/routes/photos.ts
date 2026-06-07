@@ -398,6 +398,12 @@ const photosRoutes: FastifyPluginAsync<PhotosRoutesOpts> = async (app, opts) => 
       reply.header('Content-Type', 'image/webp');
       // Bytes are immutable per id (a re-upload yields a new id) → long cache.
       reply.header('Cache-Control', 'public, max-age=31536000, immutable');
+      // These are public product images embedded cross-origin via <img> from the
+      // Tauri webview (origin tauri://localhost). The global security-headers
+      // plugin sets Cross-Origin-Resource-Policy: same-origin, which makes the
+      // webview refuse to render the image. Override to cross-origin for these
+      // public renditions so <img> works (KYC photos are never served here).
+      reply.header('Cross-Origin-Resource-Policy', 'cross-origin');
       return reply.send(stream);
     };
   };
