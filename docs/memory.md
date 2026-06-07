@@ -3006,3 +3006,132 @@ tools still stubs; Apple Developer ID signing.
   `ux-cashier-keypad` / `ux-cashier-discount` / `ux-cashier-barcode` / `ux-cashier-confirm`.
 - **Still-open carried-forward from §26 (unchanged):** Smurfing AML middleware (go-live blocker, §3);
   TSE cert/archive tables (#I-1/#I-2); Owner Control Desktop (unbuilt); GDPR audit-log IP-min / KYC purge.
+
+> ▶ **Superseded by §28** (2026-06-07): on inspection, **all three** "unbuilt/absent" items above
+> (Smurfing, TSE cert/archive, Owner Control Desktop) were found **already BUILT**. The §26
+> "Next priorities" list and the §27.6 blocker list are corrected there.
+
+---
+
+## 28. [PHASE 1.6 — COMPLIANCE FRAMEWORKS, CONTROL-DESKTOP RECONCILIATION & GO-LIVE PIVOT] (2026-06-07)
+
+> Continues §27. The strategist closed §27.6's pending UX items, then walked the compliance go-live
+> path — and discovered the central memory was **stale three times over**: every item §26 flagged
+> "unbuilt/absent" was in fact already shipped. The executor (Claude Code) correctly *reconciled and
+> extended* prior art rather than duplicating; the strategist **re-ran every gate independently** —
+> and this section was **itself corrected** after a strategist claim (the "live" Morning Briefing)
+> proved wrong on a closer read (§28.5 / §28.8). Source-of-truth discipline: this corrects §26's
+> "Next priorities" + §27.6, and corrects an over-eager mid-session review note.
+
+### 28.1 Memory was stale 3× — search prior art FIRST (Decision #100)
+- **#100 — The three "unbuilt" go-live items were all already BUILT.** §26's "Next priorities"
+  (written ~2025-05-29, two weeks before these landed) listed Smurfing, TSE cert/archive, and the
+  Owner Control Desktop as unbuilt/absent. Inspection proved all three exist. **Root cause:** a
+  point-in-time priority list left un-revised. **Lesson (reinforced):** the central memory can lag
+  the code — **always grep the real tree before prompting a build**; prefer *reconcile + extend* to
+  *rebuild*. Every claim below was verified by re-running gates, not by trusting a report.
+
+### 28.2 Smurfing / AML framework — reconciled + extended (Decision #101)
+- **#101 — the detector already existed; made it configurable + §10-aware.** `apps/api-cloud/src/lib/smurfing.ts`
+  was already present (corrects §3/§26 "not built"). Extended: the GwG identity threshold is now read
+  from `system_settings` (`gwg.identity_threshold_eur`, default €2.000 = `200_000n` cents) — never
+  hardcoded; the Ankauf KYC gate (`evaluateKycGate`, tauri-pos) became **§10 aggregation-aware**
+  (prior-window Σ + current ≥ threshold trips KYC even when the single buy is under it — the
+  linked-transaction rule smurfing exploits). ⚠️ **OPEN — Steuerberater decision:** §10 is *surfaced*
+  (client banner) + *detected* (post-commit), **not hard-blocked server-side**. Whether §10 needs
+  HARD server enforcement, and the exact thresholds/window, await the Steuerberater + bank. Branch
+  `aml-smurfing-framework`.
+
+### 28.3 Steuer-Export — DATEV + Kassenbericht (Decision #102)
+- **#102 — downloadable tax exports.** DATEV EXTF/Buchungsstapel existed server-side; added the daily
+  **Kassenbericht** CSV (`buildKassenberichtCsv`, api-cloud) — a PURE re-expression of the real
+  `daily_closings` row as labelled German CSV (CRLF). **No facade:** it never recomputes or invents a
+  figure; a missing cash count renders `—`, **never a fabricated `0,00`**. POS download UI wired.
+  Branch `ux-steuer-export`.
+
+### 28.4 TSE cert/archive — reconciled + multi-tier escalation (Decision #103)
+- **#103 — the tables + jobs existed; added the escalation classifier.** `0040_tse_daily_archives` +
+  `0043_tse_clients` + the worker jobs (`tse-cert-checker`, `tse-archive-exporter`) were all present
+  (corrects §26 #I-1/#I-2 "both tables absent"). Added: pure `certExpiryTier` (`expired`/`T-1`/`T-7`/
+  `T-30`/`null`, floor-of-days bands, 7 TDD tests) + **escalation-aware re-alerting** (`tierRank` +
+  migration `0049_tse_client_alert_tier` adds nullable `last_alert_tier`; alert iff the tier got MORE
+  urgent — no re-spam inside a tier). **Invariant #45 respected: ZERO new alert type** — the existing
+  `alert.tse_cert_expiry` carries the tier in its payload (no ADR needed). HIL boundary honest (real
+  Fiskaly `valid_to` / TAR validated on-device). Branch `tse-compliance-tables`.
+
+### 28.5 Owner Control Desktop is BUILT — corrects #30 / #41 (Decision #104)
+- **#104 — `apps/control-desktop` exists, is real, and typechecks clean.** Corrects §26/§27 + Decisions
+  **#30/#41** "entirely unbuilt". It is a **self-contained Tauri 2 + React 18 + Vite app** — there is
+  **NO `apps/admin-web`, and none is needed** (corrects #41's "Tauri wrapper around admin-web
+  (Next.js)"). Independent receipt: `pnpm --filter @warehouse14/control-desktop typecheck` → **exit 0**.
+  **Eight Karteikasten surfaces**, all on real `/api/*` routes: Übersicht/**Bridge**, Genehmigungen
+  (`/api/approvals/*`), Kassenabschluss (`/api/closings` + DATEV), Kunden (trust + KYC PATCH), Lager
+  (price/status), Termine (read-only), Konformität (`/api/ledger`), Einstellungen (settings + device
+  fleet). Auth: cookie session + global `StepUpModal` (403 STEP_UP_REQUIRED → PIN → replay).
+- **⚠️ CORRECTION — the live Übersicht does NOT show a Morning Briefing.** On a closer read of
+  `screens/übersicht/BridgeDashboard.tsx` (the one `App.tsx:25` actually imports): it is a
+  self-contained "calm glance" with its OWN inline data hook hitting **`/api/bridge/summary`** (system
+  status + the four queues + today's money via `StatTile`s); it imports nothing from the (now-deleted)
+  `src/bridge/` module and **renders no briefing**. A rich Arabic Morning-Briefing template DOES exist
+  in `bridge.ts` `/api/bridge/overview` (template + today's real numbers, **deterministic — NOT an
+  LLM**, which stays the correct call), but that endpoint was consumed ONLY by the duplicate
+  `src/bridge/use-bridge-data.ts`. So after the dedupe (#107), **`/api/bridge/overview` is orphaned and
+  the briefing is not shown to the Owner.** A mid-session review note ("the briefing is already real,
+  don't touch it") described that orphaned path and is **corrected here**. **OPEN PRODUCT DECISION
+  (Basel):** either (a) surface the briefing in the live Bridge (fold it into `/summary`, or point the
+  live screen at `/overview`), or (b) accept the glance-redesign as final and delete `/overview` + its
+  briefing as dead code.
+- **Genuine remaining (NONE block go-live):** ✅ dead duplicate removed (#107); ⚠️ the briefing product
+  decision above; post-MVP: mTLS device pairing, WebAuthn unlock, offline SQLite mirror + action
+  outbox, anomaly watchdog (z-score).
+
+### 28.6 §27.6 UX blockers — closed (Decision #105)
+- **#105 — the live-test blockers are fixed.** Cash-confirm (#96): pinned "Zahlung abschließen" footer
+  (`BezahlenDialog`, scroll body + flex column, finalize/idempotency untouched). Kasse purpose reframe
+  (#99): concept clarified (day's cash drawer/legal close vs the checkout; €200 = default opening
+  float). ProductSheet **create→manage in-place** (#93): `createdId` keeps the sheet open post-create
+  (no more close+re-click). Metal-margin **global propagation** (#94): margin save now broadly
+  invalidates `['metal-prices']` so ticker + Ankauf reflect it. All reviewed against real code, gates
+  green.
+
+### 28.7 Go-live pivot — the critical path is now EXTERNAL (Decision #106)
+- **#106 — the BUILD side is substantially complete; remaining blockers are Basel's external inputs.**
+  Shipped + reviewed: core sell (reserve fix #89), the full UX redesign (§27), all three compliance
+  frameworks (#101–#103), and the back-office (#104). **No buildable compliance item remains.** The
+  go-live critical path is now:
+  1. **Steuerberater / bank** — Smurfing thresholds + the **§10 hard-enforcement posture** (#101) +
+     confirm the DATEV / Kassenbericht / DSFinV-K formats satisfy them.
+  2. **Hardware-in-the-loop session** — ZVT card terminal (**still cash-only**), label printer + hand
+     scanner (#98), Fiskaly TSE in prod, camera. Physical round-trip validation.
+  3. **Deploy to prod** — PR #2 (reserve fix) + migrations **0045–0049** are NOT on prod yet
+     (Basel's operational trigger; every dev POS click must stay off the prod GoBD ledger).
+- **Branches pushed for backup:** all `ux-*` (incl. `ux-productsheet-inplace`, `ux-metal-margin`,
+  `ux-steuer-export`), plus `aml-smurfing-framework`, `tse-compliance-tables`, `fix-reserve-sell-bug`
+  (= PR #2). Reviewer doctrine held: nothing here was rubber-stamped; the audit that overclaimed
+  "production-ready / blockers: NONE" was tempered to "structurally real + typecheck-clean; runtime
+  contracts + auth flow await the running stack / HIL".
+
+### 28.8 Control-Desktop polish — done, with a strategist lesson (Decision #107)
+- **#107 — dedupe + live SSE, and a no-facade catch on the strategist's own brief.** Branch
+  `claude/control-desktop-polish` (off `main` d3869c7, **unpushed**), two clean commits:
+  - `ffd0f2c` — removed the **entire dead `src/bridge/` module** (BridgeDashboard + use-bridge-data +
+    types + mock-data, **−661 lines**); every file had zero live importers. `tsc --noEmit` stays
+    **exit 0** — proof of true death. The live `StatusDot` (its own atom) untouched.
+  - `09c7900` — `use-ledger-stream.ts` (mirrors the tauri-pos prior-art hook): an `EventSource` to
+    `/api/sse/ledger` (`event: ledger`, `withCredentials`), 400 ms-debounced, **bounded backoff with a
+    hard stop at 6 failures** (no credentialed-reconnect storm), cleanup on unmount; mounted in the
+    live Bridge **layered over the 30 s poll floor** (silent degradation if SSE never connects).
+- **The catch (reviewer doctrine, applied to MY OWN brief):** the prompt told the executor to
+  `invalidateQueries(['bridge','overview',baseUrl])` — but the live screen uses a manual `refetch()`,
+  NOT a TanStack query under that key, so the invalidate would have been a **silent no-op facade**. The
+  executor caught it and wired SSE to the real `refetch()`. **Lesson logged:** read the actual
+  RENDERED component, not just the data-layer file — the strategist had trusted the audit's description
+  of the live screen instead of reading `screens/übersicht/BridgeDashboard.tsx` directly; the
+  executor's deeper read corrected both the brief and §28.5.
+- **Honest boundary:** runtime SSE delivery is **not proven** — only compiled + wired. CORS already
+  allows credentialed cross-origin + the `last-event-id` header; delivery depends on the
+  control-desktop origin being in `TRUSTED_ORIGINS` + a `SameSite=None; Secure` session cookie
+  (live-stack / HIL facts). The poll floor guarantees zero regression meanwhile.
+- ⚠️ **Server dead-code candidate (flag, don't act):** `/api/bridge/overview` (+ its briefing) now has
+  no `src` consumer. Removing it is a separate, riskier change (tests / future clients) — defer to a
+  deliberate cleanup, and resolve it together with the §28.5 briefing product decision.
