@@ -38,8 +38,14 @@ pub fn run() {
     // by a background mDNS thread spawned in `.setup()` below.
     let peer_registry = commands::mdns::PeerRegistry::new();
 
+    // Companion LAN hub — the embedded axum server's lifecycle handle. Starts
+    // empty; companion_start binds it on demand. See commands/companion.rs and
+    // docs/companion-architecture.md.
+    let companion_state = commands::companion::CompanionState::new();
+
     tauri::Builder::default()
         .manage(peer_registry.clone())
+        .manage(companion_state)
         // Spawn the mDNS daemon once the app is up. It advertises this terminal
         // as `_w14pos._tcp.local.` and discovers peers; it is fail-safe (logs and
         // exits if mDNS is unavailable) and never blocks or crashes startup.
@@ -101,6 +107,10 @@ pub fn run() {
             commands::scale::list_scale_ports,
             // Local P2P — discovered LAN peers
             commands::mdns::get_local_peers,
+            // Companion LAN hub — embedded server lifecycle (mother-as-server)
+            commands::companion::companion_start,
+            commands::companion::companion_stop,
+            commands::companion::companion_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running warehouse14-tauri-pos");

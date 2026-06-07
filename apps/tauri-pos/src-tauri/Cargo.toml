@@ -77,3 +77,11 @@ typst-pdf = "0.11"
 comemo = "0.4.0"
 typst-assets = { version = "0.11", features = ["fonts"] }
 mdns-sd = "0.20"
+
+# ── Companion LAN hub (mother-as-server) ─────────────────────────────
+# The mother POS embeds an axum server on the LAN so paired companion
+# devices (second cashier / customer display) connect to it directly.
+# `local-ip-address` resolves the real LAN IP for the pairing QR/URL.
+# tokio already carries rt-multi-thread + net; axum reuses the existing hyper.
+axum = "0.7"
+local-ip-address = "0.6"

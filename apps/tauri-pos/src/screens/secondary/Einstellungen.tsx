@@ -27,9 +27,10 @@ import { openChatwoot } from '../../lib/chatwoot.js';
 import { useIntegrationSettings } from '../../state/integration-settings-store.js';
 import { useToastStore } from '../../state/toast-store.js';
 import { Belegdesigner } from './Belegdesigner.js';
+import { GeraeteKoppeln } from './GeraeteKoppeln.js';
 import { GeraeteManager } from './GeraeteManager.js';
 
-type SectionId = 'hardware' | 'ai' | 'server' | 'social' | 'chatwoot' | 'beleg';
+type SectionId = 'hardware' | 'pairing' | 'ai' | 'server' | 'social' | 'chatwoot' | 'beleg';
 
 const SECTIONS: Array<{ id: SectionId; label: string; icon: ReactNode; desc: string }> = [
   {
@@ -37,6 +38,12 @@ const SECTIONS: Array<{ id: SectionId; label: string; icon: ReactNode; desc: str
     label: 'Geräte & Kasse',
     icon: <IconBox size={18} />,
     desc: 'Drucker · Terminal · TSE',
+  },
+  {
+    id: 'pairing',
+    label: 'Geräte koppeln',
+    icon: <IconUsers size={18} />,
+    desc: 'iPad · Tablet · Mobil',
   },
   {
     id: 'ai',
@@ -135,6 +142,7 @@ export function Einstellungen(): JSX.Element {
 
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
         {section === 'hardware' && <GeraeteManager />}
+        {section === 'pairing' && <GeraeteKoppeln />}
         {section === 'ai' && <AiSection />}
         {section === 'server' && <ServerSection />}
         {section === 'social' && <SocialSection />}
