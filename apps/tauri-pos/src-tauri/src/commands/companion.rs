@@ -28,21 +28,41 @@
 //!
 //! # Token & code RNG
 //!
-//! The 6-digit pairing **code** stays on the non-cryptographic `fastrand` — it
-//! is short-lived, rate-limited, and constant-time-compared, so the entropy
-//! that matters lives in the **token**. The companion token is 32 bytes from
-//! the OS CSPRNG (`getrandom`), hex-encoded. The pairing code is compared with
-//! `subtle::ConstantTimeEq` to avoid a timing oracle.
+//! BOTH the 6-digit pairing **code** and the 32-byte companion **token** are
+//! drawn from the OS CSPRNG (`getrandom`) — never `fastrand`. The code is
+//! single-use (invalidated on the first successful pair), TTL-bounded, and
+//! rate-limited on the *real* TCP peer IP; the token is hex-encoded and
+//! TTL-bounded. The pairing code is compared with `subtle::ConstantTimeEq` to
+//! avoid a timing oracle. If the CSPRNG fails we REFUSE to mint (503) rather
+//! than fall back to a weak RNG.
+//!
+//! # Hardening notes (security review)
+//!
+//! - Proxy: deny-by-default positive allow-set keyed by `(role, method,
+//!   exact path / tight prefix)`, plus a belt-and-braces hard-deny list. The
+//!   captured path is percent-decoded once and rejected on traversal markers
+//!   before any match; the upstream URL is built from validated segments.
+//! - Same-subnet guard: every companion request must originate from the
+//!   mother's LAN `/24`.
+//! - SPA: a strict CSP response header on every response; the SPA JS lives in a
+//!   separate `GET /app.js` so `script-src 'self'` holds (no inline script).
+//!
+//! TODO(hardening): full TLS on the LAN hop is still out of scope — the
+//! same-subnet guard + CSP + single-use TTL code are the interim mitigation.
+//! Before go-live, terminate TLS on the companion hub (self-signed CA pushed to
+//! companions, or a Tauri-side mkcert) so the Bearer-bearing proxy traffic and
+//! the companion token are not exposed on the wire.
 
 use std::collections::HashMap;
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use axum::{
     body::Bytes,
-    extract::{Path, State as AxumState},
-    http::{HeaderMap, Method, StatusCode},
+    extract::{ConnectInfo, Path, State as AxumState},
+    http::{header, HeaderMap, HeaderValue, Method, StatusCode},
+    middleware::{self, Next},
     response::{Html, IntoResponse, Response},
     routing::{any, get, post},
     Json, Router,
@@ -52,6 +72,9 @@ use subtle::ConstantTimeEq;
 use tauri::State;
 use tokio::sync::{oneshot, RwLock};
 use tokio::task::JoinHandle;
+use tower::limit::ConcurrencyLimitLayer;
+use tower_http::limit::RequestBodyLimitLayer;
+use tower_http::timeout::TimeoutLayer;
 
 /// Fixed LAN port for the companion hub. Picked from the IANA dynamic range so
 /// it is unlikely to collide; falls back to an OS-assigned ephemeral port if
@@ -64,6 +87,42 @@ const CLOUD_BASE: &str = "https://api.warehouse14.de";
 /// Rate limit for `POST /pair`: at most this many attempts per IP per window.
 const PAIR_MAX_ATTEMPTS: u32 = 6;
 const PAIR_WINDOW: Duration = Duration::from_secs(60);
+
+/// How long a freshly-issued pairing code stays valid (single-use *and*
+/// time-boxed). After this the operator must press start again to re-issue.
+const PAIR_CODE_TTL: Duration = Duration::from_secs(5 * 60);
+
+/// Global failed-pair-attempt budget. Once this many code mismatches accumulate
+/// across all IPs, pairing is locked until the next `companion_start`. Stops a
+/// distributed brute-force of the 6-digit space (10^6) cold.
+const PAIR_GLOBAL_FAIL_LOCK: u32 = 50;
+
+/// Companion-token lifetime. A token older than this is evicted on use (and by
+/// the periodic map sweep), forcing a re-pair. Belt for the H3 TTL ask.
+const TOKEN_TTL: Duration = Duration::from_secs(12 * 60 * 60);
+
+/// Hard caps on the in-memory maps so a flood of distinct IPs / stale tokens
+/// cannot grow them without bound (M2/M3). When exceeded we sweep expired
+/// entries first, then refuse to grow further.
+const MAX_TOKENS: usize = 256;
+const MAX_RATE_BUCKETS: usize = 1024;
+
+/// Router hardening limits (M2/M3/L2): cap request bodies, bound per-request
+/// wall-clock, and cap in-flight concurrency so a companion device cannot
+/// exhaust the mother's webview process.
+const MAX_BODY_BYTES: usize = 1024 * 1024; // 1 MiB — generous for JSON payloads.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+const MAX_CONCURRENT_REQUESTS: usize = 64;
+
+/// The strict Content-Security-Policy applied to every companion response. No
+/// inline scripts (the SPA JS is a separate `/app.js`); no external origins.
+const COMPANION_CSP: &str = "default-src 'self'; script-src 'self'; \
+style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; \
+object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
+
+/// The companion SPA logic, embedded at build time and served from `/app.js`
+/// so the CSP can require `script-src 'self'` (no inline script).
+const COMPANION_APP_JS: &str = include_str!("../../companion-web/app.js");
 
 /// The companion SPA, embedded at build time. Single self-contained file —
 /// no external assets, no CDNs (works offline + satisfies a tight CSP).
@@ -148,7 +207,16 @@ impl CompanionInfo {
 #[derive(Debug, Clone)]
 struct CompanionEntry {
     role: Role,
+    /// When the token was minted — used to enforce [`TOKEN_TTL`] (H3).
+    created_at: Instant,
     last_seen: Instant,
+}
+
+impl CompanionEntry {
+    /// A token is expired once it has outlived [`TOKEN_TTL`].
+    fn is_expired(&self, now: Instant) -> bool {
+        now.duration_since(self.created_at) > TOKEN_TTL
+    }
 }
 
 /// Per-IP rate-limit bucket for `POST /pair`.
@@ -162,9 +230,19 @@ struct RateBucket {
 /// [`HubShared`]; each field is accessed under a short async lock.
 #[derive(Default)]
 struct HubInner {
-    /// The current single-use-per-start pairing code. Empty until a server
-    /// starts; rotated on every `companion_start`.
+    /// The current single-use pairing code. Empty until a server starts and
+    /// CLEARED on the first successful pair; rotated on every `companion_start`.
     pairing_code: String,
+    /// When the current `pairing_code` was issued — drives [`PAIR_CODE_TTL`].
+    /// `None` when no code is live.
+    code_issued_at: Option<Instant>,
+    /// The mother's LAN IPv4 at start time. Companion requests must originate
+    /// from the same `/24` (H3 same-subnet guard). `None` when not running.
+    lan_ip: Option<Ipv4Addr>,
+    /// Global count of failed code attempts since the last `companion_start`.
+    /// Once it reaches [`PAIR_GLOBAL_FAIL_LOCK`], pairing is locked until the
+    /// next start (H1 distributed-brute-force lock).
+    global_fail_count: u32,
     /// The mother's cloud session Bearer. Empty until `companion_set_auth`.
     bearer: String,
     /// The latest published cart snapshot (raw JSON string). `None` → default.
@@ -230,29 +308,63 @@ fn lan_ip() -> Ipv4Addr {
     }
 }
 
-/// Generate a fresh 6-digit numeric pairing code (zero-padded). Short-lived,
-/// rate-limited, and constant-time-compared — the real entropy is in the token.
-fn fresh_pairing_code() -> String {
-    format!("{:06}", fastrand::u32(0..1_000_000))
+/// Draw a uniform `u32` in `0..1_000_000` from the OS CSPRNG using rejection
+/// sampling (so the modulo bias is zero). `None` on a CSPRNG failure — the
+/// caller then REFUSES to issue a code rather than fall back to a weak RNG.
+fn csprng_code_value() -> Option<u32> {
+    // 0..1_000_000 fits in 20 bits; the largest multiple of 1_000_000 below
+    // 2^32 is the rejection threshold. Reject above it to keep the draw uniform.
+    const LIMIT: u32 = 1_000_000;
+    const REJECT_AT: u32 = u32::MAX - (u32::MAX % LIMIT); // exclusive bound.
+    loop {
+        let mut buf = [0u8; 4];
+        if getrandom::getrandom(&mut buf).is_err() {
+            return None;
+        }
+        let v = u32::from_le_bytes(buf);
+        if v < REJECT_AT {
+            return Some(v % LIMIT);
+        }
+    }
+}
+
+/// Generate a fresh 6-digit numeric pairing code (zero-padded) from the OS
+/// CSPRNG. `None` if the CSPRNG is unavailable — never a weak fallback.
+fn fresh_pairing_code() -> Option<String> {
+    csprng_code_value().map(|v| format!("{v:06}"))
 }
 
 /// Mint an opaque companion token: 32 bytes from the OS CSPRNG, hex-encoded
-/// (64 chars). Never derived from the pairing code.
-fn mint_token() -> String {
+/// (64 chars). Never derived from the pairing code. Returns `None` on a CSPRNG
+/// failure so the caller can REFUSE (503) instead of minting a weak token.
+fn mint_token() -> Option<String> {
     let mut buf = [0u8; 32];
-    // getrandom draws from the OS CSPRNG; failure here is catastrophic and
-    // vanishingly rare. Fall back to fastrand only to avoid an unwrap panic in
-    // the webview process — still 32 bytes, just not CSPRNG on that one path.
     if getrandom::getrandom(&mut buf).is_err() {
-        for b in buf.iter_mut() {
-            *b = fastrand::u8(..);
-        }
+        return None;
     }
     let mut s = String::with_capacity(64);
     for b in buf {
-        s.push_str(&format!("{:02x}", b));
+        s.push_str(&format!("{b:02x}"));
     }
-    s
+    Some(s)
+}
+
+/// True when `ip` is on the same `/24` as the mother's LAN IPv4 (H3
+/// same-subnet guard). Loopback is always allowed (the mother itself, the
+/// embedded webview, and diagnostics on the box).
+fn same_subnet(mother: Ipv4Addr, peer: IpAddr) -> bool {
+    match peer {
+        IpAddr::V4(v4) => {
+            if v4.is_loopback() {
+                return true;
+            }
+            let m = mother.octets();
+            let p = v4.octets();
+            m[0] == p[0] && m[1] == p[1] && m[2] == p[2]
+        }
+        // IPv6 peers can't be on the IPv4 /24; allow only IPv6 loopback.
+        IpAddr::V6(v6) => v6.is_loopback(),
+    }
 }
 
 /// Render `url` as an SVG QR code (black on white). Returns `""` on the
@@ -279,14 +391,68 @@ fn default_cart() -> &'static str {
 // HTTP handlers
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// `GET /` and `GET /app.*` — serve the embedded companion SPA.
+/// `GET /` and `GET /app.html` — serve the embedded companion SPA shell. The
+/// shell pulls its logic from `/app.js` (no inline script) so the CSP holds.
 async fn serve_spa() -> Html<&'static str> {
     Html(COMPANION_SPA)
+}
+
+/// `GET /app.js` — the companion SPA logic, served as a separate script so the
+/// strict CSP can use `script-src 'self'` (no `'unsafe-inline'`).
+async fn serve_app_js() -> Response {
+    (
+        StatusCode::OK,
+        [(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("text/javascript; charset=utf-8"),
+        )],
+        COMPANION_APP_JS,
+    )
+        .into_response()
 }
 
 /// `GET /health` — liveness probe for companions / diagnostics.
 async fn health() -> &'static str {
     "ok"
+}
+
+/// Middleware: stamp the strict CSP (and a couple of companion hardening
+/// headers) onto every response, including error responses (H2).
+async fn security_headers(req: axum::extract::Request, next: Next) -> Response {
+    let mut res = next.run(req).await;
+    let h = res.headers_mut();
+    h.insert(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static(COMPANION_CSP),
+    );
+    h.insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+    h.insert("X-Frame-Options", HeaderValue::from_static("DENY"));
+    h.insert(
+        header::REFERRER_POLICY,
+        HeaderValue::from_static("no-referrer"),
+    );
+    res
+}
+
+/// Middleware: reject any request whose real TCP peer is not on the mother's
+/// LAN `/24` (H3 same-subnet guard). Runs before routing so it covers every
+/// endpoint uniformly. Loopback is always allowed.
+async fn subnet_guard(
+    AxumState(hub): AxumState<HubShared>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    req: axum::extract::Request,
+    next: Next,
+) -> Response {
+    let mother = { hub.0.read().await.lan_ip };
+    if let Some(mother) = mother {
+        if !same_subnet(mother, peer.ip()) {
+            return (StatusCode::FORBIDDEN, "forbidden: off-subnet").into_response();
+        }
+    }
+    next.run(req).await
 }
 
 #[derive(Deserialize)]
@@ -301,29 +467,20 @@ struct PairRes {
     role: String,
 }
 
-/// Extract a best-effort client IP key for rate-limiting. Prefers an
-/// `X-Forwarded-For` first hop, else falls back to a constant bucket (still
-/// bounds total attempts when the peer addr is unavailable).
-fn client_ip_key(headers: &HeaderMap) -> String {
-    if let Some(xff) = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok()) {
-        if let Some(first) = xff.split(',').next() {
-            let ip = first.trim();
-            if !ip.is_empty() {
-                return ip.to_string();
-            }
-        }
-    }
-    "local".to_string()
-}
-
-/// `POST /pair` — verify the pairing code (constant-time), validate the role,
-/// rate-limit per IP, and on success mint a role-scoped companion token.
+/// `POST /pair` — verify the pairing code (constant-time, single-use, TTL),
+/// validate the role, rate-limit on the REAL TCP peer IP, enforce the global
+/// failed-attempt lock, and on success mint a role-scoped companion token.
+///
+/// The peer IP comes from axum's [`ConnectInfo`] — the real socket address, NOT
+/// any `X-Forwarded-For` header (which a companion could forge to dodge the
+/// per-IP limit). There is no reverse proxy in front of the LAN hub, so the
+/// socket peer is authoritative.
 async fn pair_handler(
     AxumState(hub): AxumState<HubShared>,
-    headers: HeaderMap,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
     Json(req): Json<PairReq>,
 ) -> Response {
-    let ip = client_ip_key(&headers);
+    let ip = peer.ip().to_string();
 
     // Role must be one of the three known faces.
     let role = match Role::parse(&req.role) {
@@ -332,37 +489,90 @@ async fn pair_handler(
     };
 
     let mut inner = hub.0.write().await;
-
-    // ── Rate limit (per IP, sliding fixed window) ──
     let now = Instant::now();
-    let bucket = inner.pair_rate.entry(ip.clone()).or_insert(RateBucket {
-        count: 0,
-        window_start: now,
-    });
-    if now.duration_since(bucket.window_start) > PAIR_WINDOW {
-        bucket.count = 0;
-        bucket.window_start = now;
+
+    // ── Global failed-attempt lock (distributed brute-force defence) ──
+    if inner.global_fail_count >= PAIR_GLOBAL_FAIL_LOCK {
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            "pairing locked — restart the companion hub",
+        )
+            .into_response();
     }
-    bucket.count += 1;
-    if bucket.count > PAIR_MAX_ATTEMPTS {
-        return (StatusCode::TOO_MANY_REQUESTS, "rate limited").into_response();
+
+    // ── Per-IP rate limit (real peer, sliding fixed window) ──
+    // Opportunistically evict stale buckets + cap the map (M2).
+    if inner.pair_rate.len() >= MAX_RATE_BUCKETS {
+        inner
+            .pair_rate
+            .retain(|_, b| now.duration_since(b.window_start) <= PAIR_WINDOW);
+    }
+    {
+        let bucket = inner.pair_rate.entry(ip.clone()).or_insert(RateBucket {
+            count: 0,
+            window_start: now,
+        });
+        if now.duration_since(bucket.window_start) > PAIR_WINDOW {
+            bucket.count = 0;
+            bucket.window_start = now;
+        }
+        bucket.count += 1;
+        if bucket.count > PAIR_MAX_ATTEMPTS {
+            return (StatusCode::TOO_MANY_REQUESTS, "rate limited").into_response();
+        }
+    }
+
+    // ── Code must be live: present AND within its TTL (single-use means it is
+    //    cleared on first success, so a re-use after success fails here too). ──
+    let code_live = !inner.pairing_code.is_empty()
+        && inner
+            .code_issued_at
+            .map(|t| now.duration_since(t) <= PAIR_CODE_TTL)
+            .unwrap_or(false);
+    if !code_live {
+        return (StatusCode::FORBIDDEN, "code expired").into_response();
     }
 
     // ── Constant-time code compare ──
     let expected = inner.pairing_code.clone();
-    let ok = !expected.is_empty()
-        && expected.as_bytes().ct_eq(req.code.as_bytes()).into();
+    let ok: bool = expected.as_bytes().ct_eq(req.code.as_bytes()).into();
     if !ok {
+        inner.global_fail_count = inner.global_fail_count.saturating_add(1);
         return (StatusCode::FORBIDDEN, "invalid code").into_response();
     }
 
-    // ── Success: mint + register ──
-    let token = mint_token();
+    // ── Success: mint the token (refuse if CSPRNG fails), register, and
+    //    INVALIDATE the code so it is single-use. ──
+    let token = match mint_token() {
+        Some(t) => t,
+        None => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "secure token generation unavailable",
+            )
+                .into_response();
+        }
+    };
+
+    // Single-use: a paired code is spent. Operator must restart to re-issue.
+    inner.pairing_code.clear();
+    inner.code_issued_at = None;
+
+    // Cap the token map (M3): sweep expired entries first; refuse to grow past
+    // the hard cap (a working hub never has 256 live companions on one LAN).
+    if inner.tokens.len() >= MAX_TOKENS {
+        inner.tokens.retain(|_, e| !e.is_expired(now));
+        if inner.tokens.len() >= MAX_TOKENS {
+            return (StatusCode::SERVICE_UNAVAILABLE, "too many paired devices").into_response();
+        }
+    }
+
     inner.tokens.insert(
         token.clone(),
         CompanionEntry {
             role,
-            last_seen: Instant::now(),
+            created_at: now,
+            last_seen: now,
         },
     );
 
@@ -374,7 +584,8 @@ async fn pair_handler(
 }
 
 /// Read and validate the `X-Companion-Token` header. On success returns the
-/// token's role and refreshes its `last_seen`. On failure returns `None`.
+/// token's role and refreshes its `last_seen`. A token older than [`TOKEN_TTL`]
+/// is evicted on use and rejected (H3). On any failure returns `None`.
 async fn auth_role(hub: &HubShared, headers: &HeaderMap) -> Option<Role> {
     let token = headers
         .get("x-companion-token")
@@ -383,9 +594,17 @@ async fn auth_role(hub: &HubShared, headers: &HeaderMap) -> Option<Role> {
     if token.is_empty() {
         return None;
     }
+    let now = Instant::now();
     let mut inner = hub.0.write().await;
+    // Evict-on-use if the token has outlived its TTL.
+    if let Some(entry) = inner.tokens.get(&token) {
+        if entry.is_expired(now) {
+            inner.tokens.remove(&token);
+            return None;
+        }
+    }
     let entry = inner.tokens.get_mut(&token)?;
-    entry.last_seen = Instant::now();
+    entry.last_seen = now;
     Some(entry.role)
 }
 
@@ -409,64 +628,151 @@ async fn cart_handler(AxumState(hub): AxumState<HubShared>, headers: HeaderMap) 
         .into_response()
 }
 
-/// Role-scoped allow-list for the proxy.
-///
-/// Returns `true` only when `role` may call `method <path>` (the `<path>` is the
-/// segment AFTER `/api/`, i.e. what we forward to `CLOUD_BASE/api/<path>`).
-///
-/// The list is deliberately conservative: a companion can never reach auth,
-/// admin, settings, or any endpoint outside its face.
-fn proxy_allowed(role: Role, method: &Method, path: &str) -> bool {
-    // Normalise: drop any querystring for matching, lowercase the leading seg.
-    let base = path.split('?').next().unwrap_or(path);
-    let base = base.trim_start_matches('/');
+/// The outcome of normalising the proxy's captured path (C2).
+enum NormPath {
+    /// A clean, traversal-safe path (already lowercased copy kept for the deny
+    /// compare; the original-case path is what we forward upstream).
+    Ok { path: String, lower: String },
+    /// The path failed validation — the proxy must reject with 400.
+    Rejected,
+}
 
-    // Hard deny — never reachable by any companion, regardless of role.
+/// Percent-decode the captured proxy path ONCE, then reject anything that could
+/// escape the `/api/` namespace or smuggle control bytes (C2):
+///
+/// - reject `..` (path traversal), `//` (empty segment / scheme confusion),
+///   any backslash, any ASCII control char, and a leading `/` after decode;
+/// - strip a trailing `?query` for matching but keep it for the upstream call;
+/// - return both the forward path and a lowercased copy for the deny compare.
+fn normalize_proxy_path(raw: &str) -> NormPath {
+    use percent_encoding::percent_decode_str;
+
+    // Split off the query string — it is forwarded verbatim but never matched.
+    let (path_part, query) = match raw.split_once('?') {
+        Some((p, q)) => (p, Some(q)),
+        None => (raw, None),
+    };
+
+    // Percent-decode exactly once. A non-UTF-8 decode is rejected outright.
+    let decoded = match percent_decode_str(path_part).decode_utf8() {
+        Ok(s) => s.into_owned(),
+        Err(_) => return NormPath::Rejected,
+    };
+
+    // Reject traversal / smuggling markers and control bytes.
+    if decoded.is_empty()
+        || decoded.starts_with('/')
+        || decoded.contains("..")
+        || decoded.contains("//")
+        || decoded.contains('\\')
+        || decoded.chars().any(|c| c.is_control())
+    {
+        return NormPath::Rejected;
+    }
+
+    // Each segment must be a plausible path token (no empties — already covered
+    // by the `//` check — and no whitespace).
+    for seg in decoded.split('/') {
+        if seg.is_empty() || seg.chars().any(|c| c.is_whitespace()) {
+            return NormPath::Rejected;
+        }
+    }
+
+    // Validate the query too: re-decode and reject control bytes / backslashes
+    // so a crafted `?...` cannot smuggle anything past the upstream.
+    let query_clean = match query {
+        Some(q) => {
+            let dq = match percent_decode_str(q).decode_utf8() {
+                Ok(s) => s.into_owned(),
+                Err(_) => return NormPath::Rejected,
+            };
+            if dq.contains('\\') || dq.chars().any(|c| c.is_control()) {
+                return NormPath::Rejected;
+            }
+            // Forward the ORIGINAL (still-encoded) query untouched.
+            Some(q.to_string())
+        }
+        None => None,
+    };
+
+    let lower = decoded.to_ascii_lowercase();
+    let path = match query_clean {
+        Some(q) => format!("{decoded}?{q}"),
+        None => decoded,
+    };
+    NormPath::Ok { path, lower }
+}
+
+/// Belt-and-braces hard-deny gate (SECOND gate). Operates on the lowercased,
+/// already-normalised path. Even if a positive rule were ever loosened, none of
+/// these namespaces is reachable by any companion.
+fn hard_denied(lower_path: &str) -> bool {
     const FORBIDDEN_PREFIXES: &[&str] = &[
         "auth", "session", "sessions", "login", "logout", "admin", "settings",
         "system-settings", "users", "owner", "step-up", "stepup", "tse",
         "fiskaly", "export", "gdpr", "kyc",
     ];
-    for p in FORBIDDEN_PREFIXES {
-        if base == *p || base.starts_with(&format!("{p}/")) {
-            return false;
-        }
+    // The first segment (before any `/`) — deny exact or prefix match.
+    let seg0 = lower_path.split('/').next().unwrap_or("");
+    if FORBIDDEN_PREFIXES.contains(&seg0) {
+        return true;
     }
+    // Defence in depth: deny anything mentioning void / refund / storno /
+    // ankauf / return anywhere in the path, regardless of role.
+    const FORBIDDEN_SUBSTR: &[&str] =
+        &["void", "refund", "storno", "ankauf", "return", "delete", "destroy"];
+    FORBIDDEN_SUBSTR.iter().any(|s| lower_path.contains(s))
+}
 
+/// Role-scoped POSITIVE allow-set for the proxy (C1) — deny-by-default.
+///
+/// Returns `true` only when `role` may call `method <lower_path>`, where
+/// `lower_path` is the normalised, lowercased segment AFTER `/api/` (no query).
+/// Matching is by EXACT path or a tight allow-prefix — never a broad
+/// `transactions/` / `inventory/` prefix that would over-grant payouts, voids,
+/// or refunds.
+fn proxy_allowed(role: Role, method: &Method, lower_path: &str) -> bool {
     let is_get = method == Method::GET;
     let is_post = method == Method::POST;
+    let p = lower_path;
 
-    let seg0 = base.split('/').next().unwrap_or("");
+    // A read is allowed against `base` if the path is exactly `base` or a
+    // sub-resource `base/<id>` (one extra segment), but NOT a sibling action.
+    let get_under = |base: &str| -> bool {
+        p == base || p.starts_with(&format!("{base}/"))
+    };
 
     match role {
-        // Display: read-only catalog / customer-display endpoints only.
+        // Display: read-only price/cart display reads. A customer-facing screen
+        // needs catalog/price reads only — NOT the customer directory.
         Role::Display => {
             is_get
-                && matches!(
-                    seg0,
-                    "products" | "catalog" | "customer-display" | "metal-prices" | "metal-rates"
-                )
+                && (get_under("products")
+                    || get_under("catalog")
+                    || get_under("customer-display")
+                    || get_under("metal-prices")
+                    || get_under("metal-rates"))
         }
-        // Cashier: catalog reads + transaction finalize/recent.
+        // Cashier: catalog/customer reads + recent transactions; POST limited
+        // to cart-create + finalize. NEVER ankauf / storno / return / void /
+        // refund (those are blocked positively here AND by `hard_denied`).
         Role::Cashier => {
             (is_get
-                && matches!(
-                    seg0,
-                    "products" | "catalog" | "customers" | "metal-prices" | "metal-rates"
-                ))
-                || (is_get && (base == "transactions/recent" || base == "transactions"))
-                || (is_post
-                    && (base == "transactions"
-                        || base == "transactions/finalize"
-                        || base.starts_with("transactions/")))
+                && (get_under("products")
+                    || get_under("catalog")
+                    || get_under("customers")
+                    || get_under("metal-prices")
+                    || get_under("metal-rates")
+                    || p == "transactions"
+                    || p == "transactions/recent"))
+                || (is_post && (p == "transactions" || p == "transactions/finalize"))
         }
-        // Warehouse: inventory/product reads + adjust.
+        // Warehouse: inventory/product reads + the single inventory-adjust POST.
+        // No transactions at all.
         Role::Warehouse => {
-            (is_get && matches!(seg0, "products" | "inventory" | "catalog"))
-                || (is_post
-                    && (base == "inventory/adjust"
-                        || base.starts_with("inventory/")
-                        || base == "products/adjust"))
+            (is_get
+                && (get_under("products") || get_under("catalog") || get_under("inventory")))
+                || (is_post && p == "inventory/adjust")
         }
     }
 }
@@ -486,12 +792,26 @@ async fn proxy_handler(
         None => return (StatusCode::UNAUTHORIZED, "unauthorized").into_response(),
     };
 
-    // 2) Enforce the strict role-scoped allow-list.
-    if !proxy_allowed(role, &method, &path) {
+    // 2) Normalise + validate the captured path BEFORE matching (C2). Reject
+    //    traversal / control-byte / smuggling attempts with 400.
+    let (fwd_path, lower_path) = match normalize_proxy_path(&path) {
+        NormPath::Ok { path, lower } => (path, lower),
+        NormPath::Rejected => {
+            return (StatusCode::BAD_REQUEST, "invalid path").into_response();
+        }
+    };
+
+    // 3) Second gate: hard-deny list on the normalised, lowercased path.
+    if hard_denied(&lower_path) {
+        return (StatusCode::FORBIDDEN, "forbidden").into_response();
+    }
+
+    // 4) Primary gate: positive, role-scoped allow-set (deny-by-default, C1).
+    if !proxy_allowed(role, &method, &lower_path) {
         return (StatusCode::FORBIDDEN, "forbidden for role").into_response();
     }
 
-    // 3) Resolve the mother's Bearer; without it, the proxy cannot speak.
+    // 5) Resolve the mother's Bearer; without it, the proxy cannot speak.
     let bearer = {
         let inner = hub.0.read().await;
         inner.bearer.clone()
@@ -504,8 +824,9 @@ async fn proxy_handler(
             .into_response();
     }
 
-    // 4) Build + send the upstream request.
-    let url = format!("{CLOUD_BASE}/api/{path}");
+    // 6) Build + send the upstream request from the VALIDATED path only — never
+    //    the raw capture. `fwd_path` is decode-safe and traversal-free.
+    let url = format!("{CLOUD_BASE}/api/{fwd_path}");
     let client = reqwest::Client::new();
     let mut upstream = client.request(method.clone(), &url);
 
@@ -549,15 +870,32 @@ async fn proxy_handler(
 }
 
 /// Build the companion router with the shared hub state attached.
+///
+/// Layer order (outermost first): timeout → concurrency cap → body-size cap →
+/// security headers (CSP on every response) → same-subnet guard → routes. The
+/// subnet guard sits inside the header layer so even a 403-off-subnet response
+/// still carries the CSP.
 fn build_router(hub: HubShared) -> Router {
     Router::new()
         .route("/", get(serve_spa))
         .route("/app", get(serve_spa))
         .route("/app.html", get(serve_spa))
+        .route("/app.js", get(serve_app_js))
         .route("/health", get(health))
         .route("/pair", post(pair_handler))
         .route("/cart", get(cart_handler))
         .route("/api/proxy/*path", any(proxy_handler))
+        // Same-subnet guard (H3) — needs the hub state to read the mother IP.
+        .layer(middleware::from_fn_with_state(hub.clone(), subnet_guard))
+        // Strict CSP + hardening headers on every response (H2).
+        .layer(middleware::from_fn(security_headers))
+        // M2/M3/L2 — bound body size, in-flight concurrency, and wall-clock.
+        .layer(RequestBodyLimitLayer::new(MAX_BODY_BYTES))
+        .layer(ConcurrencyLimitLayer::new(MAX_CONCURRENT_REQUESTS))
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::GATEWAY_TIMEOUT,
+            REQUEST_TIMEOUT,
+        ))
         .with_state(hub)
 }
 
@@ -609,14 +947,28 @@ pub async fn companion_start(state: State<'_, CompanionState>) -> Result<Compani
 
     let ip = lan_ip();
     let url = format!("http://{ip}:{port}");
-    let pairing_code = fresh_pairing_code();
+    // CSPRNG-only pairing code. If the OS CSPRNG is unavailable we refuse to
+    // start a pairable hub (returning the stopped snapshot) rather than issue a
+    // weak code — the POS itself keeps working.
+    let pairing_code = match fresh_pairing_code() {
+        Some(c) => c,
+        None => {
+            eprintln!("warehouse14-pos: companion CSPRNG unavailable; not starting hub");
+            return Ok(CompanionInfo::stopped());
+        }
+    };
     let qr_svg = qr_svg_for(&url);
 
     // Rotate the pairing code into shared hub state; clear any stale tokens +
     // rate buckets from a previous session so a fresh code means a fresh start.
+    // Record the LAN IP (subnet guard), the code-issued instant (TTL), and
+    // reset the global failed-attempt lock.
     {
         let mut inner = state.hub.0.write().await;
         inner.pairing_code = pairing_code.clone();
+        inner.code_issued_at = Some(Instant::now());
+        inner.lan_ip = Some(ip);
+        inner.global_fail_count = 0;
         inner.tokens.clear();
         inner.pair_rate.clear();
     }
@@ -632,7 +984,11 @@ pub async fn companion_start(state: State<'_, CompanionState>) -> Result<Compani
     let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
     let app = build_router(state.hub.clone());
     let task = tokio::spawn(async move {
-        let server = axum::serve(listener, app).with_graceful_shutdown(async move {
+        // `into_make_service_with_connect_info` surfaces the real TCP peer addr
+        // to handlers via `ConnectInfo<SocketAddr>` — required by the per-IP
+        // rate limit (H1) and the same-subnet guard (H3).
+        let make = app.into_make_service_with_connect_info::<SocketAddr>();
+        let server = axum::serve(listener, make).with_graceful_shutdown(async move {
             let _ = shutdown_rx.await;
         });
         if let Err(err) = server.await {
@@ -675,6 +1031,9 @@ pub async fn companion_stop(state: State<'_, CompanionState>) -> Result<(), ()> 
     {
         let mut inner = state.hub.0.write().await;
         inner.pairing_code.clear();
+        inner.code_issued_at = None;
+        inner.lan_ip = None;
+        inner.global_fail_count = 0;
         inner.tokens.clear();
         inner.pair_rate.clear();
     }

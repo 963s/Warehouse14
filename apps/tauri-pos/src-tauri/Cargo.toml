@@ -85,6 +85,14 @@ mdns-sd = "0.20"
 # tokio already carries rt-multi-thread + net; axum reuses the existing hyper.
 axum = "0.7"
 local-ip-address = "0.6"
+# Hardening layers for the companion router (security review M2/M3/L2):
+# request-body cap + per-request timeout from tower-http; a global concurrency
+# cap from tower. Both are already in the lock graph (transitive via axum), so
+# declaring them direct adds no new downloads. `percent-encoding` (also already
+# transitive) is used to safely percent-decode + validate the proxy path (C2).
+tower = { version = "0.5", features = ["limit"] }
+tower-http = { version = "0.6", features = ["limit", "timeout"] }
+percent-encoding = "2"
 # Companion pairing/token security: CSPRNG token bytes + constant-time compare.
 # Both already in the dependency graph (pulled by aes-gcm / keyring); declaring
 # them direct just makes them usable here without new downloads.
