@@ -3205,3 +3205,20 @@ tools still stubs; Apple Developer ID signing.
   `packages/db` typecheck exit 0. The deploy runbook §2 (`0045-0050-prod-apply.md`) now points at this
   passing test as the binding pre-deploy gate. **Re-run before deploy:**
   `pnpm --filter @warehouse14/db exec vitest run 0050_gwg_kyc_enforcement` → 6 passed.
+
+### 29.5 The server release candidate is already converged — `gwg-kyc-enforcement` (Decision #113)
+- **#113 — the "11-branch convergence" was unfounded; `claude/gwg-kyc-enforcement` IS the single deployable
+  server tree.** Git ancestry (verified): `claude/test-gate` is an **ancestor** of gwg (so 0045–0048 + the
+  prod Docker stack + the runbook are already in it); the **reserve fix** (`9c0acdd`, = PR #2's content)
+  is an **ancestor** (`reserve.ts` carries the `toDate` coercion — PR #2's branch `1012b67` is a redundant
+  cherry-pick); **AML/smurfing, TSE (0049), Steuer-Export (Kassenbericht), and KYC (0050)** are all in gwg.
+  The ONLY server/UI branch NOT in gwg is `control-desktop-polish` (the dead `/api/bridge/overview` removal +
+  the Control-Desktop dedupe/SSE) — **not server-deploy-critical** (the dead endpoint is harmless; the live
+  Bridge uses `/summary`); it ships via the tagged OTA release.
+- **Full deploy-readiness gate GREEN on gwg (2026-06-07):** `pnpm -r typecheck` exit 0 · **426 unit tests**
+  pass (api-cloud 98, tauri-pos 112, worker 50, domain 58, intake 36, ui-kit 30, auth-pin 22, appointments 12,
+  db 10) · `pnpm lint:all` at the **1121 baseline** (net-zero new) · KYC trigger integration **6/6** (§29.4).
+- **Deploy is a clean fast-forward** — `main` is an ancestor of gwg (no divergence):
+  `git checkout main && git merge --ff-only claude/gwg-kyc-enforcement && git push origin main` →
+  `deploy-images.yml` builds api/worker/migrate → on-server `update.sh` per runbook `0045-0050-prod-apply.md`.
+  Basel's operational trigger.

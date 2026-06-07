@@ -26,26 +26,28 @@ The **server** deploy needs everything on `main`. The migrate image bakes the SQ
 
 ---
 
-## 1. Convergence to `main` (prerequisite — migrations live on 4 branches)
+## 1. The release candidate is ALREADY converged: `claude/gwg-kyc-enforcement`
 
-| Branch | Carries |
-|---|---|
-| `claude/test-gate` | migrations **0045–0048** + the prod Docker stack (compose, `migrate.sh`, `update.sh`, Dockerfiles) + the original runbook |
-| `claude/gwg-kyc-enforcement` | **0050** + the KYC api code (route pre-checks, `KYC_REQUIRED`, smurfing default) + the POS client gate; **also carries 0049 + the TSE code + §28/§29** (stacked off `claude/tse-compliance-tables`) |
-| `claude/fix-reserve-sell-bug` | **PR #2** — the reserve 500 fix (api-cloud) |
+Verified by git ancestry (2026-06-07) — `gwg-kyc-enforcement` already contains **everything** the
+server deploy needs; there is NO multi-branch merge to perform:
+- migrations **0045–0050** — `claude/test-gate` is an **ancestor** of gwg (their merge-base IS test-gate's tip);
+- the prod Docker stack (compose, `migrate.sh`, `update.sh`, Dockerfiles) — present on gwg;
+- the compliance + export code — **TSE (0049), AML/smurfing (configurable + §10 gate), Steuer-Export (Kassenbericht), KYC (0050)** — all ancestors of / on gwg;
+- the **reserve 500 fix** (PR #2's content) — commit `9c0acdd` is an **ancestor** of gwg; `reserve.ts` already carries the `toDate` coercion. PR #2 (`fix-reserve-sell-bug` = `1012b67`) is a separate cherry-pick of the SAME fix — **redundant** for this deploy.
 
-**Merge to `main` in this order, re-running gates after each (resolve conflicts):**
-1. `claude/test-gate` — the deploy infra + 0045–0048 (the base the others assume).
-2. `claude/gwg-kyc-enforcement` — brings 0049 + 0050 + the KYC api code.
-3. `claude/fix-reserve-sell-bug` (PR #2) — merge via GitHub.
+**Full gate on gwg — GREEN (2026-06-07):** `pnpm -r typecheck` exit 0 · all **426 unit tests** pass
+(api-cloud 98, tauri-pos 112, worker 50, domain 58, intake 36, ui-kit 30, auth-pin 22, appointments 12, db 10) ·
+`pnpm lint:all` at the **1121 baseline** (net-zero new) · the 0050 KYC trigger integration test **6/6** (§2).
 
-Then on `main`, confirm + gate:
+**Deploy = fast-forward `main` → gwg** (clean: `main` is an **ancestor** of gwg, no divergence):
 ```bash
-ls packages/db/migrations/004[5-9]_*.sql packages/db/migrations/0050_*.sql   # 0045…0050 all present
-pnpm -r typecheck && pnpm -r test && pnpm lint:all                           # green
+git checkout main && git merge --ff-only claude/gwg-kyc-enforcement && git push origin main
+# → deploy-images.yml (CI) builds warehouse14-{api,worker,migrate} from main.
 ```
-> POS/UX branches (`ux-*`, `control-desktop-polish`) are **not** part of the server deploy — they go
-> into the tagged POS release (§8).
+> `control-desktop-polish` (the Control-Desktop dedupe + SSE + the dead `/api/bridge/overview` removal)
+> is the only server/UI branch NOT in gwg. It is **not server-deploy-critical** — the dead `/overview`
+> endpoint is harmless (the live Bridge uses `/summary`). The Control Desktop + POS ship via the tagged
+> OTA release (§8), not this server deploy.
 
 ---
 
