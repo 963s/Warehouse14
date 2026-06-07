@@ -372,9 +372,17 @@ const photosRoutes: FastifyPluginAsync<PhotosRoutesOpts> = async (app, opts) => 
       req: FastifyRequest<{ Params: TPhotoIdParams }>,
       reply: FastifyReply,
     ): Promise<FastifyReply> => {
-      requireAuth(req);
-      requireRole(req, 'ADMIN', 'CASHIER');
-
+      // PUBLIC by design — these two paths are in PUBLIC_PATH_PATTERNS
+      // (lib/public-routes.ts), so the staff-auth + mTLS preHandlers skip them.
+      // An `<img src>` tag cannot send an Authorization header and its cross-site
+      // session cookie is dropped by Windows WebView2, so the request always
+      // arrives unauthenticated. The unguessable UUID id is the capability.
+      //
+      // The `storageKind === 'local'` gate below is the in-handler defense: only
+      // local product-photo bytes are streamed. KYC/Ausweis evidence lives in the
+      // separate `kyc_documents` table (R2-backed, never reachable here) — these
+      // routes can never serve sensitive PII. Anything not a local product photo
+      // 404s.
       const [row] = await app.db
         .select({ id: productPhotos.id, storageKind: productPhotos.storageKind })
         .from(productPhotos)
@@ -399,9 +407,9 @@ const photosRoutes: FastifyPluginAsync<PhotosRoutesOpts> = async (app, opts) => 
     {
       schema: {
         tags: ['photos'],
-        summary: 'Stream the MAIN compressed WebP for a local-store photo.',
+        summary: 'Stream the MAIN compressed WebP for a local-store photo (public by UUID).',
         params: PhotoIdParams,
-        response: { 404: ErrorResponse, 401: ErrorResponse, 403: ErrorResponse },
+        response: { 404: ErrorResponse },
       },
     },
     serveRendition('main'),
@@ -412,9 +420,9 @@ const photosRoutes: FastifyPluginAsync<PhotosRoutesOpts> = async (app, opts) => 
     {
       schema: {
         tags: ['photos'],
-        summary: 'Stream the THUMB compressed WebP for a local-store photo.',
+        summary: 'Stream the THUMB compressed WebP for a local-store photo (public by UUID).',
         params: PhotoIdParams,
-        response: { 404: ErrorResponse, 401: ErrorResponse, 403: ErrorResponse },
+        response: { 404: ErrorResponse },
       },
     },
     serveRendition('thumb'),
