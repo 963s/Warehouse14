@@ -18,7 +18,7 @@
  */
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   type AnkaufBody,
@@ -26,6 +26,7 @@ import {
   type AnkaufResponse,
   type AnkaufResponseProduct,
   ApiError,
+  ApiOfflineQueuedError,
   type CustomerDetail,
   customersApi,
   transactionsApi,
@@ -75,6 +76,24 @@ export function AnkaufBezahlenDialog({
   const [error, setError] = useState<string | null>(null);
   const [finalized, setFinalized] = useState<AnkaufResponse | null>(null);
 
+  /**
+   * §19.3 W-1 — synchronous mutex (mirrors Verkauf BezahlenDialog).
+   *
+   * `useState(submitting)` is async — React doesn't commit `setSubmitting(true)`
+   * until after the handler yields, so a fast double-click on "Auszahlen &
+   * Beleg" CAN re-enter `submit` and post TWO payouts for the same goods. A
+   * `useRef.current = true` is visible immediately on the next synchronous read,
+   * killing the race. Reset in `submit`'s finally AND on dialog re-open.
+   */
+  const inFlightRef = useRef<boolean>(false);
+
+  /**
+   * §19.2 C-4 — idempotency key for at-most-once Ankauf. Generated ONCE per
+   * dialog open, held in a ref so every retry (step-up cancel-resume, network
+   * blip) sends the SAME key. The server's partial UNIQUE INDEX dedupes on it.
+   */
+  const idempotencyKeyRef = useRef<string>(crypto.randomUUID());
+
   const customerQ = useQuery({
     queryKey: ['customers', customerId],
     queryFn: () => customersApi.get(api, customerId!),
@@ -90,6 +109,8 @@ export function AnkaufBezahlenDialog({
       setStampingKyc(false);
       setError(null);
       setFinalized(null);
+      inFlightRef.current = false;
+      idempotencyKeyRef.current = crypto.randomUUID();
     }
   }, [open]);
 
@@ -161,7 +182,11 @@ export function AnkaufBezahlenDialog({
 
   // ── Finalize Ankauf ──
   const submit = useCallback(async (): Promise<void> => {
+    // §19.3 W-1 mutex: read+set SYNCHRONOUSLY, BEFORE the canSubmit guard,
+    // so a double-click that beats React's state commit can't post twice.
+    if (inFlightRef.current) return;
     if (!canSubmit || !customerId) return;
+    inFlightRef.current = true;
     setSubmitting(true);
     setError(null);
 
@@ -191,6 +216,8 @@ export function AnkaufBezahlenDialog({
       payoutMethod,
       totalEur,
       items: wireItems,
+      // §19.2 C-4 — stable across retries; server dedups on the partial UNIQUE.
+      idempotencyKey: idempotencyKeyRef.current,
     };
     if (payoutMethod === 'BANK_TRANSFER') body.payoutExternalRef = payoutExternalRef.trim();
     if (notesInternal.trim().length > 0) body.notesInternal = notesInternal.trim();
@@ -227,7 +254,59 @@ export function AnkaufBezahlenDialog({
         qc.invalidateQueries({ queryKey: ['customers', 'list'] }),
       ]);
     } catch (err) {
-      if (err instanceof ApiError) {
+      if (err instanceof ApiOfflineQueuedError) {
+        // The buy-in is SAFELY captured for replay (GoBD §146) — this is a
+        // success from the cashier's point of view, NOT a failure. Mirror the
+        // cash-sale offline path: advance to the receipt phase with a synthetic
+        // locator, print labels from the LOCAL items (the server hasn't created
+        // products yet), and invalidate the same queries.
+        const offlineLocator = `OFFLINE-${idempotencyKeyRef.current.slice(0, 8).toUpperCase()}`;
+        const offlineResult: AnkaufResponse = {
+          transactionId: idempotencyKeyRef.current,
+          receiptLocator: offlineLocator,
+          finalizedAt: new Date(err.enqueuedAt).toISOString(),
+          ledgerEventId: -1,
+          totalEur,
+          payoutMethod,
+          // Synthesize from the local intake so the ReceiptPhase + label print
+          // have rows to work with. The real product ids land on sync.
+          createdProducts: items.map((it) => ({
+            id: it.sku,
+            sku: it.sku,
+            status: it.publishImmediately ? ('AVAILABLE' as const) : ('DRAFT' as const),
+            clientReferenceId: null,
+          })),
+        };
+        setFinalized(offlineResult);
+        addToast({
+          tone: 'info',
+          title: 'Ankauf offline gespeichert',
+          body: `Wird synchronisiert (Temp-Nr. ${offlineLocator})`,
+        });
+
+        if (offlineResult.createdProducts.length > 0) {
+          const bySkuMap = new Map(items.map((it) => [it.sku, it]));
+          const labelsToPrint = offlineResult.createdProducts.map((p) => {
+            const it = bySkuMap.get(p.sku);
+            return {
+              sku: p.sku,
+              productName: it?.name ?? p.sku,
+              weightGrams: it?.weightGrams ?? null,
+              karat: it?.karatCode ?? null,
+              storageLocation: null,
+            } satisfies LabelData;
+          });
+          void printer.print(labelsToPrint);
+        }
+
+        await Promise.all([
+          qc.invalidateQueries({ queryKey: dashboardQueryKey }),
+          qc.invalidateQueries({ queryKey: ['products', 'list'] }),
+          qc.invalidateQueries({ queryKey: currentShiftQueryKey }),
+          qc.invalidateQueries({ queryKey: ['customers', customerId] }),
+          qc.invalidateQueries({ queryKey: ['customers', 'list'] }),
+        ]);
+      } else if (err instanceof ApiError) {
         if (err.code === 'STEP_UP_REQUIRED') {
           setError('PIN-Bestätigung wurde abgebrochen.');
         } else if (err.code === 'SANCTIONS_BLOCK') {
@@ -242,6 +321,7 @@ export function AnkaufBezahlenDialog({
       }
     } finally {
       setSubmitting(false);
+      inFlightRef.current = false;
     }
   }, [
     addToast,
@@ -270,7 +350,12 @@ export function AnkaufBezahlenDialog({
       aria-modal="true"
       aria-label="Ankauf bezahlen"
       onClick={() => {
-        if (!submitting && !stampingKyc && finalized === null) onClose();
+        // §19.3 W-2 — backdrop dismiss must NOT win against an in-flight
+        // payout. The synchronous mutex ref closes the same React-commit-window
+        // race the submit guard protects against; the state flags cover the
+        // KYC-stamp + already-finalized cases.
+        if (inFlightRef.current || submitting || stampingKyc) return;
+        if (finalized === null) onClose();
       }}
       style={{
         position: 'fixed',

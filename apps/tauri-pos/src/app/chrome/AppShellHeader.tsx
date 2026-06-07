@@ -16,7 +16,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 
 import { MagnifierIcon, Seal } from '@warehouse14/ui-kit';
 
-import { useSyncStore } from '../../state/sync-store.js';
+import { classifyConnectionHealth, useSyncStore } from '../../state/sync-store.js';
 import { IconSettings } from './Icons.js';
 import { SignOutButton } from './SignOutButton.js';
 import { SurfaceChip } from './SurfaceChip.js';
@@ -150,19 +150,24 @@ const SYNC_KEYFRAMES = `
 @keyframes w14SyncGlow { 0%, 100% { box-shadow: 0 0 4px 0 var(--w14-gold); } 50% { box-shadow: 0 0 9px 1px var(--w14-gold); } }
 `;
 
+type BadgeAction = 'none' | 'compliance' | 'retry';
+
 interface SyncVisual {
   color: string;
   label: string;
   animation: string | undefined;
-  clickable: boolean;
+  action: BadgeAction;
 }
 
 /**
- * Offline-sync status indicator (ADR-0044 §6). Four states, premium palette:
- *   • green (verdigris) "Bereit"            — online, queue empty
- *   • gold pulsing "Synchronisiert [N]"     — replaying / queued
- *   • amber "Offline [N]"                   — disconnected, N pending
- *   • wax-red pulsing "Sync blockiert"      — conflict → Compliance Inbox
+ * Connection / offline-sync status indicator (ADR-0044 §6). Driven by REAL
+ * request health via `classifyConnectionHealth`, not just `navigator.onLine`:
+ *   • green (verdigris) "Bereit"             — online, reachable, queue empty
+ *   • gold pulsing "Synchronisiert [N]"      — replaying / queued
+ *   • amber "Offline [N]"                    — OS offline, N pending
+ *   • wax-red "API nicht erreichbar"         — OS online but the API/tunnel is
+ *                                              down (real requests are failing)
+ *   • wax-red pulsing "Sync blockiert"       — conflict → Compliance Inbox
  */
 function SyncStatusBadge(): JSX.Element {
   const navigate = useNavigate();
@@ -170,35 +175,51 @@ function SyncStatusBadge(): JSX.Element {
   const syncing = useSyncStore((s) => s.syncing);
   const pendingCount = useSyncStore((s) => s.pendingCount);
   const conflictCount = useSyncStore((s) => s.conflictCount);
+  const apiReachable = useSyncStore((s) => s.apiReachable);
+
+  const health = classifyConnectionHealth({
+    online,
+    syncing,
+    pendingCount,
+    conflictCount,
+    apiReachable,
+  });
 
   let visual: SyncVisual;
-  if (conflictCount > 0) {
+  if (health === 'conflict') {
     visual = {
       color: 'var(--w14-wax-red)',
       label: 'Sync blockiert',
       animation: 'w14SyncPulse 1.3s ease-in-out infinite',
-      clickable: true,
+      action: 'compliance',
     };
-  } else if (!online) {
+  } else if (health === 'offline') {
     visual = {
       color: '#b07a2e',
       label: `Offline ${pendingCount}`,
       animation: undefined,
-      clickable: false,
+      action: 'none',
     };
-  } else if (syncing || pendingCount > 0) {
+  } else if (health === 'unreachable') {
+    visual = {
+      color: 'var(--w14-wax-red)',
+      label: 'API nicht erreichbar',
+      animation: 'w14SyncPulse 1.6s ease-in-out infinite',
+      action: 'retry',
+    };
+  } else if (health === 'syncing') {
     visual = {
       color: 'var(--w14-gold)',
       label: `Synchronisiert ${pendingCount}`,
       animation: 'w14SyncGlow 1.1s ease-in-out infinite',
-      clickable: false,
+      action: 'none',
     };
   } else {
     visual = {
       color: 'var(--w14-verdigris)',
       label: 'Bereit',
       animation: undefined,
-      clickable: false,
+      action: 'none',
     };
   }
 
@@ -241,13 +262,29 @@ function SyncStatusBadge(): JSX.Element {
     </>
   );
 
-  if (visual.clickable) {
+  if (visual.action === 'compliance') {
     return (
       <button
         type="button"
         title="Zur Compliance-Inbox"
         aria-label={`${visual.label} — zur Compliance-Inbox`}
         onClick={() => navigate('/compliance-inbox')}
+        style={{ ...baseStyle, cursor: 'pointer' }}
+      >
+        {inner}
+      </button>
+    );
+  }
+  if (visual.action === 'retry') {
+    return (
+      <button
+        type="button"
+        title="Verbindung erneut prüfen"
+        aria-label={`${visual.label} — Verbindung erneut prüfen`}
+        // Clearing the reachability flag lets the next request (SSE heartbeat /
+        // query refetch) re-decide; an immediate dashboard/catalog refetch also
+        // picks this up.
+        onClick={() => useSyncStore.setState({ apiReachable: null })}
         style={{ ...baseStyle, cursor: 'pointer' }}
       >
         {inner}

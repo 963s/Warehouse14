@@ -34,6 +34,19 @@ import {
   transactions,
 } from '@warehouse14/db/schema';
 
+// ────────────────────────────────────────────────────────────────────────
+// §19.2 C-4 helper — narrow a Postgres unique-violation by constraint name.
+// Mirrors transactions-finalize.ts. postgres-js raises `code = '23505'` with
+// `constraint_name` set to the violated index; we match ONLY the partial
+// UNIQUE for idempotency_key so any other unique violation still surfaces.
+// ────────────────────────────────────────────────────────────────────────
+function isUniqueViolation(err: unknown, constraint: string): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  const e = err as { code?: unknown; constraint_name?: unknown; constraint?: unknown };
+  if (e.code !== '23505') return false;
+  return e.constraint_name === constraint || e.constraint === constraint;
+}
+
 import type { Env } from '../config/env.js';
 import { requireAuth, requireRole, requireStepUp } from '../lib/auth-policy.js';
 import { totalExceedsStepUpThreshold } from '../lib/transaction-math.js';
@@ -190,10 +203,39 @@ const transactionsAnkaufRoute: FastifyPluginAsync<TransactionsAnkaufOpts> = asyn
         );
       }
 
+      // ──────────────────────────────────────────────────────────────────
+      // §19.2 C-4 idempotency dedup (mirrors transactions-finalize.ts).
+      //
+      // A double-click on "Auszahlen & Beleg", a step-up cancel-then-resume,
+      // or a lost-response retry would otherwise book a SECOND payout for the
+      // same goods. The client sends a stable UUID; we persist it on
+      // `transactions.idempotency_key` and the partial UNIQUE INDEX
+      // (transactions_idempotency_key_uniq, migration 0028) guarantees
+      // at-most-once. Cheap pre-check OUTSIDE the transaction returns the
+      // original Ankauf when the key is already known; on a true race one
+      // INSERT wins and the loser catches the 23505 below.
+      // ──────────────────────────────────────────────────────────────────
+      if (body.idempotencyKey) {
+        const existing = await loadAnkaufByKey(app, body.idempotencyKey);
+        if (existing) return reply.status(200).send(existing);
+      }
+
       // ─────────────────────────────────────────────────────────────────────
       // ONE DB transaction — the all-or-nothing contract
       // ─────────────────────────────────────────────────────────────────────
-      const outcome = await app.db.transaction(async (tx) => {
+      const runInsert = (): Promise<{
+        transactionId: string;
+        receiptLocator: string;
+        finalizedAt: Date;
+        ledgerEventId: number;
+        createdProducts: Array<{
+          id: string;
+          sku: string;
+          status: 'DRAFT' | 'AVAILABLE';
+          clientReferenceId: string | null;
+        }>;
+      }> =>
+        app.db.transaction(async (tx) => {
         // 1. Insert all products. Each returns its uuid which we link to
         //    the transaction_items rows below.
         const createdProducts: Array<{
@@ -263,6 +305,10 @@ const transactionsAnkaufRoute: FastifyPluginAsync<TransactionsAnkaufOpts> = asyn
             // intent ("we're buying second-hand goods under §25a"). The
             // PRODUCTS each carry their own treatment for the future sale.
             taxTreatmentCode: 'MARGIN_25A',
+            // §19.2 C-4 — persist the client's idempotency key. The partial
+            // UNIQUE INDEX (migration 0028) raises 23505 on a concurrent
+            // duplicate; we catch it below and fall back to a SELECT-by-key.
+            ...(body.idempotencyKey ? { idempotencyKey: body.idempotencyKey } : {}),
             ...(body.notesInternal ? { notesInternal: body.notesInternal } : {}),
           })
           .returning({
@@ -345,6 +391,20 @@ const transactionsAnkaufRoute: FastifyPluginAsync<TransactionsAnkaufOpts> = asyn
         };
       });
 
+      // §19.2 C-4 race fallback: two concurrent retries with the same key.
+      // One INSERT wins, the other gets 23505 — we swap the error for the
+      // winning Ankauf so the loser still sees the original payout, not a 500.
+      let outcome: Awaited<ReturnType<typeof runInsert>>;
+      try {
+        outcome = await runInsert();
+      } catch (err) {
+        if (body.idempotencyKey && isUniqueViolation(err, 'transactions_idempotency_key_uniq')) {
+          const winner = await loadAnkaufByKey(app, body.idempotencyKey);
+          if (winner) return reply.status(200).send(winner);
+        }
+        throw err;
+      }
+
       return reply.status(200).send({
         transactionId: outcome.transactionId,
         receiptLocator: outcome.receiptLocator,
@@ -357,5 +417,89 @@ const transactionsAnkaufRoute: FastifyPluginAsync<TransactionsAnkaufOpts> = asyn
     },
   );
 };
+
+/**
+ * §19.2 C-4 dedup read — reconstruct the original AnkaufResponse from an
+ * already-committed transaction identified by its idempotency key. Returns
+ * `null` when no row carries the key. Used by BOTH the cheap pre-check and the
+ * 23505 race fallback so a duplicate POST replays the EXACT original payout.
+ *
+ * `createdProducts` is rebuilt from `transaction_items ⋈ products` (the route's
+ * original insert order is preserved via `transaction_items.display_order`).
+ * `clientReferenceId` is not persisted server-side, so it returns `null` on the
+ * replay — harmless, the UI only uses it to match a fresh response back.
+ */
+async function loadAnkaufByKey(
+  app: Parameters<typeof transactionsAnkaufRoute>[0],
+  idempotencyKey: string,
+): Promise<{
+  transactionId: string;
+  receiptLocator: string;
+  finalizedAt: string;
+  ledgerEventId: number;
+  totalEur: string;
+  payoutMethod: 'CASH' | 'BANK_TRANSFER';
+  createdProducts: Array<{
+    id: string;
+    sku: string;
+    status: 'DRAFT' | 'AVAILABLE';
+    clientReferenceId: string | null;
+  }>;
+} | null> {
+  const txRow = (
+    await app.db
+      .select({
+        id: transactions.id,
+        receiptLocator: transactions.receiptLocator,
+        finalizedAt: transactions.finalizedAt,
+        totalEur: transactions.totalEur,
+      })
+      .from(transactions)
+      .where(drizzleSql`${transactions.idempotencyKey} = ${idempotencyKey}::uuid`)
+      .limit(1)
+  )[0];
+  if (!txRow) return null;
+
+  const ledgerRow = (
+    await app.db
+      .select({ id: ledgerEvents.id })
+      .from(ledgerEvents)
+      .where(
+        drizzleSql`${ledgerEvents.entityTable} = 'transactions' AND ${ledgerEvents.entityId} = ${txRow.id}`,
+      )
+      .limit(1)
+  )[0];
+
+  const payRow = (
+    await app.db
+      .select({ paymentMethod: transactionPayments.paymentMethod })
+      .from(transactionPayments)
+      .where(drizzleSql`${transactionPayments.transactionId} = ${txRow.id}::uuid`)
+      .limit(1)
+  )[0];
+
+  const productRows = (await app.db.execute(drizzleSql`
+    SELECT p.id AS id, p.sku AS sku, p.status AS status
+      FROM transaction_items ti
+      JOIN products p ON p.id = ti.product_id
+     WHERE ti.transaction_id = ${txRow.id}::uuid
+     ORDER BY ti.display_order ASC
+  `)) as unknown as Array<{ id: string; sku: string; status: 'DRAFT' | 'AVAILABLE' }>;
+
+  return {
+    transactionId: txRow.id,
+    receiptLocator: txRow.receiptLocator,
+    finalizedAt: txRow.finalizedAt.toISOString(),
+    ledgerEventId: ledgerRow ? Number(ledgerRow.id) : 0,
+    totalEur: txRow.totalEur,
+    payoutMethod: (payRow?.paymentMethod ?? 'CASH') as 'CASH' | 'BANK_TRANSFER',
+    createdProducts: productRows.map((p) => ({
+      id: p.id,
+      sku: p.sku,
+      status: p.status,
+      clientReferenceId: null,
+    })),
+  };
+}
 
 export default transactionsAnkaufRoute;

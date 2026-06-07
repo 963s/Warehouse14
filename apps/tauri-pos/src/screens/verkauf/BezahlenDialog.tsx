@@ -239,6 +239,17 @@ export function BezahlenDialog({
   const idempotencyKeyRef = useRef<string>(newIntentionId());
 
   /**
+   * §19.3 C-3 — a SUCCESSFUL ZVT authorization whose finalize then failed.
+   *
+   * The card is already debited. Re-running `submitCard` must NOT re-authorize
+   * (that double-charges); it must retry ONLY the finalize against THIS
+   * authorization. We stash the winning `ZvtResult` here on auth-success and
+   * clear it once finalize succeeds (or the dialog re-opens). While set, the
+   * card path skips the terminal and goes straight to finalize.
+   */
+  const pendingAuthRef = useRef<ZvtResult | null>(null);
+
+  /**
    * §19.3 W-7 — TSE signature captured from the FINISH call so the
    * thermal print step can include the KassenSichV-mandated signature
    * block + QR. `null` when TSE is offline or unconfigured (the print
@@ -266,6 +277,7 @@ export function BezahlenDialog({
       setAppliedVoucher(null);
       inFlightRef.current = false;
       idempotencyKeyRef.current = newIntentionId();
+      pendingAuthRef.current = null;
 
       setIsB2b(false);
       setVatId('');
@@ -787,33 +799,45 @@ export function BezahlenDialog({
     inFlightRef.current = true;
     setSubmitting(true);
     setError(null);
-    setZvtBusy(true);
 
-    const totalCents = Number(toCents(adjustedTotals.totalEur));
+    // §19.3 C-3 — if a PRIOR authorization succeeded but its finalize failed,
+    // REUSE that authorization. Re-authorizing here would debit the card a
+    // second time. We only touch the terminal when there's no pending auth.
     let zvt: ZvtResult;
-    try {
-      zvt = await zvtClient.authorize(
-        { ip: hardwareCfg.zvt.ip, port: hardwareCfg.zvt.port },
-        totalCents,
-      );
-    } catch (err) {
-      setError(
-        isHardwareError(err) ? describeHardwareError(err) : 'Karten-Terminal nicht erreichbar.',
-      );
-      // Release the mutex + UI flags so the operator can re-attempt.
-      setZvtBusy(false);
-      setSubmitting(false);
-      inFlightRef.current = false;
-      return;
-    } finally {
-      setZvtBusy(false);
-    }
+    if (pendingAuthRef.current) {
+      zvt = pendingAuthRef.current;
+    } else {
+      setZvtBusy(true);
+      try {
+        const totalCents = Number(toCents(adjustedTotals.totalEur));
+        zvt = await zvtClient.authorize(
+          { ip: hardwareCfg.zvt.ip, port: hardwareCfg.zvt.port },
+          totalCents,
+        );
+      } catch (err) {
+        setError(
+          isHardwareError(err) ? describeHardwareError(err) : 'Karten-Terminal nicht erreichbar.',
+        );
+        // No charge happened — release the mutex + UI flags so the operator
+        // can re-attempt (this WILL re-authorize, which is correct here).
+        setZvtBusy(false);
+        setSubmitting(false);
+        inFlightRef.current = false;
+        return;
+      } finally {
+        setZvtBusy(false);
+      }
 
-    if (!zvt.success) {
-      setError(zvt.errorMessage ?? 'Karte wurde abgelehnt.');
-      setSubmitting(false);
-      inFlightRef.current = false;
-      return;
+      if (!zvt.success) {
+        setError(zvt.errorMessage ?? 'Karte wurde abgelehnt.');
+        setSubmitting(false);
+        inFlightRef.current = false;
+        return;
+      }
+
+      // Authorization captured — from here on, the card IS charged. Stash it
+      // so any finalize failure retries finalize-only, never re-authorizes.
+      pendingAuthRef.current = zvt;
     }
 
     try {
@@ -827,6 +851,9 @@ export function BezahlenDialog({
         },
       ];
       const result = await finalizeWithTse(payments, 'Unbar');
+      // Finalize succeeded — the authorization is consumed; clear it so a fresh
+      // sale can't accidentally replay this card charge.
+      pendingAuthRef.current = null;
       setFinalized(result);
       addToast({
         tone: 'success',
@@ -841,11 +868,51 @@ export function BezahlenDialog({
         qc.invalidateQueries({ queryKey: currentShiftQueryKey }),
       ]);
     } catch (err) {
-      // The card was already charged — surface this prominently so the
-      // operator runs a reversal on the terminal before retrying.
-      setError(
-        `Buchung fehlgeschlagen NACH Karten-Autorisierung. Bitte Storno am Terminal ausführen. Details: ${formatPaymentError(err)}`,
-      );
+      if (err instanceof ApiOfflineQueuedError) {
+        // §19.3 C-3 — card AUTHORIZED + finalize QUEUED offline. The sale is
+        // safely captured for replay (GoBD §146); telling the cashier to Storno
+        // would wrongly reverse a booked charge. Advance to the receipt phase.
+        pendingAuthRef.current = null;
+        const offlineLocator = `OFFLINE-${idempotencyKeyRef.current.slice(0, 8).toUpperCase()}`;
+        const dummyResult: FinalizeResponse = {
+          id: idempotencyKeyRef.current,
+          receiptLocator: offlineLocator,
+          finalizedAt: new Date(err.enqueuedAt).toISOString(),
+          ledgerEventId: -1,
+          direction: 'VERKAUF',
+          totalEur: adjustedTotals.totalEur,
+          storno: false,
+        };
+        setFinalized(dummyResult);
+        addToast({
+          tone: 'info',
+          title: 'Karte autorisiert · offline gespeichert',
+          body: `Beleg wird synchronisiert (Temp-Nr. ${offlineLocator})`,
+        });
+        const payments: FinalizeBody['payments'] = [
+          {
+            paymentMethod: 'ZVT_CARD' as PaymentMethod,
+            amountEur: adjustedTotals.totalEur,
+            ...(zvt.authorizationCode ? { zvtReceiptNumber: zvt.authorizationCode } : {}),
+            ...(zvt.cardBrand ? { zvtCardBrand: zvt.cardBrand } : {}),
+            ...(zvt.cardPanMasked ? { zvtCardPanMasked: zvt.cardPanMasked } : {}),
+          },
+        ];
+        setPreviewData(buildReceiptData(dummyResult, payments));
+        await Promise.all([
+          qc.invalidateQueries({ queryKey: dashboardQueryKey }),
+          qc.invalidateQueries({ queryKey: ['products', 'list'] }),
+          qc.invalidateQueries({ queryKey: currentShiftQueryKey }),
+        ]);
+      } else {
+        // §19.3 C-3 — the card was already charged but finalize failed for a
+        // genuine reason (validation, reservation, step-up cancel). We KEEP
+        // `pendingAuthRef` so the next "Karte autorisieren" click retries the
+        // finalize against the SAME authorization instead of charging again.
+        setError(
+          `Buchung fehlgeschlagen NACH Karten-Autorisierung. Bitte erneut „Karte autorisieren" — die Zahlung wird ohne erneute Belastung gebucht. Details: ${formatPaymentError(err)}`,
+        );
+      }
     } finally {
       setSubmitting(false);
       inFlightRef.current = false;
@@ -1485,7 +1552,10 @@ function PaymentInput({
           {paymentChoice === 'CASH' && !submitting ? (
             <>
               {' · '}
-              <MoneyAmount valueEur={totalEur} />
+              {/* Collect the POST-voucher amount, not the gross total — when a
+                  voucher covers part of the sale the cashier takes `dueEur` in
+                  cash, so the button must read that (else it overstates). */}
+              <MoneyAmount valueEur={dueEur} />
             </>
           ) : null}
         </Button>

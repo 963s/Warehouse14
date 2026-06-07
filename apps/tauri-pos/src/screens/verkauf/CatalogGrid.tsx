@@ -14,7 +14,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { type ProductListRow, productsApi } from '@warehouse14/api-client';
-import { MagnifierIcon, MoneyAmount, ParchmentCard } from '@warehouse14/ui-kit';
+import { Button, MagnifierIcon, MoneyAmount, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
 
@@ -205,7 +205,9 @@ export function CatalogGrid({
 
       {/* Results */}
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-        {q.isLoading && items.length === 0 ? (
+        {q.isError && items.length === 0 ? (
+          <CatalogError onRetry={() => void q.refetch()} retrying={q.isFetching} />
+        ) : q.isLoading && items.length === 0 ? (
           <CatalogPlaceholder />
         ) : items.length === 0 ? (
           <EmptyState query={debouncedQ} />
@@ -355,6 +357,36 @@ function CatalogPlaceholder(): JSX.Element {
         Lädt den Katalog…
       </p>
     </div>
+  );
+}
+
+/**
+ * Distinct from the empty state: the catalog request FAILED. Telling the
+ * operator "leer" here would be a lie (the inventory may be full) — show the
+ * real cause + a retry instead.
+ */
+function CatalogError({
+  onRetry,
+  retrying,
+}: {
+  onRetry: () => void;
+  retrying: boolean;
+}): JSX.Element {
+  return (
+    <ParchmentCard padding="md" style={{ textAlign: 'center' }}>
+      <p
+        style={{
+          margin: '0 0 12px',
+          color: 'var(--w14-ink-aged)',
+          fontFamily: 'var(--w14-font-display)',
+        }}
+      >
+        Katalog konnte nicht geladen werden — Verbindung prüfen.
+      </p>
+      <Button variant="ghost" size="sm" onClick={onRetry} disabled={retrying}>
+        {retrying ? 'Lädt…' : 'Erneut laden'}
+      </Button>
+    </ParchmentCard>
   );
 }
 

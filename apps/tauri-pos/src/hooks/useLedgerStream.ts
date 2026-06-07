@@ -24,7 +24,10 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 
 import {
+  ApiError,
+  ApiNetworkError,
   type LedgerEvent,
+  authPin,
   parseLedgerEvent,
   shouldInvalidateDashboard,
 } from '@warehouse14/api-client';
@@ -32,6 +35,8 @@ import {
 import { useApiClient } from '../lib/api-context.js';
 import { getSessionToken } from '../lib/session-token.js';
 import { useLedgerFeed } from '../state/ledger-feed-store.js';
+import { useSessionStore } from '../state/session-store.js';
+import { useSyncStore } from '../state/sync-store.js';
 import { dashboardQueryKey } from './useDashboardSummary.js';
 
 export type SseStatus = 'idle' | 'connecting' | 'open' | 'reconnecting' | 'closed';
@@ -45,6 +50,12 @@ interface UseLedgerStreamResult {
 const RECONNECT_BACKOFF_MS: readonly number[] = [1_000, 2_000, 4_000, 8_000, 15_000, 30_000];
 /** Coalesce multiple dashboard invalidations within this window into one. */
 const DASHBOARD_INVALIDATE_DEBOUNCE_MS = 400;
+/**
+ * After this many consecutive SSE failures we stop blindly reconnecting and
+ * probe the session: EventSource cannot read the 401 body, so an expired
+ * session would otherwise loop forever with the operator still "logged in".
+ */
+const SESSION_PROBE_AFTER_FAILURES = 3;
 
 export function useLedgerStream(enabled: boolean): UseLedgerStreamResult {
   const apiClient = useApiClient();
@@ -58,6 +69,14 @@ export function useLedgerStream(enabled: boolean): UseLedgerStreamResult {
   const reconnectAttemptRef = useRef(0);
   const reconnectTimerRef = useRef<number | null>(null);
   const invalidateTimerRef = useRef<number | null>(null);
+  /** Consecutive SSE failures with no intervening open — gates the auth probe. */
+  const consecutiveFailuresRef = useRef(0);
+  /** True while a session probe is in flight, so we only fire one at a time. */
+  const probingRef = useRef(false);
+  // Hold the client in a ref so the `enabled`-only effect can probe the session
+  // without taking a new dependency on `apiClient` (it's a stable singleton).
+  const apiClientRef = useRef(apiClient);
+  apiClientRef.current = apiClient;
 
   useEffect(() => {
     if (!enabled) {
@@ -68,6 +87,39 @@ export function useLedgerStream(enabled: boolean): UseLedgerStreamResult {
     }
 
     let cancelled = false;
+
+    // After repeated SSE failures, find out WHY: EventSource swallows the
+    // status code, so a hard 401 (expired/killed session) is indistinguishable
+    // from a transient network blip — it would just reconnect forever while the
+    // operator still appears logged in. Probe the session once; a 401 drives the
+    // store to unauthenticated (→ PIN pad) instead of looping silently. A
+    // network error means the SERVER is down, not the session — leave the
+    // backoff loop running and only mark reachability.
+    async function probeSessionAfterFailures() {
+      if (probingRef.current) return;
+      probingRef.current = true;
+      try {
+        await authPin.session(apiClientRef.current);
+        // Session is alive — the SSE failure was transient/proxy-side. Reset the
+        // counter so a later genuine 401 still gets its own probe.
+        if (!cancelled) {
+          consecutiveFailuresRef.current = 0;
+          useSyncStore.getState().recordRequestSuccess();
+        }
+      } catch (err) {
+        if (cancelled) return;
+        if (err instanceof ApiError && err.httpStatus === 401) {
+          // Genuinely logged out — stop the reconnect loop by flipping the gate.
+          useSessionStore.getState().setUnauthenticated();
+        } else if (err instanceof ApiNetworkError) {
+          // Server unreachable — keep retrying the stream; just report health.
+          useSyncStore.getState().recordRequestFailure('network');
+        }
+        // Any other ApiError (e.g. 5xx) — leave the backoff loop to retry.
+      } finally {
+        probingRef.current = false;
+      }
+    }
 
     function scheduleReconnect() {
       const attempt = reconnectAttemptRef.current;
@@ -112,6 +164,9 @@ export function useLedgerStream(enabled: boolean): UseLedgerStreamResult {
       es.addEventListener('open', () => {
         if (cancelled) return;
         reconnectAttemptRef.current = 0;
+        consecutiveFailuresRef.current = 0;
+        // A live SSE stream is the strongest reachability heartbeat we have.
+        useSyncStore.getState().recordRequestSuccess();
         setStatus('open');
       });
 
@@ -137,12 +192,19 @@ export function useLedgerStream(enabled: boolean): UseLedgerStreamResult {
         // resurrect after a hard close (401/403). We schedule manual retry
         // — if a retry succeeds, the backoff resets in the open handler.
         setLastError('connection_interrupted');
+        useSyncStore.getState().recordRequestFailure('network');
+        consecutiveFailuresRef.current += 1;
         try {
           es.close();
         } catch {
           /* ignore */
         }
         esRef.current = null;
+        // After N straight failures, stop guessing: probe the session so a real
+        // 401 ends the silent loop and shows the PIN pad.
+        if (consecutiveFailuresRef.current >= SESSION_PROBE_AFTER_FAILURES) {
+          void probeSessionAfterFailures();
+        }
         scheduleReconnect();
       });
     }

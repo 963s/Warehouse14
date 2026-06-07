@@ -104,12 +104,15 @@ export interface OutboxStore {
  * cannot drift (ADR-0044 action item 7).
  */
 export const FISCAL_PATH_PREFIXES: readonly string[] = [
-  '/ankauf',
-  '/sales',
-  '/storno',
-  '/cash-movements',
-  '/shifts/close',
-  '/transactions/finalize',
+  // The api-client posts to the FULL '/api/...' path, so the prefixes must
+  // carry it too — otherwise a queued offline sale/buy/storno was never tagged
+  // GoBD-relevant and missed its 10-year retention (audit 2026-06-07, P0).
+  '/api/transactions/ankauf',
+  '/api/transactions/finalize',
+  '/api/transactions/storno',
+  '/api/transactions/return',
+  '/api/cash-movements',
+  '/api/shifts/close',
 ];
 
 /** True when `path` is a fiscal route (exact match or a sub-path). */

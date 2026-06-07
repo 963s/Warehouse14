@@ -294,23 +294,30 @@ describe('uuidv7', () => {
 });
 
 describe('isGobdRelevantPath (ADR-0044 §5 / action item 7)', () => {
-  it('flags sales, storno, ankauf, cash-movements, shift-close and finalize as fiscal', () => {
+  it('flags finalize, ankauf, storno, return, cash-movements and shift-close as fiscal', () => {
+    // The api-client posts to the FULL '/api/...' path — the prefixes must match it.
     for (const p of [
-      '/ankauf',
-      '/ankauf/4711',
-      '/sales',
-      '/sales/8920/void',
-      '/storno',
-      '/cash-movements',
-      '/shifts/close',
-      '/transactions/finalize',
+      '/api/transactions/ankauf',
+      '/api/transactions/finalize',
+      '/api/transactions/storno',
+      '/api/transactions/return',
+      '/api/cash-movements',
+      '/api/shifts/close',
     ]) {
       expect(isGobdRelevantPath(p)).toBe(true);
     }
   });
 
-  it('does not flag non-fiscal reads/mutations', () => {
-    for (const p of ['/products', '/inventory/adjust', '/dashboard/summary', '/ankaufer']) {
+  it('does not flag non-fiscal reads/mutations (incl. the un-prefixed legacy paths)', () => {
+    for (const p of [
+      '/api/products',
+      '/api/inventory/adjust',
+      '/api/dashboard/summary',
+      '/api/transactions/recent',
+      // The old un-prefixed forms must NOT match — they were the retention bug.
+      '/ankauf',
+      '/transactions/finalize',
+    ]) {
       expect(isGobdRelevantPath(p)).toBe(false);
     }
   });

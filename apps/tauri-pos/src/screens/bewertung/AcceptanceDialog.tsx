@@ -18,7 +18,7 @@
  */
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { ApiError, type AppraisalView, appraisalsApi, customersApi } from '@warehouse14/api-client';
@@ -57,6 +57,14 @@ export function AcceptanceDialog({
   const [rejecting, setRejecting] = useState<boolean>(false);
   const [rejectReason, setRejectReason] = useState<string>('');
 
+  /**
+   * §19.3 W-1 — synchronous mutex shared by accept + reject. Both flip the
+   * async `submitting` state, so a fast double-click can re-enter before React
+   * commits it — accept could create two Ankauf transactions, reject could fire
+   * two rejections. The ref is visible immediately on the next synchronous read.
+   */
+  const inFlightRef = useRef<boolean>(false);
+
   // Reset on open.
   useEffect(() => {
     if (open) {
@@ -64,6 +72,7 @@ export function AcceptanceDialog({
       setError(null);
       setRejecting(false);
       setRejectReason('');
+      inFlightRef.current = false;
     }
   }, [open]);
 
@@ -102,7 +111,9 @@ export function AcceptanceDialog({
   const canAccept = customer !== undefined && !blocked && !kycMissingForGwg && !submitting;
 
   const accept = useCallback(async (): Promise<void> => {
+    if (inFlightRef.current) return;
     if (!canAccept) return;
+    inFlightRef.current = true;
     setSubmitting(true);
     setError(null);
     try {
@@ -153,6 +164,7 @@ export function AcceptanceDialog({
       }
     } finally {
       setSubmitting(false);
+      inFlightRef.current = false;
     }
   }, [
     addToast,
@@ -167,10 +179,14 @@ export function AcceptanceDialog({
   ]);
 
   const reject = useCallback(async (): Promise<void> => {
+    // §19.3 W-1 mutex — read+set SYNCHRONOUSLY before any async work so a
+    // double-click on "Endgültig ablehnen" can't fire the rejection twice.
+    if (inFlightRef.current) return;
     if (rejectReason.trim().length < 4) {
       setError('Begründung erforderlich (mind. 4 Zeichen).');
       return;
     }
+    inFlightRef.current = true;
     setSubmitting(true);
     setError(null);
     try {
@@ -187,6 +203,7 @@ export function AcceptanceDialog({
       setError(err instanceof ApiError ? err.message : 'Netzwerk prüfen.');
     } finally {
       setSubmitting(false);
+      inFlightRef.current = false;
     }
   }, [addToast, api, appraisal.id, onClose, qc, rejectReason, resetBewertung]);
 

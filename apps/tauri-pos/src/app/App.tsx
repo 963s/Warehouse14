@@ -16,6 +16,7 @@
 
 import { useEffect } from 'react';
 
+import { Button, DiamondRule, ParchmentCard, Seal } from '@warehouse14/ui-kit';
 import { ErrorBoundary } from '@warehouse14/ui-kit';
 
 import { useSessionProbe } from '../hooks/useSessionProbe.js';
@@ -59,11 +60,15 @@ export function App(): JSX.Element {
     applyChatwoot(status === 'authenticated' ? chatwoot : { ...chatwoot, enabled: false });
   }, [status, chatwoot]);
 
+  const retryProbe = useSessionStore((s) => s.retryProbe);
+
   let body: JSX.Element;
   if (status === 'unknown') {
     body = <Splash />;
   } else if (status === 'authenticated') {
     body = <AppRouter />;
+  } else if (status === 'unreachable') {
+    body = <ServerUnreachable onRetry={retryProbe} />;
   } else {
     body = <PinLogin />;
   }
@@ -73,5 +78,55 @@ export function App(): JSX.Element {
       {body}
       <AppFooter />
     </ErrorBoundary>
+  );
+}
+
+/**
+ * ServerUnreachable — shown when the cold-start probe could not reach the
+ * server (network / circuit-open). Distinct from the PIN pad: it tells the
+ * operator the truth ("Keine Verbindung zum Server") instead of implying the
+ * session ended, and offers a single retry that re-runs the probe.
+ */
+function ServerUnreachable({ onRetry }: { onRetry: () => void }): JSX.Element {
+  return (
+    <div
+      className="w14-paper-noise"
+      style={{
+        minHeight: '100dvh',
+        display: 'grid',
+        placeItems: 'center',
+        background: 'var(--w14-parchment)',
+        padding: 24,
+      }}
+    >
+      <ParchmentCard padding="lg" style={{ width: 'min(420px, 100%)', textAlign: 'center' }}>
+        <Seal size="lg" tone="faded" />
+        <h1
+          style={{
+            fontFamily: 'var(--w14-font-display)',
+            fontWeight: 500,
+            fontSize: '1.4rem',
+            margin: '16px 0 4px',
+          }}
+        >
+          Keine Verbindung zum Server
+        </h1>
+        <p
+          style={{
+            margin: '0 0 18px',
+            color: 'var(--w14-ink-faded)',
+            fontFamily: 'var(--w14-font-display)',
+            lineHeight: 1.5,
+          }}
+        >
+          Der Server ist derzeit nicht erreichbar. Bitte prüfen Sie die Internetverbindung und
+          versuchen Sie es erneut.
+        </p>
+        <Button variant="primary" size="md" onClick={onRetry}>
+          Erneut versuchen
+        </Button>
+        <DiamondRule />
+      </ParchmentCard>
+    </div>
   );
 }

@@ -12,7 +12,14 @@ import { create } from 'zustand';
 
 import type { AuthSessionResponse, PinLoginResponse, SessionActor } from '@warehouse14/api-client';
 
-export type SessionStatus = 'unknown' | 'unauthenticated' | 'authenticated';
+/**
+ * `unreachable` is distinct from `unauthenticated`: the cold-start probe could
+ * not reach the server at all (network / circuit-open), so we must NOT show the
+ * PIN pad (which implies "your session ended — log in again"). Instead App.tsx
+ * renders a "Keine Verbindung zum Server" screen with a retry. From there the
+ * operator can re-probe, which resolves to authenticated / unauthenticated.
+ */
+export type SessionStatus = 'unknown' | 'unauthenticated' | 'unreachable' | 'authenticated';
 
 interface SessionState {
   status: SessionStatus;
@@ -27,6 +34,10 @@ interface SessionState {
   /** Called by the step-up modal after a successful POST /api/auth/step-up. */
   recordStepUp: (lastPinStepUpAt: string) => void;
   setUnauthenticated: () => void;
+  /** Cold-start probe could not reach the server (network / circuit). */
+  setUnreachable: () => void;
+  /** Re-run the cold-start probe (drives status back to 'unknown'). */
+  retryProbe: () => void;
   setStatus: (status: SessionStatus) => void;
 }
 
@@ -60,5 +71,13 @@ export const useSessionStore = create<SessionState>((set) => ({
       lastPinStepUpAt: null,
       sessionExpiresAt: null,
     }),
+  setUnreachable: () =>
+    set({
+      status: 'unreachable',
+      actor: null,
+      lastPinStepUpAt: null,
+      sessionExpiresAt: null,
+    }),
+  retryProbe: () => set({ status: 'unknown' }),
   setStatus: (status) => set({ status }),
 }));

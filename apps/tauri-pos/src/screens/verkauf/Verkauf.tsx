@@ -357,14 +357,20 @@ function VerkaufFloor(): JSX.Element {
         });
       } catch (err) {
         if (err instanceof ApiError && err.code === 'STEP_UP_REQUIRED') {
-          // Silent cancel.
+          // Operator cancelled the PIN — the reservation is untouched on the
+          // server, so the line must come BACK or it leaks (POS holds have no
+          // TTL). Roll the optimistic removal back silently.
+          addLine(target);
         } else {
-          // Optimistic removal stays. POS reservations have no TTL so the
-          // sweeper won't help — surface the issue to the operator.
+          // Release failed AND the line is gone from the cart, but the server
+          // reservation lingers (no TTL ⇒ a zombie hold that blocks re-sale).
+          // Roll the optimistic removal back so the operator can retry the
+          // release; surface the reason.
+          addLine(target);
           addToast({
             tone: 'alert',
-            title: 'Freigabe blockiert',
-            body: `Server-Freigabe für ${target.sku} fehlgeschlagen. Bitte erneut leeren.`,
+            title: 'Freigabe fehlgeschlagen',
+            body: `Server-Freigabe für ${target.sku} fehlgeschlagen — Position wiederhergestellt. Bitte erneut entfernen.`,
           });
         }
       } finally {
@@ -377,7 +383,7 @@ function VerkaufFloor(): JSX.Element {
         await qc.invalidateQueries({ queryKey: ['products', 'list'] });
       }
     },
-    [addToast, api, findLine, qc, removeLine],
+    [addToast, addLine, api, findLine, qc, removeLine],
   );
 
   const onClearCart = useCallback(async (): Promise<void> => {

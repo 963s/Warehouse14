@@ -148,6 +148,16 @@ export interface AnkaufBody {
   totalEur: string;
   notesInternal?: string;
   items: AnkaufLineItem[];
+  /**
+   * §19.2 C-4 — UUIDv4 generated client-side once per Ankauf-Bezahlen dialog
+   * open. Sent UNCHANGED on every retry (double-click, step-up cancel-resume,
+   * lost-response retry). The server persists it on `transactions` and the
+   * partial UNIQUE INDEX (`transactions_idempotency_key_uniq`, migration 0028)
+   * guarantees at-most-once: a duplicate returns the original Ankauf row, not a
+   * second payout. Optional for back-compat with older clients (server treats
+   * absence as "no dedup", pre-V1 behaviour).
+   */
+  idempotencyKey?: string;
 }
 
 export interface AnkaufResponseProduct {
@@ -176,6 +186,14 @@ export const transactionsApi = {
     return client.request<FinalizeResponse>('POST', '/api/transactions/finalize', body);
   },
   ankauf(client: ApiClient, body: AnkaufBody): Promise<AnkaufResponse> {
-    return client.request<AnkaufResponse>('POST', '/api/transactions/ankauf', body);
+    // Fiscal ownership (ADR-0044 §4): when the caller supplies an idempotency
+    // key, hand it to the offline-queue middleware via meta.custom so the
+    // sealed outbox row + Idempotency-Key header carry the SAME key the body
+    // does — a queued-then-replayed Ankauf dedups against the original.
+    return client.request<AnkaufResponse>('POST', '/api/transactions/ankauf', body, {
+      ...(body.idempotencyKey
+        ? { custom: { idempotencyKey: body.idempotencyKey, gobdRelevant: true } }
+        : {}),
+    });
   },
 };

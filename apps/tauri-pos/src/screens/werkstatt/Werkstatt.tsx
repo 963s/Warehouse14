@@ -45,7 +45,7 @@ export function Werkstatt(): JSX.Element {
 
   // Dashboard data: TanStack Query, 15s stale / 60s background refresh /
   // SSE-debounce-invalidation.
-  const { data, isLoading } = useDashboardSummary();
+  const { data, isLoading, isError, refetch, isFetching } = useDashboardSummary();
 
   const todayLabel = new Date().toLocaleDateString('de-DE', {
     weekday: 'long',
@@ -97,7 +97,13 @@ export function Werkstatt(): JSX.Element {
       >
         {/* Left column — Übersicht (Edelmetallkurs now lives in the chrome ticker, UX P2) */}
         <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <UebersichtPanel data={data} isLoading={isLoading} />
+          <UebersichtPanel
+            data={data}
+            isLoading={isLoading}
+            isError={isError && data === undefined}
+            onRetry={() => void refetch()}
+            retrying={isFetching}
+          />
 
           {/* Tiny seal in the negative space at the bottom — anchoring brand */}
           <div style={{ flex: 1, display: 'grid', placeItems: 'center', paddingTop: 36 }}>

@@ -15,7 +15,32 @@ import { useCurrentShift } from '../../hooks/useCurrentShift.js';
 
 export function DayControl(): JSX.Element | null {
   const navigate = useNavigate();
-  const { data: shift, isLoading } = useCurrentShift();
+  const { data: shift, isLoading, isError, refetch, isFetching } = useCurrentShift();
+
+  // The shift could not be fetched — DO NOT fall through to "Tag noch nicht
+  // eröffnet" (a shift may well be open; we just can't see it). Say so honestly.
+  if (isError && shift === undefined) {
+    return (
+      <ParchmentCard
+        tone="parchment"
+        padding="md"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 16,
+          borderLeft: '3px solid var(--w14-wax-red)',
+        }}
+      >
+        <span style={{ fontFamily: 'var(--w14-font-display)', fontSize: '1.05rem' }}>
+          Schichtstatus nicht abrufbar — Verbindung prüfen.
+        </span>
+        <Button variant="ghost" size="sm" onClick={() => void refetch()} disabled={isFetching}>
+          {isFetching ? 'Lädt…' : 'Erneut versuchen'}
+        </Button>
+      </ParchmentCard>
+    );
+  }
 
   // First load — stay invisible rather than flash a wrong state.
   if (isLoading && shift === undefined) return null;

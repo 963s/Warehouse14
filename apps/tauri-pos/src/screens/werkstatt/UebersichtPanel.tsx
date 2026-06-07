@@ -14,17 +14,53 @@
  *   • Everything else 0          → grey-out the value, no dot
  */
 
-import { DiamondRule, StatTile } from '@warehouse14/ui-kit';
+import { Button, DiamondRule, ParchmentCard, StatTile } from '@warehouse14/ui-kit';
 
 import type { DashboardSummary } from '@warehouse14/api-client';
 
 export interface UebersichtPanelProps {
   data: DashboardSummary | undefined;
   isLoading: boolean;
+  /** The summary request failed and we have no cached data to fall back on. */
+  isError?: boolean;
+  onRetry?: () => void;
+  retrying?: boolean;
 }
 
-export function UebersichtPanel({ data, isLoading }: UebersichtPanelProps): JSX.Element {
+export function UebersichtPanel({
+  data,
+  isLoading,
+  isError = false,
+  onRetry,
+  retrying = false,
+}: UebersichtPanelProps): JSX.Element {
   const placeholder = isLoading || data === undefined;
+
+  // Honest failure: don't sit on "Lädt…" forever or render zeros as if the day
+  // were quiet — say the figures aren't retrievable and offer a retry.
+  if (isError) {
+    return (
+      <section aria-label="Übersicht">
+        <PanelHeading label="Übersicht" sublabel="Nicht abrufbar" />
+        <ParchmentCard padding="md" style={{ textAlign: 'center' }}>
+          <p
+            style={{
+              margin: '0 0 12px',
+              color: 'var(--w14-ink-aged)',
+              fontFamily: 'var(--w14-font-display)',
+            }}
+          >
+            Kennzahlen sind derzeit nicht abrufbar — Verbindung prüfen.
+          </p>
+          {onRetry && (
+            <Button variant="ghost" size="sm" onClick={onRetry} disabled={retrying}>
+              {retrying ? 'Lädt…' : 'Erneut versuchen'}
+            </Button>
+          )}
+        </ParchmentCard>
+      </section>
+    );
+  }
 
   return (
     <section aria-label="Übersicht">

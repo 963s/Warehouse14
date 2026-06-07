@@ -105,6 +105,15 @@ export const AnkaufBody = Type.Object({
   /** Free-text operator note. Persisted in transactions.notes_internal. */
   notesInternal: Type.Optional(Type.String({ maxLength: 1024 })),
 
+  /**
+   * §19.2 C-4 — client-supplied UUID for at-most-once Ankauf. Persisted on
+   * `transactions.idempotency_key`; the partial UNIQUE INDEX
+   * (`transactions_idempotency_key_uniq`, migration 0028) makes a duplicate
+   * POST return the original payout instead of booking a second one. Optional
+   * for back-compat — absent ⇒ no dedup (pre-V1 behaviour).
+   */
+  idempotencyKey: Type.Optional(Type.String({ format: 'uuid' })),
+
   items: Type.Array(AnkaufLineItem, { minItems: 1, maxItems: 100 }),
 });
 export type AnkaufBody = Static<typeof AnkaufBody>;
