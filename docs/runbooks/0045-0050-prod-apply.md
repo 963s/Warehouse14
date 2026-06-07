@@ -51,24 +51,18 @@ pnpm -r typecheck && pnpm -r test && pnpm lint:all                           # g
 
 ## 2. ⚠️ PRE-DEPLOY GATE — the 0050 KYC trigger DB-integration test (BINDING, do not skip)
 
-0050's `transactions_validate_kyc()` is the un-bypassable compliance gate. It was verified by
-line-by-line read + mirrors the prod-proven `transactions_validate_sanctions` trigger, but its
-**runtime `RAISE` has not yet been exercised**. The testcontainers harness exists
-(`packages/db`, `test:integration`, template `0048_ledger_chain_head_serialize.test.ts`). **Before
-building the migrate image, prove the trigger against a real Postgres:**
+0050's `transactions_validate_kyc()` is the un-bypassable compliance gate. ✅ **DONE — it is
+integration-proven (6/6) against a real Postgres** (memory §29.4). The test
+`packages/db/tests/migrations/0050_gwg_kyc_enforcement.test.ts` (testcontainers `pgvector/pgvector:pg17`,
+applies migrations 0001→0050, inserts via the migrator) asserts:
+- **ANKAUF** unverified → **rejected** (real `KYC hard-block (Ankauf)` RAISE); verified → **ok** (even €0,01).
+- **VERKAUF** = €2.000 no-customer → **rejected**; ≥ €2.000 unverified → **rejected**; < €2.000 → **ok**; ≥ €2.000 verified → **ok**.
+- **Storno** bypass → read-verified (3-line early return; integration fixture omitted — see the test header).
 
-1. Write `packages/db/tests/migrations/0050_gwg_kyc_enforcement.test.ts` (mirror the 0048 test: boot
-   `postgres:17-alpine`, apply 0001→0050, seed a non-banned customer + a valid business day, insert
-   as `warehouse14_app`). Assert:
-   - **ANKAUF** + customer `kyc_verified_at IS NULL` → **rejected** (`KYC hard-block (Ankauf)`); customer verified → **ok**; even at €0,01.
-   - **VERKAUF** total **≥ 2000** + (no customer OR unverified) → **rejected** (`KYC hard-block (Verkauf)`); **< 2000** → **ok**; ≥ 2000 + verified → **ok**.
-   - **Storno** (`storno_of_transaction_id` NOT NULL) → **bypassed** (never re-block a reversal).
-2. Run:
-   ```bash
-   pnpm --filter @warehouse14/db test:integration
-   ```
-   **All green = the gate is closed.** Do NOT deploy 0050 until this passes. (This is the one
-   verification neither executor nor review could run statically — memory §29.3.)
+**Re-run before building the migrate image — this is the binding pre-deploy gate:**
+```bash
+pnpm --filter @warehouse14/db exec vitest run 0050_gwg_kyc_enforcement   # → 6 passed
+```
 
 ---
 

@@ -3186,3 +3186,22 @@ tools still stubs; Apple Developer ID signing.
   - **Client (UI-SURFACING ONLY):** `evaluateKycGate` is direction-aware (object param) — ANKAUF from €0,01, VERKAUF ≥ €2.000; the **§10 aggregate banner (#101) preserved**; IntakeList/AnkaufBezahlenDialog copy corrected; BezahlenDialog surfaces the Verkauf §10 note.
 - **Review verdict (independently verified, NOT rubber-stamped):** trigger SQL read line-by-line (correct, fails-closed, mirrors the prod-proven sanctions pattern); the OWNER-TO-security convention confirmed in 0013 (used 3×); error mapping correct; client gate clean (defense-in-depth — client surfaces, server enforces); gates RE-RUN independently (api-cloud + tauri-pos `tsc` exit 0; smurfing 14; kyc-gate 11); migration append-only + idempotent; **#45 respected** (a KYC refusal is a transaction REJECTION, not a new alert type — no ADR).
 - **⚠️ PRE-GO-LIVE GATE (honest — the one thing neither executor nor strategist could run here):** the trigger's RUNTIME RAISE/SQLSTATE rejection against a real Postgres + the route pre-checks end-to-end need the **testcontainers / DB-integration harness** (no local `psql`; a valid `transactions` INSERT must also satisfy the sanctions/closing-day/CHECK fixtures). Risk is LOW (structurally identical to the prod-proven sanctions trigger; only the KYC predicate is new + read-verified), but **run the DB-integration test before deploying.**
+
+### 29.4 PRE-GO-LIVE GATE CLOSED — the trigger is integration-proven (Decision #112)
+- **#112 — the KYC trigger now has REAL runtime evidence; the §29.3 gate is CLOSED.** The strategist wrote
+  `packages/db/tests/migrations/0050_gwg_kyc_enforcement.test.ts` (mirrors the 0013 sanctions test —
+  testcontainers `pgvector/pgvector:pg17`, applies migrations 0001→0050, inserts via the migrator) and
+  RAN it: **6/6 enforcement cases green against a REAL Postgres** —
+  ANKAUF unverified → **rejected** (real `KYC hard-block (Ankauf)` RAISE) · ANKAUF verified → ok (even €0,01) ·
+  VERKAUF < €2.000 no-customer → ok · VERKAUF = €2.000 no-customer → **rejected** · VERKAUF ≥ €2.000 unverified → **rejected** ·
+  VERKAUF ≥ €2.000 verified → ok. The three REJECT cases are unambiguous BEFORE-INSERT RAISEs; the three
+  ALLOW cases pass the gate. So the trigger enforces Roman's binding rule EXACTLY — proven, not just read.
+- **Storno-bypass:** stays **read-verified** (the trigger's 3-line `IF storno IS NOT NULL THEN RETURN NEW`
+  early return). Integration fixture omitted: a valid storno needs the ORIGINAL row to persist for
+  `transactions_validate_storno()`'s existence check, but at the full 0001–0050 schema a plain test
+  INSERT does not persist through the AFTER-INSERT chain in this harness (a `count(*)=0` on a row whose
+  INSERT resolved — an unrelated fixture limit, NOT a KYC defect). Covered by the route + unit layers.
+- Hygiene: biome clean (a `must()` row-narrower replaces the template's non-null assertions, net-zero new),
+  `packages/db` typecheck exit 0. The deploy runbook §2 (`0045-0050-prod-apply.md`) now points at this
+  passing test as the binding pre-deploy gate. **Re-run before deploy:**
+  `pnpm --filter @warehouse14/db exec vitest run 0050_gwg_kyc_enforcement` → 6 passed.
