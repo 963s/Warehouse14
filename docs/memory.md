@@ -3150,3 +3150,39 @@ tools still stubs; Apple Developer ID signing.
   German-only (no Arabic remains in `control-desktop/src`). If a morning briefing is ever wanted for
   Roman, it would be written fresh in **German** and folded into `/summary` — not the old Arabic
   `/overview`.
+
+---
+
+## 29. [PHASE 1.7 — GwG/UStG GO-LIVE CONFIG: OWNER SIGN-OFF + KYC ENFORCEMENT] (2026-06-07)
+
+> Roman Grützner (Inhaber) gave a formal, **binding** sign-off on the 6 compliance parameters (after the
+> Steuerberater brief `docs/steuerberater-anfrage.md`). Compliance-First — deliberately stricter than the
+> legal minimum. The strategist audited the real tree vs the spec (the audit OVER-claimed 2 build-gaps;
+> review collapsed it to **1 build + 1 setting** — Item 5/DATEV was already SKR03), then prompted +
+> reviewed the KYC enforcement build. Branch `claude/gwg-kyc-enforcement` off the tse branch (migration 0050).
+
+### 29.1 The binding owner sign-off (Decision #109)
+- **#109 — Roman Grützner authorized, binding, for go-live (universal, NO Warengruppen split — removes POS error sources):**
+  1. **KYC.** ANKAUF: identify ALWAYS from **€0,01** (hard §259 StGB Hehlerei). VERKAUF: identify from exactly **€2.000,00** (§10 GwG).
+  2. **Smurfing (§10 Abs. 3 Nr. 2):** **30-day** window, **€2.000** sum; detect + document + ALERT; **NO hard block** — the abort decision is the owner's.
+  3. **Verdachtsmeldung (§43):** the owner personally is **Geldwäschebeauftragter** + files SARs to the FIU (organizational; no code).
+  4. **§25a/§25c:** the deterministic 8-rule matrix (#39) confirmed IN FULL — Anlagegold→§25c (tax-free); Schmuck/Uhren/Antiquitäten/Sammlermünzen→§25a; Altgold/Schmelzware→19%.
+  5. **DATEV:** **SKR03** default, admin-switchable to SKR04 later.
+  6. **Retention:** **5y** KYC/Ausweis (§8 GwG), **10y** tax/accounting (GoBD), then DSGVO anonymization/deletion.
+
+### 29.2 Audit vs spec — the verified delta (Decision #110)
+- **#110 — the audit over-claimed; review collapsed "2 gaps" → 1 build + 1 setting.** "Search the real tree" + independent verification:
+  - **Item 1 (KYC):** genuinely unbuilt server-side — Ankauf enforced customer + sanctions + closing-day (triggers/CHECK) but NOT kyc-verified; Verkauf had no gate → **BUILD**.
+  - **Item 2 (smurfing window):** runtime-configurable, default 7 → **SET-VALUE(30)**.
+  - **Item 5 (DATEV):** the audit called it a BUILD-GAP, but `closing-export.ts` ALREADY maps **SKR03** (`KONTO_KASSE 1000` / `ERLÖSE 8400` / `WARENEINGANG 3200`) — **SKR03 is already the default**. Go-live: ALREADY-CORRECT; the SKR04 switch is deferred. ⚠️ FiBu refinement to raise with the Steuerberater: per-tax-treatment Erlöse accounts (today one `8400` for all sales regardless of §25a/§25c).
+  - **Items 3/4/6:** ALREADY-CORRECT (owner = `users.is_owner`; the #39 matrix matches; the **5y KYC purge + PII anonymization** live in worker `gdpr-cleanup.ts` daily 04:00; 10y append-only ledger).
+
+### 29.3 The KYC enforcement build + review (Decision #111)
+- **#111 — direction-aware KYC, server-authoritative.** Migration **0050_gwg_kyc_enforcement** (off the tse branch, next after 0049), commit `93f1dc1`:
+  - **(A)** smurfing window UPDATE 7→30 (+ `smurfing.ts` default 7→30); the €2.000 sum + detection rules + **alert-only** are UNCHANGED.
+  - **(B)** `transactions_validate_kyc()` — a **BEFORE INSERT trigger, SECURITY DEFINER owned by `warehouse14_security`** (mirrors `transactions_validate_sanctions` 0013 — the documented house convention; un-bypassable by `warehouse14_app`): ANKAUF → seller `kyc_verified_at IS NULL` → RAISE (every buy, NO threshold, intentionally NOT settings-toggleable so the binding rule can't be weakened); VERKAUF → `total_eur ≥` threshold AND (no customer OR unverified) → RAISE; **stornos skip** (never re-block a reversal); the Verkauf threshold is read from `system_settings` (source of truth); **fails-closed** (null/missing customer → RAISE).
+  - **Settings reconciliation (one source of truth):** `gwg.verkauf_identity_threshold_eur='2000.00'` (enforced) + `gwg.ankauf_identity_required_always=true` (doc-only — the trigger does NOT read it) + the dormant `kyc.high_value_threshold_eur` (€10.000, ADR-0018 §6, read nowhere) realigned to €2.000 + marked **SUPERSEDED**.
+  - **Error mapping:** `KYC_REQUIRED` (403); `pgErrorToCode` matches the `'KYC hard-block'` prefix; `KycRequiredError`. Route pre-checks (transactions-ankauf.ts + transactions-finalize.ts) give a friendly German error (*"Identifizierung erforderlich (§ 259 / § 10 GwG)"*) before the trigger.
+  - **Client (UI-SURFACING ONLY):** `evaluateKycGate` is direction-aware (object param) — ANKAUF from €0,01, VERKAUF ≥ €2.000; the **§10 aggregate banner (#101) preserved**; IntakeList/AnkaufBezahlenDialog copy corrected; BezahlenDialog surfaces the Verkauf §10 note.
+- **Review verdict (independently verified, NOT rubber-stamped):** trigger SQL read line-by-line (correct, fails-closed, mirrors the prod-proven sanctions pattern); the OWNER-TO-security convention confirmed in 0013 (used 3×); error mapping correct; client gate clean (defense-in-depth — client surfaces, server enforces); gates RE-RUN independently (api-cloud + tauri-pos `tsc` exit 0; smurfing 14; kyc-gate 11); migration append-only + idempotent; **#45 respected** (a KYC refusal is a transaction REJECTION, not a new alert type — no ADR).
+- **⚠️ PRE-GO-LIVE GATE (honest — the one thing neither executor nor strategist could run here):** the trigger's RUNTIME RAISE/SQLSTATE rejection against a real Postgres + the route pre-checks end-to-end need the **testcontainers / DB-integration harness** (no local `psql`; a valid `transactions` INSERT must also satisfy the sanctions/closing-day/CHECK fixtures). Risk is LOW (structurally identical to the prod-proven sanctions trigger; only the KYC predicate is new + read-verified), but **run the DB-integration test before deploying.**
