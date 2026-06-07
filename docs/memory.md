@@ -3135,3 +3135,18 @@ tools still stubs; Apple Developer ID signing.
 - ⚠️ **Server dead-code candidate (flag, don't act):** `/api/bridge/overview` (+ its briefing) now has
   no `src` consumer. Removing it is a separate, riskier change (tests / future clients) — defer to a
   deliberate cleanup, and resolve it together with the §28.5 briefing product decision.
+
+### 28.9 Briefing decision RESOLVED — German-only (Decision #108)
+- **#108 — option (b): the dead `/api/bridge/overview` + its Arabic briefing were removed.** Basel chose
+  German-only for the Owner Control Desktop, so the §28.5 open product decision and the §28.8
+  server-dead-code flag are now **closed**. The `/api/bridge/overview` route + its overview-exclusive
+  schemas/types/helpers (`StatusTone`, `LiveEvent`, `WatchItem`, `QuickAction`, `BridgeOverviewResponse`,
+  `AggRow`, `FeedRow`, `TseExpiringRow`, `berlinHHMM`, `EVENT_LABELS`, `ENTITY_LABELS`, `toneForEvent`)
+  were deleted from `bridge.ts` (**−370 lines**). `/api/bridge/summary` is **byte-identical** (verified
+  `git diff`: +8/−370, the additions are the file header only — no `/summary` line changed). No other
+  consumer existed (grep: no src/test/contract ref). Gates: api-cloud `tsc --noEmit` exit 0 + biome
+  clean. Commit `9e234be` on `claude/control-desktop-polish` (same branch as the client-side dedupe —
+  the dead bridge module's two halves removed together). The Control Desktop is now verified
+  German-only (no Arabic remains in `control-desktop/src`). If a morning briefing is ever wanted for
+  Roman, it would be written fresh in **German** and folded into `/summary` — not the old Arabic
+  `/overview`.
