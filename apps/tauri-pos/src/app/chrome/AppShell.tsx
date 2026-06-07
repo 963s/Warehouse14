@@ -35,6 +35,7 @@ import { UpdateBanner } from '../../components/UpdateBanner.js';
 import { useAlertSubscription } from '../../hooks/useAlertSubscription.js';
 import { useApiClient } from '../../lib/api-context.js';
 import { releaseCart } from '../../lib/release-cart.js';
+import { clearSessionToken } from '../../lib/session-token.js';
 import { useAnkaufCartStore } from '../../state/ankauf-cart-store.js';
 import { useBewertungStore } from '../../state/bewertung-store.js';
 import { useCartStore } from '../../state/cart-store.js';
@@ -183,6 +184,7 @@ export function AppShell(): JSX.Element {
     } catch {
       /* network failure should NOT block local sign-out */
     }
+    clearSessionToken();
     setUnauthenticated();
     clearLedger();
     clearRecents();

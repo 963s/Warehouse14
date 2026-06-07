@@ -31,6 +31,12 @@ export interface PinLoginResponse {
   ok: true;
   sessionExpiresAt: string;
   actor: SessionActor;
+  /**
+   * The session token (same value as the `warehouse14.session` cookie). The
+   * POS stores this and sends it as `Authorization: Bearer` so auth survives
+   * on Windows WebView2, where the cross-site session cookie is dropped.
+   */
+  token: string;
 }
 
 // ────────────────────────────────────────────────────────────────────────

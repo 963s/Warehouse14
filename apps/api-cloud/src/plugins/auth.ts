@@ -120,12 +120,24 @@ const authPlugin: FastifyPluginAsync<AuthPluginOpts> = async (app, opts) => {
       return;
     }
 
-    // Look up the session via the cookie name we configured above.
+    // Resolve the session token from (1) the cookie, (2) an `Authorization:
+    // Bearer` header, or (3) an `access_token` query param on SSE routes only
+    // (EventSource cannot set headers). The Bearer + query paths exist because
+    // the cross-site `SameSite=None; Secure` cookie is dropped by Windows
+    // WebView2 — see apps/tauri-pos/src/lib/session-token.ts.
+    let sessionToken: string | null = null;
     const cookie = req.headers.cookie;
-    if (!cookie) return; // No cookie → unauthenticated; route helpers throw.
-
-    const sessionToken = parseSessionCookie(cookie, 'warehouse14.session');
-    if (!sessionToken) return;
+    if (cookie) sessionToken = parseSessionCookie(cookie, 'warehouse14.session');
+    if (!sessionToken) {
+      const authz = req.headers.authorization;
+      if (authz?.startsWith('Bearer ')) sessionToken = authz.slice(7).trim() || null;
+    }
+    if (!sessionToken && req.url.startsWith('/api/sse/')) {
+      const q = req.query as Record<string, unknown> | undefined;
+      const at = q?.access_token;
+      if (typeof at === 'string' && at.length > 0) sessionToken = at;
+    }
+    if (!sessionToken) return; // unauthenticated; route helpers throw.
 
     // The cookie carries the session token. Look up the session by token,
     // then load the actor+session bundle.

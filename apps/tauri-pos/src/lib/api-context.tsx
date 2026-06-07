@@ -33,6 +33,7 @@ import {
 } from '@warehouse14/api-client';
 
 import { TauriSqlOutboxStore } from './outbox-store.js';
+import { getSessionToken } from './session-token.js';
 import { stepUpService } from './stepUpService.js';
 import { telemetrySink } from './telemetrySink.js';
 
@@ -119,6 +120,9 @@ export function ApiClientProvider({
       baseUrl,
       credentials: 'include',
       defaultHeaders,
+      // Durable auth on Windows WebView2 (cross-site session cookie is dropped):
+      // every request also carries the stored session token as a Bearer header.
+      getAuthToken: getSessionToken,
       middlewares: productionMiddlewares,
     });
   }, [baseUrl, devDeviceFingerprint]);

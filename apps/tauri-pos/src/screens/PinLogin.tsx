@@ -21,6 +21,7 @@ import { DiamondRule, ParchmentCard, PinPad, RomanIndex } from '@warehouse14/ui-
 
 import { ThemeToggle } from '../app/chrome/ThemeToggle.js';
 import { useApiClient } from '../lib/api-context.js';
+import { setSessionToken } from '../lib/session-token.js';
 import { useSessionStore } from '../state/session-store.js';
 
 export function PinLogin(): JSX.Element {
@@ -63,6 +64,9 @@ export function PinLogin(): JSX.Element {
     setErrorMsg(null);
     try {
       const res = await authPin.login(api, { pin });
+      // Store the token for the Bearer-header auth path (Windows WebView2 drops
+      // the cross-site session cookie) before flipping the session state.
+      setSessionToken(res.token);
       setFromLogin(res);
     } catch (err) {
       if (err instanceof ApiError) {

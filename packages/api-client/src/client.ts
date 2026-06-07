@@ -71,6 +71,13 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
       ...config.defaultHeaders,
       ...opts.headers,
     };
+    // Durable auth fallback: the Tauri webview drops the cross-site session
+    // cookie on Windows WebView2, so attach the session token as a Bearer
+    // header when present and the caller hasn't set its own Authorization.
+    if (headers.Authorization === undefined && headers.authorization === undefined) {
+      const authToken = config.getAuthToken?.();
+      if (authToken) headers.Authorization = `Bearer ${authToken}`;
+    }
     if (body !== undefined) {
       headers['Content-Type'] = 'application/json';
     }

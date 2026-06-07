@@ -368,6 +368,9 @@ const authPinRoutes: FastifyPluginAsync<{ env: Env }> = async (app, opts) => {
         ok: true as const,
         sessionExpiresAt: expiresAt.toISOString(),
         actor: { id: state.id, role: state.role, isOwner: state.isOwner },
+        // Also return the token so the Tauri webview can carry it as a Bearer
+        // header — the cross-site session cookie is dropped on Windows WebView2.
+        token,
       };
     },
   );

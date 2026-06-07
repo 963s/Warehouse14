@@ -64,6 +64,16 @@ export interface ApiClientConfig {
   /** Extra default headers, e.g. `{ 'X-Dev-Device-Fingerprint': '…' }` in dev. */
   defaultHeaders?: Record<string, string>;
   /**
+   * Optional bearer-token provider, evaluated per request. When it returns a
+   * non-empty string the client adds `Authorization: Bearer <token>` (unless
+   * the caller already set an Authorization header). This is the durable auth
+   * path for the Tauri webview on Windows (WebView2 @ the non-secure
+   * `http://tauri.localhost` origin), where the cross-site `SameSite=None;
+   * Secure` session cookie is dropped. Cookie auth still applies where the
+   * browser keeps it; the header is an additive fallback.
+   */
+  getAuthToken?: () => string | null | undefined;
+  /**
    * Middleware chain. Outermost first; the terminal `fetch` runs after the
    * last entry. Order is load-bearing — see ADR-0042 + ADR-0043 in
    * `docs/architecture/adr/`. Omit for a raw client (used by the session

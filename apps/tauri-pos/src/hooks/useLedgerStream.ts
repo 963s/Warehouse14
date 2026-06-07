@@ -30,6 +30,7 @@ import {
 } from '@warehouse14/api-client';
 
 import { useApiClient } from '../lib/api-context.js';
+import { getSessionToken } from '../lib/session-token.js';
 import { useLedgerFeed } from '../state/ledger-feed-store.js';
 import { dashboardQueryKey } from './useDashboardSummary.js';
 
@@ -99,7 +100,12 @@ export function useLedgerStream(enabled: boolean): UseLedgerStreamResult {
       setStatus('connecting');
       setLastError(null);
 
-      const url = `${apiClient.baseUrl.replace(/\/+$/, '')}/api/sse/ledger`;
+      // EventSource can't set an Authorization header, so the session token
+      // rides as a query param — the auth preHandler accepts `access_token`
+      // for /api/sse/* (Windows WebView2 drops the cross-site session cookie).
+      const token = getSessionToken();
+      const sseBase = `${apiClient.baseUrl.replace(/\/+$/, '')}/api/sse/ledger`;
+      const url = token ? `${sseBase}?access_token=${encodeURIComponent(token)}` : sseBase;
       const es = new EventSource(url, { withCredentials: true });
       esRef.current = es;
 
