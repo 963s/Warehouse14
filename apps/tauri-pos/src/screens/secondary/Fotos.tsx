@@ -272,6 +272,49 @@ export function Fotos(): JSX.Element {
     return 'Allgemein — Zuordnung später';
   }, [mode, productId, customerId]);
 
+  // ── Finish action (UX P0) ───────────────────────────────────────────────
+  // The capture flow must have a clear END. `finish()` persists nothing extra
+  // (every snapshot is already saved server-side once it reaches status
+  // 'done') — it returns the operator to the product sheet (manage mode) or,
+  // failing a returnTo, to the Lager list. We surface how many photos are
+  // saved-but-still-uploading so the operator doesn't leave mid-upload by
+  // mistake.
+  const savedCount = useMemo(
+    () => snapshots.filter((s) => s.status === 'done').length,
+    [snapshots],
+  );
+  const pendingCount = useMemo(
+    () =>
+      snapshots.filter(
+        (s) => s.status === 'queued' || s.status === 'uploading' || s.status === 'registering',
+      ).length,
+    [snapshots],
+  );
+
+  const finish = useCallback((): void => {
+    if (pendingCount > 0) {
+      addToast({
+        tone: 'info',
+        title: 'Uploads noch aktiv',
+        body: `${pendingCount} Foto(s) werden noch hochgeladen — bitte kurz warten.`,
+      });
+      return;
+    }
+    if (returnTo) {
+      navigate(returnTo);
+      return;
+    }
+    if (mode === 'produkt' && productId) {
+      navigate(`/lager?produkt=${encodeURIComponent(productId)}`);
+      return;
+    }
+    navigate('/lager');
+  }, [addToast, mode, navigate, pendingCount, productId, returnTo]);
+
+  // KYC mode keeps its own binding flow + back-link; the product/orphan flow
+  // gets the explicit finish CTA.
+  const showFinish = mode !== 'kyc';
+
   return (
     <section
       aria-label="Foto-Werkstatt"
@@ -334,26 +377,37 @@ export function Fotos(): JSX.Element {
             {contextLine}
           </span>
         </div>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <ModeChip
-            active={mode === 'allgemein'}
-            label="Allgemein"
-            onClick={() => setMode('allgemein')}
-          />
-          <ModeChip
-            active={mode === 'produkt'}
-            label="Produkt"
-            onClick={() => setMode('produkt')}
-            disabled={mode !== 'produkt' && !productId}
-            disabledReason="Aus Lager öffnen, um ein Produkt zu binden"
-          />
-          <ModeChip
-            active={mode === 'kyc'}
-            label="KYC-Dokument"
-            onClick={() => setMode('kyc')}
-            disabled={mode !== 'kyc' && !customerId}
-            disabledReason="Aus Kunden öffnen, um einen Kunden zu binden"
-          />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <ModeChip
+              active={mode === 'allgemein'}
+              label="Allgemein"
+              onClick={() => setMode('allgemein')}
+            />
+            <ModeChip
+              active={mode === 'produkt'}
+              label="Produkt"
+              onClick={() => setMode('produkt')}
+              disabled={mode !== 'produkt' && !productId}
+              disabledReason="Aus Lager öffnen, um ein Produkt zu binden"
+            />
+            <ModeChip
+              active={mode === 'kyc'}
+              label="KYC-Dokument"
+              onClick={() => setMode('kyc')}
+              disabled={mode !== 'kyc' && !customerId}
+              disabledReason="Aus Kunden öffnen, um einen Kunden zu binden"
+            />
+          </div>
+          {showFinish && (
+            <Button variant="primary" size="md" onClick={finish} disabled={pendingCount > 0}>
+              {pendingCount > 0
+                ? `Lädt… (${pendingCount})`
+                : mode === 'produkt' && (returnTo || productId)
+                  ? `Fertig · zum Produkt${savedCount > 0 ? ` (${savedCount})` : ''}`
+                  : 'Fertig · Speichern'}
+            </Button>
+          )}
         </div>
       </header>
 

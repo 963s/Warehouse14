@@ -23,10 +23,17 @@
 
 import { randomUUID } from 'node:crypto';
 import { Type } from '@sinclair/typebox';
-import { eq } from 'drizzle-orm';
+import { count, eq } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 
-import { auditLog, productPhotos, products } from '@warehouse14/db/schema';
+import {
+  auditLog,
+  productCategories,
+  productEbayListingEvents,
+  productPhotos,
+  products,
+  transactionItems,
+} from '@warehouse14/db/schema';
 
 import type { Env } from '../config/env.js';
 import { requireAuth, requireRole, requireStepUp } from '../lib/auth-policy.js';
@@ -37,6 +44,7 @@ import {
   ArchiveProductResponse,
   CreateProductBody,
   CreateProductResponse,
+  DeleteProductResponse,
   RequestPhotoUploadBody,
   RequestPhotoUploadResponse,
   type CreateProductBody as TCreateProductBody,
@@ -68,6 +76,12 @@ class ProductAlreadyArchivedError extends DomainError {
 class R2NotConfiguredError extends DomainError {
   public readonly httpStatus = 500;
   public readonly code: ApiErrorCode = 'INTERNAL_ERROR';
+}
+
+/** Raised when a product is not in a deletable state (only unsold DRAFTs go). */
+class ProductNotDeletableError extends DomainError {
+  public readonly httpStatus = 409;
+  public readonly code: ApiErrorCode = 'CONFLICT';
 }
 
 const ErrorResponse = Type.Object({
@@ -437,6 +451,137 @@ const productsRoutes: FastifyPluginAsync<ProductsRoutesOpts> = async (app, opts)
       return reply.status(200).send({
         id: outcome.id,
         archivedAt: outcome.archivedAt.toISOString(),
+      });
+    },
+  );
+
+  // ══════════════════════════════════════════════════════════════════════
+  // DELETE /api/products/:id — hard-delete an UNSOLD DRAFT product
+  //
+  // Lifecycle UX: an operator who created a product by mistake (wrong SKU,
+  // duplicate intake, test row) needs a clean way to remove it. This is the
+  // ONLY destructive product route and it is deliberately narrow:
+  //
+  //   • status MUST be DRAFT — a published / reserved / SOLD row is never
+  //     deletable (SOLD rows are fiscally immutable; use /archive instead).
+  //   • the row MUST NOT be archived (archived rows are kept for the trail).
+  //   • the row MUST NOT be referenced by any transaction_items (defence in
+  //     depth — a DRAFT cannot have a sale, but we verify the fiscal FK
+  //     before touching anything).
+  //
+  // Owned child rows (photos, eBay events, category links) are removed in the
+  // same transaction so no FK orphans block the delete. Step-up is required
+  // (same bar as archive) and a `product.deleted` audit row is written.
+  // ══════════════════════════════════════════════════════════════════════
+  app.delete<{ Params: { id: string } }>(
+    '/api/products/:id',
+    {
+      schema: {
+        tags: ['products'],
+        summary: 'Delete an unsold DRAFT product (Owner-only, step-up).',
+        description:
+          'Hard-deletes a product that is still a DRAFT and has never been part of a fiscal ' +
+          'transaction. Published / reserved / SOLD / archived rows are refused (409). Owned ' +
+          'photo, eBay-event and category-link rows are removed in the same transaction. ' +
+          'Writes a product.deleted audit row.',
+        params: Type.Object({ id: Type.String({ format: 'uuid' }) }),
+        response: {
+          200: DeleteProductResponse,
+          401: ErrorResponse,
+          403: ErrorResponse,
+          404: ErrorResponse,
+          409: ErrorResponse,
+        },
+      },
+    },
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'ADMIN');
+      requireStepUp(req);
+
+      const { id } = req.params;
+      const actorId = req.actor.id;
+      const deviceId = req.deviceId ?? null;
+
+      const outcome = await app.db.transaction(async (tx) => {
+        const rows = await tx
+          .select({
+            id: products.id,
+            sku: products.sku,
+            name: products.name,
+            status: products.status,
+            archivedAt: products.archivedAt,
+            soldAt: products.soldAt,
+            acquisitionCostEur: products.acquisitionCostEur,
+          })
+          .from(products)
+          .where(eq(products.id, id))
+          .limit(1);
+        const before = rows[0];
+        if (!before) throw new ProductNotFoundError(`Product ${id} not found.`);
+
+        if (before.status !== 'DRAFT') {
+          throw new ProductNotDeletableError(
+            `Nur Entwürfe können gelöscht werden. Produkt ${before.sku} ist ${before.status}. Verkaufte Stücke werden archiviert, nicht gelöscht.`,
+          );
+        }
+        if (before.archivedAt) {
+          throw new ProductNotDeletableError(
+            `Produkt ${before.sku} ist bereits archiviert und kann nicht gelöscht werden.`,
+          );
+        }
+        if (before.soldAt) {
+          throw new ProductNotDeletableError(
+            `Produkt ${before.sku} ist fiskalisch verknüpft (Verkaufsdatum gesetzt) und kann nicht gelöscht werden.`,
+          );
+        }
+
+        // Defence in depth: never delete a row any fiscal line item references.
+        const [itemCount] = await tx
+          .select({ n: count() })
+          .from(transactionItems)
+          .where(eq(transactionItems.productId, id));
+        if (Number(itemCount?.n ?? 0) > 0) {
+          throw new ProductNotDeletableError(
+            `Produkt ${before.sku} ist mit einem Beleg verknüpft und kann nicht gelöscht werden.`,
+          );
+        }
+
+        // Remove owned children first (no ON DELETE CASCADE on these FKs).
+        await tx.delete(productCategories).where(eq(productCategories.productId, id));
+        await tx.delete(productEbayListingEvents).where(eq(productEbayListingEvents.productId, id));
+        await tx.delete(productPhotos).where(eq(productPhotos.productId, id));
+
+        const deleted = await tx
+          .delete(products)
+          .where(eq(products.id, id))
+          .returning({ id: products.id, sku: products.sku });
+        const row = deleted[0];
+        if (!row) throw new Error('product DELETE returned no row');
+
+        const now = new Date();
+        await tx.insert(auditLog).values({
+          eventType: 'product.deleted',
+          actorUserId: actorId,
+          deviceId,
+          ipAddress: req.ip ?? null,
+          userAgent: req.headers['user-agent'] ?? null,
+          payload: {
+            productId: id,
+            sku: before.sku,
+            name: before.name,
+            acquisitionCostEur: before.acquisitionCostEur,
+            deletedAt: now.toISOString(),
+          },
+        });
+
+        return { id: row.id, sku: row.sku, deletedAt: now };
+      });
+
+      return reply.status(200).send({
+        id: outcome.id,
+        sku: outcome.sku,
+        deletedAt: outcome.deletedAt.toISOString(),
       });
     },
   );

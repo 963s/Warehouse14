@@ -1,22 +1,48 @@
 /**
  * CatalogGrid — left column of Verkauf.
  *
- * Loads `GET /api/products?status=AVAILABLE` via TanStack Query. Renders
- * a sparse grid: each card shows SKU + Name + listPrice. Clicking a card
- * fires the reservation flow (parent handles the API + cart-store push).
+ * Loads `GET /api/products?status=AVAILABLE` via TanStack Query. Renders a
+ * responsive grid of IMAGE CARDS: each tile leads with the product's primary
+ * photo (a tasteful placeholder when none), then name, price, SKU and a small
+ * status/metal chip. Clicking a card fires the reservation flow (parent handles
+ * the API + cart-store push).
  *
  * Search affordance — the brand MagnifierIcon + a mono input — refetches
  * with the `q` query param so the server does the ILIKE work. Debounced
  * 240 ms.
+ *
+ * Performance: the tile is wrapped in `React.memo` and `onSelect` is forwarded
+ * unchanged from the parent (a stable useCallback), so a scanner burst that
+ * mutates `reservingProductIds` / `inCart` only re-renders the tiles whose
+ * membership actually flipped — not the whole grid (audit fix for the
+ * re-render storms under fast USB-scanner input).
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 
 import { type ProductListRow, productsApi } from '@warehouse14/api-client';
 import { Button, MagnifierIcon, MoneyAmount, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
+
+/** German labels for the metal chip. `null` metal renders no chip. */
+const METAL_LABEL: Record<string, string> = {
+  gold: 'Gold',
+  silver: 'Silber',
+  platinum: 'Platin',
+  palladium: 'Palladium',
+};
+
+/**
+ * Resolve the catalog tile image. The API returns a RELATIVE thumb path
+ * (`/api/photos/<id>/thumb`); we prefix it with the api-client baseUrl so the
+ * public-by-UUID /thumb route resolves cross-origin in the Tauri webview.
+ */
+function resolveThumbUrl(baseUrl: string, path: string | null): string | null {
+  if (!path) return null;
+  return `${baseUrl.replace(/\/$/, '')}${path}`;
+}
 
 export interface CatalogGridProps {
   /**
@@ -215,8 +241,8 @@ export function CatalogGrid({
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-              gap: 12,
+              gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+              gap: 14,
             }}
           >
             {items.map((it) => {
@@ -226,6 +252,7 @@ export function CatalogGrid({
                 <ProductTile
                   key={it.id}
                   product={it}
+                  thumbUrl={resolveThumbUrl(api.baseUrl, it.primaryPhotoThumbUrl)}
                   disabled={busy || isInCart}
                   busy={busy}
                   inCart={isInCart}
@@ -240,19 +267,30 @@ export function CatalogGrid({
   );
 }
 
-function ProductTile({
-  product,
-  disabled,
-  busy,
-  inCart,
-  onSelect,
-}: {
+interface ProductTileProps {
   product: ProductListRow;
+  /** Absolute thumb URL, or null when the product has no primary photo. */
+  thumbUrl: string | null;
   disabled: boolean;
   busy: boolean;
   inCart: boolean;
   onSelect: (p: ProductListRow) => void;
-}): JSX.Element {
+}
+
+/**
+ * Image card for one catalog product. Memoized so a scanner burst that flips
+ * one product's reserve/cart membership doesn't re-render every sibling tile.
+ */
+const ProductTile = memo(function ProductTile({
+  product,
+  thumbUrl,
+  disabled,
+  busy,
+  inCart,
+  onSelect,
+}: ProductTileProps): JSX.Element {
+  const metalLabel = product.metal ? METAL_LABEL[product.metal] : null;
+
   return (
     <button
       type="button"
@@ -263,83 +301,216 @@ function ProductTile({
         textAlign: 'left',
         display: 'flex',
         flexDirection: 'column',
-        gap: 6,
-        padding: '16px 16px 14px', // A1: roomier touch target for fast-paced retail
-        minHeight: 108, // A1: consistent, comfortable tap area
-        border: '1px solid transparent',
+        padding: 0,
+        overflow: 'hidden',
+        border: '1px solid var(--w14-rule)',
         borderRadius: 'var(--w14-radius-card)',
         backgroundColor: inCart ? 'var(--w14-parchment-3)' : 'var(--w14-parchment-2)',
         boxShadow: 'var(--w14-shadow-card)',
         color: 'var(--w14-ink)',
         cursor: disabled || inCart ? 'default' : 'pointer',
-        opacity: disabled && !busy ? 0.55 : 1,
+        opacity: disabled && !busy ? 0.6 : 1,
         transition:
           'border-color var(--w14-dur-short) var(--w14-ease-curator),' +
-          ' background-color var(--w14-dur-short) var(--w14-ease-curator)',
+          ' box-shadow var(--w14-dur-short) var(--w14-ease-curator),' +
+          ' transform var(--w14-dur-short) var(--w14-ease-curator)',
       }}
       onMouseEnter={(ev) => {
         if (disabled || inCart) return;
-        (ev.currentTarget as HTMLButtonElement).style.borderColor = 'var(--w14-gold)';
+        const el = ev.currentTarget as HTMLButtonElement;
+        el.style.borderColor = 'var(--w14-gold)';
+        el.style.transform = 'translateY(-2px)';
       }}
       onMouseLeave={(ev) => {
-        (ev.currentTarget as HTMLButtonElement).style.borderColor = 'transparent';
+        const el = ev.currentTarget as HTMLButtonElement;
+        el.style.borderColor = 'var(--w14-rule)';
+        el.style.transform = 'translateY(0)';
       }}
     >
-      <span
-        className="w14-tabular"
-        style={{
-          fontFamily: 'var(--w14-font-mono)',
-          fontSize: '0.78rem',
-          color: 'var(--w14-ink-faded)',
-        }}
-      >
-        {product.sku}
-      </span>
-      <span
-        style={{
-          fontFamily: 'var(--w14-font-display)',
-          fontWeight: 500,
-          fontSize: '1rem',
-          lineHeight: 1.3,
-        }}
-      >
-        {product.name}
-      </span>
+      {/* Image */}
+      <ProductThumb thumbUrl={thumbUrl} alt={product.name} dimmed={inCart} />
+
+      {/* Body */}
       <div
         style={{
-          marginTop: 6,
           display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'baseline',
+          flexDirection: 'column',
+          gap: 6,
+          padding: '12px 14px 14px',
         }}
       >
-        <MoneyAmount valueEur={product.listPriceEur} emphasis />
-        {inCart && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 8,
+          }}
+        >
           <span
-            className="w14-smallcaps"
+            className="w14-tabular"
             style={{
-              fontSize: '0.72rem',
-              color: 'var(--w14-gold)',
-              letterSpacing: '0.08em',
-            }}
-          >
-            im Korb
-          </span>
-        )}
-        {busy && !inCart && (
-          <span
-            style={{
-              fontFamily: 'var(--w14-font-display)',
-              fontStyle: 'italic',
-              fontSize: '0.78rem',
+              fontFamily: 'var(--w14-font-mono)',
+              fontSize: '0.74rem',
               color: 'var(--w14-ink-faded)',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
             }}
           >
-            reserviert…
+            {product.sku}
           </span>
-        )}
+          {metalLabel && (
+            <span
+              className="w14-smallcaps"
+              style={{
+                flexShrink: 0,
+                padding: '2px 8px',
+                fontSize: '0.66rem',
+                letterSpacing: '0.06em',
+                borderRadius: 999,
+                border: '1px solid var(--w14-rule)',
+                color: 'var(--w14-ink-faded)',
+                backgroundColor: 'var(--w14-parchment-1)',
+              }}
+            >
+              {metalLabel}
+            </span>
+          )}
+        </div>
+
+        <span
+          style={{
+            fontFamily: 'var(--w14-font-display)',
+            fontWeight: 500,
+            fontSize: '0.98rem',
+            lineHeight: 1.3,
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+            minHeight: '2.5em',
+          }}
+        >
+          {product.name}
+        </span>
+
+        <div
+          style={{
+            marginTop: 2,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'baseline',
+            gap: 8,
+          }}
+        >
+          <MoneyAmount valueEur={product.listPriceEur} emphasis />
+          {inCart && (
+            <span
+              className="w14-smallcaps"
+              style={{
+                fontSize: '0.72rem',
+                color: 'var(--w14-gold)',
+                letterSpacing: '0.08em',
+              }}
+            >
+              im Korb
+            </span>
+          )}
+          {busy && !inCart && (
+            <span
+              style={{
+                fontFamily: 'var(--w14-font-display)',
+                fontStyle: 'italic',
+                fontSize: '0.78rem',
+                color: 'var(--w14-ink-faded)',
+              }}
+            >
+              reserviert…
+            </span>
+          )}
+        </div>
       </div>
     </button>
+  );
+});
+
+/**
+ * Square image header for a tile. Renders the WebP thumb when present, else a
+ * neutral placeholder mark. Decoupled into its own component so an `onError`
+ * fallback (e.g. a deleted byte / offline thumb route) doesn't force the whole
+ * tile to carry image-load state.
+ */
+function ProductThumb({
+  thumbUrl,
+  alt,
+  dimmed,
+}: {
+  thumbUrl: string | null;
+  alt: string;
+  dimmed: boolean;
+}): JSX.Element {
+  const [failed, setFailed] = useState<boolean>(false);
+  const showImage = thumbUrl !== null && !failed;
+
+  return (
+    <div
+      style={{
+        position: 'relative',
+        aspectRatio: '1 / 1',
+        width: '100%',
+        backgroundColor: 'var(--w14-parchment-3)',
+        borderBottom: '1px solid var(--w14-rule)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+      }}
+    >
+      {showImage ? (
+        <img
+          src={thumbUrl ?? undefined}
+          alt={alt}
+          loading="lazy"
+          decoding="async"
+          onError={() => setFailed(true)}
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            display: 'block',
+            opacity: dimmed ? 0.7 : 1,
+          }}
+        />
+      ) : (
+        <PhotoPlaceholder />
+      )}
+    </div>
+  );
+}
+
+/** Neutral mark shown when a product has no catalog photo yet. */
+function PhotoPlaceholder(): JSX.Element {
+  return (
+    <svg
+      width={40}
+      height={40}
+      viewBox="0 0 24 24"
+      fill="none"
+      role="img"
+      aria-label="Kein Foto"
+      style={{ color: 'var(--w14-ink-faded)', opacity: 0.5 }}
+    >
+      <rect x={3} y={4} width={18} height={16} rx={2} stroke="currentColor" strokeWidth={1.4} />
+      <circle cx={8.5} cy={9} r={1.6} fill="currentColor" />
+      <path
+        d="M4 17l4.5-4.5 3 3L16 11l4 5"
+        stroke="currentColor"
+        strokeWidth={1.4}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 

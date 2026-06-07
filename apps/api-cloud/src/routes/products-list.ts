@@ -31,6 +31,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import {
   categories as categoriesTable,
   productCategories as productCategoriesTable,
+  productPhotos as productPhotosTable,
   products,
 } from '@warehouse14/db/schema';
 
@@ -162,6 +163,34 @@ const productsListRoute: FastifyPluginAsync = async (app) => {
         }
       }
 
+      // Catalog image: the primary, locally-stored photo per product. We emit a
+      // RELATIVE thumb path (`/api/photos/<photoId>/thumb`) — the same shape as
+      // routes/photos.ts serializePhoto, minus the host. The POS prefixes it with
+      // its api-client baseUrl. Only `storage_kind='local'` rows are streamable
+      // by the public /thumb route, so we filter to those; legacy R2 rows resolve
+      // to NULL (no catalog image rather than a broken cross-origin <img>).
+      const thumbPathByProductId = new Map<string, string>();
+      if (productIds.length > 0) {
+        const primaryPhotos = await app.db
+          .select({
+            productId: productPhotosTable.productId,
+            photoId: productPhotosTable.id,
+          })
+          .from(productPhotosTable)
+          .where(
+            and(
+              inArray(productPhotosTable.productId, productIds),
+              eq(productPhotosTable.isPrimary, true),
+              eq(productPhotosTable.storageKind, 'local'),
+            ),
+          );
+        for (const ph of primaryPhotos) {
+          if (ph.productId) {
+            thumbPathByProductId.set(ph.productId, `/api/photos/${ph.photoId}/thumb`);
+          }
+        }
+      }
+
       return reply.status(200).send({
         items: rows.map((r) => ({
           id: r.id,
@@ -169,6 +198,7 @@ const productsListRoute: FastifyPluginAsync = async (app) => {
           slug: r.slug,
           primaryCategory: primaryByProductId.get(r.id) ?? null,
           barcode: r.barcode,
+          primaryPhotoThumbUrl: thumbPathByProductId.get(r.id) ?? null,
           status: r.status,
           condition: r.condition,
           itemType: r.itemType,

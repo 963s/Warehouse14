@@ -677,6 +677,11 @@ function ManageBody({
             <AccordionItem id="handel" title="Handel (eBay)">
               <HandelSection product={product} />
             </AccordionItem>
+            {product.status === 'DRAFT' && !product.archivedAt && (
+              <AccordionItem id="loeschen" title="Artikel löschen">
+                <LoeschenSection product={product} onDeleted={onClose} />
+              </AccordionItem>
+            )}
           </Accordion>
         )}
       </DialogBody>
@@ -1128,47 +1133,186 @@ function HandelSection({ product }: { product: ProductDetail }): JSX.Element {
   const addToast = useToastStore((s) => s.addToast);
   const [busy, setBusy] = useState(false);
 
+  // ONE-CLICK eBay enrol (UX P0). Honest about the stub: this records the
+  // product in the eBay listing pipeline (state ENTWURF) — the actual push to
+  // the eBay marketplace is NOT yet connected (Phase D). We never claim a live
+  // listing that doesn't exist.
+  const enrolled = product.ebayState !== null;
+
   async function enlist(): Promise<void> {
-    if (busy) return;
+    if (busy || enrolled) return;
     setBusy(true);
     try {
       await ebayApi.transition(api, product.id, { toState: 'ENTWURF' });
       addToast({
         tone: 'success',
-        title: 'Auf eBay angemeldet',
-        body: `${product.sku} — als Entwurf in der eBay-Pipeline`,
+        title: 'In eBay-Pipeline aufgenommen',
+        body: `${product.sku} — als Entwurf vorgemerkt (noch nicht live bei eBay).`,
       });
       await qc.invalidateQueries({ queryKey: productDetailQueryKey(product.id) });
       await qc.invalidateQueries({ queryKey: ['products', 'list'] });
     } catch (err) {
       const msg =
         err instanceof ApiError ? err.message : 'Verbindung gestört — bitte erneut versuchen.';
-      addToast({ tone: 'alert', title: 'eBay-Anmeldung fehlgeschlagen', body: msg });
+      addToast({ tone: 'alert', title: 'eBay-Aufnahme fehlgeschlagen', body: msg });
     } finally {
       setBusy(false);
     }
   }
 
-  if (product.ebayState === null) {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <p style={{ margin: 0, fontSize: '0.86rem', color: 'var(--w14-ink-faded)' }}>
-          Noch nicht bei eBay. „Anmelden" legt das Stück als Entwurf in der eBay-Pipeline an — der
-          weitere Ablauf passiert in der eBay-Konsole.
-        </p>
-        <div>
-          <Button variant="primary" disabled={busy} onClick={() => void enlist()}>
-            {busy ? 'Wird angemeldet…' : 'Auf eBay anmelden'}
-          </Button>
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* Status row — single, honest line about where the listing stands. */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 16,
+          padding: '10px 14px',
+          background: 'var(--w14-parchment-2)',
+          border: '1px solid var(--w14-rule)',
+          borderRadius: 'var(--w14-radius-card)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span
+            aria-hidden
+            style={{
+              display: 'inline-block',
+              width: 12,
+              height: 12,
+              borderRadius: 999,
+              background: enrolled ? 'var(--w14-gold)' : 'var(--w14-rule)',
+            }}
+          />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span
+              className="w14-smallcaps"
+              style={{
+                letterSpacing: '0.08em',
+                fontSize: '0.78rem',
+                fontWeight: 600,
+                color: enrolled ? 'var(--w14-gold)' : 'var(--w14-ink-faded)',
+              }}
+            >
+              {enrolled ? `eBay: ${product.ebayState}` : 'Noch nicht bei eBay'}
+            </span>
+            <span
+              style={{ fontSize: '0.76rem', color: 'var(--w14-ink-faded)', fontStyle: 'italic' }}
+            >
+              {enrolled
+                ? 'In der eBay-Pipeline vorgemerkt — Marktplatz-Push folgt (Phase D).'
+                : 'Mit einem Klick in die eBay-Pipeline aufnehmen.'}
+            </span>
+          </div>
         </div>
+        {!enrolled && (
+          <Button variant="primary" size="md" disabled={busy} onClick={() => void enlist()}>
+            {busy ? 'Wird vorgemerkt…' : 'Bei eBay listen'}
+          </Button>
+        )}
       </div>
-    );
+
+      {/* Honest stub disclosure — the marketplace connection is not live yet. */}
+      <p
+        style={{
+          margin: 0,
+          padding: '8px 12px',
+          fontSize: '0.78rem',
+          color: 'var(--w14-ink-aged)',
+          background: 'var(--w14-parchment-3)',
+          border: '1px dashed var(--w14-rule)',
+          borderRadius: 'var(--w14-radius-card)',
+          lineHeight: 1.4,
+        }}
+      >
+        Hinweis: Die direkte eBay-Veröffentlichung ist noch ein <strong>Vorab-Modul (Stub)</strong>.
+        Der Artikel wird im System vorgemerkt; die eigentliche Übertragung zu eBay erfolgt in der
+        eBay-Konsole bzw. mit der Marktplatz-Anbindung.
+      </p>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// LÖSCHEN — destructive, DRAFT-only, type-to-confirm.
+//
+// The server refuses anything that is not an unsold DRAFT, but the UI is the
+// first guard: only rendered for DRAFT + non-archived rows, and the operator
+// must type the SKU before the button arms. On success the sheet closes and
+// the catalog list refreshes.
+// ─────────────────────────────────────────────────────────────────────────
+
+function LoeschenSection({
+  product,
+  onDeleted,
+}: {
+  product: ProductDetail;
+  onDeleted: () => void;
+}): JSX.Element {
+  const api = useApiClient();
+  const qc = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  const [confirmText, setConfirmText] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const armed = confirmText.trim().toUpperCase() === product.sku.toUpperCase();
+
+  async function remove(): Promise<void> {
+    if (!armed || busy) return;
+    setBusy(true);
+    try {
+      await productsApi.remove(api, product.id);
+      addToast({
+        tone: 'success',
+        title: 'Artikel gelöscht',
+        body: `${product.sku} wurde dauerhaft entfernt.`,
+      });
+      await qc.invalidateQueries({ queryKey: ['products', 'list'] });
+      onDeleted();
+    } catch (err) {
+      const msg =
+        err instanceof ApiError ? err.message : 'Verbindung gestört — bitte erneut versuchen.';
+      addToast({ tone: 'alert', title: 'Löschen nicht möglich', body: msg });
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
-    <p style={{ margin: 0, fontSize: '0.9rem' }}>
-      eBay-Status: <strong>{product.ebayState}</strong>. Weiter in der eBay-Konsole verwalten.
-    </p>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 12,
+        padding: 14,
+        border: '1px solid var(--w14-wax-red)',
+        borderRadius: 'var(--w14-radius-card)',
+        background: 'var(--w14-parchment-2)',
+      }}
+    >
+      <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--w14-ink-aged)', lineHeight: 1.45 }}>
+        <strong style={{ color: 'var(--w14-wax-red)' }}>Achtung:</strong> Dieser Entwurf wird{' '}
+        <strong>endgültig gelöscht</strong> — Fotos, eBay-Verlauf und Kategorie-Zuordnung
+        inbegriffen. Dies ist nur für noch nicht verkaufte Entwürfe möglich und kann nicht
+        rückgängig gemacht werden.
+      </p>
+      <Field label={`Zur Bestätigung die SKU eingeben: ${product.sku}`}>
+        <Input
+          mono
+          value={confirmText}
+          onChange={(e) => setConfirmText(e.target.value)}
+          placeholder={product.sku}
+          aria-label="SKU zur Bestätigung"
+        />
+      </Field>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <Button variant="destructive" disabled={!armed || busy} onClick={() => void remove()}>
+          {busy ? 'Wird gelöscht…' : 'Artikel endgültig löschen'}
+        </Button>
+      </div>
+    </div>
   );
 }
 

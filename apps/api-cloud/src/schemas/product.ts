@@ -203,6 +203,23 @@ export const ArchiveProductResponse = Type.Object({
 export type ArchiveProductResponse = Static<typeof ArchiveProductResponse>;
 
 // ────────────────────────────────────────────────────────────────────────
+// DELETE /api/products/:id — DeleteProductResponse
+//
+// Hard-deletes a DRAFT product that has NEVER been part of a fiscal
+// transaction. The route refuses anything else (AVAILABLE/RESERVED/SOLD,
+// archived rows, or any row referenced by transaction_items). The owned
+// child rows (photos, eBay events, category links) are removed inside the
+// same transaction so no FK orphans remain.
+// ────────────────────────────────────────────────────────────────────────
+
+export const DeleteProductResponse = Type.Object({
+  id: Type.String({ format: 'uuid' }),
+  sku: Type.String(),
+  deletedAt: Type.String({ format: 'date-time' }),
+});
+export type DeleteProductResponse = Static<typeof DeleteProductResponse>;
+
+// ────────────────────────────────────────────────────────────────────────
 // POST /api/products/:id/photos — RequestPhotoUploadBody
 // ────────────────────────────────────────────────────────────────────────
 

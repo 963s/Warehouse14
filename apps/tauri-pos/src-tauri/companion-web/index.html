@@ -66,6 +66,8 @@
     border: 1px solid var(--line-soft); border-radius: var(--radius);
     padding: 2rem 1.75rem;
   }
+  /* Role-chooser card gets more room so the BIG tiles breathe on tablet. */
+  .card.wide { max-width: 46rem; }
   h1 { font-size: 1.5rem; margin: 0 0 .35rem; }
   .sub { color: var(--fg-dim); margin: 0 0 1.5rem; line-height: 1.5; }
 
@@ -81,6 +83,7 @@
   }
   .code-input:focus { border-color: var(--accent); }
 
+  /* Role list (vertical, used on the pairing card). */
   .roles { display: grid; gap: .75rem; margin: 1rem 0 .5rem; }
   .role-btn {
     appearance: none; cursor: pointer; text-align: left;
@@ -94,6 +97,110 @@
   .role-btn .ico { font-size: 1.6rem; width: 2rem; text-align: center; }
   .role-btn .rt { font-weight: 600; }
   .role-btn .rd { display: block; font-size: .8rem; color: var(--fg-dim); margin-top: .15rem; }
+
+  /* Role chooser — BIG icon tiles shown after a valid code (step 2). */
+  .role-grid {
+    display: grid; gap: 1rem; margin: 1.5rem 0 .25rem;
+    grid-template-columns: 1fr;
+  }
+  @media (min-width: 560px) { .role-grid { grid-template-columns: repeat(3, 1fr); } }
+  .role-tile {
+    appearance: none; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: .65rem; text-align: center;
+    border: 1px solid var(--line); background: var(--bg-elev-2); color: var(--fg);
+    border-radius: var(--radius); padding: 1.6rem 1rem; min-height: 9.5rem;
+    transition: border-color .12s, background .12s, transform .06s;
+  }
+  .role-tile:active { transform: scale(.985); background: #20252f; }
+  .role-tile .ico { font-size: 3rem; line-height: 1; }
+  .role-tile .rt { font-weight: 700; font-size: 1.15rem; }
+  .role-tile .rd { font-size: .82rem; color: var(--fg-dim); line-height: 1.4; }
+
+  /* ── Tabs (warehouse tool switcher) ────────────────────── */
+  .tabs {
+    display: flex; gap: .4rem; padding: .6rem 1.1rem 0;
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
+    border-bottom: 1px solid var(--line-soft); background: var(--bg-elev);
+    position: sticky; top: 0; z-index: 5;
+  }
+  .tab {
+    appearance: none; cursor: pointer; white-space: nowrap;
+    border: none; background: transparent; color: var(--fg-dim);
+    font-size: .92rem; font-weight: 600; padding: .7rem .9rem; min-height: 48px;
+    border-bottom: 2px solid transparent;
+  }
+  .tab[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); }
+
+  /* ── Forms (add / edit product, bin edit, scan) ────────── */
+  .form { display: flex; flex-direction: column; gap: 1rem; }
+  .form-row { display: grid; gap: 1rem; }
+  @media (min-width: 560px) { .form-row.two { grid-template-columns: 1fr 1fr; }
+                              .form-row.three { grid-template-columns: 1fr 1fr 1fr; } }
+  .fl { display: flex; flex-direction: column; gap: .4rem; }
+  .fl > .lab { font-size: .82rem; color: var(--fg-dim); }
+  .fl > .lab .req { color: var(--accent); }
+  .inp, .sel, .ta {
+    width: 100%; font-size: 1rem; padding: .8rem .9rem;
+    border-radius: var(--radius-sm); border: 1px solid var(--line);
+    background: var(--bg-elev-2); color: var(--fg); min-height: var(--tap); outline: none;
+  }
+  .inp:focus, .sel:focus, .ta:focus { border-color: var(--accent); }
+  .ta { min-height: 5rem; resize: vertical; line-height: 1.4; }
+  .sel { appearance: none; }
+  .sectionhead {
+    font-size: .8rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+    color: var(--fg-faint); margin: .5rem 0 -.25rem;
+  }
+  .btn-row { display: flex; gap: .75rem; margin-top: .5rem; }
+  .btn-ghost {
+    appearance: none; cursor: pointer; flex: 1;
+    background: transparent; color: var(--fg); border: 1px solid var(--line);
+    font-weight: 600; font-size: 1rem; border-radius: var(--radius-sm);
+    padding: .9rem; min-height: var(--tap);
+  }
+  .btn-ghost:active { background: var(--bg-elev-2); }
+  .btn-primary.inline { width: auto; flex: 1; margin-top: 0; }
+  .notice {
+    border-radius: var(--radius-sm); padding: .85rem 1rem; font-size: .9rem; line-height: 1.45;
+    border: 1px solid var(--line-soft); background: var(--bg-elev);
+  }
+  .notice.ok { border-color: rgba(52,211,153,.4); color: var(--ok); }
+  .notice.bad { border-color: rgba(248,113,113,.4); color: var(--danger); }
+  .notice.info { color: var(--fg-dim); }
+
+  /* Big, unambiguous scan field. */
+  .scanwrap { display: flex; flex-direction: column; gap: .75rem; }
+  .scan-input {
+    width: 100%; font-size: 1.35rem; letter-spacing: .04em;
+    padding: 1rem 1.1rem; border-radius: var(--radius-sm);
+    border: 2px solid var(--accent); background: var(--bg-elev-2); color: var(--fg);
+    min-height: 64px; outline: none; font-variant-numeric: tabular-nums;
+  }
+  .scan-input::placeholder { color: var(--fg-faint); letter-spacing: 0; }
+  .scan-label {
+    display: flex; align-items: center; gap: .5rem;
+    font-weight: 700; font-size: 1rem;
+  }
+  .scan-label .ico { font-size: 1.3rem; }
+  .scan-help { color: var(--fg-faint); font-size: .82rem; line-height: 1.4; }
+
+  /* Pills used inside result cards. */
+  .pill {
+    display: inline-block; font-size: .72rem; font-weight: 700;
+    border-radius: 999px; padding: .2rem .6rem; vertical-align: middle;
+  }
+  .pill.av { color: var(--ok); border: 1px solid rgba(52,211,153,.4); }
+  .pill.dr { color: var(--accent); border: 1px solid rgba(240,180,41,.4); }
+  .pill.muted { color: var(--fg-faint); border: 1px solid var(--line-soft); }
+
+  .skuhit .actions { display: flex; gap: .6rem; margin-top: 1rem; flex-wrap: wrap; }
+  .skuhit .actions button {
+    appearance: none; cursor: pointer; flex: 1; min-width: 8rem;
+    border: 1px solid var(--accent); background: transparent; color: var(--accent);
+    border-radius: var(--radius-sm); padding: .7rem; min-height: 48px; font-weight: 600;
+  }
+  .skuhit .actions button:active { background: #221a08; }
 
   .btn-primary {
     appearance: none; width: 100%; cursor: pointer;

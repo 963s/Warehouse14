@@ -68,6 +68,15 @@ export const ProductListItem = Type.Object({
   ]),
   /** Day-9 addition: surfaced so the Lager table column + scanner UI can show. */
   barcode: Type.Union([Type.String(), Type.Null()]),
+  /**
+   * Primary product photo THUMB rendition, as a relative API path
+   * (`/api/photos/<id>/thumb`) — same shape as routes/photos.ts serializePhoto,
+   * minus the host. Only emitted for `storage_kind='local'` rows that are
+   * flagged `is_primary`; NULL when the product has no local primary photo.
+   * The POS prefixes it with its api-client baseUrl to render the catalog tile
+   * image (the /thumb route is public-by-UUID, so an `<img>` can load it).
+   */
+  primaryPhotoThumbUrl: Type.Union([Type.String(), Type.Null()]),
   status: ProductStatus,
   condition: ProductCondition,
   itemType: ItemType,

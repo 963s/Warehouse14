@@ -885,6 +885,18 @@ fn hard_denied(lower_path: &str) -> bool {
     FORBIDDEN_SUBSTR.iter().any(|s| lower_path.contains(s))
 }
 
+/// True when `lower_path` is exactly `products/<id>/<action>` (three segments,
+/// none empty) with the third segment equal to `action`. Used to allow the
+/// warehouse stock-adjust POST (`products/<id>/inventory-adjustment`) WITHOUT
+/// over-granting any other product sub-action (e.g. `archive`, `photos`).
+fn is_product_item_action(lower_path: &str, action: &str) -> bool {
+    let mut it = lower_path.split('/');
+    matches!(
+        (it.next(), it.next(), it.next(), it.next()),
+        (Some("products"), Some(id), Some(a), None) if !id.is_empty() && a == action
+    )
+}
+
 /// Role-scoped POSITIVE allow-set for the proxy (C1) — deny-by-default.
 ///
 /// Returns `true` only when `role` may call `method <lower_path>`, where
@@ -895,12 +907,22 @@ fn hard_denied(lower_path: &str) -> bool {
 fn proxy_allowed(role: Role, method: &Method, lower_path: &str) -> bool {
     let is_get = method == Method::GET;
     let is_post = method == Method::POST;
+    let is_put = method == Method::PUT;
     let p = lower_path;
 
     // A read is allowed against `base` if the path is exactly `base` or a
     // sub-resource `base/<id>` (one extra segment), but NOT a sibling action.
     let get_under = |base: &str| -> bool {
         p == base || p.starts_with(&format!("{base}/"))
+    };
+
+    // `products/<id>` is a single sub-resource edit (one extra segment, no
+    // trailing action verb). Used by the warehouse PUT (rename / re-price /
+    // re-shelve / DRAFT→AVAILABLE). It must NOT match `products/<id>/archive`
+    // or any other action sub-path, so we require exactly two segments.
+    let is_product_item = || -> bool {
+        let mut it = p.split('/');
+        matches!((it.next(), it.next(), it.next()), (Some("products"), Some(id), None) if !id.is_empty())
     };
 
     match role {
@@ -928,12 +950,19 @@ fn proxy_allowed(role: Role, method: &Method, lower_path: &str) -> bool {
                     || p == "transactions/recent"))
                 || (is_post && (p == "transactions" || p == "transactions/finalize"))
         }
-        // Warehouse: inventory/product reads + the single inventory-adjust POST.
-        // No transactions at all.
+        // Warehouse: inventory/product reads + write the stock-room actually
+        // needs — create a product, edit a single product (rename / re-price /
+        // re-shelve / publish), and the inventory-adjust POST. NEVER any
+        // transaction, payout, ankauf, storno, or archive/delete (the latter
+        // are blocked positively here AND by `hard_denied`).
         Role::Warehouse => {
             (is_get
                 && (get_under("products") || get_under("catalog") || get_under("inventory")))
-                || (is_post && p == "inventory/adjust")
+                || (is_post
+                    && (p == "products"
+                        || p == "inventory/adjust"
+                        || (is_product_item_action(p, "inventory-adjustment"))))
+                || (is_put && is_product_item())
         }
     }
 }

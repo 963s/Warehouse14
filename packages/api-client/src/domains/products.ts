@@ -60,6 +60,13 @@ export interface ProductListRow {
   primaryCategory: PrimaryCategoryRef | null;
   /** Day-9 addition: surfaced for Lager table + barcode-scanner pinpointing. */
   barcode: string | null;
+  /**
+   * Primary product photo THUMB rendition as a RELATIVE api path
+   * (`/api/photos/<id>/thumb`); NULL when the product has no local primary
+   * photo. Prefix with the api-client `baseUrl` to render the Verkauf catalog
+   * tile image — the /thumb route is public-by-UUID so an `<img>` can load it.
+   */
+  primaryPhotoThumbUrl: string | null;
   status: ProductStatus;
   condition: string;
   itemType: string;
@@ -268,6 +275,16 @@ export interface ProductUpdateResponse {
 }
 
 // ────────────────────────────────────────────────────────────────────────
+// DELETE /api/products/:id — remove an unsold DRAFT (lifecycle clean-up)
+// ────────────────────────────────────────────────────────────────────────
+
+export interface ProductDeleteResponse {
+  id: string;
+  sku: string;
+  deletedAt: string;
+}
+
+// ────────────────────────────────────────────────────────────────────────
 // POST /api/inventory/reserve / release
 // ────────────────────────────────────────────────────────────────────────
 
@@ -323,6 +340,16 @@ export const productsApi = {
       'PUT',
       `/api/products/${encodeURIComponent(id)}`,
       body,
+    );
+  },
+  /**
+   * Hard-delete an unsold DRAFT product. The backend refuses anything that is
+   * AVAILABLE/RESERVED/SOLD, archived, or referenced by a fiscal transaction.
+   */
+  remove(client: ApiClient, id: string): Promise<ProductDeleteResponse> {
+    return client.request<ProductDeleteResponse>(
+      'DELETE',
+      `/api/products/${encodeURIComponent(id)}`,
     );
   },
   reserve(client: ApiClient, body: ReserveBody): Promise<ReserveResponse> {

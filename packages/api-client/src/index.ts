@@ -162,6 +162,7 @@ export {
   // ─── Day-13 extensions ──────────────────────────────────────────────
   type PrimaryCategoryRef,
   type ProductCategoryAssignment,
+  type ProductDeleteResponse,
   type ProductDetail,
   type ProductListQuery,
   type ProductListResponse,
