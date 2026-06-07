@@ -3222,3 +3222,19 @@ tools still stubs; Apple Developer ID signing.
   `git checkout main && git merge --ff-only claude/gwg-kyc-enforcement && git push origin main` →
   `deploy-images.yml` builds api/worker/migrate → on-server `update.sh` per runbook `0045-0050-prod-apply.md`.
   Basel's operational trigger.
+
+### 29.6 The POS RC is also gwg — one complete release tree, v1.0.0 (Decision #114)
+- **#114 — `gwg-kyc-enforcement` is the complete RC for BOTH the server AND the POS/Control-Desktop OTA.**
+  Same ancestry finding as the server (§29.5): every `ux-*` / cashier / kasse branch is an ancestor of gwg,
+  and the KYC client gate + Steuer-Export UI are on it (POS features verified present: ProductSheet
+  in-place #93, AmountPad #96, cash-confirm #96, barcode scan→cart #98, Kasse plain-language #99). The one
+  remaining branch, `control-desktop-polish`, was **merged into gwg** (2026-06-07, clean, +137/−1031 — dead
+  `src/bridge/` module removed, `use-ledger-stream` SSE added, `/api/bridge/overview` removed). So one tree
+  now carries server + POS + Control Desktop.
+- **Full gate GREEN on the merged tree:** `pnpm -r typecheck` exit 0 · all unit tests pass (no failures) ·
+  `pnpm lint:all` at the **1121 baseline** (net-zero — the merge removed code) · KYC integration 6/6.
+- **Release = tag `v1.0.0`** (gwg already contains `v1.0.0-rc3`): bump the version in the two
+  `src-tauri/tauri.conf.json`, `git tag v1.0.0 && git push origin v1.0.0` → `release.yml` (tauri-action +
+  minisign) → GitHub Release + `latest.json`/`latest-control.json` → OTA. `TAURI_SIGNING_PRIVATE_KEY` lives
+  in CI secrets only. Ordering is safe (the server 0050 trigger is authoritative; the POS gate only surfaces).
+  Runbook `0045-0050-prod-apply.md` §8. Basel's release trigger.

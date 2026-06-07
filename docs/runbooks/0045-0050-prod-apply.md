@@ -44,10 +44,10 @@ server deploy needs; there is NO multi-branch merge to perform:
 git checkout main && git merge --ff-only claude/gwg-kyc-enforcement && git push origin main
 # → deploy-images.yml (CI) builds warehouse14-{api,worker,migrate} from main.
 ```
-> `control-desktop-polish` (the Control-Desktop dedupe + SSE + the dead `/api/bridge/overview` removal)
-> is the only server/UI branch NOT in gwg. It is **not server-deploy-critical** — the dead `/overview`
-> endpoint is harmless (the live Bridge uses `/summary`). The Control Desktop + POS ship via the tagged
-> OTA release (§8), not this server deploy.
+> `control-desktop-polish` was **merged into gwg** (2026-06-07, clean, −894 lines), so gwg now also
+> carries the Control-Desktop dedupe + live SSE + the dead `/api/bridge/overview` removal — **one complete
+> tree for server + POS + Control Desktop.** The Control Desktop + POS still ship via the tagged OTA
+> release (§8), not this server deploy.
 
 ---
 
@@ -146,18 +146,29 @@ Per `0045-0048-prod-apply.md` (0045 CREATE OR REPLACE · 0046 REVOKE · **0047 i
 
 ## 8. POS + Control Desktop release (SEPARATE — tagged OTA)
 
-The cashier UI (KYC client gate, the §27 UX redesign, the cashier hardening) + the Control Desktop
-ship via a signed tag, NOT the server deploy:
+The cashier UI (KYC client gate, the §27 UX redesign + cashier hardening, Steuer-Export UI) + the
+Control Desktop (dedupe + live SSE) ship via a signed tag, NOT the server deploy.
+
+**Convergence is DONE — `gwg-kyc-enforcement` is the complete POS RC too.** Verified by ancestry: every
+`ux-*` / cashier / kasse branch is an ancestor of gwg; the KYC client gate + Steuer-Export UI are on it;
+`control-desktop-polish` was merged in (2026-06-07, clean, −894 lines). Full gate green (§1). So the SAME
+tree the server deploys from also cuts the POS/Desktop release. **Next version: `v1.0.0`** (gwg already
+contains `v1.0.0-rc3`).
+
 ```bash
-git tag v0.3.0 <converged-pos-commit> && git push origin v0.3.0   # → release.yml → minisign → GitHub Release + latest.json
+# From the converged tree (gwg, or main after the §1 fast-forward):
+# 1. Bump version → 1.0.0 in apps/tauri-pos/src-tauri/tauri.conf.json + apps/control-desktop/src-tauri/tauri.conf.json.
+# 2. Tag + push:
+git tag v1.0.0 && git push origin v1.0.0   # → release.yml → tauri-action → minisign → Release + latest.json + latest-control.json
 ```
-- Requires converging the POS branches (`ux-*`, the cashier set, `control-desktop-polish`, **and the
-  POS client changes inside `gwg-kyc-enforcement`** — `evaluateKycGate`, IntakeList/Bezahlen dialogs).
-- `TAURI_SIGNING_PRIVATE_KEY` must be in CI secrets only (never the repo).
-- Installed POS/Desktop poll `latest.json` hourly → verify minisign → prompt + install. No auto-downgrade.
-- **The server (0050 trigger) is the authoritative KYC gate; the POS gate is UI-surfacing** — so the
-  server deploy can precede the POS release without a compliance gap (an out-of-date POS still can't
-  bypass the trigger).
+- **CI secret `TAURI_SIGNING_PRIVATE_KEY`** (minisign) must be set in GitHub Actions — never in the repo.
+  Confirm the production `updater.endpoints` + embedded pubkey before tagging (rc3 fixed the API-tunnel endpoint).
+- Builds the matrix — POS (macOS arm64/x64 + Windows) + Control Desktop (+ Linux). Installed clients poll
+  `latest.json` / `latest-control.json` hourly → verify minisign → prompt + install. No auto-downgrade.
+- **Ordering is safe either way:** the server (0050 trigger) is the AUTHORITATIVE KYC gate; the POS gate is
+  UI-surfacing — so the server deploy can precede the POS release with no compliance gap (an out-of-date
+  POS still cannot bypass the trigger).
+- Install the signed build on the shop machines (the Owner's Control Desktop + each POS terminal).
 
 ---
 
