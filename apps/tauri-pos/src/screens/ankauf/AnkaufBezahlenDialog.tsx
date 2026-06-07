@@ -3,8 +3,8 @@
  *
  * Two phases:
  *   1. REVIEW — operator confirms: customer name, total, payout method,
- *      KYC status. If total ≥ GWG_IDENTITY_THRESHOLD_EUR and the customer
- *      is NOT kyc_verified, the Bezahlen button is replaced with
+ *      KYC status. EVERY Ankauf requires ID (§259 StGB, from €0,01): if the
+ *      customer is NOT kyc_verified, the Bezahlen button is replaced with
  *      "KYC bestätigen" which calls PATCH /api/customers/:id/kyc (step-up
  *      required). After stamp, the dialog re-renders with the Bezahlen
  *      button enabled.
@@ -38,7 +38,6 @@ import type { IntakeItem } from '../../state/ankauf-cart-store.js';
 import { currentShiftQueryKey } from '../../hooks/useCurrentShift.js';
 import { dashboardQueryKey } from '../../hooks/useDashboardSummary.js';
 import { evaluateKycGate } from '../../lib/ankauf-kyc-gate.js';
-import { GWG_IDENTITY_THRESHOLD_EUR } from '../../lib/ankauf-thresholds.js';
 import { useApiClient } from '../../lib/api-context.js';
 import { fromCents, sumNegotiatedCents } from '../../lib/intake-math.js';
 import {
@@ -109,8 +108,9 @@ export function AnkaufBezahlenDialog({
 
   const totalCents = useMemo(() => sumNegotiatedCents(items), [items]);
   const totalEur = fromCents(totalCents);
-  // Single source of truth shared with the early IntakeList banner.
-  const kycGate = evaluateKycGate(totalCents, customer ?? null);
+  // Single source of truth shared with the early IntakeList banner. ANKAUF =
+  // ID always required (§259 StGB), so the gate trips from €0,01.
+  const kycGate = evaluateKycGate({ direction: 'ANKAUF', totalCents, customer: customer ?? null });
   const triggersGwgGate = kycGate.thresholdReached;
   const kycVerified = kycGate.kycVerified;
   const blocked = customer?.sanctionsMatch === true || customer?.trustLevel === 'BANNED';
@@ -450,7 +450,8 @@ function ReviewPhase(props: {
             textAlign: 'center',
           }}
         >
-          Ankauf über {GWG_IDENTITY_THRESHOLD_EUR} € — § 10 GwG verlangt persönliche Ausweisprüfung.
+          Jeder Ankauf verlangt eine persönliche Ausweisprüfung des Verkäufers (§ 259 StGB) — ab dem
+          ersten Euro.
         </p>
       )}
 

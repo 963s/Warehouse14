@@ -234,7 +234,12 @@ function KycEarlyBanner({
         windowDays: customer.gwgRollingAnkauf.windowDays,
       }
     : undefined;
-  const gate = evaluateKycGate(totalCents, customer ?? null, aggregate);
+  const gate = evaluateKycGate({
+    direction: 'ANKAUF',
+    totalCents,
+    customer: customer ?? null,
+    ...(aggregate ? { aggregate } : {}),
+  });
 
   // Nothing to surface unless either the single buy OR the rolling window
   // reaches the GwG identity line.
@@ -282,7 +287,7 @@ function KycEarlyBanner({
         <span aria-hidden style={{ color: 'var(--w14-gold)' }}>
           ✓
         </span>
-        <span>KYC bestätigt — Ausweis geprüft. Auszahlung über 2.000&nbsp;€ zulässig.</span>
+        <span>KYC bestätigt — Ausweis geprüft. Ankauf zulässig.</span>
       </output>
     );
   }
@@ -316,8 +321,8 @@ function KycEarlyBanner({
             </>
           ) : (
             <>
-              Ankauf über 2.000&nbsp;€ — § 10 GwG verlangt eine persönliche Ausweisprüfung des
-              Verkäufers. Jetzt erledigen, nicht erst beim Bezahlen.
+              Jeder Ankauf verlangt eine persönliche Ausweisprüfung des Verkäufers (§ 259 StGB) — ab
+              dem ersten Euro. Jetzt erledigen, nicht erst beim Bezahlen.
             </>
           )}
         </span>

@@ -62,6 +62,7 @@ import { currentShiftQueryKey } from '../../hooks/useCurrentShift.js';
 import { dashboardQueryKey } from '../../hooks/useDashboardSummary.js';
 import { useReceiptFooterLines } from '../../hooks/useReceiptFooter.js';
 import { resolveShopInfo, useShopInfo } from '../../hooks/useShopInfo.js';
+import { evaluateKycGate } from '../../lib/ankauf-kyc-gate.js';
 import { useApiClient } from '../../lib/api-context.js';
 import {
   type HeaderTotals,
@@ -1073,6 +1074,29 @@ function PaymentInput({
         >
           Bezahlen · {paymentChoice === 'CASH' ? 'Bar' : 'Karte'}
         </h2>
+
+        {/* GwG §10: a sale ≥ €2.000 needs an ID-verified buyer. Informational —
+            the server (transactions_validate_kyc) is the authoritative gate and
+            will refuse an anonymous high-value sale. */}
+        {evaluateKycGate({ direction: 'VERKAUF', totalCents: toCents(totalEur), customer: null })
+          .thresholdReached && (
+          <p
+            role="note"
+            style={{
+              margin: '12px 0 0',
+              padding: '10px 12px',
+              borderRadius: 'var(--w14-radius-button)',
+              border: '1px solid var(--w14-gold)',
+              background: 'var(--w14-parchment-2)',
+              color: 'var(--w14-ink-aged)',
+              fontSize: '0.82rem',
+              lineHeight: 1.4,
+            }}
+          >
+            Ab 2.000&nbsp;€ verlangt § 10 GwG eine Ausweisprüfung des Käufers — ein geprüfter Kunde
+            ist nötig, sonst lehnt das System den Verkauf ab.
+          </p>
+        )}
 
         {/* Payment-method toggle */}
         <div

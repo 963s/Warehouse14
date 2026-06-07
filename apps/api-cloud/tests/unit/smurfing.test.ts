@@ -98,8 +98,8 @@ describe('detectSmurfing — rolling window', () => {
     const v = detectSmurfing({
       incoming: txn('700.00', '2026-05-29T10:00:00Z'),
       priors: [
-        txn('800.00', '2026-05-18T10:00:00Z'), // 11 days prior — outside 7d
-        txn('600.00', '2026-05-15T10:00:00Z'), // outside
+        txn('800.00', '2026-04-20T10:00:00Z'), // 39 days prior — outside the 30d window
+        txn('600.00', '2026-04-15T10:00:00Z'), // 44 days prior — outside
       ],
       thresholds: T,
     });

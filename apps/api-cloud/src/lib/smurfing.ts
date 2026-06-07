@@ -42,7 +42,10 @@ export interface SmurfingThresholds {
 }
 
 export const DEFAULT_SMURFING_THRESHOLDS: SmurfingThresholds = {
-  windowDays: 7,
+  // 30-day rolling window (Roman Grützner GwG go-live sign-off). The
+  // system_settings key `smurfing.ankauf_count_window_days` (migration 0050)
+  // is the runtime source of truth; this is the fallback default.
+  windowDays: 30,
   countThreshold: 3,
   nearThresholdCents: 199_900n, // €1,999.00
   kycLimitCents: KYC_LIMIT_CENTS,

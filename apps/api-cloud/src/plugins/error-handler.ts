@@ -26,6 +26,7 @@ export type ApiErrorCode =
   | 'PIN_LOCKED'
   | 'CONFLICT'
   | 'SANCTIONS_BLOCK'
+  | 'KYC_REQUIRED'
   | 'CLOSING_DAY_FINALIZED'
   | 'STORNO_OF_STORNO'
   | 'PRODUCT_NOT_RESERVABLE'
@@ -56,6 +57,16 @@ export abstract class DomainError extends Error {
 }
 
 /**
+ * GwG identity requirement not met (route pre-check, friendly before the
+ * un-bypassable DB trigger). ANKAUF: seller ID required for every buy (§259
+ * StGB). VERKAUF: buyer ID required at/above the §10 threshold.
+ */
+export class KycRequiredError extends DomainError {
+  public readonly httpStatus = 403;
+  public readonly code: ApiErrorCode = 'KYC_REQUIRED';
+}
+
+/**
  * Translate a known PG error message into a stable `ApiErrorCode`.
  *
  * Postgres surfaces the trigger's RAISE message verbatim via the
@@ -66,6 +77,7 @@ export abstract class DomainError extends Error {
 function pgErrorToCode(err: FastifyError & { code?: string }): ApiErrorCode | null {
   const msg = err.message ?? '';
   if (msg.includes('Sanctions hard-block')) return 'SANCTIONS_BLOCK';
+  if (msg.includes('KYC hard-block')) return 'KYC_REQUIRED';
   if (msg.includes('Closing-day guard')) return 'CLOSING_DAY_FINALIZED';
   if (msg.includes('transactions_ankauf_requires_customer')) return 'VALIDATION_ERROR';
   if (msg.includes('transactions_one_storno_per_original_uq')) return 'CONFLICT';
@@ -88,6 +100,7 @@ const codeToHttp: Record<ApiErrorCode, number> = {
   PIN_LOCKED: 423,
   CONFLICT: 409,
   SANCTIONS_BLOCK: 403,
+  KYC_REQUIRED: 403,
   CLOSING_DAY_FINALIZED: 409,
   STORNO_OF_STORNO: 422,
   PRODUCT_NOT_RESERVABLE: 409,

@@ -37,7 +37,7 @@ import {
 import type { Env } from '../config/env.js';
 import { requireAuth, requireRole, requireStepUp } from '../lib/auth-policy.js';
 import { totalExceedsStepUpThreshold } from '../lib/transaction-math.js';
-import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
+import { type ApiErrorCode, DomainError, KycRequiredError } from '../plugins/error-handler.js';
 import { AnkaufBody, AnkaufResponse, type AnkaufBody as TAnkaufBody } from '../schemas/ankauf.js';
 
 // ────────────────────────────────────────────────────────────────────────
@@ -176,6 +176,18 @@ const transactionsAnkaufRoute: FastifyPluginAsync<TransactionsAnkaufOpts> = asyn
       // ── Step-up gate (server-side, defence in depth) ──
       if (totalExceedsStepUpThreshold(body.totalEur, opts.env.TRANSACTION_STEP_UP_THRESHOLD_EUR)) {
         requireStepUp(req);
+      }
+
+      // ── GwG KYC gate (friendly pre-check; the BEFORE INSERT trigger
+      //    transactions_validate_kyc is the authoritative, un-bypassable gate).
+      //    ANKAUF: the seller MUST be ID-verified for EVERY buy from €0,01
+      //    (hard §259 StGB Hehlerei rule — no threshold). ──
+      const sellerKyc = await app.db.execute<{ kyc_verified_at: Date | null }>(drizzleSql`
+        SELECT kyc_verified_at FROM customers WHERE id = ${body.customerId}::uuid LIMIT 1`);
+      if (!sellerKyc[0] || sellerKyc[0].kyc_verified_at === null) {
+        throw new KycRequiredError(
+          'Identifizierung erforderlich (§ 259 StGB): Jeder Ankauf verlangt eine geprüfte Ausweis-Identifikation des Verkäufers. Bitte KYC bestätigen.',
+        );
       }
 
       // ─────────────────────────────────────────────────────────────────────

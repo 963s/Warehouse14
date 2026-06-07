@@ -61,7 +61,7 @@ import { requireAuth, requireRole, requireStepUp } from '../lib/auth-policy.js';
 import { endEbayListing } from '../lib/ebay-client.js';
 import { runSmurfingDetection } from '../lib/smurfing.js';
 import { totalExceedsStepUpThreshold, validateTransactionMath } from '../lib/transaction-math.js';
-import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
+import { type ApiErrorCode, DomainError, KycRequiredError } from '../plugins/error-handler.js';
 import {
   FinalizeBody,
   FinalizeResponse,
@@ -154,6 +154,41 @@ const transactionsFinalize: FastifyPluginAsync<TransactionsFinalizeOpts> = async
       // the same friction as a €5,000 sale.
       if (totalExceedsStepUpThreshold(body.totalEur, opts.env.TRANSACTION_STEP_UP_THRESHOLD_EUR)) {
         requireStepUp(req);
+      }
+
+      // ── GwG KYC gate (friendly pre-check; the BEFORE INSERT trigger
+      //    transactions_validate_kyc is the authoritative, un-bypassable gate).
+      //    Skip stornos — a reversal must never be re-blocked. ──
+      if (body.stornoOfTransactionId == null) {
+        const buyerVerified = async (id: string): Promise<boolean> => {
+          const rows = await app.db.execute<{ kyc_verified_at: Date | null }>(drizzleSql`
+            SELECT kyc_verified_at FROM customers WHERE id = ${id}::uuid LIMIT 1`);
+          return rows[0] != null && rows[0].kyc_verified_at !== null;
+        };
+
+        if (body.direction === 'ANKAUF' && body.customerId != null) {
+          // ANKAUF: seller ID required for EVERY buy from €0,01 (§ 259 StGB).
+          if (!(await buyerVerified(body.customerId))) {
+            throw new KycRequiredError(
+              'Identifizierung erforderlich (§ 259 StGB): Jeder Ankauf verlangt eine geprüfte ' +
+                'Ausweis-Identifikation des Verkäufers.',
+            );
+          }
+        } else if (body.direction === 'VERKAUF') {
+          // VERKAUF: buyer ID required at/above the GwG §10 threshold (€2.000).
+          const thRows = await app.db.execute<{ th: string }>(drizzleSql`
+            SELECT COALESCE((value #>> '{}')::numeric, 2000.00)::text AS th
+              FROM system_settings WHERE key = 'gwg.verkauf_identity_threshold_eur'`);
+          const thresholdEur = thRows[0]?.th ?? '2000.00';
+          if (
+            totalExceedsStepUpThreshold(body.totalEur, thresholdEur) &&
+            !(body.customerId != null && (await buyerVerified(body.customerId)))
+          ) {
+            throw new KycRequiredError(
+              `Identifizierung erforderlich (§ 10 GwG): Ab ${thresholdEur} € verlangt der Verkauf eine geprüfte Ausweis-Identifikation des Käufers.`,
+            );
+          }
+        }
       }
 
       // ──────────────────────────────────────────────────────────────────

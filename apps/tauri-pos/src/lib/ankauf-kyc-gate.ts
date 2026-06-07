@@ -1,10 +1,15 @@
 /**
- * ankauf-kyc-gate — the pure GwG §10 KYC-gate decision for the Ankauf flow.
+ * ankauf-kyc-gate — the pure, DIRECTION-AWARE GwG KYC-gate decision (Roman
+ * Grützner go-live sign-off, binding):
+ *   • ANKAUF  — ID required for EVERY buy from €0,01 (hard §259 StGB Hehlerei).
+ *   • VERKAUF — ID required when the sale total ≥ €2.000 (§10 GwG); below it,
+ *     anonymous sale allowed.
  *
- * UI-SURFACING ONLY. The server re-enforces KYC/GwG on finalize (the client is
- * never the sole gate). This function exists so the EARLY banner in IntakeList
- * and the final AnkaufBezahlenDialog compute the requirement identically and can
- * never drift apart — and so the threshold logic is unit-testable without a DOM.
+ * UI-SURFACING ONLY. The server BEFORE INSERT trigger (transactions_validate_kyc)
+ * is the authoritative, un-bypassable gate; this shares the same rule so the
+ * Ankauf banner + the Verkauf BezahlenDialog can never drift from the server, and
+ * the logic is unit-testable without a DOM. The §10 aggregate context (memory
+ * #101) is preserved for the Ankauf linked-transaction banner.
  */
 
 import { GWG_IDENTITY_THRESHOLD_EUR } from './ankauf-thresholds.js';
@@ -27,8 +32,22 @@ export interface KycGateAggregate {
   windowDays: number;
 }
 
+export type KycGateDirection = 'ANKAUF' | 'VERKAUF';
+
+export interface KycGateParams {
+  /** ANKAUF → always; VERKAUF → ≥ €2.000. */
+  direction: KycGateDirection;
+  totalCents: bigint;
+  customer: KycGateCustomer | null;
+  /** §10 windowed aggregate (Ankauf linked-transaction banner). */
+  aggregate?: KycGateAggregate;
+}
+
 export interface KycGateDecision {
-  /** The CURRENT Ankauf total has reached the GwG §10 threshold (≥ €2.000). */
+  /**
+   * This transaction ALONE triggers its direction's identity rule:
+   *   ANKAUF → any buy from €0,01; VERKAUF → total ≥ €2.000.
+   */
   thresholdReached: boolean;
   /**
    * §10 aggregation: the customer's rolling-window ANKAUF sum (prior + current)
@@ -53,16 +72,18 @@ export interface KycGateDecision {
 /** GwG threshold in integer cents, computed once. */
 const GWG_THRESHOLD_CENTS = toCents(GWG_IDENTITY_THRESHOLD_EUR);
 
-export function evaluateKycGate(
-  totalCents: bigint,
-  customer: KycGateCustomer | null,
-  aggregate?: KycGateAggregate,
-): KycGateDecision {
-  const thresholdReached = totalCents >= GWG_THRESHOLD_CENTS;
+export function evaluateKycGate(params: KycGateParams): KycGateDecision {
+  const { direction, totalCents, customer, aggregate } = params;
 
   const current = totalCents > 0n ? totalCents : 0n;
+  // Direction-aware single-tx identity rule:
+  //   ANKAUF  → ANY buy from €0,01 (hard §259 StGB — no threshold).
+  //   VERKAUF → total ≥ €2.000 (§10 GwG).
+  const thresholdReached = direction === 'ANKAUF' ? current > 0n : current >= GWG_THRESHOLD_CENTS;
+
   const aggregateCents = (aggregate?.priorWindowAnkaufCents ?? 0n) + current;
-  // Only assert the §10 rule when the server actually supplied a window aggregate.
+  // Only assert the §10 linked-transaction rule when the server supplied a window
+  // aggregate (Ankauf banner). For Ankauf the single rule already always trips.
   const aggregateReached = aggregate != null && aggregateCents >= GWG_THRESHOLD_CENTS;
 
   const kycVerified = customer != null && customer.kycVerifiedAt != null;
