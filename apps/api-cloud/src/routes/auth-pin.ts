@@ -57,6 +57,10 @@ const PinLoginResponse = Type.Object({
     role: Type.Union([Type.Literal('ADMIN'), Type.Literal('CASHIER'), Type.Literal('READONLY')]),
     isOwner: Type.Boolean(),
   }),
+  // The session token, also carried as `Authorization: Bearer` by the Tauri
+  // webview (Windows WebView2 drops the cross-site session cookie). MUST be in
+  // the response schema or Fastify strips it from the serialized body.
+  token: Type.String(),
 });
 
 const StepUpResponse = Type.Object({
