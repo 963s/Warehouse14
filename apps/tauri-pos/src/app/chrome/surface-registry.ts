@@ -15,7 +15,7 @@
  * the bundle if any rule is violated.
  */
 
-import type { ComponentType } from 'react';
+import { type ComponentType, lazy } from 'react';
 
 export type SurfaceTier = 'primary' | 'secondary';
 
@@ -58,25 +58,57 @@ export interface SurfaceDescriptor {
   searchAliases?: readonly string[];
 }
 
+// ── Tier 1 frontline surfaces — STATIC imports. These render on first paint
+//    (the operator lands on /werkstatt and reaches Verkauf/Ankauf/Kasse in one
+//    keystroke), so code-splitting them would only add a needless network round
+//    trip. Keep them eager.
 import { Ankauf } from '../../screens/ankauf/Ankauf.js';
-import { Aufgaben } from '../../screens/aufgaben/Aufgaben.js';
-import { Bewertung } from '../../screens/bewertung/Bewertung.js';
 import { Kasse } from '../../screens/kasse/Kasse.js';
 import { Kunden } from '../../screens/kunden/Kunden.js';
 import { Lager } from '../../screens/lager/Lager.js';
-import { Belegtexte } from '../../screens/secondary/Belegtexte.js';
-import { Dokumente } from '../../screens/secondary/Dokumente.js';
-import { Ebay } from '../../screens/secondary/Ebay.js';
-import { Einstellungen } from '../../screens/secondary/Einstellungen.js';
-import { Fotos } from '../../screens/secondary/Fotos.js';
-import { Kurse } from '../../screens/secondary/Kurse.js';
 import { Schreiben } from '../../screens/secondary/Schreiben.js';
-import { SteuerExport } from '../../screens/secondary/SteuerExport.js';
-import { Tagebuch } from '../../screens/secondary/Tagebuch.js';
-import { WhatsApp } from '../../screens/secondary/WhatsApp.js';
 import { Verkauf } from '../../screens/verkauf/Verkauf.js';
-// Lazy imports — kept at the top so `npm/pnpm typecheck` validates them all.
 import { Werkstatt } from '../../screens/werkstatt/Werkstatt.js';
+
+// ── Tier 2 secondary surfaces — LAZY (React.lazy + dynamic import). Each becomes
+//    its own bundle chunk, fetched only when the operator first navigates there
+//    via Spotlight. This keeps the heavy modules (e.g. the @fullcalendar suite in
+//    Aufgaben, the trading terminal in Kurse) off the first-paint critical path.
+//    The router wraps the <Outlet> in <Suspense> with a German fallback.
+//    Every module exports a NAMED component, so map it onto `default` for lazy().
+const Aufgaben = lazy(() =>
+  import('../../screens/aufgaben/Aufgaben.js').then((m) => ({ default: m.Aufgaben })),
+);
+const Bewertung = lazy(() =>
+  import('../../screens/bewertung/Bewertung.js').then((m) => ({ default: m.Bewertung })),
+);
+const Belegtexte = lazy(() =>
+  import('../../screens/secondary/Belegtexte.js').then((m) => ({ default: m.Belegtexte })),
+);
+const Dokumente = lazy(() =>
+  import('../../screens/secondary/Dokumente.js').then((m) => ({ default: m.Dokumente })),
+);
+const Ebay = lazy(() =>
+  import('../../screens/secondary/Ebay.js').then((m) => ({ default: m.Ebay })),
+);
+const Einstellungen = lazy(() =>
+  import('../../screens/secondary/Einstellungen.js').then((m) => ({ default: m.Einstellungen })),
+);
+const Fotos = lazy(() =>
+  import('../../screens/secondary/Fotos.js').then((m) => ({ default: m.Fotos })),
+);
+const Kurse = lazy(() =>
+  import('../../screens/secondary/Kurse.js').then((m) => ({ default: m.Kurse })),
+);
+const SteuerExport = lazy(() =>
+  import('../../screens/secondary/SteuerExport.js').then((m) => ({ default: m.SteuerExport })),
+);
+const Tagebuch = lazy(() =>
+  import('../../screens/secondary/Tagebuch.js').then((m) => ({ default: m.Tagebuch })),
+);
+const WhatsApp = lazy(() =>
+  import('../../screens/secondary/WhatsApp.js').then((m) => ({ default: m.WhatsApp })),
+);
 
 export const SURFACES: readonly SurfaceDescriptor[] = [
   // ── Tier 1 — 6 frontline chips, action-frequency order (ADR Option B) ─

@@ -31,6 +31,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ApiError,
   ApiOfflineQueuedError,
+  type CustomerDetail,
   type FinalizeBody,
   type FinalizeLineItem,
   type FinalizeResponse,
@@ -95,6 +96,7 @@ import { useLastReceiptStore } from '../../state/last-receipt-store.js';
 import { useSessionStore } from '../../state/session-store.js';
 import { useToastStore } from '../../state/toast-store.js';
 
+import { KaeuferPicker } from './KaeuferPicker.js';
 import { ReceiptPreview } from './ReceiptPreview.js';
 import { StornoDialog } from './StornoDialog.js';
 import { type AppliedVoucher, VoucherField } from './VoucherField.js';
@@ -142,6 +144,15 @@ export function BezahlenDialog({
   const [printing, setPrinting] = useState<boolean>(false);
   /** Applied gift voucher (Phase C2) — covers up to the full total; rest in cash. */
   const [appliedVoucher, setAppliedVoucher] = useState<AppliedVoucher | null>(null);
+
+  /**
+   * § 10 GwG buyer — a KYC-verified Käufer attached to a high-value (≥ €2.000)
+   * sale. `null` for the common anonymous Tafelgeschäft under the threshold.
+   * Set via the KaeuferPicker; its `customerId` rides on the finalize body so
+   * the server's `transactions_validate_kyc` trigger is satisfied.
+   */
+  const [selectedBuyer, setSelectedBuyer] = useState<CustomerDetail | null>(null);
+  const [buyerPickerOpen, setBuyerPickerOpen] = useState<boolean>(false);
 
   // B2B state
   const [isB2b, setIsB2b] = useState<boolean>(false);
@@ -275,6 +286,8 @@ export function BezahlenDialog({
       setPreviewData(null);
       setPrinting(false);
       setAppliedVoucher(null);
+      setSelectedBuyer(null);
+      setBuyerPickerOpen(false);
       inFlightRef.current = false;
       idempotencyKeyRef.current = newIntentionId();
       pendingAuthRef.current = null;
@@ -334,8 +347,29 @@ export function BezahlenDialog({
       companyName.trim().length > 0 &&
       cleanVatId.length >= 4);
 
-  const canSubmit = enoughCash && !submitting && finalized === null && lines.length > 0 && b2bValid;
-  const canSubmitCard = lines.length > 0 && !submitting && b2bValid;
+  /**
+   * § 10 GwG buyer gate (UI-surfacing only — the server trigger is the real
+   * gate). A VERKAUF total ≥ €2.000 needs a KYC-verified buyer attached. The
+   * selected buyer satisfies it only once their `kycVerifiedAt` is stamped.
+   */
+  const kycGate = useMemo(
+    () =>
+      evaluateKycGate({
+        direction: 'VERKAUF',
+        totalCents,
+        customer: selectedBuyer ? { kycVerifiedAt: selectedBuyer.kycVerifiedAt } : null,
+      }),
+    [totalCents, selectedBuyer],
+  );
+  // A verified buyer is required when the threshold is reached and we don't yet
+  // have one attached. (`required` only flips true once a customer is selected
+  // but unverified; the "no buyer at all" case is captured by thresholdReached.)
+  const buyerVerified = selectedBuyer != null && selectedBuyer.kycVerifiedAt != null;
+  const needsBuyer = kycGate.thresholdReached && !buyerVerified;
+
+  const canSubmit =
+    enoughCash && !submitting && finalized === null && lines.length > 0 && b2bValid && !needsBuyer;
+  const canSubmitCard = lines.length > 0 && !submitting && b2bValid && !needsBuyer;
 
   /**
    * Run the TSE INTENTION → finalize → FINISH sandwich. Returns the
@@ -350,7 +384,10 @@ export function BezahlenDialog({
       payments: NonNullable<FinalizeBody['payments']>,
       paymentKind: 'Bar' | 'Unbar',
     ): Promise<FinalizeResponse> => {
-      let customerId: string | null = null;
+      // § 10 GwG — a KYC-verified buyer attached for a high-value sale rides on
+      // the finalize body so the server trigger is satisfied. The B2B branch
+      // below overrides with the VIES-matched company customer when active.
+      let customerId: string | null = selectedBuyer?.id ?? null;
       if (isB2b) {
         const cleanVat = vatId.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
 
@@ -488,6 +525,7 @@ export function BezahlenDialog({
       viesAddress,
       manualAddress,
       adjustedPerLineMath,
+      selectedBuyer,
     ],
   );
 
@@ -753,6 +791,9 @@ export function BezahlenDialog({
           qc.invalidateQueries({ queryKey: currentShiftQueryKey }),
         ]);
       } else {
+        // § 10 GwG — if the server refused for a missing buyer ID, drive the
+        // operator straight to the KaeuferPicker instead of a dead error.
+        if (isKycRequiredError(err)) setBuyerPickerOpen(true);
         setError(formatPaymentError(err));
       }
     } finally {
@@ -909,6 +950,11 @@ export function BezahlenDialog({
         // genuine reason (validation, reservation, step-up cancel). We KEEP
         // `pendingAuthRef` so the next "Karte autorisieren" click retries the
         // finalize against the SAME authorization instead of charging again.
+        //
+        // § 10 GwG — if it failed for a missing buyer ID, open the KaeuferPicker
+        // so the operator can attach + verify a buyer; the retry then finalizes
+        // against the same authorization (no second charge).
+        if (isKycRequiredError(err)) setBuyerPickerOpen(true);
         setError(
           `Buchung fehlgeschlagen NACH Karten-Autorisierung. Bitte erneut „Karte autorisieren" — die Zahlung wird ohne erneute Belastung gebucht. Details: ${formatPaymentError(err)}`,
         );
@@ -939,10 +985,19 @@ export function BezahlenDialog({
   }, [clearCart, finalized, onClose, onFinalizeSuccess]);
 
   // Submit dispatcher — picks CASH vs ZVT_CARD based on toggle.
+  //
+  // § 10 GwG: a high-value sale (≥ €2.000) with no KYC-verified buyer attached
+  // CANNOT finalize — the server trigger refuses it. Rather than let the
+  // operator hit a dead 403, the primary action first opens the KaeuferPicker
+  // so they can attach + verify a buyer; finalize runs on the next click.
   const dispatchSubmit = useCallback(() => {
+    if (needsBuyer) {
+      setBuyerPickerOpen(true);
+      return;
+    }
     if (paymentChoice === 'CASH') void submit();
     else void submitCard();
-  }, [paymentChoice, submit, submitCard]);
+  }, [needsBuyer, paymentChoice, submit, submitCard]);
 
   if (!open) return null;
 
@@ -1005,6 +1060,9 @@ export function BezahlenDialog({
             cardConfigured={hardwareCfg.zvt.ip.length > 0}
             canSubmitCash={canSubmit}
             canSubmitCard={canSubmitCard}
+            needsBuyer={needsBuyer}
+            selectedBuyer={selectedBuyer}
+            onOpenBuyerPicker={() => setBuyerPickerOpen(true)}
             submitting={submitting}
             error={error}
             onSubmit={dispatchSubmit}
@@ -1031,6 +1089,20 @@ export function BezahlenDialog({
           />
         )}
       </ParchmentCard>
+
+      {/* § 10 GwG buyer step — attach + ID-verify a buyer for a ≥ €2.000 sale. */}
+      {buyerPickerOpen && (
+        <KaeuferPicker
+          totalEur={adjustedTotals.totalEur}
+          initialCustomerId={selectedBuyer?.id ?? null}
+          onConfirm={(customer) => {
+            setSelectedBuyer(customer);
+            setBuyerPickerOpen(false);
+            setError(null);
+          }}
+          onCancel={() => setBuyerPickerOpen(false)}
+        />
+      )}
 
       {/* ZVT terminal owns the cardholder's attention — block the UI. */}
       {zvtBusy && <ZvtSpinner amountEur={adjustedTotals.totalEur} />}
@@ -1067,6 +1139,9 @@ function PaymentInput({
   cardConfigured,
   canSubmitCash,
   canSubmitCard,
+  needsBuyer,
+  selectedBuyer,
+  onOpenBuyerPicker,
   submitting,
   error,
   onSubmit,
@@ -1097,6 +1172,9 @@ function PaymentInput({
   cardConfigured: boolean;
   canSubmitCash: boolean;
   canSubmitCard: boolean;
+  needsBuyer: boolean;
+  selectedBuyer: CustomerDetail | null;
+  onOpenBuyerPicker: () => void;
   submitting: boolean;
   error: string | null;
   onSubmit: () => void;
@@ -1116,13 +1194,22 @@ function PaymentInput({
 }): JSX.Element {
   const buttonLabel = (() => {
     if (submitting) return 'Schließt ab…';
+    // § 10 GwG — when a verified buyer is still missing the primary action
+    // routes to the KaeuferPicker, not to finalize. Label it as that step.
+    if (needsBuyer) return 'Käufer zuordnen';
     // Explicit "this RECORDS the sale" wording — the old "Beleg ausgeben" read
     // like a print action, not a finalize.
     if (paymentChoice === 'CASH') return 'Zahlung abschließen';
     return 'Karte autorisieren';
   })();
 
-  const canSubmit = paymentChoice === 'CASH' ? canSubmitCash : canSubmitCard;
+  // The button stays clickable while a buyer is required (it opens the picker);
+  // otherwise it follows the per-method finalize guard.
+  const canSubmit = needsBuyer
+    ? !submitting
+    : paymentChoice === 'CASH'
+      ? canSubmitCash
+      : canSubmitCard;
 
   return (
     <>
@@ -1142,27 +1229,88 @@ function PaymentInput({
           Bezahlen · {paymentChoice === 'CASH' ? 'Bar' : 'Karte'}
         </h2>
 
-        {/* GwG §10: a sale ≥ €2.000 needs an ID-verified buyer. Informational —
-            the server (transactions_validate_kyc) is the authoritative gate and
-            will refuse an anonymous high-value sale. */}
+        {/* GwG §10: a sale ≥ €2.000 needs a KYC-verified buyer. The server
+            (transactions_validate_kyc) is the authoritative gate; this block is
+            the UX that lets the cashier satisfy it — open the KaeuferPicker to
+            attach + ID-verify a buyer, or show the verified buyer once chosen. */}
         {evaluateKycGate({ direction: 'VERKAUF', totalCents: toCents(totalEur), customer: null })
           .thresholdReached && (
-          <p
-            role="note"
+          <div
             style={{
               margin: '12px 0 0',
               padding: '10px 12px',
               borderRadius: 'var(--w14-radius-button)',
-              border: '1px solid var(--w14-gold)',
+              border: `1px solid ${needsBuyer ? 'var(--w14-wax-red)' : 'var(--w14-gold)'}`,
               background: 'var(--w14-parchment-2)',
-              color: 'var(--w14-ink-aged)',
-              fontSize: '0.82rem',
-              lineHeight: 1.4,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8,
             }}
           >
-            Ab 2.000&nbsp;€ verlangt § 10 GwG eine Ausweisprüfung des Käufers — ein geprüfter Kunde
-            ist nötig, sonst lehnt das System den Verkauf ab.
-          </p>
+            {selectedBuyer && !needsBuyer ? (
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: 10,
+                }}
+              >
+                <span
+                  style={{
+                    color: 'var(--w14-ink-aged)',
+                    fontFamily: 'var(--w14-font-display)',
+                    fontSize: '0.85rem',
+                  }}
+                >
+                  Käufer:{' '}
+                  <strong style={{ color: 'var(--w14-gold)' }}>{selectedBuyer.fullName}</strong> ·
+                  Ausweis geprüft ✓
+                </span>
+                <button
+                  type="button"
+                  onClick={onOpenBuyerPicker}
+                  disabled={submitting}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--w14-ink-faded)',
+                    fontFamily: 'var(--w14-font-display)',
+                    fontStyle: 'italic',
+                    fontSize: '0.8rem',
+                    cursor: submitting ? 'not-allowed' : 'pointer',
+                    textDecoration: 'underline',
+                    textUnderlineOffset: 2,
+                  }}
+                >
+                  ändern
+                </button>
+              </div>
+            ) : (
+              <>
+                <p
+                  role="note"
+                  style={{
+                    margin: 0,
+                    color: 'var(--w14-ink-aged)',
+                    fontSize: '0.82rem',
+                    lineHeight: 1.4,
+                  }}
+                >
+                  Käufer zuordnen — Ausweis erforderlich (ab 2.000&nbsp;€, § 10 GwG). Ohne geprüften
+                  Käufer lehnt das System den Verkauf ab.
+                </p>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={onOpenBuyerPicker}
+                  disabled={submitting}
+                >
+                  Käufer zuordnen
+                </Button>
+              </>
+            )}
+          </div>
         )}
 
         {/* Payment-method toggle */}
@@ -1549,7 +1697,7 @@ function PaymentInput({
           }}
         >
           {buttonLabel}
-          {paymentChoice === 'CASH' && !submitting ? (
+          {paymentChoice === 'CASH' && !submitting && !needsBuyer ? (
             <>
               {' · '}
               {/* Collect the POST-voucher amount, not the gross total — when a
@@ -1723,9 +1871,16 @@ function ReceiptResult({
 // Shared row
 // ────────────────────────────────────────────────────────────────────────
 
+/** True when the server refused the sale for a missing § 10 GwG buyer ID. */
+function isKycRequiredError(err: unknown): boolean {
+  return err instanceof ApiError && err.code === 'KYC_REQUIRED';
+}
+
 function formatPaymentError(err: unknown): string {
   if (err instanceof ApiError) {
     if (err.code === 'STEP_UP_REQUIRED') return 'PIN-Bestätigung wurde abgebrochen.';
+    if (err.code === 'KYC_REQUIRED')
+      return 'Käufer muss per Ausweis geprüft werden — bitte Kunden zuordnen.';
     if (err.code === 'PRODUCT_NOT_RESERVABLE')
       return 'Mindestens ein Stück ist nicht mehr reserviert. Karte leeren und neu wählen.';
     return err.message;
