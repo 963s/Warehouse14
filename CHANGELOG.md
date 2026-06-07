@@ -6,6 +6,12 @@ and the project adheres to [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+## [0.4.3] — 2026-06-08
+
+- **Product photos now display in the app.** The CSP `img-src` now allows the
+  API media host, so server-stored product photos render as thumbnails in the
+  product sheet (upload already worked in 0.4.2; this lets the webview show them).
+
 ## [0.4.2] — 2026-06-08
 
 - **Product photos work again.** Upload now goes through the API
