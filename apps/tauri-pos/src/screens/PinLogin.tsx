@@ -21,6 +21,7 @@ import { DiamondRule, ParchmentCard, PinPad, RomanIndex } from '@warehouse14/ui-
 
 import { ThemeToggle } from '../app/chrome/ThemeToggle.js';
 import { useApiClient } from '../lib/api-context.js';
+import { pushCompanionAuth } from '../lib/companion-bridge.js';
 import { setSessionToken } from '../lib/session-token.js';
 import { useSessionStore } from '../state/session-store.js';
 
@@ -67,6 +68,9 @@ export function PinLogin(): JSX.Element {
       // Store the token for the Bearer-header auth path (Windows WebView2 drops
       // the cross-site session cookie) before flipping the session state.
       setSessionToken(res.token);
+      // Feed the freshly-minted Bearer into the companion LAN hub (best-effort
+      // — no-ops outside Tauri or when the hub isn't running).
+      void pushCompanionAuth();
       setFromLogin(res);
     } catch (err) {
       if (err instanceof ApiError) {

@@ -85,3 +85,8 @@ mdns-sd = "0.20"
 # tokio already carries rt-multi-thread + net; axum reuses the existing hyper.
 axum = "0.7"
 local-ip-address = "0.6"
+# Companion pairing/token security: CSPRNG token bytes + constant-time compare.
+# Both already in the dependency graph (pulled by aes-gcm / keyring); declaring
+# them direct just makes them usable here without new downloads.
+getrandom = "0.2"
+subtle = "2"

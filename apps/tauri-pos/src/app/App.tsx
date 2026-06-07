@@ -19,6 +19,7 @@ import { useEffect } from 'react';
 import { Button, DiamondRule, ParchmentCard, Seal } from '@warehouse14/ui-kit';
 import { ErrorBoundary } from '@warehouse14/ui-kit';
 
+import { useCompanionBridge } from '../hooks/useCompanionBridge.js';
 import { useSessionProbe } from '../hooks/useSessionProbe.js';
 import { applyChatwoot } from '../lib/chatwoot.js';
 import { useOfflineReplay } from '../lib/offline-replay.js';
@@ -38,6 +39,11 @@ export function App(): JSX.Element {
   const status = useSessionStore((s) => s.status);
   const clearLedger = useLedgerFeed((s) => s.clear);
   const clearToasts = useToastStore((s) => s.clear);
+
+  // Companion LAN hub: once authenticated, push the mother's Bearer into the
+  // embedded hub and start the debounced live-cart feed (best-effort — no-ops
+  // outside Tauri or when the hub isn't running).
+  useCompanionBridge(status === 'authenticated');
 
   // Phase 3 (ADR-0044): drain the offline outbox once authenticated. The hook
   // attaches connectivity listeners + runs a startup sweep; the DB connection

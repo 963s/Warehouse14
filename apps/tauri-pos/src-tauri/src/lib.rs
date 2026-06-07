@@ -111,6 +111,9 @@ pub fn run() {
             commands::companion::companion_start,
             commands::companion::companion_stop,
             commands::companion::companion_status,
+            // Companion LAN hub — auth injection + live cart publish
+            commands::companion::companion_set_auth,
+            commands::companion::companion_publish_cart,
         ])
         .run(tauri::generate_context!())
         .expect("error while running warehouse14-tauri-pos");

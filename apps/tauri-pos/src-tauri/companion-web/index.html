@@ -1,0 +1,583 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<title>Warehouse14 Begleiter</title>
+<style>
+  :root {
+    color-scheme: dark light;
+    --bg: #0b0d12;
+    --bg-elev: #12151c;
+    --bg-elev-2: #1a1e27;
+    --line: #272c38;
+    --line-soft: #1f2430;
+    --fg: #f3f4f6;
+    --fg-dim: #9ca3af;
+    --fg-faint: #6b7280;
+    --accent: #f0b429;        /* gold */
+    --accent-fg: #1a1205;
+    --ok: #34d399;
+    --danger: #f87171;
+    --radius: 16px;
+    --radius-sm: 10px;
+    --tap: 56px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior: none;
+  }
+  #app { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; }
+
+  /* ── Top bar ───────────────────────────────────────────── */
+  .topbar {
+    display: flex; align-items: center; gap: .75rem;
+    padding: .9rem 1.1rem;
+    border-bottom: 1px solid var(--line-soft);
+    background: var(--bg-elev);
+    position: sticky; top: 0; z-index: 10;
+  }
+  .topbar .brand { font-weight: 700; letter-spacing: .2px; font-size: 1.05rem; }
+  .topbar .brand b { color: var(--accent); }
+  .topbar .role-pill {
+    margin-left: auto; font-size: .8rem; color: var(--fg-dim);
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: .3rem .75rem; white-space: nowrap;
+  }
+  .btn-switch {
+    appearance: none; border: 1px solid var(--line); background: transparent;
+    color: var(--fg-dim); font-size: .82rem; border-radius: 999px;
+    padding: .4rem .8rem; cursor: pointer; min-height: 40px;
+  }
+  .btn-switch:active { background: var(--bg-elev-2); }
+
+  /* ── Generic layout ────────────────────────────────────── */
+  .screen { flex: 1; display: flex; flex-direction: column; }
+  .center { flex: 1; display: grid; place-items: center; padding: 1.5rem; }
+  .card {
+    width: 100%; max-width: 30rem; background: var(--bg-elev);
+    border: 1px solid var(--line-soft); border-radius: var(--radius);
+    padding: 2rem 1.75rem;
+  }
+  h1 { font-size: 1.5rem; margin: 0 0 .35rem; }
+  .sub { color: var(--fg-dim); margin: 0 0 1.5rem; line-height: 1.5; }
+
+  label.field { display: block; margin: 0 0 1.25rem; }
+  label.field .lab { display: block; font-size: .85rem; color: var(--fg-dim); margin-bottom: .5rem; }
+
+  .code-input {
+    width: 100%; font-size: 2rem; letter-spacing: .5rem; text-align: center;
+    font-variant-numeric: tabular-nums; font-weight: 600;
+    padding: .9rem 1rem; border-radius: var(--radius-sm);
+    border: 1px solid var(--line); background: var(--bg-elev-2); color: var(--fg);
+    min-height: var(--tap); outline: none;
+  }
+  .code-input:focus { border-color: var(--accent); }
+
+  .roles { display: grid; gap: .75rem; margin: 1rem 0 .5rem; }
+  .role-btn {
+    appearance: none; cursor: pointer; text-align: left;
+    display: flex; align-items: center; gap: .9rem;
+    border: 1px solid var(--line); background: var(--bg-elev-2); color: var(--fg);
+    border-radius: var(--radius-sm); padding: 1rem 1.1rem; min-height: var(--tap);
+    transition: border-color .12s, background .12s;
+  }
+  .role-btn:active { background: #20252f; }
+  .role-btn[aria-pressed="true"] { border-color: var(--accent); background: #221a08; }
+  .role-btn .ico { font-size: 1.6rem; width: 2rem; text-align: center; }
+  .role-btn .rt { font-weight: 600; }
+  .role-btn .rd { display: block; font-size: .8rem; color: var(--fg-dim); margin-top: .15rem; }
+
+  .btn-primary {
+    appearance: none; width: 100%; cursor: pointer;
+    background: var(--accent); color: var(--accent-fg);
+    font-weight: 700; font-size: 1.05rem;
+    border: none; border-radius: var(--radius-sm);
+    padding: 1rem; min-height: var(--tap); margin-top: .5rem;
+  }
+  .btn-primary:disabled { opacity: .45; cursor: default; }
+  .btn-primary:active:not(:disabled) { filter: brightness(.94); }
+
+  .err {
+    color: var(--danger); font-size: .9rem; margin: .25rem 0 1rem;
+    min-height: 1.2em;
+  }
+
+  /* ── Customer display ──────────────────────────────────── */
+  .display-wrap {
+    flex: 1; display: flex; flex-direction: column;
+    padding: clamp(1rem, 4vw, 3rem);
+  }
+  .display-head { font-size: clamp(1.1rem, 3vw, 1.6rem); color: var(--fg-dim); margin-bottom: 1rem; }
+  .display-items { flex: 1; overflow-y: auto; }
+  .display-line {
+    display: flex; align-items: baseline; gap: 1rem;
+    padding: clamp(.6rem, 2vw, 1.1rem) 0;
+    border-bottom: 1px solid var(--line-soft);
+    font-size: clamp(1.2rem, 3.5vw, 2rem);
+  }
+  .display-line .qty { color: var(--accent); font-variant-numeric: tabular-nums; min-width: 2.5em; }
+  .display-line .nm { flex: 1; }
+  .display-line .ln { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .display-empty {
+    flex: 1; display: grid; place-items: center; text-align: center;
+    color: var(--fg-faint); font-size: clamp(1.2rem, 4vw, 2rem);
+  }
+  .display-total {
+    margin-top: auto; padding-top: 1.25rem;
+    display: flex; align-items: baseline; justify-content: space-between;
+    border-top: 2px solid var(--line);
+  }
+  .display-total .tl { font-size: clamp(1.2rem, 4vw, 2.2rem); color: var(--fg-dim); }
+  .display-total .tv {
+    font-size: clamp(2.2rem, 9vw, 5rem); font-weight: 800;
+    color: var(--accent); font-variant-numeric: tabular-nums;
+  }
+
+  /* ── Cashier / warehouse list ──────────────────────────── */
+  .pad { padding: 1rem 1.1rem; }
+  .search {
+    width: 100%; font-size: 1.05rem; padding: .85rem 1rem;
+    border-radius: var(--radius-sm); border: 1px solid var(--line);
+    background: var(--bg-elev-2); color: var(--fg); min-height: var(--tap); outline: none;
+    margin-bottom: 1rem;
+  }
+  .search:focus { border-color: var(--accent); }
+  .list { display: flex; flex-direction: column; gap: .6rem; }
+  .row {
+    display: flex; align-items: center; gap: 1rem;
+    background: var(--bg-elev); border: 1px solid var(--line-soft);
+    border-radius: var(--radius-sm); padding: .85rem 1rem;
+  }
+  .row .meta { flex: 1; min-width: 0; }
+  .row .nm { font-weight: 600; }
+  .row .sku { font-size: .8rem; color: var(--fg-dim); margin-top: .15rem;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .price { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+  .row .add {
+    appearance: none; cursor: pointer; border: 1px solid var(--accent);
+    background: transparent; color: var(--accent); border-radius: 999px;
+    width: 44px; height: 44px; font-size: 1.4rem; line-height: 1; flex: none;
+  }
+  .row .add:active { background: #221a08; }
+  .hint { color: var(--fg-faint); font-size: .82rem; margin: .25rem 0 1rem; }
+  .state-msg { color: var(--fg-dim); text-align: center; padding: 2.5rem 1rem; }
+  .badge-soft {
+    display: inline-block; font-size: .7rem; color: var(--fg-faint);
+    border: 1px solid var(--line-soft); border-radius: 999px; padding: .15rem .5rem;
+    margin-left: .5rem; vertical-align: middle;
+  }
+  .skuhit {
+    background: var(--bg-elev); border: 1px solid var(--line-soft);
+    border-radius: var(--radius-sm); padding: 1.1rem 1.2rem; margin-top: 1rem;
+  }
+  .skuhit .kv { display: flex; justify-content: space-between; gap: 1rem; padding: .35rem 0; }
+  .skuhit .kv .k { color: var(--fg-dim); }
+  .skuhit .kv .v { font-weight: 600; text-align: right; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ── Constants ──────────────────────────────────────────────────────
+  var LS_TOKEN = "w14.companion.token";
+  var LS_ROLE  = "w14.companion.role";
+  var ROLES = {
+    warehouse: { label: "Lager",        ico: "📦", desc: "Bestand & SKU-Suche" },
+    cashier:   { label: "Zweitkasse",   ico: "💳", desc: "Zweiter Kassenplatz" },
+    display:   { label: "Kundenanzeige", ico: "🖥️", desc: "Live-Warenkorb für Kunden" }
+  };
+
+  // ── State ──────────────────────────────────────────────────────────
+  var token = localStorage.getItem(LS_TOKEN) || "";
+  var role  = localStorage.getItem(LS_ROLE)  || "";
+  var displayTimer = null;
+
+  var app = document.getElementById("app");
+
+  // ── Helpers ────────────────────────────────────────────────────────
+  function el(tag, attrs, children) {
+    var n = document.createElement(tag);
+    if (attrs) for (var k in attrs) {
+      if (k === "class") n.className = attrs[k];
+      else if (k === "html") n.innerHTML = attrs[k];
+      else if (k.slice(0, 2) === "on" && typeof attrs[k] === "function")
+        n.addEventListener(k.slice(2).toLowerCase(), attrs[k]);
+      else if (attrs[k] != null) n.setAttribute(k, attrs[k]);
+    }
+    if (children != null) {
+      if (!Array.isArray(children)) children = [children];
+      children.forEach(function (c) {
+        if (c == null) return;
+        n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+      });
+    }
+    return n;
+  }
+  function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+  function fmtEur(v) {
+    var s = (v == null ? "0.00" : String(v)).replace(",", ".");
+    var n = parseFloat(s);
+    if (!isFinite(n)) n = 0;
+    return n.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
+  }
+  function stopDisplayTimer() { if (displayTimer) { clearInterval(displayTimer); displayTimer = null; } }
+
+  // ── API (companion -> mother) ──────────────────────────────────────
+  function pair(code, chosenRole) {
+    return fetch("/pair", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: code, role: chosenRole })
+    }).then(function (r) {
+      if (r.status === 429) throw new Error("Zu viele Versuche. Bitte kurz warten.");
+      if (r.status === 403) throw new Error("Code oder Rolle ungültig.");
+      if (!r.ok) throw new Error("Kopplung fehlgeschlagen (" + r.status + ").");
+      return r.json();
+    });
+  }
+  function getCart() {
+    return fetch("/cart", { headers: { "X-Companion-Token": token } })
+      .then(function (r) {
+        if (r.status === 401 || r.status === 403) { logout(); throw new Error("Sitzung abgelaufen."); }
+        if (!r.ok) throw new Error("Warenkorb nicht verfügbar.");
+        return r.json();
+      });
+  }
+  function proxy(path, opts) {
+    opts = opts || {};
+    var headers = opts.headers || {};
+    headers["X-Companion-Token"] = token;
+    return fetch("/api/proxy/" + path, {
+      method: opts.method || "GET",
+      headers: headers,
+      body: opts.body
+    }).then(function (r) {
+      if (r.status === 401) { logout(); throw new Error("Sitzung abgelaufen."); }
+      return r;
+    });
+  }
+
+  // ── Session ────────────────────────────────────────────────────────
+  function logout() {
+    stopDisplayTimer();
+    token = ""; role = "";
+    localStorage.removeItem(LS_TOKEN);
+    localStorage.removeItem(LS_ROLE);
+    render();
+  }
+
+  // ── Top bar ────────────────────────────────────────────────────────
+  function topbar() {
+    var meta = ROLES[role];
+    return el("header", { class: "topbar" }, [
+      el("span", { class: "brand", html: "Warehouse14 <b>Begleiter</b>" }),
+      meta ? el("span", { class: "role-pill" }, meta.label) : null,
+      el("button", { class: "btn-switch", onclick: function () {
+        if (confirm("Rolle wechseln und abmelden?")) logout();
+      } }, "Rolle wechseln")
+    ]);
+  }
+
+  // ── Pairing screen ─────────────────────────────────────────────────
+  function renderPairing() {
+    stopDisplayTimer();
+    clear(app);
+
+    var chosen = "cashier";
+    var codeVal = "";
+    var busy = false;
+
+    var errBox = el("div", { class: "err" });
+    var submitBtn;
+
+    function refresh() {
+      submitBtn.disabled = busy || codeVal.length !== 6 || !chosen;
+      submitBtn.textContent = busy ? "Wird gekoppelt…" : "Koppeln";
+    }
+
+    var codeInput = el("input", {
+      class: "code-input", type: "text", inputmode: "numeric",
+      autocomplete: "one-time-code", maxlength: "6",
+      placeholder: "000000", "aria-label": "6-stelliger Kopplungscode",
+      oninput: function (e) {
+        codeVal = e.target.value.replace(/\D/g, "").slice(0, 6);
+        e.target.value = codeVal;
+        errBox.textContent = "";
+        refresh();
+      }
+    });
+
+    var roleBtns = Object.keys(ROLES).map(function (key) {
+      var m = ROLES[key];
+      var btn = el("button", {
+        class: "role-btn", type: "button",
+        "aria-pressed": key === chosen ? "true" : "false",
+        onclick: function () {
+          chosen = key;
+          roleBtns.forEach(function (b) {
+            b.setAttribute("aria-pressed", b === btn ? "true" : "false");
+          });
+          refresh();
+        }
+      }, [
+        el("span", { class: "ico" }, m.ico),
+        el("span", {}, [
+          el("span", { class: "rt" }, m.label),
+          el("span", { class: "rd" }, m.desc)
+        ])
+      ]);
+      return btn;
+    });
+
+    submitBtn = el("button", { class: "btn-primary", type: "button",
+      onclick: function () {
+        if (busy || codeVal.length !== 6) return;
+        busy = true; errBox.textContent = ""; refresh();
+        pair(codeVal, chosen).then(function (res) {
+          token = res.token; role = res.role;
+          localStorage.setItem(LS_TOKEN, token);
+          localStorage.setItem(LS_ROLE, role);
+          render();
+        }).catch(function (err) {
+          busy = false; codeVal = ""; codeInput.value = "";
+          errBox.textContent = err.message || "Kopplung fehlgeschlagen.";
+          refresh();
+        });
+      }
+    }, "Koppeln");
+
+    var card = el("div", { class: "card" }, [
+      el("h1", {}, "Mit der Hauptkasse koppeln"),
+      el("p", { class: "sub" }, "Code von der Hauptkasse ablesen und die Rolle dieses Geräts wählen."),
+      el("label", { class: "field" }, [
+        el("span", { class: "lab" }, "Kopplungscode"),
+        codeInput
+      ]),
+      el("div", { class: "lab", style: "font-size:.85rem;color:var(--fg-dim);margin-bottom:.5rem" }, "Rolle"),
+      el("div", { class: "roles" }, roleBtns),
+      errBox,
+      submitBtn
+    ]);
+
+    app.appendChild(el("div", { class: "screen" }, [ el("div", { class: "center" }, card) ]));
+    refresh();
+  }
+
+  // ── Customer display ───────────────────────────────────────────────
+  function renderDisplay() {
+    stopDisplayTimer();
+    clear(app);
+
+    var head  = el("div", { class: "display-head" }, "Ihr Einkauf");
+    var items = el("div", { class: "display-items" });
+    var totalV = el("span", { class: "tv" }, fmtEur("0.00"));
+    var total = el("div", { class: "display-total" }, [
+      el("span", { class: "tl" }, "Gesamt"),
+      totalV
+    ]);
+
+    var wrap = el("div", { class: "display-wrap" }, [head, items, total]);
+    app.appendChild(topbar());
+    app.appendChild(wrap);
+
+    function paint(cart) {
+      clear(items);
+      var lines = (cart && cart.items) || [];
+      if (!lines.length) {
+        items.appendChild(el("div", { class: "display-empty" }, "Noch keine Artikel"));
+      } else {
+        lines.forEach(function (it) {
+          var qty = it.qty != null ? it.qty : (it.quantity != null ? it.quantity : 1);
+          var name = it.name || it.title || it.sku || "Artikel";
+          var line = it.lineEur != null ? it.lineEur
+                   : (it.totalEur != null ? it.totalEur
+                   : (it.priceEur != null ? it.priceEur : it.price));
+          items.appendChild(el("div", { class: "display-line" }, [
+            el("span", { class: "qty" }, qty + "×"),
+            el("span", { class: "nm" }, name),
+            el("span", { class: "ln" }, fmtEur(line))
+          ]));
+        });
+      }
+      totalV.textContent = fmtEur(cart && cart.totalEur);
+    }
+
+    function tick() { getCart().then(paint).catch(function () { /* keep last frame */ }); }
+    tick();
+    displayTimer = setInterval(tick, 1000);
+  }
+
+  // ── Cashier (Zweitkasse) ───────────────────────────────────────────
+  function renderCashier() {
+    stopDisplayTimer();
+    clear(app);
+    app.appendChild(topbar());
+
+    var statusMsg = el("div", { class: "state-msg" }, "Katalog wird geladen…");
+    var listBox = el("div", { class: "list" });
+    var all = [];
+
+    var search = el("input", {
+      class: "search", type: "search", placeholder: "Artikel suchen…",
+      "aria-label": "Artikel suchen",
+      oninput: function (e) { paint(e.target.value.trim().toLowerCase()); }
+    });
+
+    function paint(q) {
+      clear(listBox);
+      var rows = all.filter(function (p) {
+        if (!q) return true;
+        return (String(p.name || "") + " " + String(p.sku || "")).toLowerCase().indexOf(q) >= 0;
+      }).slice(0, 100);
+      if (!rows.length) {
+        listBox.appendChild(el("div", { class: "state-msg" }, "Keine Treffer."));
+        return;
+      }
+      rows.forEach(function (p) {
+        listBox.appendChild(el("div", { class: "row" }, [
+          el("div", { class: "meta" }, [
+            el("div", { class: "nm" }, p.name || "Ohne Namen"),
+            el("div", { class: "sku" }, p.sku ? ("SKU " + p.sku) : "—")
+          ]),
+          el("span", { class: "price" }, fmtEur(p.priceEur != null ? p.priceEur : p.price)),
+          el("button", { class: "add", title: "Hinzufügen (folgt)",
+            onclick: function () {
+              // TODO(phase): wire 'add to cart' through the mother so this
+              // companion can ring up via the proxy + publish the cart.
+              // For now this is an intentionally inert stub.
+              alert("Hinzufügen folgt: Warenkorb wird in der nächsten Phase über die Hauptkasse synchronisiert.");
+            }
+          }, "+")
+        ]));
+      });
+    }
+
+    app.appendChild(el("div", { class: "pad" }, [
+      search,
+      el("div", { class: "hint" }, [
+        "Nur-Lesen-Katalog. ",
+        el("span", { class: "badge-soft" }, "Hinzufügen folgt")
+      ]),
+      statusMsg,
+      listBox
+    ]));
+
+    proxy("products")
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function (data) {
+        all = normalizeProducts(data);
+        statusMsg.remove();
+        paint("");
+      })
+      .catch(function (err) {
+        statusMsg.textContent = "Katalog konnte nicht geladen werden. (" + (err.message || "Fehler") + ")";
+      });
+  }
+
+  // ── Warehouse (Lager) — SKU lookup ─────────────────────────────────
+  function renderWarehouse() {
+    stopDisplayTimer();
+    clear(app);
+    app.appendChild(topbar());
+
+    var resultBox = el("div", {});
+    var busy = false;
+
+    var search = el("input", {
+      class: "search", type: "search", placeholder: "SKU oder Artikelname…",
+      "aria-label": "SKU oder Artikelname",
+      onkeydown: function (e) { if (e.key === "Enter") run(e.target.value.trim()); }
+    });
+
+    function run(q) {
+      if (!q || busy) return;
+      busy = true;
+      clear(resultBox);
+      resultBox.appendChild(el("div", { class: "state-msg" }, "Suche…"));
+      proxy("products?search=" + encodeURIComponent(q))
+        .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(function (data) {
+          busy = false;
+          var rows = normalizeProducts(data).filter(function (p) {
+            var hay = (String(p.name || "") + " " + String(p.sku || "")).toLowerCase();
+            return hay.indexOf(q.toLowerCase()) >= 0;
+          }).slice(0, 50);
+          clear(resultBox);
+          if (!rows.length) {
+            resultBox.appendChild(el("div", { class: "state-msg" }, "Kein Artikel gefunden."));
+            return;
+          }
+          rows.forEach(function (p) {
+            resultBox.appendChild(el("div", { class: "skuhit" }, [
+              el("div", { class: "kv" }, [ el("span", { class: "k" }, "Artikel"), el("span", { class: "v" }, p.name || "—") ]),
+              el("div", { class: "kv" }, [ el("span", { class: "k" }, "SKU"), el("span", { class: "v" }, p.sku || "—") ]),
+              el("div", { class: "kv" }, [ el("span", { class: "k" }, "Lagerort"), el("span", { class: "v" }, p.location || p.bin || "—") ]),
+              el("div", { class: "kv" }, [ el("span", { class: "k" }, "Bestand"), el("span", { class: "v" }, p.stock != null ? String(p.stock) : (p.qty != null ? String(p.qty) : "—")) ]),
+              el("div", { class: "kv" }, [ el("span", { class: "k" }, "Status"), el("span", { class: "v" }, p.state || p.status || "—") ]),
+              el("div", { class: "kv" }, [ el("span", { class: "k" }, "Preis"), el("span", { class: "v" }, fmtEur(p.priceEur != null ? p.priceEur : p.price)) ])
+            ]));
+          });
+        })
+        .catch(function (err) {
+          busy = false;
+          clear(resultBox);
+          resultBox.appendChild(el("div", { class: "state-msg" }, "Suche fehlgeschlagen. (" + (err.message || "Fehler") + ")"));
+        });
+    }
+
+    app.appendChild(el("div", { class: "pad" }, [
+      search,
+      el("div", { class: "hint" }, "SKU oder Name eingeben und Enter drücken."),
+      resultBox
+    ]));
+  }
+
+  // Normalize various possible product list shapes from the cloud.
+  function normalizeProducts(data) {
+    var arr = Array.isArray(data) ? data
+            : (data && Array.isArray(data.items)) ? data.items
+            : (data && Array.isArray(data.products)) ? data.products
+            : (data && Array.isArray(data.data)) ? data.data
+            : [];
+    return arr.map(function (p) {
+      return {
+        name: p.name || p.title || p.productName,
+        sku: p.sku || p.id || p.productId,
+        priceEur: p.priceEur,
+        price: p.price != null ? p.price : (p.priceCents != null ? p.priceCents / 100 : null),
+        location: p.location || p.storageLocation || p.bin,
+        bin: p.bin,
+        stock: p.stock != null ? p.stock : p.quantity,
+        qty: p.qty,
+        state: p.state,
+        status: p.status
+      };
+    });
+  }
+
+  // ── Router ─────────────────────────────────────────────────────────
+  function render() {
+    if (!token || !role || !ROLES[role]) { renderPairing(); return; }
+    if (role === "display")   { renderDisplay();   return; }
+    if (role === "cashier")   { renderCashier();   return; }
+    if (role === "warehouse") { renderWarehouse(); return; }
+    renderPairing();
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>
