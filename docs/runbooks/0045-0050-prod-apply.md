@@ -63,7 +63,7 @@ applies migrations 0001→0050, inserts via the migrator) asserts:
 
 **Re-run before building the migrate image — this is the binding pre-deploy gate:**
 ```bash
-pnpm --filter @warehouse14/db exec vitest run 0050_gwg_kyc_enforcement   # → 6 passed
+pnpm --filter @warehouse14/db exec vitest run 0050_gwg_kyc_enforcement   # → 7 passed (incl. storno-bypass; allow cases assert persistence)
 ```
 
 ---
