@@ -75,6 +75,13 @@ services:
       PORT: '3001'
       DATABASE_URL: postgresql://warehouse14_app:${APP_PASSWORD}@postgres:5432/warehouse14
       REDIS_URL: redis://redis:6379
+      # Local product-photo store (replaces the empty R2 bucket). Bytes are
+      # compressed to WebP and written under this path — MUST be the persistent
+      # volume below, and the SAME volume the worker mounts (so the purge job
+      # can reclaim disk). PHOTO_STORE_MAX_BYTES defaults to 20 GiB in code.
+      PHOTOS_DIR: /data/photos
+    volumes:
+      - photosdata:/data/photos
     # Reached only by cloudflared on the internal network (no host port).
 
   worker:
@@ -94,6 +101,11 @@ services:
       # The worker runs under its OWN least-privilege role (enforced at boot).
       DATABASE_URL: postgresql://warehouse14_worker:${WORKER_PASSWORD}@postgres:5432/warehouse14
       REDIS_URL: redis://redis:6379
+      # SAME photo store as the api — the product_photo_purge job reclaims disk
+      # from sold/archived/deleted product photos here.
+      PHOTOS_DIR: /data/photos
+    volumes:
+      - photosdata:/data/photos
 
   # Cloudflare Tunnel — public TLS + mTLS for api.warehouse14.de → api:3001.
   # Configure the route (api.warehouse14.de → http://api:3001) in the Cloudflare
@@ -111,3 +123,8 @@ volumes:
     name: warehouse14-pgdata
   redisdata:
     name: warehouse14-redisdata
+  # Product-photo store (compressed WebP). Shared by api (writes/serves) and
+  # worker (purges). Survives container recreation. Hard-capped in code at 20 GiB
+  # (PHOTO_STORE_MAX_BYTES) — keep an eye on the host disk it lives on.
+  photosdata:
+    name: warehouse14-photosdata

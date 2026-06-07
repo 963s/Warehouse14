@@ -31,6 +31,7 @@ import {
   gdprCleanupJob,
   intakeSweepJob,
   lbmaPricesJob,
+  productPhotoPurgeJob,
   reservationSweeperJob,
   sessionsCleanupJob,
   storefrontCartSweeperJob,
@@ -195,6 +196,17 @@ export async function buildWorker(opts: BuildWorkerOpts): Promise<WorkerHandle> 
   // Epic G: Smart Appointment System — reminder dispatch + no-show grace release.
   runner.register(appointmentNotificationsJob);
   runner.register(appointmentNoShowDetectorJob);
+  // Storage hygiene: product photos are TEMPORARY — purge files+rows once the
+  // item is SOLD/ARCHIVED (or an unassigned orphan ages out). Empty PHOTOS_DIR
+  // → the job is a no-op. Worker MUST mount the SAME PHOTOS_DIR as the API.
+  runner.register(
+    productPhotoPurgeJob({
+      photosDir: opts.env.PHOTOS_DIR,
+      schedule: opts.env.PHOTO_PURGE_SCHEDULE,
+      orphanRetentionDays: opts.env.PHOTO_PURGE_ORPHAN_RETENTION_DAYS,
+      batchLimit: opts.env.PHOTO_PURGE_BATCH_LIMIT,
+    }),
+  );
 
   // Tiny Fastify for /metrics + /health.
   const httpServer = Fastify({

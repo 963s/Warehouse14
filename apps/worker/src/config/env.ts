@@ -108,6 +108,33 @@ const EnvSchema = Type.Object({
     default: '',
     description: 'Public CDN base for served R2 objects.',
   }),
+
+  // ── Product-photo auto-purge (product_photo_purge job) ──────────────
+  // Product photos are TEMPORARY: kept only until the item is sold/archived.
+  // The worker MUST mount the SAME PHOTOS_DIR volume as the API. Empty →
+  // the purge job is a no-op (cloud-only / R2 deployments).
+  PHOTOS_DIR: Type.String({
+    default: '',
+    description:
+      'Local filesystem root for product photos (<id>.webp + <id>_thumb.webp). Empty → product_photo_purge is a no-op.',
+  }),
+  PHOTO_PURGE_SCHEDULE: Type.String({
+    default: '0 3 * * *', // daily 03:00
+    description: 'node-cron schedule for the product_photo_purge job.',
+  }),
+  PHOTO_PURGE_ORPHAN_RETENTION_DAYS: Type.Integer({
+    minimum: 1,
+    maximum: 3650,
+    default: 30,
+    description:
+      'Age (days) past which an UNASSIGNED (product_id IS NULL) photo is purge-eligible. Sold/archived photos are purged immediately.',
+  }),
+  PHOTO_PURGE_BATCH_LIMIT: Type.Integer({
+    minimum: 1,
+    maximum: 100_000,
+    default: 500,
+    description: 'Max photos processed per product_photo_purge run (bounds tx time).',
+  }),
 });
 
 export type Env = Static<typeof EnvSchema>;

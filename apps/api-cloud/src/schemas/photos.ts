@@ -43,8 +43,16 @@ export const PhotoRow = Type.Object({
   id: Type.String({ format: 'uuid' }),
   productId: Type.Union([Type.String({ format: 'uuid' }), Type.Null()]),
   r2Key: Type.String(),
+  /** 'local' = served by this api from disk; 'r2' = legacy Cloudflare R2. */
+  storageKind: Type.Optional(Type.Union([Type.Literal('local'), Type.Literal('r2')])),
   /** Public URL the POS / storefront renders the photo from. */
   publicUrl: Type.Optional(Type.String()),
+  /** Compressed thumbnail URL (local-store rows only). */
+  thumbUrl: Type.Optional(Type.String()),
+  /** MAIN image dimensions + compressed size (local-store rows). */
+  width: Type.Optional(Type.Union([Type.Integer(), Type.Null()])),
+  height: Type.Optional(Type.Union([Type.Integer(), Type.Null()])),
+  sizeBytes: Type.Optional(Type.Union([Type.Integer(), Type.Null()])),
   r2KeyBgRemoved: Type.Union([Type.String(), Type.Null()]),
   displayOrder: Type.Integer(),
   isPrimary: Type.Boolean(),
@@ -104,6 +112,19 @@ export const UnassignedPhotosQuery = Type.Object({
 export const UnassignedPhotosResponse = Type.Object({
   items: Type.Array(PhotoRow),
   total: Type.Integer(),
+});
+
+// ────────────────────────────────────────────────────────────────────────
+// GET /api/photos/usage — local store gauge for the owner
+// ────────────────────────────────────────────────────────────────────────
+
+export const PhotoStoreUsageResponse = Type.Object({
+  /** Bytes currently used by the local store (SUM of MAIN webp sizes). */
+  usedBytes: Type.Integer(),
+  /** Hard cap (PHOTO_STORE_MAX_BYTES). */
+  maxBytes: Type.Integer(),
+  /** Number of local-store photos. */
+  count: Type.Integer(),
 });
 
 export type TCreatePhotoBody = Static<typeof CreatePhotoBody>;

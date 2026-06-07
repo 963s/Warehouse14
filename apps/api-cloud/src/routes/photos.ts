@@ -22,12 +22,13 @@
 
 import { Type } from '@sinclair/typebox';
 import { type SQL, and, asc, count, desc, sql as drizzleSql, eq } from 'drizzle-orm';
-import type { FastifyPluginAsync } from 'fastify';
+import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 
 import { productPhotoWorkflowEvents, productPhotos } from '@warehouse14/db/schema';
 
 import type { Env } from '../config/env.js';
 import { requireAuth, requireRole } from '../lib/auth-policy.js';
+import { readRendition } from '../lib/photo-store.js';
 import { buildR2PublicUrl } from '../lib/r2.js';
 import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 import {
@@ -35,6 +36,7 @@ import {
   CreatePhotoBody,
   PhotoIdParams,
   PhotoRow,
+  PhotoStoreUsageResponse,
   ProductPhotosQuery,
   ProductPhotosResponse,
   type TCreatePhotoBody,
@@ -71,12 +73,27 @@ const ErrorResponse = Type.Object({
 
 type PhotoRowDb = typeof productPhotos.$inferSelect;
 
+/** API-served URL for a local-store rendition. */
+function apiPhotoUrl(env: Env, id: string, rendition: 'raw' | 'thumb'): string {
+  return `${env.PHOTOS_PUBLIC_BASE_URL.replace(/\/$/, '')}/api/photos/${id}/${rendition}`;
+}
+
 function serializePhoto(row: PhotoRowDb, env: Env): Record<string, unknown> {
+  // Local rows are served by THIS api (compressed WebP on disk); legacy rows
+  // keep their R2 public URL. The POS reads `publicUrl` either way.
+  const isLocal = row.storageKind === 'local';
+  const publicUrl = isLocal ? apiPhotoUrl(env, row.id, 'raw') : buildR2PublicUrl(env, row.r2Key);
+  const thumbUrl = isLocal ? apiPhotoUrl(env, row.id, 'thumb') : undefined;
   return {
     id: row.id,
     productId: row.productId,
     r2Key: row.r2Key,
-    publicUrl: buildR2PublicUrl(env, row.r2Key),
+    storageKind: row.storageKind,
+    publicUrl,
+    ...(thumbUrl ? { thumbUrl } : {}),
+    width: row.width,
+    height: row.height,
+    sizeBytes: row.sizeBytes,
     r2KeyBgRemoved: row.r2KeyBgRemoved,
     displayOrder: row.displayOrder,
     isPrimary: row.isPrimary,
@@ -313,6 +330,94 @@ const photosRoutes: FastifyPluginAsync<PhotosRoutesOpts> = async (app, opts) => 
 
       return reply.status(200).send({ items: rows.map((r) => serializePhoto(r, opts.env)) });
     },
+  );
+
+  // ────────────────────────────────────────────────────────────────────
+  // GET /api/photos/usage — owner's local-store gauge
+  // ────────────────────────────────────────────────────────────────────
+  app.get(
+    '/api/photos/usage',
+    {
+      schema: {
+        tags: ['photos'],
+        summary: 'Local photo-store usage (bytes used, cap, count).',
+        response: { 200: PhotoStoreUsageResponse, 401: ErrorResponse, 403: ErrorResponse },
+      },
+    },
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'ADMIN', 'CASHIER');
+
+      const [agg] = await app.db
+        .select({
+          used: drizzleSql<number>`COALESCE(SUM(${productPhotos.sizeBytes}), 0)`,
+          n: count(),
+        })
+        .from(productPhotos)
+        .where(drizzleSql`${productPhotos.storageKind} = 'local'`);
+
+      return reply.status(200).send({
+        usedBytes: Number(agg?.used ?? 0),
+        maxBytes: opts.env.PHOTO_STORE_MAX_BYTES,
+        count: Number(agg?.n ?? 0),
+      });
+    },
+  );
+
+  // ────────────────────────────────────────────────────────────────────
+  // GET /api/photos/:id/raw  +  /api/photos/:id/thumb — stream local WebP
+  // ────────────────────────────────────────────────────────────────────
+  const serveRendition = (rendition: 'main' | 'thumb') => {
+    return async (
+      req: FastifyRequest<{ Params: TPhotoIdParams }>,
+      reply: FastifyReply,
+    ): Promise<FastifyReply> => {
+      requireAuth(req);
+      requireRole(req, 'ADMIN', 'CASHIER');
+
+      const [row] = await app.db
+        .select({ id: productPhotos.id, storageKind: productPhotos.storageKind })
+        .from(productPhotos)
+        .where(eq(productPhotos.id, req.params.id))
+        .limit(1);
+      if (!row || row.storageKind !== 'local') {
+        throw new PhotoNotFoundError(`Foto ${req.params.id} nicht gefunden.`);
+      }
+
+      const stream = await readRendition(opts.env, row.id, rendition);
+      if (!stream) throw new PhotoNotFoundError(`Foto ${req.params.id} nicht gefunden.`);
+
+      reply.header('Content-Type', 'image/webp');
+      // Bytes are immutable per id (a re-upload yields a new id) → long cache.
+      reply.header('Cache-Control', 'public, max-age=31536000, immutable');
+      return reply.send(stream);
+    };
+  };
+
+  app.get<{ Params: TPhotoIdParams }>(
+    '/api/photos/:id/raw',
+    {
+      schema: {
+        tags: ['photos'],
+        summary: 'Stream the MAIN compressed WebP for a local-store photo.',
+        params: PhotoIdParams,
+        response: { 404: ErrorResponse, 401: ErrorResponse, 403: ErrorResponse },
+      },
+    },
+    serveRendition('main'),
+  );
+
+  app.get<{ Params: TPhotoIdParams }>(
+    '/api/photos/:id/thumb',
+    {
+      schema: {
+        tags: ['photos'],
+        summary: 'Stream the THUMB compressed WebP for a local-store photo.',
+        params: PhotoIdParams,
+        response: { 404: ErrorResponse, 401: ErrorResponse, 403: ErrorResponse },
+      },
+    },
+    serveRendition('thumb'),
   );
 };
 

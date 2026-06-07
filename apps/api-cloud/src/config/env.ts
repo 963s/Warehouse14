@@ -83,6 +83,30 @@ const EnvSchema = Type.Object({
     description:
       'Public-facing CDN base URL for served R2 objects (e.g. https://media.warehouse14.de).',
   }),
+  // ── Local product-photo store (replaces the empty R2 bucket) ───────────
+  // Bytes are compressed to WebP and written to local disk under PHOTOS_DIR,
+  // sharded by id prefix (e.g. /data/photos/ab/<id>.webp). PHOTOS_DIR must be
+  // a Docker volume so photos survive container recreation.
+  PHOTOS_DIR: Type.String({
+    default: '/data/photos',
+    description:
+      'Filesystem directory the API writes compressed product-photo WebP bytes to. ' +
+      'MUST be a persistent Docker volume in production.',
+  }),
+  PHOTO_STORE_MAX_BYTES: Type.Integer({
+    // 20 GiB — the owner-imposed hard cap for product photos on the limited
+    // server disk. Counted against SUM(product_photos.size_bytes) of local rows.
+    default: 20 * 1024 * 1024 * 1024,
+    minimum: 1024 * 1024,
+    description:
+      'Hard cap (bytes) for the local product-photo store. Uploads that would exceed it are refused.',
+  }),
+  PHOTOS_PUBLIC_BASE_URL: Type.String({
+    default: 'https://api.warehouse14.de',
+    description:
+      'Public base URL the POS/storefront reads served photos from. publicUrl is built as ' +
+      '<base>/api/photos/<id>/raw. The Tauri CSP already allows the api host for img/connect.',
+  }),
   // ── Stripe (Day 19) — primary online payment provider ─────────────────
   // V1 amendment to memory.md #31 (Mollie primary): Basel overrode 2026-05-25
   // and selected Stripe for the entire payment surface — supports SEPA Direct

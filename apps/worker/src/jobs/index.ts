@@ -23,3 +23,4 @@ export { appointmentNotificationsJob } from './appointment-notifications.js';
 export { tseArchiveExporterJob } from './tse-archive-exporter.js';
 export { tseCertCheckerJob } from './tse-cert-checker.js';
 export { gdprCleanupJob } from './gdpr-cleanup.js';
+export { productPhotoPurgeJob } from './product-photo-purge.js';

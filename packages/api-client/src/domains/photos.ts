@@ -60,12 +60,21 @@ export interface PhotoRegisterBody {
   altTextEn?: string;
 }
 
+export type PhotoStorageKind = 'local' | 'r2';
+
 export interface PhotoRow {
   id: string;
   productId: string | null;
   r2Key: string;
+  /** 'local' = served by the api from disk; 'r2' = legacy Cloudflare R2. */
+  storageKind?: PhotoStorageKind;
   /** Public URL to render the photo from (present on read endpoints). */
   publicUrl?: string;
+  /** Compressed thumbnail URL (local-store rows). */
+  thumbUrl?: string;
+  width?: number | null;
+  height?: number | null;
+  sizeBytes?: number | null;
   r2KeyBgRemoved: string | null;
   displayOrder: number;
   isPrimary: boolean;
@@ -98,8 +107,20 @@ export interface PhotoDirectUploadResponse {
   productId: string | null;
   r2Key: string;
   publicUrl: string;
+  /** Compressed thumbnail URL (local-store rows). */
+  thumbUrl: string;
   workflowState: string;
   createdAt: string;
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// GET /api/photos/usage
+// ────────────────────────────────────────────────────────────────────────
+
+export interface PhotoStoreUsage {
+  usedBytes: number;
+  maxBytes: number;
+  count: number;
 }
 
 // ────────────────────────────────────────────────────────────────────────
@@ -128,5 +149,9 @@ export const photosApi = {
       'GET',
       `/api/products/${encodeURIComponent(productId)}/photos`,
     );
+  },
+  /** Local photo-store usage gauge (bytes used vs the cap, + count). */
+  usage(client: ApiClient): Promise<PhotoStoreUsage> {
+    return client.request<PhotoStoreUsage>('GET', '/api/photos/usage');
   },
 };

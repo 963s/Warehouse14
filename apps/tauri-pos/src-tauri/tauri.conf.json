@@ -24,7 +24,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' data: blob: https://media.warehouse14.de https://chat.warehouse14.de; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self' https://chat.warehouse14.de; connect-src 'self' http://localhost:3001 https://api.warehouse14.de https://chat.warehouse14.de wss://chat.warehouse14.de; frame-src https://chat.warehouse14.de"
+      "csp": "default-src 'self'; img-src 'self' data: blob: https://api.warehouse14.de https://media.warehouse14.de https://chat.warehouse14.de; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self' https://chat.warehouse14.de; connect-src 'self' http://localhost:3001 https://api.warehouse14.de https://chat.warehouse14.de wss://chat.warehouse14.de; frame-src https://chat.warehouse14.de"
     }
   },
   "bundle": {

@@ -37,8 +37,12 @@ export type PhotoDirectUploadBody = Static<typeof PhotoDirectUploadBody>;
 export const PhotoDirectUploadResponse = Type.Object({
   id: Type.String(),
   productId: Type.Union([Type.String(), Type.Null()]),
+  /** Storage key — for local rows this is the photo id (the on-disk base name). */
   r2Key: Type.String(),
+  /** API-served MAIN webp URL (<base>/api/photos/<id>/raw). */
   publicUrl: Type.String({ format: 'uri' }),
+  /** API-served THUMB webp URL (<base>/api/photos/<id>/thumb). */
+  thumbUrl: Type.String({ format: 'uri' }),
   workflowState: Type.String(),
   createdAt: Type.String({ format: 'date-time' }),
 });

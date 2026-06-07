@@ -22,9 +22,11 @@
 
 import { sql } from 'drizzle-orm';
 import {
+  bigint,
   boolean,
   check,
   index,
+  integer,
   pgTable,
   smallint,
   text,
@@ -51,6 +53,23 @@ export const productPhotos = pgTable(
 
     r2Key: text('r2_key').notNull(),
     r2KeyBgRemoved: text('r2_key_bg_removed'),
+
+    /**
+     * Where the bytes live (migration 0051). `'r2'` = legacy Cloudflare R2
+     * (the default keeps every pre-0051 row valid); `'local'` = the
+     * server-side local store (compressed WebP under PHOTOS_DIR). For local
+     * rows, `r2Key` doubles as the on-disk base id.
+     */
+    storageKind: text('storage_kind').notNull().default('r2'),
+    /** Compressed MAIN webp size — the unit the 20 GiB cap counts. */
+    sizeBytes: bigint('size_bytes', { mode: 'number' }),
+    /** Compressed THUMB webp size (informational). */
+    thumbBytes: bigint('thumb_bytes', { mode: 'number' }),
+    /** MAIN image pixel dimensions after the ≤1600px resize. */
+    width: integer('width'),
+    height: integer('height'),
+    /** Stored MIME type — always 'image/webp' for the local store. */
+    contentType: text('content_type'),
 
     displayOrder: smallint('display_order').notNull().default(0),
     isPrimary: boolean('is_primary').notNull().default(false),
@@ -83,6 +102,11 @@ export const productPhotos = pgTable(
       .on(table.workflowState, table.createdAt.desc())
       .where(sql`${table.productId} IS NULL`),
 
+    /** Cheap SUM(size_bytes) over the local store for the usage gauge + cap. */
+    localSizeIdx: index('product_photos_local_size_idx')
+      .on(table.storageKind)
+      .where(sql`${table.storageKind} = 'local'`),
+
     // CHECK constraints landed by migration 0022.
     assignedStateHasProduct: check(
       'product_photos_assigned_state_has_product',
@@ -97,6 +121,10 @@ export const productPhotos = pgTable(
     orphanNotPrimary: check(
       'product_photos_orphan_not_primary',
       sql`${table.productId} IS NOT NULL OR ${table.isPrimary} = FALSE`,
+    ),
+    storageKindChk: check(
+      'product_photos_storage_kind_chk',
+      sql`${table.storageKind} IN ('r2','local')`,
     ),
   }),
 );
