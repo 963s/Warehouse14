@@ -6,6 +6,34 @@ and the project adheres to [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-06-07
+
+Go-live release candidate (shop test build, **test mode** — mTLS/secret
+rotation deferred to go-live). Consolidates the full UX redesign +
+fiscal/compliance stack accumulated since v0.2.2.
+
+### Compliance (binding — Roman Grützner sign-off)
+
+- **GwG direction-aware KYC enforcement** (migration 0050). ANKAUF requires
+  a KYC-verified seller for every buy from €0,01 (§259 StGB); VERKAUF
+  requires identification at/above €2.000 (§10 GwG). Enforced by an
+  un-bypassable SECURITY DEFINER trigger; the cashier sees a friendly 403,
+  not a raw error. Stornos are never re-blocked.
+- **AML smurfing-aggregation framework** + **TSE/KassenSichV compliance
+  tables** (migrations 0049 and the AML set) — alert-only thresholds are
+  placeholders pending the Steuerberater's confirmation.
+- **Sample fiscal exports** (`docs/samples/`): real DATEV EXTF
+  Buchungsstapel + Kassenbericht for the accountant's review. Open question
+  surfaced: all VERKAUF currently post to revenue account `8400` regardless
+  of `tax_treatment_code` (see the marked TODO).
+
+### POS & Owner Desktop
+
+- Full UX pass: shared Dialog/Sheet + form primitives, number-key
+  navigation, cashier keypad/discount/barcode/confirm flows, plain-language
+  Kasse, in-place product sheet, per-metal margin editor, metal ticker,
+  Ankauf estimator, Steuer-Export surface, and the Control Desktop polish.
+
 ## [0.2.2] — 2026-06-05
 
 Kasse usability pass for Roman's daily flow (reviewed + integrated
