@@ -6,6 +6,20 @@ and the project adheres to [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-06-07
+
+Security hardening of the companion LAN subsystem (review-driven, before any
+second-cashier payment ring-up):
+
+- The companion proxy role allow-list is now positive + deny-by-default: a
+  paired Second-Cashier tablet can only ring up (`transactions/finalize`) — it
+  can no longer reach Ankauf (cash payout), Storno (void) or Return (refund).
+- The proxy path is traversal-safe (percent-decoded + rejected on `..`/`//`),
+  closing a deny-list bypass.
+- Pairing code is single-use + 5-min TTL + CSPRNG + per-TCP-peer rate limit +
+  global lockout; strict CSP + no innerHTML sink on the companion page;
+  same-subnet peer guard + token TTL; request body/concurrency/timeout limits.
+
 ## [0.4.0] — 2026-06-07
 
 Deep-overhaul release (test mode). Driven by a 54-finding multi-agent audit
