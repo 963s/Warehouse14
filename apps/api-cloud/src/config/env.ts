@@ -259,7 +259,11 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   // (the bug that crashed boot when STRIPE_WEBHOOK_TOLERANCE_SECONDS was set).
   for (const [key, propSchema] of Object.entries(EnvSchema.properties)) {
     const t = (propSchema as { type?: string }).type;
-    if ((t === 'integer' || t === 'number') && typeof coerced[key] === 'string' && coerced[key] !== '') {
+    if (
+      (t === 'integer' || t === 'number') &&
+      typeof coerced[key] === 'string' &&
+      coerced[key] !== ''
+    ) {
       const n = Number(coerced[key]);
       if (!Number.isNaN(n)) coerced[key] = n;
     }
@@ -272,7 +276,13 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     throw new Error(`Invalid environment configuration:\n${lines}`);
   }
 
-  return candidate as Env;
+  const env = candidate as Env;
+  // Go-live hardening: fail fast if a production build still carries the
+  // pre-mTLS device-gate bypass without an explicit acknowledgement. Runs in
+  // every boot path because every entrypoint goes through loadEnv().
+  assertNoTestDeviceFingerprintInProd(env, source);
+
+  return env;
 }
 
 /**
@@ -319,4 +329,42 @@ export function assertAppRoleInDatabaseUrl(env: Env): void {
       `DATABASE_URL points at role "${user}" — expected "warehouse14_app". The API runtime MUST use the least-privileged role. Refusing to start (audit fix A-2).`,
     );
   }
+}
+
+/**
+ * Go-live hardening guard — refuse to boot a PRODUCTION build that still
+ * carries the pre-mTLS `TEST_DEVICE_FINGERPRINT` escape hatch.
+ *
+ * `TEST_DEVICE_FINGERPRINT` makes every device-gated request resolve to a
+ * single seeded device when no Cloudflare client cert is presented — i.e. it
+ * disables the mTLS device gate. That is intentional during test mode, but
+ * shipping it to a hardened go-live would silently bypass device
+ * authorization for the whole shop. This guard makes that mistake impossible
+ * by accident: in production the fingerprint MUST be paired with the explicit
+ * opt-in `ALLOW_TEST_DEVICE_FINGERPRINT_IN_PROD=true`, which forces whoever
+ * keeps the bypass to acknowledge it in writing (env config + deploy review).
+ *
+ * Current state: the Schorndorf shop still runs WITH the bypass (mTLS is not
+ * yet provisioned), so production deploys set the escape flag. The day mTLS
+ * goes live, drop both `TEST_DEVICE_FINGERPRINT` and the escape flag — and a
+ * stray fingerprint left in the env will then HARD-FAIL the boot instead of
+ * silently re-opening the hole.
+ */
+export function assertNoTestDeviceFingerprintInProd(
+  env: Env,
+  source: NodeJS.ProcessEnv = process.env,
+): void {
+  if (env.NODE_ENV !== 'production') return;
+  if (env.TEST_DEVICE_FINGERPRINT.trim() === '') return;
+
+  const escapeFlag = (source.ALLOW_TEST_DEVICE_FINGERPRINT_IN_PROD ?? '').trim().toLowerCase();
+  if (escapeFlag === 'true') return;
+
+  throw new Error(
+    'FATAL: TEST_DEVICE_FINGERPRINT is set in a production build. This disables the ' +
+      'mTLS device gate for every device-gated request and MUST NOT ship to a hardened ' +
+      'go-live. Either unset TEST_DEVICE_FINGERPRINT (provision Cloudflare Access mTLS ' +
+      'first), or — if you are knowingly still in pre-mTLS test mode — set ' +
+      'ALLOW_TEST_DEVICE_FINGERPRINT_IN_PROD=true to acknowledge the bypass. Refusing to start.',
+  );
 }

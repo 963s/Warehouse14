@@ -34,20 +34,74 @@ export interface RateLimitPluginOpts {
   env: Env;
 }
 
+/** Strip the querystring → bare path. */
+function pathOf(req: FastifyRequest): string {
+  return req.url.split('?')[0] ?? '';
+}
+
+/**
+ * Per-path-prefix limits enforced ON TOP of the global default. Because no
+ * route in this codebase declares `config.rateLimit`, the documented strict
+ * limits (10/min on auth, 30/min on the sensitive writes) were never applied.
+ * We enforce them centrally here, keyed by path prefix, so adding a new auth
+ * or transaction route picks up the limit automatically — no per-route wiring.
+ *
+ * The list is ordered: the FIRST matching prefix wins. Most specific first.
+ */
+interface PrefixLimit {
+  /** Path prefix this rule matches (exact-prefix on the bare path). */
+  prefix: string;
+  /** Max requests per `timeWindow` for this prefix. */
+  max: number;
+}
+
+const PREFIX_LIMITS: readonly PrefixLimit[] = [
+  // Sensitive transaction writes — 30/min/actor. Finalize commits a sale;
+  // storno reverses one. Both are forensically heavy and must not be flooded.
+  { prefix: '/api/transactions/finalize', max: 30 },
+  { prefix: '/api/transactions/storno', max: 30 },
+  // Auth surface — 10/min/IP. Email/password sign-in + PIN step-up are the
+  // brute-force surface; the DB-side PIN lockout is a backstop, this caps the
+  // HTTP layer (incl. rotating-credential guessing) hard.
+  { prefix: '/api/auth/', max: 10 },
+];
+
+/** The strictest limit that applies to this path, or `null` for the default. */
+function matchPrefixLimit(path: string): PrefixLimit | null {
+  for (const rule of PREFIX_LIMITS) {
+    if (path === rule.prefix || path.startsWith(rule.prefix)) return rule;
+  }
+  return null;
+}
+
 const rateLimitPlugin: FastifyPluginAsync<RateLimitPluginOpts> = async (app, opts) => {
+  const isProd = opts.env.NODE_ENV === 'production';
+
   await app.register(fastifyRateLimit, {
     // Global default: tolerant for normal usage, hard cap on abuse.
-    max: 300,
+    // Per-prefix overrides below TIGHTEN this via `max` as a function.
+    max: (req: FastifyRequest): number => {
+      const path = pathOf(req);
+      const rule = matchPrefixLimit(path);
+      const base = rule ? rule.max : 300;
+      // In dev/test we relax the GLOBAL default so the bootstrap script +
+      // repeated curl tests don't trip it — but the auth/transaction limits
+      // are exactly what tests assert, so they stay enforced everywhere.
+      return !isProd && rule == null ? 10_000 : base;
+    },
     timeWindow: '1 minute',
 
     // Skip /health, /metrics, /docs — they're internal/monitoring.
     skipOnError: false,
     allowList: (req): boolean => {
-      const path = req.url.split('?')[0] ?? '';
-      // Day 19: webhook delivery from Stripe must NEVER be rate-limited —
-      // Stripe will retry but we want the FIRST delivery to land so the
-      // idempotency table records it. Stripe imposes its own retry policy.
-      if (path === '/api/webhooks/stripe' || path.startsWith('/api/webhooks/')) return true;
+      const path = pathOf(req);
+      // Day 19: Stripe webhook delivery must NEVER be rate-limited — Stripe
+      // retries, but we want the FIRST delivery to land so the idempotency
+      // table records it. Stripe imposes its own retry policy. This exemption
+      // is NARROW: only the Stripe endpoint is unlimited. Every other public
+      // webhook (WhatsApp, Meta socials, Chatwoot) gets the finite default IP
+      // cap below so a forged-signature flood can't be unbounded.
+      if (path === '/api/webhooks/stripe') return true;
       return (
         path === '/health' ||
         path === '/metrics' ||
@@ -58,7 +112,9 @@ const rateLimitPlugin: FastifyPluginAsync<RateLimitPluginOpts> = async (app, opt
       );
     },
 
-    // Key: per-actor when authenticated, per-IP otherwise.
+    // Key: per-actor when authenticated, per-IP otherwise. For /api/auth/* and
+    // public webhooks `req.actor` is null, so the key correctly falls back to
+    // IP — which is what brute-force / flood defense needs.
     keyGenerator: (req: FastifyRequest): string => {
       const actor = (req as FastifyRequest & { actor?: { id: string } | null }).actor;
       return actor?.id ?? req.ip ?? 'unknown';
@@ -72,11 +128,7 @@ const rateLimitPlugin: FastifyPluginAsync<RateLimitPluginOpts> = async (app, opt
       message: `Rate limit exceeded: ${ctx.max} per ${ctx.after}. Retry after ${ctx.ttl}ms.`,
     }),
 
-    // In dev we relax — the bootstrap script + repeated curl tests would
-    // otherwise hit the cap. In test we relax for the same reason. In
-    // production these limits stand.
     enableDraftSpec: true, // emit `RateLimit-*` headers (RFC IETF draft)
-    ...(opts.env.NODE_ENV !== 'production' ? { max: 10_000 } : {}),
   });
 };
 

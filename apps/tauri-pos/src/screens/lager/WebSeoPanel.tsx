@@ -111,8 +111,8 @@ export function WebSeoPanel({ productId }: WebSeoPanelProps): JSX.Element {
         tone: 'success',
         title: isPublishedToWeb ? 'Online geschaltet' : 'Vom Web entfernt',
         body: isPublishedToWeb
-          ? 'Artikel ist jetzt im Storefront sichtbar.'
-          : 'Artikel ist im Storefront ausgeblendet.',
+          ? 'Artikel ist jetzt im Web-Shop sichtbar.'
+          : 'Artikel ist im Web-Shop ausgeblendet.',
       });
       await qc.invalidateQueries({ queryKey: productDetailQueryKey(productId) });
       await qc.invalidateQueries({ queryKey: ['products', 'list'] });
@@ -279,7 +279,7 @@ export function WebSeoPanel({ productId }: WebSeoPanelProps): JSX.Element {
       <DiamondRule />
 
       {/* ── 2. Category selector ── */}
-      <FieldGroup label="Primäre Kategorie" hint="Treibt Breadcrumb + JSON-LD im Storefront.">
+      <FieldGroup label="Primäre Kategorie" hint="Treibt Breadcrumb + JSON-LD im Web-Shop.">
         <select
           value={primaryCategoryDraft ?? ''}
           onChange={(e) => {
@@ -414,7 +414,7 @@ function PublishToggle({
               fontWeight: 600,
             }}
           >
-            {isLive ? 'LIVE im Storefront' : 'Nicht veröffentlicht'}
+            {isLive ? 'LIVE im Web-Shop' : 'Nicht veröffentlicht'}
           </span>
           <span style={{ fontSize: '0.78rem', color: 'var(--w14-ink-faded)', fontStyle: 'italic' }}>
             warehouse14.de zeigt dieses Stück {isLive ? 'sofort an.' : 'noch nicht.'}

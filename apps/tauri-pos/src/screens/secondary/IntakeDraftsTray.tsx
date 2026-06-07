@@ -14,7 +14,25 @@ import { useState } from 'react';
 import type { IntakeDraftSummary, PublishTargets } from '@warehouse14/api-client';
 
 import { useIntakeDrafts, usePublishIntakeDraft } from '../../hooks/useIntakeDrafts.js';
+import { ITEM_TYPE_OPTIONS } from '../../lib/item-type-label.js';
+import { TAX_TREATMENT_LABEL } from '../../lib/tax-treatment-label.js';
 import { useLabelPrinter } from '../../lib/use-label-printer.js';
+
+/** German labels for the AI-Intake pipeline status. */
+const INTAKE_STATUS_LABEL: Readonly<Record<string, string>> = Object.freeze({
+  PENDING: 'In Warteschlange',
+  RECEIVED: 'Empfangen',
+  PROCESSING: 'Wird verarbeitet',
+  READY_FOR_REVIEW: 'Bereit zur Prüfung',
+  PUBLISHED: 'Veröffentlicht',
+  FAILED: 'Fehlgeschlagen',
+  DRAFT: 'Entwurf',
+});
+
+const intakeStatusLabel = (status: string): string => INTAKE_STATUS_LABEL[status] ?? status;
+
+/** Tax-treatment options shown in the Steuercode picker. */
+const TAX_TREATMENT_OPTIONS = Object.entries(TAX_TREATMENT_LABEL) as Array<[string, string]>;
 
 interface PublishFormState {
   name: string;
@@ -67,7 +85,7 @@ function DraftCard({ draft }: { draft: IntakeDraftSummary }): JSX.Element {
 
   const set =
     (key: keyof PublishFormState) =>
-    (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
       setForm((f) => ({ ...f, [key]: e.target.value }));
 
   const toggle = (key: keyof PublishTargets) => (e: React.ChangeEvent<HTMLInputElement>) =>
@@ -76,8 +94,13 @@ function DraftCard({ draft }: { draft: IntakeDraftSummary }): JSX.Element {
   return (
     <article className="intake-draft-card">
       <header>
-        <strong>{draft.tax_treatment_code ?? 'UNCLASSIFIED'}</strong>
-        <span> · {draft.status}</span>
+        <strong>
+          {draft.tax_treatment_code
+            ? (TAX_TREATMENT_LABEL[draft.tax_treatment_code as keyof typeof TAX_TREATMENT_LABEL] ??
+              draft.tax_treatment_code)
+            : 'Nicht klassifiziert'}
+        </strong>
+        <span> · {intakeStatusLabel(draft.status)}</span>
       </header>
       {draft.classifier_explanation ? <p>{draft.classifier_explanation}</p> : null}
       {draft.german_description ? <p>{draft.german_description}</p> : null}
@@ -125,11 +148,23 @@ function DraftCard({ draft }: { draft: IntakeDraftSummary }): JSX.Element {
         </label>
         <label>
           Artikeltyp
-          <input value={form.itemType} onChange={set('itemType')} />
+          <select value={form.itemType} onChange={set('itemType')}>
+            {ITEM_TYPE_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
         </label>
         <label>
           Steuercode
-          <input value={form.taxTreatmentCode} onChange={set('taxTreatmentCode')} />
+          <select value={form.taxTreatmentCode} onChange={set('taxTreatmentCode')}>
+            {TAX_TREATMENT_OPTIONS.map(([code, label]) => (
+              <option key={code} value={code}>
+                {label}
+              </option>
+            ))}
+          </select>
         </label>
         <label>
           Einkaufspreis (EUR)

@@ -18,6 +18,7 @@
   /* var names kept for compat; values are now a cool neutral system:
      app background → white card → subtle raised. */
   --w14-parchment: #f5f6f8; /* app background */
+  --w14-parchment-1: #fbfbfd; /* list / sub-panel surface (just above app bg) */
   --w14-parchment-2: #ffffff; /* cards / panels */
   --w14-parchment-3: #eef0f3; /* inputs / hover / raised */
 
@@ -61,6 +62,7 @@
 :root[data-theme="dark"] {
   /* Modern dark — near-black neutrals, same accent hues. */
   --w14-parchment: #131519;
+  --w14-parchment-1: #16191f; /* list / sub-panel surface (just above app bg) */
   --w14-parchment-2: #1b1e24;
   --w14-parchment-3: #242831;
 

@@ -108,6 +108,23 @@ class DeviceRequiredError extends DomainError {
   public readonly httpStatus = 403;
   public readonly code: ApiErrorCode = 'DEVICE_NOT_AUTHORIZED';
 }
+/**
+ * Raised when a manual override is more than ±OVERRIDE_BAND_PCT off the
+ * current live rate — a likely fat-finger that would silently poison every
+ * Ankauf quote. The Owner can re-submit with `confirmOutlier: true` to force
+ * it through (the value is then trusted and audited).
+ */
+class ImplausiblePriceError extends DomainError {
+  public readonly httpStatus = 400;
+  public readonly code: ApiErrorCode = 'VALIDATION_ERROR';
+}
+
+/**
+ * Plausibility band for the manual metal-price override, as a fraction of the
+ * current live rate (0.5 = ±50%). A new price outside [live×0.5, live×1.5] is
+ * rejected unless the request carries `confirmOutlier: true`.
+ */
+const OVERRIDE_BAND_PCT = 0.5;
 
 const ErrorResponse = Type.Object({
   error: Type.Object({
@@ -415,6 +432,11 @@ const metalPricesRoutes: FastifyPluginAsync = async (app) => {
       }
       const actorId = req.actor.id;
       const body = req.body;
+      // `confirmOutlier` is an optional escape flag not declared on the strict
+      // body schema; Fastify passes unknown body props through untouched, so we
+      // read it defensively here. true → skip the ±band plausibility guard.
+      const confirmOutlier =
+        (req.body as TManualOverrideBody & { confirmOutlier?: boolean }).confirmOutlier === true;
 
       const result = await app.db.transaction(async (tx) => {
         // Close existing CURRENT row, if any.
@@ -427,6 +449,24 @@ const metalPricesRoutes: FastifyPluginAsync = async (app) => {
           .where(and(eq(metalPrices.metal, body.metal), drizzleSql`${metalPrices.validTo} IS NULL`))
           .limit(1);
         const previous = currentRows[0];
+
+        // Plausibility guard: a fat-finger here silently poisons every live
+        // Ankauf quote. Reject a new price more than ±OVERRIDE_BAND_PCT off the
+        // current live rate, UNLESS the Owner explicitly confirms the outlier.
+        // All comparisons stay in Decimal via Money (no float). Skipped when no
+        // live rate exists yet (nothing to compare against).
+        if (previous?.pricePerGramEur && !confirmOutlier) {
+          const live = Money.parse(previous.pricePerGramEur);
+          const next = Money.parse(body.pricePerGramEur);
+          const lower = live.multiply(1 - OVERRIDE_BAND_PCT);
+          const upper = live.multiply(1 + OVERRIDE_BAND_PCT);
+          if (next.lessThan(lower) || next.greaterThan(upper)) {
+            const bandPct = Math.round(OVERRIDE_BAND_PCT * 100);
+            throw new ImplausiblePriceError(
+              `Der eingegebene Preis (${body.pricePerGramEur} €/g) weicht um mehr als ±${bandPct} % vom aktuellen Live-Kurs (${previous.pricePerGramEur} €/g) ab. Bitte prüfen Sie die Eingabe. Wenn der Wert korrekt ist, bestätigen Sie die Überschreibung mit „confirmOutlier“.`,
+            );
+          }
+        }
 
         if (previous) {
           await tx

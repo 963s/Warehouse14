@@ -57,6 +57,7 @@ import { useApiClient } from '../../lib/api-context.js';
 import { isMoneyInput, normalizeDecimal } from '../../lib/decimal.js';
 import { type LifecycleStage, deriveLifecycleStage } from '../../lib/product-lifecycle.js';
 import { decidePublish, isPositivePrice } from '../../lib/product-publish.js';
+import { PRODUCT_STATUS_LABEL } from '../../lib/product-status-label.js';
 import { TAX_TREATMENT_LABEL } from '../../lib/tax-treatment-label.js';
 import { useLabelPrinter } from '../../lib/use-label-printer.js';
 import { useToastStore } from '../../state/toast-store.js';
@@ -649,9 +650,9 @@ function ManageBody({
                   lineHeight: 1.4,
                 }}
               >
-                <strong style={{ color: 'var(--w14-ink)' }}>Produkt angelegt.</strong> Weiter geht's
-                hier im selben Fenster: <strong>Fotos</strong>, <strong>Preis</strong>,{' '}
-                <strong>Etikett</strong>. Schließen mit dem ✕ oben, wenn du fertig bist.
+                <strong style={{ color: 'var(--w14-ink)' }}>Produkt angelegt.</strong> Es geht hier
+                im selben Fenster weiter: <strong>Fotos</strong>, <strong>Preis</strong>,{' '}
+                <strong>Etikett</strong>. Schließen Sie mit dem ✕ oben, wenn Sie fertig sind.
               </p>
             )}
             <AccordionItem id="details" title="Details" defaultOpen={!justCreated}>
@@ -803,7 +804,8 @@ function PreisSection({
         )
       ) : (
         <p style={{ margin: 0, fontSize: '0.86rem', color: 'var(--w14-verdigris)' }}>
-          Bereits verkaufsbereit ({product.status}). Storefront-Sichtbarkeit unter „Web & SEO".
+          Bereits verkaufsbereit ({PRODUCT_STATUS_LABEL[product.status]}). Web-Shop-Sichtbarkeit
+          unter „Web & SEO".
         </p>
       )}
     </div>
