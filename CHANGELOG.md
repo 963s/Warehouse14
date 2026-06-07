@@ -6,6 +6,17 @@ and the project adheres to [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+## [0.4.2] — 2026-06-08
+
+- **Product photos work again.** Upload now goes through the API
+  (`POST /api/photos/upload`) instead of a direct browser→R2 PUT, removing the
+  R2-CORS dependency that silently blocked every upload; fixed a webp/jpeg
+  content-type mismatch; photos now render as thumbnails in the product sheet
+  (CSP extended for the R2 media host).
+- **iPad/iPhone pairing connects.** The companion hub now detects the real
+  Wi-Fi LAN IP (ignoring VPN/Docker interfaces) for the pairing QR, and the
+  subnet guard tolerates real LAN topologies instead of rejecting the device.
+
 ## [0.4.1] — 2026-06-07
 
 Security hardening of the companion LAN subsystem (review-driven, before any
