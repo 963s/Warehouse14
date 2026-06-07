@@ -231,6 +231,8 @@ export {
 } from './domains/customers.js';
 export {
   photosApi,
+  type PhotoDirectUploadBody,
+  type PhotoDirectUploadResponse,
   type PhotoRegisterBody,
   type PhotoRow,
   type PhotoSource,

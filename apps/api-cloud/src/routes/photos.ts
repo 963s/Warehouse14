@@ -26,7 +26,9 @@ import type { FastifyPluginAsync } from 'fastify';
 
 import { productPhotoWorkflowEvents, productPhotos } from '@warehouse14/db/schema';
 
+import type { Env } from '../config/env.js';
 import { requireAuth, requireRole } from '../lib/auth-policy.js';
+import { buildR2PublicUrl } from '../lib/r2.js';
 import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 import {
   ALLOWED_PHOTO_TRANSITIONS,
@@ -69,11 +71,12 @@ const ErrorResponse = Type.Object({
 
 type PhotoRowDb = typeof productPhotos.$inferSelect;
 
-function serializePhoto(row: PhotoRowDb): Record<string, unknown> {
+function serializePhoto(row: PhotoRowDb, env: Env): Record<string, unknown> {
   return {
     id: row.id,
     productId: row.productId,
     r2Key: row.r2Key,
+    publicUrl: buildR2PublicUrl(env, row.r2Key),
     r2KeyBgRemoved: row.r2KeyBgRemoved,
     displayOrder: row.displayOrder,
     isPrimary: row.isPrimary,
@@ -87,7 +90,11 @@ function serializePhoto(row: PhotoRowDb): Record<string, unknown> {
   };
 }
 
-const photosRoutes: FastifyPluginAsync = async (app) => {
+export interface PhotosRoutesOpts {
+  env: Env;
+}
+
+const photosRoutes: FastifyPluginAsync<PhotosRoutesOpts> = async (app, opts) => {
   // ────────────────────────────────────────────────────────────────────
   // POST /api/photos
   // ────────────────────────────────────────────────────────────────────
@@ -139,7 +146,7 @@ const photosRoutes: FastifyPluginAsync = async (app) => {
         return row;
       });
 
-      return reply.status(200).send(serializePhoto(result));
+      return reply.status(200).send(serializePhoto(result, opts.env));
     },
   );
 
@@ -183,7 +190,7 @@ const photosRoutes: FastifyPluginAsync = async (app) => {
       ]);
 
       return reply.status(200).send({
-        items: rows.map(serializePhoto),
+        items: rows.map((r) => serializePhoto(r, opts.env)),
         total: Number(totalRow[0]?.n ?? 0),
       });
     },
@@ -270,7 +277,7 @@ const photosRoutes: FastifyPluginAsync = async (app) => {
         return updated;
       });
 
-      return reply.status(200).send(serializePhoto(result));
+      return reply.status(200).send(serializePhoto(result, opts.env));
     },
   );
 
@@ -304,7 +311,7 @@ const photosRoutes: FastifyPluginAsync = async (app) => {
         .where(and(...preds))
         .orderBy(asc(productPhotos.displayOrder), asc(productPhotos.createdAt));
 
-      return reply.status(200).send({ items: rows.map(serializePhoto) });
+      return reply.status(200).send({ items: rows.map((r) => serializePhoto(r, opts.env)) });
     },
   );
 };

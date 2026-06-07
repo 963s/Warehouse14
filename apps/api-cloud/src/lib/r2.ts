@@ -131,6 +131,17 @@ export async function putObjectToR2(
   return { key, publicUrl };
 }
 
+/**
+ * Build the public URL the storefront / POS reads an R2 object from, given its
+ * key. Mirrors the construction used by the presign + server-upload helpers so
+ * a `product_photos.r2_key` row can always be turned into a viewable URL.
+ */
+export function buildR2PublicUrl(env: Env, key: string): string {
+  return env.R2_PUBLIC_URL_BASE
+    ? `${env.R2_PUBLIC_URL_BASE.replace(/\/$/, '')}/${key}`
+    : `https://${env.R2_BUCKET}.${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${key}`;
+}
+
 /** Deterministic R2 key for a generated marketing card. */
 export function buildMarketingCardKey(productId: string, variant: string): string {
   return `marketing-cards/${productId}/${variant}.webp`;

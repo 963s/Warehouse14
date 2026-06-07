@@ -43,6 +43,7 @@ import requestContextPlugin from './plugins/request-context.js';
 import securityHeadersPlugin from './plugins/security-headers.js';
 import storefrontSessionPlugin from './plugins/storefront-session.js';
 import swaggerPlugin from './plugins/swagger.js';
+import aiComposeRoute from './routes/ai-compose.js';
 import appointmentsRoutes from './routes/appointments.js';
 // Day 22 — Konvolut + Appraisals
 import appraisalRoutes from './routes/appraisals.js';
@@ -72,6 +73,7 @@ import inventorySessionsRoutes from './routes/inventory-sessions.js';
 import ledgerRoutes from './routes/ledger.js';
 // Day 23 — Edelmetall-Kursmodul
 import metalPricesRoutes from './routes/metal-prices.js';
+import photoDirectUploadRoute from './routes/photo-direct-upload.js';
 import photoUploadUrlRoute from './routes/photo-upload-url.js';
 // Phase 2 Day 2 — closes the Day-24 route gap + dashboard aggregator
 import photosRoutes from './routes/photos.js';
@@ -85,7 +87,6 @@ import settingsRoute from './routes/settings.js';
 import shiftsRoutes from './routes/shifts.js';
 import shippingRoutes from './routes/shipping.js';
 import shopInfoRoute from './routes/shop-info.js';
-import aiComposeRoute from './routes/ai-compose.js';
 import sseLedger from './routes/sse-ledger.js';
 import storefrontAuthRoutes from './routes/storefront-auth.js';
 import storefrontCartRoutes from './routes/storefront-cart.js';
@@ -213,6 +214,7 @@ export async function buildApp(opts: BuildAppOpts): Promise<FastifyInstance> {
   await app.register(customersCheckSanctionsRoute, { env: opts.env });
   await app.register(customerKycDocumentsRoute);
   await app.register(photoUploadUrlRoute, { env: opts.env });
+  await app.register(photoDirectUploadRoute, { env: opts.env });
   await app.register(transactionsFinalize, { env: opts.env });
   await app.register(transactionsAnkauf, { env: opts.env });
   await app.register(transactionsStorno);
@@ -245,7 +247,7 @@ export async function buildApp(opts: BuildAppOpts): Promise<FastifyInstance> {
   await app.register(customerTrustRoutes);
   await app.register(belegtextRoutes);
   // ── Phase 2 Day 2: photo + eBay state machine + dashboard ────────
-  await app.register(photosRoutes);
+  await app.register(photosRoutes, { env: opts.env });
   await app.register(productsEbayRoutes);
   await app.register(shippingRoutes, { env: opts.env });
   await app.register(dashboardRoutes);

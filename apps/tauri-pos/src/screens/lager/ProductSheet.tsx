@@ -29,6 +29,7 @@ import {
   type ProductDetail,
   type TaxTreatmentCode,
   ebayApi,
+  photosApi,
   productsApi,
 } from '@warehouse14/api-client';
 import {
@@ -726,12 +727,84 @@ function fotosHref(productId: string): string {
 
 function FotosSection({ product }: { product: ProductDetail }): JSX.Element {
   const navigate = useNavigate();
+  const api = useApiClient();
+
+  const photosQuery = useQuery({
+    queryKey: ['products', product.id, 'photos'],
+    queryFn: () => photosApi.listForProduct(api, product.id),
+    staleTime: 10_000,
+  });
+  const photos = photosQuery.data?.items ?? [];
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <p style={{ margin: 0, fontSize: '0.86rem', color: 'var(--w14-ink-faded)' }}>
         Fotos werden in der Foto-Werkstatt aufgenommen und zugeschnitten — danach landen Sie wieder
         hier beim Produkt.
       </p>
+
+      {photos.length > 0 && (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))',
+            gap: 8,
+          }}
+        >
+          {photos.map((p) => (
+            <div
+              key={p.id}
+              style={{
+                position: 'relative',
+                aspectRatio: '1 / 1',
+                borderRadius: 'var(--w14-radius-card)',
+                overflow: 'hidden',
+                border: '1px solid var(--w14-rule)',
+                background: 'var(--w14-parchment-3)',
+              }}
+            >
+              {p.publicUrl ? (
+                <img
+                  src={p.publicUrl}
+                  alt={p.altTextDe ?? product.sku}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
+              ) : null}
+              {p.isPrimary && (
+                <span
+                  className="w14-smallcaps"
+                  style={{
+                    position: 'absolute',
+                    top: 4,
+                    left: 4,
+                    background: 'rgba(20,14,10,0.82)',
+                    color: 'var(--w14-gold)',
+                    fontSize: '0.6rem',
+                    letterSpacing: '0.06em',
+                    padding: '2px 5px',
+                    borderRadius: 'var(--w14-radius-button)',
+                  }}
+                >
+                  Titelbild
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {photosQuery.isSuccess && photos.length === 0 && (
+        <p
+          style={{
+            margin: 0,
+            fontSize: '0.82rem',
+            color: 'var(--w14-ink-faded)',
+            fontStyle: 'italic',
+          }}
+        >
+          Noch keine Fotos für dieses Produkt.
+        </p>
+      )}
+
       <div>
         <Button variant="primary" size="md" onClick={() => navigate(fotosHref(product.id))}>
           Fotos aufnehmen / verwalten

@@ -14,11 +14,65 @@
  */
 
 import type { ApiClient } from '@warehouse14/api-client';
-import { type PhotoUploadIntent, photosApi } from '@warehouse14/api-client';
+import {
+  type PhotoDirectUploadResponse,
+  type PhotoUploadIntent,
+  photosApi,
+} from '@warehouse14/api-client';
 
 export interface UploadedPhoto {
   r2Key: string;
   publicUrl: string;
+}
+
+export type PhotoContentType = 'image/jpeg' | 'image/png' | 'image/webp';
+
+/** Map a Blob's MIME type to the small allowlist the API accepts. Defaults to
+ *  WebP, which is what CropStudio produces for product photos. */
+export function photoContentTypeOf(blob: Blob): PhotoContentType {
+  const t = blob.type;
+  if (t === 'image/jpeg' || t === 'image/png' || t === 'image/webp') return t;
+  return 'image/webp';
+}
+
+/** Encode a Blob to a bare base64 string (no `data:` prefix) for JSON transport. */
+async function blobToBase64(blob: Blob): Promise<string> {
+  const buf = await blob.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  // Chunked to stay clear of String.fromCharCode arg-count limits on big images.
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+/**
+ * Robust product-photo upload — sends the image bytes THROUGH the API, which
+ * writes them to R2 server-side and binds a `product_photos` row in one call.
+ *
+ * This is the durable path: it has no dependency on an R2-bucket CORS policy
+ * (the direct browser→R2 PUT in `uploadBlobToR2` below requires the bucket to
+ * allow PUT from the Tauri webview origin, which it does not by default — that
+ * was why product-photo uploads were being rejected).
+ */
+export async function uploadProductPhotoViaApi(input: {
+  api: ApiClient;
+  blob: Blob;
+  productId?: string;
+  intent?: PhotoUploadIntent;
+  isPrimary?: boolean;
+}): Promise<PhotoDirectUploadResponse> {
+  const { api, blob, productId, intent, isPrimary } = input;
+  const dataBase64 = await blobToBase64(blob);
+  return photosApi.uploadDirect(api, {
+    dataBase64,
+    contentType: photoContentTypeOf(blob),
+    ...(productId ? { productId } : {}),
+    ...(intent ? { intent } : {}),
+    ...(isPrimary !== undefined ? { isPrimary } : {}),
+  });
 }
 
 export async function uploadBlobToR2(input: {

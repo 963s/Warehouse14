@@ -64,6 +64,8 @@ export interface PhotoRow {
   id: string;
   productId: string | null;
   r2Key: string;
+  /** Public URL to render the photo from (present on read endpoints). */
+  publicUrl?: string;
   r2KeyBgRemoved: string | null;
   displayOrder: number;
   isPrimary: boolean;
@@ -77,6 +79,30 @@ export interface PhotoRow {
 }
 
 // ────────────────────────────────────────────────────────────────────────
+// POST /api/photos/upload — API-proxied direct upload (no R2 CORS dependency)
+// ────────────────────────────────────────────────────────────────────────
+
+export interface PhotoDirectUploadBody {
+  /** Base64-encoded image bytes (no data: URI prefix). */
+  dataBase64: string;
+  contentType: 'image/jpeg' | 'image/png' | 'image/webp';
+  productId?: string;
+  intent?: PhotoUploadIntent;
+  isPrimary?: boolean;
+  altTextDe?: string;
+  altTextEn?: string;
+}
+
+export interface PhotoDirectUploadResponse {
+  id: string;
+  productId: string | null;
+  r2Key: string;
+  publicUrl: string;
+  workflowState: string;
+  createdAt: string;
+}
+
+// ────────────────────────────────────────────────────────────────────────
 // Methods
 // ────────────────────────────────────────────────────────────────────────
 
@@ -86,5 +112,21 @@ export const photosApi = {
   },
   register(client: ApiClient, body: PhotoRegisterBody): Promise<PhotoRow> {
     return client.request<PhotoRow>('POST', '/api/photos', body);
+  },
+  /**
+   * Upload image bytes THROUGH the API (server writes to R2). This is the
+   * robust path — it avoids the R2-bucket CORS requirement of the direct
+   * presigned-PUT flow (`requestUploadUrl` + a browser PUT). The photo row is
+   * created (and optionally product-bound) in the same call.
+   */
+  uploadDirect(client: ApiClient, body: PhotoDirectUploadBody): Promise<PhotoDirectUploadResponse> {
+    return client.request<PhotoDirectUploadResponse>('POST', '/api/photos/upload', body);
+  },
+  /** List the photos bound to a product (each row carries a `publicUrl`). */
+  listForProduct(client: ApiClient, productId: string): Promise<{ items: PhotoRow[] }> {
+    return client.request<{ items: PhotoRow[] }>(
+      'GET',
+      `/api/products/${encodeURIComponent(productId)}/photos`,
+    );
   },
 };

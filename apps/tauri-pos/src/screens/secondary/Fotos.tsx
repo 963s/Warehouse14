@@ -26,7 +26,6 @@ import {
   type KycDocumentType,
   type PhotoUploadIntent,
   customersApi,
-  photosApi,
 } from '@warehouse14/api-client';
 import { Button, DiamondRule, ParchmentCard, Seal } from '@warehouse14/ui-kit';
 
@@ -34,7 +33,11 @@ import { CropStudio } from '../../components/hardware/CropStudio.js';
 import { useCamera } from '../../hooks/useCamera.js';
 import { useApiClient } from '../../lib/api-context.js';
 import { sha256HexOfBlob } from '../../lib/image-hash.js';
-import { uploadBlobToR2 } from '../../lib/photo-upload.js';
+import {
+  photoContentTypeOf,
+  uploadBlobToR2,
+  uploadProductPhotoViaApi,
+} from '../../lib/photo-upload.js';
 import { useToastStore } from '../../state/toast-store.js';
 
 type Mode = 'produkt' | 'kyc' | 'allgemein';
@@ -134,39 +137,41 @@ export function Fotos(): JSX.Element {
   const processSnapshot = useCallback(
     async (snap: Snapshot): Promise<void> => {
       try {
-        // 1. R2 upload. (Note: with exactOptionalPropertyTypes we can't pass
-        // `error: undefined` to clear it. We instead leave the prior error
-        // field alone — the next 'done' status update is the user signal.)
-        updateSnapshot(snap.id, { status: 'uploading' });
-        const uploaded = await uploadBlobToR2({
-          api,
-          blob: snap.blob,
-          intent,
-          contentType: 'image/jpeg',
-        });
-
-        // 2. Hash for KYC mode (server requires sha256 BYTEA).
-        const sha256Hex = mode === 'kyc' ? await sha256HexOfBlob(snap.blob) : null;
-
-        updateSnapshot(snap.id, {
-          r2Key: uploaded.r2Key,
-          publicUrl: uploaded.publicUrl,
-          ...(sha256Hex !== null ? { sha256Hex } : {}),
-        });
-
-        // 3. Register (product or orphan). KYC mode defers to the form.
+        // KYC mode keeps the presigned-PUT + separate-binding flow because the
+        // KYC documents route needs the sha256 of the *unaltered* document.
         if (mode === 'kyc') {
-          updateSnapshot(snap.id, { status: 'done' });
+          updateSnapshot(snap.id, { status: 'uploading' });
+          const uploaded = await uploadBlobToR2({
+            api,
+            blob: snap.blob,
+            intent,
+            // Honour the blob's real type (KYC docs are not WebP-compressed).
+            contentType: photoContentTypeOf(snap.blob),
+          });
+          const sha256Hex = await sha256HexOfBlob(snap.blob);
+          updateSnapshot(snap.id, {
+            r2Key: uploaded.r2Key,
+            publicUrl: uploaded.publicUrl,
+            sha256Hex,
+            status: 'done',
+          });
           return;
         }
 
-        updateSnapshot(snap.id, { status: 'registering' });
-        await photosApi.register(api, {
-          r2Key: uploaded.r2Key,
-          source: 'admin_upload',
+        // Product / orphan mode → upload THROUGH the API (server writes R2 +
+        // binds the row). No R2-CORS dependency, no separate register call.
+        updateSnapshot(snap.id, { status: 'uploading' });
+        const row = await uploadProductPhotoViaApi({
+          api,
+          blob: snap.blob,
+          intent,
           ...(mode === 'produkt' && productId ? { productId } : {}),
         });
-        updateSnapshot(snap.id, { status: 'done' });
+        updateSnapshot(snap.id, {
+          r2Key: row.r2Key,
+          publicUrl: row.publicUrl,
+          status: 'done',
+        });
       } catch (err) {
         const message =
           err instanceof ApiError

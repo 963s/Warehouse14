@@ -299,13 +299,103 @@ impl CompanionState {
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Resolve the primary LAN IPv4 for the pairing URL. Falls back to loopback
-/// when no LAN address is available (offline / link-down).
+/// Interface-name prefixes that are NEVER the real Wi-Fi/LAN: VPN tunnels
+/// (ProtonVPN, WireGuard, OpenVPN, IPSec), Docker/OrbStack/VM bridges, and other
+/// virtual adapters. An address on one of these is the wrong IP to put in the
+/// pairing QR (the iPad can't reach it) and the wrong base for the subnet guard.
+///
+/// Matching is case-insensitive prefix on the OS interface name. macOS hands out
+/// `utun*`/`ppp*`/`ipsec*` for VPNs and `bridge*`/`vmenet*`/`ap*`/`llw*` for
+/// virtual/AWDL adapters; OrbStack/Docker/VirtualBox/VMware use
+/// `vnic*`/`docker*`/`veth*`/`vboxnet*`/`vmnet*`; Linux/Windows VPNs use
+/// `tun*`/`tap*`/`wg*`/`zt*`/`tailscale*`.
+const VIRTUAL_IFACE_PREFIXES: &[&str] = &[
+    "utun", "tun", "tap", "ppp", "ipsec", "wg", "zt", "tailscale", "proton",
+    "bridge", "vmenet", "vnic", "docker", "veth", "vboxnet", "vmnet", "vmwarevmnet",
+    "ap", "awdl", "llw", "gif", "stf", "anpi", "lo",
+];
+
+/// True when an interface name looks like a virtual / VPN / container adapter
+/// (case-insensitive prefix match against [`VIRTUAL_IFACE_PREFIXES`]).
+fn is_virtual_iface(name: &str) -> bool {
+    let lname = name.to_ascii_lowercase();
+    VIRTUAL_IFACE_PREFIXES
+        .iter()
+        .any(|p| lname.starts_with(p))
+}
+
+/// True when `ip` is an RFC-1918 private LAN IPv4 (`10/8`, `172.16/12`,
+/// `192.168/16`). These are the only addresses we put in the pairing URL.
+fn is_private_lan_v4(ip: Ipv4Addr) -> bool {
+    let o = ip.octets();
+    o[0] == 10
+        || (o[0] == 172 && (16..=31).contains(&o[1]))
+        || (o[0] == 192 && o[1] == 168)
+}
+
+/// Resolve the REAL Wi-Fi/LAN IPv4 for the pairing URL and the subnet guard.
+///
+/// The mother Mac may also run ProtonVPN (`utun*`/`ppp*`) and OrbStack/Docker
+/// (`bridge*`/`vnic*`/`docker*`), so `local_ip_address::local_ip()` can hand
+/// back a VPN or virtual-interface IP — the wrong address to advertise to an
+/// iPad and the wrong base for the `/24` guard. Instead we enumerate every
+/// IPv4 interface and pick a *private LAN* address on a *physical* interface,
+/// deprioritising known virtual/VPN names.
+///
+/// Selection order:
+///   1. private LAN IPv4 on a non-virtual interface  (the real Wi-Fi/Ethernet)
+///   2. any private LAN IPv4 (even on a flagged interface) — better than nothing
+///   3. `local_ip_address::local_ip()` if it yields a private LAN v4
+///   4. loopback (offline / link-down)
 fn lan_ip() -> Ipv4Addr {
-    match local_ip_address::local_ip() {
-        Ok(std::net::IpAddr::V4(v4)) => v4,
-        _ => Ipv4Addr::LOCALHOST,
+    // 1+2) Enumerate all AF_INET interfaces and partition by physical vs virtual.
+    if let Ok(ifaces) = local_ip_address::list_afinet_netifas() {
+        let mut physical_private: Option<Ipv4Addr> = None;
+        let mut any_private: Option<Ipv4Addr> = None;
+        for (name, addr) in &ifaces {
+            let v4 = match addr {
+                IpAddr::V4(v4) => *v4,
+                IpAddr::V6(_) => continue,
+            };
+            if v4.is_loopback() || v4.is_link_local() || v4.is_unspecified() {
+                continue;
+            }
+            if !is_private_lan_v4(v4) {
+                continue; // public / CGNAT — never the LAN address we advertise.
+            }
+            if !is_virtual_iface(name) {
+                // First physical private hit wins — that's the real LAN NIC.
+                if physical_private.is_none() {
+                    physical_private = Some(v4);
+                }
+            } else if any_private.is_none() {
+                any_private = Some(v4);
+            }
+        }
+        if let Some(ip) = physical_private {
+            eprintln!("warehouse14-pos: companion LAN IP (physical) = {ip}");
+            return ip;
+        }
+        if let Some(ip) = any_private {
+            eprintln!(
+                "warehouse14-pos: companion LAN IP (virtual-iface fallback) = {ip}"
+            );
+            return ip;
+        }
     }
+
+    // 3) Last resort before loopback: the crate's best guess, but only if it is
+    //    itself a private LAN v4 (a VPN/public IP here would be worse than lo).
+    if let Ok(IpAddr::V4(v4)) = local_ip_address::local_ip() {
+        if is_private_lan_v4(v4) {
+            eprintln!("warehouse14-pos: companion LAN IP (local_ip fallback) = {v4}");
+            return v4;
+        }
+    }
+
+    // 4) Offline / link-down.
+    eprintln!("warehouse14-pos: companion LAN IP unresolved; using loopback");
+    Ipv4Addr::LOCALHOST
 }
 
 /// Draw a uniform `u32` in `0..1_000_000` from the OS CSPRNG using rejection
@@ -349,22 +439,87 @@ fn mint_token() -> Option<String> {
     Some(s)
 }
 
-/// True when `ip` is on the same `/24` as the mother's LAN IPv4 (H3
-/// same-subnet guard). Loopback is always allowed (the mother itself, the
-/// embedded webview, and diagnostics on the box).
-fn same_subnet(mother: Ipv4Addr, peer: IpAddr) -> bool {
+/// Decide whether `peer` may reach the companion hub given the mother's LAN
+/// IPv4 (H3 same-subnet guard, made network-robust).
+///
+/// The strict `/24` assumption is too tight for some real networks (a /23 or
+/// /16 home/office LAN, or a mother whose LAN IP we couldn't confidently pin
+/// down). So the policy is:
+///
+///   - Loopback (v4 or v6) is ALWAYS allowed — the mother, its webview, and
+///     on-box diagnostics.
+///   - If the mother IP could NOT be confidently determined (it resolved to
+///     loopback), FALL BACK to allowing any RFC-1918 private peer rather than
+///     hard-blocking legitimate devices. Public peers are still rejected.
+///   - Otherwise allow a v4 peer that is EITHER on the mother's `/24` OR a
+///     private LAN address in the SAME RFC-1918 range as the mother. Reject
+///     clearly-public peers.
+///   - IPv6 peers (other than loopback) are rejected — they can't be on the
+///     IPv4 LAN we serve.
+///
+/// Returns `(allowed, reason)`; the reason is logged by the caller.
+fn subnet_decision(mother: Ipv4Addr, peer: IpAddr) -> (bool, &'static str) {
     match peer {
         IpAddr::V4(v4) => {
             if v4.is_loopback() {
-                return true;
+                return (true, "loopback");
             }
+            // Mother IP unknown (loopback ⇒ we never pinned a real LAN IP):
+            // don't hard-block — allow any private peer, reject public.
+            if mother.is_loopback() {
+                return if is_private_lan_v4(v4) {
+                    (true, "mother-unknown: private peer allowed")
+                } else {
+                    (false, "mother-unknown: public peer rejected")
+                };
+            }
+            // Same /24 — the common, tightest case.
             let m = mother.octets();
             let p = v4.octets();
-            m[0] == p[0] && m[1] == p[1] && m[2] == p[2]
+            if m[0] == p[0] && m[1] == p[1] && m[2] == p[2] {
+                return (true, "same /24");
+            }
+            // Same RFC-1918 range (handles /23, /22, /16 LANs the /24 misses).
+            if is_private_lan_v4(mother)
+                && is_private_lan_v4(v4)
+                && same_private_range(mother, v4)
+            {
+                return (true, "same private range");
+            }
+            (false, "off-subnet")
         }
-        // IPv6 peers can't be on the IPv4 /24; allow only IPv6 loopback.
-        IpAddr::V6(v6) => v6.is_loopback(),
+        // IPv6 peers can't be on the IPv4 LAN; allow only IPv6 loopback.
+        IpAddr::V6(v6) => {
+            if v6.is_loopback() {
+                (true, "loopback")
+            } else {
+                (false, "ipv6 off-subnet")
+            }
+        }
     }
+}
+
+/// True when two private IPv4 addresses fall in the same RFC-1918 block
+/// (`10/8`, `172.16/12`, or `192.168/16`). For `192.168/16` we additionally
+/// require the same third octet so two unrelated `192.168.x` LANs bridged by a
+/// VPN don't see each other.
+fn same_private_range(a: Ipv4Addr, b: Ipv4Addr) -> bool {
+    let ao = a.octets();
+    let bo = b.octets();
+    if ao[0] == 10 && bo[0] == 10 {
+        return true;
+    }
+    if ao[0] == 172
+        && bo[0] == 172
+        && (16..=31).contains(&ao[1])
+        && (16..=31).contains(&bo[1])
+    {
+        return true;
+    }
+    if ao[0] == 192 && ao[1] == 168 && bo[0] == 192 && bo[1] == 168 {
+        return ao[2] == bo[2];
+    }
+    false
 }
 
 /// Render `url` as an SVG QR code (black on white). Returns `""` on the
@@ -448,7 +603,13 @@ async fn subnet_guard(
 ) -> Response {
     let mother = { hub.0.read().await.lan_ip };
     if let Some(mother) = mother {
-        if !same_subnet(mother, peer.ip()) {
+        let (allowed, reason) = subnet_decision(mother, peer.ip());
+        if !allowed {
+            eprintln!(
+                "warehouse14-pos: companion subnet guard REJECT peer={} mother={} ({reason})",
+                peer.ip(),
+                mother
+            );
             return (StatusCode::FORBIDDEN, "forbidden: off-subnet").into_response();
         }
     }

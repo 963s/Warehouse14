@@ -43,6 +43,8 @@ export const PhotoRow = Type.Object({
   id: Type.String({ format: 'uuid' }),
   productId: Type.Union([Type.String({ format: 'uuid' }), Type.Null()]),
   r2Key: Type.String(),
+  /** Public URL the POS / storefront renders the photo from. */
+  publicUrl: Type.Optional(Type.String()),
   r2KeyBgRemoved: Type.Union([Type.String(), Type.Null()]),
   displayOrder: Type.Integer(),
   isPrimary: Type.Boolean(),
