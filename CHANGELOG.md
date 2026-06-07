@@ -6,6 +6,46 @@ and the project adheres to [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-06-07
+
+Deep-overhaul release (test mode). Driven by a 54-finding multi-agent audit
+(`docs/deep-audit-2026-06-07.md`).
+
+### Fixed — the "no server connection" on Windows
+
+- The cloud session cookie is `SameSite=None; Secure`, which Windows WebView2
+  drops at the non-secure `http://tauri.localhost` origin — so the app opened
+  but every request read as logged-out. Now the session token is also carried
+  as `Authorization: Bearer` (immune to cookie policy), with an `access_token`
+  query param for the SSE stream. Auth now survives on Windows.
+
+### Fixed — money safety & honest connection state
+
+- Ankauf double-pay on double-click (client mutex + idempotency key + server
+  dedup); offline-queued buy-ins/cards no longer read as "failure"; ZVT
+  finalize-retry no longer re-authorizes (no double charge); cart-line removal
+  rolls back on release failure (no zombie reservation); offline fiscal
+  mutations are correctly GoBD-tagged.
+- A down server now shows "Keine Verbindung zum Server" + retry instead of an
+  empty catalog / the PIN pad; the status badge reflects real reachability.
+
+### Added — high-value sale & companion devices
+
+- §10 GwG: a VERKAUF ≥ €2.000 is now completable — a buyer picker with
+  Ausweisprüfung (search / create / KYC-verify) attaches a verified buyer.
+- **Companion LAN hub** (`docs/companion-architecture.md`): the mother POS
+  embeds a local server so an iPad/phone on the shop Wi-Fi pairs via QR
+  (Settings → "Geräte koppeln"), picks a role (Lager / Zweitkasse /
+  Kundenanzeige), and rides the mother's session through a role-scoped proxy.
+  The Customer-Display shows the mother's live cart. (Second-cashier ring-up +
+  realtime WebSocket are the next phase.)
+
+### Changed
+
+- German UI polish (no English enums on the floor); enforced server rate
+  limits; mTLS-bypass boot guard; ±50% metal-price plausibility band; 11
+  secondary surfaces lazy-loaded off the first-paint path.
+
 ## [0.3.0] — 2026-06-07
 
 Go-live release candidate (shop test build, **test mode** — mTLS/secret
