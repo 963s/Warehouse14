@@ -6,6 +6,12 @@ and the project adheres to [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+## [0.4.6] — 2026-06-08
+
+- **Cleaner screens across the app**: consistent spacing, stronger hierarchy
+  (the cart/day total now dominates), and one obvious brass primary action per
+  view — applied to Verkauf, Lager, Ankauf, Tageskasse, Kunden and Werkstatt.
+
 ## [0.4.5] — 2026-06-08
 
 - **Visible primary buttons** (brass accent across every screen) + a real
