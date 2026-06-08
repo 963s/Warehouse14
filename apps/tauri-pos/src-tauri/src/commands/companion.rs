@@ -19,6 +19,10 @@
 //! - `POST /pair` — constant-time code check + role validation + rate limit;
 //!   mints an opaque, CSPRNG companion token bound to a role.
 //! - `GET /cart` — the latest published cart snapshot for the customer display.
+//! - `GET /ws` — realtime customer-display feed (phase 3). A Display companion
+//!   authenticates its token (query param), then the mother pushes the cart
+//!   JSON on connect and on every `companion_publish_cart` via a
+//!   `tokio::sync::broadcast` channel. Read-only; same role model as `/cart`.
 //! - `ANY /api/proxy/*path` — a strict, role-scoped allow-list reverse proxy
 //!   that forwards to `https://api.warehouse14.de/api/...` with the mother's
 //!   Bearer injected. Companions never see the cloud credential.
@@ -60,17 +64,21 @@ use std::time::{Duration, Instant};
 
 use axum::{
     body::Bytes,
-    extract::{ConnectInfo, Path, State as AxumState},
+    extract::{
+        ws::{Message, WebSocket, WebSocketUpgrade},
+        ConnectInfo, Path, Query, State as AxumState,
+    },
     http::{header, HeaderMap, HeaderValue, Method, StatusCode},
     middleware::{self, Next},
     response::{Html, IntoResponse, Response},
     routing::{any, get, post},
     Json, Router,
 };
+use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
 use tauri::State;
-use tokio::sync::{oneshot, RwLock};
+use tokio::sync::{broadcast, oneshot, RwLock};
 use tokio::task::JoinHandle;
 use tower::limit::ConcurrencyLimitLayer;
 use tower_http::limit::RequestBodyLimitLayer;
@@ -114,11 +122,26 @@ const MAX_BODY_BYTES: usize = 1024 * 1024; // 1 MiB — generous for JSON payloa
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_CONCURRENT_REQUESTS: usize = 64;
 
+/// Realtime customer-display WebSocket (phase 3) tuning.
+///
+/// `CART_CHANNEL_CAPACITY` bounds the `tokio::sync::broadcast` ring: each
+/// publish is one message, so even a frantic cashier produces a handful per
+/// second. A lagging display (slow Wi-Fi) that overflows the ring is handled by
+/// catching `RecvError::Lagged` and pushing the LATEST snapshot, so it never
+/// shows a stale cart. `WS_PING_INTERVAL` keeps the socket warm through NAT /
+/// Wi-Fi idle timeouts and lets the mother notice a vanished display promptly.
+const CART_CHANNEL_CAPACITY: usize = 32;
+const WS_PING_INTERVAL: Duration = Duration::from_secs(25);
+
 /// The strict Content-Security-Policy applied to every companion response. No
 /// inline scripts (the SPA JS is a separate `/app.js`); no external origins.
+/// `connect-src` lists `ws:`/`wss:` explicitly (alongside `'self'`) so the
+/// customer-display realtime socket (`GET /ws`) is permitted while every other
+/// origin stays blocked — some browsers do not fold same-origin WebSocket under
+/// a bare `'self'`, so we name the schemes.
 const COMPANION_CSP: &str = "default-src 'self'; script-src 'self'; \
-style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; \
-object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
+style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:; \
+img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
 
 /// The companion SPA logic, embedded at build time and served from `/app.js`
 /// so the CSP can require `script-src 'self'` (no inline script).
@@ -260,8 +283,28 @@ struct HubInner {
 /// one is the long-lived application state and survives start/stop cycles, so
 /// the mother's Bearer and the latest cart can be set even before the server is
 /// running.
-#[derive(Clone, Default)]
-struct HubShared(Arc<RwLock<HubInner>>);
+///
+/// The `cart_tx` is the broadcast end of the realtime customer-display feed
+/// (phase 3): `companion_publish_cart` sends the latest cart JSON on it and
+/// every connected `/ws` display subscribes to it. It lives OUTSIDE the
+/// `RwLock` so a publish never has to take the write lock just to fan out, and
+/// so it survives start/stop (a reconnecting display picks the channel back up).
+#[derive(Clone)]
+struct HubShared {
+    inner: Arc<RwLock<HubInner>>,
+    /// Broadcast sender for the live cart feed → subscribed `/ws` displays.
+    cart_tx: broadcast::Sender<String>,
+}
+
+impl Default for HubShared {
+    fn default() -> Self {
+        let (cart_tx, _) = broadcast::channel(CART_CHANNEL_CAPACITY);
+        Self {
+            inner: Arc::new(RwLock::new(HubInner::default())),
+            cart_tx,
+        }
+    }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Lifecycle handle + Tauri-managed state
@@ -601,7 +644,7 @@ async fn subnet_guard(
     req: axum::extract::Request,
     next: Next,
 ) -> Response {
-    let mother = { hub.0.read().await.lan_ip };
+    let mother = { hub.inner.read().await.lan_ip };
     if let Some(mother) = mother {
         let (allowed, reason) = subnet_decision(mother, peer.ip());
         if !allowed {
@@ -649,7 +692,7 @@ async fn pair_handler(
         None => return (StatusCode::FORBIDDEN, "invalid role").into_response(),
     };
 
-    let mut inner = hub.0.write().await;
+    let mut inner = hub.inner.write().await;
     let now = Instant::now();
 
     // ── Global failed-attempt lock (distributed brute-force defence) ──
@@ -744,6 +787,31 @@ async fn pair_handler(
     .into_response()
 }
 
+/// Validate a raw companion token string. On success returns the token's role
+/// and refreshes its `last_seen`. A token older than [`TOKEN_TTL`] is evicted on
+/// use and rejected (H3). On any failure returns `None`.
+///
+/// Shared by the header-based path ([`auth_role`]) and the WebSocket upgrade,
+/// which carries the token in a query param (browsers cannot set custom headers
+/// on a `new WebSocket(...)` handshake).
+async fn auth_role_token(hub: &HubShared, token: &str) -> Option<Role> {
+    if token.is_empty() {
+        return None;
+    }
+    let now = Instant::now();
+    let mut inner = hub.inner.write().await;
+    // Evict-on-use if the token has outlived its TTL.
+    if let Some(entry) = inner.tokens.get(token) {
+        if entry.is_expired(now) {
+            inner.tokens.remove(token);
+            return None;
+        }
+    }
+    let entry = inner.tokens.get_mut(token)?;
+    entry.last_seen = now;
+    Some(entry.role)
+}
+
 /// Read and validate the `X-Companion-Token` header. On success returns the
 /// token's role and refreshes its `last_seen`. A token older than [`TOKEN_TTL`]
 /// is evicted on use and rejected (H3). On any failure returns `None`.
@@ -752,21 +820,7 @@ async fn auth_role(hub: &HubShared, headers: &HeaderMap) -> Option<Role> {
         .get("x-companion-token")
         .and_then(|v| v.to_str().ok())?
         .to_string();
-    if token.is_empty() {
-        return None;
-    }
-    let now = Instant::now();
-    let mut inner = hub.0.write().await;
-    // Evict-on-use if the token has outlived its TTL.
-    if let Some(entry) = inner.tokens.get(&token) {
-        if entry.is_expired(now) {
-            inner.tokens.remove(&token);
-            return None;
-        }
-    }
-    let entry = inner.tokens.get_mut(&token)?;
-    entry.last_seen = now;
-    Some(entry.role)
+    auth_role_token(hub, &token).await
 }
 
 /// `GET /cart` — any valid companion may read the latest published cart.
@@ -775,7 +829,7 @@ async fn cart_handler(AxumState(hub): AxumState<HubShared>, headers: HeaderMap) 
         return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
     }
     let body = {
-        let inner = hub.0.read().await;
+        let inner = hub.inner.read().await;
         inner
             .cart_json
             .clone()
@@ -787,6 +841,114 @@ async fn cart_handler(AxumState(hub): AxumState<HubShared>, headers: HeaderMap) 
         body,
     )
         .into_response()
+}
+
+/// Query string for the `GET /ws` upgrade. The companion token rides here
+/// (`/ws?token=…`) because a browser `new WebSocket(url)` cannot attach a custom
+/// `X-Companion-Token` header to the upgrade handshake.
+#[derive(Deserialize)]
+struct WsQuery {
+    token: Option<String>,
+}
+
+/// `GET /ws` — the realtime customer-display feed (phase 3).
+///
+/// Authenticates the companion token (query param), enforces the SAME role
+/// model as every other endpoint — only a **Display** companion may subscribe,
+/// matching its read-only contract — then upgrades to a WebSocket that pushes
+/// the latest cart JSON on connect and on every subsequent
+/// `companion_publish_cart`. The display re-renders on each push and no longer
+/// needs the 1 s `GET /cart` poll (it keeps the poll only as a drop fallback).
+///
+/// Security: this is a strictly outbound, read-only stream. Inbound frames from
+/// the display are ignored (other than the close/ping bookkeeping); the socket
+/// can never mutate state or reach the proxy.
+async fn ws_handler(
+    AxumState(hub): AxumState<HubShared>,
+    Query(q): Query<WsQuery>,
+    ws: WebSocketUpgrade,
+) -> Response {
+    let token = q.token.unwrap_or_default();
+    let role = match auth_role_token(&hub, &token).await {
+        Some(r) => r,
+        None => return (StatusCode::UNAUTHORIZED, "unauthorized").into_response(),
+    };
+    // Same role model as the proxy/cart: only the customer display rides the
+    // realtime feed. A cashier/warehouse token is rejected here (they have no
+    // need for the push stream and we keep the surface minimal).
+    if role != Role::Display {
+        return (StatusCode::FORBIDDEN, "forbidden for role").into_response();
+    }
+    // Snapshot the latest cart NOW so the freshly-connected display paints
+    // immediately, and subscribe to the broadcast for every later change.
+    let initial = {
+        let inner = hub.inner.read().await;
+        inner
+            .cart_json
+            .clone()
+            .unwrap_or_else(|| default_cart().to_string())
+    };
+    let rx = hub.cart_tx.subscribe();
+    ws.on_upgrade(move |socket| display_ws_loop(socket, initial, rx))
+}
+
+/// Drive one customer-display WebSocket: send the initial snapshot, then fan out
+/// every broadcast cart update, keep the socket warm with periodic pings, and
+/// exit cleanly when the client closes or the socket errors.
+async fn display_ws_loop(
+    socket: WebSocket,
+    initial: String,
+    mut rx: broadcast::Receiver<String>,
+) {
+    let (mut sink, mut stream) = socket.split();
+
+    // Paint immediately with the current cart.
+    if sink.send(Message::Text(initial)).await.is_err() {
+        return;
+    }
+
+    let mut ping = tokio::time::interval(WS_PING_INTERVAL);
+    // The first tick fires instantly; skip it so we don't ping before the first
+    // real idle window.
+    ping.tick().await;
+
+    loop {
+        tokio::select! {
+            // A new cart was published → push it. On `Lagged` (a slow display
+            // overflowed the ring) we don't error — the very next published
+            // snapshot is the truth, so we simply continue and let it through.
+            recv = rx.recv() => {
+                match recv {
+                    Ok(cart) => {
+                        if sink.send(Message::Text(cart)).await.is_err() {
+                            break;
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(_)) => {
+                        // Drop the stale gap; the next Ok delivers the latest.
+                        continue;
+                    }
+                    Err(broadcast::error::RecvError::Closed) => break,
+                }
+            }
+            // Keep-alive ping so NAT / Wi-Fi idle timers don't silently drop us.
+            _ = ping.tick() => {
+                if sink.send(Message::Ping(Vec::new())).await.is_err() {
+                    break;
+                }
+            }
+            // Watch the read half ONLY to notice the client going away (close or
+            // transport error). Inbound data frames are intentionally ignored —
+            // the display is a read-only sink.
+            msg = stream.next() => {
+                match msg {
+                    Some(Ok(Message::Close(_))) | None => break,
+                    Some(Err(_)) => break,
+                    Some(Ok(_)) => { /* ignore pongs / stray frames */ }
+                }
+            }
+        }
+    }
 }
 
 /// The outcome of normalising the proxy's captured path (C2).
@@ -1003,7 +1165,7 @@ async fn proxy_handler(
 
     // 5) Resolve the mother's Bearer; without it, the proxy cannot speak.
     let bearer = {
-        let inner = hub.0.read().await;
+        let inner = hub.inner.read().await;
         inner.bearer.clone()
     };
     if bearer.is_empty() {
@@ -1074,6 +1236,7 @@ fn build_router(hub: HubShared) -> Router {
         .route("/health", get(health))
         .route("/pair", post(pair_handler))
         .route("/cart", get(cart_handler))
+        .route("/ws", get(ws_handler))
         .route("/api/proxy/*path", any(proxy_handler))
         // Same-subnet guard (H3) — needs the hub state to read the mother IP.
         .layer(middleware::from_fn_with_state(hub.clone(), subnet_guard))
@@ -1154,7 +1317,7 @@ pub async fn companion_start(state: State<'_, CompanionState>) -> Result<Compani
     // Record the LAN IP (subnet guard), the code-issued instant (TTL), and
     // reset the global failed-attempt lock.
     {
-        let mut inner = state.hub.0.write().await;
+        let mut inner = state.hub.inner.write().await;
         inner.pairing_code = pairing_code.clone();
         inner.code_issued_at = Some(Instant::now());
         inner.lan_ip = Some(ip);
@@ -1219,7 +1382,7 @@ pub async fn companion_stop(state: State<'_, CompanionState>) -> Result<(), ()> 
     // Invalidate paired companions + reset the pairing code so a stopped hub
     // can't be reached with a previously-minted token if it restarts.
     {
-        let mut inner = state.hub.0.write().await;
+        let mut inner = state.hub.inner.write().await;
         inner.pairing_code.clear();
         inner.code_issued_at = None;
         inner.lan_ip = None;
@@ -1248,20 +1411,31 @@ pub async fn companion_set_auth(
     state: State<'_, CompanionState>,
     bearer: String,
 ) -> Result<(), ()> {
-    let mut inner = state.hub.0.write().await;
+    let mut inner = state.hub.inner.write().await;
     inner.bearer = bearer;
     Ok(())
 }
 
-/// Publish the latest cart snapshot (raw JSON string) for `GET /cart` — drives
-/// the customer-display companion. The shape is whatever the JS publishes; the
-/// SPA tolerates the common fields (`items[]`, `totalEur`).
+/// Publish the latest cart snapshot (raw JSON string) for `GET /cart` AND the
+/// realtime `GET /ws` feed — drives the customer-display companion. The shape is
+/// whatever the JS publishes; the SPA tolerates the common fields (`items[]`,
+/// `totalEur`).
+///
+/// Two effects: (1) store the snapshot so a fresh `GET /cart` poll or a new
+/// `/ws` connect paints immediately; (2) broadcast it so every already-connected
+/// display re-renders live. The broadcast is best-effort — `send` only errors
+/// when there are zero subscribers, which is the normal idle case, so we ignore
+/// it.
 #[tauri::command]
 pub async fn companion_publish_cart(
     state: State<'_, CompanionState>,
     cart_json: String,
 ) -> Result<(), ()> {
-    let mut inner = state.hub.0.write().await;
-    inner.cart_json = Some(cart_json);
+    {
+        let mut inner = state.hub.inner.write().await;
+        inner.cart_json = Some(cart_json.clone());
+    }
+    // Fan out to live displays. `Err` here means "no subscribers" — fine.
+    let _ = state.hub.cart_tx.send(cart_json);
     Ok(())
 }

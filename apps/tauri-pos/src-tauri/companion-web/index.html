@@ -288,6 +288,48 @@
   .skuhit .kv { display: flex; justify-content: space-between; gap: 1rem; padding: .35rem 0; }
   .skuhit .kv .k { color: var(--fg-dim); }
   .skuhit .kv .v { font-weight: 600; text-align: right; }
+
+  /* ── Zweitkasse cart (client-side line list) ───────────────── */
+  .cartwrap { border-top: 1px solid var(--line-soft); margin-top: 1rem; padding-top: 1rem; }
+  .cart-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: .6rem;
+  }
+  .cart-head .t { font-weight: 700; font-size: 1rem; }
+  .cart-head .c { color: var(--fg-dim); font-size: .85rem; }
+  .cart-list { display: flex; flex-direction: column; gap: .5rem; }
+  .cart-row {
+    display: flex; align-items: center; gap: .75rem;
+    background: var(--bg-elev); border: 1px solid var(--line-soft);
+    border-radius: var(--radius-sm); padding: .6rem .75rem;
+  }
+  .cart-row .meta { flex: 1; min-width: 0; }
+  .cart-row .nm { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cart-row .sub { font-size: .78rem; color: var(--fg-dim); margin-top: .1rem; }
+  .cart-row .ln { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+  .qty-ctrl { display: flex; align-items: center; gap: .4rem; }
+  .qty-ctrl button {
+    appearance: none; cursor: pointer; width: 36px; height: 36px; flex: none;
+    border: 1px solid var(--line); background: var(--bg-elev-2); color: var(--fg);
+    border-radius: 8px; font-size: 1.25rem; line-height: 1;
+  }
+  .qty-ctrl button:active { background: #20252f; }
+  .qty-ctrl .q { min-width: 1.6em; text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .cart-row .rm {
+    appearance: none; cursor: pointer; flex: none; border: none; background: transparent;
+    color: var(--fg-faint); font-size: 1.4rem; line-height: 1; width: 32px; height: 36px;
+  }
+  .cart-row .rm:active { color: var(--danger); }
+  .cart-total {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-top: .9rem; padding-top: .9rem; border-top: 2px solid var(--line);
+  }
+  .cart-total .tl { font-size: 1.1rem; color: var(--fg-dim); }
+  .cart-total .tv {
+    font-size: 1.6rem; font-weight: 800; color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+  .cart-empty { color: var(--fg-faint); text-align: center; padding: 1.25rem 1rem; }
 </style>
 </head>
 <body>

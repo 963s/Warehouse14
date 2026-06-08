@@ -53,7 +53,9 @@
   // ── State ──────────────────────────────────────────────────────────
   var token = localStorage.getItem(LS_TOKEN) || "";
   var role  = localStorage.getItem(LS_ROLE)  || "";
-  var displayTimer = null;
+  var displayTimer = null;     // GET /cart poll fallback interval.
+  var displaySocket = null;    // live customer-display WebSocket (/ws).
+  var displayReconnect = null; // pending socket-reconnect timer.
   var whTab = "scan"; // active warehouse tool tab.
 
   var app = document.getElementById("app");
@@ -171,6 +173,7 @@
   // ── Session ────────────────────────────────────────────────────────
   function logout() {
     stopDisplayTimer();
+    stopDisplaySocket();
     token = ""; role = "";
     localStorage.removeItem(LS_TOKEN);
     localStorage.removeItem(LS_ROLE);
@@ -196,6 +199,7 @@
   // ── Pairing screen (2 steps: code → BIG role tiles) ────────────────
   function renderPairing() {
     stopDisplayTimer();
+    stopDisplaySocket();
     clear(app);
 
     var step = "code";        // "code" | "role"
@@ -301,8 +305,13 @@
   }
 
   // ── Customer display ───────────────────────────────────────────────
+  // LIVE via WebSocket (GET /ws?token=…): the mother broadcasts the cart on
+  // every change, so the display re-renders on push with no polling lag. The
+  // 1 s GET /cart poll is kept ONLY as a fallback that arms when the socket
+  // drops (and disarms again once it reconnects).
   function renderDisplay() {
     stopDisplayTimer();
+    stopDisplaySocket();
     clear(app);
 
     var head  = el("div", { class: "display-head" }, "Ihr Einkauf");
@@ -327,8 +336,9 @@
           var qty = it.qty != null ? it.qty : (it.quantity != null ? it.quantity : 1);
           var name = it.name || it.title || it.sku || "Artikel";
           var line = it.lineEur != null ? it.lineEur
+                   : (it.lineTotalEur != null ? it.lineTotalEur
                    : (it.totalEur != null ? it.totalEur
-                   : (it.priceEur != null ? it.priceEur : it.price));
+                   : (it.priceEur != null ? it.priceEur : it.price)));
           items.appendChild(el("div", { class: "display-line" }, [
             el("span", { class: "qty" }, String(qty) + "×"),
             el("span", { class: "nm" }, String(name)),
@@ -339,14 +349,110 @@
       totalV.textContent = fmtEur(cart && cart.totalEur);
     }
 
-    function tick() { getCart().then(paint).catch(function () { /* keep last frame */ }); }
-    tick();
-    displayTimer = setInterval(tick, 1000);
+    // The poll fallback — only runs while the socket is NOT open.
+    function startPoll() {
+      if (displayTimer) return;
+      function tick() { getCart().then(paint).catch(function () { /* keep last frame */ }); }
+      tick();
+      displayTimer = setInterval(tick, 1000);
+    }
+    function stopPoll() { stopDisplayTimer(); }
+
+    // Open the realtime socket; on drop, fall back to polling and retry the
+    // socket with a gentle backoff.
+    connectDisplaySocket(paint, startPoll, stopPoll);
+  }
+
+  // Build the ws:// URL for /ws on the same origin the SPA was served from,
+  // carrying the companion token as a query param (browsers can't set custom
+  // headers on a WebSocket handshake).
+  function wsUrl() {
+    var scheme = location.protocol === "https:" ? "wss:" : "ws:";
+    return scheme + "//" + location.host + "/ws?token=" + encodeURIComponent(token);
+  }
+
+  function stopDisplaySocket() {
+    if (displayReconnect) { clearTimeout(displayReconnect); displayReconnect = null; }
+    if (displaySocket) {
+      try { displaySocket.onclose = null; displaySocket.close(); } catch (e) {}
+      displaySocket = null;
+    }
+  }
+
+  // Connect (and keep reconnecting) the display feed. `onCart` paints a frame;
+  // `armPoll`/`disarmPoll` toggle the GET /cart fallback so the display never
+  // goes dark even if WebSockets are blocked on this network.
+  function connectDisplaySocket(onCart, armPoll, disarmPoll) {
+    if (!token) { armPoll(); return; }
+    var ws;
+    try { ws = new WebSocket(wsUrl()); }
+    catch (e) { armPoll(); scheduleReconnect(onCart, armPoll, disarmPoll); return; }
+    displaySocket = ws;
+
+    ws.onopen = function () {
+      // Socket is live → stop the poll; the server sends the snapshot on connect.
+      disarmPoll();
+    };
+    ws.onmessage = function (ev) {
+      var cart = null;
+      try { cart = JSON.parse(ev.data); } catch (e) { return; }
+      onCart(cart);
+    };
+    ws.onerror = function () { /* surfaced as a close — handled there */ };
+    ws.onclose = function (ev) {
+      if (displaySocket === ws) displaySocket = null;
+      // 1008 = policy violation (our auth/role reject) → token is stale: log out.
+      if (ev && ev.code === 1008) { logout(); return; }
+      // Otherwise fall back to polling and try to re-establish the socket.
+      armPoll();
+      scheduleReconnect(onCart, armPoll, disarmPoll);
+    };
+  }
+
+  function scheduleReconnect(onCart, armPoll, disarmPoll) {
+    if (displayReconnect) return;
+    displayReconnect = setTimeout(function () {
+      displayReconnect = null;
+      // Only reconnect if we're still on the display screen with a token.
+      if (role === "display" && token) {
+        connectDisplaySocket(onCart, armPoll, disarmPoll);
+      }
+    }, 3000);
+  }
+
+  // ── Money in integer cents (mirrors lib/cart-math toCents/fromCents) ─
+  // Parse a Decimal/comma money STRING to integer cents. Returns null when the
+  // input isn't a clean money value (so a bad catalog price can't poison the
+  // running total). No floats touch the running total — everything is bigint-
+  // free integer cents accumulated in a Number that stays exact under 2^53.
+  function priceToCents(raw) {
+    var s = normalizeDecimal(raw);
+    if (!/^\d{1,12}(\.\d{1,2})?$/.test(s)) return null;
+    var parts = s.split(".");
+    var whole = parseInt(parts[0], 10);
+    var frac = parts[1] ? (parts[1] + "00").slice(0, 2) : "00";
+    return whole * 100 + parseInt(frac, 10);
+  }
+  // Integer cents → Decimal string "12.50" (dot decimal, for fmtEur + parity).
+  function centsToDecimal(cents) {
+    var sign = cents < 0 ? "-" : "";
+    var a = Math.abs(cents);
+    var whole = Math.floor(a / 100);
+    var frac = a % 100;
+    return sign + whole + "." + (frac < 10 ? "0" + frac : String(frac));
   }
 
   // ── Cashier (Zweitkasse) ───────────────────────────────────────────
+  // A REAL client-side ring-up: tap catalog rows to build a cart (line list +
+  // running total in integer cents), adjust quantities, remove lines. The cart
+  // lives only on this companion. The "Bezahlen (bar)" button does NOT post a
+  // fiscal transaction itself — the cloud finalize requires an inventory
+  // reservation session + VAT split + TSE signature flow that only the mother
+  // performs, and posting a partial/guessed body would create a malformed
+  // GoBD/KassenSichV record. Instead it hands the order off to the Hauptkasse.
   function renderCashier() {
     stopDisplayTimer();
+    stopDisplaySocket();
     clear(app);
     app.appendChild(topbar());
 
@@ -354,11 +460,102 @@
     var listBox = el("div", { class: "list" });
     var all = [];
 
+    // cart line: { id, sku, name, unitCents, qty }
+    var cart = [];
+    var cartBox = el("div", {});
+
     var search = el("input", {
       class: "search", type: "search", placeholder: "Artikel suchen…",
       "aria-label": "Artikel suchen",
       oninput: function (e) { paint(e.target.value.trim().toLowerCase()); }
     });
+
+    function addToCart(p) {
+      var unit = priceToCents(p.priceEur != null ? p.priceEur : p.price);
+      if (unit == null) { alert("Dieser Artikel hat keinen gültigen Preis und kann nicht hinzugefügt werden."); return; }
+      var key = p.id || p.sku || p.name;
+      var existing = cart.filter(function (l) { return l.key === key; })[0];
+      if (existing) { existing.qty += 1; }
+      else { cart.push({ key: key, id: p.id || null, sku: p.sku || "", name: p.name || "Artikel", unitCents: unit, qty: 1 }); }
+      paintCart();
+    }
+
+    function setQty(line, qty) {
+      if (qty <= 0) { cart = cart.filter(function (l) { return l !== line; }); }
+      else { line.qty = qty; }
+      paintCart();
+    }
+
+    function cartTotalCents() {
+      return cart.reduce(function (sum, l) { return sum + l.unitCents * l.qty; }, 0);
+    }
+
+    function paintCart() {
+      clear(cartBox);
+      var count = cart.reduce(function (n, l) { return n + l.qty; }, 0);
+
+      var lines = el("div", { class: "cart-list" });
+      if (!cart.length) {
+        lines.appendChild(el("div", { class: "cart-empty" }, "Noch keine Artikel im Warenkorb."));
+      } else {
+        cart.forEach(function (l) {
+          lines.appendChild(el("div", { class: "cart-row" }, [
+            el("div", { class: "meta" }, [
+              el("div", { class: "nm" }, String(l.name)),
+              el("div", { class: "sub" }, (l.sku ? "SKU " + l.sku + " · " : "") + fmtEur(centsToDecimal(l.unitCents)) + " / Stück")
+            ]),
+            el("div", { class: "qty-ctrl" }, [
+              el("button", { type: "button", "aria-label": "Weniger", onclick: function () { setQty(l, l.qty - 1); } }, "−"),
+              el("span", { class: "q" }, String(l.qty)),
+              el("button", { type: "button", "aria-label": "Mehr", onclick: function () { setQty(l, l.qty + 1); } }, "+")
+            ]),
+            el("span", { class: "ln" }, fmtEur(centsToDecimal(l.unitCents * l.qty))),
+            el("button", { class: "rm", type: "button", "aria-label": "Entfernen",
+              onclick: function () { setQty(l, 0); } }, "×")
+          ]));
+        });
+      }
+
+      var payBtn = el("button", { class: "btn-primary", type: "button",
+        onclick: handoffToMother }, "Bezahlen (bar) – an Hauptkasse");
+      payBtn.disabled = !cart.length;
+
+      cartBox.appendChild(el("div", { class: "cartwrap" }, [
+        el("div", { class: "cart-head" }, [
+          el("span", { class: "t" }, "Warenkorb"),
+          el("span", { class: "c" }, count + (count === 1 ? " Artikel" : " Artikel"))
+        ]),
+        lines,
+        el("div", { class: "cart-total" }, [
+          el("span", { class: "tl" }, "Gesamt"),
+          el("span", { class: "tv" }, fmtEur(centsToDecimal(cartTotalCents())))
+        ]),
+        el("div", { class: "btn-row" }, [ payBtn ]),
+        el("div", { class: "scan-help" },
+          "Der Abschluss erfolgt an der Hauptkasse: Reservierung, Steueraufteilung und " +
+          "TSE-Signatur (KassenSichV) werden dort fiskalisch erzeugt. So entsteht nie ein " +
+          "unvollständiger Kassenbeleg auf diesem Gerät.")
+      ]));
+    }
+
+    // Hand the finished order to the Hauptkasse for fiscal finalize. We do NOT
+    // POST /transactions/finalize from here: that body needs a per-line
+    // reservationSessionId (POST /api/inventory/reserve — not in the cashier
+    // allow-list), a VAT split, and a TSE signature the mother owns. Posting a
+    // guessed/partial body would write a malformed GoBD record. This is an
+    // honest hand-off; the real cross-device cart push is a later phase.
+    function handoffToMother() {
+      if (!cart.length) return;
+      var count = cart.reduce(function (n, l) { return n + l.qty; }, 0);
+      var total = fmtEur(centsToDecimal(cartTotalCents()));
+      alert(
+        "Warenkorb bereit für die Hauptkasse.\n\n" +
+        count + " Artikel · Gesamt " + total + "\n\n" +
+        "Bitte den Abschluss (bar) an der Hauptkasse durchführen — " +
+        "Reservierung, Steuer und TSE-Signatur werden dort fiskalisch erzeugt. " +
+        "Die automatische Übergabe an die Hauptkasse folgt in einer späteren Phase."
+      );
+    }
 
     function paint(q) {
       clear(listBox);
@@ -377,13 +574,8 @@
             el("div", { class: "sku" }, p.sku ? ("SKU " + String(p.sku)) : "—")
           ]),
           el("span", { class: "price" }, fmtEur(p.priceEur != null ? p.priceEur : p.price)),
-          el("button", { class: "add", title: "Hinzufügen (folgt)",
-            onclick: function () {
-              // TODO(phase): wire 'add to cart' through the mother so this
-              // companion can ring up via the proxy + publish the cart.
-              // For now this is an intentionally inert stub.
-              alert("Hinzufügen folgt: Der Warenkorb wird in der nächsten Phase über die Hauptkasse synchronisiert.");
-            }
+          el("button", { class: "add", title: "In den Warenkorb", "aria-label": "Hinzufügen",
+            onclick: function () { addToCart(p); }
           }, "+")
         ]));
       });
@@ -391,13 +583,13 @@
 
     app.appendChild(el("div", { class: "pad" }, [
       search,
-      el("div", { class: "hint" }, [
-        "Nur-Lesen-Katalog. ",
-        el("span", { class: "badge-soft" }, "Hinzufügen folgt")
-      ]),
+      el("div", { class: "hint" }, "Auf „+“ tippen, um einen Artikel in den Warenkorb zu legen."),
       statusMsg,
-      listBox
+      listBox,
+      cartBox
     ]));
+
+    paintCart();
 
     proxy("products")
       .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
@@ -414,6 +606,7 @@
   // ── Warehouse (Lager) — tabbed tools ───────────────────────────────
   function renderWarehouse() {
     stopDisplayTimer();
+    stopDisplaySocket();
     clear(app);
     app.appendChild(topbar());
 
