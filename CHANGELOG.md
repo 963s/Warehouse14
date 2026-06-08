@@ -6,6 +6,16 @@ and the project adheres to [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+## [0.4.9] — 2026-06-08
+
+- **Security hardening** (from a final internal audit): the customer-display
+  companion now carries its access token in a handshake header instead of the
+  connection URL, so it can't be recovered from device logs/history.
+- **Internal cleanup**: the money rounding/conversion helpers are now defined
+  once and shared (previously copied across three screens), removing the risk of
+  the cash, intake and appraisal screens ever rounding differently. No change to
+  any amount — proven by tests.
+
 ## [0.4.8] — 2026-06-08
 
 - **Split payment** (Kasse): pay part of a sale in cash and the rest on the
