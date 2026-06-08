@@ -302,6 +302,12 @@ async function handlePaymentIntentSucceeded(
 
     // Look up products for tax_treatment_code (snapshotted onto transaction_items).
     const productIds = items.map((i) => i.productId);
+    // Bind as ONE Postgres array-literal text param ('{uuid,uuid}') cast to
+    // uuid[]. Interpolating a JS array into drizzle's sql template SPREADS it
+    // into scalar params, so `ANY(${productIds})` casts a scalar/record and
+    // breaks (esp. a single-item online order). productIds are DB-sourced
+    // UUIDs → safe single bound param. (Same fix as finalize + closing-export.)
+    const productIdArray = `{${productIds.join(',')}}`;
     const productRows = await tx
       .select({
         id: products.id,
@@ -310,7 +316,7 @@ async function handlePaymentIntentSucceeded(
         listPriceEur: products.listPriceEur,
       })
       .from(products)
-      .where(drizzleSql`${products.id} = ANY(${productIds})`);
+      .where(drizzleSql`${products.id} = ANY(${productIdArray}::uuid[])`);
     const productMap = new Map(productRows.map((p) => [p.id, p]));
 
     // 1. Finalize each reservation (RESERVED → SOLD). Same session_id as
