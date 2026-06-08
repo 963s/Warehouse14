@@ -99,21 +99,28 @@ type ClosingFullRow = {
 
 /** Standard SKR03 accounts for a counter-trade business (gold/coins/antiques). */
 const KONTO_KASSE = '1000'; // Kasse
-const KONTO_ERLOESE = '8400'; // Erlöse 19% USt
+const KONTO_ERLOESE_19 = '8400'; // Erlöse 19% USt (Automatikkonto) — fallback
 const KONTO_WARENEINGANG = '3200'; // Wareneingang
 
-// TODO(steuerberater, pre-go-live): EVERY VERKAUF currently posts to the single
-// revenue account 8400 (KONTO_ERLOESE) REGARDLESS of tax_treatment_code. This is
-// almost certainly wrong for the differently-taxed sales:
-//   • STANDARD_19          → 19% Erlöse  (8400 is plausible)
-//   • REDUCED_7            → 7%  Erlöse
-//   • MARGIN_25A           → Differenzbesteuerung §25a (separate revenue account)
-//   • INVESTMENT_GOLD_25C  → steuerfreie Anlagegold-Lieferung §25c (separate account)
-// QUESTION FOR THE ACCOUNTANT: which SKR03 revenue account should each
-// tax_treatment_code map to? Once answered, replace this single constant with a
-// per-treatment lookup. Do NOT guess the account numbers here.
-// See docs/samples/README.md + the generated DATEV sample (all three treatments
-// visibly share contra 8400 today).
+// Per-tax-treatment SKR03 revenue account + DATEV BU-Schlüssel (Buchungsschlüssel),
+// confirmed by the Steuerberater (2026). Routing the Gegenkonto BY treatment is
+// what ends the "steuerlich blinde" collapse where every sale landed on 8400 and
+// got taxed at 19% — wrongly including exempt investment gold (§25c) and the
+// margin-taxed used goods (§25a).
+//   • STANDARD_19          → 8400 Erlöse 19% USt                       · BU 3 (19%)
+//   • REDUCED_7            → 8300 Erlöse 7% USt                        · BU 2 (7%)
+//   • MARGIN_25A           → 8200 Erlöse §25a Differenzbesteuerung     · BU leer (Konto trägt die Behandlung)
+//   • INVESTMENT_GOLD_25C  → 8150 steuerfreie Erlöse §25c Anlagegold   · BU leer (0% USt)
+// §25a note: the Gegenkonto is now correct; §25a taxes only the MARGIN, which the
+// 8200 Differenzbesteuerungs-Konto models — the gross sale is posted there by
+// design. Unknown codes fall back to 8400 (and the Buchungstext names the code)
+// so nothing posts silently into the wrong tax bucket.
+const ERLOES_BY_TREATMENT: Record<string, { konto: string; bu: string }> = {
+  STANDARD_19: { konto: '8400', bu: '3' },
+  REDUCED_7: { konto: '8300', bu: '2' },
+  MARGIN_25A: { konto: '8200', bu: '' },
+  INVESTMENT_GOLD_25C: { konto: '8150', bu: '' },
+};
 
 // ── DSFinV-K export row shapes (READ-ONLY; mapped to the pure generator) ──
 //   `type` (not `interface`) to satisfy the `Record<string, unknown>` bound on
@@ -183,17 +190,36 @@ type TxRow = {
   finalized_at: Date;
 };
 
-/** Map one transaction to a DATEV booking line. */
-function toDatevRow(tx: TxRow): DATEVRow {
+/**
+ * Map one transaction to a DATEV booking line.
+ * VERKAUF: Kasse (Soll) an the per-treatment Erlöskonto, with the matching
+ * BU-Schlüssel. ANKAUF: Wareneingang an Kasse (no output VAT). Exported for
+ * the fiscal-mapping unit test.
+ */
+export function toDatevRow(tx: TxRow): DATEVRow {
   const isAnkauf = tx.direction === 'ANKAUF';
   // Sale: Kasse an Erlöse (Konto=Kasse, debit). Purchase: Wareneingang an Kasse.
   const account = isAnkauf ? KONTO_WARENEINGANG : KONTO_KASSE;
-  const contraAccount = isAnkauf ? KONTO_KASSE : KONTO_ERLOESE;
+  let contraAccount: string;
+  let taxKey: string;
+  if (isAnkauf) {
+    contraAccount = KONTO_KASSE;
+    taxKey = ''; // Ankauf from a private seller — no output VAT key.
+  } else {
+    const m = ERLOES_BY_TREATMENT[tx.tax_treatment_code] ?? {
+      konto: KONTO_ERLOESE_19,
+      bu: '',
+    };
+    contraAccount = m.konto;
+    taxKey = m.bu;
+  }
   return {
     amountEur: tx.total_eur,
     debitCredit: 'S', // Umsatz posts to the debit (Soll) side of Konto.
     account,
     contraAccount,
+    // Omit the optional BU-Schlüssel entirely when empty (exactOptionalPropertyTypes).
+    ...(taxKey === '' ? {} : { taxKey }),
     date: new Date(tx.finalized_at).toISOString().slice(0, 10), // YYYY-MM-DD → DDMM in exporter
     reference: tx.receipt_locator,
     bookingText: `${tx.direction} ${tx.receipt_locator} (${tx.tax_treatment_code})`,
