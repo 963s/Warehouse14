@@ -15,29 +15,25 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { readFile, readdir } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import postgres, { type Sql } from 'postgres';
+
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { applyAllMigrations as applyAllMigrationsFidelity } from './_migrate.js';
 
 import { computeReminderSchedule } from '@warehouse14/appointments';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const MIGRATIONS_DIR = resolve(__dirname, '..', '..', '..', '..', 'packages', 'db', 'migrations');
 const PII_KEY = 'test-pii-key-do-not-use-in-production-32b';
 
 const INITDB_SQL = `
-  CREATE ROLE warehouse14_migrator LOGIN NOINHERIT CREATEROLE
+  CREATE ROLE warehouse14_migrator LOGIN NOINHERIT SUPERUSER CREATEROLE
     PASSWORD 'warehouse14_migrator_test_pw';
   GRANT ALL ON SCHEMA public TO warehouse14_migrator;
 `;
 
 async function applyAll(sqlClient: Sql): Promise<void> {
-  const files = (await readdir(MIGRATIONS_DIR)).filter((n) => /^\d{4}_.+\.sql$/.test(n)).sort();
-  for (const f of files) await sqlClient.unsafe(await readFile(join(MIGRATIONS_DIR, f), 'utf8'));
+  await applyAllMigrationsFidelity(sqlClient);
 }
 
 function one<T>(rows: T[]): T {

@@ -1,47 +1,28 @@
-/**
- * Day 11 integration test — /health + /metrics + /docs are reachable, and
- * /health returns the right shape against a real Postgres.
- *
- * Reuses the testcontainer + migration-applier from `packages/db/tests` via
- * an inline equivalent (we don't depend on a test-only export from another
- * package). All 13 migrations are applied so a future Day-12 test that touches
- * `customers`/`devices` does not need a fresh fixture.
- */
-
-import { readFile, readdir } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import type { AppDb } from '@warehouse14/db/client';
 import * as schema from '@warehouse14/db/schema';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import type { FastifyInstance } from 'fastify';
 import postgres, { type Sql } from 'postgres';
+
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { applyAllMigrations as applyAllMigrationsFidelity } from './_migrate.js';
 
 import { buildApp } from '../../src/app.js';
 import type { Env } from '../../src/config/env.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const MIGRATIONS_DIR = resolve(__dirname, '..', '..', '..', '..', 'packages', 'db', 'migrations');
 
 const INITDB_SQL = `
   CREATE ROLE warehouse14_migrator
     LOGIN
     NOINHERIT
+    SUPERUSER
     CREATEROLE
     PASSWORD 'warehouse14_migrator_test_pw';
   GRANT ALL ON SCHEMA public TO warehouse14_migrator;
 `;
 
 async function applyAllMigrations(sql: Sql): Promise<void> {
-  const all = await readdir(MIGRATIONS_DIR);
-  const files = all.filter((n) => /^\d{4}_.+\.sql$/.test(n)).sort();
-  for (const file of files) {
-    const sqlText = await readFile(join(MIGRATIONS_DIR, file), 'utf8');
-    await sql.unsafe(sqlText);
-  }
+  await applyAllMigrationsFidelity(sql);
 }
 
 describe('apps/api-cloud — Day 11 health + observability', () => {

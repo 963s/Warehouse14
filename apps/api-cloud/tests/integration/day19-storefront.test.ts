@@ -25,24 +25,20 @@
  */
 
 import { createHmac, randomUUID } from 'node:crypto';
-import { readFile, readdir } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import type { AppDb } from '@warehouse14/db/client';
 import * as schema from '@warehouse14/db/schema';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import type { FastifyInstance } from 'fastify';
 import postgres, { type Sql } from 'postgres';
+
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { applyAllMigrations as applyAllMigrationsFidelity } from './_migrate.js';
 
 import { buildApp } from '../../src/app.js';
 import type { Env } from '../../src/config/env.js';
 import { STOREFRONT_COOKIE_NAME } from '../../src/plugins/storefront-session.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const MIGRATIONS_DIR = resolve(__dirname, '..', '..', '..', '..', 'packages', 'db', 'migrations');
 const PII_KEY = 'test-pii-key-do-not-use-in-production-32b';
 const STRIPE_WHSEC = 'whsec_test_dummy_secret_for_signature_verification';
 
@@ -50,14 +46,14 @@ const INITDB_SQL = `
   CREATE ROLE warehouse14_migrator
     LOGIN
     NOINHERIT
+    SUPERUSER
     CREATEROLE
     PASSWORD 'warehouse14_migrator_test_pw';
   GRANT ALL ON SCHEMA public TO warehouse14_migrator;
 `;
 
 async function applyAll(sqlClient: Sql): Promise<void> {
-  const files = (await readdir(MIGRATIONS_DIR)).filter((n) => /^\d{4}_.+\.sql$/.test(n)).sort();
-  for (const f of files) await sqlClient.unsafe(await readFile(join(MIGRATIONS_DIR, f), 'utf8'));
+  await applyAllMigrationsFidelity(sqlClient);
 }
 
 /** Compute a Stripe-Signature header value over a raw body. */

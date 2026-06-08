@@ -26,8 +26,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { readFile, readdir } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import type { AppDb } from '@warehouse14/db/client';
@@ -35,7 +34,9 @@ import * as schema from '@warehouse14/db/schema';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import type { FastifyInstance } from 'fastify';
 import postgres, { type Sql } from 'postgres';
+
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { applyAllMigrations as applyAllMigrationsFidelity } from './_migrate.js';
 
 import { buildApp } from '../../src/app.js';
 import type { Env } from '../../src/config/env.js';
@@ -49,14 +50,14 @@ const INITDB_SQL = `
   CREATE ROLE warehouse14_migrator
     LOGIN
     NOINHERIT
+    SUPERUSER
     CREATEROLE
     PASSWORD 'warehouse14_migrator_test_pw';
   GRANT ALL ON SCHEMA public TO warehouse14_migrator;
 `;
 
 async function applyAll(sqlClient: Sql): Promise<void> {
-  const files = (await readdir(MIGRATIONS_DIR)).filter((n) => /^\d{4}_.+\.sql$/.test(n)).sort();
-  for (const f of files) await sqlClient.unsafe(await readFile(join(MIGRATIONS_DIR, f), 'utf8'));
+  await applyAllMigrationsFidelity(sqlClient);
 }
 
 describe('POST /api/transactions/finalize — Day 13 vital artery', () => {
