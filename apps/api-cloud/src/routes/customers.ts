@@ -164,7 +164,9 @@ const customersRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(200).send({
         id: inserted.id,
         customerNumber: inserted.customer_number,
-        createdAt: inserted.created_at.toISOString(),
+        // postgres-js returns RETURNING timestamps as strings on raw execute,
+        // so normalise via Date (was `.toISOString()` on a string → 500).
+        createdAt: new Date(inserted.created_at as string | Date).toISOString(),
       });
     },
   );
