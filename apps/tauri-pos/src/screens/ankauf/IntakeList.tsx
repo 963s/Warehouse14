@@ -45,31 +45,9 @@ import {
 } from '../../state/ankauf-cart-store.js';
 import { useToastStore } from '../../state/toast-store.js';
 
+import { CONDITION_OPTIONS, ITEM_TYPE_OPTIONS } from '../../lib/item-type-label.js';
+
 import { EuroInput } from '../kasse/EuroInput.js';
-
-const ITEM_TYPE_OPTIONS: Array<{ value: AnkaufItemType; label: string }> = [
-  { value: 'gold_coin', label: 'Goldmünze' },
-  { value: 'gold_bar', label: 'Goldbarren' },
-  { value: 'gold_jewelry', label: 'Goldschmuck' },
-  { value: 'silver_coin', label: 'Silbermünze' },
-  { value: 'silver_bar', label: 'Silberbarren' },
-  { value: 'silver_jewelry', label: 'Silberschmuck' },
-  { value: 'platinum_coin', label: 'Platinmünze' },
-  { value: 'platinum_bar', label: 'Platinbarren' },
-  { value: 'platinum_jewelry', label: 'Platinschmuck' },
-  { value: 'watch', label: 'Uhr' },
-  { value: 'antique', label: 'Antiquität' },
-  { value: 'other', label: 'Sonstiges' },
-];
-
-const CONDITION_OPTIONS: Array<{ value: AnkaufCondition; label: string }> = [
-  { value: 'USED_GOOD', label: 'Gebraucht — gut' },
-  { value: 'USED_EXCELLENT', label: 'Gebraucht — exzellent' },
-  { value: 'USED_FAIR', label: 'Gebraucht — befriedigend' },
-  { value: 'NEW', label: 'Neu' },
-  { value: 'ANTIQUE_RESTORED', label: 'Antik — restauriert' },
-  { value: 'ANTIQUE_AS_FOUND', label: 'Antik — wie gefunden' },
-];
 
 const TAX_TREATMENT_OPTIONS: TaxTreatmentCode[] = [
   'MARGIN_25A',
@@ -819,7 +797,7 @@ function SelectField<T extends string>({
   label: string;
   value: T;
   onChange: (v: T) => void;
-  options: Array<{ value: T; label: string }>;
+  options: ReadonlyArray<{ value: T; label: string }>;
   disabled?: boolean;
 }): JSX.Element {
   return (

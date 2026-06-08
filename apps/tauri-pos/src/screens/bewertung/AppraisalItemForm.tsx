@@ -26,30 +26,7 @@ import { Button, DiamondRule, MoneyAmount, ParchmentCard } from '@warehouse14/ui
 import { useApiClient } from '../../lib/api-context.js';
 import { computeSchmelzwertEur } from '../../lib/bewertung-math.js';
 import { isMoneyInput, normalizeDecimal } from '../../lib/decimal.js';
-
-const ITEM_TYPE_OPTIONS: Array<{ value: AnkaufItemType; label: string }> = [
-  { value: 'gold_coin', label: 'Goldmünze' },
-  { value: 'gold_bar', label: 'Goldbarren' },
-  { value: 'gold_jewelry', label: 'Goldschmuck' },
-  { value: 'silver_coin', label: 'Silbermünze' },
-  { value: 'silver_bar', label: 'Silberbarren' },
-  { value: 'silver_jewelry', label: 'Silberschmuck' },
-  { value: 'platinum_coin', label: 'Platinmünze' },
-  { value: 'platinum_bar', label: 'Platinbarren' },
-  { value: 'platinum_jewelry', label: 'Platinschmuck' },
-  { value: 'antique', label: 'Antiquität' },
-  { value: 'watch', label: 'Uhr' },
-  { value: 'other', label: 'Sonstiges' },
-];
-
-const CONDITION_OPTIONS: Array<{ value: AnkaufCondition; label: string }> = [
-  { value: 'USED_GOOD', label: 'Gebraucht — gut' },
-  { value: 'USED_EXCELLENT', label: 'Gebraucht — exzellent' },
-  { value: 'USED_FAIR', label: 'Gebraucht — befriedigend' },
-  { value: 'NEW', label: 'Neu' },
-  { value: 'ANTIQUE_RESTORED', label: 'Antik — restauriert' },
-  { value: 'ANTIQUE_AS_FOUND', label: 'Antik — wie gefunden' },
-];
+import { CONDITION_OPTIONS, ITEM_TYPE_OPTIONS } from '../../lib/item-type-label.js';
 
 export interface AppraisalItemFormProps {
   appraisalId: string;
@@ -383,7 +360,7 @@ function Select<T extends string>({
   label: string;
   value: T;
   onChange: (v: T) => void;
-  options: Array<{ value: T; label: string }>;
+  options: ReadonlyArray<{ value: T; label: string }>;
 }): JSX.Element {
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>

@@ -26,6 +26,25 @@ export type CustomerKycStatus = 'NOT_REQUIRED' | 'PENDING' | 'COMPLETED' | 'EXPI
 export type CustomerTrustLevel = 'NEW' | 'VERIFIED' | 'VIP' | 'SUSPICIOUS' | 'BANNED';
 export type CustomerLanguage = 'de' | 'en' | 'ar';
 
+/** German display labels for the KYC (GwG) status. Operator-facing surfaces
+ *  MUST render these — never the raw SCREAMING_CASE enum value. */
+export const CUSTOMER_KYC_STATUS_LABELS: Readonly<Record<CustomerKycStatus, string>> = {
+  NOT_REQUIRED: 'Nicht erforderlich',
+  PENDING: 'Ausstehend',
+  COMPLETED: 'Abgeschlossen',
+  EXPIRED: 'Abgelaufen',
+  FAILED: 'Fehlgeschlagen',
+};
+
+/** German display labels for the customer trust level. */
+export const CUSTOMER_TRUST_LEVEL_LABELS: Readonly<Record<CustomerTrustLevel, string>> = {
+  NEW: 'Neu',
+  VERIFIED: 'Verifiziert',
+  VIP: 'VIP',
+  SUSPICIOUS: 'Beobachten',
+  BANNED: 'Gesperrt',
+};
+
 // ────────────────────────────────────────────────────────────────────────
 // GET /api/customers
 // ────────────────────────────────────────────────────────────────────────

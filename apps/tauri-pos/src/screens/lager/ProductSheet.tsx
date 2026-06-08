@@ -25,6 +25,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   type ApiClient,
   ApiError,
+  EBAY_STATE_LABELS,
   type InventoryAdjustmentReason,
   type ProductDetail,
   type TaxTreatmentCode,
@@ -56,6 +57,14 @@ import {
 } from '../../lib/adjustment-notes.js';
 import { useApiClient } from '../../lib/api-context.js';
 import { isMoneyInput, normalizeDecimal } from '../../lib/decimal.js';
+import {
+  CONDITION_OPTIONS,
+  type Condition,
+  ITEM_TYPE_OPTIONS,
+  type ItemType,
+  conditionLabel,
+  itemTypeLabel,
+} from '../../lib/item-type-label.js';
 import { type LifecycleStage, deriveLifecycleStage } from '../../lib/product-lifecycle.js';
 import { decidePublish, isPositivePrice } from '../../lib/product-publish.js';
 import { PRODUCT_STATUS_LABEL } from '../../lib/product-status-label.js';
@@ -204,52 +213,6 @@ function SheetHeaderRow({
 // ─────────────────────────────────────────────────────────────────────────
 // CREATE mode — the manual-stock form (parity with NeuesProduktDialog).
 // ─────────────────────────────────────────────────────────────────────────
-
-type ItemType =
-  | 'gold_jewelry'
-  | 'gold_coin'
-  | 'gold_bar'
-  | 'silver_jewelry'
-  | 'silver_coin'
-  | 'silver_bar'
-  | 'platinum_jewelry'
-  | 'platinum_coin'
-  | 'platinum_bar'
-  | 'antique'
-  | 'watch'
-  | 'other';
-
-type Condition =
-  | 'NEW'
-  | 'USED_EXCELLENT'
-  | 'USED_GOOD'
-  | 'USED_FAIR'
-  | 'ANTIQUE_RESTORED'
-  | 'ANTIQUE_AS_FOUND';
-
-const ITEM_TYPE_OPTIONS: Array<{ value: ItemType; label: string }> = [
-  { value: 'gold_jewelry', label: 'Goldschmuck' },
-  { value: 'gold_coin', label: 'Goldmünze' },
-  { value: 'gold_bar', label: 'Goldbarren' },
-  { value: 'silver_jewelry', label: 'Silberschmuck' },
-  { value: 'silver_coin', label: 'Silbermünze' },
-  { value: 'silver_bar', label: 'Silberbarren' },
-  { value: 'platinum_jewelry', label: 'Platinschmuck' },
-  { value: 'platinum_coin', label: 'Platinmünze' },
-  { value: 'platinum_bar', label: 'Platinbarren' },
-  { value: 'antique', label: 'Antiquität' },
-  { value: 'watch', label: 'Uhr' },
-  { value: 'other', label: 'Sonstiges' },
-];
-
-const CONDITION_OPTIONS: Array<{ value: Condition; label: string }> = [
-  { value: 'NEW', label: 'Neu' },
-  { value: 'USED_EXCELLENT', label: 'Gebraucht — sehr gut' },
-  { value: 'USED_GOOD', label: 'Gebraucht — gut' },
-  { value: 'USED_FAIR', label: 'Gebraucht — mäßig' },
-  { value: 'ANTIQUE_RESTORED', label: 'Antik — restauriert' },
-  { value: 'ANTIQUE_AS_FOUND', label: 'Antik — Fundzustand' },
-];
 
 const TAX_OPTIONS: TaxTreatmentCode[] = [
   'MARGIN_25A',
@@ -701,8 +664,8 @@ function ManageBody({
 
 function DetailsSection({ product }: { product: ProductDetail }): JSX.Element {
   const rows: Array<[string, string]> = [
-    ['Art', product.itemType],
-    ['Zustand', product.condition],
+    ['Art', itemTypeLabel(product.itemType)],
+    ['Zustand', conditionLabel(product.condition)],
     [
       'Steuerart',
       TAX_TREATMENT_LABEL[product.taxTreatmentCode as TaxTreatmentCode] ?? product.taxTreatmentCode,
@@ -1253,7 +1216,9 @@ function HandelSection({ product }: { product: ProductDetail }): JSX.Element {
                     : 'var(--w14-ink-faded)',
               }}
             >
-              {enrolled ? `eBay: ${product.ebayState}` : 'Noch nicht bei eBay'}
+              {enrolled
+                ? `eBay: ${product.ebayState ? EBAY_STATE_LABELS[product.ebayState] : ''}`
+                : 'Noch nicht bei eBay'}
             </span>
             <span
               style={{ fontSize: '0.76rem', color: 'var(--w14-ink-faded)', fontStyle: 'italic' }}

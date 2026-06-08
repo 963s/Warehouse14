@@ -18,34 +18,8 @@ import { type CSSProperties, memo } from 'react';
 import type { ProductListRow } from '@warehouse14/api-client';
 import { MoneyAmount, ParchmentCard } from '@warehouse14/ui-kit';
 
-const STATUS_LABEL: Record<ProductListRow['status'], string> = {
-  DRAFT: 'Entwurf',
-  AVAILABLE: 'Verfügbar',
-  RESERVED: 'Reserviert',
-  SOLD: 'Verkauft',
-};
-
-const STATUS_COLOR: Record<ProductListRow['status'], string> = {
-  DRAFT: 'var(--w14-ink-faded)',
-  AVAILABLE: 'var(--w14-gold)',
-  RESERVED: 'var(--w14-ink-aged)',
-  SOLD: 'var(--w14-ink-faded)',
-};
-
-const ITEM_TYPE_LABEL: Record<string, string> = {
-  gold_coin: 'Goldmünze',
-  gold_bar: 'Goldbarren',
-  gold_jewelry: 'Goldschmuck',
-  silver_coin: 'Silbermünze',
-  silver_bar: 'Silberbarren',
-  silver_jewelry: 'Silberschmuck',
-  platinum_coin: 'Platinmünze',
-  platinum_bar: 'Platinbarren',
-  platinum_jewelry: 'Platinschmuck',
-  antique: 'Antiquität',
-  watch: 'Uhr',
-  other: 'Sonstiges',
-};
+import { itemTypeLabel } from '../../lib/item-type-label.js';
+import { PRODUCT_STATUS_COLOR, PRODUCT_STATUS_LABEL } from '../../lib/product-status-label.js';
 
 const GRID_TEMPLATE =
   'minmax(120px, 1fr) minmax(0, 2fr) 110px 130px minmax(140px, 1.2fr) 110px 90px';
@@ -211,12 +185,12 @@ const LagerRow = memo(
           <span
             className="w14-smallcaps"
             style={{
-              color: STATUS_COLOR[row.status],
+              color: PRODUCT_STATUS_COLOR[row.status],
               fontSize: '0.78rem',
               letterSpacing: '0.08em',
             }}
           >
-            {STATUS_LABEL[row.status]}
+            {PRODUCT_STATUS_LABEL[row.status]}
           </span>
           {row.archivedAt && (
             <span
@@ -235,7 +209,7 @@ const LagerRow = memo(
             color: 'var(--w14-ink-faded)',
           }}
         >
-          {ITEM_TYPE_LABEL[row.itemType] ?? row.itemType}
+          {itemTypeLabel(row.itemType)}
         </div>
         <div
           style={{

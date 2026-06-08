@@ -10,6 +10,12 @@ import { type CSSProperties, useState } from 'react';
 
 import { useQuery } from '@tanstack/react-query';
 
+import {
+  CUSTOMER_KYC_STATUS_LABELS,
+  CUSTOMER_TRUST_LEVEL_LABELS,
+  type CustomerKycStatus,
+  type CustomerTrustLevel,
+} from '@warehouse14/api-client';
 import { DiamondRule, MoneyAmount, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../api-context.js';
@@ -157,9 +163,15 @@ export function KundenPanel(): JSX.Element {
                     ) : null}
                   </td>
                   <td style={{ ...td, fontSize: '0.85rem' }}>
-                    {c.kycVerifiedAt ? 'Verifiziert' : c.kycStatus}
+                    {c.kycVerifiedAt
+                      ? 'Verifiziert'
+                      : (CUSTOMER_KYC_STATUS_LABELS[c.kycStatus as CustomerKycStatus] ??
+                        c.kycStatus)}
                   </td>
-                  <td style={{ ...td, fontSize: '0.85rem' }}>{c.trustLevel}</td>
+                  <td style={{ ...td, fontSize: '0.85rem' }}>
+                    {CUSTOMER_TRUST_LEVEL_LABELS[c.trustLevel as CustomerTrustLevel] ??
+                      c.trustLevel}
+                  </td>
                   <td style={{ ...td, textAlign: 'right' }}>
                     <MoneyAmount valueEur={c.cumulativeAnkaufEur} />
                   </td>

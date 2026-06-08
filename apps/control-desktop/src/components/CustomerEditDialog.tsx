@@ -18,7 +18,13 @@ import { useEffect, useState } from 'react';
 
 import { useQueryClient } from '@tanstack/react-query';
 
-import { ApiError, type CustomerTrustLevel } from '@warehouse14/api-client';
+import {
+  ApiError,
+  CUSTOMER_KYC_STATUS_LABELS,
+  CUSTOMER_TRUST_LEVEL_LABELS,
+  type CustomerKycStatus,
+  type CustomerTrustLevel,
+} from '@warehouse14/api-client';
 import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../api-context.js';
@@ -211,7 +217,14 @@ export function CustomerEditDialog({
             fontSize: '0.85rem',
           }}
         >
-          KYC: {kycVerified ? 'verifiziert' : customer.kycStatus} · Aktuell: {customer.trustLevel}
+          KYC:{' '}
+          {kycVerified
+            ? 'verifiziert'
+            : (CUSTOMER_KYC_STATUS_LABELS[customer.kycStatus as CustomerKycStatus] ??
+              customer.kycStatus)}{' '}
+          · Aktuell:{' '}
+          {CUSTOMER_TRUST_LEVEL_LABELS[customer.trustLevel as CustomerTrustLevel] ??
+            customer.trustLevel}
         </p>
 
         <DiamondRule label="Vertrauensstufe" />

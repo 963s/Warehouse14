@@ -10,7 +10,7 @@
 
 import { useMemo } from 'react';
 
-import type { AppointmentListItem } from '@warehouse14/api-client';
+import { APPOINTMENT_TYPE_LABELS, type AppointmentListItem } from '@warehouse14/api-client';
 import { berlinTimeHm } from '@warehouse14/appointments';
 
 import { useAppointments, useSetAppointmentStatus } from '../../hooks/useAppointments.js';
@@ -54,7 +54,9 @@ export function NextHourPanel({ onLoadItems }: NextHourPanelProps): JSX.Element 
         {upcoming.map((appt) => (
           <li key={appt.id} className="next-hour-row">
             <span className="next-hour-time">{berlinTimeHm(new Date(appt.starts_at))}</span>
-            <span className="next-hour-type">{appt.appointment_type}</span>
+            <span className="next-hour-type">
+              {APPOINTMENT_TYPE_LABELS[appt.appointment_type] ?? appt.appointment_type}
+            </span>
             {appt.linked_product_ids.length > 0 ? (
               <span className="next-hour-items">{appt.linked_product_ids.length} Artikel</span>
             ) : null}

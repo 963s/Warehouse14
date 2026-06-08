@@ -17,7 +17,11 @@ import FullCalendar from '@fullcalendar/react';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import { useMemo, useState } from 'react';
 
-import type { AppointmentType } from '@warehouse14/api-client';
+import {
+  APPOINTMENT_STATUS_LABELS,
+  APPOINTMENT_TYPE_LABELS,
+  type AppointmentType,
+} from '@warehouse14/api-client';
 
 import { useAppointments, useBookAppointment } from '../../hooks/useAppointments.js';
 
@@ -68,7 +72,9 @@ export function AppointmentsWorkspace(): JSX.Element {
     () =>
       data.map((appt) => ({
         id: appt.id,
-        title: `${appt.appointment_type} · ${appt.status}`,
+        title: `${APPOINTMENT_TYPE_LABELS[appt.appointment_type] ?? appt.appointment_type} · ${
+          APPOINTMENT_STATUS_LABELS[appt.status] ?? appt.status
+        }`,
         start: appt.starts_at,
         end: appt.ends_at,
       })),
@@ -160,7 +166,7 @@ export function AppointmentsWorkspace(): JSX.Element {
             <select value={draft.type} onChange={setField('type')}>
               {APPOINTMENT_TYPES.map((t) => (
                 <option key={t} value={t}>
-                  {t}
+                  {APPOINTMENT_TYPE_LABELS[t] ?? t}
                 </option>
               ))}
             </select>

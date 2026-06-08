@@ -8,6 +8,12 @@ import type { CSSProperties } from 'react';
 
 import { useQuery } from '@tanstack/react-query';
 
+import {
+  APPOINTMENT_STATUS_LABELS,
+  APPOINTMENT_TYPE_LABELS,
+  type AppointmentStatus,
+  type AppointmentType,
+} from '@warehouse14/api-client';
 import { DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../api-context.js';
@@ -117,11 +123,16 @@ export function TerminePanel(): JSX.Element {
                   >
                     {formatWhen(a.starts_at)}
                   </td>
-                  <td style={{ ...td, fontSize: '0.85rem' }}>{a.appointment_type}</td>
+                  <td style={{ ...td, fontSize: '0.85rem' }}>
+                    {APPOINTMENT_TYPE_LABELS[a.appointment_type as AppointmentType] ??
+                      a.appointment_type}
+                  </td>
                   <td style={td}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                       <StatusDot tone={statusTone(a.status)} size={9} />
-                      <span style={{ fontSize: '0.85rem' }}>{a.status}</span>
+                      <span style={{ fontSize: '0.85rem' }}>
+                        {APPOINTMENT_STATUS_LABELS[a.status as AppointmentStatus] ?? a.status}
+                      </span>
                     </span>
                   </td>
                   <td style={{ ...td, fontFamily: 'var(--w14-font-mono)', fontSize: '0.8rem' }}>

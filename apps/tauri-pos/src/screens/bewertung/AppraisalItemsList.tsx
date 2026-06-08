@@ -19,22 +19,8 @@ import { Button, DiamondRule, MoneyAmount, ParchmentCard, RomanIndex } from '@wa
 
 import { useApiClient } from '../../lib/api-context.js';
 import { isMoneyInput, normalizeDecimal } from '../../lib/decimal.js';
+import { itemTypeLabel } from '../../lib/item-type-label.js';
 import { useToastStore } from '../../state/toast-store.js';
-
-const ITEM_TYPE_LABEL: Record<string, string> = {
-  gold_coin: 'Goldmünze',
-  gold_bar: 'Goldbarren',
-  gold_jewelry: 'Goldschmuck',
-  silver_coin: 'Silbermünze',
-  silver_bar: 'Silberbarren',
-  silver_jewelry: 'Silberschmuck',
-  platinum_coin: 'Platinmünze',
-  platinum_bar: 'Platinbarren',
-  platinum_jewelry: 'Platinschmuck',
-  antique: 'Antiquität',
-  watch: 'Uhr',
-  other: 'Sonstiges',
-};
 
 export interface AppraisalItemsListProps {
   appraisal: AppraisalView;
@@ -264,7 +250,7 @@ function ItemRow({
             className="w14-smallcaps"
             style={{ color: 'var(--w14-ink-faded)', fontSize: '0.72rem', letterSpacing: '0.08em' }}
           >
-            {ITEM_TYPE_LABEL[item.itemType] ?? item.itemType}
+            {itemTypeLabel(item.itemType)}
           </span>
           {item.weightGrams && (
             <span

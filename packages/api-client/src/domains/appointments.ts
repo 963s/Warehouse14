@@ -15,6 +15,28 @@ export type AppointmentStatus =
   | 'CANCELLED'
   | 'RESCHEDULED';
 
+/** German display labels for the appointment type. Operator-facing surfaces
+ *  (calendar titles, the booking picker) MUST render these — never the raw
+ *  SCREAMING_CASE enum value. */
+export const APPOINTMENT_TYPE_LABELS: Readonly<Record<AppointmentType, string>> = {
+  VIEWING: 'Besichtigung',
+  BUYBACK_EVAL: 'Ankauf-Bewertung',
+  CONSULTATION: 'Beratung',
+  PICKUP: 'Abholung',
+};
+
+/** German display labels for the appointment status. */
+export const APPOINTMENT_STATUS_LABELS: Readonly<Record<AppointmentStatus, string>> = {
+  SCHEDULED: 'Geplant',
+  CONFIRMED: 'Bestätigt',
+  CHECKED_IN: 'Eingecheckt',
+  IN_PROGRESS: 'Läuft',
+  COMPLETED: 'Abgeschlossen',
+  NO_SHOW: 'Nicht erschienen',
+  CANCELLED: 'Storniert',
+  RESCHEDULED: 'Verschoben',
+};
+
 export interface AvailableSlot {
   staff_user_id: string;
   slot_starts_at: string;
