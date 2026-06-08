@@ -191,6 +191,42 @@ type TxRow = {
 };
 
 /**
+ * The minimal per-line view the DATEV builder needs to split a MIXED receipt:
+ * the line's own tax treatment and its gross line total. Reuses the same
+ * columns the DSFinV-K path reads from `transaction_items`.
+ */
+export type DatevItemRow = {
+  applied_tax_treatment_code: string;
+  line_total_eur: string;
+};
+
+// ── Integer-cents math (no float; mirrors transactions-ankauf.ts) ───────────
+//    Used only to SUM existing NUMERIC(18,2) line totals per treatment group;
+//    every leg is read verbatim from the DB, summed in bigint cents, and the
+//    group sum re-expressed as a "123.45" string. No rounding ever occurs.
+
+/** "123.45" → 12345n. Throws on a malformed decimal (defensive; DB-sourced). */
+function eurToCents(eur: string): bigint {
+  if (!/^-?\d+(\.\d{1,2})?$/.test(eur.trim())) {
+    // DB-sourced NUMERIC(18,2) — a non-decimal here is a server invariant break.
+    throw new Error(`closing-export: invalid line total "${eur}"`);
+  }
+  const v = eur.trim();
+  const sign = v.startsWith('-') ? -1n : 1n;
+  const abs = v.startsWith('-') ? v.slice(1) : v;
+  const [whole = '0', frac = ''] = abs.split('.');
+  const fracPadded = frac.padEnd(2, '0').slice(0, 2);
+  return sign * (BigInt(whole) * 100n + BigInt(fracPadded || '0'));
+}
+
+/** 12345n → "123.45". */
+function centsToEur(c: bigint): string {
+  const sign = c < 0n ? '-' : '';
+  const abs = c < 0n ? -c : c;
+  return `${sign}${abs / 100n}.${String(abs % 100n).padStart(2, '0')}`;
+}
+
+/**
  * Map one transaction to a DATEV booking line.
  * VERKAUF: Kasse (Soll) an the per-treatment Erlöskonto, with the matching
  * BU-Schlüssel. ANKAUF: Wareneingang an Kasse (no output VAT). Exported for
@@ -224,6 +260,69 @@ export function toDatevRow(tx: TxRow): DATEVRow {
     reference: tx.receipt_locator,
     bookingText: `${tx.direction} ${tx.receipt_locator} (${tx.tax_treatment_code})`,
   };
+}
+
+/**
+ * Map one transaction to its DATEV booking line(s).
+ *
+ * Single-treatment receipts (and every ANKAUF) produce EXACTLY ONE row, byte-
+ * identical to `toDatevRow` — so the existing behaviour is unchanged. A MIXED
+ * VERKAUF (transaction tax_treatment_code = 'MIXED', or more robustly any sale
+ * whose items span >1 applied treatment) is split: the items are grouped by
+ * `applied_tax_treatment_code`, each group's `line_total_eur` summed in integer
+ * cents, and ONE row emitted per group on that treatment's correct SKR03
+ * Gegenkonto + BU-Schlüssel. This ends the wrong collapse where a §25a portion
+ * of a mixed receipt got booked to 8400 (19% bucket).
+ *
+ * The split rows reconcile to the receipt total by construction — they sum the
+ * very same `line_total_eur` figures the receipt total is built from. The
+ * Buchungstext names the treatment + leg so each portion is identifiable in
+ * DATEV (e.g. `VERKAUF RCP-… (MARGIN_25A 1/2)`).
+ *
+ * Grouping is ORDER-STABLE: groups appear in the order their treatment is first
+ * seen across the (display_order-sorted) items, so the export is deterministic.
+ */
+export function toDatevRows(tx: TxRow, items: DatevItemRow[]): DATEVRow[] {
+  // ANKAUF never splits (no output VAT per treatment); fall back to the single
+  // transaction-level row regardless of item treatments.
+  if (tx.direction === 'ANKAUF') return [toDatevRow(tx)];
+
+  // No item detail → nothing to split on; keep the single transaction-level row.
+  if (items.length === 0) return [toDatevRow(tx)];
+
+  // Group by applied treatment, order-stable, summing line totals in cents.
+  const order: string[] = [];
+  const sumByTreatment = new Map<string, bigint>();
+  for (const it of items) {
+    const code = it.applied_tax_treatment_code;
+    if (!sumByTreatment.has(code)) {
+      order.push(code);
+      sumByTreatment.set(code, 0n);
+    }
+    sumByTreatment.set(code, (sumByTreatment.get(code) ?? 0n) + eurToCents(it.line_total_eur));
+  }
+
+  // A single distinct treatment → behaviourally identical to today's one row.
+  // (Re-express through toDatevRow so it stays byte-for-byte with the non-MIXED
+  // path; the transaction-level total already equals the single group sum.)
+  if (order.length === 1) return [toDatevRow(tx)];
+
+  const base = toDatevRow(tx); // shared date / reference / Konto / debitCredit.
+  const groupCount = order.length;
+  return order.map((code, idx) => {
+    const m = ERLOES_BY_TREATMENT[code] ?? { konto: KONTO_ERLOESE_19, bu: '' };
+    const amountEur = centsToEur(sumByTreatment.get(code) ?? 0n);
+    return {
+      amountEur,
+      debitCredit: base.debitCredit,
+      account: base.account,
+      contraAccount: m.konto,
+      ...(m.bu === '' ? {} : { taxKey: m.bu }),
+      date: base.date,
+      reference: base.reference,
+      bookingText: `${tx.direction} ${tx.receipt_locator} (${code} ${idx + 1}/${groupCount})`,
+    };
+  });
 }
 
 const closingExportRoute: FastifyPluginAsync = async (app) => {
@@ -312,14 +411,42 @@ const closingExportRoute: FastifyPluginAsync = async (app) => {
       }
 
       // All transactions whose Berlin business day matches the closing.
-      const txRows = await app.db.execute<TxRow>(sql`
-        SELECT total_eur, direction::text AS direction, tax_treatment_code,
+      const txRows = await app.db.execute<TxRow & { id: string }>(sql`
+        SELECT id::text AS id,
+               total_eur, direction::text AS direction, tax_treatment_code,
                receipt_locator, finalized_at
           FROM transactions
          WHERE berlin_business_day(finalized_at) = ${closing.business_day}::date
          ORDER BY finalized_at ASC`);
 
-      const datevRows = txRows.map(toDatevRow);
+      // Per-line treatment + total, so a MIXED receipt books per treatment.
+      // (Same columns + array-literal binding the DSFinV-K path uses.)
+      const txIds = txRows.map((t) => t.id);
+      const txIdArray = `{${txIds.join(',')}}`;
+      const itemRows =
+        txIds.length === 0
+          ? []
+          : ((await app.db.execute<DatevItemRow & { transaction_id: string }>(sql`
+              SELECT transaction_id::text AS transaction_id,
+                     applied_tax_treatment_code,
+                     line_total_eur::text AS line_total_eur
+                FROM transaction_items
+               WHERE transaction_id = ANY(${txIdArray}::uuid[])
+               ORDER BY transaction_id, display_order ASC`)) as unknown as (DatevItemRow & {
+              transaction_id: string;
+            })[]);
+
+      const itemsByTx = new Map<string, DatevItemRow[]>();
+      for (const it of itemRows) {
+        const arr = itemsByTx.get(it.transaction_id) ?? [];
+        arr.push({
+          applied_tax_treatment_code: it.applied_tax_treatment_code,
+          line_total_eur: it.line_total_eur,
+        });
+        itemsByTx.set(it.transaction_id, arr);
+      }
+
+      const datevRows = txRows.flatMap((tx) => toDatevRows(tx, itemsByTx.get(tx.id) ?? []));
       const csv = await generateDatevCsv(datevRows);
 
       const filename = `DATEV_${closing.business_day}.csv`;
