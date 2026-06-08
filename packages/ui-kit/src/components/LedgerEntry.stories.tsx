@@ -50,41 +50,50 @@ export const Fresh: Story = {
 
 export const Feed: Story = {
   render: () => (
-    <div
-      role="list"
+    <ul
       style={{
+        listStyle: 'none',
         display: 'grid',
         gap: 2,
         width: 460,
+        margin: 0,
         backgroundColor: 'var(--w14-parchment)',
         padding: 12,
         borderRadius: 6,
         border: '1px solid var(--w14-rule)',
       }}
     >
-      <LedgerEntry
-        timestamp="2026-05-26T14:32:18.000Z"
-        eventType="transaction.finalized"
-        rightHint={<MoneyAmount valueEur="1420.00" />}
-        subtitle="Krugerrand 1oz"
-        fresh
-      />
-      <LedgerEntry
-        timestamp="2026-05-26T14:21:00.000Z"
-        eventType="product.reserved"
-        rightHint="STOREFRONT"
-      />
-      <LedgerEntry
-        timestamp="2026-05-26T13:58:42.000Z"
-        eventType="alert.ebay_sale_conflict"
-        subtitle="Lokale Reservierung POS · eBay verkauft"
-        alert
-      />
-      <LedgerEntry
-        timestamp="2026-05-26T13:40:11.000Z"
-        eventType="shift.opened"
-        subtitle="Float €200,00 · Owner"
-      />
-    </div>
+      <li style={{ listStyle: 'none' }}>
+        <LedgerEntry
+          timestamp="2026-05-26T14:32:18.000Z"
+          eventType="transaction.finalized"
+          rightHint={<MoneyAmount valueEur="1420.00" />}
+          subtitle="Krugerrand 1oz"
+          fresh
+        />
+      </li>
+      <li style={{ listStyle: 'none' }}>
+        <LedgerEntry
+          timestamp="2026-05-26T14:21:00.000Z"
+          eventType="product.reserved"
+          rightHint="STOREFRONT"
+        />
+      </li>
+      <li style={{ listStyle: 'none' }}>
+        <LedgerEntry
+          timestamp="2026-05-26T13:58:42.000Z"
+          eventType="alert.ebay_sale_conflict"
+          subtitle="Lokale Reservierung POS · eBay verkauft"
+          alert
+        />
+      </li>
+      <li style={{ listStyle: 'none' }}>
+        <LedgerEntry
+          timestamp="2026-05-26T13:40:11.000Z"
+          eventType="shift.opened"
+          subtitle="Float €200,00 · Owner"
+        />
+      </li>
+    </ul>
   ),
 };

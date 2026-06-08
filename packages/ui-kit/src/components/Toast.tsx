@@ -11,7 +11,7 @@
  * presentational atom.
  */
 
-import type { CSSProperties, ReactNode } from 'react';
+import type { CSSProperties, KeyboardEvent, ReactNode } from 'react';
 
 export type ToastTone = 'info' | 'success' | 'alert';
 
@@ -65,12 +65,23 @@ export function Toast({ toast, onDismiss, onClick }: ToastProps): JSX.Element {
     cursor: onClick ? 'pointer' : 'default',
   };
 
+  const handleKeyDown = onClick
+    ? (event: KeyboardEvent<HTMLDivElement>): void => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onClick();
+        }
+      }
+    : undefined;
+
   return (
     <div
       role={toast.tone === 'alert' ? 'alert' : 'status'}
       aria-live={toast.tone === 'alert' ? 'assertive' : 'polite'}
       style={style}
       onClick={onClick}
+      onKeyDown={handleKeyDown}
+      tabIndex={onClick ? 0 : undefined}
     >
       <span
         aria-hidden

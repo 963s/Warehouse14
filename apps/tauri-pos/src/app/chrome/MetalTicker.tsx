@@ -95,9 +95,9 @@ export function MetalTicker(): JSX.Element {
 const CELL_BTN: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: 8,
+  gap: 'var(--space-2)',
   minHeight: 44,
-  padding: '6px 16px',
+  padding: 'var(--space-2) var(--space-4)',
   border: 'none',
   borderRight: '1px solid var(--w14-rule)',
   background: 'transparent',

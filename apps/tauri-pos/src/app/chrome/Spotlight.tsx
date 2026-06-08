@@ -131,25 +131,41 @@ export function Spotlight({ open, onClose }: SpotlightProps): JSX.Element | null
 
   return (
     <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Suchen"
-      onClick={onClose}
       style={{
         position: 'fixed',
         inset: 0,
-        backgroundColor: 'var(--w14-overlay)',
-        backdropFilter: 'none',
         zIndex: 1000,
         display: 'grid',
         placeItems: 'start center',
         paddingTop: '12vh',
       }}
     >
+      {/* Backdrop — a real button so click- and keyboard-dismiss are equivalent
+          and it is announced as a control rather than a bare clickable div. */}
+      <button
+        type="button"
+        aria-label="Suche schließen"
+        onClick={onClose}
+        style={{
+          position: 'fixed',
+          inset: 0,
+          border: 'none',
+          padding: 0,
+          margin: 0,
+          cursor: 'default',
+          backgroundColor: 'var(--w14-overlay)',
+        }}
+      />
       <ParchmentCard
+        role="dialog"
+        aria-modal="true"
+        aria-label="Suchen"
         padding="none"
+        // Stop the click from bubbling to the backdrop; this card is the dialog
+        // surface, not a control, so no keyboard handler is needed here.
         onClick={(ev) => ev.stopPropagation()}
         style={{
+          position: 'relative',
           width: 'min(560px, 92vw)',
           boxShadow: 'var(--w14-shadow-modal)',
           overflow: 'hidden',
@@ -275,16 +291,17 @@ function ResultList({
     }
   });
 
+  // Each row is a real <button> (ResultRowItem), so we use a plain semantic
+  // list rather than the ARIA listbox/option pattern — layering listbox roles
+  // on top of focusable buttons is contradictory. Keyboard navigation is driven
+  // by the global keydown handler + `active`, and the active row is exposed via
+  // aria-current on the button itself.
   return (
-    <ul role="listbox" style={{ listStyle: 'none', padding: '8px 0', margin: 0 }}>
+    <ul style={{ listStyle: 'none', padding: '8px 0', margin: 0 }}>
       {rows.map((row, i) => {
         const startsGroup = groupBoundaries.includes(i);
         return (
-          <li
-            key={`${row.group}-${row.surface.path}`}
-            role="option"
-            aria-selected={i === activeIdx}
-          >
+          <li key={`${row.group}-${row.surface.path}`} style={{ listStyle: 'none' }}>
             {startsGroup && (
               <div style={{ padding: '8px 16px 2px' }}>
                 <GroupLabel group={row.group} />
@@ -328,6 +345,7 @@ function ResultRowItem({
   return (
     <button
       type="button"
+      aria-current={active ? 'true' : undefined}
       onMouseEnter={onMouseEnter}
       onClick={onClick}
       style={{

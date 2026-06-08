@@ -343,8 +343,7 @@ export const HOME_PATH = '/werkstatt';
   // Rule 1 — Tier 1 budget.
   if (PRIMARY_SURFACES.length > 8) {
     throw new Error(
-      `[surface-registry] tier-1 count is ${PRIMARY_SURFACES.length}; ` +
-        'memory.md §11.3 caps it at 8. Move one surface to tier 2 or replace.',
+      `[surface-registry] tier-1 count is ${PRIMARY_SURFACES.length}; memory.md §11.3 caps it at 8. Move one surface to tier 2 or replace.`,
     );
   }
   // Rule 2 — unique paths.

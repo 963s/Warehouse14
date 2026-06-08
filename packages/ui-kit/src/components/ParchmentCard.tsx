@@ -16,7 +16,7 @@
  * Owner-only callouts.
  */
 
-import type { CSSProperties, HTMLAttributes, ReactNode } from 'react';
+import type { CSSProperties, HTMLAttributes, KeyboardEvent, ReactNode } from 'react';
 
 export interface ParchmentCardProps extends HTMLAttributes<HTMLDivElement> {
   children: ReactNode;
@@ -47,6 +47,10 @@ export function ParchmentCard({
   noise = true,
   className,
   style,
+  onClick,
+  onKeyDown,
+  role,
+  tabIndex,
   ...rest
 }: ParchmentCardProps): JSX.Element {
   const merged: CSSProperties = {
@@ -62,8 +66,31 @@ export function ParchmentCard({
   const classes = ['w14-card', noise && tone !== 'ink' ? 'w14-paper-noise' : null, className]
     .filter(Boolean)
     .join(' ');
+
+  // When the card is given an onClick it behaves like an interactive control.
+  // Give it keyboard parity (role=button + tab stop + Enter/Space activation)
+  // so it is reachable and operable without a mouse — unless the caller has
+  // already supplied their own role/tabIndex/onKeyDown.
+  const interactive = typeof onClick === 'function';
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
+    onKeyDown?.(event);
+    if (!interactive || event.defaultPrevented) return;
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      onClick?.(event as unknown as Parameters<NonNullable<typeof onClick>>[0]);
+    }
+  };
+
   return (
-    <div className={classes} style={merged} {...rest}>
+    <div
+      className={classes}
+      style={merged}
+      onClick={onClick}
+      onKeyDown={interactive || onKeyDown ? handleKeyDown : undefined}
+      role={role ?? (interactive ? 'button' : undefined)}
+      tabIndex={interactive ? (tabIndex ?? 0) : tabIndex}
+      {...rest}
+    >
       {children}
     </div>
   );

@@ -76,9 +76,11 @@ export function LedgerEntry({
       }
     : {};
 
+  // No `role="listitem"` here: the consumer renders this inside a real <li>
+  // within a <ul role="list">, so adding the role on this inner <div> is both
+  // redundant and invalid (a listitem must be a direct child of a list).
   return (
     <div
-      role="listitem"
       className={['w14-ledger-entry', alert ? 'w14-ledger-entry--alert' : null, className]
         .filter(Boolean)
         .join(' ')}

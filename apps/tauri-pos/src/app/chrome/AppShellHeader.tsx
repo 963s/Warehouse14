@@ -38,9 +38,9 @@ export function AppShellHeader({ onOpenSpotlight, onSignOut }: AppShellHeaderPro
     display: 'grid',
     gridTemplateColumns: 'auto 1fr auto',
     alignItems: 'center',
-    gap: 24,
+    gap: 'var(--space-6)',
     height: 56,
-    padding: '0 20px',
+    padding: '0 var(--space-5)',
     backgroundColor: 'var(--w14-parchment-2)',
     borderBottom: '1px solid var(--w14-rule)',
   };
@@ -70,7 +70,7 @@ export function AppShellHeader({ onOpenSpotlight, onSignOut }: AppShellHeaderPro
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 4,
+          gap: 'var(--space-1)',
           overflowX: 'auto',
           scrollbarWidth: 'none',
         }}
@@ -87,7 +87,7 @@ export function AppShellHeader({ onOpenSpotlight, onSignOut }: AppShellHeaderPro
         ))}
       </nav>
 
-      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 12 }}>
+      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-3)' }}>
         <SyncStatusBadge />
         <button
           type="button"
@@ -226,11 +226,14 @@ function SyncStatusBadge(): JSX.Element {
   const baseStyle: CSSProperties = {
     display: 'inline-flex',
     alignItems: 'center',
-    gap: 8,
-    padding: '4px 10px',
+    gap: 'var(--space-2)',
+    padding: 'var(--space-1) var(--space-3)',
     borderRadius: 'var(--w14-radius-card)',
-    border: '1px solid var(--w14-rule)',
+    // Tint the chip's hairline with the status colour so the state is legible
+    // at a glance even before the label is read.
+    border: `1px solid ${visual.color}`,
     background: 'var(--w14-parchment)',
+    lineHeight: 1,
   };
 
   const inner = (
@@ -249,11 +252,13 @@ function SyncStatusBadge(): JSX.Element {
         }}
       />
       <span
+        className="w14-tabular"
         style={{
           fontFamily: 'var(--w14-font-display)',
-          fontSize: '0.78rem',
+          fontSize: '0.8rem',
+          fontWeight: 500,
           letterSpacing: '0.01em',
-          color: 'var(--w14-ink-aged)',
+          color: 'var(--w14-ink)',
           whiteSpace: 'nowrap',
         }}
       >

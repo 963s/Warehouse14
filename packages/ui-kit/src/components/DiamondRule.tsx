@@ -48,9 +48,13 @@ export function DiamondRule({
     borderTop: `1px solid ${color}`,
     opacity: 0.6,
   };
+  // A purely decorative divider. When a `label` is supplied it reads as a
+  // visible section caption, so we keep that text in the accessibility tree;
+  // the bare-diamond variant is hidden. We avoid role="separator" because a
+  // focusable/`<hr>` separator is wrong for what is a typographic flourish.
   return (
-    <div className={className} style={merged} role="separator" aria-orientation="horizontal">
-      <span style={line} />
+    <div className={className} style={merged}>
+      <span aria-hidden style={line} />
       {label ? (
         <span
           style={{
@@ -60,7 +64,9 @@ export function DiamondRule({
             fontSize: '0.82rem',
           }}
         >
-          ◆ {label} ◆
+          <span aria-hidden>◆ </span>
+          {label}
+          <span aria-hidden> ◆</span>
         </span>
       ) : (
         <span aria-hidden style={{ lineHeight: 1, fontSize: '0.9em' }}>
