@@ -52,7 +52,7 @@ Vor der Inbetriebnahme bitten wir Sie, die folgenden **gesetzlich getriebenen Pa
 
 ### 5. Exporte für Finanzbuchhaltung & Betriebsprüfung
 
-**Aktueller Stand:** Das System exportiert **DATEV** (EXTF / Buchungsstapel), **DSFinV-K** (Kassendaten), den täglichen **Kassenbericht** (KassenSichV) sowie **GDPdU / GoBD**-Daten.
+**Aktueller Stand:** Das System exportiert **DATEV** (EXTF / Buchungsstapel) und den täglichen **Kassenbericht**. Die Einzelaufzeichnungen werden **GoBD-konform unveränderbar** (kryptografische Hash-Kette) sowie über die zertifizierte **TSE / KassenSichV** (§ 146a AO) aufgezeichnet; ein **DSFinV-K-Export** (DFKA-Taxonomie, für Kassen-Nachschau / Z3-Datenträgerüberlassung) steht als lokaler Download bereit. *(Hinweis: der frühere Begriff „GDPdU" wurde 2015 durch „GoBD" abgelöst und wird daher nicht mehr verwendet.)*
 
 **Bitte um Vorgabe:**
 - **DATEV:** Kontenrahmen (**SKR03 / SKR04?**), **Berater-/Mandantennummer**, Sach-/Gegenkonten für An-/Verkauf, Kasse und Differenzbesteuerung.
