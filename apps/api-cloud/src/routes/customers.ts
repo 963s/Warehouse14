@@ -118,7 +118,14 @@ const customersRoutes: FastifyPluginAsync = async (app) => {
           ${body.email != null ? sql`blind_index(${body.email})` : sql`NULL`},
           ${body.phone != null ? sql`blind_index(${body.phone})` : sql`NULL`},
           ${body.preferredLanguage ?? 'de'},
-          ${body.customerTags ?? []}::text[],
+          ${
+            (body.customerTags ?? []).length > 0
+              ? sql`ARRAY[${sql.join(
+                  (body.customerTags ?? []).map((t) => sql`${t}`),
+                  sql`, `,
+                )}]::text[]`
+              : sql`ARRAY[]::text[]`
+          },
           (now() + (${years} || ' years')::interval)::date,
           ${body.vatId ?? null}
         )

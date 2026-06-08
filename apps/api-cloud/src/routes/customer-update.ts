@@ -206,7 +206,17 @@ const customerUpdateRoute: FastifyPluginAsync = async (app) => {
           !arraysEqual(body.customerTags, before.customer_tags)
         ) {
           changedFields.push('customerTags');
-          setFragments.push(sql`customer_tags = ${body.customerTags}::text[]`);
+          // Bind each tag as its own param via ARRAY[...]; interpolating a JS
+          // array into the sql template SPREADS it into scalar params, so the
+          // ::text[] cast hit a record/empty-paren and 500'd (42601/22P02).
+          setFragments.push(
+            body.customerTags.length > 0
+              ? sql`customer_tags = ARRAY[${sql.join(
+                  body.customerTags.map((t) => sql`${t}`),
+                  sql`, `,
+                )}]::text[]`
+              : sql`customer_tags = ARRAY[]::text[]`,
+          );
         }
 
         if (changedFields.length === 0) {
