@@ -6,6 +6,17 @@ and the project adheres to [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+## [0.4.4] — 2026-06-08
+
+- **Verkauf catalog shows product photo cards** (image + name + price + metal),
+  fed by a new primary-photo field on the products feed.
+- **Product lifecycle**: a 'Fertig' finish button in the photo studio; delete a
+  DRAFT product (guarded, owner + step-up); a single 'Bei eBay listen' action
+  (honest stub) alongside the existing web-shop toggle.
+- **Companion (iPad/phone)**: real role screens — Lager (label printer, add/edit
+  product, inventory + clean barcode lookup), Zweitkasse, Kundenanzeige — with
+  big-icon role selection after pairing.
+
 ## [0.4.3] — 2026-06-08
 
 - **Product photos now display in the app.** The CSP `img-src` now allows the
