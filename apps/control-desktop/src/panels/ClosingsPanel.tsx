@@ -152,6 +152,55 @@ export function ClosingsPanel(): JSX.Element {
     }
   }
 
+  /**
+   * Stream the local DSFinV-K bundle ZIP (the DFKA-Taxonomie core export for a
+   * §146b Kassen-Nachschau) and trigger a browser download. Same auth as DATEV
+   * (cookie + a 403 means a PIN step-up is required). Raw application/zip → blob.
+   */
+  async function downloadDsfinvk(item: ClosingItem): Promise<void> {
+    setDownloading(`${item.id}:dsfinvk`);
+    try {
+      const res = await fetch(`${baseUrl}/api/closings/${item.id}/export/dsfinvk`, {
+        method: 'GET',
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        if (res.status === 403) {
+          pushToast(
+            'alert',
+            'PIN-Bestätigung nötig',
+            'Der DSFinV-K-Export verlangt eine frische PIN-Freigabe.',
+          );
+        } else {
+          pushToast('alert', 'Export fehlgeschlagen', `HTTP ${res.status}`);
+        }
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `DSFinV-K_${item.businessDay}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      pushToast(
+        'success',
+        'DSFinV-K-Export geladen',
+        `Kassendaten-Paket für ${formatDay(item.businessDay)} (Kern-Export — vor einer Prüfung mit dem DSFinV-K-Prüftool abgleichen).`,
+      );
+    } catch (err) {
+      pushToast(
+        'alert',
+        'Export fehlgeschlagen',
+        err instanceof Error ? err.message : 'Netzwerkfehler',
+      );
+    } finally {
+      setDownloading(null);
+    }
+  }
+
   const items = query.data?.items ?? [];
 
   return (
@@ -250,17 +299,31 @@ export function ClosingsPanel(): JSX.Element {
                     </span>
                   </td>
                   <td style={{ ...tdStyle, textAlign: 'right' }}>
-                    <Button
-                      className="w14cd-focusable"
-                      variant="ghost"
-                      size="sm"
-                      disabled={downloading === item.id}
-                      onClick={() => {
-                        void downloadDatev(item);
-                      }}
-                    >
-                      {downloading === item.id ? '…' : 'DATEV'}
-                    </Button>
+                    <span style={{ display: 'inline-flex', gap: 6, justifyContent: 'flex-end' }}>
+                      <Button
+                        className="w14cd-focusable"
+                        variant="ghost"
+                        size="sm"
+                        disabled={downloading === item.id}
+                        onClick={() => {
+                          void downloadDatev(item);
+                        }}
+                      >
+                        {downloading === item.id ? '…' : 'DATEV'}
+                      </Button>
+                      <Button
+                        className="w14cd-focusable"
+                        variant="ghost"
+                        size="sm"
+                        disabled={downloading === `${item.id}:dsfinvk`}
+                        title="DSFinV-K · DFKA-Taxonomie Kassendaten (ZIP, Kern-Export)"
+                        onClick={() => {
+                          void downloadDsfinvk(item);
+                        }}
+                      >
+                        {downloading === `${item.id}:dsfinvk` ? '…' : 'DSFinV-K'}
+                      </Button>
+                    </span>
                   </td>
                 </tr>
               ))}

@@ -51,4 +51,18 @@ export const closingsApi = {
       { responseType: 'text' },
     );
   },
+  /**
+   * GET /api/closings/:id/export/dsfinvk?encoding=base64 — local DSFinV-K
+   * bundle ZIP (ADMIN|READONLY + step-up), returned base64-encoded in a text
+   * body. The api-client file path is text-only (it can't carry binary), so the
+   * caller decodes the base64 → Blob before triggering the download.
+   */
+  dsfinvkZipBase64(client: ApiClient, id: string): Promise<string> {
+    return client.request<string>(
+      'GET',
+      `/api/closings/${encodeURIComponent(id)}/export/dsfinvk?encoding=base64`,
+      undefined,
+      { responseType: 'text' },
+    );
+  },
 };

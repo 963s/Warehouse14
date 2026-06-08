@@ -8,10 +8,13 @@
  * enforced; the api-client interceptor handles the 403 → PIN → retry). GoBD:
  * read-only — nothing here mutates a fiscal row.
  *
- * DSFinV-K (the Finanzamt cash-register standard) is delivered automatically by
- * the nightly worker push to Fiskaly — there is no manual download, so it is
- * surfaced as status, not a button. The full GDPdU/GoBD .dtd Betriebsprüfungs-
- * bundle is a separate, larger format (deferred — see the note below).
+ * DSFinV-K (der Finanzamt-Standard für Kassendaten) is available two ways: the
+ * nightly worker still pushes the day's summary to Fiskaly, AND — new — a local
+ * DSFinV-K bundle (the DFKA-Taxonomie core CSV files + index.xml, packed as a
+ * ZIP) can be downloaded per day right here, for a §146b Kassen-Nachschau. It is
+ * a faithful CORE export, not a certified one — validate it against the official
+ * DSFinV-K Prüftool before a real inspection (see dsfinvk-export.ts). The full
+ * GDPdU/GoBD .dtd Betriebsprüfungs-bundle remains a separate, larger format.
  */
 
 import { useQuery } from '@tanstack/react-query';
@@ -31,11 +34,11 @@ import {
 } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
-import { downloadTextFile } from '../../lib/download-file.js';
+import { downloadBase64File, downloadTextFile } from '../../lib/download-file.js';
 import { useSessionStore } from '../../state/session-store.js';
 import { useToastStore } from '../../state/toast-store.js';
 
-type ExportKind = 'datev' | 'kassenbericht';
+type ExportKind = 'datev' | 'kassenbericht' | 'dsfinvk';
 
 export function SteuerExport(): JSX.Element {
   const api = useApiClient();
@@ -57,6 +60,17 @@ export function SteuerExport(): JSX.Element {
     const key = `${closing.id}:${kind}`;
     setBusyKey(key);
     try {
+      if (kind === 'dsfinvk') {
+        const base64 = await closingsApi.dsfinvkZipBase64(api, closing.id);
+        const filename = `DSFinV-K_${closing.businessDay}.zip`;
+        downloadBase64File(filename, base64);
+        addToast({
+          tone: 'success',
+          title: 'Export bereit',
+          body: `${filename} heruntergeladen.`,
+        });
+        return;
+      }
       const csv =
         kind === 'datev'
           ? await closingsApi.datevCsv(api, closing.id)
@@ -119,16 +133,19 @@ export function SteuerExport(): JSX.Element {
 
       <DiamondRule />
 
-      {/* DSFinV-K + GDPdU status — not buttons, just the honest standing. */}
+      {/* DSFinV-K + GDPdU standing — honest about the local-bundle scope. */}
       <ParchmentCard padding="md" tone="deep">
         <p
           style={{ margin: 0, fontSize: '0.86rem', color: 'var(--w14-ink-aged)', lineHeight: 1.5 }}
         >
-          <strong>DSFinV-K</strong> (der Finanzamt-Standard für Kassendaten) wird jede Nacht
-          automatisch an Fiskaly übermittelt und dem Steuerberater bereitgestellt — kein manueller
-          Download nötig. Der vollständige <strong>GDPdU/GoBD-Datenträger</strong> für eine
-          Betriebsprüfung ist ein separates Format und folgt später; DSFinV-K deckt die
-          Kassenpflicht ab.
+          <strong>DSFinV-K</strong> (der Finanzamt-Standard für Kassendaten) lässt sich pro Tag
+          direkt als ZIP-Paket herunterladen — die DFKA-Taxonomie-Kerndateien (Belege, Positionen,
+          USt, Zahlungen, TSE) plus index.xml, für eine Kassen-Nachschau nach §146b AO. Es ist ein
+          getreuer <strong>Kern-Export</strong>, kein zertifizierter: vor einer echten Prüfung bitte
+          mit dem amtlichen DSFinV-K-Prüftool und dem Steuerberater abgleichen. Zusätzlich
+          übermittelt der Nachtlauf weiterhin die Tageszusammenfassung an Fiskaly. Der vollständige{' '}
+          <strong>GDPdU/GoBD-Datenträger</strong> für eine Betriebsprüfung ist ein separates Format
+          und folgt später.
         </p>
       </ParchmentCard>
 
@@ -172,6 +189,7 @@ function ClosingRow({
   const tseClean = closing.tseFailedCount === 0;
   const datevBusy = busyKey === `${closing.id}:datev`;
   const kassenBusy = busyKey === `${closing.id}:kassenbericht`;
+  const dsfinvkBusy = busyKey === `${closing.id}:dsfinvk`;
   const anyBusy = busyKey !== null;
 
   return (
@@ -250,6 +268,17 @@ function ClosingRow({
             style={{ minHeight: 48 }}
           >
             {kassenBusy ? 'lädt…' : 'Kassenbericht'}
+          </Button>
+          <Button
+            variant="primary"
+            size="md"
+            iconLeft={<Icon icon={Download} size={16} />}
+            disabled={anyBusy}
+            onClick={() => onDownload('dsfinvk')}
+            title="DSFinV-K · DFKA-Taxonomie Kassendaten (ZIP, Kern-Export)"
+            style={{ minHeight: 48 }}
+          >
+            {dsfinvkBusy ? 'lädt…' : 'DSFinV-K'}
           </Button>
         </div>
       </div>
