@@ -6,6 +6,17 @@ and the project adheres to [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+## [0.4.10] — 2026-06-08
+
+- **DSFinV-K export** (Steuer-Export + Owner-Desktop): one-click download of the
+  standardized cash-register data bundle a tax inspector asks for in a
+  Kassen-Nachschau. (Core export — to be validated against the official
+  DSFinV-K Prüftool and your tax advisor before a real audit.)
+- **Verfahrensdokumentation**: the GoBD-required procedural documentation of the
+  cash system is now written and included.
+- **Cleaner German labels**: product type, condition, status, appointment and
+  customer fields now show proper German text instead of internal codes.
+
 ## [0.4.9] — 2026-06-08
 
 - **Security hardening** (from a final internal audit): the customer-display
