@@ -20,8 +20,9 @@
 //!   mints an opaque, CSPRNG companion token bound to a role.
 //! - `GET /cart` — the latest published cart snapshot for the customer display.
 //! - `GET /ws` — realtime customer-display feed (phase 3). A Display companion
-//!   authenticates its token (query param), then the mother pushes the cart
-//!   JSON on connect and on every `companion_publish_cart` via a
+//!   authenticates its token via the `Sec-WebSocket-Protocol` handshake header
+//!   (NOT the URL — URLs leak into history/logs), then the mother pushes the
+//!   cart JSON on connect and on every `companion_publish_cart` via a
 //!   `tokio::sync::broadcast` channel. Read-only; same role model as `/cart`.
 //! - `ANY /api/proxy/*path` — a strict, role-scoped allow-list reverse proxy
 //!   that forwards to `https://api.warehouse14.de/api/...` with the mother's
@@ -66,7 +67,7 @@ use axum::{
     body::Bytes,
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
-        ConnectInfo, Path, Query, State as AxumState,
+        ConnectInfo, Path, State as AxumState,
     },
     http::{header, HeaderMap, HeaderValue, Method, StatusCode},
     middleware::{self, Next},
@@ -792,8 +793,10 @@ async fn pair_handler(
 /// use and rejected (H3). On any failure returns `None`.
 ///
 /// Shared by the header-based path ([`auth_role`]) and the WebSocket upgrade,
-/// which carries the token in a query param (browsers cannot set custom headers
-/// on a `new WebSocket(...)` handshake).
+/// which carries the token in the `Sec-WebSocket-Protocol` handshake header (a
+/// browser `new WebSocket(url, [subprotocol])` cannot set arbitrary custom
+/// headers, but the subprotocol DOES ride a real request header — keeping the
+/// secret out of the URL/history/logs).
 async fn auth_role_token(hub: &HubShared, token: &str) -> Option<Role> {
     if token.is_empty() {
         return None;
@@ -843,32 +846,64 @@ async fn cart_handler(AxumState(hub): AxumState<HubShared>, headers: HeaderMap) 
         .into_response()
 }
 
-/// Query string for the `GET /ws` upgrade. The companion token rides here
-/// (`/ws?token=…`) because a browser `new WebSocket(url)` cannot attach a custom
-/// `X-Companion-Token` header to the upgrade handshake.
-#[derive(Deserialize)]
-struct WsQuery {
-    token: Option<String>,
+/// Subprotocol prefix that carries the companion token on the `GET /ws`
+/// handshake. The client opens `new WebSocket(url, [WS_TOKEN_PROTO_PREFIX +
+/// <hex token>])`; the browser puts that value in the `Sec-WebSocket-Protocol`
+/// REQUEST header (not the URL), so the secret never lands in history or logs.
+/// The server validates the embedded token and, on success, MUST echo the SAME
+/// subprotocol back in the response (axum does this via
+/// [`WebSocketUpgrade::protocols`]) or the browser fails the handshake.
+const WS_TOKEN_PROTO_PREFIX: &str = "w14.token.";
+
+/// Extract the companion token from the `Sec-WebSocket-Protocol` request header.
+///
+/// The header is a comma-separated list of offered subprotocols; we look for the
+/// one beginning with [`WS_TOKEN_PROTO_PREFIX`] and return `(full_subprotocol,
+/// token)` so the caller can both validate the token AND echo the exact accepted
+/// subprotocol back on upgrade. Returns `None` when no token subprotocol is
+/// offered. The token (64 hex chars) is a valid RFC-6455 subprotocol token, so
+/// no extra encoding is needed.
+fn ws_token_from_protocols(headers: &HeaderMap) -> Option<(String, String)> {
+    let raw = headers
+        .get(header::SEC_WEBSOCKET_PROTOCOL)
+        .and_then(|v| v.to_str().ok())?;
+    raw.split(',')
+        .map(|s| s.trim())
+        .find(|p| p.starts_with(WS_TOKEN_PROTO_PREFIX))
+        .map(|proto| {
+            let token = proto[WS_TOKEN_PROTO_PREFIX.len()..].to_string();
+            (proto.to_string(), token)
+        })
 }
 
 /// `GET /ws` — the realtime customer-display feed (phase 3).
 ///
-/// Authenticates the companion token (query param), enforces the SAME role
-/// model as every other endpoint — only a **Display** companion may subscribe,
-/// matching its read-only contract — then upgrades to a WebSocket that pushes
-/// the latest cart JSON on connect and on every subsequent
-/// `companion_publish_cart`. The display re-renders on each push and no longer
-/// needs the 1 s `GET /cart` poll (it keeps the poll only as a drop fallback).
+/// Authenticates the companion token (carried in the `Sec-WebSocket-Protocol`
+/// handshake header, NOT the URL), enforces the SAME role model as every other
+/// endpoint — only a **Display** companion may subscribe, matching its read-only
+/// contract — then upgrades to a WebSocket that pushes the latest cart JSON on
+/// connect and on every subsequent `companion_publish_cart`. The display
+/// re-renders on each push and no longer needs the 1 s `GET /cart` poll (it
+/// keeps the poll only as a drop fallback).
+///
+/// The token + Display-role are validated BEFORE the upgrade; a missing/invalid
+/// token or a non-Display role is rejected with 401/403 and never upgrades. On
+/// success the accepted token subprotocol is echoed back via
+/// [`WebSocketUpgrade::protocols`] so the browser completes the handshake.
 ///
 /// Security: this is a strictly outbound, read-only stream. Inbound frames from
 /// the display are ignored (other than the close/ping bookkeeping); the socket
 /// can never mutate state or reach the proxy.
 async fn ws_handler(
     AxumState(hub): AxumState<HubShared>,
-    Query(q): Query<WsQuery>,
+    headers: HeaderMap,
     ws: WebSocketUpgrade,
 ) -> Response {
-    let token = q.token.unwrap_or_default();
+    // The token rides the `Sec-WebSocket-Protocol` header, never the URL.
+    let (proto, token) = match ws_token_from_protocols(&headers) {
+        Some(pair) => pair,
+        None => return (StatusCode::UNAUTHORIZED, "unauthorized").into_response(),
+    };
     let role = match auth_role_token(&hub, &token).await {
         Some(r) => r,
         None => return (StatusCode::UNAUTHORIZED, "unauthorized").into_response(),
@@ -889,7 +924,10 @@ async fn ws_handler(
             .unwrap_or_else(|| default_cart().to_string())
     };
     let rx = hub.cart_tx.subscribe();
-    ws.on_upgrade(move |socket| display_ws_loop(socket, initial, rx))
+    // Echo the accepted token subprotocol back — REQUIRED for the browser to
+    // complete the handshake once it offered a `Sec-WebSocket-Protocol`.
+    ws.protocols([proto])
+        .on_upgrade(move |socket| display_ws_loop(socket, initial, rx))
 }
 
 /// Drive one customer-display WebSocket: send the initial snapshot, then fan out

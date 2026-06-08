@@ -305,7 +305,7 @@
   }
 
   // ── Customer display ───────────────────────────────────────────────
-  // LIVE via WebSocket (GET /ws?token=…): the mother broadcasts the cart on
+  // LIVE via WebSocket (GET /ws): the mother broadcasts the cart on
   // every change, so the display re-renders on push with no polling lag. The
   // 1 s GET /cart poll is kept ONLY as a fallback that arms when the socket
   // drops (and disarms again once it reconnects).
@@ -363,12 +363,25 @@
     connectDisplaySocket(paint, startPoll, stopPoll);
   }
 
-  // Build the ws:// URL for /ws on the same origin the SPA was served from,
-  // carrying the companion token as a query param (browsers can't set custom
-  // headers on a WebSocket handshake).
+  // Subprotocol prefix that carries the companion token on the /ws handshake.
+  // Must match WS_TOKEN_PROTO_PREFIX on the Rust server.
+  var WS_TOKEN_PROTO_PREFIX = "w14.token.";
+
+  // Build the ws:// URL for /ws on the same origin the SPA was served from.
+  // NOTE: the token is NOT in the URL — it rides the Sec-WebSocket-Protocol
+  // handshake header instead (see wsProtocols), so the secret never lands in
+  // browser history or server logs.
   function wsUrl() {
     var scheme = location.protocol === "https:" ? "wss:" : "ws:";
-    return scheme + "//" + location.host + "/ws?token=" + encodeURIComponent(token);
+    return scheme + "//" + location.host + "/ws";
+  }
+
+  // The subprotocol array passed to `new WebSocket(url, protocols)`. The browser
+  // sends these in the Sec-WebSocket-Protocol REQUEST header (a real header, the
+  // one thing a browser WebSocket CAN set), and the server echoes the accepted
+  // value back to complete the handshake. This keeps the token out of the URL.
+  function wsProtocols() {
+    return [WS_TOKEN_PROTO_PREFIX + token];
   }
 
   function stopDisplaySocket() {
@@ -385,7 +398,7 @@
   function connectDisplaySocket(onCart, armPoll, disarmPoll) {
     if (!token) { armPoll(); return; }
     var ws;
-    try { ws = new WebSocket(wsUrl()); }
+    try { ws = new WebSocket(wsUrl(), wsProtocols()); }
     catch (e) { armPoll(); scheduleReconnect(onCart, armPoll, disarmPoll); return; }
     displaySocket = ws;
 
