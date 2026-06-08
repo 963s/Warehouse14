@@ -266,6 +266,45 @@ const EnvSchema = Type.Object({
     default: '',
     description: 'eBay Trading API token (Epic D).',
   }),
+  // ── eBay Sell Inventory API (Epic D #38) — the LISTING-PUSH path ──────
+  // Empty OAuth token → publishProductToEbay() returns an honest
+  // not-configured result (no HTTP); the route surfaces a German "token
+  // pending" toast. Basel holds the real token until go-live.
+  EBAY_OAUTH_TOKEN: Type.String({
+    default: '',
+    description:
+      'eBay user OAuth token (Bearer) for the Sell Inventory API push. Empty → not configured.',
+  }),
+  EBAY_MARKETPLACE: Type.Union([Type.Literal('EBAY_DE')], {
+    default: 'EBAY_DE',
+    description: 'Target eBay marketplace. DE-only for this shop.',
+  }),
+  EBAY_SELL_API_BASE_URL: Type.String({
+    default: 'https://api.ebay.com',
+    description:
+      'eBay Sell API base URL. Production https://api.ebay.com; sandbox https://api.sandbox.ebay.com.',
+  }),
+  EBAY_MERCHANT_LOCATION_KEY: Type.String({
+    default: '',
+    description:
+      'eBay inventory location key (created once via the Account API). Empty → offer omits it.',
+  }),
+  EBAY_FULFILLMENT_POLICY_ID: Type.String({
+    default: '',
+    description: 'eBay business policy id (shipping). All three policies needed together or none.',
+  }),
+  EBAY_PAYMENT_POLICY_ID: Type.String({
+    default: '',
+    description: 'eBay business policy id (payment).',
+  }),
+  EBAY_RETURN_POLICY_ID: Type.String({
+    default: '',
+    description: 'eBay business policy id (returns).',
+  }),
+  EBAY_DEFAULT_CATEGORY_ID: Type.String({
+    default: '',
+    description: 'Fallback eBay category id for offers. Empty → offer omits categoryId.',
+  }),
 });
 
 export type Env = Static<typeof EnvSchema>;

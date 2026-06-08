@@ -106,6 +106,21 @@ export interface EbayHistoryResponse {
   hasMore: boolean;
 }
 
+/**
+ * POST /api/products/:id/ebay-publish — the marketplace LISTING-PUSH (Epic D
+ * #38). `configured=false` means EBAY_OAUTH_TOKEN is unset (token pending);
+ * the UI shows a "token pending" toast instead of claiming a live listing.
+ */
+export interface EbayPublishResponse {
+  productId: string;
+  configured: boolean;
+  published: boolean;
+  offerId: string | null;
+  listingId: string | null;
+  /** German status / reason — safe to show the operator. */
+  detail: string;
+}
+
 function buildQuery(q: EbayHistoryQuery): string {
   const parts: string[] = [];
   for (const [k, v] of Object.entries(q)) {
@@ -135,6 +150,16 @@ export const ebayApi = {
     return client.request<EbayHistoryResponse>(
       'GET',
       `/api/products/${encodeURIComponent(productId)}/ebay-history${buildQuery(query)}`,
+    );
+  },
+  /**
+   * Push the product to the eBay marketplace (Sell Inventory API). Resolves
+   * `configured=false` (no live listing) when the eBay OAuth token is pending.
+   */
+  publish(client: ApiClient, productId: string): Promise<EbayPublishResponse> {
+    return client.request<EbayPublishResponse>(
+      'POST',
+      `/api/products/${encodeURIComponent(productId)}/ebay-publish`,
     );
   },
 };

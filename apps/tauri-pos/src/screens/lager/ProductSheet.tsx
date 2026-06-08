@@ -1147,12 +1147,11 @@ function HandelSection({ product }: { product: ProductDetail }): JSX.Element {
   const qc = useQueryClient();
   const addToast = useToastStore((s) => s.addToast);
   const [busy, setBusy] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
 
-  // ONE-CLICK eBay enrol (UX P0). Honest about the stub: this records the
-  // product in the eBay listing pipeline (state ENTWURF) — the actual push to
-  // the eBay marketplace is NOT yet connected (Phase D). We never claim a live
-  // listing that doesn't exist.
+  // The product is enrolled in the eBay pipeline once it carries a state.
   const enrolled = product.ebayState !== null;
+  const live = product.ebayState === 'ONLINE';
 
   async function enlist(): Promise<void> {
     if (busy || enrolled) return;
@@ -1172,6 +1171,41 @@ function HandelSection({ product }: { product: ProductDetail }): JSX.Element {
       addToast({ tone: 'alert', title: 'eBay-Aufnahme fehlgeschlagen', body: msg });
     } finally {
       setBusy(false);
+    }
+  }
+
+  // Real marketplace push (Sell Inventory API). When the eBay OAuth token is
+  // not yet configured the server returns `configured=false` — we then show an
+  // honest "token pending" toast instead of claiming a live listing.
+  async function publish(): Promise<void> {
+    if (pushBusy) return;
+    setPushBusy(true);
+    try {
+      const res = await ebayApi.publish(api, product.id);
+      if (!res.configured) {
+        addToast({
+          tone: 'alert',
+          title: 'eBay-Zugang noch nicht eingerichtet',
+          body: 'Der eBay-OAuth-Token steht noch aus. Sobald er hinterlegt ist, wird der Artikel direkt veröffentlicht.',
+        });
+      } else if (res.published) {
+        const ref = res.listingId ?? res.offerId;
+        addToast({
+          tone: 'success',
+          title: 'Bei eBay veröffentlicht',
+          body: `${product.sku} ist jetzt live${ref ? ` (Angebot ${ref})` : ''}.`,
+        });
+        await qc.invalidateQueries({ queryKey: productDetailQueryKey(product.id) });
+        await qc.invalidateQueries({ queryKey: ['products', 'list'] });
+      } else {
+        addToast({ tone: 'alert', title: 'eBay-Veröffentlichung unvollständig', body: res.detail });
+      }
+    } catch (err) {
+      const msg =
+        err instanceof ApiError ? err.message : 'Verbindung gestört — bitte erneut versuchen.';
+      addToast({ tone: 'alert', title: 'eBay-Veröffentlichung fehlgeschlagen', body: msg });
+    } finally {
+      setPushBusy(false);
     }
   }
 
@@ -1198,7 +1232,11 @@ function HandelSection({ product }: { product: ProductDetail }): JSX.Element {
               width: 12,
               height: 12,
               borderRadius: 999,
-              background: enrolled ? 'var(--w14-gold)' : 'var(--w14-rule)',
+              background: live
+                ? 'var(--w14-verdigris)'
+                : enrolled
+                  ? 'var(--w14-gold)'
+                  : 'var(--w14-rule)',
             }}
           />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -1208,7 +1246,11 @@ function HandelSection({ product }: { product: ProductDetail }): JSX.Element {
                 letterSpacing: '0.08em',
                 fontSize: '0.78rem',
                 fontWeight: 600,
-                color: enrolled ? 'var(--w14-gold)' : 'var(--w14-ink-faded)',
+                color: live
+                  ? 'var(--w14-verdigris)'
+                  : enrolled
+                    ? 'var(--w14-gold)'
+                    : 'var(--w14-ink-faded)',
               }}
             >
               {enrolled ? `eBay: ${product.ebayState}` : 'Noch nicht bei eBay'}
@@ -1216,20 +1258,29 @@ function HandelSection({ product }: { product: ProductDetail }): JSX.Element {
             <span
               style={{ fontSize: '0.76rem', color: 'var(--w14-ink-faded)', fontStyle: 'italic' }}
             >
-              {enrolled
-                ? 'In der eBay-Pipeline vorgemerkt — Marktplatz-Push folgt (Phase D).'
-                : 'Mit einem Klick in die eBay-Pipeline aufnehmen.'}
+              {live
+                ? 'Live im eBay-Marktplatz.'
+                : enrolled
+                  ? 'In der eBay-Pipeline vorgemerkt — jetzt veröffentlichen.'
+                  : 'Mit einem Klick in die eBay-Pipeline aufnehmen.'}
             </span>
           </div>
         </div>
-        {!enrolled && (
-          <Button variant="primary" size="md" disabled={busy} onClick={() => void enlist()}>
-            {busy ? 'Wird vorgemerkt…' : 'Bei eBay listen'}
-          </Button>
-        )}
+        <div style={{ display: 'flex', gap: 8, flex: '0 0 auto' }}>
+          {!enrolled && (
+            <Button variant="ghost" size="md" disabled={busy} onClick={() => void enlist()}>
+              {busy ? 'Wird vorgemerkt…' : 'Vormerken'}
+            </Button>
+          )}
+          {!live && (
+            <Button variant="primary" size="md" disabled={pushBusy} onClick={() => void publish()}>
+              {pushBusy ? 'Wird veröffentlicht…' : 'Bei eBay listen'}
+            </Button>
+          )}
+        </div>
       </div>
 
-      {/* Honest stub disclosure — the marketplace connection is not live yet. */}
+      {/* Honest note — the marketplace push runs as soon as the OAuth token is set. */}
       <p
         style={{
           margin: 0,
@@ -1242,9 +1293,9 @@ function HandelSection({ product }: { product: ProductDetail }): JSX.Element {
           lineHeight: 1.4,
         }}
       >
-        Hinweis: Die direkte eBay-Veröffentlichung ist noch ein <strong>Vorab-Modul (Stub)</strong>.
-        Der Artikel wird im System vorgemerkt; die eigentliche Übertragung zu eBay erfolgt in der
-        eBay-Konsole bzw. mit der Marktplatz-Anbindung.
+        „Bei eBay listen" überträgt den Artikel (Titel, Beschreibung, Preis, Fotos) direkt an den
+        eBay-Marktplatz. Solange der eBay-Zugang (OAuth-Token) noch aussteht, wird der Artikel nur
+        vorgemerkt und beim ersten verfügbaren Zugang veröffentlicht.
       </p>
     </div>
   );

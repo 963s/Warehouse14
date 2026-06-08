@@ -79,6 +79,7 @@ import photoUploadUrlRoute from './routes/photo-upload-url.js';
 import photosRoutes from './routes/photos.js';
 import productCategoriesRoute from './routes/product-categories.js';
 import productsDetailRoute from './routes/products-detail.js';
+import productsEbayPublishRoute from './routes/products-ebay-publish.js';
 import productsEbayRoutes from './routes/products-ebay.js';
 import productsListRoute from './routes/products-list.js';
 import productsRoutes from './routes/products.js';
@@ -251,6 +252,7 @@ export async function buildApp(opts: BuildAppOpts): Promise<FastifyInstance> {
   // ── Phase 2 Day 2: photo + eBay state machine + dashboard ────────
   await app.register(photosRoutes, { env: opts.env });
   await app.register(productsEbayRoutes);
+  await app.register(productsEbayPublishRoute, { env: opts.env });
   await app.register(shippingRoutes, { env: opts.env });
   await app.register(dashboardRoutes);
   await app.register(bridgeRoutes);
