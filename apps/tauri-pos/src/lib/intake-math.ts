@@ -9,6 +9,12 @@
  * rounding, bigint-cents only, no JS-number arithmetic).
  */
 
+// The bigint-cents primitives live in one canonical module (money-core).
+// intake-math re-exports toCents / fromCents so its public API is unchanged.
+import { fromCents, roundHalfEven, toCents } from './money-core.js';
+
+export { fromCents, toCents };
+
 /**
  * Tolerate the German comma WITHOUT misreading a plain dot-decimal. A value
  * with a comma is German ("1.234,56" / "0,585") → strip dots, comma → dot. A
@@ -19,45 +25,6 @@
 function commaToDot(s: string): string {
   if (s.includes(',')) return s.replace(/\./g, '').replace(',', '.');
   return s;
-}
-
-// ────────────────────────────────────────────────────────────────────────
-// Cent ↔ decimal-string conversion (mirror cart-math.ts)
-// ────────────────────────────────────────────────────────────────────────
-
-export function toCents(eur: string): bigint {
-  if (!/^-?\d+(\.\d+)?$/.test(eur)) {
-    throw new Error(`toCents: invalid decimal string "${eur}"`);
-  }
-  const sign = eur.startsWith('-') ? -1n : 1n;
-  const abs = eur.startsWith('-') ? eur.slice(1) : eur;
-  const [whole = '0', frac = ''] = abs.split('.');
-  const fracPadded = frac.padEnd(2, '0').slice(0, 2);
-  return sign * (BigInt(whole) * 100n + BigInt(fracPadded || '0'));
-}
-
-export function fromCents(cents: bigint): string {
-  const sign = cents < 0n ? '-' : '';
-  const abs = cents < 0n ? -cents : cents;
-  return `${sign}${abs / 100n}.${String(abs % 100n).padStart(2, '0')}`;
-}
-
-function roundHalfEven(num: bigint, den: bigint): bigint {
-  if (den === 0n) throw new Error('roundHalfEven: division by zero');
-  const negative = num < 0n !== den < 0n;
-  const absNum = num < 0n ? -num : num;
-  const absDen = den < 0n ? -den : den;
-
-  const q = absNum / absDen;
-  const r = absNum % absDen;
-  const twice = r * 2n;
-
-  let result: bigint;
-  if (twice < absDen) result = q;
-  else if (twice > absDen) result = q + 1n;
-  else result = q % 2n === 0n ? q : q + 1n;
-
-  return negative ? -result : result;
 }
 
 // ────────────────────────────────────────────────────────────────────────

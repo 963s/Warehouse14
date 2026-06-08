@@ -21,57 +21,12 @@
  */
 
 import type { TaxTreatmentCode } from '@warehouse14/api-client';
+// The bigint-cents primitives live in one canonical module (money-core). They
+// were previously copy-pasted here; cart-math re-exports them so its public API
+// (toCents / fromCents) is unchanged for every import site.
+import { fromCents, roundHalfEven, toCents } from './money-core.js';
 
-// ────────────────────────────────────────────────────────────────────────
-// Cent <-> decimal-string conversion
-// ────────────────────────────────────────────────────────────────────────
-
-export function toCents(input: string): bigint {
-  // Tolerate the German decimal comma ("10,20") anywhere a price string flows.
-  const eur = input.replace(',', '.');
-  if (!/^-?\d+(\.\d+)?$/.test(eur)) {
-    throw new Error(`toCents: invalid decimal string "${input}"`);
-  }
-  const sign = eur.startsWith('-') ? -1n : 1n;
-  const abs = eur.startsWith('-') ? eur.slice(1) : eur;
-  const [whole = '0', frac = ''] = abs.split('.');
-  const fracPadded = frac.padEnd(2, '0').slice(0, 2);
-  return sign * (BigInt(whole) * 100n + BigInt(fracPadded || '0'));
-}
-
-export function fromCents(cents: bigint): string {
-  const sign = cents < 0n ? '-' : '';
-  const abs = cents < 0n ? -cents : cents;
-  return `${sign}${abs / 100n}.${String(abs % 100n).padStart(2, '0')}`;
-}
-
-// ────────────────────────────────────────────────────────────────────────
-// Banker's rounding (HALF_EVEN) on integer-cent ratios.
-//
-//   round_half_even(num, den) → bigint cents
-//
-// Used by per-line VAT extraction. Plain (num / den) truncates toward zero,
-// which is correct ~50% of the time. We add the half-up adjustment, then
-// flip ties to even.
-// ────────────────────────────────────────────────────────────────────────
-
-function roundHalfEven(num: bigint, den: bigint): bigint {
-  if (den === 0n) throw new Error('roundHalfEven: division by zero');
-  const negative = num < 0n !== den < 0n;
-  const absNum = num < 0n ? -num : num;
-  const absDen = den < 0n ? -den : den;
-
-  const q = absNum / absDen;
-  const r = absNum % absDen;
-  const twice = r * 2n;
-
-  let result: bigint;
-  if (twice < absDen) result = q;
-  else if (twice > absDen) result = q + 1n;
-  else result = q % 2n === 0n ? q : q + 1n; // tie → even
-
-  return negative ? -result : result;
-}
+export { fromCents, toCents };
 
 // ────────────────────────────────────────────────────────────────────────
 // Discount math (percent → EUR; invoice-discount distribution).
