@@ -454,6 +454,13 @@ const closingExportRoute: FastifyPluginAsync = async (app) => {
          ORDER BY finalized_at ASC`);
 
       const txIds = txRows.map((t) => t.id);
+      // Bind the ids as ONE Postgres array-literal text param ('{uuid,uuid}')
+      // cast to uuid[]. Interpolating a JS array into drizzle's `sql` template
+      // SPREADS it into comma-separated scalar params, so `ANY(${'${txIds}'}::uuid[])`
+      // casts a row/record → uuid[] and throws 42846 on any non-empty day. The
+      // ids are DB-sourced UUIDs, so the literal stays one safe bound param.
+      // (Same fix already applied to transactions-finalize.ts.)
+      const txIdArray = `{${txIds.join(',')}}`;
 
       // Lines, payments, TSE signatures — empty arrays if the day is empty.
       const itemRows =
@@ -470,7 +477,7 @@ const closingExportRoute: FastifyPluginAsync = async (app) => {
                      ti.line_total_eur::text    AS line_total_eur
                 FROM transaction_items ti
                 LEFT JOIN products p ON p.id = ti.product_id
-               WHERE ti.transaction_id = ANY(${txIds}::uuid[])
+               WHERE ti.transaction_id = ANY(${txIdArray}::uuid[])
                ORDER BY ti.transaction_id, ti.display_order ASC`);
 
       const paymentRows =
@@ -481,7 +488,7 @@ const closingExportRoute: FastifyPluginAsync = async (app) => {
                      payment_method::text AS payment_method,
                      amount_eur::text     AS amount_eur
                 FROM transaction_payments
-               WHERE transaction_id = ANY(${txIds}::uuid[])
+               WHERE transaction_id = ANY(${txIdArray}::uuid[])
                ORDER BY transaction_id, created_at ASC`);
 
       const tseRows =
@@ -498,7 +505,7 @@ const closingExportRoute: FastifyPluginAsync = async (app) => {
                      tse_start_time,
                      tse_end_time
                 FROM tse_signatures
-               WHERE transaction_id = ANY(${txIds}::uuid[])`);
+               WHERE transaction_id = ANY(${txIdArray}::uuid[])`);
 
       // Group children by transaction.
       const itemsByTx = new Map<string, DsfinvkItemRow[]>();
