@@ -185,8 +185,8 @@ export function Lager(): JSX.Element {
         flexDirection: 'column',
         height: '100%',
         minHeight: 0,
-        padding: 20,
-        gap: 14,
+        padding: 'var(--space-5)',
+        gap: 'var(--space-4)',
       }}
     >
       <header
@@ -194,10 +194,10 @@ export function Lager(): JSX.Element {
           display: 'flex',
           alignItems: 'baseline',
           justifyContent: 'space-between',
-          gap: 14,
+          gap: 'var(--space-4)',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
           <Seal size="sm" tone="ink" label="6" />
           <h1
             style={{
@@ -216,7 +216,7 @@ export function Lager(): JSX.Element {
             Tresor · Fach · Position
           </span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
           <span
             className="w14-tabular"
             style={{
@@ -235,7 +235,7 @@ export function Lager(): JSX.Element {
               setSheetOpen(true);
             }}
           >
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
               <Icon icon={Plus} size={16} /> Neues Produkt
             </span>
           </Button>
@@ -245,14 +245,19 @@ export function Lager(): JSX.Element {
       <DiamondRule />
 
       <div
-        style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 14, alignItems: 'center' }}
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr auto',
+          gap: 'var(--space-4)',
+          alignItems: 'center',
+        }}
       >
         <div
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: 10,
-            padding: '8px 12px',
+            gap: 'var(--space-3)',
+            padding: 'var(--space-2) var(--space-3)',
             background: 'var(--w14-parchment-2)',
             border: '1px solid var(--w14-rule)',
             borderRadius: 'var(--w14-radius-card)',
@@ -286,7 +291,7 @@ export function Lager(): JSX.Element {
                 color: 'var(--w14-gold)',
                 fontSize: '0.72rem',
                 letterSpacing: '0.08em',
-                padding: '2px 8px',
+                padding: 'var(--space-1) var(--space-2)',
                 borderRadius: 'var(--w14-radius-button)',
                 cursor: 'pointer',
               }}
@@ -296,7 +301,7 @@ export function Lager(): JSX.Element {
             </button>
           )}
         </div>
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
           {STATUS_CHIPS.map((chip) => (
             <StatusChip
               key={chip.value}
@@ -359,7 +364,7 @@ function StatusChip({
         fontFamily: 'var(--w14-font-display)',
         fontSize: '0.78rem',
         letterSpacing: '0.08em',
-        padding: '6px 12px',
+        padding: 'var(--space-2) var(--space-3)',
         borderRadius: 'var(--w14-radius-button)',
         cursor: 'pointer',
       }}

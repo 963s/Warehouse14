@@ -36,10 +36,10 @@ export function KassePurposeBanner(): JSX.Element {
         border: '1px solid var(--w14-rule)',
         borderRadius: 'var(--w14-radius-card)',
         boxShadow: 'var(--w14-shadow-card)',
-        padding: 20,
+        padding: 'var(--space-5)',
       }}
     >
-      <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+      <div style={{ display: 'flex', gap: 'var(--space-4)', alignItems: 'flex-start' }}>
         <span
           aria-hidden="true"
           style={{
@@ -69,7 +69,7 @@ export function KassePurposeBanner(): JSX.Element {
           </h2>
           <p
             style={{
-              margin: '4px 0 0',
+              margin: 'var(--space-1) 0 0',
               color: 'var(--w14-ink-aged)',
               fontFamily: 'var(--w14-font-body)',
               fontSize: '0.95rem',
@@ -88,10 +88,10 @@ export function KassePurposeBanner(): JSX.Element {
       {/* The three beats of a cash day. */}
       <div
         style={{
-          marginTop: 16,
+          marginTop: 'var(--space-4)',
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-          gap: 10,
+          gap: 'var(--space-3)',
         }}
       >
         {STEPS.map((step, i) => (
@@ -99,9 +99,9 @@ export function KassePurposeBanner(): JSX.Element {
             key={step.title}
             style={{
               display: 'flex',
-              gap: 10,
+              gap: 'var(--space-3)',
               alignItems: 'flex-start',
-              padding: '10px 12px',
+              padding: 'var(--space-3)',
               background: 'var(--w14-parchment)',
               border: '1px solid var(--w14-rule)',
               borderRadius: 'var(--w14-radius-button)',

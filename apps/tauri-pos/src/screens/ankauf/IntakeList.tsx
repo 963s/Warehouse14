@@ -101,8 +101,8 @@ export function IntakeList({ customerSelected, onOpenBezahlen }: IntakeListProps
         flexDirection: 'column',
         height: '100%',
         minHeight: 0,
-        padding: 16,
-        gap: 14,
+        padding: 'var(--space-4)',
+        gap: 'var(--space-4)',
       }}
     >
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
@@ -145,7 +145,7 @@ export function IntakeList({ customerSelected, onOpenBezahlen }: IntakeListProps
               overflowY: 'auto',
               display: 'flex',
               flexDirection: 'column',
-              gap: 10,
+              gap: 'var(--space-3)',
             }}
           >
             {items.length === 0 ? (
@@ -169,7 +169,7 @@ export function IntakeList({ customerSelected, onOpenBezahlen }: IntakeListProps
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'baseline',
-                padding: '8px 0',
+                padding: 'var(--space-2) 0',
               }}
             >
               <span
@@ -185,7 +185,12 @@ export function IntakeList({ customerSelected, onOpenBezahlen }: IntakeListProps
               <MoneyAmount valueEur={totalEur} emphasis />
             </div>
             <div
-              style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 10, marginTop: 10 }}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'auto 1fr',
+                gap: 'var(--space-3)',
+                marginTop: 'var(--space-3)',
+              }}
             >
               <Button variant="ghost" size="md" onClick={clearItems} disabled={items.length === 0}>
                 Liste leeren
@@ -274,8 +279,8 @@ function KycEarlyBanner({
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 8,
-          padding: '8px 12px',
+          gap: 'var(--space-2)',
+          padding: 'var(--space-2) var(--space-3)',
           borderRadius: 'var(--w14-radius-button)',
           border: '1px solid var(--w14-rule)',
           background: 'var(--w14-parchment-2)',
@@ -299,15 +304,15 @@ function KycEarlyBanner({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        gap: 12,
-        padding: '12px 14px',
+        gap: 'var(--space-3)',
+        padding: 'var(--space-3) var(--space-4)',
         borderRadius: 'var(--w14-radius-button)',
         border: '2px solid var(--w14-gold)',
         background: 'var(--w14-parchment-2)',
         flexShrink: 0,
       }}
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
         <strong style={{ fontFamily: 'var(--w14-font-display)', fontSize: '0.95rem' }}>
           Ausweisprüfung erforderlich
         </strong>
@@ -507,7 +512,7 @@ function AddItemForm({
   return (
     <ParchmentCard padding="md">
       <DiamondRule label="Neues Stück" />
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
         <FormField label="SKU" value={sku} onChange={setSku} required mono />
         <SelectField<AnkaufItemType>
           label="Typ"
@@ -568,7 +573,14 @@ function AddItemForm({
         onAccept={setNegotiatedPriceEur}
       />
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 14 }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: 'var(--space-4)',
+          marginTop: 'var(--space-4)',
+        }}
+      >
         <EuroInput
           label="Ankaufspreis (an Verkäufer zahlen)"
           valueEur={negotiatedPriceEur}
@@ -581,7 +593,14 @@ function AddItemForm({
         />
       </div>
 
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
+      <label
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 'var(--space-2)',
+          marginTop: 'var(--space-3)',
+        }}
+      >
         <input
           type="checkbox"
           checked={publishImmediately}
@@ -592,7 +611,14 @@ function AddItemForm({
         </span>
       </label>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 14 }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'flex-end',
+          gap: 'var(--space-3)',
+          marginTop: 'var(--space-4)',
+        }}
+      >
         <Button
           variant="ghost"
           size="md"
@@ -632,14 +658,14 @@ function SchmelzwertHint({
   return (
     <div
       style={{
-        marginTop: 14,
-        padding: '10px 14px',
+        marginTop: 'var(--space-4)',
+        padding: 'var(--space-3) var(--space-4)',
         background: 'var(--w14-parchment-2)',
         border: '1px solid var(--w14-rule)',
         borderRadius: 'var(--w14-radius-card)',
         display: 'flex',
         flexDirection: 'column',
-        gap: 8,
+        gap: 'var(--space-2)',
       }}
     >
       <div
@@ -997,8 +1023,8 @@ function AnkaufGuide({ step }: { step: 1 | 2 | 3 }): JSX.Element {
         display: 'flex',
         alignItems: 'center',
         flexWrap: 'wrap',
-        gap: 8,
-        padding: '8px 12px',
+        gap: 'var(--space-2)',
+        padding: 'var(--space-2) var(--space-3)',
         background: 'var(--w14-parchment-2)',
         border: '1px solid var(--w14-rule)',
         borderRadius: 'var(--w14-radius-card)',
@@ -1050,7 +1076,13 @@ function AnkaufGuide({ step }: { step: 1 | 2 | 3 }): JSX.Element {
 function EmptyList(): JSX.Element {
   return (
     <div
-      style={{ flex: 1, display: 'grid', placeItems: 'center', padding: 24, textAlign: 'center' }}
+      style={{
+        flex: 1,
+        display: 'grid',
+        placeItems: 'center',
+        padding: 'var(--space-6)',
+        textAlign: 'center',
+      }}
     >
       <p
         style={{

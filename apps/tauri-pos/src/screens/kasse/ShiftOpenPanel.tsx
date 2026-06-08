@@ -67,7 +67,7 @@ export function ShiftOpenPanel(): JSX.Element {
         flex: 1,
         display: 'grid',
         placeItems: 'center',
-        padding: 32,
+        padding: 'var(--space-7)',
       }}
     >
       <ParchmentCard padding="lg" style={{ width: 'min(520px, 100%)', textAlign: 'center' }}>
@@ -77,7 +77,7 @@ export function ShiftOpenPanel(): JSX.Element {
             fontFamily: 'var(--w14-font-display)',
             fontWeight: 500,
             fontSize: '2rem',
-            margin: '20px 0 2px',
+            margin: 'var(--space-5) 0 var(--space-1)',
           }}
         >
           Tag beginnen
@@ -95,7 +95,7 @@ export function ShiftOpenPanel(): JSX.Element {
         </p>
         <p
           style={{
-            margin: '8px 0 0',
+            margin: 'var(--space-2) 0 0',
             color: 'var(--w14-ink-faded)',
             fontFamily: 'var(--w14-font-display)',
             fontStyle: 'italic',
@@ -105,8 +105,15 @@ export function ShiftOpenPanel(): JSX.Element {
         </p>
         <DiamondRule label="Eröffnung" />
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20, textAlign: 'left' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 'var(--space-5)',
+            textAlign: 'left',
+          }}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
             <EuroInput
               label="Startgeld"
               valueEur={openingFloatEur}
@@ -126,7 +133,7 @@ export function ShiftOpenPanel(): JSX.Element {
             </p>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
             <label
               htmlFor="kasse-notes"
               className="w14-smallcaps"
@@ -150,7 +157,7 @@ export function ShiftOpenPanel(): JSX.Element {
                 color: 'var(--w14-ink)',
                 fontFamily: 'var(--w14-font-body)',
                 fontSize: '0.95rem',
-                padding: '8px 4px',
+                padding: 'var(--space-2) var(--space-1)',
               }}
             />
           </div>
@@ -161,7 +168,7 @@ export function ShiftOpenPanel(): JSX.Element {
             role="alert"
             style={{
               color: 'var(--w14-wax-red)',
-              margin: '14px 0 0',
+              margin: 'var(--space-4) 0 0',
               fontSize: '0.92rem',
             }}
           >
@@ -169,7 +176,7 @@ export function ShiftOpenPanel(): JSX.Element {
           </p>
         )}
 
-        <div style={{ marginTop: 24 }}>
+        <div style={{ marginTop: 'var(--space-6)' }}>
           <Button
             variant="primary"
             size="lg"

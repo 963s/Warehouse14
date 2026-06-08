@@ -34,7 +34,7 @@ export function Kasse(): JSX.Element {
   // "Tageskasse ≠ checkout" concept no matter which state the day is in.
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-      <div style={{ padding: '20px 32px 0' }}>
+      <div style={{ padding: 'var(--space-5) var(--space-7) 0' }}>
         <KassePurposeBanner />
       </div>
       {data === null || data === undefined ? <ShiftOpenPanel /> : <KassenbuchPanel shift={data} />}
@@ -49,7 +49,7 @@ function KasseLoadingSplash(): JSX.Element {
         flex: 1,
         display: 'grid',
         placeItems: 'center',
-        padding: 32,
+        padding: 'var(--space-7)',
       }}
     >
       <ParchmentCard padding="lg" style={{ width: 'min(420px, 100%)', textAlign: 'center' }}>
@@ -58,7 +58,7 @@ function KasseLoadingSplash(): JSX.Element {
           style={{
             fontFamily: 'var(--w14-font-display)',
             fontWeight: 500,
-            margin: '14px 0 4px',
+            margin: 'var(--space-4) 0 var(--space-1)',
             fontSize: '1.4rem',
           }}
         >

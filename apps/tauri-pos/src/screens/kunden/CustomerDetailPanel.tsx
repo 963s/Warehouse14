@@ -70,8 +70,8 @@ function CustomerCard({ detail }: { detail: CustomerDetail }): JSX.Element {
         flexDirection: 'column',
         height: '100%',
         minHeight: 0,
-        padding: 20,
-        gap: 14,
+        padding: 'var(--space-5)',
+        gap: 'var(--space-4)',
         overflowY: 'auto',
       }}
     >
@@ -94,7 +94,7 @@ function CustomerCard({ detail }: { detail: CustomerDetail }): JSX.Element {
           </p>
           <p
             style={{
-              margin: '6px 0 0',
+              margin: 'var(--space-2) 0 0',
               color: 'var(--w14-ink-faded)',
               fontFamily: 'var(--w14-font-display)',
               fontStyle: 'italic',
@@ -115,7 +115,7 @@ function CustomerCard({ detail }: { detail: CustomerDetail }): JSX.Element {
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'flex-start',
-            gap: 14,
+            gap: 'var(--space-4)',
           }}
         >
           <div style={{ minWidth: 0 }}>
@@ -132,7 +132,7 @@ function CustomerCard({ detail }: { detail: CustomerDetail }): JSX.Element {
             <p
               className="w14-tabular"
               style={{
-                margin: '4px 0 0',
+                margin: 'var(--space-1) 0 0',
                 fontFamily: 'var(--w14-font-mono)',
                 fontSize: '0.85rem',
                 color: 'var(--w14-ink-faded)',
@@ -143,7 +143,14 @@ function CustomerCard({ detail }: { detail: CustomerDetail }): JSX.Element {
               {new Date(detail.createdAt).toLocaleDateString('de-DE')}
             </p>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-end',
+              gap: 'var(--space-2)',
+            }}
+          >
             <TrustChip
               kycVerified={kycVerified}
               trust={detail.trustLevel}
@@ -164,7 +171,7 @@ function CustomerCard({ detail }: { detail: CustomerDetail }): JSX.Element {
           <DataRow label="Notizen" value={detail.notes} multiline />
         </DataGrid>
 
-        <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
+        <div style={{ marginTop: 'var(--space-4)', display: 'flex', justifyContent: 'flex-end' }}>
           <Button
             variant="primary"
             size="md"
@@ -214,7 +221,7 @@ function CustomerCard({ detail }: { detail: CustomerDetail }): JSX.Element {
         </DataGrid>
         <KycLocalDocs customerId={detail.id} onPromoteTrust={() => setTrustOpen(true)} />
 
-        <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
+        <div style={{ marginTop: 'var(--space-4)', display: 'flex', justifyContent: 'flex-end' }}>
           <Button variant="ghost" size="md" onClick={() => setKycOpen(true)}>
             Ausweis erfassen
           </Button>
@@ -244,14 +251,14 @@ function CustomerCard({ detail }: { detail: CustomerDetail }): JSX.Element {
 
 function EmptyDetailPlaceholder(): JSX.Element {
   return (
-    <div style={{ display: 'grid', placeItems: 'center', padding: 48 }}>
+    <div style={{ display: 'grid', placeItems: 'center', padding: 'var(--space-9)' }}>
       <ParchmentCard padding="lg" style={{ textAlign: 'center', maxWidth: 440 }}>
         <Seal size="md" tone="faded" label="7" />
         <h2
           style={{
             fontFamily: 'var(--w14-font-display)',
             fontWeight: 500,
-            margin: '14px 0 4px',
+            margin: 'var(--space-4) 0 var(--space-1)',
             fontSize: '1.4rem',
           }}
         >
@@ -260,7 +267,7 @@ function EmptyDetailPlaceholder(): JSX.Element {
         <DiamondRule />
         <p
           style={{
-            margin: '6px 0 0',
+            margin: 'var(--space-2) 0 0',
             color: 'var(--w14-ink-faded)',
             fontFamily: 'var(--w14-font-display)',
             fontStyle: 'italic',
@@ -276,7 +283,7 @@ function EmptyDetailPlaceholder(): JSX.Element {
 
 function LoadingPlaceholder(): JSX.Element {
   return (
-    <div style={{ display: 'grid', placeItems: 'center', padding: 48 }}>
+    <div style={{ display: 'grid', placeItems: 'center', padding: 'var(--space-9)' }}>
       <ParchmentCard padding="md">
         <p style={{ margin: 0, color: 'var(--w14-ink-faded)', fontStyle: 'italic' }}>
           Lädt Kundenakte…
@@ -288,7 +295,7 @@ function LoadingPlaceholder(): JSX.Element {
 
 function ErrorPlaceholder(): JSX.Element {
   return (
-    <div style={{ display: 'grid', placeItems: 'center', padding: 48 }}>
+    <div style={{ display: 'grid', placeItems: 'center', padding: 'var(--space-9)' }}>
       <ParchmentCard padding="md" style={{ border: '1px solid var(--w14-wax-red)' }}>
         <p role="alert" style={{ margin: 0, color: 'var(--w14-wax-red)' }}>
           Kundenakte konnte nicht geladen werden.
@@ -303,7 +310,11 @@ function ErrorPlaceholder(): JSX.Element {
 // ────────────────────────────────────────────────────────────────────────
 
 function DataGrid({ children }: { children: React.ReactNode }): JSX.Element {
-  return <div style={{ display: 'grid', gap: 4, marginTop: 8 }}>{children}</div>;
+  return (
+    <div style={{ display: 'grid', gap: 'var(--space-1)', marginTop: 'var(--space-2)' }}>
+      {children}
+    </div>
+  );
 }
 
 function DataRow({
@@ -332,8 +343,8 @@ function DataRow({
       style={{
         display: 'grid',
         gridTemplateColumns: 'minmax(140px, auto) 1fr',
-        gap: 12,
-        padding: '6px 0',
+        gap: 'var(--space-3)',
+        padding: 'var(--space-2) 0',
         alignItems: multiline ? 'start' : 'baseline',
       }}
     >
@@ -374,7 +385,7 @@ function TrustChip({
   const base: React.CSSProperties = {
     fontSize: '0.85rem',
     letterSpacing: '0.08em',
-    padding: '4px 10px',
+    padding: 'var(--space-1) var(--space-3)',
     borderRadius: 'var(--w14-radius-button)',
     border: '1px solid',
   };

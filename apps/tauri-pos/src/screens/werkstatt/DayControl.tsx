@@ -28,7 +28,7 @@ export function DayControl(): JSX.Element | null {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          gap: 16,
+          gap: 'var(--space-4)',
           borderLeft: '3px solid var(--w14-wax-red)',
         }}
       >
@@ -58,11 +58,13 @@ export function DayControl(): JSX.Element | null {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        gap: 16,
+        gap: 'var(--space-4)',
         borderLeft: `3px solid ${open ? 'var(--w14-verdigris)' : 'var(--w14-gold)'}`,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+      <div
+        style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap' }}
+      >
         <span
           aria-hidden="true"
           style={{

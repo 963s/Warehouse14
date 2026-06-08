@@ -66,8 +66,8 @@ function SearchOrCreate({ onSelect }: { onSelect: (id: string) => void }): JSX.E
         flexDirection: 'column',
         height: '100%',
         minHeight: 0,
-        padding: 16,
-        gap: 14,
+        padding: 'var(--space-4)',
+        gap: 'var(--space-4)',
         borderRight: '1px solid var(--w14-rule)',
         background: 'var(--w14-parchment-1)',
       }}
@@ -140,8 +140,8 @@ function SearchMode({
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 10,
-          padding: '8px 12px',
+          gap: 'var(--space-3)',
+          padding: 'var(--space-2) var(--space-3)',
           backgroundColor: 'var(--w14-parchment-2)',
           border: '1px solid var(--w14-rule)',
           borderRadius: 'var(--w14-radius-card)',
@@ -186,7 +186,7 @@ function SearchMode({
           overflowY: 'auto',
           display: 'flex',
           flexDirection: 'column',
-          gap: 8,
+          gap: 'var(--space-2)',
         }}
       >
         {debouncedQ.length === 0 ? (
@@ -207,7 +207,7 @@ function SearchMode({
 
 function EmptyHint(): JSX.Element {
   return (
-    <div style={{ padding: 24, textAlign: 'center' }}>
+    <div style={{ padding: 'var(--space-6)', textAlign: 'center' }}>
       <p
         style={{
           margin: 0,
@@ -405,8 +405,8 @@ function SelectedCustomer({
         flexDirection: 'column',
         height: '100%',
         minHeight: 0,
-        padding: 16,
-        gap: 14,
+        padding: 'var(--space-4)',
+        gap: 'var(--space-4)',
         borderRight: '1px solid var(--w14-rule)',
         background: 'var(--w14-parchment-1)',
       }}
@@ -663,7 +663,10 @@ function CreateMode({
 
   return (
     <>
-      <ParchmentCard padding="md" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <ParchmentCard
+        padding="md"
+        style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}
+      >
         <Field
           label="Vollständiger Name"
           value={fullName}
@@ -691,7 +694,7 @@ function CreateMode({
         </p>
       )}
 
-      <div style={{ display: 'flex', gap: 10, marginTop: 'auto' }}>
+      <div style={{ display: 'flex', gap: 'var(--space-3)', marginTop: 'auto' }}>
         <Button variant="ghost" size="md" onClick={onCancel} disabled={submitting}>
           Abbrechen
         </Button>

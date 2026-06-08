@@ -81,7 +81,7 @@ export function Werkstatt(): JSX.Element {
       />
 
       {/* A4: guided start/end of day — one clear control on the landing screen. */}
-      <div style={{ padding: '4px 28px 0' }}>
+      <div style={{ padding: 'var(--space-1) var(--space-7) 0' }}>
         <DayControl />
       </div>
 
@@ -91,8 +91,8 @@ export function Werkstatt(): JSX.Element {
           minHeight: 0,
           display: 'grid',
           gridTemplateColumns: 'minmax(0, 1.4fr) minmax(0, 1fr)',
-          gap: 28,
-          padding: '8px 28px 24px',
+          gap: 'var(--space-7)',
+          padding: 'var(--space-3) var(--space-7) var(--space-6)',
         }}
       >
         {/* Left column — Übersicht (Edelmetallkurs now lives in the chrome ticker, UX P2) */}
@@ -106,7 +106,14 @@ export function Werkstatt(): JSX.Element {
           />
 
           {/* Tiny seal in the negative space at the bottom — anchoring brand */}
-          <div style={{ flex: 1, display: 'grid', placeItems: 'center', paddingTop: 36 }}>
+          <div
+            style={{
+              flex: 1,
+              display: 'grid',
+              placeItems: 'center',
+              paddingTop: 'var(--space-8)',
+            }}
+          >
             <Seal size="sm" tone="faded" />
           </div>
         </div>

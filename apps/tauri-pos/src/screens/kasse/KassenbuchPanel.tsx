@@ -71,7 +71,7 @@ export function KassenbuchPanel({ shift }: KassenbuchPanelProps): JSX.Element {
         flex: 1,
         display: 'grid',
         placeItems: 'start center',
-        padding: 32,
+        padding: 'var(--space-7)',
       }}
     >
       <div style={{ width: 'min(680px, 100%)' }}>
@@ -80,7 +80,7 @@ export function KassenbuchPanel({ shift }: KassenbuchPanelProps): JSX.Element {
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'baseline',
-            marginBottom: 20,
+            marginBottom: 'var(--space-5)',
           }}
         >
           <div>
@@ -113,7 +113,7 @@ export function KassenbuchPanel({ shift }: KassenbuchPanelProps): JSX.Element {
             style={{
               color: 'var(--w14-gold)',
               fontSize: '0.82rem',
-              padding: '4px 10px',
+              padding: 'var(--space-1) var(--space-3)',
               border: '1px solid var(--w14-gold)',
               borderRadius: 'var(--w14-radius-button)',
             }}
@@ -151,7 +151,7 @@ export function KassenbuchPanel({ shift }: KassenbuchPanelProps): JSX.Element {
           </table>
           <p
             style={{
-              margin: '10px 0 0',
+              margin: 'var(--space-3) 0 0',
               color: 'var(--w14-ink-aged)',
               fontFamily: 'var(--w14-font-body)',
               fontSize: '0.84rem',
@@ -163,7 +163,7 @@ export function KassenbuchPanel({ shift }: KassenbuchPanelProps): JSX.Element {
           </p>
           <p
             style={{
-              margin: '4px 0 0',
+              margin: 'var(--space-1) 0 0',
               color: 'var(--w14-ink-faded)',
               fontFamily: 'var(--w14-font-display)',
               fontStyle: 'italic',
@@ -179,31 +179,33 @@ export function KassenbuchPanel({ shift }: KassenbuchPanelProps): JSX.Element {
 
         <div
           style={{
-            marginTop: 4,
+            marginTop: 'var(--space-1)',
             display: 'grid',
             gridTemplateColumns: '1fr 1fr',
-            gap: 12,
+            gap: 'var(--space-3)',
           }}
         >
           <Button
-            variant="primary"
+            variant="ghost"
             size="lg"
             iconLeft={<Icon icon={ArrowDownToLine} size={18} />}
             onClick={() => setCashKind('einlage')}
+            style={{ border: '1px solid var(--w14-rule)' }}
           >
             Einlage (Geld rein)
           </Button>
           <Button
-            variant="primary"
+            variant="ghost"
             size="lg"
             iconLeft={<Icon icon={ArrowUpFromLine} size={18} />}
             onClick={() => setCashKind('entnahme')}
+            style={{ border: '1px solid var(--w14-rule)' }}
           >
             Entnahme (Geld raus)
           </Button>
         </div>
 
-        <div style={{ marginTop: 12, display: 'flex', justifyContent: 'center' }}>
+        <div style={{ marginTop: 'var(--space-3)', display: 'flex', justifyContent: 'center' }}>
           <Button
             variant="ghost"
             size="md"
@@ -233,11 +235,11 @@ export function KassenbuchPanel({ shift }: KassenbuchPanelProps): JSX.Element {
           </p>
           <div
             style={{
-              marginTop: 14,
+              marginTop: 'var(--space-4)',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              gap: 4,
+              gap: 'var(--space-1)',
             }}
           >
             <Button variant="destructive" size="lg" onClick={() => setZbonOpen(true)}>
@@ -295,7 +297,7 @@ function Row({
     <tr>
       <td
         style={{
-          padding: '10px 0',
+          padding: 'var(--space-3) 0',
           color: emphasised ? 'var(--w14-ink-aged)' : 'var(--w14-ink-faded)',
           fontFamily: 'var(--w14-font-display)',
           fontVariant: 'all-small-caps',
@@ -307,7 +309,7 @@ function Row({
       </td>
       <td
         style={{
-          padding: '10px 0',
+          padding: 'var(--space-3) 0',
           textAlign: 'right',
         }}
       >

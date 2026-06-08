@@ -104,8 +104,8 @@ export function CustomerListPanel({ selectedId, onSelect }: CustomerListPanelPro
         flexDirection: 'column',
         height: '100%',
         minHeight: 0,
-        padding: 16,
-        gap: 12,
+        padding: 'var(--space-4)',
+        gap: 'var(--space-3)',
         borderRight: '1px solid var(--w14-rule)',
         background: 'var(--w14-parchment-1)',
       }}
@@ -134,8 +134,8 @@ export function CustomerListPanel({ selectedId, onSelect }: CustomerListPanelPro
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 10,
-          padding: '8px 12px',
+          gap: 'var(--space-3)',
+          padding: 'var(--space-2) var(--space-3)',
           backgroundColor: 'var(--w14-parchment-2)',
           border: '1px solid var(--w14-rule)',
           borderRadius: 'var(--w14-radius-card)',
@@ -166,7 +166,7 @@ export function CustomerListPanel({ selectedId, onSelect }: CustomerListPanelPro
       </Button>
 
       {/* Filter chips */}
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
         {FILTER_CHIPS.map((chip) => (
           <FilterChip
             key={chip.value}
@@ -185,7 +185,7 @@ export function CustomerListPanel({ selectedId, onSelect }: CustomerListPanelPro
           overflowY: 'auto',
           display: 'flex',
           flexDirection: 'column',
-          gap: 8,
+          gap: 'var(--space-2)',
         }}
       >
         {q.isError ? (
@@ -254,7 +254,7 @@ const CustomerRow = memo(
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'baseline',
-            gap: 10,
+            gap: 'var(--space-3)',
           }}
         >
           <div style={{ minWidth: 0 }}>
@@ -281,7 +281,14 @@ const CustomerRow = memo(
               {row.customerNumber}
             </div>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-end',
+              gap: 'var(--space-1)',
+            }}
+          >
             <TrustChip
               kycVerified={verified}
               trust={row.trustLevel}
@@ -353,7 +360,7 @@ function FilterChip({
         fontFamily: 'var(--w14-font-display)',
         fontSize: '0.74rem',
         letterSpacing: '0.08em',
-        padding: '4px 10px',
+        padding: 'var(--space-1) var(--space-3)',
         borderRadius: 'var(--w14-radius-button)',
         cursor: 'pointer',
       }}
@@ -369,7 +376,7 @@ function EmptyHint({ hasQuery }: { hasQuery: boolean }): JSX.Element {
       <DiamondRule />
       <p
         style={{
-          margin: '8px 0 0',
+          margin: 'var(--space-2) 0 0',
           color: 'var(--w14-ink-faded)',
           fontFamily: 'var(--w14-font-display)',
           fontStyle: 'italic',

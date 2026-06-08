@@ -44,9 +44,9 @@ export function WerkstattHeader({
   const rowStyle: CSSProperties = {
     display: 'grid',
     gridTemplateColumns: 'auto 1fr auto',
-    gap: 24,
+    gap: 'var(--space-6)',
     alignItems: 'center',
-    padding: '20px 28px',
+    padding: 'var(--space-5) var(--space-7)',
   };
 
   return (

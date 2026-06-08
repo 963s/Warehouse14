@@ -58,7 +58,7 @@ export function TagebuchFeed(): JSX.Element {
               margin: 0,
               display: 'flex',
               flexDirection: 'column',
-              gap: 4,
+              gap: 'var(--space-1)',
               overflowY: 'auto',
               maxHeight: '100%',
             }}
@@ -83,7 +83,7 @@ function EmptyState(): JSX.Element {
         display: 'grid',
         placeItems: 'center',
         textAlign: 'center',
-        padding: 32,
+        padding: 'var(--space-7)',
       }}
     >
       <div>
@@ -100,7 +100,7 @@ function EmptyState(): JSX.Element {
         </p>
         <p
           style={{
-            margin: '12px 0 0',
+            margin: 'var(--space-3) 0 0',
             color: 'var(--w14-ink-faded)',
             fontSize: '0.82rem',
           }}

@@ -498,20 +498,38 @@ async function safeRelease(
 
 function VerkaufSplash(): JSX.Element {
   return (
-    <div style={{ flex: 1, display: 'grid', placeItems: 'center', padding: 32 }}>
+    <div
+      style={{
+        flex: 1,
+        display: 'grid',
+        placeItems: 'center',
+        padding: 'var(--space-7)',
+      }}
+    >
       <ParchmentCard padding="lg" style={{ width: 'min(420px, 100%)', textAlign: 'center' }}>
         <Seal size="md" tone="faded" label="2" />
         <h2
           style={{
             fontFamily: 'var(--w14-font-display)',
             fontWeight: 500,
-            margin: '14px 0 4px',
+            margin: 'var(--space-4) 0 var(--space-1)',
             fontSize: '1.4rem',
           }}
         >
           Verkauf wird vorbereitet…
         </h2>
         <DiamondRule />
+        <p
+          style={{
+            margin: 'var(--space-3) 0 0',
+            color: 'var(--w14-ink-faded)',
+            fontFamily: 'var(--w14-font-display)',
+            fontStyle: 'italic',
+            fontSize: '0.92rem',
+          }}
+        >
+          Schicht und Katalog werden geladen.
+        </p>
       </ParchmentCard>
     </div>
   );

@@ -45,7 +45,7 @@ export function UebersichtPanel({
         <ParchmentCard padding="md" style={{ textAlign: 'center' }}>
           <p
             style={{
-              margin: '0 0 12px',
+              margin: '0 0 var(--space-3)',
               color: 'var(--w14-ink-aged)',
               fontFamily: 'var(--w14-font-display)',
             }}
@@ -69,7 +69,7 @@ export function UebersichtPanel({
         style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-          gap: 16,
+          gap: 'var(--space-4)',
         }}
       >
         <StatTile
@@ -115,7 +115,7 @@ export function UebersichtPanel({
 
 function PanelHeading({ label, sublabel }: { label: string; sublabel: string }): JSX.Element {
   return (
-    <div style={{ marginBottom: 14 }}>
+    <div style={{ marginBottom: 'var(--space-4)' }}>
       <DiamondRule label={label} />
       <p
         style={{

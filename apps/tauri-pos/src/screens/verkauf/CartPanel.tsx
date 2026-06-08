@@ -122,8 +122,8 @@ export function CartPanel({
         flexDirection: 'column',
         height: '100%',
         minHeight: 0,
-        padding: 16,
-        gap: 14,
+        padding: 'var(--space-4)',
+        gap: 'var(--space-4)',
         borderLeft: '1px solid var(--w14-rule)',
         background: 'var(--w14-parchment-1)',
       }}
@@ -134,6 +134,7 @@ export function CartPanel({
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'baseline',
+          gap: 'var(--space-3)',
         }}
       >
         <h2
@@ -168,7 +169,7 @@ export function CartPanel({
           overflowY: 'auto',
           display: 'flex',
           flexDirection: 'column',
-          gap: 10,
+          gap: 'var(--space-3)',
         }}
       >
         {perLine.length === 0 ? (
@@ -208,7 +209,7 @@ export function CartPanel({
                     height: 1,
                     background: 'var(--w14-rule)',
                     opacity: 0.55,
-                    margin: '6px 0',
+                    margin: 'var(--space-2) 0',
                   }}
                 />
               </td>
@@ -225,15 +226,15 @@ export function CartPanel({
 
         <div
           style={{
-            marginTop: 14,
+            marginTop: 'var(--space-4)',
             display: 'grid',
             gridTemplateColumns: 'auto 1fr',
-            gap: 10,
+            gap: 'var(--space-3)',
           }}
         >
           <Button
             variant="ghost"
-            size="md"
+            size="lg"
             onClick={onClearCart}
             disabled={lines.length === 0 || clearingCart}
           >
@@ -285,14 +286,15 @@ function CartRow({
       style={{
         display: 'grid',
         gridTemplateColumns: 'auto 1fr auto',
-        gap: 12,
+        gap: 'var(--space-3)',
         alignItems: 'start',
         opacity: releasing ? 0.55 : 1,
+        transition: 'opacity var(--w14-dur-short) var(--w14-ease-curator)',
       }}
     >
       <RomanIndex value={index} tone="gold" />
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)', minWidth: 0 }}>
         <span
           className="w14-tabular"
           style={{
@@ -321,7 +323,7 @@ function CartRow({
           style={{
             display: 'flex',
             alignItems: 'baseline',
-            gap: 8,
+            gap: 'var(--space-2)',
           }}
         >
           <span
@@ -353,7 +355,7 @@ function CartRow({
         style={{
           display: 'flex',
           flexDirection: 'column',
-          gap: 4,
+          gap: 'var(--space-1)',
           alignItems: 'flex-end',
         }}
       >
@@ -385,7 +387,7 @@ function CartRow({
         ) : (
           <MoneyAmount valueEur={line.listPriceEur} emphasis />
         )}
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}>
           <DiscountEditor line={line} disabled={releasing} />
           {/* UX icons: universal delete action → icon-only IconButton (aria-label). */}
           <IconButton
@@ -543,10 +545,10 @@ function DiscountEditor({ line, disabled }: { line: CartLine; disabled: boolean 
       style={{
         display: 'flex',
         flexDirection: 'column',
-        gap: 6,
+        gap: 'var(--space-2)',
         alignItems: 'stretch',
-        marginTop: 6,
-        padding: 12,
+        marginTop: 'var(--space-2)',
+        padding: 'var(--space-3)',
         border: '1px solid var(--w14-rule)',
         borderRadius: 'var(--w14-radius-card)',
         background: 'var(--w14-parchment-2)',
@@ -554,7 +556,7 @@ function DiscountEditor({ line, disabled }: { line: CartLine; disabled: boolean 
       }}
     >
       {/* % (default) vs € entry */}
-      <div style={{ display: 'flex', gap: 6 }}>
+      <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
         <ModeChip
           active={mode === 'pct'}
           icon={Percent}
@@ -739,11 +741,11 @@ function InvoiceDiscount({ lines }: { lines: readonly CartLine[] }): JSX.Element
     return (
       <div
         style={{
-          marginTop: 10,
+          marginTop: 'var(--space-3)',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          gap: 8,
+          gap: 'var(--space-2)',
         }}
       >
         <button
@@ -754,7 +756,7 @@ function InvoiceDiscount({ lines }: { lines: readonly CartLine[] }): JSX.Element
             minHeight: 40,
             display: 'inline-flex',
             alignItems: 'center',
-            gap: 6,
+            gap: 'var(--space-2)',
           }}
         >
           <Icon icon={Percent} size={16} /> Rechnungsrabatt
@@ -855,21 +857,40 @@ function EmptyCart(): JSX.Element {
         display: 'grid',
         placeItems: 'center',
         textAlign: 'center',
-        padding: 24,
+        padding: 'var(--space-6)',
       }}
     >
-      <div>
+      <div style={{ maxWidth: 280 }}>
+        <span
+          aria-hidden
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 56,
+            height: 56,
+            borderRadius: '50%',
+            border: '1px solid var(--w14-rule)',
+            background: 'var(--w14-parchment-2)',
+            marginBottom: 'var(--space-3)',
+          }}
+        >
+          <Icon icon={Tag} size={24} color="var(--w14-gold)" />
+        </span>
         <DiamondRule />
         <p
           style={{
-            margin: '8px 0 0',
+            margin: 'var(--space-3) 0 0',
             color: 'var(--w14-ink-faded)',
             fontFamily: 'var(--w14-font-display)',
             fontStyle: 'italic',
             fontSize: '0.92rem',
+            lineHeight: 1.5,
           }}
         >
-          Wählen Sie ein Stück aus dem Katalog.
+          Wählen Sie ein Stück aus dem Katalog
+          <br />
+          oder scannen Sie das Etikett.
           <br />
           Es wird sofort für den Beleg reserviert.
         </p>
@@ -891,17 +912,28 @@ function TotalRow({
     <tr>
       <td
         style={{
-          padding: '6px 0',
-          color: emphasised ? 'var(--w14-ink-aged)' : 'var(--w14-ink-faded)',
+          padding: 'var(--space-1) 0',
+          color: emphasised ? 'var(--w14-ink)' : 'var(--w14-ink-faded)',
           fontFamily: 'var(--w14-font-display)',
           fontVariant: 'all-small-caps',
           letterSpacing: '0.08em',
-          fontSize: emphasised ? '0.95rem' : '0.82rem',
+          fontWeight: emphasised ? 600 : 400,
+          fontSize: emphasised ? '1.05rem' : '0.82rem',
         }}
       >
         {label}
       </td>
-      <td style={{ padding: '6px 0', textAlign: 'right' }}>{value}</td>
+      <td
+        style={{
+          padding: 'var(--space-1) 0',
+          textAlign: 'right',
+          fontSize: emphasised ? '1.15rem' : undefined,
+          fontWeight: emphasised ? 700 : undefined,
+          color: emphasised ? 'var(--w14-ink)' : undefined,
+        }}
+      >
+        {value}
+      </td>
     </tr>
   );
 }

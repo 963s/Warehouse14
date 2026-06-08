@@ -446,7 +446,7 @@ function CreateBody({
         chip={<LifecycleChip stage="Entwurf" />}
         onClose={onClose}
       />
-      <DialogBody style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <DialogBody style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
         <Field label="Bezeichnung" required>
           <Input
             value={name}
@@ -456,7 +456,12 @@ function CreateBody({
         </Field>
 
         <div
-          style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, alignItems: 'end' }}
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr auto',
+            gap: 'var(--space-2)',
+            alignItems: 'end',
+          }}
         >
           <Field label="SKU / Artikelnr." required>
             <Input
@@ -542,7 +547,12 @@ function CreateBody({
         <div>
           <span style={MINI_LABEL}>Lagerort (optional)</span>
           <div
-            style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginTop: 6 }}
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr 1fr',
+              gap: 'var(--space-3)',
+              marginTop: 'var(--space-2)',
+            }}
           >
             <Input
               mono
@@ -742,7 +752,7 @@ function FotosSection({ product }: { product: ProductDetail }): JSX.Element {
   const photos = photosQuery.data?.items ?? [];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
       <p style={{ margin: 0, fontSize: '0.86rem', color: 'var(--w14-ink-faded)' }}>
         Fotos werden in der Foto-Werkstatt aufgenommen und zugeschnitten — danach landen Sie wieder
         hier beim Produkt.
@@ -856,7 +866,7 @@ function PreisSection({
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
       <div className="w14-tabular" style={{ fontFamily: 'var(--w14-font-mono)' }}>
         Verkaufspreis: {product.listPriceEur} €
       </div>
@@ -1005,7 +1015,12 @@ function BestandSection({
         <div>
           <span style={MINI_LABEL}>Neuer Lagerort</span>
           <div
-            style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginTop: 6 }}
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr 1fr',
+              gap: 'var(--space-3)',
+              marginTop: 'var(--space-2)',
+            }}
           >
             <Input
               mono
@@ -1316,7 +1331,11 @@ function LoeschenSection({
   );
 }
 
-const TWO_COL: CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 };
+const TWO_COL: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: '1fr 1fr',
+  gap: 'var(--space-3)',
+};
 const MINI_LABEL: CSSProperties = {
   display: 'block',
   fontSize: '0.72rem',

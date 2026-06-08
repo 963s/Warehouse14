@@ -32,7 +32,7 @@ export function WerkstattFooter({
         bottom: 0,
         background: 'var(--w14-parchment-2)',
         borderTop: '1px solid var(--w14-rule)',
-        padding: '10px 28px',
+        padding: 'var(--space-3) var(--space-7)',
         display: 'grid',
         gridTemplateColumns: '1fr auto 1fr',
         alignItems: 'center',
@@ -41,7 +41,7 @@ export function WerkstattFooter({
         color: 'var(--w14-ink-aged)',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
         <RomanIndex value={counterValue || 1} tone="ink" />
         <span style={{ color: 'var(--w14-ink-faded)' }}>Heute</span>
       </div>

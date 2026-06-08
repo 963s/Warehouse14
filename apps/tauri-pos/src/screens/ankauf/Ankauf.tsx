@@ -73,8 +73,8 @@ function AnkaufFloor(): JSX.Element {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          gap: 12,
-          padding: '8px 16px',
+          gap: 'var(--space-3)',
+          padding: 'var(--space-2) var(--space-4)',
           borderBottom: '1px solid var(--w14-rule)',
           background: 'var(--w14-parchment-2)',
         }}
@@ -91,7 +91,7 @@ function AnkaufFloor(): JSX.Element {
             border: '1px solid var(--w14-gold)',
             color: 'var(--w14-gold)',
             borderRadius: 'var(--w14-radius-button)',
-            padding: '7px 14px',
+            padding: 'var(--space-2) var(--space-4)',
             fontSize: '0.8rem',
             letterSpacing: '0.06em',
             cursor: 'pointer',
@@ -121,14 +121,14 @@ function AnkaufFloor(): JSX.Element {
 
 function AnkaufSplash(): JSX.Element {
   return (
-    <div style={{ flex: 1, display: 'grid', placeItems: 'center', padding: 32 }}>
+    <div style={{ flex: 1, display: 'grid', placeItems: 'center', padding: 'var(--space-7)' }}>
       <ParchmentCard padding="lg" style={{ width: 'min(420px, 100%)', textAlign: 'center' }}>
         <Seal size="md" tone="faded" label="3" />
         <h2
           style={{
             fontFamily: 'var(--w14-font-display)',
             fontWeight: 500,
-            margin: '14px 0 4px',
+            margin: 'var(--space-4) 0 var(--space-1)',
             fontSize: '1.4rem',
           }}
         >

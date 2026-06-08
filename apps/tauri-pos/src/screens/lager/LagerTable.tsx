@@ -49,7 +49,7 @@ const ITEM_TYPE_LABEL: Record<string, string> = {
 
 const GRID_TEMPLATE =
   'minmax(120px, 1fr) minmax(0, 2fr) 110px 130px minmax(140px, 1.2fr) 110px 90px';
-const CELL_PADDING = '10px 12px';
+const CELL_PADDING = 'var(--space-3) var(--space-3)';
 
 export interface LagerTableProps {
   rows: readonly ProductListRow[];
@@ -274,17 +274,37 @@ const LagerRow = memo(
 
 function EmptyTable(): JSX.Element {
   return (
-    <div style={{ padding: 48, textAlign: 'center' }}>
-      <ParchmentCard padding="lg" style={{ display: 'inline-block', minWidth: 320 }}>
+    <div style={{ padding: 'var(--space-9)', textAlign: 'center' }}>
+      <ParchmentCard
+        padding="lg"
+        style={{
+          display: 'inline-flex',
+          flexDirection: 'column',
+          gap: 'var(--space-2)',
+          minWidth: 320,
+        }}
+      >
+        <p
+          style={{
+            margin: 0,
+            color: 'var(--w14-ink)',
+            fontFamily: 'var(--w14-font-display)',
+            fontWeight: 500,
+            fontSize: '1rem',
+          }}
+        >
+          Keine Stücke gefunden
+        </p>
         <p
           style={{
             margin: 0,
             color: 'var(--w14-ink-faded)',
             fontFamily: 'var(--w14-font-display)',
             fontStyle: 'italic',
+            fontSize: '0.88rem',
           }}
         >
-          Keine Stücke entsprechen den Filtern.
+          Passen Sie Suche oder Filter an — oder legen Sie ein neues Produkt an.
         </p>
       </ParchmentCard>
     </div>
@@ -307,7 +327,7 @@ function Footer({
   return (
     <div
       style={{
-        padding: '10px 14px',
+        padding: 'var(--space-3) var(--space-4)',
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'baseline',
