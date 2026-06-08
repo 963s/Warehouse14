@@ -6,6 +6,18 @@ and the project adheres to [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+## [0.4.7] — 2026-06-08
+
+- **Customer display updates live** (Kundenanzeige companion): the paired
+  iPad/phone now mirrors the cashier's cart in real time over the shop Wi-Fi
+  instead of refreshing once a second.
+- **Second cashier can build a cart** (Zweitkasse companion): add items, adjust
+  quantities and see the running total on a paired tablet; payment is handed
+  back to the main till (the companion never writes a fiscal record on its own).
+- **Cleaner, more accessible chrome**: clearer top-bar spacing and a more
+  legible connection badge; clickable cards and the search overlay are now
+  fully keyboard-operable.
+
 ## [0.4.6] — 2026-06-08
 
 - **Cleaner screens across the app**: consistent spacing, stronger hierarchy
