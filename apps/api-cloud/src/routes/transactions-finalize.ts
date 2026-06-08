@@ -381,10 +381,17 @@ const transactionsFinalize: FastifyPluginAsync<TransactionsFinalizeOpts> = async
           // double-sell window vs the 5-min `ebay_sync` reconciler. Read inside
           // the tx so it reflects exactly what was finalized here.
           const ebayProductIds = body.items.map((item) => item.productId);
+          // Bind the ids as ONE Postgres array-literal text param ('{uuid,uuid}')
+          // cast to uuid[]. Interpolating a JS array into drizzle's `sql` template
+          // SPREADS it into comma-separated scalar params, so `${arr}::uuid[]`
+          // casts a single scalar uuid and throws 22P02 'malformed array literal'
+          // — fatal for the (very common) single-item cart. productIds are
+          // schema-validated UUIDs, so the literal is safe and stays one bound param.
+          const ebayIdArrayLiteral = `{${ebayProductIds.join(',')}}`;
           const ebayOnlineProducts = (await tx.execute<{ id: string; sku: string }>(drizzleSql`
             SELECT id::text AS id, sku
               FROM products
-             WHERE id = ANY(${ebayProductIds}::uuid[])
+             WHERE id = ANY(${ebayIdArrayLiteral}::uuid[])
                AND ebay_state = 'ONLINE'
           `)) as unknown as Array<{ id: string; sku: string }>;
 
