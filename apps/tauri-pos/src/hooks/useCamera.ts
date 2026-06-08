@@ -91,7 +91,16 @@ export function useCamera(opts: UseCameraOptions = {}): UseCameraResult {
     async (deviceId: string | null): Promise<boolean> => {
       if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
         setPermission('unavailable');
-        setError('MediaDevices API nicht verfügbar in dieser Umgebung.');
+        // `navigator.mediaDevices` ist nur in einem sicheren Kontext (HTTPS
+        // bzw. das tauri://-Schema der installierten App) verfügbar. Im
+        // Browser-Entwicklungsmodus über http://localhost fehlt sie deshalb.
+        // In der installierten POS-App ist die Kamera aktiv — bitte ggf. die
+        // App neu starten und beim ersten Mal die Kamera-Abfrage bestätigen.
+        // Bis dahin steht der Datei-Upload rechts als Alternative bereit.
+        setError(
+          'Die Kamera ist in dieser Umgebung nicht verfügbar (kein sicherer Kontext). ' +
+            'In der installierten POS-App funktioniert die Kamera; bitte den Datei-Upload rechts verwenden.',
+        );
         return false;
       }
 

@@ -35,6 +35,14 @@
   --w14-wax-red-soft: #ef8a92;
   --w14-verdigris: #1f9d62; /* positive / price-up */
 
+  /* ─── Primary action accent ────────────────────────────────────────
+     The confident brand fill for the single most important action on a
+     surface. A deepened brass so white text clears WCAG AA. Used by the
+     ui-kit Button 'primary' variant. */
+  --w14-accent: #9a751f; /* primary fill (brass, deep enough for white text) */
+  --w14-accent-hover: #845f16; /* hover / active */
+  --w14-accent-ink: #ffffff; /* text on the accent fill */
+
   /* ─── Scrims + utility ─────────────────────────────────────────── */
   --w14-overlay: rgba(17, 21, 28, 0.45);
   --w14-focus-ring: #bf9430;
@@ -46,6 +54,23 @@
 
   /* ─── Grid + radii + shadow (softer, more breathing room) ──────── */
   --w14-unit: 4px;
+
+  /* ─── Spacing scale — every gap/pad is a step on a 4px grid ─────────
+     Coherent rhythm for padding, gap and margins across all surfaces.
+     Multiples of --w14-unit (4px). Use --space-N over magic numbers. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+  --space-9: 48px;
+  --space-10: 64px;
+  --space-11: 80px;
+  --space-12: 96px;
+
   --w14-radius-sharp: 0px; /* receipt-like surfaces */
   --w14-radius-button: 8px;
   --w14-radius-card: 12px;
@@ -75,6 +100,11 @@
   --w14-gold-soft: #e2c98c;
   --w14-wax-red: #e15862;
   --w14-verdigris: #2fb277;
+
+  /* Brighter brass on dark surfaces; keep dark ink for AA contrast. */
+  --w14-accent: #d8b14e;
+  --w14-accent-hover: #e4c069;
+  --w14-accent-ink: #1a1407;
 
   --w14-overlay: rgba(0, 0, 0, 0.6);
   --w14-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);

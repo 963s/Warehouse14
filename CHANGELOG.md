@@ -6,6 +6,16 @@ and the project adheres to [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+## [0.4.5] — 2026-06-08
+
+- **Visible primary buttons** (brass accent across every screen) + a real
+  spacing scale in the design system.
+- **In-app camera** enabled (camera usage description + entitlement) — capture
+  product photos directly (works in the installed app; first use prompts for
+  macOS camera permission).
+- **TSE signatures are persisted server-side** (GoBD): each KassenSichV
+  signature is durably stored, linked to its transaction (migration 0054).
+
 ## [0.4.4] — 2026-06-08
 
 - **Verkauf catalog shows product photo cards** (image + name + price + metal),

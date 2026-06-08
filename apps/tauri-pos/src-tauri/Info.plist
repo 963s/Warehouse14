@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  macOS Info.plist additions for Warehouse14 POS.
+
+  Tauri 2's bundler MERGES this file into the generated app bundle's
+  Info.plist (it does not replace the auto-generated one). We only declare
+  the privacy usage strings the WKWebview needs.
+
+  Why this is required for the in-app camera (Foto-Werkstatt):
+    The WKWebview only exposes `navigator.mediaDevices` / `getUserMedia`
+    once the host app declares a camera usage description. Without
+    NSCameraUsageDescription the packaged macOS build leaves
+    `navigator.mediaDevices` UNDEFINED (the exact "MediaDevices API nicht
+    verfügbar" symptom) and, if it were reached, TCC would hard-kill the
+    process. wry >= 0.37 auto-grants the WKWebview media-capture request,
+    so once this string is present the OS shows the standard one-time
+    camera-permission prompt on first use and the live viewfinder works.
+
+  The strings are shown verbatim by macOS in the permission dialog, so
+  they are written in professional German (Sie-Form) for the operator.
+-->
+<plist version="1.0">
+  <dict>
+    <key>NSCameraUsageDescription</key>
+    <string>Warehouse14 benötigt Zugriff auf die Kamera, um in der Foto-Werkstatt Produkt- und Ausweisfotos aufzunehmen.</string>
+  </dict>
+</plist>

@@ -489,12 +489,45 @@ export function BezahlenDialog({
           amountCents: totalCents,
         });
         if (finishRes.kind === 'signed') {
+          const sig = finishRes.signature;
           lastTseSignatureRef.current = {
-            signatureValue: finishRes.signature.signatureValue,
-            signatureCounter: String(finishRes.signature.signatureCounter),
-            transactionNumber: String(finishRes.signature.transactionNumber),
-            qrPayload: finishRes.signature.qrCodePayload,
+            signatureValue: sig.signatureValue,
+            signatureCounter: String(sig.signatureCounter),
+            transactionNumber: String(sig.transactionNumber),
+            qrPayload: sig.qrCodePayload,
           };
+
+          // GoBD / BSI TR-03153 — durably persist the TSE signature server-side,
+          // linked to the transaction. Previously the signature lived ONLY on the
+          // thermal receipt + the offline-queue localStorage; the fiscal record
+          // was lost if the receipt or this workstation went away. This POST is
+          // idempotent (one signature row per transaction) and best-effort: a
+          // failure NEVER blocks the sale — the operator still gets a printed,
+          // signed receipt, and the value survives in the offline queue.
+          try {
+            await transactionsApi.recordTseSignature(api, result.id, {
+              fiskalyTssId: hardwareCfg.tse.tssId,
+              fiskalyClientId: hardwareCfg.tse.clientId,
+              fiskalyTransactionId: intentionRes.intention.fiskalyTransactionId,
+              fiskalyTransactionNumber: String(sig.transactionNumber),
+              signatureValue: sig.signatureValue,
+              signatureCounter: String(sig.signatureCounter),
+              signatureAlgorithm: sig.signatureAlgorithm,
+              qrCodeData: sig.qrCodePayload,
+              tseStartTime: sig.startedAt,
+              tseEndTime: sig.finishedAt,
+            });
+          } catch (err) {
+            // Persisting is best-effort at the till — surface a soft warning so
+            // the operator knows the server-side record may need a later replay.
+            addToast({
+              tone: 'alert',
+              title: 'TSE-Signatur nicht gespeichert',
+              body: 'Verkauf gebucht — die Signatur wird nachgereicht.',
+            });
+            // eslint-disable-next-line no-console
+            console.warn('recordTseSignature failed (non-blocking)', err);
+          }
         } else if (finishRes.kind === 'queued_offline') {
           addToast({
             tone: 'alert',

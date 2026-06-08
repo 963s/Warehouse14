@@ -29,9 +29,10 @@ const SIZE_STYLE: Record<NonNullable<ButtonProps['size']>, CSSProperties> = {
 
 const VARIANT_STYLE: Record<NonNullable<ButtonProps['variant']>, CSSProperties> = {
   primary: {
-    backgroundColor: 'var(--w14-parchment-2)',
-    color: 'var(--w14-ink)',
-    border: '1px solid var(--w14-rule)',
+    backgroundColor: 'var(--w14-accent)',
+    color: 'var(--w14-accent-ink)',
+    border: '1px solid var(--w14-accent)',
+    fontWeight: 600,
   },
   destructive: {
     backgroundColor: 'transparent',
@@ -43,6 +44,19 @@ const VARIANT_STYLE: Record<NonNullable<ButtonProps['variant']>, CSSProperties> 
     color: 'var(--w14-ink-aged)',
     border: '1px solid transparent',
   },
+};
+
+/* Resting / hover box-shadow per variant — primary gets a confident lift so
+   the main action pops; the others keep the subtle gold underline swash. */
+const REST_SHADOW: Record<NonNullable<ButtonProps['variant']>, string> = {
+  primary: '0 1px 2px rgba(16, 24, 40, 0.12), 0 1px 3px rgba(16, 24, 40, 0.10)',
+  destructive: '0 1px 0 transparent',
+  ghost: '0 1px 0 transparent',
+};
+const HOVER_SHADOW: Record<NonNullable<ButtonProps['variant']>, string> = {
+  primary: '0 2px 6px rgba(16, 24, 40, 0.18), 0 1px 3px rgba(16, 24, 40, 0.12)',
+  destructive: '0 1px 0 var(--w14-gold)',
+  ghost: '0 1px 0 var(--w14-gold)',
 };
 
 export function Button({
@@ -58,10 +72,10 @@ export function Button({
 }: ButtonProps): JSX.Element {
   const merged: CSSProperties = {
     ...SIZE_STYLE[size],
-    ...VARIANT_STYLE[variant],
     borderRadius: 'var(--w14-radius-button)',
     fontFamily: 'var(--w14-font-body)',
     fontWeight: 500,
+    ...VARIANT_STYLE[variant],
     cursor: rest.disabled ? 'not-allowed' : 'pointer',
     opacity: rest.disabled ? 0.55 : 1,
     transition:
@@ -71,9 +85,9 @@ export function Button({
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 'var(--space-2)',
     width: fullWidth ? '100%' : 'auto',
-    boxShadow: '0 1px 0 transparent',
+    boxShadow: REST_SHADOW[variant],
     ...style,
   };
   return (
@@ -82,10 +96,14 @@ export function Button({
       style={merged}
       onMouseEnter={(ev) => {
         if (rest.disabled) return;
-        (ev.currentTarget as HTMLButtonElement).style.boxShadow = '0 1px 0 var(--w14-gold)';
+        const el = ev.currentTarget as HTMLButtonElement;
+        el.style.boxShadow = HOVER_SHADOW[variant];
+        if (variant === 'primary') el.style.backgroundColor = 'var(--w14-accent-hover)';
       }}
       onMouseLeave={(ev) => {
-        (ev.currentTarget as HTMLButtonElement).style.boxShadow = '0 1px 0 transparent';
+        const el = ev.currentTarget as HTMLButtonElement;
+        el.style.boxShadow = REST_SHADOW[variant];
+        if (variant === 'primary') el.style.backgroundColor = 'var(--w14-accent)';
       }}
       {...rest}
     >

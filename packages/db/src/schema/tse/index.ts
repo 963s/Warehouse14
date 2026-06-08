@@ -9,5 +9,6 @@
 
 export * from './enums.js';
 export * from './tseTransactions.js';
+export * from './tseSignatures.js';
 export * from './tseDailyArchives.js';
 export * from './tseClients.js';

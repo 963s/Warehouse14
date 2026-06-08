@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Code-signing entitlements for Warehouse14 POS (macOS).
+
+  Referenced from tauri.conf.json -> bundle.macOS.entitlements. These are
+  only enforced for a SIGNED build with the hardened runtime; an ad-hoc
+  ("-") local build still works without them, but the production /
+  notarized OTA build needs them or the camera is silently denied.
+
+    com.apple.security.device.camera
+        Grants the in-app camera (Foto-Werkstatt getUserMedia). Without
+        it, a hardened-runtime app cannot open the camera even though
+        NSCameraUsageDescription is present.
+
+    com.apple.security.cs.allow-jit
+    com.apple.security.cs.allow-unsigned-executable-memory
+        JavaScriptCore (the WKWebview engine) requires JIT / unsigned
+        executable memory under the hardened runtime.
+-->
+<plist version="1.0">
+  <dict>
+    <key>com.apple.security.device.camera</key>
+    <true/>
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+  </dict>
+</plist>

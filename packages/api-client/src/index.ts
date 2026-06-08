@@ -208,6 +208,8 @@ export {
   type FinalizeResponse,
   type PaymentMethod,
   type TransactionDirection,
+  type TseSignatureBody,
+  type TseSignatureResponse,
 } from './domains/transactions.js';
 export {
   customersApi,

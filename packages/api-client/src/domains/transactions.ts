@@ -178,12 +178,72 @@ export interface AnkaufResponse {
 }
 
 // ────────────────────────────────────────────────────────────────────────
+// TSE signature persistence — POST /api/transactions/:id/tse-signature
+//
+// GoBD / BSI TR-03153: the Fiskaly SIGN DE V2 signature must be recorded
+// server-side, linked to the transaction. The POS calls this right after a
+// successful finalize + TSE FINISH. Idempotent — one signature row per
+// transaction; a duplicate returns the existing row with `created: false`.
+// ────────────────────────────────────────────────────────────────────────
+
+export interface TseSignatureBody {
+  /** Fiskaly TSS module id (the signing TSS). */
+  fiskalyTssId: string;
+  /** Fiskaly client id (the POS register registered with the TSS). */
+  fiskalyClientId: string;
+  /** Fiskaly's TRANSACTION uuid, when the bridge surfaces it. */
+  fiskalyTransactionId?: string;
+  /** Monotonic per-TSS transaction number — decimal STRING (bigint-safe). */
+  fiskalyTransactionNumber: string;
+  /** Base64 signature value (printed on the receipt). */
+  signatureValue: string;
+  /** Monotonic per-TSS signature counter — decimal STRING (bigint-safe). */
+  signatureCounter: string;
+  /** Signature algorithm, e.g. 'ecdsa-plain-SHA256'. */
+  signatureAlgorithm?: string;
+  /** KassenSichV process classification. */
+  processType?: string;
+  /** Receipt-ready QR code payload (BSI TR-03151). */
+  qrCodeData?: string;
+  /** When the TSE TRANSACTION started (Fiskaly-reported, ISO-8601). */
+  tseStartTime?: string;
+  /** When the TSE TRANSACTION finalized / was signed (Fiskaly-reported, ISO-8601). */
+  tseEndTime?: string;
+}
+
+export interface TseSignatureResponse {
+  /** ID of the tse_signatures evidence row. */
+  id: string;
+  /** The fiscal transaction the signature belongs to. */
+  transactionId: string;
+  /** TRUE when this POST created the row; FALSE on an idempotent no-op. */
+  created: boolean;
+  /** When the signature was recorded server-side (ISO-8601). */
+  recordedAt: string;
+}
+
+// ────────────────────────────────────────────────────────────────────────
 // Methods
 // ────────────────────────────────────────────────────────────────────────
 
 export const transactionsApi = {
   finalize(client: ApiClient, body: FinalizeBody): Promise<FinalizeResponse> {
     return client.request<FinalizeResponse>('POST', '/api/transactions/finalize', body);
+  },
+  /**
+   * Durably persist the KassenSichV TSE signature for a finalized transaction
+   * (GoBD / BSI TR-03153). Idempotent — safe to retry.
+   */
+  recordTseSignature(
+    client: ApiClient,
+    transactionId: string,
+    body: TseSignatureBody,
+  ): Promise<TseSignatureResponse> {
+    return client.request<TseSignatureResponse>(
+      'POST',
+      `/api/transactions/${transactionId}/tse-signature`,
+      body,
+    );
   },
   ankauf(client: ApiClient, body: AnkaufBody): Promise<AnkaufResponse> {
     // Fiscal ownership (ADR-0044 §4): when the caller supplies an idempotency
