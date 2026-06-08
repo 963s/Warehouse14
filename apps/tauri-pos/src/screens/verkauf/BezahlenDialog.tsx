@@ -100,6 +100,7 @@ import { KaeuferPicker } from './KaeuferPicker.js';
 import { ReceiptPreview } from './ReceiptPreview.js';
 import { StornoDialog } from './StornoDialog.js';
 import { type AppliedVoucher, VoucherField } from './VoucherField.js';
+import { computeSplitPayment } from './split-payment.js';
 
 export interface BezahlenDialogProps {
   open: boolean;
@@ -144,6 +145,12 @@ export function BezahlenDialog({
   const [printing, setPrinting] = useState<boolean>(false);
   /** Applied gift voucher (Phase C2) — covers up to the full total; rest in cash. */
   const [appliedVoucher, setAppliedVoucher] = useState<AppliedVoucher | null>(null);
+  /**
+   * Split payment (Phase C1) — when on, the operator's entered cash amount is a
+   * PARTIAL cash leg and the remainder is charged to the card. Off = the cash
+   * field is full payment (the classic single-method cash path).
+   */
+  const [splitCard, setSplitCard] = useState<boolean>(false);
 
   /**
    * § 10 GwG buyer — a KYC-verified Käufer attached to a high-value (≥ €2.000)
@@ -286,6 +293,7 @@ export function BezahlenDialog({
       setPreviewData(null);
       setPrinting(false);
       setAppliedVoucher(null);
+      setSplitCard(false);
       setSelectedBuyer(null);
       setBuyerPickerOpen(false);
       inFlightRef.current = false;
@@ -340,6 +348,16 @@ export function BezahlenDialog({
   // When the voucher covers the whole sale (due === 0) no cash entry is needed.
   const enoughCash = dueCents === 0n ? true : validCash && tender.cashCovered;
   const changeCents = tender.changeCents;
+
+  // Phase C1 — cash+card split. The entered cash amount becomes a PARTIAL cash
+  // leg; the remainder rides on the card. Pure, tested math (split-payment.ts).
+  const split = useMemo(
+    () => computeSplitPayment(dueCents, cashReceivedEur),
+    [dueCents, cashReceivedEur],
+  );
+  // A split sale is ready when the math is valid (0 < cash < due, exact remainder).
+  // Card hardware must be configured (the remainder runs through the ZVT terminal).
+  const canSubmitSplit = split.valid && lines.length > 0 && !submitting;
 
   const b2bValid =
     !isB2b ||
@@ -1008,6 +1026,186 @@ export function BezahlenDialog({
     buildReceiptData,
   ]);
 
+  /**
+   * SPLIT path (Phase C1) — cash + card in ONE sale.
+   *
+   * The operator entered a PARTIAL cash leg; the remainder is authorized on the
+   * card terminal and BOTH legs are posted on the same finalize (Σ legs ===
+   * total, server-validated). This reuses `submitCard`'s double-charge guard:
+   *   • `inFlightRef` mutex — a double-click can never run two authorizations.
+   *   • `pendingAuthRef` — a SUCCESSFUL card auth whose finalize then failed is
+   *     stashed; a retry finalizes against the SAME auth (no second charge).
+   *
+   * The card leg is authorized for EXACTLY `split.cardCents` — not the gross
+   * total — so the cardholder is debited only the remainder.
+   */
+  const submitSplit = useCallback(async () => {
+    if (inFlightRef.current) return;
+    if (lines.length === 0 || finalized !== null) return;
+    if (!split.valid) return;
+    if (!hardwareCfg.zvt.ip) {
+      addToast({
+        tone: 'alert',
+        title: 'Terminal nicht konfiguriert',
+        body: 'Kartenanteil benötigt ein Terminal — Einstellungen → Hardware.',
+      });
+      return;
+    }
+    inFlightRef.current = true;
+    setSubmitting(true);
+    setError(null);
+
+    // §19.3 C-3 — reuse a prior successful authorization; never re-authorize.
+    let zvt: ZvtResult;
+    if (pendingAuthRef.current) {
+      zvt = pendingAuthRef.current;
+    } else {
+      setZvtBusy(true);
+      try {
+        zvt = await zvtClient.authorize(
+          { ip: hardwareCfg.zvt.ip, port: hardwareCfg.zvt.port },
+          Number(split.cardCents),
+        );
+      } catch (err) {
+        setError(
+          isHardwareError(err) ? describeHardwareError(err) : 'Karten-Terminal nicht erreichbar.',
+        );
+        setZvtBusy(false);
+        setSubmitting(false);
+        inFlightRef.current = false;
+        return;
+      } finally {
+        setZvtBusy(false);
+      }
+      if (!zvt.success) {
+        setError(zvt.errorMessage ?? 'Karte wurde abgelehnt.');
+        setSubmitting(false);
+        inFlightRef.current = false;
+        return;
+      }
+      pendingAuthRef.current = zvt;
+    }
+
+    // Build the legs: VOUCHER (if any) + CASH (the partial) + ZVT_CARD (remainder).
+    // The split math runs on the POST-voucher due, so voucher + cash + card === total.
+    const buildSplitPayments = (): FinalizeBody['payments'] => {
+      const payments: FinalizeBody['payments'] = [];
+      if (appliedVoucher && tender.appliedVoucherCents > 0n) {
+        payments.push({
+          paymentMethod: 'VOUCHER',
+          amountEur: fromCents(tender.appliedVoucherCents),
+          externalRef: appliedVoucher.code,
+        });
+      }
+      payments.push({ paymentMethod: 'CASH', amountEur: fromCents(split.cashCents) });
+      payments.push({
+        paymentMethod: 'ZVT_CARD' as PaymentMethod,
+        amountEur: fromCents(split.cardCents),
+        ...(zvt.authorizationCode ? { zvtReceiptNumber: zvt.authorizationCode } : {}),
+        ...(zvt.cardBrand ? { zvtCardBrand: zvt.cardBrand } : {}),
+        ...(zvt.cardPanMasked ? { zvtCardPanMasked: zvt.cardPanMasked } : {}),
+      });
+      return payments;
+    };
+
+    try {
+      const payments = buildSplitPayments();
+      const result = await finalizeWithTse(payments, 'Unbar');
+      pendingAuthRef.current = null;
+      setFinalized(result);
+      addToast({
+        tone: 'success',
+        title: 'Bar + Karte · Beleg ausgegeben',
+        body: `Bar ${fromCents(split.cashCents)} € · Karte ${fromCents(split.cardCents)} €`,
+      });
+      // Redeem the voucher against the finalized transaction (decrements balance).
+      if (appliedVoucher && tender.appliedVoucherCents > 0n) {
+        try {
+          await api.request(
+            'POST',
+            `/api/vouchers/${encodeURIComponent(appliedVoucher.code)}/redeem`,
+            {
+              transactionId: result.id,
+              amountEur: fromCents(tender.appliedVoucherCents),
+            },
+          );
+        } catch {
+          addToast({
+            tone: 'alert',
+            title: 'Gutschein-Verbuchung',
+            body: 'Beleg ausgegeben, aber der Gutschein konnte nicht verbucht werden — bitte manuell prüfen.',
+          });
+        }
+      }
+      setPreviewData(buildReceiptData(result, payments));
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: dashboardQueryKey }),
+        qc.invalidateQueries({ queryKey: ['products', 'list'] }),
+        qc.invalidateQueries({ queryKey: currentShiftQueryKey }),
+      ]);
+    } catch (err) {
+      if (err instanceof ApiOfflineQueuedError) {
+        // Card AUTHORIZED + finalize QUEUED offline — the sale is safely captured
+        // for replay (GoBD §146). Advance to the receipt phase; a Storno would
+        // wrongly reverse a booked charge.
+        pendingAuthRef.current = null;
+        const offlineLocator = `OFFLINE-${idempotencyKeyRef.current.slice(0, 8).toUpperCase()}`;
+        const dummyResult: FinalizeResponse = {
+          id: idempotencyKeyRef.current,
+          receiptLocator: offlineLocator,
+          finalizedAt: new Date(err.enqueuedAt).toISOString(),
+          ledgerEventId: -1,
+          direction: 'VERKAUF',
+          totalEur: adjustedTotals.totalEur,
+          storno: false,
+        };
+        setFinalized(dummyResult);
+        addToast({
+          tone: 'info',
+          title: 'Bar + Karte · offline gespeichert',
+          body: `Beleg wird synchronisiert (Temp-Nr. ${offlineLocator})`,
+        });
+        if (appliedVoucher && tender.appliedVoucherCents > 0n) {
+          addToast({
+            tone: 'alert',
+            title: 'Gutschein offline',
+            body: 'Gutschein wird erst beim Synchronisieren verbucht — bitte später prüfen.',
+          });
+        }
+        setPreviewData(buildReceiptData(dummyResult, buildSplitPayments()));
+        await Promise.all([
+          qc.invalidateQueries({ queryKey: dashboardQueryKey }),
+          qc.invalidateQueries({ queryKey: ['products', 'list'] }),
+          qc.invalidateQueries({ queryKey: currentShiftQueryKey }),
+        ]);
+      } else {
+        // §19.3 C-3 — card already charged but finalize failed. KEEP pendingAuthRef
+        // so a retry finalizes against the SAME auth (no second charge).
+        if (isKycRequiredError(err)) setBuyerPickerOpen(true);
+        setError(
+          `Buchung fehlgeschlagen NACH Karten-Autorisierung. Bitte erneut bestätigen — die Zahlung wird ohne erneute Belastung gebucht. Details: ${formatPaymentError(err)}`,
+        );
+      }
+    } finally {
+      setSubmitting(false);
+      inFlightRef.current = false;
+    }
+  }, [
+    addToast,
+    api,
+    appliedVoucher,
+    tender,
+    split,
+    finalized,
+    finalizeWithTse,
+    hardwareCfg.zvt.ip,
+    hardwareCfg.zvt.port,
+    lines.length,
+    qc,
+    adjustedTotals.totalEur,
+    buildReceiptData,
+  ]);
+
   const closeAfterFinalize = useCallback(() => {
     // Genuine finalize-SUCCESS close only (the result phase's "Neue Karte" CTA).
     // Cancel/Esc go through onClose directly; an error keeps the dialog open —
@@ -1028,9 +1226,13 @@ export function BezahlenDialog({
       setBuyerPickerOpen(true);
       return;
     }
-    if (paymentChoice === 'CASH') void submit();
-    else void submitCard();
-  }, [needsBuyer, paymentChoice, submit, submitCard]);
+    if (paymentChoice === 'CASH') {
+      // Phase C1 — when the split toggle is on the cash field is a PARTIAL leg
+      // and the remainder is charged to the card; otherwise it's full cash.
+      if (splitCard) void submitSplit();
+      else void submit();
+    } else void submitCard();
+  }, [needsBuyer, paymentChoice, splitCard, submit, submitCard, submitSplit]);
 
   if (!open) return null;
 
@@ -1093,6 +1295,10 @@ export function BezahlenDialog({
             cardConfigured={hardwareCfg.zvt.ip.length > 0}
             canSubmitCash={canSubmit}
             canSubmitCard={canSubmitCard}
+            splitCard={splitCard}
+            setSplitCard={setSplitCard}
+            canSubmitSplit={canSubmitSplit}
+            splitCardEur={split.valid ? fromCents(split.cardCents) : null}
             needsBuyer={needsBuyer}
             selectedBuyer={selectedBuyer}
             onOpenBuyerPicker={() => setBuyerPickerOpen(true)}
@@ -1172,6 +1378,10 @@ function PaymentInput({
   cardConfigured,
   canSubmitCash,
   canSubmitCard,
+  splitCard,
+  setSplitCard,
+  canSubmitSplit,
+  splitCardEur,
   needsBuyer,
   selectedBuyer,
   onOpenBuyerPicker,
@@ -1205,6 +1415,11 @@ function PaymentInput({
   cardConfigured: boolean;
   canSubmitCash: boolean;
   canSubmitCard: boolean;
+  splitCard: boolean;
+  setSplitCard: (v: boolean) => void;
+  canSubmitSplit: boolean;
+  /** Card remainder to show on the confirm button (null when split invalid). */
+  splitCardEur: string | null;
   needsBuyer: boolean;
   selectedBuyer: CustomerDetail | null;
   onOpenBuyerPicker: () => void;
@@ -1232,16 +1447,20 @@ function PaymentInput({
     if (needsBuyer) return 'Käufer zuordnen';
     // Explicit "this RECORDS the sale" wording — the old "Beleg ausgeben" read
     // like a print action, not a finalize.
-    if (paymentChoice === 'CASH') return 'Zahlung abschließen';
+    // Phase C1 — split routes through the card terminal for the remainder.
+    if (paymentChoice === 'CASH') return splitCard ? 'Restbetrag Karte' : 'Zahlung abschließen';
     return 'Karte autorisieren';
   })();
 
   // The button stays clickable while a buyer is required (it opens the picker);
-  // otherwise it follows the per-method finalize guard.
+  // otherwise it follows the per-method finalize guard. In split mode the cash
+  // panel uses the split guard (valid partial cash + card remainder).
   const canSubmit = needsBuyer
     ? !submitting
     : paymentChoice === 'CASH'
-      ? canSubmitCash
+      ? splitCard
+        ? canSubmitSplit
+        : canSubmitCash
       : canSubmitCard;
 
   return (
@@ -1594,6 +1813,38 @@ function PaymentInput({
               </table>
             )}
 
+            {/* Phase C1 — Bar + Karte split. When on, the entered cash is a
+                PARTIAL leg and the remainder is charged to the card terminal.
+                Hidden when no card terminal is configured (a split needs it). */}
+            {toCents(dueEur) > 0n && cardConfigured && (
+              <label
+                style={{
+                  marginTop: 14,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  cursor: submitting ? 'not-allowed' : 'pointer',
+                  fontFamily: 'var(--w14-font-display)',
+                  fontSize: '0.9rem',
+                  color: 'var(--w14-ink-aged)',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={splitCard}
+                  onChange={(e) => setSplitCard(e.target.checked)}
+                  disabled={submitting}
+                  style={{
+                    accentColor: 'var(--w14-gold)',
+                    cursor: submitting ? 'not-allowed' : 'pointer',
+                    width: 16,
+                    height: 16,
+                  }}
+                />
+                <span>Betrag aufteilen — Restbetrag per Karte</span>
+              </label>
+            )}
+
             {toCents(dueEur) > 0n && (
               <div style={{ marginTop: 16 }}>
                 <span
@@ -1606,7 +1857,7 @@ function PaymentInput({
                     color: 'var(--w14-ink-faded)',
                   }}
                 >
-                  Erhaltener Betrag (bar)
+                  {splitCard ? 'Barbetrag (Teilzahlung)' : 'Erhaltener Betrag (bar)'}
                 </span>
                 {/* On-screen keypad — feeds the SAME cashReceivedEur the keyboard did. */}
                 <div
@@ -1646,7 +1897,9 @@ function PaymentInput({
                   color: 'var(--w14-ink-aged)',
                 }}
               >
-                Rückgeld
+                {/* Split mode pays the remainder by CARD — there's no change to
+                    give back, so show the card amount instead of Rückgeld. */}
+                {splitCard ? 'Restbetrag (Karte)' : 'Rückgeld'}
               </span>
               <span
                 className="w14-tabular"
@@ -1654,10 +1907,19 @@ function PaymentInput({
                   fontFamily: 'var(--w14-font-mono)',
                   fontSize: '1.8rem',
                   fontWeight: 700,
-                  color: enoughCash ? 'var(--w14-verdigris)' : 'var(--w14-ink-faded)',
+                  color: splitCard
+                    ? splitCardEur !== null
+                      ? 'var(--w14-gold)'
+                      : 'var(--w14-ink-faded)'
+                    : enoughCash
+                      ? 'var(--w14-verdigris)'
+                      : 'var(--w14-ink-faded)',
                 }}
               >
-                <MoneyAmount valueEur={enoughCash ? changeEur : '0.00'} emphasis />
+                <MoneyAmount
+                  valueEur={splitCard ? (splitCardEur ?? '0.00') : enoughCash ? changeEur : '0.00'}
+                  emphasis
+                />
               </span>
             </div>
           </>
@@ -1735,8 +1997,10 @@ function PaymentInput({
               {' · '}
               {/* Collect the POST-voucher amount, not the gross total — when a
                   voucher covers part of the sale the cashier takes `dueEur` in
-                  cash, so the button must read that (else it overstates). */}
-              <MoneyAmount valueEur={dueEur} />
+                  cash, so the button must read that (else it overstates).
+                  In split mode the card covers the remainder, so the button
+                  reads the CARD leg (what the terminal will authorize). */}
+              <MoneyAmount valueEur={splitCard ? (splitCardEur ?? dueEur) : dueEur} />
             </>
           ) : null}
         </Button>
