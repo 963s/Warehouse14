@@ -6,6 +6,18 @@ and the project adheres to [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+## [0.4.8] — 2026-06-08
+
+- **Split payment** (Kasse): pay part of a sale in cash and the rest on the
+  card terminal — one receipt, one transaction. Appears as a "Betrag aufteilen"
+  option in the Bezahlen dialog when a card terminal is configured.
+- **Publish to eBay** (Lager): the "Bei eBay listen" button now drives a real
+  eBay listing push when an eBay account is connected (shows a clear "token
+  pending" note until then) — no fiscal data involved.
+- **Reliability hardening** (server): fixed three latent permission/typing
+  faults in the audit-ledger triggers that would have surfaced on the first
+  real cash-up, card/TSE event, or viewing-appointment booking.
+
 ## [0.4.7] — 2026-06-08
 
 - **Customer display updates live** (Kundenanzeige companion): the paired
