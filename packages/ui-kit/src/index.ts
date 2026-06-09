@@ -20,6 +20,9 @@ export { StatTile, type StatTileProps } from './components/StatTile.js';
 export { MoneyAmount, type MoneyAmountProps } from './components/MoneyAmount.js';
 export { LedgerEntry, type LedgerEntryProps } from './components/LedgerEntry.js';
 
+// Money helpers — exact integer-cents → decimal-string (no float).
+export { centsToEur } from './money.js';
+
 // Day 5 primitives — Operational Foundations
 export { PinPad, type PinPadProps } from './components/PinPad.js';
 export { Toast, type ToastProps, type ToastShape, type ToastTone } from './components/Toast.js';

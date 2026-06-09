@@ -11,7 +11,14 @@
 
 import { type CSSProperties, useCallback, useEffect, useState } from 'react';
 
-import { Button, DiamondRule, MoneyAmount, ParchmentCard, StatTile } from '@warehouse14/ui-kit';
+import {
+  Button,
+  centsToEur,
+  DiamondRule,
+  MoneyAmount,
+  ParchmentCard,
+  StatTile,
+} from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../api-context.js';
 import { useLedgerStream } from '../../bridge/use-ledger-stream.js';
@@ -81,10 +88,8 @@ function formatTime(iso: string): string {
   }).format(new Date(iso));
 }
 
-/** Cents → German euro decimal string for `<MoneyAmount valueEur>`. */
-function centsToEur(cents: number): string {
-  return (cents / 100).toFixed(2);
-}
+// Cents → dot-decimal string for `<MoneyAmount valueEur>` comes from the ui-kit
+// `centsToEur` (exact bigint split — no float / toFixed drift).
 
 // ── Data hook — fetch + 30s poll ────────────────────────────────────────────
 

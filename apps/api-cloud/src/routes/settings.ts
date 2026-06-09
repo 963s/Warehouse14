@@ -276,12 +276,20 @@ const settingsRoute: FastifyPluginAsync = async (app) => {
             : sql`to_jsonb(${value}::numeric)`;
       }
 
-      const updated = (await app.db.execute<SettingRow>(sql`
-        UPDATE system_settings
+      // Capture the prior value in the SAME statement as the write (a CTE over
+      // the pre-UPDATE row) so the audit delta is atomic — no read-then-write
+      // race where a concurrent change slips between. `old_value` is the jsonb
+      // text BEFORE this UPDATE applied.
+      const updated = (await app.db.execute<SettingRow & { old_value: string | null }>(sql`
+        WITH prev AS (
+          SELECT key, value::text AS old_value FROM system_settings WHERE key = ${key}
+        )
+        UPDATE system_settings AS s
            SET value = ${jsonbValue}, updated_at = now()
-         WHERE key = ${key}
-        RETURNING key, value::text AS value, description, updated_at
-      `)) as unknown as SettingRow[];
+          FROM prev
+         WHERE s.key = prev.key
+        RETURNING s.key, s.value::text AS value, prev.old_value, s.description, s.updated_at
+      `)) as unknown as (SettingRow & { old_value: string | null })[];
 
       const row = updated[0];
       if (!row) throw new SettingNotFoundError(`Setting "${key}" not found.`);
@@ -292,7 +300,8 @@ const settingsRoute: FastifyPluginAsync = async (app) => {
         deviceId: req.deviceId ?? null,
         ipAddress: req.ip ?? null,
         userAgent: req.headers['user-agent'] ?? null,
-        payload: { key, newValue: row.value },
+        // Record the full delta so a GwG/GoBD auditor sees what changed.
+        payload: { key, oldValue: row.old_value, newValue: row.value },
       });
 
       return reply.status(200).send({
