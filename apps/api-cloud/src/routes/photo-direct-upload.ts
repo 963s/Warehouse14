@@ -184,6 +184,23 @@ const photoDirectUploadRoute: FastifyPluginAsync<PhotoDirectUploadOpts> = async 
       //     base name), so key-based code keeps working and storage_kind routes
       //     reads to disk instead of R2.
       const row = await app.db.transaction(async (tx) => {
+        // Defense in depth for the cashier thumbnail: the FIRST photo of a
+        // product becomes its primary automatically when none exists yet.
+        // Previously every upload defaulted isPrimary=false (the client never
+        // sent the flag), and products-list joins ONLY isPrimary=true for
+        // primaryPhotoThumbUrl — so a freshly-photographed product showed a
+        // placeholder in the Verkauf/Kasse catalog instead of its image.
+        let makePrimary = body.isPrimary ?? false;
+        if (!makePrimary && body.productId != null) {
+          const existingPrimary = await tx
+            .select({ id: productPhotos.id })
+            .from(productPhotos)
+            .where(
+              drizzleSql`${productPhotos.productId} = ${body.productId} AND ${productPhotos.isPrimary} = true`,
+            )
+            .limit(1);
+          if (existingPrimary.length === 0) makePrimary = true;
+        }
         const [inserted] = await tx
           .insert(productPhotos)
           .values({
@@ -196,7 +213,7 @@ const photoDirectUploadRoute: FastifyPluginAsync<PhotoDirectUploadOpts> = async 
             width: compressed.width,
             height: compressed.height,
             productId: body.productId ?? null,
-            isPrimary: body.isPrimary ?? false,
+            isPrimary: makePrimary,
             source: 'admin_upload',
             altTextDe: body.altTextDe ?? null,
             altTextEn: body.altTextEn ?? null,
