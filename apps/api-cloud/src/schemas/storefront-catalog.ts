@@ -20,7 +20,7 @@
 
 import { type Static, Type } from '@sinclair/typebox';
 
-import { DecimalString, WeightString } from './money.js';
+import { DecimalString, FinenessString, WeightString } from './money.js';
 
 // ────────────────────────────────────────────────────────────────────────
 // Product — public catalog item
@@ -79,7 +79,7 @@ export const StorefrontProduct = Type.Object({
   // ─── Material — drives Edelmetall facet. NULL for non-metal items. ───
   metal: Type.Union([Type.String(), Type.Null()]),
   weightGrams: Type.Union([WeightString, Type.Null()]),
-  finenessDecimal: Type.Union([DecimalString, Type.Null()]),
+  finenessDecimal: Type.Union([FinenessString, Type.Null()]),
 
   /** ISO timestamp — first publication. Drives sitemap.lastmod. */
   publishedAt: Type.Union([Type.String({ format: 'date-time' }), Type.Null()]),

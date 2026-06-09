@@ -43,6 +43,19 @@ export const WeightString = Type.String({
   description: 'Weight in grams as a decimal string (NUMERIC(10,4)).',
 });
 
+/**
+ * Fineness as a decimal string. NUMERIC(5,4)-compatible (up to 4 dp).
+ *
+ * Fineness is a purity ratio (e.g. `'0.9999'` = 999.9/1000), NOT money — it
+ * carries up to 4 fractional digits, so it must NOT reuse the 2-dp money
+ * `DecimalString` (Postgres returns `'0.9000'`, which the money pattern rejects).
+ */
+export const FinenessString = Type.String({
+  pattern: '^\\d(\\.\\d{1,4})?$',
+  examples: ['0.9999', '0.9000', '0.5850', '1.0000'],
+  description: 'Metal fineness ratio as a decimal string (NUMERIC(5,4)).',
+});
+
 /** VAT rate — 0–1 inclusive, up to 4 fractional digits (e.g. `'0.1900'`). */
 export const VatRateString = Type.String({
   pattern: '^(0(\\.\\d{1,4})?|1(\\.0{1,4})?)$',
