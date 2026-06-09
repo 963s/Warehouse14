@@ -98,7 +98,10 @@ type ProductRow = {
   metal: string | null;
   weight_grams: string | null;
   fineness_decimal: string | null;
-  published_at: Date | null;
+  // Raw app.db.execute() (postgres-js) returns timestamptz columns as ISO
+  // strings, not JS Date — accept both so toStorefrontProduct never assumes
+  // .toISOString() exists (was a 500 on every catalog request with data).
+  published_at: Date | string | null;
   // Primary category (LEFT JOINed, may be NULL)
   primary_category_id: string | null;
   primary_category_slug: string | null;
@@ -166,7 +169,11 @@ function toStorefrontProduct(row: ProductRow): StorefrontProduct {
     metal: row.metal,
     weightGrams: row.metal ? row.weight_grams : null,
     finenessDecimal: row.metal ? row.fineness_decimal : null,
-    publishedAt: row.published_at ? row.published_at.toISOString() : null,
+    publishedAt: row.published_at
+      ? row.published_at instanceof Date
+        ? row.published_at.toISOString()
+        : new Date(row.published_at).toISOString()
+      : null,
     primaryCategory:
       row.primary_category_id && row.primary_category_slug && row.primary_category_name_de
         ? {
