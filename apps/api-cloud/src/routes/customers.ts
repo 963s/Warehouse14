@@ -286,8 +286,8 @@ const customersRoutes: FastifyPluginAsync = async (app) => {
           | 'COMPLETED'
           | 'EXPIRED'
           | 'FAILED',
-        kycCompletedAt: row.kyc_completed_at ? row.kyc_completed_at.toISOString() : null,
-        kycVerifiedAt: row.kyc_verified_at ? row.kyc_verified_at.toISOString() : null,
+        kycCompletedAt: row.kyc_completed_at ? new Date(row.kyc_completed_at).toISOString() : null,
+        kycVerifiedAt: row.kyc_verified_at ? new Date(row.kyc_verified_at).toISOString() : null,
         trustLevel: row.trust_level as 'NEW' | 'VERIFIED' | 'VIP' | 'SUSPICIOUS' | 'BANNED',
         sanctionsMatch: row.sanctions_match,
         pepMatch: row.pep_match,
@@ -296,7 +296,7 @@ const customersRoutes: FastifyPluginAsync = async (app) => {
         cumulativeDebtEur: row.cumulative_debt_eur,
         gwgRollingAnkauf: { windowDays: thresholds.windowDays, priorAnkaufEur },
         retentionUntil: row.retention_until,
-        createdAt: row.created_at.toISOString(),
+        createdAt: new Date(row.created_at).toISOString(),
       });
     },
   );

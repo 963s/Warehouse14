@@ -76,7 +76,7 @@ function normalizeRow(r: LedgerRawRow): LedgerRow {
     actor_user_id: r.actor_user_id,
     device_id: r.device_id,
     payload: r.payload,
-    created_at: r.created_at.toISOString(),
+    created_at: new Date(r.created_at).toISOString(),
   };
 }
 

@@ -98,8 +98,8 @@ function rowToNode(row: FlatCategoryRow): CategoryNodeShape {
     hiddenFromStorefront: row.hidden_from_storefront,
     productCount: Number(row.product_count),
     children: [],
-    createdAt: row.created_at.toISOString(),
-    updatedAt: row.updated_at.toISOString(),
+    createdAt: new Date(row.created_at).toISOString(),
+    updatedAt: new Date(row.updated_at).toISOString(),
   };
 }
 

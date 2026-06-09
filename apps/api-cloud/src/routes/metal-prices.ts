@@ -624,7 +624,7 @@ const metalPricesRoutes: FastifyPluginAsync = async (app) => {
         suggestedAskPriceEur: suggested,
         listPriceEur: row.list_price_eur,
         marginOverScrapEur: marginOverScrap,
-        pricedAt: row.priced_at ? row.priced_at.toISOString() : null,
+        pricedAt: row.priced_at ? new Date(row.priced_at).toISOString() : null,
       });
     },
   );
