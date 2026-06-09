@@ -28,8 +28,15 @@
  *                               cash-register id/serial, gross/net day totals).
  *    • bon_kopf.csv           — receipt headers (BON_ID, BON_NR, BON_TYP,
  *                               timestamp, gross/net totals, cashier, customer).
- *    • bon_pos.csv            — receipt lines (article text, quantity, GV_TYP).
- *    • bon_pos_preise.csv     — per-line gross/net/VAT price + USt-Schlüssel.
+ *    • bon_pos.csv            — receipt lines (article text, MENGE, GV_TYP).
+ *                               MENGE is ALWAYS 1.000: each line is ONE unique
+ *                               inventory item (4-state product machine, atomic
+ *                               single-item reservation) — no stock-count column
+ *                               exists and no path multiplies a quantity into a
+ *                               line total, so qty>1 per line is unreachable.
+ *    • bon_pos_preise.csv     — per-line PRICE/quantity breakdown: ANZAHL,
+ *                               EINZEL_BRUTTO, position BRUTTO/NETTO/USt. NO
+ *                               USt-Schlüssel (distinct from bon_pos_ust).
  *    • bon_pos_ust.csv        — per-line VAT breakdown (USt-Schlüssel, brutto,
  *                               netto, ust).
  *    • bon_ust.csv            — per-receipt VAT totals by USt-Schlüssel.
@@ -330,6 +337,21 @@ function buildBonPos(input: DsfinvkBundleInput): string {
   return csv(header, rows);
 }
 
+/**
+ * bon_pos_preise.csv — per-position PRICE/quantity breakdown (DFKA taxonomy).
+ *
+ * Distinct from bon_pos_ust.csv: this file carries the position's PRICE detail —
+ * quantity (ANZAHL), unit gross (EINZEL_BRUTTO), and the position gross/net/tax
+ * (BRUTTO/NETTO/POS_UST). It does NOT carry the USt-Schlüssel (that lives in
+ * bon_pos_ust). In our model every line is a unique inventory item → ANZAHL is
+ * always 1.000 and EINZEL_BRUTTO == BRUTTO (no per-unit divide, no float).
+ *
+ * NOTE for the Prüftool validation: the exact DFKA column NAMES for the price
+ * file vary across taxonomy minor versions (BRUTTO vs POS_BRUTTO, EINZEL_BRUTTO
+ * vs STK_BR, etc.). The SHAPE here is correct (price + quantity, no USt key);
+ * the precise header tokens must be reconciled against the official DSFinV-K
+ * Prüftool before a real Betriebsprüfung — flagged, not faked.
+ */
 function buildBonPosPreise(input: DsfinvkBundleInput): string {
   const z = zNr(input.businessDay);
   const header = [
@@ -337,20 +359,25 @@ function buildBonPosPreise(input: DsfinvkBundleInput): string {
     'Z_NR',
     'BON_ID',
     'POS_ZEILE',
-    'UST_SCHLUESSEL',
-    'POS_BRUTTO',
-    'POS_NETTO',
+    'ANZAHL',
+    'EINZEL_BRUTTO',
+    'BRUTTO',
+    'NETTO',
     'POS_UST',
   ];
   const rows: string[][] = [];
   for (const r of input.receipts) {
     for (const line of r.lines) {
+      // ANZAHL = quantity (always 1.000 — unique-item model). EINZEL_BRUTTO is
+      // the per-unit gross; with quantity 1 it equals the position gross, so we
+      // reuse the line gross verbatim (no division, no float).
       rows.push([
         input.cashRegister.id,
         z,
         r.receiptLocator,
         String(line.lineNumber),
-        ustKey(line.appliedTaxTreatmentCode),
+        qty(line.quantity),
+        dec(line.lineTotalEur),
         dec(line.lineTotalEur),
         dec(line.lineSubtotalEur),
         dec(line.lineVatEur),

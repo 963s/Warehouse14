@@ -226,11 +226,38 @@ function centsToEur(c: bigint): string {
   return `${sign}${abs / 100n}.${String(abs % 100n).padStart(2, '0')}`;
 }
 
+/** "-595.00" → "595.00"; "595.00" → "595.00" (drop the sign, keep magnitude). */
+function absEur(eur: string): string {
+  const t = eur.trim();
+  return t.startsWith('-') ? t.slice(1) : t;
+}
+
+/**
+ * STORNO polarity. A storno is a NEW transaction row with a NEGATIVE total_eur
+ * (DB CHECK `transactions_sign_discipline`: total_eur <= 0 on a storno). DATEV's
+ * `Umsatz` field must be a POSITIVE magnitude; the direction is carried ENTIRELY
+ * by the Soll/Haben (S/H) flag. So a storno REVERSES the original posting: it
+ * keeps the same Konto/Gegenkonto/BU but flips S↔H and emits the absolute amount
+ * — a clean reversing line a Prüfer accepts. (A negative Umsatz with `S` is non-
+ * conforming.) `storno_of_transaction_id` is not on the lean TxRow the exporter
+ * reads, so the negative total is the storno signal (set on storno rows only).
+ */
+function isStornoRow(totalEur: string): boolean {
+  return totalEur.trim().startsWith('-');
+}
+
+/** The booking-side for an original (S) flipped to (H) on a storno reversal. */
+function debitCreditFor(originalSide: 'S' | 'H', storno: boolean): 'S' | 'H' {
+  if (!storno) return originalSide;
+  return originalSide === 'S' ? 'H' : 'S';
+}
+
 /**
  * Map one transaction to a DATEV booking line.
  * VERKAUF: Kasse (Soll) an the per-treatment Erlöskonto, with the matching
- * BU-Schlüssel. ANKAUF: Wareneingang an Kasse (no output VAT). Exported for
- * the fiscal-mapping unit test.
+ * BU-Schlüssel. ANKAUF: Wareneingang an Kasse (no output VAT). A STORNO row
+ * (negative total) reverses the original: same accounts/BU, flipped S→H, and a
+ * POSITIVE Umsatz. Exported for the fiscal-mapping unit test.
  */
 export function toDatevRow(tx: TxRow): DATEVRow {
   const isAnkauf = tx.direction === 'ANKAUF';
@@ -249,16 +276,20 @@ export function toDatevRow(tx: TxRow): DATEVRow {
     contraAccount = m.konto;
     taxKey = m.bu;
   }
+  const storno = isStornoRow(tx.total_eur);
   return {
-    amountEur: tx.total_eur,
-    debitCredit: 'S', // Umsatz posts to the debit (Soll) side of Konto.
+    // DATEV Umsatz is always a positive magnitude; the storno's negativity is
+    // expressed by the flipped Soll/Haben below, not by a minus sign.
+    amountEur: absEur(tx.total_eur),
+    // Originals post to the debit (Soll) side of Konto; a storno reverses to H.
+    debitCredit: debitCreditFor('S', storno),
     account,
     contraAccount,
     // Omit the optional BU-Schlüssel entirely when empty (exactOptionalPropertyTypes).
     ...(taxKey === '' ? {} : { taxKey }),
     date: new Date(tx.finalized_at).toISOString().slice(0, 10), // YYYY-MM-DD → DDMM in exporter
     reference: tx.receipt_locator,
-    bookingText: `${tx.direction} ${tx.receipt_locator} (${tx.tax_treatment_code})`,
+    bookingText: `${storno ? 'STORNO ' : ''}${tx.direction} ${tx.receipt_locator} (${tx.tax_treatment_code})`,
   };
 }
 
@@ -307,20 +338,26 @@ export function toDatevRows(tx: TxRow, items: DatevItemRow[]): DATEVRow[] {
   // path; the transaction-level total already equals the single group sum.)
   if (order.length === 1) return [toDatevRow(tx)];
 
+  // `base` already carries the storno-correct S/H polarity (toDatevRow flips it
+  // to H on a negative total). Each split leg must likewise emit a POSITIVE
+  // Umsatz magnitude — storno line totals are negative, so take the absolute
+  // value of the group sum. The S/H flag carries the reversal direction.
   const base = toDatevRow(tx); // shared date / reference / Konto / debitCredit.
+  const storno = isStornoRow(tx.total_eur);
   const groupCount = order.length;
   return order.map((code, idx) => {
     const m = ERLOES_BY_TREATMENT[code] ?? { konto: KONTO_ERLOESE_19, bu: '' };
-    const amountEur = centsToEur(sumByTreatment.get(code) ?? 0n);
+    const sumCents = sumByTreatment.get(code) ?? 0n;
+    const magnitudeCents = sumCents < 0n ? -sumCents : sumCents;
     return {
-      amountEur,
+      amountEur: centsToEur(magnitudeCents),
       debitCredit: base.debitCredit,
       account: base.account,
       contraAccount: m.konto,
       ...(m.bu === '' ? {} : { taxKey: m.bu }),
       date: base.date,
       reference: base.reference,
-      bookingText: `${tx.direction} ${tx.receipt_locator} (${code} ${idx + 1}/${groupCount})`,
+      bookingText: `${storno ? 'STORNO ' : ''}${tx.direction} ${tx.receipt_locator} (${code} ${idx + 1}/${groupCount})`,
     };
   });
 }
@@ -685,7 +722,16 @@ const closingExportRoute: FastifyPluginAsync = async (app) => {
         const lines = (itemsByTx.get(t.id) ?? []).map((it, idx) => ({
           lineNumber: idx + 1,
           productName: it.product_name,
-          quantity: '1.000', // qty is not stored per line today → spec default 1.
+          // MENGE/ANZAHL is ALWAYS 1.000 by the data model — not a placeholder.
+          // Each transaction_items row references ONE unique inventory product_id
+          // (gold/coins/antiques: 4-state DRAFT→AVAILABLE→RESERVED→SOLD machine,
+          // atomic single-item reservation; a product can be sold exactly once).
+          // There is no stock-count column anywhere and no code path multiplies a
+          // quantity into a line total (the storefront cart's `quantity` field is
+          // never folded into line_total_eur and a unique item cannot be reserved
+          // twice). So qty>1 per line is unreachable → '1.000' is the correct,
+          // truthful value, NOT a deferred default. (No quantity column added.)
+          quantity: '1.000',
           appliedTaxTreatmentCode: it.applied_tax_treatment_code,
           appliedVatRate: it.applied_vat_rate,
           lineSubtotalEur: it.line_subtotal_eur,

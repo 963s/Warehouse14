@@ -131,6 +131,51 @@ describe('buildDsfinvkBundle — column headers (DFKA taxonomy)', () => {
     expect(header).toContain('POS_NETTO');
     expect(header).toContain('POS_UST');
   });
+
+  it('bon_pos_preise.csv carries the price/quantity breakdown (NOT the VAT-key file)', () => {
+    const csv = fileByName(buildDsfinvkBundle(sample()), 'bon_pos_preise.csv');
+    const header = csv.split('\r\n')[0] ?? '';
+    // Per the DFKA taxonomy bonpos_preise is the per-position PRICE detail:
+    // gross/net/tax of the position + quantity. It does NOT carry UST_SCHLUESSEL
+    // (that lives in bon_pos_ust).
+    expect(header).toContain('ANZAHL'); // quantity of the position
+    expect(header).toContain('BRUTTO'); // position gross
+    expect(header).toContain('NETTO'); // position net
+    expect(header).not.toContain('UST_SCHLUESSEL');
+  });
+});
+
+describe('buildDsfinvkBundle — bon_pos_preise ≠ bon_pos_ust (DFKA differentiation)', () => {
+  it('the two files have DIFFERENT headers (not byte-identical duplicates)', () => {
+    const files = buildDsfinvkBundle(sample());
+    const preise = fileByName(files, 'bon_pos_preise.csv').split('\r\n')[0] ?? '';
+    const ust = fileByName(files, 'bon_pos_ust.csv').split('\r\n')[0] ?? '';
+    expect(preise).not.toBe(ust);
+  });
+
+  it('bon_pos_ust still carries the USt-Schlüssel; bon_pos_preise does not', () => {
+    const files = buildDsfinvkBundle(sample());
+    const preiseHeader = fileByName(files, 'bon_pos_preise.csv').split('\r\n')[0] ?? '';
+    const ustHeader = fileByName(files, 'bon_pos_ust.csv').split('\r\n')[0] ?? '';
+    expect(ustHeader).toContain('UST_SCHLUESSEL');
+    expect(preiseHeader).not.toContain('UST_SCHLUESSEL');
+  });
+
+  it('bon_pos_preise carries the quantity (ANZAHL) column the VAT file omits', () => {
+    const files = buildDsfinvkBundle(sample());
+    const preiseHeader = fileByName(files, 'bon_pos_preise.csv').split('\r\n')[0] ?? '';
+    const ustHeader = fileByName(files, 'bon_pos_ust.csv').split('\r\n')[0] ?? '';
+    expect(preiseHeader).toContain('ANZAHL');
+    expect(ustHeader).not.toContain('ANZAHL');
+  });
+
+  it('the 19% sale position appears with its gross/net/tax in bon_pos_preise', () => {
+    const csv = fileByName(buildDsfinvkBundle(sample()), 'bon_pos_preise.csv');
+    expect(csv).toContain('RCP-2026-000101'); // BON_ID
+    expect(csv).toContain('595.00'); // position gross
+    expect(csv).toContain('500.00'); // position net
+    expect(csv).toContain('95.00'); // position tax
+  });
 });
 
 describe('buildDsfinvkBundle — VAT treatment → USt-Schlüssel mapping', () => {

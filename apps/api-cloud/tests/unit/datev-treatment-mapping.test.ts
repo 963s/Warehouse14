@@ -187,3 +187,91 @@ describe('DATEV MIXED-treatment per-line split', () => {
     expect(rows[0]?.account).toBe('3200');
   });
 });
+
+/**
+ * STORNO polarity. A storno is a NEW transaction row whose `storno_of_…` FK is
+ * set and whose money columns are NEGATIVE (DB CHECK `transactions_sign_
+ * discipline`: total_eur <= 0 on a storno row). DATEV's `Umsatz` field MUST be
+ * a POSITIVE magnitude — the direction is expressed ENTIRELY by the Soll/Haben
+ * (S/H) flag, NOT by a minus sign. So a storno reverses the original posting:
+ * the original VERKAUF books Kasse(S) an Erlöse; its storno must flip to Haben
+ * (H) on Konto Kasse with the SAME positive magnitude — a clean reversing line.
+ * Emitting a negative `Umsatz` with `S` (the pre-fix behaviour) is non-
+ * conforming and a Prüfer would reject it.
+ *
+ * The storno_of_transaction_id is not on the lean TxRow the exporter reads, so
+ * the storno signal is the negative total_eur itself (set on storno rows only).
+ */
+describe('DATEV storno polarity (negative total → positive Umsatz, flipped S/H)', () => {
+  const stornoOfSale = {
+    total_eur: '-595.00', // storno row: negative per the DB sign-discipline CHECK
+    direction: 'VERKAUF',
+    tax_treatment_code: 'STANDARD_19',
+    receipt_locator: 'RCP-2026-000200',
+    finalized_at: new Date('2026-06-08T12:00:00Z'),
+  };
+
+  it('a VERKAUF storno emits a POSITIVE Umsatz (no minus sign carried into DATEV)', () => {
+    const r = toDatevRow(stornoOfSale);
+    expect(r.amountEur).toBe('595.00');
+    expect(r.amountEur.startsWith('-')).toBe(false);
+  });
+
+  it('a VERKAUF storno flips Soll/Haben to H (reverses the original S posting)', () => {
+    const r = toDatevRow(stornoOfSale);
+    expect(r.debitCredit).toBe('H');
+  });
+
+  it('a normal (positive) VERKAUF still posts S — non-storno behaviour unchanged', () => {
+    const r = toDatevRow({ ...baseTx, tax_treatment_code: 'STANDARD_19' });
+    expect(r.debitCredit).toBe('S');
+    expect(r.amountEur).toBe('780.00');
+  });
+
+  it('the storno still routes the correct per-treatment Gegenkonto + BU key', () => {
+    const r = toDatevRow(stornoOfSale);
+    // Same SKR03 routing as the original sale — only the polarity reverses.
+    expect(r.contraAccount).toBe('8400');
+    expect(r.taxKey).toBe('3');
+    expect(r.account).toBe('1000');
+  });
+
+  it('an ANKAUF storno also flips to positive Umsatz on the H side', () => {
+    const r = toDatevRow({
+      total_eur: '-300.00',
+      direction: 'ANKAUF',
+      tax_treatment_code: 'MARGIN_25A',
+      receipt_locator: 'RCP-2026-000201',
+      finalized_at: new Date('2026-06-08T12:05:00Z'),
+    });
+    expect(r.amountEur).toBe('300.00');
+    expect(r.debitCredit).toBe('H'); // reverses the Wareneingang(S) original
+    expect(r.account).toBe('3200');
+    expect(r.contraAccount).toBe('1000');
+  });
+
+  it('a MIXED storno splits per treatment, each leg positive on the H side', () => {
+    const tx = {
+      total_eur: '-300.00',
+      direction: 'VERKAUF',
+      tax_treatment_code: 'MIXED',
+      receipt_locator: 'RCP-2026-000202',
+      finalized_at: new Date('2026-06-08T12:10:00Z'),
+    };
+    // Storno line totals are negative too (mirror of the original lines).
+    const items: DatevItemRow[] = [
+      { applied_tax_treatment_code: 'MARGIN_25A', line_total_eur: '-200.00' },
+      { applied_tax_treatment_code: 'STANDARD_19', line_total_eur: '-100.00' },
+    ];
+    const rows = toDatevRows(tx, items);
+    expect(rows).toHaveLength(2);
+    for (const r of rows) {
+      expect(r.debitCredit).toBe('H');
+      expect(r.amountEur.startsWith('-')).toBe(false);
+    }
+    const margin = rows.find((r) => r.contraAccount === '8200');
+    const standard = rows.find((r) => r.contraAccount === '8400');
+    expect(margin?.amountEur).toBe('200.00');
+    expect(standard?.amountEur).toBe('100.00');
+  });
+});
