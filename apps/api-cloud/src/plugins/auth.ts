@@ -57,6 +57,11 @@ const authPlugin: FastifyPluginAsync<AuthPluginOpts> = async (app, opts) => {
   // Pool. The pg Pool is the smallest dependency add and is what better-auth's
   // current docs recommend.
   const auth = betterAuth({
+    // Explicit signing/encryption secret. Without this, better-auth 1.3.x falls
+    // back to the PUBLIC default "better-auth-secret-123456789" (its docs say so)
+    // → forgeable staff session tokens. env.AUTH_SECRET has no default, so boot
+    // already failed if it was unset (see config/env.ts).
+    secret: opts.env.AUTH_SECRET,
     database: new Pool({ connectionString: opts.env.DATABASE_URL }),
     emailAndPassword: {
       enabled: true,

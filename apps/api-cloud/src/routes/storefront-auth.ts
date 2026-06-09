@@ -73,18 +73,26 @@ function newSessionToken(): string {
   return randomBytes(32).toString('hex');
 }
 
-/** Attach the cookie that the storefront-session plugin will read on later requests. */
-function setShopperCookie(
-  reply: FastifyReply,
-  token: string,
-  expiresAt: Date,
-  env: { NODE_ENV: string },
-): void {
+/**
+ * Attach the cookie that the storefront-session plugin will read on later
+ * requests.
+ *
+ * `secure` MUST track the REAL runtime environment. Previously both call sites
+ * passed a hardcoded `{ NODE_ENV: 'development' }`, so the shopper session
+ * cookie was NEVER marked Secure — even in production it travelled over any
+ * plaintext hop and was exposed to network sniffing / downgrade attacks. We now
+ * read `process.env.NODE_ENV` directly (this route is registered without an
+ * `env` opt, so there is no typed env to thread through), which makes the cookie
+ * Secure + correctly scoped in production while staying non-Secure in dev/test
+ * so local HTTP and the integration harness keep working.
+ */
+function setShopperCookie(reply: FastifyReply, token: string, expiresAt: Date): void {
+  const isProduction = process.env.NODE_ENV === 'production';
   reply.setCookie(STOREFRONT_COOKIE_NAME, token, {
     path: '/',
     httpOnly: true,
     sameSite: 'lax',
-    secure: env.NODE_ENV === 'production',
+    secure: isProduction,
     expires: expiresAt,
   });
 }
@@ -183,7 +191,7 @@ const storefrontAuthRoutes: FastifyPluginAsync = async (app) => {
         return { shopperId: s.id, customerId: c.id, token, expiresAt };
       });
 
-      setShopperCookie(reply, result.token, result.expiresAt, { NODE_ENV: 'development' });
+      setShopperCookie(reply, result.token, result.expiresAt);
       return reply.status(201).send({
         shopperId: result.shopperId,
         customerId: result.customerId,
@@ -291,7 +299,7 @@ const storefrontAuthRoutes: FastifyPluginAsync = async (app) => {
       });
 
       if (outcome.kind === 'success') {
-        setShopperCookie(reply, outcome.token, outcome.expiresAt, { NODE_ENV: 'development' });
+        setShopperCookie(reply, outcome.token, outcome.expiresAt);
         return reply.status(200).send({
           shopperId: outcome.shopperId,
           emailVerified: outcome.emailVerified,

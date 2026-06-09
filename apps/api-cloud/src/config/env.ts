@@ -46,6 +46,18 @@ const EnvSchema = Type.Object({
     description:
       'Key for pgcrypto pgp_sym_encrypt — injected per request via SET LOCAL warehouse14.pii_key',
   }),
+  AUTH_SECRET: Type.String({
+    // NO default ON PURPOSE — boot MUST fail if absent. better-auth falls back
+    // to the public placeholder secret "better-auth-secret-123456789" when no
+    // `secret:` (and no BETTER_AUTH_SECRET / AUTH_SECRET env var) is supplied,
+    // which would make staff session tokens forgeable by anyone who knows the
+    // library default. Requiring it here — and passing it explicitly to
+    // betterAuth({ secret }) — closes that hole. Generate with
+    // `openssl rand -base64 32`. Set it in /opt/warehouse14/.env before deploy.
+    minLength: 32,
+    description:
+      'Mandatory better-auth signing/encryption secret (≥32 chars, no default). Boot fails if unset.',
+  }),
   TRUSTED_ORIGINS: Type.String({
     default: '',
     description: 'Comma-separated list of allowed origins for CORS + better-auth',

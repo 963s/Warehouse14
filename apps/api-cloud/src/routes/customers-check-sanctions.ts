@@ -113,7 +113,40 @@ const customersCheckSanctionsRoute: FastifyPluginAsync<CheckSanctionsRouteOpts> 
         },
       );
 
-      // 3. Audit — outcome only, NEVER the name (GoBD + DSGVO).
+      // 3. Persist the screening OUTCOME onto the customer row so the AML wall
+      //    is actually armed. Migration 0013's BEFORE INSERT trigger
+      //    `transactions_validate_sanctions` hard-blocks any transaction for a
+      //    customer with `sanctions_match = TRUE` — but it reads a column that
+      //    nothing ever wrote, so it was ALWAYS FALSE and the gate was dead.
+      //    On a real hit we flip the flag (the trigger then refuses the sale).
+      //    We never CLEAR an existing flag here: a positive screen latches until
+      //    an Owner clears it deliberately (ADR-0018 §6). `sanctions_screened_at`
+      //    records when the screen ran regardless of outcome (audit trail).
+      //
+      //    The UPDATE runs as warehouse14_app, which migration 0059 grants
+      //    UPDATE(sanctions_match, sanctions_screened_at) on customers. We do NOT
+      //    write inside withPii — this touches only non-PII compliance columns.
+      //    Skipped/api-unavailable screens never set the flag (fail-safe).
+      if (!result.skipped && !result.apiUnavailable) {
+        if (result.matched) {
+          await app.db.execute(sql`
+            UPDATE customers
+               SET sanctions_match = TRUE,
+                   sanctions_screened_at = now()
+             WHERE id = ${id}
+               AND soft_deleted_at IS NULL
+          `);
+        } else {
+          await app.db.execute(sql`
+            UPDATE customers
+               SET sanctions_screened_at = now()
+             WHERE id = ${id}
+               AND soft_deleted_at IS NULL
+          `);
+        }
+      }
+
+      // 4. Audit — outcome only, NEVER the name (GoBD + DSGVO).
       await app.db.insert(auditLog).values({
         eventType: 'customer.sanctions_checked',
         actorUserId: req.actor.id,
