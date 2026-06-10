@@ -17,6 +17,7 @@ const quickLinks = [
   { label: "Antiquitäten", href: "/kategorien/antiquitaeten" },
   { label: "Uhren", href: "/kategorien/uhren" },
   { label: "Goldankauf", href: "/goldankauf" },
+  { label: "Termin vereinbaren", href: "/termin" },
 ];
 
 export function SiteHeader({ solid = false }: { solid?: boolean }) {

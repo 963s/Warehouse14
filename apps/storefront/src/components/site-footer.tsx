@@ -7,11 +7,26 @@ import {
 const cols = [
   {
     title: "Kollektion",
-    links: ["Goldmünzen", "Silbermünzen", "Goldbarren", "Antiquitäten", "Schmuck", "Briefmarken"],
+    links: [
+      { label: "Goldmünzen", href: "#" },
+      { label: "Silbermünzen", href: "#" },
+      { label: "Goldbarren", href: "#" },
+      { label: "Antiquitäten", href: "#" },
+      { label: "Schmuck", href: "#" },
+      { label: "Briefmarken", href: "#" },
+    ],
   },
   {
     title: "Service",
-    links: ["Goldankauf", "Bewertung & Schätzung", "Versand & Rückgabe", "Echtheitsgarantie", "Kontakt", "FAQ"],
+    links: [
+      { label: "Termin vereinbaren", href: "/termin" },
+      { label: "Goldankauf", href: "/goldankauf" },
+      { label: "Bewertung & Schätzung", href: "#" },
+      { label: "Versand & Rückgabe", href: "#" },
+      { label: "Echtheitsgarantie", href: "#" },
+      { label: "Kontakt", href: "/kontakt" },
+      { label: "FAQ", href: "#" },
+    ],
   },
 ];
 
@@ -66,9 +81,9 @@ export function SiteFooter() {
               <h4 className="eyebrow mb-w14-2 text-white">{c.title}</h4>
               <ul className="text-sm">
                 {c.links.map((l) => (
-                  <li key={l}>
-                    <a href="#" className="inline-flex min-h-[44px] items-center text-white/55 transition-colors duration-fast ease-hover hover:text-gold">
-                      {l}
+                  <li key={l.label}>
+                    <a href={l.href} className="inline-flex min-h-[44px] items-center text-white/55 transition-colors duration-fast ease-hover hover:text-gold">
+                      {l.label}
                     </a>
                   </li>
                 ))}

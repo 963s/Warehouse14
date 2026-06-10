@@ -166,6 +166,40 @@ export interface ShopIdentity {
   email: string;
 }
 
+// ── Appointments (public booking) ────────────────────────────────────────────
+
+/** Mirrors the backend `appointment_type` PG enum (public-bookable subset). */
+export type AppointmentType = "VIEWING" | "BUYBACK_EVAL" | "CONSULTATION" | "PICKUP";
+
+export interface AppointmentSlot {
+  startsAt: ISO;
+  available: boolean;
+}
+
+/** GET /api/storefront/appointments/slots?date=YYYY-MM-DD&type=… */
+export interface AppointmentSlotsResult {
+  date: string; // "YYYY-MM-DD" echo of the request
+  slots: AppointmentSlot[];
+}
+
+/** POST /api/storefront/appointments/book request body. */
+export interface AppointmentBookingRequest {
+  type: AppointmentType;
+  startsAt: ISO;
+  name: string; // 2..120
+  phone: string; // 6..32
+  email?: string;
+  note?: string; // 0..500
+}
+
+/** 201 response — deliberately NO PII echo beyond the booked slot. */
+export interface AppointmentBookingResult {
+  id: string;
+  type: AppointmentType;
+  startsAt: ISO;
+  status: "SCHEDULED";
+}
+
 export interface ProductQuery {
   limit?: number;
   offset?: number;
@@ -259,6 +293,10 @@ export interface StorefrontData {
     email: string;
     message: string;
   }): Promise<{ ok: true }>;
+
+  // appointments - public booking (server-side rate-limited)
+  getAppointmentSlots(date: string, type: AppointmentType): Promise<AppointmentSlotsResult>;
+  bookAppointment(b: AppointmentBookingRequest): Promise<AppointmentBookingResult>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -872,6 +910,45 @@ function recalcCart(cart: Cart): Cart {
   return { ...cart, totalEur: total.toFixed(2) };
 }
 
+// ── Placeholder appointment slots (deterministic) ────────────────────────────
+
+/**
+ * Mirror of the backend default in system_settings 'appointments.business_hours':
+ * {"mo-fr":["10:00","18:00"],"sa":["10:00","14:00"],"so":null} — 30-min slots.
+ */
+function placeholderBusinessHours(date: string): [string, string] | null {
+  const day = new Date(`${date}T12:00:00`).getDay(); // 0 = Sunday
+  if (day === 0) return null;
+  if (day === 6) return ["10:00", "14:00"];
+  return ["10:00", "18:00"];
+}
+
+/** Tiny deterministic hash so placeholder availability is stable per slot. */
+function slotSeed(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 9973;
+  return h;
+}
+
+function placeholderSlots(date: string, type: AppointmentType): AppointmentSlot[] {
+  const hours = placeholderBusinessHours(date);
+  if (!hours) return [];
+  const [oH, oM] = hours[0].split(":").map(Number);
+  const [cH, cM] = hours[1].split(":").map(Number);
+  const dayStart = new Date(`${date}T00:00:00`);
+  const slots: AppointmentSlot[] = [];
+  for (let m = oH * 60 + oM; m + 30 <= cH * 60 + cM; m += 30) {
+    const d = new Date(dayStart);
+    d.setMinutes(m);
+    slots.push({
+      startsAt: d.toISOString(),
+      // ~1 in 4 slots reads "vergeben" so the unavailable state is exercised.
+      available: slotSeed(`${date}|${type}|${m}`) % 4 !== 0,
+    });
+  }
+  return slots;
+}
+
 // ── Placeholder implementation ────────────────────────────────────────────────
 
 export const placeholderData: StorefrontData = {
@@ -1078,13 +1155,28 @@ export const placeholderData: StorefrontData = {
   async submitContact(_b) {
     return Promise.resolve({ ok: true as const });
   },
+
+  // ── appointments (placeholder - deterministic fake slots) ─────────────────
+
+  async getAppointmentSlots(date, type) {
+    return Promise.resolve({ date, slots: placeholderSlots(date, type) });
+  },
+
+  async bookAppointment(b) {
+    return Promise.resolve({
+      id: `apt-placeholder-${slotSeed(`${b.type}|${b.startsAt}`)}`,
+      type: b.type,
+      startsAt: b.startsAt,
+      status: "SCHEDULED" as const,
+    });
+  },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 5. HTTP implementation stub
 // ─────────────────────────────────────────────────────────────────────────────
 
-class StorefrontError extends Error {
+export class StorefrontError extends Error {
   constructor(
     public readonly status: number,
     public readonly body: unknown,
@@ -1101,6 +1193,15 @@ class StorefrontError extends Error {
  * URL is only a last-resort default, never used when either env is set.
  */
 function serverApiBase(): string {
+  // BROWSER: same-origin by default ("" → the storefront's own /api/* proxy
+  // routes, e.g. the appointments booking proxy) unless NEXT_PUBLIC_API_URL was
+  // baked at build time (local dev against :3001). The private internal deploy
+  // bakes no public api URL, so client calls stay on the storefront origin and
+  // never need CORS.
+  if (typeof window !== "undefined") {
+    return process.env.NEXT_PUBLIC_API_URL ?? "";
+  }
+  // SERVER (RSC + route handlers): prefer the internal Docker-network URL.
   return (
     process.env.INTERNAL_API_URL ??
     process.env.NEXT_PUBLIC_API_URL ??
@@ -1486,6 +1587,27 @@ export const httpData: StorefrontData = {
 
   async submitContact(b) {
     return apiPost("/api/storefront/contact", b);
+  },
+
+  // ── appointments (CONTRACT: public slots + book) ───────────────────────────
+
+  async getAppointmentSlots(date, type) {
+    // Availability is volatile — never cache. A 404/401/403 (apiGet → null,
+    // e.g. backend without the endpoint yet) degrades to "no slots" instead
+    // of crashing the booking page.
+    const params = new URLSearchParams({ date, type });
+    const res = await apiGet<AppointmentSlotsResult>(
+      `/api/storefront/appointments/slots?${params}`,
+      { noStore: true },
+    );
+    return res ?? { date, slots: [] };
+  },
+
+  async bookAppointment(b) {
+    // 409 (slot taken) / 400 (invalid/outside hours) / 429 (rate limit) reach
+    // the caller as StorefrontError with `.status` — the page maps them to
+    // honest German messages and refreshes the slot grid on 409.
+    return apiPost<AppointmentBookingResult>("/api/storefront/appointments/book", b);
   },
 };
 

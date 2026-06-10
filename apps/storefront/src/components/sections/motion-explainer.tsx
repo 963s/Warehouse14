@@ -626,7 +626,7 @@ export function MotionExplainer() {
           className="flex w-full max-w-sm flex-col items-stretch gap-w14-2 sm:w-auto sm:max-w-none sm:flex-row sm:items-center"
         >
           <a
-            href="#kontakt"
+            href="/termin"
             className="bg-gold-gradient inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-button px-8 py-3.5 text-fluid-body font-semibold text-[#0e0b04] shadow-card ring-gold-soft transition-shadow duration-base ease-hover hover:shadow-gold focus:outline-none focus-visible:ring-2 sm:w-auto"
           >
             Jetzt Termin vereinbaren
