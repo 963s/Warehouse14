@@ -1,11 +1,21 @@
 /* warehouse14 storefront, brand explainer video (Remotion composition).
- * Plays inline via @remotion/player. Everything is frame driven, no CSS
- * transitions (those do not render). Warm, antique, with a little physics
- * (springs) and nature (drifting gold dust) in the DNA. German copy only.
+ *
+ * NOTE: the live storefront section no longer embeds the @remotion/player —
+ * in the Next.js standalone production build the Player mounted but rendered no
+ * <video> and logged a licence warning, so the on-page film was replaced by a
+ * self-contained framer-motion piece (see components/sections/explainer-player).
+ * This file is kept as the CANONICAL composition for offline/MP4 renders (e.g.
+ * `npx remotion render`) and as the source of the on-page scene DNA. Anyone who
+ * re-embeds a <Player> here MUST pass `acknowledgeRemotionLicense` (see the
+ * RemotionRoot + ACKNOWLEDGE_REMOTION_LICENSE note at the bottom) to silence the
+ * licence banner. Everything is frame driven, no CSS transitions (those do not
+ * render). Warm, antique, with physics (springs) and nature (drifting gold
+ * dust) in the DNA. German copy only.
  */
 import React from "react";
 import {
   AbsoluteFill,
+  Composition,
   Sequence,
   interpolate,
   spring,
@@ -140,18 +150,20 @@ const GoldDust: React.FC = () => {
   const { durationInFrames, height, width } = useVideoConfig();
   return (
     <AbsoluteFill style={{ pointerEvents: "none" }}>
-      {Array.from({ length: 26 }).map((_, i) => {
+      {Array.from({ length: 34 }).map((_, i) => {
         const x0 = rnd(i, 1) * width;
         const sway = Math.sin((frame / 40) + i) * (8 + rnd(i, 2) * 26);
         const speed = 0.18 + rnd(i, 3) * 0.5;
         const y = height + 40 - ((frame * speed + rnd(i, 4) * durationInFrames) % (height + 120));
         const size = 1.5 + rnd(i, 5) * 4;
-        const op = 0.12 + rnd(i, 6) * 0.4;
+        // each mote breathes (twinkles) on its own phase — a living, never-static field
+        const twinkle = 0.55 + 0.45 * Math.sin(frame / (7 + rnd(i, 7) * 9) + i * 1.7);
+        const op = (0.12 + rnd(i, 6) * 0.4) * twinkle;
         return (
           <div key={i} style={{
             position: "absolute", left: x0 + sway, top: y, width: size, height: size,
             borderRadius: "50%", background: GOLD_SOFT, opacity: op, filter: "blur(0.5px)",
-            boxShadow: `0 0 ${size * 3}px ${GOLD}`,
+            boxShadow: `0 0 ${size * (3 + twinkle * 2)}px ${GOLD}`,
           }} />
         );
       })}
@@ -254,7 +266,11 @@ const FACTS = ["Material spektral geprüft", "Gewicht bestätigt, 31,1035 g", "F
 const Pruefung: React.FC<{ dur: number }> = ({ dur }) => {
   const frame = useCurrentFrame();
   const sweep = interpolate(frame, [24, 92], [-150, 150], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.ease) });
-  const shimmer = interpolate(frame, [24, 92], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  // the loupe drags a gleam across the coin once, then the coin keeps a slow
+  // continuous specular drift so it never freezes — luxury surfaces breathe.
+  const sweepShimmer = interpolate(frame, [24, 92], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const idleShimmer = 0.5 + 0.5 * Math.sin(frame / 26);
+  const shimmer = frame < 92 ? sweepShimmer : idleShimmer;
   const breathe = 1 + Math.sin(frame / 22) * 0.012;
   return (
     <AbsoluteFill style={{ alignItems: "center", justifyContent: "center", opacity: envelope(frame, dur) }}>
@@ -408,3 +424,21 @@ export const ExplainerVideo: React.FC = () => {
     </AbsoluteFill>
   );
 };
+
+// ── Remotion root + licence acknowledgement ──────────────────────────────────
+// Remotion v4 prints a one-time licence banner unless the embedder acknowledges
+// it. The on-page film no longer uses <Player>, but any future <Player> embed or
+// `npx remotion render` should register through THIS root so the banner stays
+// silent. On <Player>, pass the matching prop:  acknowledgeRemotionLicense .
+export const ACKNOWLEDGE_REMOTION_LICENSE = true;
+
+export const RemotionRoot: React.FC = () => (
+  <Composition
+    id="ExplainerVideo"
+    component={ExplainerVideo}
+    durationInFrames={EXPLAINER.durationInFrames}
+    fps={EXPLAINER.fps}
+    width={EXPLAINER.width}
+    height={EXPLAINER.height}
+  />
+);

@@ -1,9 +1,12 @@
 import { ArrowRight } from "lucide-react";
-import { Reveal } from "@/components/ui/reveal";
+import { Reveal, RevealGroup, RevealChild } from "@/components/ui/reveal";
 import { ProductCard } from "@/components/product/product-card";
 import { data } from "@/lib/storefront-data";
 
-/** Home "Ausgewählte Stücke", now reads the data layer + the shared ProductCard. */
+/** Home "Ausgewählte Stücke", reads the data layer + the shared ProductCard.
+ * Server component (awaits the data layer); the entrance choreography rides on
+ * the client RevealGroup/RevealChild primitives, which happily wrap server
+ * children. The grid cascades in like a row of vitrine cases lighting up. */
 export async function FeaturedGrid() {
   const { items } = await data.listProducts({ limit: 6, sort: "published_desc" });
 
@@ -14,6 +17,7 @@ export async function FeaturedGrid() {
           <div className="measure">
             <div className="eyebrow text-gold">Kollektion</div>
             <h2 className="mt-w14-2 font-display text-fluid-h2 font-medium">Ausgewählte Stücke</h2>
+            <span className="mt-w14-3 block h-px w-16 origin-left bg-gradient-to-r from-gold via-gold-soft to-transparent hairline-draw" aria-hidden="true" />
             <p className="mt-w14-2 text-ink-faded">
               Jedes Objekt ein Unikat, geprüft, fotografiert und zum fairen Tagespreis.
             </p>
@@ -24,19 +28,19 @@ export async function FeaturedGrid() {
           >
             <span className="underline-draw">Ganze Kollektion</span>
             <ArrowRight
-              className="h-4 w-4 transition-transform duration-base ease-hover group-hover/link:translate-x-0.5"
+              className="h-4 w-4 transition-transform duration-base ease-hover group-hover/link:translate-x-1"
               aria-hidden="true"
             />
           </a>
         </Reveal>
 
-        <div className="grid gap-w14-3 sm:grid-cols-2 lg:grid-cols-3">
+        <RevealGroup className="grid gap-w14-3 sm:grid-cols-2 lg:grid-cols-3" stagger={0.09}>
           {items.map((p, i) => (
-            <Reveal key={p.id} delay={(i % 3) * 0.07}>
+            <RevealChild key={p.id}>
               <ProductCard product={p} priority={i < 3} />
-            </Reveal>
+            </RevealChild>
           ))}
-        </div>
+        </RevealGroup>
       </div>
     </section>
   );

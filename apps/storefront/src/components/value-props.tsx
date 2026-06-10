@@ -1,4 +1,7 @@
+"use client";
+
 import { ShieldCheck, TrendingUp, FileCheck2, Lock, Truck, Award } from "lucide-react";
+import { motion, useReducedMotion, type Variants } from "framer-motion";
 import { Reveal } from "@/components/ui/reveal";
 
 const props = [
@@ -10,32 +13,65 @@ const props = [
   { icon: Award, title: "Geprüfte Sachkunde", body: "Fundierte Expertise in Numismatik, Edelmetallen und Antiquitäten." },
 ];
 
+const itemV: Variants = {
+  hidden: { opacity: 0, y: 24, filter: "blur(5px)" },
+  show: { opacity: 1, y: 0, filter: "blur(0px)", transition: { duration: 0.7, ease: [0.16, 1, 0.3, 1] } },
+};
+const iconV: Variants = {
+  hidden: { opacity: 0, scale: 0.4, rotate: -12 },
+  show: { opacity: 1, scale: 1, rotate: 0, transition: { type: "spring", stiffness: 320, damping: 17, delay: 0.08 } },
+};
+
 export function ValueProps() {
+  const reduce = useReducedMotion();
+
   return (
     <section className="py-section">
       <div className="mx-auto max-w-edge px-5">
         <Reveal className="max-w-measure">
           <p className="eyebrow">Worauf Sie zählen können</p>
-          <span className="mt-w14-3 block h-px w-16 origin-left bg-gold/60" aria-hidden="true" />
+          <motion.span
+            className="mt-w14-3 block h-px w-16 origin-left bg-gradient-to-r from-gold to-transparent"
+            aria-hidden="true"
+            initial={reduce ? false : { scaleX: 0 }}
+            whileInView={{ scaleX: 1 }}
+            viewport={{ once: true, margin: "-12%" }}
+            transition={{ duration: 0.7, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
+          />
         </Reveal>
 
-        <div className="mt-w14-4 grid gap-x-w14-4 gap-y-w14-4 sm:grid-cols-2 lg:grid-cols-3">
+        <motion.div
+          className="mt-w14-4 grid gap-x-w14-4 gap-y-w14-4 sm:grid-cols-2 lg:grid-cols-3"
+          initial={reduce ? false : "hidden"}
+          whileInView="show"
+          viewport={{ once: true, margin: "-12%" }}
+          variants={{ hidden: {}, show: { transition: { staggerChildren: 0.1 } } }}
+        >
           {props.map((p, i) => (
-            <Reveal key={i} delay={(i % 3) * 0.07}>
-              <div className="group flex gap-w14-3">
-                <span className="grid h-12 w-12 shrink-0 place-items-center rounded-card text-gold ring-gold-soft">
-                  <p.icon className="h-6 w-6" strokeWidth={1.5} aria-hidden="true" />
-                </span>
-                <div>
-                  <h3 className="font-display text-fluid-h3 font-medium leading-snug">
-                    <span className="underline-draw decoration-gold">{p.title}</span>
-                  </h3>
-                  <p className="mt-w14-1 max-w-measure text-fluid-body text-ink-aged">{p.body}</p>
-                </div>
+            <motion.div key={i} variants={reduce ? undefined : itemV} className="group flex gap-w14-3" style={{ willChange: "transform, opacity" }}>
+              <motion.span
+                className="relative grid h-12 w-12 shrink-0 place-items-center rounded-card text-gold ring-gold-soft"
+                variants={reduce ? undefined : iconV}
+                whileHover={reduce ? undefined : { scale: 1.08, rotate: 3 }}
+                transition={{ type: "spring", stiffness: 300, damping: 18 }}
+              >
+                {/* gold halo that breathes on hover */}
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-0 rounded-card opacity-0 transition-opacity duration-base ease-hover group-hover:opacity-100"
+                  style={{ boxShadow: "0 0 0 1px rgba(191,148,48,.5), 0 8px 22px -8px rgba(191,148,48,.6)" }}
+                />
+                <p.icon className="relative h-6 w-6" strokeWidth={1.5} aria-hidden="true" />
+              </motion.span>
+              <div>
+                <h3 className="font-display text-fluid-h3 font-medium leading-snug">
+                  <span className="underline-draw decoration-gold">{p.title}</span>
+                </h3>
+                <p className="mt-w14-1 max-w-measure text-fluid-body text-ink-aged">{p.body}</p>
               </div>
-            </Reveal>
+            </motion.div>
           ))}
-        </div>
+        </motion.div>
       </div>
     </section>
   );

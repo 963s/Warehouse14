@@ -18,10 +18,34 @@ const INK = "#1a1209";
 type Track = "kaufen" | "verkaufen";
 
 // ─── Motion-graphics vignettes ────────────────────────────────────────────────
-// Each draws in ONCE on reveal, then holds perfectly still — no infinite loops,
-// no shimmer, no parking-pulse. The figure settles like an engraving and stays.
+// Each draws in on reveal, THEN keeps a quiet, infinite life — a breathing glow,
+// a drifting specular gleam, a floating focal piece. Tasteful, buttery, never
+// frozen: a premium surface always breathes. prefers-reduced-motion users get
+// the calm settled engraving (handled by the global CSS block + `reduced` gate).
 
-function VignetteCoinCart() {
+// Looping easings shared by the idle ambiences below.
+const FLOAT = { duration: 5.5, repeat: Infinity, ease: "easeInOut" } as const;
+const GLEAM = { duration: 3.4, repeat: Infinity, ease: "easeInOut" } as const;
+
+type VProps = { reduced: boolean };
+
+// A travelling specular highlight that loops across a vignette focal area.
+function Gleam({ reduced, cx = 60, cy = 40 }: { reduced: boolean; cx?: number; cy?: number }) {
+  if (reduced) return null;
+  return (
+    <motion.ellipse
+      cx={cx} cy={cy} rx="5" ry="22"
+      fill="#fff" opacity={0.12}
+      initial={{ x: -46, opacity: 0 }}
+      animate={{ x: [-46, 46], opacity: [0, 0.18, 0] }}
+      transition={GLEAM}
+      transform="rotate(18)"
+      style={{ transformOrigin: `${cx}px ${cy}px` }}
+    />
+  );
+}
+
+function VignetteCoinCart({ reduced }: VProps) {
   return (
     <svg viewBox="0 0 120 80" className="w-full h-full" aria-hidden="true">
       {/* Cart body */}
@@ -40,79 +64,86 @@ function VignetteCoinCart() {
         animate={{ pathLength: 1, opacity: 1 }}
         transition={{ delay: 0.3, duration: DUR_SLOW, ease: EASE }}
       />
-      {/* Cart wheels */}
+      {/* Cart wheels — keep a barely-there roll */}
       <motion.circle cx="62" cy="62" r="4" fill={GOLD}
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5, duration: DUR_BASE }}
+        initial={{ opacity: 0 }}
+        animate={reduced ? { opacity: 1 } : { opacity: 1, x: [0, 1.5, 0] }}
+        transition={reduced ? { delay: 0.5, duration: DUR_BASE } : { x: FLOAT, opacity: { delay: 0.5, duration: DUR_BASE } }}
       />
       <motion.circle cx="90" cy="62" r="4" fill={GOLD}
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.55, duration: DUR_BASE }}
+        initial={{ opacity: 0 }}
+        animate={reduced ? { opacity: 1 } : { opacity: 1, x: [0, 1.5, 0] }}
+        transition={reduced ? { delay: 0.55, duration: DUR_BASE } : { x: FLOAT, opacity: { delay: 0.55, duration: DUR_BASE } }}
       />
-      {/* Coin settled at the cart mouth — drawn once, then still */}
+      {/* Coin floats into the cart mouth, then bobs gently forever */}
       <motion.g
         initial={{ opacity: 0, x: -14 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ delay: 0.45, duration: DUR_SLOW, ease: EASE }}
+        animate={reduced ? { opacity: 1, x: 0 } : { opacity: 1, x: 0, y: [0, -2.5, 0] }}
+        transition={reduced
+          ? { delay: 0.45, duration: DUR_SLOW, ease: EASE }
+          : { x: { delay: 0.45, duration: DUR_SLOW, ease: EASE }, opacity: { delay: 0.45, duration: DUR_SLOW }, y: FLOAT }}
       >
         <circle cx="34" cy="40" r="12" fill={GOLD} opacity="0.95" />
         <circle cx="34" cy="40" r="9" fill="none" stroke={GOLD_DEEP} strokeWidth="1.5" />
         <text x="34" y="44" textAnchor="middle" fontSize="8" fontWeight="bold" fill="#fff" fontFamily="serif">W</text>
+        <Gleam reduced={reduced} cx={34} cy={40} />
       </motion.g>
       {/* Cart content dots (items already in cart) */}
       {[0, 1, 2].map((i) => (
         <motion.circle
           key={i}
           cx={66 + i * 12} cy={47} r={4}
-          fill={GOLD_DEEP} opacity="0.6"
+          fill={GOLD_DEEP}
           initial={{ opacity: 0 }}
-          animate={{ opacity: 0.6 }}
-          transition={{ delay: 0.7 + i * STAGGER, duration: DUR_BASE, ease: EASE }}
+          animate={reduced ? { opacity: 0.6 } : { opacity: [0.4, 0.7, 0.4] }}
+          transition={reduced
+            ? { delay: 0.7 + i * STAGGER, duration: DUR_BASE, ease: EASE }
+            : { duration: 3, repeat: Infinity, ease: "easeInOut", delay: i * 0.4 }}
         />
       ))}
     </svg>
   );
 }
 
-function VignetteCardPulse() {
+function VignetteCardPulse({ reduced }: VProps) {
   return (
     <svg viewBox="0 0 120 80" className="w-full h-full" aria-hidden="true">
-      {/* Card body */}
-      <motion.rect
-        x="25" y="22" width="70" height="44" rx="6"
-        fill={INK} stroke={GOLD} strokeWidth="1.5"
+      {/* Card body — settles, then breathes with a feather-light tilt */}
+      <motion.g
         initial={{ y: 12, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: DUR_SLOW, ease: EASE }}
-      />
-      {/* Card stripe */}
-      <motion.rect x="25" y="34" width="70" height="10" fill={GOLD} opacity="0.18"
-        initial={{ scaleX: 0 }}
-        animate={{ scaleX: 1 }}
-        transition={{ delay: 0.3, duration: DUR_BASE, ease: EASE }}
-        style={{ transformOrigin: "25px 39px" }}
-      />
-      {/* Chip */}
-      <motion.rect x="38" y="44" width="16" height="12" rx="3"
-        fill={GOLD} opacity="0.9"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 0.9 }}
-        transition={{ delay: 0.5, duration: DUR_BASE, ease: EASE }}
-      />
-      {/* Card number dots */}
-      {[0, 1, 2, 3].map((g) => (
-        <g key={g}>
-          {[0, 1, 2, 3].map((d) => (
-            <motion.circle
-              key={d}
-              cx={64 + g * 9 + d * 2} cy={51} r={1.2}
-              fill={GOLD} opacity="0.55"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 0.55 }}
-              transition={{ delay: 0.7 + g * 0.05 + d * 0.02, duration: DUR_BASE }}
-            />
-          ))}
-        </g>
-      ))}
-      {/* Lock badge — the calm proof of security */}
+        animate={reduced ? { y: 0, opacity: 1 } : { y: [0, -1.5, 0], opacity: 1, rotate: [-0.6, 0.6, -0.6] }}
+        transition={reduced ? { duration: DUR_SLOW, ease: EASE } : { y: FLOAT, rotate: FLOAT, opacity: { duration: DUR_SLOW } }}
+        style={{ transformOrigin: "60px 44px" }}
+      >
+        <rect x="25" y="22" width="70" height="44" rx="6" fill={INK} stroke={GOLD} strokeWidth="1.5" />
+        {/* Card stripe */}
+        <motion.rect x="25" y="34" width="70" height="10" fill={GOLD} opacity="0.18"
+          initial={{ scaleX: 0 }}
+          animate={{ scaleX: 1 }}
+          transition={{ delay: 0.3, duration: DUR_BASE, ease: EASE }}
+          style={{ transformOrigin: "25px 39px" }}
+        />
+        {/* Chip */}
+        <rect x="38" y="44" width="16" height="12" rx="3" fill={GOLD} opacity="0.9" />
+        {/* Card number dots */}
+        {[0, 1, 2, 3].map((g) => (
+          <g key={g}>
+            {[0, 1, 2, 3].map((d) => (
+              <circle key={d} cx={64 + g * 9 + d * 2} cy={51} r={1.2} fill={GOLD} opacity="0.55" />
+            ))}
+          </g>
+        ))}
+        <Gleam reduced={reduced} cx={60} cy={44} />
+      </motion.g>
+      {/* Lock badge — a soft security pulse radiates outward */}
+      {!reduced && (
+        <motion.circle cx="95" cy="40" r="11" fill="none" stroke={GOLD} strokeWidth="1.2"
+          initial={{ scale: 1, opacity: 0 }}
+          animate={{ scale: [1, 1.9], opacity: [0.5, 0] }}
+          transition={{ duration: 2.6, repeat: Infinity, ease: "easeOut", delay: 1.1 }}
+          style={{ transformOrigin: "95px 40px" }}
+        />
+      )}
       <motion.g
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
@@ -126,24 +157,24 @@ function VignetteCardPulse() {
   );
 }
 
-function VignetteParcel() {
+function VignetteParcel({ reduced }: VProps) {
   return (
     <svg viewBox="0 0 120 80" className="w-full h-full" aria-hidden="true">
-      {/* Box body */}
+      {/* Box body — gently floats once sealed */}
       <motion.rect
         x="30" y="30" width="52" height="38" rx="3"
         fill={INK} stroke={GOLD} strokeWidth="1.8"
         initial={{ y: 14, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: DUR_SLOW, ease: EASE }}
+        animate={reduced ? { y: 0, opacity: 1 } : { y: [0, -2, 0], opacity: 1 }}
+        transition={reduced ? { duration: DUR_SLOW, ease: EASE } : { y: FLOAT, opacity: { duration: DUR_SLOW } }}
       />
       {/* Box lid */}
       <motion.rect
         x="30" y="22" width="52" height="12" rx="3"
         fill="#0e0b04" stroke={GOLD} strokeWidth="1.8"
         initial={{ y: -10, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: DUR_SLOW, ease: EASE }}
+        animate={reduced ? { y: 0, opacity: 1 } : { y: [0, -2, 0], opacity: 1 }}
+        transition={reduced ? { duration: DUR_SLOW, ease: EASE } : { y: FLOAT, opacity: { duration: DUR_SLOW } }}
       />
       {/* Ribbon horizontal */}
       <motion.rect x="30" y="44" width="52" height="4" fill={GOLD} opacity="0.35"
@@ -166,7 +197,15 @@ function VignetteParcel() {
       <motion.path d="M60 22 Q64 14 70 16 Q66 22 60 22" fill={GOLD} opacity="0.8"
         initial={{ opacity: 0 }} animate={{ opacity: 0.8 }} transition={{ delay: 0.68, duration: DUR_BASE, ease: EASE }}
       />
-      {/* Checkmark seal — drawn once, then still */}
+      {/* Checkmark seal — draws in, then keeps a slow approving glow */}
+      {!reduced && (
+        <motion.circle cx="88" cy="22" r="11" fill="none" stroke={GOLD} strokeWidth="1"
+          initial={{ scale: 1, opacity: 0 }}
+          animate={{ scale: [1, 1.7], opacity: [0.45, 0] }}
+          transition={{ duration: 2.8, repeat: Infinity, ease: "easeOut", delay: 1.4 }}
+          style={{ transformOrigin: "88px 22px" }}
+        />
+      )}
       <motion.g
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -194,7 +233,7 @@ function VignetteParcel() {
   );
 }
 
-function VignetteLoupe() {
+function VignetteLoupe({ reduced }: VProps) {
   return (
     <svg viewBox="0 0 120 80" className="w-full h-full" aria-hidden="true">
       {/* Coin subject */}
@@ -204,12 +243,15 @@ function VignetteLoupe() {
         <circle cx="52" cy="40" r="22" fill={INK} stroke={GOLD_DEEP} strokeWidth="1.2" />
         <circle cx="52" cy="40" r="17" fill="none" stroke={GOLD} strokeWidth="0.8" opacity="0.5" />
         <text x="52" y="44" textAnchor="middle" fontSize="11" fontWeight="bold" fill={GOLD} fontFamily="serif" opacity="0.7">W14</text>
+        <Gleam reduced={reduced} cx={52} cy={40} />
       </motion.g>
-      {/* Loupe settles over the coin — one calm move, then still */}
+      {/* Loupe glides in, then keeps inspecting — drifting slowly across the coin */}
       <motion.g
         initial={{ opacity: 0, x: -16 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ delay: 0.3, duration: DUR_SLOW, ease: EASE }}
+        animate={reduced ? { opacity: 1, x: 0 } : { opacity: 1, x: [-8, 8, -8], y: [0, -2, 0] }}
+        transition={reduced
+          ? { delay: 0.3, duration: DUR_SLOW, ease: EASE }
+          : { x: { duration: 6, repeat: Infinity, ease: "easeInOut" }, y: { duration: 4, repeat: Infinity, ease: "easeInOut" }, opacity: { delay: 0.3, duration: DUR_SLOW } }}
       >
         <circle cx="52" cy="38" r="15" fill="none" stroke={GOLD} strokeWidth="2.2" />
         <circle cx="52" cy="38" r="15" fill="rgba(191,148,48,0.06)" />
@@ -219,7 +261,7 @@ function VignetteLoupe() {
   );
 }
 
-function VignetteScale() {
+function VignetteScale({ reduced }: VProps) {
   return (
     <svg viewBox="0 0 120 80" className="w-full h-full" aria-hidden="true">
       {/* Scale pole */}
@@ -236,11 +278,14 @@ function VignetteScale() {
         transition={{ delay: 0.3, duration: DUR_BASE, ease: EASE }}
         style={{ transformOrigin: "60px 70px" }}
       />
-      {/* Balanced arm + pans — drawn once, then perfectly level */}
+      {/* Balanced arm + pans — draws in, then weighs: tips and settles forever */}
       <motion.g
         initial={{ opacity: 0, y: 6 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.4, duration: DUR_SLOW, ease: EASE }}
+        animate={reduced ? { opacity: 1, y: 0 } : { opacity: 1, y: 0, rotate: [0, 2.2, -1.4, 0.8, 0] }}
+        transition={reduced
+          ? { delay: 0.4, duration: DUR_SLOW, ease: EASE }
+          : { opacity: { delay: 0.4, duration: DUR_SLOW }, y: { delay: 0.4, duration: DUR_SLOW }, rotate: { duration: 6.5, repeat: Infinity, ease: "easeInOut", delay: 0.9 } }}
+        style={{ transformOrigin: "60px 30px" }}
       >
         <line x1="28" y1="30" x2="92" y2="30" stroke={GOLD} strokeWidth="2" strokeLinecap="round" />
         {/* Left pan + gold */}
@@ -268,17 +313,21 @@ function VignetteScale() {
   );
 }
 
-function VignetteBanknotes() {
+function VignetteBanknotes({ reduced }: VProps) {
   const bills = [0, 1, 2, 3];
   return (
     <svg viewBox="0 0 120 80" className="w-full h-full" aria-hidden="true">
-      {/* Stack of bills fanning out — settles once, then still */}
+      {/* Stack of bills fanning out — settles, then each leaf breathes on its phase */}
       {bills.map((i) => (
         <motion.g
           key={i}
           initial={{ y: 18, opacity: 0 }}
-          animate={{ y: 0, opacity: 1, rotate: (i - 1.5) * 4 }}
-          transition={{ delay: 0.2 + i * STAGGER, duration: DUR_SLOW, ease: EASE }}
+          animate={reduced
+            ? { y: 0, opacity: 1, rotate: (i - 1.5) * 4 }
+            : { y: [0, -2 - i, 0], opacity: 1, rotate: (i - 1.5) * 4 }}
+          transition={reduced
+            ? { delay: 0.2 + i * STAGGER, duration: DUR_SLOW, ease: EASE }
+            : { y: { duration: 4.5 + i * 0.4, repeat: Infinity, ease: "easeInOut", delay: 0.2 + i * STAGGER }, opacity: { delay: 0.2 + i * STAGGER, duration: DUR_SLOW }, rotate: { delay: 0.2 + i * STAGGER, duration: DUR_SLOW } }}
           style={{ transformOrigin: "60px 60px" }}
         >
           <rect
@@ -295,11 +344,11 @@ function VignetteBanknotes() {
           <text x="60" y="55" textAnchor="middle" fontSize="6" fill={GOLD} fontFamily="monospace" opacity="0.7">EUR</text>
         </motion.g>
       ))}
-      {/* Payout total — stated plainly, no ticking */}
+      {/* Payout total — settles, then a gold sheen drifts through the figure */}
       <motion.g
         initial={{ opacity: 0, y: 6 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.75, duration: DUR_BASE, ease: EASE }}
+        animate={reduced ? { opacity: 1, y: 0 } : { opacity: 1, y: [0, -1.5, 0] }}
+        transition={reduced ? { delay: 0.75, duration: DUR_BASE, ease: EASE } : { y: GLEAM, opacity: { delay: 0.75, duration: DUR_BASE } }}
       >
         <rect x="36" y="8" width="48" height="18" rx="9" fill="#0e0b04" stroke={GOLD} strokeWidth="1.3" />
         <text
@@ -313,6 +362,7 @@ function VignetteBanknotes() {
         >
           2.480 EUR
         </text>
+        <Gleam reduced={reduced} cx={60} cy={17} />
       </motion.g>
     </svg>
   );
@@ -368,10 +418,12 @@ function StepCard({
   step,
   index,
   inView,
+  reduced,
 }: {
   step: (typeof KAUFEN_STEPS)[0];
   index: number;
   inView: boolean;
+  reduced: boolean;
 }) {
   const { Vignette } = step;
   return (
@@ -379,16 +431,40 @@ function StepCard({
       initial={{ opacity: 0, y: 16 }}
       animate={inView ? { opacity: 1, y: 0 } : { opacity: 0, y: 16 }}
       transition={{ delay: index * STAGGER, duration: DUR_SLOW, ease: EASE }}
-      className="flex flex-col overflow-hidden rounded-card border border-rule bg-card shadow-card"
+      whileHover={reduced ? undefined : { y: -6 }}
+      className="group/card relative flex flex-col overflow-hidden rounded-card border border-rule bg-card shadow-card transition-shadow duration-base ease-hover hover:shadow-lift"
     >
       {/* Vignette area */}
       <div className="bg-ink-deep relative flex aspect-[3/2] w-full items-center justify-center overflow-hidden">
+        {/* breathing gilt aura behind the figure */}
+        {!reduced && (
+          <motion.div
+            className="pointer-events-none absolute inset-0"
+            aria-hidden="true"
+            style={{ background: "radial-gradient(circle at 50% 50%, rgba(191,148,48,0.16), transparent 62%)" }}
+            animate={{ opacity: [0.5, 0.85, 0.5], scale: [0.96, 1.04, 0.96] }}
+            transition={{ duration: 6, repeat: Infinity, ease: "easeInOut", delay: index * 0.6 }}
+          />
+        )}
         {/* Subtle grain overlay */}
         <div className="grain pointer-events-none absolute inset-0 z-10 opacity-30" />
-        {/* Gold hairline at bottom of vignette */}
-        <div className="bg-gold-gradient absolute inset-x-8 bottom-0 h-px opacity-30" />
-        <div className="h-full w-full p-4">
-          <Vignette />
+        {/* slow diagonal sheen sweeping across the vignette — luxury sparkle */}
+        {!reduced && (
+          <div
+            className="pointer-events-none absolute inset-0 z-20"
+            aria-hidden="true"
+            style={{
+              background: "linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.10) 50%, transparent 60%)",
+              backgroundSize: "260% 100%",
+              animation: "w14CardSheen 6s ease-in-out infinite",
+              animationDelay: `${index * 0.8}s`,
+            }}
+          />
+        )}
+        {/* Gold hairline at bottom of vignette — grows on hover */}
+        <div className="bg-gold-gradient absolute inset-x-8 bottom-0 h-px opacity-30 transition-all duration-base ease-hover group-hover/card:inset-x-4 group-hover/card:opacity-70" />
+        <div className="relative z-[15] h-full w-full p-4">
+          <Vignette reduced={reduced} />
         </div>
       </div>
       {/* Text area */}
@@ -476,9 +552,9 @@ function TrackToggle({
 
 // ─── Decorative connector line between steps ─────────────────────────────────
 
-function StepConnector({ inView }: { inView: boolean }) {
+function StepConnector({ inView, reduced }: { inView: boolean; reduced: boolean }) {
   return (
-    <div className="hidden items-center justify-center px-2 md:flex">
+    <div className="relative hidden items-center justify-center px-2 md:flex">
       <motion.div
         className="bg-gold-gradient h-px flex-1"
         initial={{ scaleX: 0, opacity: 0 }}
@@ -486,6 +562,17 @@ function StepConnector({ inView }: { inView: boolean }) {
         transition={{ delay: 0.5, duration: DUR_SLOW, ease: EASE }}
         style={{ transformOrigin: "0% 50%" }}
       />
+      {/* a single gilt spark travels along the rule — the flow of the process */}
+      {!reduced && inView && (
+        <motion.span
+          aria-hidden="true"
+          className="absolute top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-gold"
+          style={{ boxShadow: "0 0 8px var(--w14-gold)", left: 0 }}
+          initial={{ left: "8%", opacity: 0 }}
+          animate={{ left: ["8%", "92%"], opacity: [0, 1, 1, 0] }}
+          transition={{ duration: 2.6, repeat: Infinity, ease: "easeInOut", delay: 1 }}
+        />
+      )}
     </div>
   );
 }
@@ -506,6 +593,17 @@ export function MotionExplainer() {
       className="bg-surface relative w-full overflow-hidden py-section"
       aria-label="Einfach kaufen und verkaufen"
     >
+      {/* Scoped keyframes for the travelling sheen (globals.css is shared/owned
+          elsewhere, so the luxury sweep is defined locally). Reduced-motion
+          users get a no-op via the global prefers-reduced-motion block. */}
+      <style>{`
+        @keyframes w14CardSheen {
+          0%   { background-position: 200% 0; }
+          55%  { background-position: -60% 0; }
+          100% { background-position: -60% 0; }
+        }
+      `}</style>
+
       {/* Background marble texture — subtle, luxury */}
       <div
         className="pointer-events-none absolute inset-0"
@@ -527,14 +625,27 @@ export function MotionExplainer() {
           transition={{ duration: DUR_SLOW, ease: EASE }}
           className="flex max-w-xl flex-col items-center gap-w14-3 text-center"
         >
-          {/* Emblem */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/emblem.svg"
-            alt=""
-            aria-hidden="true"
-            className="h-10 w-10 opacity-50"
-          />
+          {/* Emblem — floats gently, with a soft gilt halo */}
+          <div className="relative">
+            {!reduced && (
+              <motion.span
+                aria-hidden="true"
+                className="absolute inset-0 rounded-full"
+                style={{ background: "radial-gradient(circle, rgba(191,148,48,0.35), transparent 70%)" }}
+                animate={{ opacity: [0.3, 0.7, 0.3], scale: [0.85, 1.25, 0.85] }}
+                transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
+              />
+            )}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <motion.img
+              src="/emblem.svg"
+              alt=""
+              aria-hidden="true"
+              className="relative h-10 w-10 opacity-60"
+              animate={reduced ? undefined : { y: [0, -5, 0] }}
+              transition={reduced ? undefined : FLOAT}
+            />
+          </div>
 
           {/* Overline */}
           <span className="eyebrow text-gold/70">Ihr Vertrauenspartner</span>
@@ -547,14 +658,23 @@ export function MotionExplainer() {
             Transparente Prozesse, faire Preise, persönlicher Service. Bei warehouse14 ist jeder Schritt klar.
           </p>
 
-          {/* Gold hairline — draws once on reveal */}
+          {/* Gold hairline — draws in, then a sheen keeps travelling through it */}
           <motion.div
-            className="bg-gold-gradient h-px w-12 opacity-60"
-            style={{ transformOrigin: "left center" }}
+            className="relative h-px w-16 overflow-hidden opacity-70"
+            style={{ transformOrigin: "left center", background: "linear-gradient(90deg, transparent, var(--w14-gold), transparent)" }}
             initial={{ scaleX: 0 }}
             animate={inView ? { scaleX: 1 } : {}}
             transition={{ delay: 0.3, duration: DUR_SLOW, ease: EASE }}
-          />
+          >
+            {!reduced && (
+              <motion.span
+                className="absolute inset-y-0 w-1/3"
+                style={{ background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.9), transparent)" }}
+                animate={{ x: ["-120%", "320%"] }}
+                transition={{ duration: 3.2, repeat: Infinity, ease: "easeInOut", delay: 1 }}
+              />
+            )}
+          </motion.div>
         </motion.div>
 
         {/* Track toggle */}
@@ -585,8 +705,8 @@ export function MotionExplainer() {
             >
               {steps.map((step, i) => (
                 <React.Fragment key={step.number}>
-                  <StepCard step={step} index={i} inView={inView} />
-                  {i < steps.length - 1 && <StepConnector inView={inView} />}
+                  <StepCard step={step} index={i} inView={inView} reduced={reduced} />
+                  {i < steps.length - 1 && <StepConnector inView={inView} reduced={reduced} />}
                 </React.Fragment>
               ))}
             </motion.div>
@@ -602,9 +722,21 @@ export function MotionExplainer() {
         >
           <a
             href="#kontakt"
-            className="bg-gold-gradient inline-flex min-h-[44px] items-center gap-2 rounded-button px-8 py-3.5 text-fluid-body font-semibold text-[#0e0b04] shadow-card ring-gold-soft transition-shadow duration-base ease-hover hover:shadow-lift focus:outline-none focus-visible:ring-2"
+            className="bg-gold-gradient relative inline-flex min-h-[44px] items-center gap-2 overflow-hidden rounded-button px-8 py-3.5 text-fluid-body font-semibold text-[#0e0b04] shadow-card ring-gold-soft transition-shadow duration-base ease-hover hover:shadow-gold focus:outline-none focus-visible:ring-2"
           >
-            Jetzt Termin vereinbaren
+            {/* continuous gilt sweep — the button never sits dead */}
+            {!reduced && (
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-0"
+                style={{
+                  background: "linear-gradient(105deg, transparent 35%, rgba(255,255,255,0.55) 50%, transparent 65%)",
+                  backgroundSize: "260% 100%",
+                  animation: "w14CardSheen 4.2s ease-in-out infinite",
+                }}
+              />
+            )}
+            <span className="relative">Jetzt Termin vereinbaren</span>
           </a>
           <a
             href="#sortiment"
