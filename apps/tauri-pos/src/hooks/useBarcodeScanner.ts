@@ -30,6 +30,8 @@
 
 import { useEffect, useRef } from 'react';
 
+import { useScannerStore } from '../state/scanner-store.js';
+
 const MIN_BUFFER_LEN = 6;
 const MAX_GAP_MS = 50;
 const MAX_TOTAL_MS = 200;
@@ -38,9 +40,20 @@ const PRINTABLE_ASCII = /^[\x20-\x7e]$/;
 export interface UseBarcodeScannerOptions {
   enabled?: boolean;
   onScan: (code: string) => void;
+  /**
+   * Passive mode: record scanner liveness (for the Gerätemanager "Scanner
+   * bereit" badge) but do NOT swallow the trailing Enter or route the code.
+   * Used by the always-on app-wide liveness listener so it never competes with
+   * the per-screen routing handler (Verkauf/Lager) for the same keystrokes.
+   */
+  passive?: boolean;
 }
 
-export function useBarcodeScanner({ enabled = true, onScan }: UseBarcodeScannerOptions): void {
+export function useBarcodeScanner({
+  enabled = true,
+  onScan,
+  passive = false,
+}: UseBarcodeScannerOptions): void {
   // Use refs to keep the listener identity stable across renders.
   const bufferRef = useRef<string>('');
   const firstAtRef = useRef<number>(0);
@@ -78,10 +91,20 @@ export function useBarcodeScanner({ enabled = true, onScan }: UseBarcodeScannerO
           /^[\x20-\x7e]+$/.test(buf);
         reset();
         if (qualifies) {
-          // Swallow the Enter so it doesn't submit any focused form.
-          ev.preventDefault();
-          ev.stopPropagation();
-          onScanRef.current(buf);
+          // Record liveness so the Gerätemanager can show "Scanner bereit" —
+          // a successful HID decode is the only honest readiness signal for a
+          // keyboard-class device (it has no IP to probe). Both the passive
+          // app-wide listener and the routing listeners ping it; the store
+          // de-dupes by overwriting the same timestamp.
+          useScannerStore.getState().markScan(buf);
+          // Passive (liveness-only) instances never swallow Enter or route —
+          // the per-screen routing handler owns that for the focused surface.
+          if (!passive) {
+            // Swallow the Enter so it doesn't submit any focused form.
+            ev.preventDefault();
+            ev.stopPropagation();
+            onScanRef.current(buf);
+          }
         }
         return;
       }
@@ -119,5 +142,5 @@ export function useBarcodeScanner({ enabled = true, onScan }: UseBarcodeScannerO
       document.removeEventListener('keydown', onKey, true);
       reset();
     };
-  }, [enabled]);
+  }, [enabled, passive]);
 }

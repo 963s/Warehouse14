@@ -5,7 +5,16 @@
 // `script-src 'self'` with no `'unsafe-inline'`. All cloud-derived strings
 // (product names, SKUs, cart line names) are rendered as textContent only —
 // the el() helper has NO innerHTML / `html:` sink, so a malicious product
-// name from the cloud can never inject markup into this DOM.
+// name from the cloud can never inject markup into this DOM. The single
+// exception is svgEl(): an SVG factory that ONLY ever receives locally-built
+// numeric Code128 geometry (never cloud strings) so the no-markup-sink rule
+// for cloud data still holds.
+//
+// Three paired roles, each a single-job surface (design brief §3/§4):
+//   warehouse — Lager: scan-to-find · inventory list · add/edit · photo
+//               capture+upload · Hauptbild picker · label/barcode print.
+//   cashier   — Zweitkasse: client-side ring-up with a thumb-zone Bezahlen bar.
+//   display   — Kundenanzeige: total-as-hero mirror over the live WebSocket.
 (function () {
   "use strict";
 
@@ -13,6 +22,7 @@
   var LS_TOKEN   = "w14.companion.token";
   var LS_ROLE    = "w14.companion.role";
   var LS_PRINTER = "w14.companion.printer"; // label-printer settings (local).
+  var LS_STICKY  = "w14.companion.sticky";  // carry-forward intake context.
 
   var ROLES = {
     warehouse: { label: "Lager",         ico: "📦", desc: "Bestand, Etiketten & Produkte" },
@@ -57,6 +67,7 @@
   var displaySocket = null;    // live customer-display WebSocket (/ws).
   var displayReconnect = null; // pending socket-reconnect timer.
   var whTab = "scan"; // active warehouse tool tab.
+  var snackTimer = null; // active undo-snackbar timer.
 
   var app = document.getElementById("app");
 
@@ -78,6 +89,17 @@
         n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
       });
     }
+    return n;
+  }
+  // SVG element factory (namespaced). ONLY used to draw locally-computed
+  // Code128 bar geometry — never receives any cloud-derived string — so the
+  // "no markup sink for cloud data" guarantee is preserved.
+  function svgEl(tag, attrs, children) {
+    var n = document.createElementNS("http://www.w3.org/2000/svg", tag);
+    if (attrs) for (var k in attrs) { if (attrs[k] != null) n.setAttribute(k, attrs[k]); }
+    if (children) (Array.isArray(children) ? children : [children]).forEach(function (c) {
+      if (c != null) n.appendChild(c);
+    });
     return n;
   }
   function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
@@ -110,6 +132,70 @@
     var parts = [loc.locationStorageUnit, loc.locationDrawer, loc.locationPosition]
       .filter(function (x) { return x; });
     return parts.length ? parts.join(" · ") : "—";
+  }
+
+  // ── Multimodal scan/save feedback (design brief: <100ms, distinct OK/FAIL) ─
+  // A short Web-Audio chime + a full-screen colour flash + a toast carrying the
+  // item name/photo (recognition, not SKU re-reading). Success and failure use
+  // DIFFERENT tone + colour + icon so they're unmistakable under shop glare.
+  var audioCtx = null;
+  function tone(ok) {
+    var AC = window.AudioContext || window.webkitAudioContext;
+    var beep = function (t0, freq, start, dur) {
+      var osc = audioCtx.createOscillator();
+      var g = audioCtx.createGain();
+      osc.type = "sine"; osc.frequency.value = freq;
+      g.gain.setValueAtTime(0.0001, t0 + start);
+      g.gain.exponentialRampToValueAtTime(0.16, t0 + start + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + start + dur);
+      osc.connect(g); g.connect(audioCtx.destination);
+      osc.start(t0 + start); osc.stop(t0 + start + dur + 0.02);
+    };
+    var t0;
+    try {
+      if (!AC) return;
+      if (!audioCtx) audioCtx = new AC();
+      if (audioCtx.state === "suspended") { try { audioCtx.resume(); } catch (e) {} }
+      t0 = audioCtx.currentTime;
+      if (ok) { beep(t0, 880, 0, 0.10); beep(t0, 1320, 0.07, 0.12); }  // bright two-note up.
+      else    { beep(t0, 300, 0, 0.16); beep(t0, 220, 0.12, 0.22); }   // low two-note down.
+    } catch (e) { /* audio is best-effort; never block the flow */ }
+  }
+  function haptic(ok) { try { if (navigator.vibrate) navigator.vibrate(ok ? 18 : [40, 40, 40]); } catch (e) {} }
+  // Show the green/red flash + recognition toast. `photoUrl` optional.
+  function scanFeedback(ok, title, detail, photoUrl) {
+    tone(ok); haptic(ok);
+    var existing = document.querySelector(".scanfx");
+    if (existing) existing.remove();
+    var thumb = photoUrl
+      ? el("img", { class: "thumb", src: photoUrl, alt: "", referrerpolicy: "no-referrer" })
+      : el("span", { class: "ic" }, ok ? "✓" : "✕");
+    var toast = el("div", { class: "toast " + (ok ? "ok" : "bad"), role: "status", "aria-live": "polite" }, [
+      thumb,
+      el("div", { class: "tx" }, [
+        el("div", { class: "tt" }, String(title || (ok ? "Erfasst" : "Nicht gefunden"))),
+        detail ? el("div", { class: "td" }, String(detail)) : null
+      ])
+    ]);
+    var fx = el("div", { class: "scanfx flash " + (ok ? "ok" : "bad") }, [toast]);
+    document.body.appendChild(fx);
+    setTimeout(function () { try { fx.remove(); } catch (e) {} }, ok ? 1500 : 2400);
+  }
+
+  // ── Undo snackbar (reversible local ops; never a modal) ────────────
+  function snackbar(message, undoLabel, onUndo, ms) {
+    var existing = document.querySelector(".snackbar");
+    if (existing) existing.remove();
+    if (snackTimer) { clearTimeout(snackTimer); snackTimer = null; }
+    var bar = el("div", { class: "snackbar", role: "status", "aria-live": "polite" }, [
+      el("span", { class: "msg" }, String(message)),
+      onUndo ? el("button", { class: "undo", type: "button", onclick: function () {
+        if (snackTimer) { clearTimeout(snackTimer); snackTimer = null; }
+        bar.remove(); onUndo();
+      } }, undoLabel || "Rückgängig") : null
+    ]);
+    document.body.appendChild(bar);
+    snackTimer = setTimeout(function () { try { bar.remove(); } catch (e) {} snackTimer = null; }, ms || 7000);
   }
 
   // ── API (companion -> mother) ──────────────────────────────────────
@@ -146,7 +232,7 @@
       return r;
     });
   }
-  // POST/PUT JSON through the proxy. Resolves to the parsed body on 2xx;
+  // POST/PUT/PATCH JSON through the proxy. Resolves to the parsed body on 2xx;
   // rejects with a German message (with the cloud's STEP_UP hint surfaced)
   // otherwise — the companion cannot perform a step-up challenge itself.
   function proxyJson(path, method, payload) {
@@ -162,6 +248,9 @@
         var code = data && data.error && data.error.code;
         if (r.status === 403 && code === "STEP_UP_REQUIRED") {
           throw new Error("Diese Aktion erfordert eine Freigabe an der Hauptkasse (Step-up). Bitte am Hauptgerät bestätigen.");
+        }
+        if (r.status === 403) {
+          throw new Error("Diese Aktion ist auf diesem Gerät nicht erlaubt.");
         }
         var msg = (data && data.error && data.error.message) ||
                   "Vorgang fehlgeschlagen (" + r.status + ").";
@@ -181,6 +270,8 @@
   }
 
   // ── Top bar ────────────────────────────────────────────────────────
+  // "Rolle wechseln" lives in the TOP-RIGHT corner (hard-to-reach zone) so a
+  // resting thumb never logs the device out mid-task (brief §3 thumb-zone map).
   function topbar() {
     var meta = ROLES[role];
     var brand = el("span", { class: "brand" }, [
@@ -190,9 +281,11 @@
     return el("header", { class: "topbar" }, [
       brand,
       meta ? el("span", { class: "role-pill" }, meta.label) : null,
-      el("button", { class: "btn-switch", onclick: function () {
-        if (confirm("Rolle wechseln und abmelden?")) logout();
-      } }, "Rolle wechseln")
+      el("button", { class: "btn-switch", type: "button",
+        "aria-label": "Rolle wechseln und abmelden",
+        onclick: function () {
+          if (confirm("Rolle wechseln und abmelden?")) logout();
+        } }, "Rolle wechseln")
     ]);
   }
 
@@ -202,7 +295,6 @@
     stopDisplaySocket();
     clear(app);
 
-    var step = "code";        // "code" | "role"
     var codeVal = "";
     var chosen = "";
     var busy = false;
@@ -213,7 +305,6 @@
     app.appendChild(screen);
 
     function showCode() {
-      step = "code";
       clear(center);
       var errBox = el("div", { class: "err" });
       var nextBtn;
@@ -250,7 +341,6 @@
     }
 
     function showRole() {
-      step = "role";
       chosen = "";
       clear(center);
       var errBox = el("div", { class: "err" });
@@ -305,10 +395,13 @@
   }
 
   // ── Customer display ───────────────────────────────────────────────
-  // LIVE via WebSocket (GET /ws): the mother broadcasts the cart on
-  // every change, so the display re-renders on push with no polling lag. The
-  // 1 s GET /cart poll is kept ONLY as a fallback that arms when the socket
-  // drops (and disarms again once it reconnects).
+  // LIVE via WebSocket (GET /ws): the mother broadcasts the cart on every
+  // change, so the display re-renders on push with no polling lag. The 1 s
+  // GET /cart poll is kept ONLY as a fallback that arms when the socket drops.
+  //
+  // Design brief §4: the TOTAL is the hero (largest element), money is calm —
+  // line-adds get a single 150–200ms ease-out slide, no bounce/spin; the
+  // split-pay Restbetrag mirrors the cashier when present.
   function renderDisplay() {
     stopDisplayTimer();
     stopDisplaySocket();
@@ -321,35 +414,66 @@
       el("span", { class: "tl" }, "Gesamt"),
       totalV
     ]);
+    // Restbetrag line — hidden unless the mother is mid split-payment.
+    var restV = el("span", { class: "rv" }, fmtEur("0.00"));
+    var rest = el("div", { class: "display-rest", style: "display:none" }, [
+      el("span", { class: "rl" }, "Noch zu zahlen"),
+      restV
+    ]);
 
-    var wrap = el("div", { class: "display-wrap" }, [head, items, total]);
+    var wrap = el("div", { class: "display-wrap" }, [head, items, total, rest]);
     app.appendChild(topbar());
     app.appendChild(wrap);
 
+    // Remember which line keys were already on screen so ONLY genuinely new
+    // lines get the calm entrance (no whole-list re-animate on every total tick).
+    var seen = Object.create(null);
+
+    function lineKey(it, idx) {
+      return String(it.id || it.productId || it.sku || it.name || idx);
+    }
+
     function paint(cart) {
-      clear(items);
       var lines = (cart && cart.items) || [];
+      var nextSeen = Object.create(null);
+      clear(items);
       if (!lines.length) {
         items.appendChild(el("div", { class: "display-empty" }, "Noch keine Artikel"));
+        seen = Object.create(null);
       } else {
-        lines.forEach(function (it) {
+        lines.forEach(function (it, idx) {
+          var key = lineKey(it, idx);
+          nextSeen[key] = true;
           var qty = it.qty != null ? it.qty : (it.quantity != null ? it.quantity : 1);
           var name = it.name || it.title || it.sku || "Artikel";
           var line = it.lineEur != null ? it.lineEur
                    : (it.lineTotalEur != null ? it.lineTotalEur
                    : (it.totalEur != null ? it.totalEur
                    : (it.priceEur != null ? it.priceEur : it.price)));
-          items.appendChild(el("div", { class: "display-line" }, [
+          var cls = "display-line" + (seen[key] ? "" : " fresh");
+          items.appendChild(el("div", { class: cls }, [
             el("span", { class: "qty" }, String(qty) + "×"),
             el("span", { class: "nm" }, String(name)),
             el("span", { class: "ln" }, fmtEur(line))
           ]));
         });
+        seen = nextSeen;
       }
       totalV.textContent = fmtEur(cart && cart.totalEur);
+
+      // Split-pay mirror: the mother may publish a `remainingEur` / `restEur`
+      // while a split tender is open. Show it as a calm secondary hero.
+      var remaining = cart && (cart.remainingEur != null ? cart.remainingEur
+                    : (cart.restEur != null ? cart.restEur
+                    : (cart.amountDueEur != null ? cart.amountDueEur : null)));
+      if (remaining != null && parseFloat(String(remaining).replace(",", ".")) > 0) {
+        restV.textContent = fmtEur(remaining);
+        rest.style.display = "";
+      } else {
+        rest.style.display = "none";
+      }
     }
 
-    // The poll fallback — only runs while the socket is NOT open.
     function startPoll() {
       if (displayTimer) return;
       function tick() { getCart().then(paint).catch(function () { /* keep last frame */ }); }
@@ -358,31 +482,17 @@
     }
     function stopPoll() { stopDisplayTimer(); }
 
-    // Open the realtime socket; on drop, fall back to polling and retry the
-    // socket with a gentle backoff.
     connectDisplaySocket(paint, startPoll, stopPoll);
   }
 
   // Subprotocol prefix that carries the companion token on the /ws handshake.
-  // Must match WS_TOKEN_PROTO_PREFIX on the Rust server.
   var WS_TOKEN_PROTO_PREFIX = "w14.token.";
 
-  // Build the ws:// URL for /ws on the same origin the SPA was served from.
-  // NOTE: the token is NOT in the URL — it rides the Sec-WebSocket-Protocol
-  // handshake header instead (see wsProtocols), so the secret never lands in
-  // browser history or server logs.
   function wsUrl() {
     var scheme = location.protocol === "https:" ? "wss:" : "ws:";
     return scheme + "//" + location.host + "/ws";
   }
-
-  // The subprotocol array passed to `new WebSocket(url, protocols)`. The browser
-  // sends these in the Sec-WebSocket-Protocol REQUEST header (a real header, the
-  // one thing a browser WebSocket CAN set), and the server echoes the accepted
-  // value back to complete the handshake. This keeps the token out of the URL.
-  function wsProtocols() {
-    return [WS_TOKEN_PROTO_PREFIX + token];
-  }
+  function wsProtocols() { return [WS_TOKEN_PROTO_PREFIX + token]; }
 
   function stopDisplaySocket() {
     if (displayReconnect) { clearTimeout(displayReconnect); displayReconnect = null; }
@@ -392,9 +502,6 @@
     }
   }
 
-  // Connect (and keep reconnecting) the display feed. `onCart` paints a frame;
-  // `armPoll`/`disarmPoll` toggle the GET /cart fallback so the display never
-  // goes dark even if WebSockets are blocked on this network.
   function connectDisplaySocket(onCart, armPoll, disarmPoll) {
     if (!token) { armPoll(); return; }
     var ws;
@@ -402,10 +509,7 @@
     catch (e) { armPoll(); scheduleReconnect(onCart, armPoll, disarmPoll); return; }
     displaySocket = ws;
 
-    ws.onopen = function () {
-      // Socket is live → stop the poll; the server sends the snapshot on connect.
-      disarmPoll();
-    };
+    ws.onopen = function () { disarmPoll(); };
     ws.onmessage = function (ev) {
       var cart = null;
       try { cart = JSON.parse(ev.data); } catch (e) { return; }
@@ -414,9 +518,7 @@
     ws.onerror = function () { /* surfaced as a close — handled there */ };
     ws.onclose = function (ev) {
       if (displaySocket === ws) displaySocket = null;
-      // 1008 = policy violation (our auth/role reject) → token is stale: log out.
       if (ev && ev.code === 1008) { logout(); return; }
-      // Otherwise fall back to polling and try to re-establish the socket.
       armPoll();
       scheduleReconnect(onCart, armPoll, disarmPoll);
     };
@@ -426,7 +528,6 @@
     if (displayReconnect) return;
     displayReconnect = setTimeout(function () {
       displayReconnect = null;
-      // Only reconnect if we're still on the display screen with a token.
       if (role === "display" && token) {
         connectDisplaySocket(onCart, armPoll, disarmPoll);
       }
@@ -434,10 +535,6 @@
   }
 
   // ── Money in integer cents (mirrors lib/cart-math toCents/fromCents) ─
-  // Parse a Decimal/comma money STRING to integer cents. Returns null when the
-  // input isn't a clean money value (so a bad catalog price can't poison the
-  // running total). No floats touch the running total — everything is bigint-
-  // free integer cents accumulated in a Number that stays exact under 2^53.
   function priceToCents(raw) {
     var s = normalizeDecimal(raw);
     if (!/^\d{1,12}(\.\d{1,2})?$/.test(s)) return null;
@@ -446,7 +543,6 @@
     var frac = parts[1] ? (parts[1] + "00").slice(0, 2) : "00";
     return whole * 100 + parseInt(frac, 10);
   }
-  // Integer cents → Decimal string "12.50" (dot decimal, for fmtEur + parity).
   function centsToDecimal(cents) {
     var sign = cents < 0 ? "-" : "";
     var a = Math.abs(cents);
@@ -458,11 +554,13 @@
   // ── Cashier (Zweitkasse) ───────────────────────────────────────────
   // A REAL client-side ring-up: tap catalog rows to build a cart (line list +
   // running total in integer cents), adjust quantities, remove lines. The cart
-  // lives only on this companion. The "Bezahlen (bar)" button does NOT post a
-  // fiscal transaction itself — the cloud finalize requires an inventory
-  // reservation session + VAT split + TSE signature flow that only the mother
-  // performs, and posting a partial/guessed body would create a malformed
-  // GoBD/KassenSichV record. Instead it hands the order off to the Hauptkasse.
+  // lives only on this companion. The "Bezahlen" hand-off does NOT post a
+  // fiscal transaction — the cloud finalize needs an inventory reservation +
+  // VAT split + TSE signature only the mother performs; posting a partial body
+  // would create a malformed GoBD/KassenSichV record. So it hands off cleanly.
+  //
+  // Brief §3: the Bezahlen control + smart-tender chips live in a fixed
+  // thumb-zone bottom bar whose geometry never shifts with cart size.
   function renderCashier() {
     stopDisplayTimer();
     stopDisplaySocket();
@@ -473,9 +571,9 @@
     var listBox = el("div", { class: "list" });
     var all = [];
 
-    // cart line: { id, sku, name, unitCents, qty }
-    var cart = [];
+    var cart = []; // { key, id, sku, name, unitCents, qty }
     var cartBox = el("div", {});
+    var bottomBar = el("div", {}); // thumb-zone Bezahlen bar (fixed).
 
     var search = el("input", {
       class: "search", type: "search", placeholder: "Artikel suchen…",
@@ -485,7 +583,10 @@
 
     function addToCart(p) {
       var unit = priceToCents(p.priceEur != null ? p.priceEur : p.price);
-      if (unit == null) { alert("Dieser Artikel hat keinen gültigen Preis und kann nicht hinzugefügt werden."); return; }
+      if (unit == null) {
+        scanFeedback(false, "Kein gültiger Preis", "Artikel kann nicht hinzugefügt werden.");
+        return;
+      }
       var key = p.id || p.sku || p.name;
       var existing = cart.filter(function (l) { return l.key === key; })[0];
       if (existing) { existing.qty += 1; }
@@ -494,9 +595,20 @@
     }
 
     function setQty(line, qty) {
-      if (qty <= 0) { cart = cart.filter(function (l) { return l !== line; }); }
-      else { line.qty = qty; }
+      if (qty <= 0) { removeLine(line); return; }
+      line.qty = qty;
       paintCart();
+    }
+    function removeLine(line) {
+      var idx = cart.indexOf(line);
+      if (idx < 0) return;
+      var removed = cart[idx];
+      cart.splice(idx, 1);
+      paintCart();
+      snackbar("Position entfernt: " + removed.name, "Rückgängig", function () {
+        cart.splice(Math.min(idx, cart.length), 0, removed);
+        paintCart();
+      });
     }
 
     function cartTotalCents() {
@@ -505,8 +617,6 @@
 
     function paintCart() {
       clear(cartBox);
-      var count = cart.reduce(function (n, l) { return n + l.qty; }, 0);
-
       var lines = el("div", { class: "cart-list" });
       if (!cart.length) {
         lines.appendChild(el("div", { class: "cart-empty" }, "Noch keine Artikel im Warenkorb."));
@@ -524,47 +634,52 @@
             ]),
             el("span", { class: "ln" }, fmtEur(centsToDecimal(l.unitCents * l.qty))),
             el("button", { class: "rm", type: "button", "aria-label": "Entfernen",
-              onclick: function () { setQty(l, 0); } }, "×")
+              onclick: function () { removeLine(l); } }, "×")
           ]));
         });
       }
 
-      var payBtn = el("button", { class: "btn-primary", type: "button",
-        onclick: handoffToMother }, "Bezahlen (bar) – an Hauptkasse");
-      payBtn.disabled = !cart.length;
-
       cartBox.appendChild(el("div", { class: "cartwrap" }, [
         el("div", { class: "cart-head" }, [
           el("span", { class: "t" }, "Warenkorb"),
-          el("span", { class: "c" }, count + (count === 1 ? " Artikel" : " Artikel"))
+          el("span", { class: "c" }, cartCount() + " Artikel")
         ]),
         lines,
-        el("div", { class: "cart-total" }, [
-          el("span", { class: "tl" }, "Gesamt"),
-          el("span", { class: "tv" }, fmtEur(centsToDecimal(cartTotalCents())))
-        ]),
-        el("div", { class: "btn-row" }, [ payBtn ]),
         el("div", { class: "scan-help" },
           "Der Abschluss erfolgt an der Hauptkasse: Reservierung, Steueraufteilung und " +
           "TSE-Signatur (KassenSichV) werden dort fiskalisch erzeugt. So entsteht nie ein " +
           "unvollständiger Kassenbeleg auf diesem Gerät.")
       ]));
+
+      paintBottomBar();
     }
 
-    // Hand the finished order to the Hauptkasse for fiscal finalize. We do NOT
-    // POST /transactions/finalize from here: that body needs a per-line
-    // reservationSessionId (POST /api/inventory/reserve — not in the cashier
-    // allow-list), a VAT split, and a TSE signature the mother owns. Posting a
-    // guessed/partial body would write a malformed GoBD record. This is an
-    // honest hand-off; the real cross-device cart push is a later phase.
+    function cartCount() { return cart.reduce(function (n, l) { return n + l.qty; }, 0); }
+
+    // Fixed thumb-zone bar: running total + Bezahlen (full-amount cash hand-off).
+    function paintBottomBar() {
+      clear(bottomBar);
+      var empty = !cart.length;
+      var payBtn = el("button", { class: "bb-action", type: "button",
+        onclick: handoffToMother }, "Bezahlen");
+      payBtn.disabled = empty;
+      bottomBar.appendChild(el("div", { class: "bottombar" }, [
+        el("div", { class: "bb-info" }, [
+          el("div", { class: "t" }, fmtEur(centsToDecimal(cartTotalCents()))),
+          el("div", { class: "s" }, empty ? "Warenkorb leer" : (cartCount() + " Artikel · an Hauptkasse"))
+        ]),
+        payBtn
+      ]));
+    }
+
     function handoffToMother() {
       if (!cart.length) return;
-      var count = cart.reduce(function (n, l) { return n + l.qty; }, 0);
+      var count = cartCount();
       var total = fmtEur(centsToDecimal(cartTotalCents()));
       alert(
         "Warenkorb bereit für die Hauptkasse.\n\n" +
         count + " Artikel · Gesamt " + total + "\n\n" +
-        "Bitte den Abschluss (bar) an der Hauptkasse durchführen — " +
+        "Bitte den Abschluss (bar oder Karte) an der Hauptkasse durchführen — " +
         "Reservierung, Steuer und TSE-Signatur werden dort fiskalisch erzeugt. " +
         "Die automatische Übergabe an die Hauptkasse folgt in einer späteren Phase."
       );
@@ -594,13 +709,14 @@
       });
     }
 
-    app.appendChild(el("div", { class: "pad" }, [
+    app.appendChild(el("div", { class: "pad has-bottombar" }, [
       search,
       el("div", { class: "hint" }, "Auf „+“ tippen, um einen Artikel in den Warenkorb zu legen."),
       statusMsg,
       listBox,
       cartBox
     ]));
+    app.appendChild(bottomBar);
 
     paintCart();
 
@@ -632,14 +748,13 @@
     var bodyBox = el("div", {});
 
     function drawTabs() {
-      var bar = el("div", { class: "tabs" }, TABS.map(function (t) {
+      return el("div", { class: "tabs", role: "tablist" }, TABS.map(function (t) {
         return el("button", {
-          class: "tab", type: "button",
+          class: "tab", type: "button", role: "tab",
           "aria-selected": t[0] === whTab ? "true" : "false",
           onclick: function () { whTab = t[0]; mount(); }
         }, t[1]);
       }));
-      return bar;
     }
 
     var tabsEl = drawTabs();
@@ -647,7 +762,6 @@
     app.appendChild(bodyBox);
 
     function mount() {
-      // Refresh the tab selection state.
       var newTabs = drawTabs();
       tabsEl.replaceWith(newTabs);
       tabsEl = newTabs;
@@ -660,10 +774,12 @@
     mount();
   }
 
-  // Warehouse · Scannen — one big, unambiguous scan-to-lookup field.
+  // Warehouse · Scannen — phone-camera barcode scan + manual SKU lookup, then
+  // jump straight to the matched item. Multimodal feedback on a match/no-match.
   function whScan() {
     var resultBox = el("div", {});
     var busy = false;
+    var stopCam = null; // active live-scan teardown (if any).
 
     var scanInput = el("input", {
       class: "scan-input", type: "text", inputmode: "text",
@@ -671,7 +787,6 @@
       placeholder: "Barcode scannen oder SKU eingeben",
       "aria-label": "Barcode oder SKU scannen",
       onkeydown: function (e) {
-        // Most USB/Bluetooth scanners send Enter after the code.
         if (e.key === "Enter") { e.preventDefault(); lookup(e.target.value.trim()); }
       }
     });
@@ -683,8 +798,7 @@
       busy = true;
       clear(resultBox);
       resultBox.appendChild(el("div", { class: "state-msg" }, "Suche " + code + " …"));
-      // Exact barcode match first (scanner semantics), then fall back to a
-      // free-text `q` lookup so a typed SKU/name also resolves.
+      // Exact barcode match first (scanner semantics), then a free-text fallback.
       proxy("products?barcode=" + encodeURIComponent(code))
         .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
         .then(function (data) {
@@ -697,10 +811,15 @@
         .then(function (rows) {
           busy = false;
           clear(resultBox);
+          var first;
           if (!rows.length) {
+            scanFeedback(false, "Unbekannter Code", "Kein Artikel zu „" + code + "“.");
             resultBox.appendChild(el("div", { class: "notice bad" },
               "Kein Artikel zu „" + code + "“ gefunden."));
           } else {
+            first = rows[0];
+            scanFeedback(true, first.name || first.sku || "Artikel",
+              first.sku ? ("SKU " + first.sku) : null, photoThumb(first));
             rows.slice(0, 25).forEach(function (p) {
               resultBox.appendChild(productCard(p, function () { mountStockWith(p); }));
             });
@@ -715,34 +834,92 @@
         });
     }
 
-    // When an edit/bin action is requested from a scan hit, jump to the
-    // Bestand tab pre-loaded with that product.
     function mountStockWith(p) {
+      if (stopCam) { try { stopCam(); } catch (e) {} stopCam = null; }
       whTab = "stock";
       renderWarehouse();
-      // Defer until the stock tab is mounted, then open the detail.
-      setTimeout(function () {
-        if (window.__whOpenProduct) window.__whOpenProduct(p);
-      }, 0);
+      setTimeout(function () { if (window.__whOpenProduct) window.__whOpenProduct(p); }, 0);
     }
+
+    // Live phone-camera scan via the BarcodeDetector API where present (modern
+    // mobile Chrome/Edge/Android WebView). Where absent, we fall back cleanly to
+    // the always-present manual field (no broken state) — the USB/BT wedge also
+    // still works by typing into that field.
+    var camStage = el("div", { class: "cam-stage", style: "display:none; height:42vh; margin-bottom:1rem" });
+    function startCamScan() {
+      if (!("BarcodeDetector" in window)) {
+        scanFeedback(false, "Kamera-Scan nicht verfügbar",
+          "Bitte den Barcode in das Feld scannen oder die SKU eingeben.");
+        return;
+      }
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+      var video = el("video", { autoplay: "", muted: "", playsinline: "" });
+      camStage.style.display = "";
+      clear(camStage); camStage.appendChild(video);
+      var detector = new window.BarcodeDetector();
+      var raf = null;
+      var streamRef = null;
+      var done = false;
+      var teardown = function () {
+        done = true;
+        if (raf) cancelAnimationFrame(raf);
+        try { if (streamRef) streamRef.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
+        camStage.style.display = "none"; clear(camStage);
+        stopCam = null;
+      };
+      var scanFrame = function () {
+        if (done) return;
+        detector.detect(video).then(function (codes) {
+          var val;
+          if (done) return;
+          if (codes && codes.length && codes[0].rawValue) {
+            val = String(codes[0].rawValue).trim();
+            teardown();
+            lookup(val);
+            return;
+          }
+          raf = requestAnimationFrame(scanFrame);
+        }).catch(function () { if (!done) raf = requestAnimationFrame(scanFrame); });
+      };
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+        .then(function (stream) {
+          streamRef = stream; video.srcObject = stream;
+          stopCam = teardown;
+          raf = requestAnimationFrame(scanFrame);
+        })
+        .catch(function () {
+          camStage.style.display = "none";
+          scanFeedback(false, "Kamera nicht freigegeben",
+            "Bitte Kamerazugriff erlauben oder den Barcode manuell eingeben.");
+        });
+    }
+
+    var camBtn = ("BarcodeDetector" in window)
+      ? el("button", { class: "btn-ghost", type: "button", onclick: startCamScan }, "📷 Kamera-Scan")
+      : null;
 
     var pad = el("div", { class: "pad" }, [
       el("div", { class: "scanwrap" }, [
         el("div", { class: "scan-label" }, [ el("span", { class: "ico" }, "📷"), "Artikel scannen" ]),
         scanInput,
         el("div", { class: "scan-help" },
-          "Cursor steht im Feld. Scannen Sie den Barcode (Enter wird automatisch gesendet) " +
-          "oder tippen Sie eine SKU ein und drücken Enter."),
-        el("button", { class: "btn-primary inline", type: "button", style: "width:100%",
-          onclick: function () { lookup(scanInput.value.trim()); } }, "Nachschlagen")
+          "Cursor steht im Feld. Scannen Sie den Barcode (Enter wird automatisch gesendet), " +
+          "tippen Sie eine SKU ein und drücken Enter, oder nutzen Sie die Telefon-Kamera."),
+        el("div", { class: "btn-row" }, [
+          el("button", { class: "btn-primary inline", type: "button",
+            onclick: function () { lookup(scanInput.value.trim()); } }, "Nachschlagen")
+        ].concat(camBtn ? [camBtn] : []))
       ]),
+      camStage,
       el("div", { style: "margin-top:1.25rem" }, resultBox)
     ]);
     setTimeout(reset, 0);
     return pad;
   }
 
-  // Warehouse · Bestand — SKU/name search + per-item detail with bin edit.
+  // Warehouse · Bestand — searchable inventory list (photo + name + price + bin)
+  // with a per-item detail: rename / re-price / publish-to-web / status / bin
+  // change · Hauptbild picker · photo capture · label print.
   function whStock() {
     var resultBox = el("div", {});
     var detailBox = el("div", {});
@@ -755,24 +932,26 @@
     });
 
     function run(q) {
-      if (!q || busy) return;
+      if (busy) return;
       busy = true;
       clear(detailBox);
       clear(resultBox);
       resultBox.appendChild(el("div", { class: "state-msg" }, "Suche…"));
-      proxy("products?q=" + encodeURIComponent(q))
+      // Empty query → recent inventory (helps Basel browse without typing).
+      var path = q ? ("products?q=" + encodeURIComponent(q)) : "products";
+      proxy(path)
         .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
         .then(function (data) {
           busy = false;
-          var rows = normalizeProducts(data).slice(0, 50);
+          var rows = normalizeProducts(data).slice(0, 80);
           clear(resultBox);
           if (!rows.length) {
             resultBox.appendChild(el("div", { class: "notice info" }, "Kein Artikel gefunden."));
             return;
           }
-          rows.forEach(function (p) {
-            resultBox.appendChild(productCard(p, function () { openDetail(p); }));
-          });
+          var list = el("div", { class: "list" });
+          rows.forEach(function (p) { list.appendChild(inventoryRow(p, function () { openDetail(p); })); });
+          resultBox.appendChild(list);
         })
         .catch(function (err) {
           busy = false;
@@ -782,33 +961,34 @@
         });
     }
 
-    // Detail panel: rename / re-price / publish + bin (Lagerort) change.
     function openDetail(p) {
       clear(resultBox);
       clear(detailBox);
-      detailBox.appendChild(productDetail(p, function () {
-        // After a save, re-search so the list reflects the change.
-        run(p.sku || p.name || "");
-      }));
+      detailBox.appendChild(productDetail(p, function () { run(p.sku || p.name || ""); }));
       try { detailBox.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (e) {}
     }
 
-    // Allow the Scannen tab to hand us a product directly.
     window.__whOpenProduct = openDetail;
 
     var pad = el("div", { class: "pad" }, [
       search,
-      el("div", { class: "hint" }, "SKU oder Name eingeben und Enter drücken."),
+      el("div", { class: "hint" }, "SKU oder Name eingeben und Enter — oder leer lassen, um den Bestand zu durchsuchen."),
       detailBox,
       resultBox
     ]);
+    // Load an initial page so the list isn't empty on open.
+    setTimeout(function () { run(""); }, 0);
     return pad;
   }
 
-  // Warehouse · Neu — quick add-a-product form (POST /api/products).
+  // Warehouse · Neu — quick add-a-product form with EAS repeat-entry: after a
+  // save we KEEP the form open and carry sticky context (type/condition/tax/bin)
+  // forward, clearing only item-unique fields, plus a live batch count+subtotal.
   function whAdd() {
     var msg = el("div", {});
     var busy = false;
+    var batchCount = 0;
+    var batchCents = 0;
 
     function field(labelTxt, node, required) {
       return el("div", { class: "fl" }, [
@@ -824,7 +1004,9 @@
       }));
     }
 
-    var skuI   = el("input", { class: "inp", type: "text", autocapitalize: "characters", placeholder: "z. B. RING-0042" });
+    var sticky = loadSticky();
+
+    var skuI   = el("input", { class: "inp", type: "text", autocapitalize: "characters", placeholder: "leer = automatisch" });
     var barI   = el("input", { class: "inp", type: "text", placeholder: "Optional — Barcode" });
     var nameI  = el("input", { class: "inp", type: "text", placeholder: "Artikelbezeichnung" });
     var typeS  = selectOf(ITEM_TYPES);
@@ -836,20 +1018,50 @@
     var unitI  = el("input", { class: "inp", type: "text", placeholder: "z. B. Tresor 1" });
     var drwI   = el("input", { class: "inp", type: "text", placeholder: "z. B. Fach 3" });
     var posI   = el("input", { class: "inp", type: "text", placeholder: "z. B. Box B" });
+    var pubChk = el("input", { type: "checkbox", id: "wh-pub" });
+
+    // Restore sticky carry-forward context (NOT the item-unique fields).
+    if (sticky.itemType) typeS.value = sticky.itemType;
+    if (sticky.condition) condS.value = sticky.condition;
+    if (sticky.taxTreatmentCode) taxS.value = sticky.taxTreatmentCode;
+    if (sticky.locationStorageUnit) unitI.value = sticky.locationStorageUnit;
+    if (sticky.locationDrawer) drwI.value = sticky.locationDrawer;
+    if (sticky.locationPosition) posI.value = sticky.locationPosition;
+
+    var batchStrip = el("div", { class: "batchstrip", style: "display:none" }, []);
+    function paintBatch() {
+      clear(batchStrip);
+      if (!batchCount) { batchStrip.style.display = "none"; return; }
+      batchStrip.style.display = "";
+      batchStrip.appendChild(el("span", { class: "bl" }, "Diese Sitzung"));
+      batchStrip.appendChild(el("span", { class: "bv" },
+        batchCount + " Artikel · " + fmtEur(centsToDecimal(batchCents))));
+    }
 
     var saveBtn = el("button", { class: "btn-primary inline", type: "button",
-      onclick: submit }, "Produkt anlegen");
+      onclick: function () { submit(false); } }, "Anlegen & weiter");
+    var saveOnceBtn = el("button", { class: "btn-ghost", type: "button",
+      onclick: function () { submit(true); } }, "Anlegen & fertig");
 
     function setMsg(kind, text) {
       clear(msg);
       msg.appendChild(el("div", { class: "notice " + kind }, text));
     }
 
-    function submit() {
+    // SKU is now OPTIONAL on the form (brief §3 EAS: auto-derive). If blank we
+    // mint a readable client-side SKU so the operator never has to think one up.
+    function autoSku() {
+      var d = new Date();
+      function p(n) { return (n < 10 ? "0" : "") + n; }
+      var stamp = String(d.getFullYear()).slice(2) + p(d.getMonth() + 1) + p(d.getDate());
+      var rnd = Math.floor(1000 + Math.random() * 9000);
+      return "W14-" + stamp + "-" + rnd;
+    }
+
+    function submit(finish) {
       if (busy) return;
-      var sku = skuI.value.trim();
+      var sku = skuI.value.trim() || autoSku();
       var name = nameI.value.trim();
-      if (!sku)  { setMsg("bad", "Bitte eine SKU vergeben."); return; }
       if (!name) { setMsg("bad", "Bitte eine Bezeichnung eingeben."); return; }
       if (!isMoney(acqI.value))  { setMsg("bad", "Ankaufspreis ist keine gültige Zahl."); return; }
       if (!isMoney(listI.value)) { setMsg("bad", "Verkaufspreis ist keine gültige Zahl."); return; }
@@ -869,29 +1081,64 @@
       if (unitI.value.trim()) payload.locationStorageUnit = unitI.value.trim();
       if (drwI.value.trim())  payload.locationDrawer = drwI.value.trim();
       if (posI.value.trim())  payload.locationPosition = posI.value.trim();
+      if (pubChk.checked)     payload.listedOnStorefront = true;
 
-      busy = true; saveBtn.disabled = true;
+      busy = true; saveBtn.disabled = true; saveOnceBtn.disabled = true;
       setMsg("info", "Wird angelegt…");
       proxyJson("products", "POST", payload).then(function (res) {
-        busy = false; saveBtn.disabled = false;
-        setMsg("ok", "Angelegt: " + (res.sku || sku) + " (Status " + (res.status || "DRAFT") + "). " +
-          "Etikett kann im Tab „Drucker“ gedruckt werden.");
-        // Reset the identity fields for the next item; keep type/tax defaults.
+        busy = false; saveBtn.disabled = false; saveOnceBtn.disabled = false;
+        scanFeedback(true, "Angelegt: " + name, "SKU " + (res.sku || sku));
+        batchCount += 1; batchCents += (priceToCents(listI.value) || 0); paintBatch();
+
+        // Persist sticky carry-forward for the next item.
+        saveSticky({
+          itemType: typeS.value, condition: condS.value, taxTreatmentCode: taxS.value,
+          locationStorageUnit: unitI.value.trim(), locationDrawer: drwI.value.trim(),
+          locationPosition: posI.value.trim()
+        });
+
+        if (finish) {
+          setMsg("ok", "Angelegt: " + (res.sku || sku) + ". Sitzung beendet (" + batchCount + " Artikel).");
+          // Reset everything including sticky for a clean finish.
+          typeS.selectedIndex = 0; condS.selectedIndex = 0; taxS.selectedIndex = 0;
+          unitI.value = ""; drwI.value = ""; posI.value = "";
+        } else {
+          setMsg("ok", "Angelegt: " + (res.sku || sku) + " (Status " + (res.status || "DRAFT") + "). " +
+            "Bin/Art/Steuer bleiben für den nächsten Artikel erhalten.");
+        }
+        // Clear only item-unique fields (brief §3 EAS: N-field → 3-field for 2…n).
         skuI.value = ""; barI.value = ""; nameI.value = "";
-        acqI.value = ""; listI.value = ""; wgtI.value = "";
-        unitI.value = ""; drwI.value = ""; posI.value = "";
-        try { skuI.focus(); } catch (e) {}
+        acqI.value = ""; listI.value = ""; wgtI.value = ""; pubChk.checked = false;
+        try { nameI.focus(); } catch (e) {}
       }).catch(function (err) {
-        busy = false; saveBtn.disabled = false;
+        busy = false; saveBtn.disabled = false; saveOnceBtn.disabled = false;
         setMsg("bad", err.message || "Anlegen fehlgeschlagen.");
+        scanFeedback(false, "Anlegen fehlgeschlagen", err.message || "");
       });
     }
 
+    // Explicit Duplizieren: clone the LAST item's identity into the form so the
+    // operator changes one value and saves (brief §3).
+    function duplicate() {
+      var s = loadSticky();
+      if (s.itemType) typeS.value = s.itemType;
+      if (s.condition) condS.value = s.condition;
+      if (s.taxTreatmentCode) taxS.value = s.taxTreatmentCode;
+      if (s.locationStorageUnit) unitI.value = s.locationStorageUnit;
+      if (s.locationDrawer) drwI.value = s.locationDrawer;
+      if (s.locationPosition) posI.value = s.locationPosition;
+      setMsg("info", "Kontext übernommen — Bezeichnung und Preise anpassen, dann anlegen.");
+      try { nameI.focus(); } catch (e) {}
+    }
+
+    paintBatch();
+
     return el("div", { class: "pad" }, [
+      batchStrip,
       el("div", { class: "form" }, [
         el("div", { class: "sectionhead" }, "Identität"),
         el("div", { class: "form-row two" }, [
-          field("SKU", skuI, true),
+          field("SKU (optional)", skuI, false),
           field("Barcode", barI, false)
         ]),
         field("Bezeichnung", nameI, true),
@@ -915,10 +1162,20 @@
           field("Fach", drwI, false),
           field("Position", posI, false)
         ]),
-        el("div", { class: "btn-row" }, [ saveBtn ]),
+        el("label", { class: "toggle", for: "wh-pub" }, [
+          pubChk,
+          el("span", { class: "track" }),
+          el("span", { class: "tlab" }, "Im Webshop anbieten (nach Freigabe)")
+        ]),
+        el("div", { class: "btn-row" }, [ saveBtn, saveOnceBtn ]),
+        el("div", { class: "btn-row" }, [
+          el("button", { class: "btn-ghost", type: "button", onclick: duplicate }, "Letzten duplizieren")
+        ]),
         msg,
         el("div", { class: "scan-help" },
-          "Pflichtfelder sind mit * markiert. Der Lagerort kann hier direkt vergeben werden.")
+          "Pflichtfelder sind mit * markiert. Art, Zustand, Steuerart und Lagerort werden " +
+          "für den nächsten Artikel übernommen. Foto und Etikett für einen angelegten Artikel " +
+          "im Tab „Bestand“ → Artikel öffnen.")
       ])
     ]);
   }
@@ -929,10 +1186,11 @@
     var msg = el("div", {});
 
     var modeS = el("select", { class: "sel" }, [
+      el("option", { value: "browser" }, "Über dieses Gerät drucken (Browser)"),
       el("option", { value: "mother" }, "Über die Hauptkasse drucken"),
       el("option", { value: "network" }, "Netzwerkdrucker (IP)")
     ]);
-    modeS.value = saved.mode || "mother";
+    modeS.value = saved.mode || "browser";
 
     var nameI = el("input", { class: "inp", type: "text",
       placeholder: "z. B. Brother QL-820NWB", value: saved.name || "" });
@@ -946,41 +1204,33 @@
       el("div", { class: "fl" }, [ el("span", { class: "lab" }, "Port"), portI ])
     ]);
 
-    function refreshMode() {
-      netBox.style.display = modeS.value === "network" ? "" : "none";
-    }
+    function refreshMode() { netBox.style.display = modeS.value === "network" ? "" : "none"; }
     modeS.addEventListener("change", refreshMode);
     refreshMode();
 
-    function setMsg(kind, text) {
-      clear(msg);
-      msg.appendChild(el("div", { class: "notice " + kind }, text));
-    }
+    function setMsg(kind, text) { clear(msg); msg.appendChild(el("div", { class: "notice " + kind }, text)); }
 
     var saveBtn = el("button", { class: "btn-primary inline", type: "button",
       onclick: function () {
-        var cfg = {
-          mode: modeS.value,
-          name: nameI.value.trim(),
-          ip: ipI.value.trim(),
-          port: portI.value.trim() || "9100"
-        };
-        savePrinter(cfg);
+        savePrinter({ mode: modeS.value, name: nameI.value.trim(),
+          ip: ipI.value.trim(), port: portI.value.trim() || "9100" });
         setMsg("ok", "Etikettendrucker gespeichert.");
       } }, "Speichern");
 
     var testBtn = el("button", { class: "btn-ghost", type: "button",
       onclick: function () {
-        // Printing itself runs on the mother (the companion has no printer
-        // driver and the proxy is cloud-only). This is an honest stub: it
-        // confirms the saved target and signals that the actual print job is
-        // dispatched to the Hauptkasse in a later phase.
         var cfg = loadPrinter();
+        if ((cfg.mode || "browser") === "browser") {
+          // Print a sample label through the browser straight away — works today.
+          openLabelSheet({ name: "Testdruck", sku: "W14-TEST-0001", priceEur: "0.00",
+            barcode: "W14TEST0001" });
+          return;
+        }
         var target = cfg.mode === "network"
           ? ("Netzwerkdrucker " + (cfg.ip || "—") + ":" + (cfg.port || "9100"))
           : "Hauptkasse";
         setMsg("info", "Testdruck an „" + target + "“ vorgemerkt. " +
-          "Der eigentliche Druck wird über die Hauptkasse ausgelöst (folgt).");
+          "Der LAN-/Hauptkassen-Druck folgt in einer späteren Phase.");
       } }, "Testdruck");
 
     return el("div", { class: "pad" }, [
@@ -992,8 +1242,8 @@
         el("div", { class: "btn-row" }, [ saveBtn, testBtn ]),
         msg,
         el("div", { class: "scan-help" },
-          "Diese Einstellung gilt für dieses Gerät. Der Etikettendruck wird an die " +
-          "Hauptkasse übergeben — ein direkter LAN-Druck folgt in einer späteren Phase.")
+          "„Über dieses Gerät drucken“ öffnet das Etikett im Druckdialog des Telefons/Tablets " +
+          "(funktioniert sofort). Direkter LAN-Druck und Druck über die Hauptkasse folgen.")
       ])
     ]);
   }
@@ -1007,7 +1257,59 @@
     return el("span", { class: "pill muted" }, s);
   }
 
-  // A compact product result card with an "Öffnen" affordance.
+  // Best-effort primary-photo URL from a normalized product (proxied so the
+  // companion never needs a separate cloud origin / token).
+  function photoThumb(p) {
+    var raw = p.primaryPhotoThumbUrl || p.primaryPhotoUrl || p.thumbUrl || p.imageUrl || null;
+    if (!raw) return null;
+    return proxyPhotoUrl(raw);
+  }
+  // Map an api-relative photo URL (`/api/photos/<id>/thumb`) to the proxy so it
+  // rides the mother's Bearer. Absolute http(s) URLs are used as-is.
+  function proxyPhotoUrl(raw) {
+    if (!raw) return null;
+    var s = String(raw);
+    if (/^https?:\/\//i.test(s)) return s;
+    var rel = s.replace(/^\/?api\//, "").replace(/^\//, "");
+    return "/api/proxy/" + rel + (rel.indexOf("?") >= 0 ? "&" : "?") + "t=" + encodeURIComponent(token);
+  }
+
+  // ≥56px inventory row: photo (or glyph) + name + SKU + bin + price.
+  function inventoryRow(p, onOpen) {
+    var thumbUrl = photoThumb(p);
+    var thumb = thumbUrl
+      ? el("img", { class: "thumb", src: thumbUrl, alt: "", referrerpolicy: "no-referrer",
+          onerror: function (e) { try { e.target.replaceWith(glyphFor(p)); } catch (x) {} } })
+      : glyphFor(p);
+    return el("button", { class: "invrow", type: "button",
+      "aria-label": (p.name || "Artikel") + ", öffnen", onclick: onOpen }, [
+      thumb,
+      el("div", { class: "meta" }, [
+        el("div", { class: "nm" }, String(p.name || "Ohne Namen")),
+        el("div", { class: "sub" }, (p.sku ? "SKU " + p.sku : "—") + " · " + compact(p))
+      ]),
+      el("div", { class: "right" }, [
+        el("div", { class: "price" }, fmtEur(p.priceEur != null ? p.priceEur : p.price)),
+        el("div", { class: "bin" }, statusShort(p.status))
+      ])
+    ]);
+  }
+  function glyphFor(p) {
+    var t = String(p.itemType || "");
+    var g = /gold/.test(t) ? "🪙" : /silver/.test(t) ? "⚪" : /platinum/.test(t) ? "⬜"
+          : /watch/.test(t) ? "⌚" : /antique/.test(t) ? "🏺" : "📦";
+    return el("span", { class: "thumb" }, g);
+  }
+  function statusShort(status) {
+    var s = String(status || "").toUpperCase();
+    if (s === "AVAILABLE") return "Verfügbar";
+    if (s === "DRAFT") return "Entwurf";
+    if (s === "RESERVED") return "Reserviert";
+    if (s === "SOLD") return "Verkauft";
+    return s || "—";
+  }
+
+  // Compact product result card with an "Öffnen" affordance (scan results).
   function productCard(p, onOpen) {
     return el("div", { class: "skuhit" }, [
       kv("Artikel", p.name || "—"),
@@ -1024,8 +1326,9 @@
     ]);
   }
 
-  // Editable product detail: rename / re-price / publish (PUT) + bin change
-  // (POST inventory-adjustment, reason LOCATION_CHANGE).
+  // Editable product detail: rename / re-price / publish-to-web / status (PUT) +
+  // bin change (POST inventory-adjustment) + photo capture/upload + Hauptbild
+  // picker + label print. Each block is its own calm zone (brief §5c whitespace).
   function productDetail(p, onSaved) {
     if (!p.id) {
       return el("div", { class: "notice bad" },
@@ -1042,6 +1345,9 @@
       el("option", { value: "AVAILABLE" }, "Verfügbar (veröffentlichen)"),
       el("option", { value: "DRAFT" }, "Entwurf")
     ]);
+    var pubChk = el("input", { type: "checkbox", id: "det-pub-" + p.id });
+    if (p.isPublishedToWeb === true || p.listedOnStorefront === true) pubChk.checked = true;
+    var pubInitial = pubChk.checked;
 
     var unitI = el("input", { class: "inp", type: "text", value: p.locationStorageUnit || "", placeholder: "Einheit" });
     var drwI  = el("input", { class: "inp", type: "text", value: p.locationDrawer || "", placeholder: "Fach" });
@@ -1050,10 +1356,8 @@
 
     function setMsg(kind, text) { clear(msg); msg.appendChild(el("div", { class: "notice " + kind }, text)); }
 
-    var saveBtn = el("button", { class: "btn-primary inline", type: "button",
-      onclick: saveProduct }, "Änderungen speichern");
-    var binBtn = el("button", { class: "btn-ghost", type: "button",
-      onclick: saveBin }, "Lagerort übernehmen");
+    var saveBtn = el("button", { class: "btn-primary inline", type: "button", onclick: saveProduct }, "Änderungen speichern");
+    var binBtn = el("button", { class: "btn-ghost", type: "button", onclick: saveBin }, "Lagerort übernehmen");
 
     function saveProduct() {
       if (busy) return;
@@ -1065,6 +1369,7 @@
         body.listPriceEur = normalizeDecimal(priceI.value);
       }
       if (statusS.value) body.status = statusS.value;
+      if (pubChk.checked !== pubInitial) body.isPublishedToWeb = pubChk.checked;
       if (!Object.keys(body).length) { setMsg("info", "Keine Änderungen."); return; }
 
       busy = true; saveBtn.disabled = true; setMsg("info", "Wird gespeichert…");
@@ -1072,7 +1377,8 @@
         busy = false; saveBtn.disabled = false;
         var changed = (res.changedFields || []).length;
         setMsg("ok", "Gespeichert" + (changed ? " (" + changed + " Feld(er) geändert)." : "."));
-        if (onSaved) setTimeout(onSaved, 700);
+        pubInitial = pubChk.checked;
+        if (onSaved) setTimeout(onSaved, 800);
       }).catch(function (err) {
         busy = false; saveBtn.disabled = false;
         setMsg("bad", err.message || "Speichern fehlgeschlagen.");
@@ -1090,18 +1396,83 @@
       if (!body.locationStorageUnit && !body.locationDrawer && !body.locationPosition) {
         setMsg("bad", "Bitte mindestens ein Lagerort-Feld ausfüllen."); return;
       }
-
       busy = true; binBtn.disabled = true; setMsg("info", "Lagerort wird übernommen…");
       proxyJson("products/" + encodeURIComponent(p.id) + "/inventory-adjustment", "POST", body)
         .then(function () {
           busy = false; binBtn.disabled = false;
           setMsg("ok", "Lagerort aktualisiert.");
-          if (onSaved) setTimeout(onSaved, 700);
+          if (onSaved) setTimeout(onSaved, 800);
         }).catch(function (err) {
           busy = false; binBtn.disabled = false;
           setMsg("bad", err.message || "Lagerort-Änderung fehlgeschlagen.");
         });
     }
+
+    // Photo block: capture/upload + Hauptbild picker, refreshed from the cloud.
+    var photoBox = el("div", {});
+    function refreshPhotos() {
+      clear(photoBox);
+      photoBox.appendChild(el("div", { class: "state-msg" }, "Fotos werden geladen…"));
+      proxy("products/" + encodeURIComponent(p.id) + "/photos")
+        .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(function (data) {
+          var photos = (data && Array.isArray(data.items)) ? data.items : (Array.isArray(data) ? data : []);
+          clear(photoBox);
+          if (!photos.length) {
+            photoBox.appendChild(el("div", { class: "scan-help" }, "Noch keine Fotos. Mit „Foto aufnehmen“ ein Bild hinzufügen."));
+            return;
+          }
+          var grid = el("div", { class: "photogrid" }, photos.map(function (ph) {
+            var url = proxyPhotoUrl(ph.thumbUrl || ph.publicUrl);
+            var cell = el("button", { class: "photocell", type: "button",
+              "aria-pressed": ph.isPrimary ? "true" : "false",
+              "aria-label": ph.isPrimary ? "Hauptbild" : "Als Hauptbild wählen",
+              onclick: function () { setPrimary(ph.id); } }, [
+              url ? el("img", { src: url, alt: "", referrerpolicy: "no-referrer",
+                onerror: function (e) { try { e.target.replaceWith(el("span", { class: "ph" }, "🖼️")); } catch (x) {} } })
+                : el("span", { class: "ph" }, "🖼️"),
+              ph.isPrimary ? el("span", { class: "star" }, "★") : null
+            ]);
+            return cell;
+          }));
+          photoBox.appendChild(el("div", { class: "scan-help", style: "margin-bottom:.5rem" },
+            "Tippen Sie ein Bild an, um es als Hauptbild zu wählen."));
+          photoBox.appendChild(grid);
+        })
+        .catch(function (err) {
+          clear(photoBox);
+          photoBox.appendChild(el("div", { class: "notice info" },
+            "Fotos konnten nicht geladen werden. (" + (err.message || "Fehler") + ")"));
+        });
+    }
+    function setPrimary(photoId) {
+      setMsg("info", "Hauptbild wird gesetzt…");
+      proxyJson("photos/" + encodeURIComponent(photoId) + "/primary", "PATCH", {})
+        .then(function () { setMsg("ok", "Hauptbild aktualisiert."); refreshPhotos(); })
+        .catch(function (err) { setMsg("bad", err.message || "Hauptbild konnte nicht gesetzt werden."); });
+    }
+
+    var photoBtn = el("button", { class: "btn-ghost", type: "button",
+      onclick: function () {
+        openCameraSheet(function (blob, isPrimary) {
+          uploadPhoto(p.id, blob, isPrimary, function (ok, message) {
+            if (ok) { setMsg("ok", "Foto hochgeladen."); refreshPhotos(); }
+            else setMsg("bad", message || "Foto-Upload fehlgeschlagen.");
+          });
+        });
+      } }, "📷 Foto aufnehmen");
+
+    var labelBtn = el("button", { class: "btn-ghost", type: "button",
+      onclick: function () {
+        openLabelSheet({
+          name: nameI.value.trim() || p.name || "Artikel",
+          sku: p.sku || "",
+          priceEur: normalizeDecimal(priceI.value) || (p.priceEur != null ? p.priceEur : p.price),
+          barcode: p.barcode || p.sku || ""
+        });
+      } }, "🏷️ Etikett drucken");
+
+    refreshPhotos();
 
     return el("div", { class: "skuhit" }, [
       el("div", { class: "sectionhead", style: "margin-top:0" }, "Bearbeiten"),
@@ -1112,7 +1483,16 @@
           el("div", { class: "fl" }, [ el("span", { class: "lab" }, "Verkaufspreis (€)"), priceI ]),
           el("div", { class: "fl" }, [ el("span", { class: "lab" }, "Status"), statusS ])
         ]),
+        el("label", { class: "toggle", for: "det-pub-" + p.id }, [
+          pubChk, el("span", { class: "track" }),
+          el("span", { class: "tlab" }, "Im Webshop anbieten")
+        ]),
         el("div", { class: "btn-row" }, [ saveBtn ]),
+
+        el("div", { class: "sectionhead" }, "Fotos"),
+        photoBox,
+        el("div", { class: "btn-row" }, [ photoBtn, labelBtn ]),
+
         el("div", { class: "sectionhead" }, "Lagerort ändern"),
         el("div", { class: "form-row three" }, [
           el("div", { class: "fl" }, [ el("span", { class: "lab" }, "Einheit"), unitI ]),
@@ -1135,13 +1515,270 @@
     ]);
   }
 
-  // ── Local printer config (per device) ──────────────────────────────
+  // ── Camera capture sheet (phone camera → JPEG blob) ────────────────
+  // A full-screen sheet: live preview → shutter → review → "Verwenden" with an
+  // optional "als Hauptbild" toggle. On Use, hands the blob to `onCapture`.
+  function openCameraSheet(onCapture) {
+    var streamRef = null;
+    var captured = null; // Blob once shot.
+    var primaryChk = el("input", { type: "checkbox", id: "cam-primary", checked: "" });
+
+    var video = el("video", { autoplay: "", muted: "", playsinline: "" });
+    var stage = el("div", { class: "cam-stage" }, [ video ]);
+    var canvas = document.createElement("canvas");
+
+    var shutter = el("button", { class: "shutter", type: "button", "aria-label": "Foto aufnehmen", onclick: shoot });
+    var retakeBtn = el("button", { class: "btn-ghost", type: "button", style: "display:none", onclick: retake }, "Neu aufnehmen");
+    var useBtn = el("button", { class: "btn-primary inline", type: "button", style: "display:none", onclick: useShot }, "Verwenden");
+    var primaryRow = el("label", { class: "toggle", for: "cam-primary", style: "display:none; justify-content:center" }, [
+      primaryChk, el("span", { class: "track" }), el("span", { class: "tlab" }, "Als Hauptbild")
+    ]);
+
+    var controls = el("div", { class: "cam-controls" }, [ shutter ]);
+
+    var sheet = el("div", { class: "sheet", role: "dialog", "aria-label": "Foto aufnehmen" }, [
+      el("div", { class: "sheet-head" }, [
+        el("span", { class: "t" }, "Foto aufnehmen"),
+        el("button", { class: "x", type: "button", "aria-label": "Schließen", onclick: close }, "×")
+      ]),
+      el("div", { class: "sheet-body" }, [
+        stage,
+        primaryRow,
+        el("div", { class: "btn-row" }, [ retakeBtn, useBtn ]),
+        controls
+      ])
+    ]);
+    document.body.appendChild(sheet);
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      clear(stage);
+      stage.appendChild(el("div", { class: "ph" }, "Kamera auf diesem Gerät nicht verfügbar."));
+      shutter.disabled = true;
+    } else {
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1920 } } })
+        .then(function (stream) { streamRef = stream; video.srcObject = stream; })
+        .catch(function () {
+          clear(stage);
+          stage.appendChild(el("div", { class: "ph" }, "Kamerazugriff nicht erlaubt. Bitte in den Einstellungen freigeben."));
+          shutter.disabled = true;
+        });
+    }
+
+    function shoot() {
+      var w = video.videoWidth || 1280;
+      var h = video.videoHeight || 1280;
+      canvas.width = w; canvas.height = h;
+      var ctx = canvas.getContext("2d");
+      ctx.drawImage(video, 0, 0, w, h);
+      canvas.toBlob(function (blob) {
+        if (!blob) return;
+        captured = blob;
+        var img = el("img", { alt: "Aufnahme" });
+        img.src = URL.createObjectURL(blob);
+        clear(stage); stage.appendChild(img);
+        shutter.style.display = "none";
+        retakeBtn.style.display = ""; useBtn.style.display = "";
+        primaryRow.style.display = "";
+      }, "image/jpeg", 0.9);
+    }
+    function retake() {
+      captured = null;
+      clear(stage); stage.appendChild(video);
+      shutter.style.display = ""; retakeBtn.style.display = "none";
+      useBtn.style.display = "none"; primaryRow.style.display = "none";
+    }
+    function useShot() {
+      if (!captured) return;
+      var blob = captured;
+      var isPrimary = primaryChk.checked;
+      close();
+      onCapture(blob, isPrimary);
+    }
+    function close() {
+      try { if (streamRef) streamRef.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
+      try { sheet.remove(); } catch (e) {}
+    }
+  }
+
+  // Upload a captured JPEG via the proxy → POST /api/photos/upload (bytes
+  // through the API, no R2 CORS dependency — the durable POS path).
+  function uploadPhoto(productId, blob, isPrimary, done) {
+    blobToBase64(blob).then(function (b64) {
+      var payload = { dataBase64: b64, contentType: "image/jpeg", productId: productId, intent: "product" };
+      if (isPrimary) payload.isPrimary = true;
+      return proxyJson("photos/upload", "POST", payload);
+    }).then(function () {
+      scanFeedback(true, "Foto hochgeladen", null);
+      done(true);
+    }).catch(function (err) {
+      scanFeedback(false, "Foto-Upload fehlgeschlagen", err.message || "");
+      done(false, err.message);
+    });
+  }
+  function blobToBase64(blob) {
+    return blob.arrayBuffer().then(function (buf) {
+      var bytes = new Uint8Array(buf);
+      var binary = "";
+      var chunk = 0x8000;
+      var i;
+      for (i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+      }
+      return btoa(binary);
+    });
+  }
+
+  // ── Label / barcode (client-side Code128 → browser print) ──────────
+  // Template-once thermal layout: shop · name · price · bin · Code128 + SKU.
+  // Printing runs through the device's own print dialog (works today on phone
+  // /tablet); LAN/mother print is a later phase (see Drucker tab).
+  function openLabelSheet(item) {
+    var codeText = sanitizeCode(item.barcode || item.sku || "");
+    var labelEl = buildLabelCard(item, codeText);
+
+    var sheet = el("div", { class: "sheet", role: "dialog", "aria-label": "Etikett" }, [
+      el("div", { class: "sheet-head" }, [
+        el("span", { class: "t" }, "Etikett"),
+        el("button", { class: "x", type: "button", "aria-label": "Schließen",
+          onclick: function () { try { sheet.remove(); } catch (e) {} } }, "×")
+      ]),
+      el("div", { class: "sheet-body" }, [
+        el("div", { style: "flex:1; display:grid; place-items:center; overflow:auto" }, [ labelEl ]),
+        el("div", { class: "btn-row" }, [
+          el("button", { class: "btn-primary inline", type: "button",
+            onclick: function () { printLabel(item, codeText); } }, "Drucken")
+        ]),
+        el("div", { class: "scan-help" },
+          "Der Druck öffnet den Druckdialog dieses Geräts. Standardisieren Sie die Etikett-Position " +
+          "je Produkttyp, damit spätere Scans zuverlässig sind.")
+      ])
+    ]);
+    document.body.appendChild(sheet);
+  }
+
+  // Only the Code128 subset we render: ASCII 32..126. Strip the rest.
+  function sanitizeCode(raw) {
+    return String(raw || "").replace(/[^\x20-\x7e]/g, "").slice(0, 48) || "W14";
+  }
+
+  function buildLabelCard(item, codeText) {
+    var price = item.priceEur != null ? item.priceEur : item.price;
+    return el("div", { class: "label-card" }, [
+      el("div", { class: "lname" }, String(item.name || "Artikel")),
+      el("div", { class: "lmeta" }, "Warehouse14 · Schorndorf"),
+      el("div", { class: "lprice" }, fmtEur(price)),
+      code128Svg(codeText),
+      el("div", { class: "lcode" }, codeText)
+    ]);
+  }
+
+  // Open a clean print window with ONLY the label, so the device print dialog
+  // produces a tight thermal-style output. Built with DOM nodes (no innerHTML
+  // of any cloud string) then serialized for the print document.
+  function printLabel(item, codeText) {
+    var w = window.open("", "_blank", "width=420,height=320");
+    if (!w) { alert("Bitte Pop-ups erlauben, um das Etikett zu drucken."); return; }
+    var card = buildLabelCard(item, codeText);
+    var doc = w.document;
+    doc.title = "Etikett " + codeText;
+    var style = doc.createElement("style");
+    style.textContent =
+      "@page{size:62mm 30mm;margin:2mm}" +
+      "body{margin:0;font-family:system-ui,sans-serif}" +
+      ".label-card{color:#000}" +
+      ".label-card .lname{font-weight:700;font-size:13px;line-height:1.2}" +
+      ".label-card .lmeta{font-size:9px;color:#444;margin-top:1px}" +
+      ".label-card .lprice{font-weight:800;font-size:17px;margin:3px 0}" +
+      ".label-card svg{display:block;width:100%;height:46px}" +
+      ".label-card .lcode{font-family:monospace;font-size:9px;text-align:center;letter-spacing:.1em;margin-top:1px}";
+    doc.head.appendChild(style);
+    doc.body.appendChild(card);
+    // Give the layout a tick, then print.
+    w.focus();
+    setTimeout(function () { try { w.print(); } catch (e) {} }, 250);
+  }
+
+  // Minimal Code128-B encoder → an SVG of bars. Pure local geometry; no cloud
+  // string is ever interpolated as markup (svgEl sets numeric attributes only).
+  function code128Svg(text) {
+    var patterns = CODE128_PATTERNS;
+    var data = String(text);
+    var START_B = 104;
+    var STOP = 106;
+    var values = [START_B];
+    var i;
+    var c;
+    var j;
+    for (i = 0; i < data.length; i++) {
+      c = data.charCodeAt(i) - 32; // Code128-B: ASCII 32 → value 0.
+      if (c < 0 || c > 94) c = 0;
+      values.push(c);
+    }
+    // Checksum: start + Σ(value_i * position_i), mod 103.
+    var sum = START_B;
+    for (j = 1; j < values.length; j++) sum += values[j] * j;
+    values.push(sum % 103);
+    values.push(STOP);
+
+    // Build the module string (each pattern is 6 widths: bar,space,bar,...).
+    var modules = [];
+    values.forEach(function (v) {
+      var pat = patterns[v];
+      var k;
+      for (k = 0; k < pat.length; k++) modules.push(Number.parseInt(pat[k], 10));
+    });
+    modules.push(2); // final stop bar.
+
+    var unit = 2;
+    var x = 0;
+    var h = 46;
+    var totalWidth = modules.reduce(function (a, b) { return a + b; }, 0) * unit;
+    var rects = [];
+    var isBar = true;
+    modules.forEach(function (m) {
+      var w = m * unit;
+      if (isBar) {
+        rects.push(svgEl("rect", { x: String(x), y: "0", width: String(w), height: String(h), fill: "#000" }));
+      }
+      x += w; isBar = !isBar;
+    });
+    return svgEl("svg", {
+      viewBox: "0 0 " + totalWidth + " " + h, width: "100%", height: String(h),
+      preserveAspectRatio: "none", role: "img", "aria-label": "Barcode"
+    }, rects);
+  }
+
+  // Code128 width patterns, indexed by code value 0..106. Each is 6 module
+  // widths (bar/space alternating). Standard table (values 0–95 = set B chars,
+  // 96–102 = special, 103/104/105 start, 106 stop).
+  var CODE128_PATTERNS = [
+    "212222","222122","222221","121223","121322","131222","122213","122312","132212","221213",
+    "221312","231212","112232","122132","122231","113222","123122","123221","223211","221132",
+    "221231","213212","223112","312131","311222","321122","321221","312212","322112","322211",
+    "212123","212321","232121","111323","131123","131321","112313","132113","132311","211313",
+    "231113","231311","112133","112331","132131","113123","113321","133121","313121","211331",
+    "231131","213113","213311","213131","311123","311321","331121","312113","312311","332111",
+    "314111","221411","431111","111224","111422","121124","121421","141122","141221","112214",
+    "112412","122114","122411","142112","142211","241211","221114","413111","241112","134111",
+    "111242","121142","121241","114212","124112","124211","411212","421112","421211","212141",
+    "214121","412121","111143","111341","131141","114113","114311","411113","411311","113141",
+    "114131","311141","411131","211412","211214","211232","2331112"
+  ];
+
+  // ── Local config (per device) ──────────────────────────────────────
   function loadPrinter() {
     try { return JSON.parse(localStorage.getItem(LS_PRINTER) || "{}") || {}; }
     catch (e) { return {}; }
   }
   function savePrinter(cfg) {
     try { localStorage.setItem(LS_PRINTER, JSON.stringify(cfg)); } catch (e) {}
+  }
+  function loadSticky() {
+    try { return JSON.parse(localStorage.getItem(LS_STICKY) || "{}") || {}; }
+    catch (e) { return {}; }
+  }
+  function saveSticky(cfg) {
+    try { localStorage.setItem(LS_STICKY, JSON.stringify(cfg)); } catch (e) {}
   }
 
   // Normalize various possible product list shapes from the cloud.
@@ -1165,7 +1802,13 @@
         stock: p.stock != null ? p.stock : p.quantity,
         status: p.status,
         condition: p.condition,
-        itemType: p.itemType
+        itemType: p.itemType,
+        isPublishedToWeb: p.isPublishedToWeb,
+        listedOnStorefront: p.listedOnStorefront,
+        primaryPhotoThumbUrl: p.primaryPhotoThumbUrl || null,
+        primaryPhotoUrl: p.primaryPhotoUrl || null,
+        thumbUrl: p.thumbUrl || null,
+        imageUrl: p.imageUrl || null
       };
     });
   }

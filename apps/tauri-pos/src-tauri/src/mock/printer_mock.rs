@@ -7,6 +7,31 @@ use crate::commands::thermal::{ThermalEndpoint, ThermalReceiptData};
 use crate::error::HwResult;
 use crate::mock;
 
+/// Mock reachability probe for the receipt printer — a short delay then
+/// "reachable", honouring the fail-rate knob so the auto-connect "nicht
+/// erreichbar" path can be exercised in dev.
+pub async fn check_connection(ip: &str, port: u16) -> HwResult<bool> {
+    mock::mock_delay(120).await;
+    if mock::maybe_inject_failure("thermal connection probe (mock)").is_err() {
+        return Ok(false);
+    }
+    eprintln!("warehouse14-pos[mock]: thermal probe → {ip}:{port} reachable");
+    Ok(true)
+}
+
+/// Mock reachability probe for the label printer (tcp or system mode).
+pub async fn check_label(config: &LabelConfig) -> HwResult<bool> {
+    mock::mock_delay(120).await;
+    if mock::maybe_inject_failure("label connection probe (mock)").is_err() {
+        return Ok(false);
+    }
+    eprintln!(
+        "warehouse14-pos[mock]: label probe → {:?}/{} reachable",
+        config.printer_type, config.mode,
+    );
+    Ok(true)
+}
+
 pub async fn print_thermal(_endpoint: ThermalEndpoint, data: ThermalReceiptData) -> HwResult<()> {
     mock::mock_delay(650).await;
     mock::maybe_inject_failure("ESC/POS thermal print (mock)")?;

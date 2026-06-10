@@ -20,6 +20,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Button, DiamondRule, ParchmentCard, Seal } from '@warehouse14/ui-kit';
 
 import { HardwareStatusBadge } from '../../components/hardware/HardwareStatusBadge.js';
+import { useHardwareAutoConnect } from '../../hooks/useHardwareAutoConnect.js';
 import {
   type LabelConfig,
   type SystemPrinter,
@@ -40,13 +41,44 @@ import {
   type ZvtTerminalConfig,
   useHardwareStore,
 } from '../../state/hardware-store.js';
+import { useScannerStore } from '../../state/scanner-store.js';
 import { useToastStore } from '../../state/toast-store.js';
 
 export function GeraeteManager(): JSX.Element {
   const hydrate = useHardwareStore((s) => s.hydrateFromLocal);
+  const addToast = useToastStore((s) => s.addToast);
+  const { connectAll } = useHardwareAutoConnect();
+  const [connectingAll, setConnectingAll] = useState(false);
   useEffect(() => {
     hydrate();
   }, [hydrate]);
+
+  const onConnectAll = useCallback(async () => {
+    setConnectingAll(true);
+    try {
+      await connectAll();
+      // Read the fresh verdicts straight from the store after the sweep.
+      const cfg = useHardwareStore.getState().config;
+      const reachable = [cfg.thermal.lastReachable, cfg.label.lastReachable, cfg.zvt.lastReachable];
+      const okCount = reachable.filter((r) => r === true).length;
+      const configured = reachable.filter((r) => r !== null).length;
+      addToast({
+        tone: okCount > 0 ? 'success' : 'alert',
+        title:
+          configured === 0
+            ? 'Keine Geräte konfiguriert'
+            : `${okCount} von ${configured} Geräten verbunden`,
+        body:
+          configured === 0
+            ? 'Bitte zuerst die Adressen der Geräte eintragen.'
+            : okCount === configured
+              ? 'Alle eingerichteten Geräte sind erreichbar.'
+              : 'Bitte die nicht erreichbaren Geräte prüfen (Strom, Netzwerk).',
+      });
+    } finally {
+      setConnectingAll(false);
+    }
+  }, [connectAll, addToast]);
 
   return (
     <section
@@ -88,14 +120,23 @@ export function GeraeteManager(): JSX.Element {
             Drucker · Karten-Terminal · TSE
           </span>
         </div>
-        {!isRunningInTauri() && (
-          <span
-            className="w14-smallcaps"
-            style={{ color: 'var(--w14-wax-red)', fontSize: '0.78rem' }}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {!isRunningInTauri() && (
+            <span
+              className="w14-smallcaps"
+              style={{ color: 'var(--w14-wax-red)', fontSize: '0.78rem' }}
+            >
+              Browser-Modus — Aktionen sind deaktiviert
+            </span>
+          )}
+          <Button
+            variant="primary"
+            onClick={() => void onConnectAll()}
+            disabled={connectingAll || !isRunningInTauri()}
           >
-            Browser-Modus — Aktionen sind deaktiviert
-          </span>
-        )}
+            {connectingAll ? 'Verbindet…' : 'Alle Geräte verbinden'}
+          </Button>
+        </div>
       </header>
       <DiamondRule />
 
@@ -103,6 +144,7 @@ export function GeraeteManager(): JSX.Element {
       <A4Section />
       <LabelSection />
       <ZvtSection />
+      <ScannerSection />
       <TseSection />
     </section>
   );
@@ -136,13 +178,16 @@ function ThermalSection(): JSX.Element {
   const testConnection = useCallback(async () => {
     setBusy('test');
     try {
-      // The thermal "test" is just a TCP probe — same pattern as ZVT.
-      const ok = await zvtClient.check({ ip: cfg.ip, port: cfg.port });
+      // Dedicated receipt-printer probe — opens the socket, sends NO bytes
+      // (never wakes the cutter or feeds paper), then marks the badge.
+      const ok = await thermalClient.check({ ip: cfg.ip, port: cfg.port });
       save({ lastReachable: ok, lastCheckedAt: new Date().toISOString() });
       addToast({
         tone: ok ? 'success' : 'alert',
-        title: ok ? 'Drucker erreichbar' : 'Drucker offline',
-        body: `${cfg.ip}:${cfg.port}`,
+        title: ok ? 'Drucker verbunden' : 'Drucker nicht erreichbar',
+        body: ok
+          ? `${cfg.ip}:${cfg.port}`
+          : `Keine Antwort von ${cfg.ip}:${cfg.port}. Bitte Strom und Netzwerk prüfen.`,
       });
     } catch (err) {
       addToast({
@@ -200,7 +245,7 @@ function ThermalSection(): JSX.Element {
           onClick={() => void testConnection()}
           disabled={busy !== null || !cfg.ip}
         >
-          {busy === 'test' ? 'Prüft…' : 'Verbindung prüfen'}
+          {busy === 'test' ? 'Verbindet…' : 'Automatisch verbinden'}
         </Button>
         <Button
           variant="primary"
@@ -214,10 +259,10 @@ function ThermalSection(): JSX.Element {
           tone={cfg.lastReachable === null ? 'pending' : cfg.lastReachable ? 'online' : 'offline'}
           label={
             cfg.lastReachable === null
-              ? 'Noch nicht geprüft'
+              ? 'Noch nicht verbunden'
               : cfg.lastReachable
-                ? 'Drucker online'
-                : 'Drucker offline'
+                ? 'Drucker verbunden'
+                : 'Drucker nicht erreichbar'
           }
           lastCheckedAt={cfg.lastCheckedAt}
         />
@@ -312,7 +357,7 @@ function LabelSection(): JSX.Element {
   const [printers, setPrinters] = useState<SystemPrinter[]>([]);
   const [ipDraft, setIpDraft] = useState(cfg.ip);
   const [portDraft, setPortDraft] = useState(String(cfg.port));
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<'connect' | 'print' | null>(null);
 
   useEffect(() => {
     setIpDraft(cfg.ip);
@@ -333,17 +378,47 @@ function LabelSection(): JSX.Element {
 
   const save = useCallback((patch: Partial<LabelPrinterConfig>) => setLabel(patch), [setLabel]);
 
-  const test = useCallback(async () => {
-    setBusy(true);
+  const currentConfig = useCallback(
+    (): LabelConfig => ({
+      mode: cfg.mode,
+      ip: cfg.ip || undefined,
+      port: cfg.port,
+      printerName: cfg.printerName || undefined,
+      printerType: cfg.printerType,
+    }),
+    [cfg.mode, cfg.ip, cfg.port, cfg.printerName, cfg.printerType],
+  );
+
+  // One-tap probe: confirm reachability (socket / CUPS queue) without printing
+  // a sticker — the calm "verbunden / nicht erreichbar" badge.
+  const connect = useCallback(async () => {
+    setBusy('connect');
     try {
-      const config: LabelConfig = {
-        mode: cfg.mode,
-        ip: cfg.ip || undefined,
-        port: cfg.port,
-        printerName: cfg.printerName || undefined,
-        printerType: cfg.printerType,
-      };
-      await labelClient.test(config);
+      const ok = await labelClient.check(currentConfig());
+      save({ lastReachable: ok, lastCheckedAt: new Date().toISOString() });
+      addToast({
+        tone: ok ? 'success' : 'alert',
+        title: ok ? 'Etikettendrucker verbunden' : 'Etikettendrucker nicht erreichbar',
+        body: ok
+          ? 'Bereit für den Etikettendruck.'
+          : 'Keine Antwort. Bitte Strom, Netzwerk oder Warteschlange prüfen.',
+      });
+    } catch (err) {
+      save({ lastReachable: false, lastCheckedAt: new Date().toISOString() });
+      addToast({
+        tone: 'alert',
+        title: 'Verbindungsfehler',
+        body: isHardwareError(err) ? describeHardwareError(err) : String(err),
+      });
+    } finally {
+      setBusy(null);
+    }
+  }, [addToast, save, currentConfig]);
+
+  const test = useCallback(async () => {
+    setBusy('print');
+    try {
+      await labelClient.test(currentConfig());
       save({ lastReachable: true, lastCheckedAt: new Date().toISOString() });
       addToast({
         tone: 'success',
@@ -358,12 +433,12 @@ function LabelSection(): JSX.Element {
         body: isHardwareError(err) ? describeHardwareError(err) : String(err),
       });
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
-  }, [addToast, save, cfg.mode, cfg.ip, cfg.port, cfg.printerName, cfg.printerType]);
+  }, [addToast, save, currentConfig]);
 
-  const testDisabled =
-    busy || (cfg.mode === 'system' ? cfg.printerName.length === 0 : cfg.ip.length === 0);
+  const notConfigured = cfg.mode === 'system' ? cfg.printerName.length === 0 : cfg.ip.length === 0;
+  const actionsDisabled = busy !== null || notConfigured;
 
   return (
     <Card title="Etikettendrucker (ZPL / ESC-POS)">
@@ -451,18 +526,21 @@ function LabelSection(): JSX.Element {
       )}
 
       <Row>
-        <Button variant="primary" onClick={() => void test()} disabled={testDisabled}>
-          {busy ? 'Druckt…' : 'Testetikett drucken'}
+        <Button variant="ghost" onClick={() => void connect()} disabled={actionsDisabled}>
+          {busy === 'connect' ? 'Verbindet…' : 'Automatisch verbinden'}
+        </Button>
+        <Button variant="primary" onClick={() => void test()} disabled={actionsDisabled}>
+          {busy === 'print' ? 'Druckt…' : 'Testetikett drucken'}
         </Button>
         <span style={{ flex: 1 }} />
         <HardwareStatusBadge
           tone={cfg.lastReachable === null ? 'pending' : cfg.lastReachable ? 'online' : 'offline'}
           label={
             cfg.lastReachable === null
-              ? 'Noch nicht geprüft'
+              ? 'Noch nicht verbunden'
               : cfg.lastReachable
-                ? 'Drucker bereit'
-                : 'Druck fehlgeschlagen'
+                ? 'Drucker verbunden'
+                : 'Drucker nicht erreichbar'
           }
           lastCheckedAt={cfg.lastCheckedAt}
         />
@@ -497,8 +575,10 @@ function ZvtSection(): JSX.Element {
       save({ lastReachable: ok, lastCheckedAt: new Date().toISOString() });
       addToast({
         tone: ok ? 'success' : 'alert',
-        title: ok ? 'Terminal erreichbar' : 'Terminal offline',
-        body: `${cfg.ip}:${cfg.port}`,
+        title: ok ? 'Terminal verbunden' : 'Terminal nicht erreichbar',
+        body: ok
+          ? `${cfg.ip}:${cfg.port}`
+          : `Keine Antwort von ${cfg.ip}:${cfg.port}. Bitte Strom und Netzwerk prüfen.`,
       });
     } catch (err) {
       addToast({
@@ -532,19 +612,62 @@ function ZvtSection(): JSX.Element {
       </Row>
       <Row>
         <Button variant="ghost" onClick={() => void check()} disabled={busy || !cfg.ip}>
-          {busy ? 'Prüft…' : 'Verbindung prüfen'}
+          {busy ? 'Verbindet…' : 'Automatisch verbinden'}
         </Button>
         <span style={{ flex: 1 }} />
         <HardwareStatusBadge
           tone={cfg.lastReachable === null ? 'pending' : cfg.lastReachable ? 'online' : 'offline'}
           label={
             cfg.lastReachable === null
-              ? 'Noch nicht geprüft'
+              ? 'Noch nicht verbunden'
               : cfg.lastReachable
-                ? 'Terminal bereit'
-                : 'Terminal offline'
+                ? 'Terminal verbunden'
+                : 'Terminal nicht erreichbar'
           }
           lastCheckedAt={cfg.lastCheckedAt}
+        />
+      </Row>
+    </Card>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 3b — Barcode-Scanner (USB-HID-Wedge) — plug-and-play, liveness-based status
+// ════════════════════════════════════════════════════════════════════════
+
+function ScannerSection(): JSX.Element {
+  const lastScanAt = useScannerStore((s) => s.lastScanAt);
+  const lastCode = useScannerStore((s) => s.lastCode);
+
+  // A keyboard-class scanner has no IP and nothing to connect to — it works the
+  // instant it is plugged in. "Connected" here means the app decoded a scan
+  // recently (the only honest readiness signal); until then we show a calm
+  // "ready, waiting for first scan" state rather than an error.
+  const seen = lastScanAt !== null;
+
+  return (
+    <Card title="Barcode-Scanner (USB)">
+      <Row>
+        <span style={{ color: 'var(--w14-ink-faded)', fontSize: '0.82rem', flex: 1 }}>
+          Der Handscanner funktioniert ohne Einrichtung: einstecken und scannen. Er wirkt systemweit
+          — ein Scan landet automatisch in Kasse oder Lager.
+        </span>
+      </Row>
+      <Row>
+        {seen ? (
+          <span style={{ color: 'var(--w14-ink-faded)', fontSize: '0.82rem' }}>
+            Zuletzt gescannt:{' '}
+            <code style={{ fontFamily: 'var(--w14-font-mono)' }}>{lastCode ?? '—'}</code>
+          </span>
+        ) : (
+          <span style={{ color: 'var(--w14-ink-faded)', fontSize: '0.82rem' }}>
+            Zum Prüfen einfach ein beliebiges Etikett scannen.
+          </span>
+        )}
+        <span style={{ flex: 1 }} />
+        <HardwareStatusBadge
+          tone={seen ? 'online' : 'pending'}
+          label={seen ? 'Scanner bereit' : 'Bereit — auf ersten Scan wartend'}
         />
       </Row>
     </Card>

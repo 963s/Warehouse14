@@ -44,22 +44,16 @@ pub struct ZvtResult {
     pub error_message: Option<String>,
 }
 
-/// Quick TCP probe — open a connection, close it. Drives the green/red badge.
+/// Quick TCP probe — open a connection, close it. Drives the green/red badge
+/// and the app-start auto-connect sweep. Shares the canonical `probe_tcp`
+/// helper with the receipt + label printers so every device uses one timeout
+/// budget and one reachability semantic.
 #[tauri::command]
 pub async fn zvt_check_connection(endpoint: ZvtEndpoint) -> HwResult<bool> {
     if config::is_mock_mode() {
         return zvt_mock::check_connection(endpoint).await;
     }
-    let addr = format!("{}:{}", endpoint.ip, endpoint.port);
-    let conn = timeout(
-        Duration::from_millis(DEFAULT_TCP_TIMEOUT_MS),
-        TcpStream::connect(&addr),
-    )
-    .await;
-    match conn {
-        Ok(Ok(_stream)) => Ok(true),
-        Ok(Err(_)) | Err(_) => Ok(false),
-    }
+    Ok(crate::commands::thermal::probe_tcp(&endpoint.ip, endpoint.port).await)
 }
 
 /// Authorize a card payment for `amount_cents`. Blocks the terminal until

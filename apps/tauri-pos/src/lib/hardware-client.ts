@@ -255,6 +255,14 @@ export const labelClient = {
   print(config: LabelConfig, labels: LabelData[]): Promise<number> {
     return invoke<number>('print_label', { config, labels });
   },
+  /**
+   * One-tap reachability probe — opens a socket (tcp mode) or confirms the CUPS
+   * queue exists (system mode) WITHOUT printing a sticker. Drives the
+   * "verbunden / nicht erreichbar" badge and the app-start auto-connect sweep.
+   */
+  check(config: LabelConfig): Promise<boolean> {
+    return invoke<boolean>('label_check_connection', { config });
+  },
   /** Connection test — prints a single self-test sticker. */
   test(config: LabelConfig): Promise<number> {
     return invoke<number>('print_label', {
@@ -315,6 +323,14 @@ export interface ThermalReceiptData {
 export const thermalClient = {
   print(endpoint: ThermalEndpoint, data: ThermalReceiptData): Promise<void> {
     return invoke('print_thermal_receipt', { endpoint, data });
+  },
+  /**
+   * One-tap reachability probe — opens a socket to the receipt printer and
+   * closes it WITHOUT sending bytes (so it never wakes the cutter). Drives the
+   * "verbunden / nicht erreichbar" badge and the app-start auto-connect sweep.
+   */
+  check(endpoint: ThermalEndpoint): Promise<boolean> {
+    return invoke<boolean>('thermal_check_connection', { endpoint });
   },
 };
 

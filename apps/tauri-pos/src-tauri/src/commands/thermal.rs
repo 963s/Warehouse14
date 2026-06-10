@@ -68,6 +68,36 @@ pub struct ThermalReceiptData {
     pub footer_lines: Vec<String>,
 }
 
+/// One-tap reachability probe for the receipt printer — open a TCP connection
+/// to the configured `ip:port` (AppSocket 9100) and close it. Drives the green/
+/// red "verbunden / nicht erreichbar" badge and the app-start auto-connect sweep
+/// WITHOUT sending any bytes, so probing never wakes the cutter or feeds paper.
+///
+/// Returns `Ok(true)` when the socket opened, `Ok(false)` on refusal/timeout —
+/// an unreachable printer is a normal state to surface, not a hard error.
+#[tauri::command]
+pub async fn thermal_check_connection(endpoint: ThermalEndpoint) -> HwResult<bool> {
+    if config::is_mock_mode() {
+        return printer_mock::check_connection(&endpoint.ip, endpoint.port).await;
+    }
+    Ok(probe_tcp(&endpoint.ip, endpoint.port).await)
+}
+
+/// Shared TCP reachability probe — connect, then drop. `true` iff the socket
+/// opened within [`DEFAULT_TCP_TIMEOUT_MS`]. Never errors; the caller maps a
+/// `false` into a calm "nicht erreichbar" state.
+pub(crate) async fn probe_tcp(ip: &str, port: u16) -> bool {
+    let addr = format!("{ip}:{port}");
+    matches!(
+        timeout(
+            Duration::from_millis(DEFAULT_TCP_TIMEOUT_MS),
+            TcpStream::connect(&addr),
+        )
+        .await,
+        Ok(Ok(_))
+    )
+}
+
 /// Send a receipt to the thermal printer. Idempotent — if the operator
 /// re-prints (e.g. the paper jammed), we just re-fire the same bytes.
 #[tauri::command]

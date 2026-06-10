@@ -61,6 +61,54 @@ pub struct LabelConfig {
     pub printer_type: LabelPrinterType,
 }
 
+/// One-tap reachability probe for the label printer — NO bytes sent, so it
+/// never feeds a sticker. In `tcp` mode this opens a socket to `ip:port`; in
+/// `system` mode it confirms the chosen CUPS queue still exists in
+/// `lpstat -p`. Drives the green/red badge + the app-start auto-connect sweep.
+///
+/// Returns `Ok(true)` when reachable, `Ok(false)` when not — an offline printer
+/// is a normal state, not a hard error. A missing config (no IP / no queue
+/// name) is a real `NotConfigured` error so the UI can prompt for setup.
+#[tauri::command]
+pub async fn label_check_connection(config: LabelConfig) -> HwResult<bool> {
+    if config::is_mock_mode() {
+        return printer_mock::check_label(&config).await;
+    }
+    match config.mode.as_str() {
+        "tcp" => {
+            let ip = config
+                .ip
+                .ok_or_else(|| HardwareError::NotConfigured("label printer IP not set".into()))?;
+            let port = config.port.unwrap_or(9100);
+            Ok(crate::commands::thermal::probe_tcp(&ip, port).await)
+        }
+        "system" => {
+            let printer = config
+                .printer_name
+                .ok_or_else(|| HardwareError::NotConfigured("label printer name not set".into()))?;
+            Ok(system_queue_exists(&printer).await)
+        }
+        other => Err(HardwareError::InvalidArgument(format!(
+            "unknown label printer mode: {other}"
+        ))),
+    }
+}
+
+/// True iff a CUPS queue with this exact name is listed by `lpstat -p`. Used
+/// to "verify" a system-mode label printer without dispatching a job.
+async fn system_queue_exists(printer_name: &str) -> bool {
+    let output = tokio::process::Command::new("lpstat").arg("-p").output().await;
+    let stdout = match output {
+        Ok(o) => String::from_utf8_lossy(&o.stdout).to_string(),
+        Err(_) => return false,
+    };
+    stdout
+        .lines()
+        .filter_map(|l| l.strip_prefix("printer "))
+        .filter_map(|rest| rest.split_whitespace().next())
+        .any(|name| name == printer_name)
+}
+
 /// Print a batch of labels. Returns the number of labels dispatched.
 #[tauri::command]
 pub async fn print_label(config: LabelConfig, labels: Vec<LabelData>) -> HwResult<u32> {

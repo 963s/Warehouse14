@@ -19,11 +19,14 @@ import { useEffect } from 'react';
 import { Button, DiamondRule, ParchmentCard, Seal } from '@warehouse14/ui-kit';
 import { ErrorBoundary } from '@warehouse14/ui-kit';
 
+import { useBarcodeScanner } from '../hooks/useBarcodeScanner.js';
 import { useCompanionBridge } from '../hooks/useCompanionBridge.js';
+import { useHardwareAutoConnect } from '../hooks/useHardwareAutoConnect.js';
 import { useSessionProbe } from '../hooks/useSessionProbe.js';
 import { applyChatwoot } from '../lib/chatwoot.js';
 import { useOfflineReplay } from '../lib/offline-replay.js';
 import { PinLogin } from '../screens/PinLogin.js';
+import { useHardwareStore } from '../state/hardware-store.js';
 import { useIntegrationSettings } from '../state/integration-settings-store.js';
 import { useLedgerFeed } from '../state/ledger-feed-store.js';
 import { useSessionStore } from '../state/session-store.js';
@@ -49,6 +52,28 @@ export function App(): JSX.Element {
   // attaches connectivity listeners + runs a startup sweep; the DB connection
   // lazy-loads on first drain, never blocking React mount.
   useOfflineReplay(status === 'authenticated');
+
+  // Hardware auto-connect: once the operator is in, hydrate the saved endpoints
+  // and silently probe every configured device (receipt + label printer, card
+  // terminal). Reachable devices light their badge green WITHOUT anyone opening
+  // Settings — the one-tap/automatic connect the hardware mandate asks for.
+  const hydrateHardware = useHardwareStore((s) => s.hydrateFromLocal);
+  useEffect(() => {
+    if (status === 'authenticated') hydrateHardware();
+  }, [status, hydrateHardware]);
+  useHardwareAutoConnect(status === 'authenticated');
+
+  // Global HID-wedge scanner liveness: a passive, app-wide listener that records
+  // "a scan just decoded" so the Gerätemanager can show the scanner as connected
+  // from any screen. It never swallows Enter or routes the code — the focused
+  // surface (Verkauf/Lager) keeps its own routing handler.
+  useBarcodeScanner({
+    enabled: status === 'authenticated',
+    passive: true,
+    onScan: () => {
+      /* liveness only — recorded inside the hook via the scanner store */
+    },
+  });
 
   // Defence-in-depth: any departure from 'authenticated' tears down the
   // in-memory caches that should never outlive a session.

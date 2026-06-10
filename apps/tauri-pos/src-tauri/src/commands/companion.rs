@@ -1097,6 +1097,19 @@ fn is_product_item_action(lower_path: &str, action: &str) -> bool {
     )
 }
 
+/// True when `lower_path` is exactly `<base>/<id>/<action>` (three segments,
+/// none empty) with the first segment equal to `base` and the third equal to
+/// `action`. The generic sibling of [`is_product_item_action`], used to allow
+/// the warehouse "set primary photo" PATCH (`photos/<id>/primary`) WITHOUT
+/// over-granting any other photo sub-action (e.g. `workflow-state`).
+fn is_item_action(lower_path: &str, base: &str, action: &str) -> bool {
+    let mut it = lower_path.split('/');
+    matches!(
+        (it.next(), it.next(), it.next(), it.next()),
+        (Some(b), Some(id), Some(a), None) if b == base && !id.is_empty() && a == action
+    )
+}
+
 /// Role-scoped POSITIVE allow-set for the proxy (C1) — deny-by-default.
 ///
 /// Returns `true` only when `role` may call `method <lower_path>`, where
@@ -1108,6 +1121,7 @@ fn proxy_allowed(role: Role, method: &Method, lower_path: &str) -> bool {
     let is_get = method == Method::GET;
     let is_post = method == Method::POST;
     let is_put = method == Method::PUT;
+    let is_patch = method == Method::PATCH;
     let p = lower_path;
 
     // A read is allowed against `base` if the path is exactly `base` or a
@@ -1150,19 +1164,50 @@ fn proxy_allowed(role: Role, method: &Method, lower_path: &str) -> bool {
                     || p == "transactions/recent"))
                 || (is_post && (p == "transactions" || p == "transactions/finalize"))
         }
-        // Warehouse: inventory/product reads + write the stock-room actually
-        // needs — create a product, edit a single product (rename / re-price /
-        // re-shelve / publish), and the inventory-adjust POST. NEVER any
-        // transaction, payout, ankauf, storno, or archive/delete (the latter
-        // are blocked positively here AND by `hard_denied`).
+        // Warehouse: the stock-room's full inventory job, least-privilege.
+        //
+        // READS  — list/search products (`products`, `products?q=…`), one
+        //          product (`products/<id>`), its photos
+        //          (`products/<id>/photos`), the catalog, inventory reads, the
+        //          category tree, and storefront locations/bins (read-only) so
+        //          the picker can pick a shelf. `get_under("products")` already
+        //          subsumes the per-item + photos reads; the explicit
+        //          `categories` / `storefront/locations` add the taxonomy +
+        //          bin reads the intake form needs.
+        // WRITES — create a product (`POST products`), edit one product
+        //          (`PUT products/<id>`: rename / re-price / re-shelve /
+        //          DRAFT→AVAILABLE), the stock-adjust POST
+        //          (`products/<id>/inventory-adjustment` + `inventory/adjust`),
+        //          request a photo-upload URL (`POST products/<id>/photos`),
+        //          upload a photo through the api (`POST photos/upload`),
+        //          register an uploaded photo (`POST photos`), and set the
+        //          product's primary photo (`PATCH photos/<id>/primary`).
+        //
+        // NEVER any transaction, payout, ankauf, storno, archive/delete, photo
+        // workflow-state transition, or category mutation — those are blocked
+        // positively here (deny-by-default) AND by `hard_denied`. Label/barcode
+        // printing is a CLIENT-side thermal-print action, not an api route, so
+        // there is nothing to allow here for it.
         Role::Warehouse => {
             (is_get
-                && (get_under("products") || get_under("catalog") || get_under("inventory")))
+                && (get_under("products")
+                    || get_under("catalog")
+                    || get_under("inventory")
+                    || get_under("categories")
+                    || get_under("storefront/locations")
+                    // public photo renditions only (id-scoped) so the inventory
+                    // list can render thumbnails — NOT photos/unassigned|usage.
+                    || is_item_action(p, "photos", "thumb")
+                    || is_item_action(p, "photos", "raw")))
                 || (is_post
                     && (p == "products"
+                        || p == "photos"
+                        || p == "photos/upload"
                         || p == "inventory/adjust"
-                        || (is_product_item_action(p, "inventory-adjustment"))))
+                        || is_product_item_action(p, "inventory-adjustment")
+                        || is_product_item_action(p, "photos")))
                 || (is_put && is_product_item())
+                || (is_patch && is_item_action(p, "photos", "primary"))
         }
     }
 }
