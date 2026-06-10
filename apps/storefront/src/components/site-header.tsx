@@ -45,7 +45,7 @@ export function SiteHeader({ solid = false }: { solid?: boolean }) {
           scrolled || solid ? "glass border-b border-rule text-ink" : "bg-[#17130c] text-white",
         )}
       >
-        <div className="mx-auto flex h-[72px] max-w-edge items-center justify-between gap-3 px-5">
+        <div className="mx-auto flex h-16 max-w-edge items-center justify-between gap-2 px-4 sm:h-[72px] sm:gap-3 sm:px-5">
           <div className="flex items-center gap-2">
             <button
               aria-label="Menü öffnen"
@@ -99,7 +99,7 @@ export function SiteHeader({ solid = false }: { solid?: boolean }) {
             <button
               onClick={openCart}
               aria-label="Warenkorb öffnen"
-              className="bg-gold-gradient relative ml-1.5 inline-flex h-11 items-center gap-2 rounded-button px-4 text-sm font-semibold text-[#2b210a] transition-transform duration-fast ease-hover hover:-translate-y-px"
+              className="bg-gold-gradient relative ml-1 inline-flex h-11 w-11 items-center justify-center gap-2 rounded-button text-sm font-semibold text-[#2b210a] transition-transform duration-fast ease-hover hover:-translate-y-px sm:ml-1.5 sm:w-auto sm:px-4"
             >
               <ShoppingBag className="h-[18px] w-[18px]" aria-hidden="true" />
               <span className="hidden sm:inline">Warenkorb</span>

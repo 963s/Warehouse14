@@ -17,8 +17,8 @@ const ease = [0.16, 1, 0.3, 1] as const;
 
 /* ── Entrance choreography ──────────────────────────────────────────────────
  * Eyebrow → headline words (masked rise, cinematic stagger) → hairline →
- * lead → actions. Everything cascades once, then holds, except the living
- * light layers which breathe forever. */
+ * lead → actions. Everything cascades once and then holds. No infinite
+ * shine, no shimmer — the drama lives in the reveal, not in decoration. */
 const stage = {
   hidden: {},
   show: { transition: { staggerChildren: 0.1, delayChildren: 0.15 } },
@@ -48,126 +48,67 @@ export function Hero() {
   const initial = reduce ? false : "hidden";
   const sectionRef = useRef<HTMLElement>(null);
 
-  /* Scroll-parallax: the hero layers drift apart as the page scrolls past,
-   * giving depth without any layout thrash (transform/opacity only). */
+  /* ONE tasteful parallax: as the page scrolls past, the heritage object drifts
+   * a touch slower than the copy — quiet depth, no layout thrash (transform/
+   * opacity only). The copy itself eases up and fades as you leave the hero. */
   const { scrollYProgress } = useScroll({
     target: sectionRef,
     offset: ["start start", "end start"],
   });
-  const copyYRaw = useTransform(scrollYProgress, [0, 1], [0, -64]);
-  const objYRaw = useTransform(scrollYProgress, [0, 1], [0, 120]);
-  const auroraYRaw = useTransform(scrollYProgress, [0, 1], [0, -90]);
-  const fadeRaw = useTransform(scrollYProgress, [0, 0.8], [1, 0]);
+  const copyYRaw = useTransform(scrollYProgress, [0, 1], [0, -48]);
+  const objYRaw = useTransform(scrollYProgress, [0, 1], [0, 96]);
+  const fadeRaw = useTransform(scrollYProgress, [0, 0.85], [1, 0]);
 
   /* Spring-smooth the parallax so it tracks Lenis' inertia instead of jittering. */
   const spring = { stiffness: 120, damping: 30, mass: 0.4 };
   const copyY = useSpring(copyYRaw, spring);
   const objY = useSpring(objYRaw, spring);
-  const auroraY = useSpring(auroraYRaw, spring);
   const fade = useSpring(fadeRaw, spring);
 
   /* Reduced motion: freeze every scroll-bound transform at rest. */
   const sCopyY = reduce ? 0 : copyY;
   const sObjY = reduce ? 0 : objY;
-  const sAuroraY = reduce ? 0 : auroraY;
   const sFade = reduce ? 1 : fade;
 
   return (
     <section
       ref={sectionRef}
-      className="bg-ink-deep grain relative overflow-hidden text-white"
+      className="bg-ink-deep grain relative flex min-h-[92svh] items-center overflow-hidden text-white"
     >
-      {/* ── LIVING GOLD LIGHT ────────────────────────────────────────────────
-       * Two slow aurora plumes + a drifting sheen sweep + faint gold motes.
-       * All pure transform/opacity, inview by virtue of being in the first
-       * viewport, parallaxed on scroll. This is what makes the poster breathe. */}
-      {!reduce && (
-        <motion.div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 z-0"
-          style={{ y: sAuroraY, opacity: sFade }}
-        >
-          {/* warm gold aurora — slow scale + drift breath */}
-          <motion.div
-            className="absolute -right-[10%] -top-[28%] h-[70vh] w-[70vh] rounded-full"
-            style={{
-              background:
-                "radial-gradient(circle, rgba(221,196,134,0.30), rgba(191,148,48,0.10) 42%, transparent 68%)",
-              filter: "blur(8px)",
-            }}
-            animate={{
-              x: [0, 28, -14, 0],
-              y: [0, -22, 18, 0],
-              scale: [1, 1.12, 1.04, 1],
-              opacity: [0.55, 0.85, 0.6, 0.55],
-            }}
-            transition={{ duration: 16, ease: "easeInOut", repeat: Infinity }}
-          />
-          {/* cool olive counter-plume — depth + a heritage green undertone */}
-          <motion.div
-            className="absolute -bottom-[26%] left-[-8%] h-[58vh] w-[58vh] rounded-full"
-            style={{
-              background:
-                "radial-gradient(circle, rgba(70,88,63,0.34), transparent 64%)",
-              filter: "blur(10px)",
-            }}
-            animate={{
-              x: [0, -22, 16, 0],
-              y: [0, 16, -14, 0],
-              scale: [1, 1.08, 1.02, 1],
-            }}
-            transition={{ duration: 22, ease: "easeInOut", repeat: Infinity }}
-          />
-          {/* diagonal specular sheen that travels across the whole hero, slowly */}
-          <motion.div
-            className="absolute inset-y-0 -left-1/3 w-1/2 -skew-x-12"
-            style={{
-              background:
-                "linear-gradient(90deg, transparent, rgba(255,247,224,0.12), transparent)",
-            }}
-            animate={{ x: ["-20%", "320%"] }}
-            transition={{
-              duration: 9,
-              ease: "easeInOut",
-              repeat: Infinity,
-              repeatDelay: 5,
-            }}
-          />
-          {/* a few gold motes drifting up like dust in a vault light-shaft */}
-          {MOTES.map((m, i) => (
-            <motion.span
-              key={i}
-              className="absolute rounded-full"
-              style={{
-                left: m.left,
-                top: m.top,
-                width: m.size,
-                height: m.size,
-                background: "rgba(231,212,155,0.9)",
-                boxShadow: "0 0 8px 1px rgba(221,196,134,0.6)",
-              }}
-              animate={{
-                y: [0, -38, 0],
-                x: [0, m.drift, 0],
-                opacity: [0, 0.9, 0],
-              }}
-              transition={{
-                duration: m.dur,
-                ease: "easeInOut",
-                repeat: Infinity,
-                delay: m.delay,
-              }}
-            />
-          ))}
-        </motion.div>
-      )}
+      {/* ── STILL GOLD LIGHT ─────────────────────────────────────────────────
+       * Two soft, STATIC gold/olive pools establish depth and the heritage
+       * mood. No drift, no breathing, no sheen sweep, no dust motes — the
+       * gradient is part of the set, not an effect performing for attention.
+       * It rides the single hero parallax and fades as you scroll away. */}
+      <motion.div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 z-0"
+        style={{ opacity: sFade }}
+      >
+        <div
+          className="absolute -right-[12%] -top-[26%] h-[70vh] w-[70vh] rounded-full"
+          style={{
+            background:
+              "radial-gradient(circle, rgba(221,196,134,0.22), rgba(191,148,48,0.08) 44%, transparent 68%)",
+            filter: "blur(10px)",
+          }}
+        />
+        <div
+          className="absolute -bottom-[24%] left-[-10%] h-[56vh] w-[56vh] rounded-full"
+          style={{
+            background:
+              "radial-gradient(circle, rgba(70,88,63,0.26), transparent 64%)",
+            filter: "blur(12px)",
+          }}
+        />
+      </motion.div>
 
       <motion.div
-        className="relative z-10 mx-auto grid w-full max-w-edge items-center gap-w14-5 px-5 py-section md:grid-cols-[1.1fr_0.9fr]"
+        className="relative z-10 mx-auto grid w-full max-w-edge items-center gap-w14-4 px-5 py-w14-6 md:gap-w14-5 md:px-6 md:py-section md:grid-cols-[1.1fr_0.9fr]"
         style={{ y: sCopyY }}
       >
         <motion.div variants={stage} initial={initial} animate="show">
-          {/* Eyebrow with a live, pulsing gold cue → "prices are alive". */}
+          {/* Eyebrow with a live gold cue → "prices are alive". */}
           <motion.p
             variants={rise}
             className="eyebrow mb-w14-3 flex items-center gap-2 text-gold/90"
@@ -190,46 +131,23 @@ export function Hero() {
                   <span
                     key={w}
                     className="relative inline-block overflow-hidden align-bottom"
-                    style={{ paddingBottom: "0.08em" }}
+                    /* real right-margin between words — a trailing " " inside an
+                       overflow-hidden inline-block gets clipped, which collapsed
+                       "Werte mit" into "Wertemit". */
+                    style={{ paddingBottom: "0.08em", marginRight: isLast ? undefined : "0.26em" }}
                   >
                     <motion.span
                       variants={wordRise}
-                      className={`inline-block ${isLast ? "relative" : ""}`}
+                      className="inline-block"
                     >
+                      {/* The accent word is simply rendered in the gold gradient —
+                       * rich material, no gleam raking across it. */}
                       {isLast ? (
-                        <span className="relative inline-block">
-                          <span className="text-gold-gradient">{w}</span>
-                          {/* SIGNATURE WOW: a specular gleam travels across the
-                           * accent word forever — like light raking gold leaf. */}
-                          {!reduce && (
-                            <motion.span
-                              aria-hidden="true"
-                              className="pointer-events-none absolute inset-0"
-                              style={{
-                                background:
-                                  "linear-gradient(105deg, transparent 38%, rgba(255,252,240,0.85) 50%, transparent 62%)",
-                                WebkitBackgroundClip: "text",
-                                backgroundClip: "text",
-                                WebkitTextFillColor: "transparent",
-                                color: "transparent",
-                                backgroundSize: "260% 100%",
-                              }}
-                              animate={{ backgroundPositionX: ["140%", "-40%"] }}
-                              transition={{
-                                duration: 4.2,
-                                ease: "easeInOut",
-                                repeat: Infinity,
-                                repeatDelay: 3.4,
-                              }}
-                            >
-                              {w}
-                            </motion.span>
-                          )}
-                        </span>
+                        <span className="text-gold-gradient">{w}</span>
                       ) : (
                         w
                       )}
-                      {!isLast ? " " : null}
+                      {!isLast ? " " : null}
                     </motion.span>
                   </span>
                 );
@@ -237,7 +155,7 @@ export function Hero() {
             </motion.span>
           </h1>
 
-          {/* The gold hairline drawn left→right, then a soft shimmer settles. */}
+          {/* The gold hairline draws once, left→right, and then simply rests. */}
           <motion.span
             aria-hidden="true"
             className="bg-gold-gradient mt-w14-3 block h-px w-28 origin-left"
@@ -254,41 +172,25 @@ export function Hero() {
             geprüft, fair und versichert.
           </motion.p>
 
+          {/* CTAs: stacked + full-width on phones (big, comfortable tap targets),
+           * inline from sm up. No shine-wipe — a clean lift + arrow nudge only. */}
           <motion.div
             variants={rise}
-            className="mt-w14-4 flex flex-wrap items-center gap-w14-3"
+            className="mt-w14-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center"
           >
             <a
               href="#kollektion"
-              className="group relative inline-flex items-center gap-2 overflow-hidden rounded-button bg-gold px-6 py-3.5 text-[0.98rem] font-medium text-[#2b210a] transition-[transform,background-color] duration-base ease-hover hover:-translate-y-0.5 hover:bg-gold-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-[#17130c]"
+              className="group inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-button bg-gold px-6 text-[1rem] font-medium text-[#2b210a] transition-[transform,background-color] duration-base ease-hover hover:-translate-y-0.5 hover:bg-gold-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-[#17130c] sm:w-auto sm:justify-start"
             >
-              {/* an inviting sheen that keeps wiping across the primary CTA */}
-              {!reduce && (
-                <motion.span
-                  aria-hidden="true"
-                  className="pointer-events-none absolute inset-0 -skew-x-12"
-                  style={{
-                    background:
-                      "linear-gradient(90deg, transparent, rgba(255,255,255,0.55), transparent)",
-                  }}
-                  animate={{ x: ["-130%", "230%"] }}
-                  transition={{
-                    duration: 2.6,
-                    ease: "easeInOut",
-                    repeat: Infinity,
-                    repeatDelay: 3.2,
-                  }}
-                />
-              )}
-              <span className="relative">Kollektion entdecken</span>
+              <span>Kollektion entdecken</span>
               <ArrowRight
-                className="relative h-[18px] w-[18px] transition-transform duration-base ease-hover group-hover:translate-x-1"
+                className="h-[18px] w-[18px] transition-transform duration-base ease-hover group-hover:translate-x-1"
                 aria-hidden="true"
               />
             </a>
             <a
               href="#ankauf"
-              className="inline-flex items-center rounded-button border border-white/20 px-6 py-3.5 text-[0.98rem] font-medium text-white/85 transition-colors duration-base ease-hover hover:border-white/40 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-[#17130c]"
+              className="inline-flex min-h-[52px] w-full items-center justify-center rounded-button border border-white/20 px-6 text-[1rem] font-medium text-white/85 transition-colors duration-base ease-hover hover:border-white/40 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-[#17130c] sm:w-auto"
             >
               Ankauf &amp; Schätzung
             </a>
@@ -296,9 +198,9 @@ export function Hero() {
         </motion.div>
 
         {/* ── HERITAGE OBJECT ────────────────────────────────────────────────
-         * A piece presented on velvet under the house loupe. The loupe drifts
-         * with a slow float + faint sway; beneath it a magnified gold coin
-         * gleams and turns — the "examine a real treasure" gesture. */}
+         * A piece presented on velvet under the house loupe. The loupe holds
+         * still; the whole tableau rides the single slow hero parallax. No
+         * float-bob, no glow pulse, no specular rake — a still, lit object. */}
         <motion.div
           aria-hidden="true"
           className="relative mx-auto hidden h-[380px] w-full max-w-[460px] place-items-center md:grid"
@@ -307,44 +209,35 @@ export function Hero() {
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 1, ease, delay: 0.45 }}
         >
-          {/* velvet pool of light */}
-          <motion.div
+          {/* a still velvet pool of light beneath the object */}
+          <div
             className="absolute h-[320px] w-[320px] rounded-full"
             style={{
               background:
-                "radial-gradient(circle, rgba(231,222,205,0.14), transparent 66%)",
+                "radial-gradient(circle, rgba(231,222,205,0.12), transparent 66%)",
             }}
-            animate={reduce ? undefined : { scale: [1, 1.06, 1], opacity: [0.85, 1, 0.85] }}
-            transition={{ duration: 7, ease: "easeInOut", repeat: Infinity }}
           />
 
-          {/* the coin under glass — turns slowly, catches a moving highlight */}
+          {/* the coin under glass — minted, still, simply lit */}
           <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-            <GoldCoin reduce={!!reduce} />
+            <GoldCoin />
           </div>
 
-          {/* the loupe, floating with a refined sway over the coin */}
-          <motion.div
-            className="relative"
-            animate={
-              reduce
-                ? undefined
-                : { y: [0, -14, 0], rotate: [-2.5, 2.5, -2.5] }
-            }
-            transition={{ duration: 9, ease: "easeInOut", repeat: Infinity }}
-          >
+          {/* the loupe, resting over the coin */}
+          <div className="relative">
             <Loupe
               size={196}
               className="drop-shadow-[0_30px_60px_-30px_rgba(0,0,0,0.85)]"
             />
-          </motion.div>
+          </div>
         </motion.div>
       </motion.div>
 
       {/* a single quiet rule where the espresso meets the cream surface */}
       <div className="absolute inset-x-0 bottom-0 z-10 h-px bg-gradient-to-r from-transparent via-gold/30 to-transparent" />
 
-      {/* a whisper-soft scroll cue that fades as you leave the hero */}
+      {/* a whisper-soft scroll cue that fades as you leave the hero — a quiet
+       * descent, not a pulsing beacon */}
       {!reduce && (
         <motion.div
           aria-hidden="true"
@@ -352,10 +245,9 @@ export function Hero() {
           className="pointer-events-none absolute inset-x-0 bottom-5 z-10 flex justify-center"
         >
           <motion.span
-            className="block h-9 w-px bg-gradient-to-b from-gold/0 via-gold/70 to-gold/0"
-            animate={{ scaleY: [0.4, 1, 0.4], opacity: [0.3, 0.9, 0.3] }}
-            transition={{ duration: 2.4, ease: "easeInOut", repeat: Infinity }}
-            style={{ originY: 0 }}
+            className="block h-9 w-px bg-gradient-to-b from-gold/0 via-gold/55 to-gold/0"
+            animate={{ y: [0, 8, 0], opacity: [0.45, 0.8, 0.45] }}
+            transition={{ duration: 3.2, ease: "easeInOut", repeat: Infinity }}
           />
         </motion.div>
       )}
@@ -363,15 +255,16 @@ export function Hero() {
   );
 }
 
-/* A live, breathing gold dot — signals that the kurse/prices are alive. */
+/* A live gold dot — signals the kurse/prices are alive. A single calm ping,
+ * not a strobing halo. */
 function LiveDot({ reduce }: { reduce: boolean }) {
   return (
     <span className="relative inline-flex h-2 w-2 shrink-0 items-center justify-center">
       {!reduce && (
         <motion.span
           className="absolute inset-0 rounded-full bg-gold"
-          animate={{ scale: [1, 2.6], opacity: [0.5, 0] }}
-          transition={{ duration: 1.8, ease: "easeOut", repeat: Infinity }}
+          animate={{ scale: [1, 2.4], opacity: [0.4, 0] }}
+          transition={{ duration: 2.2, ease: "easeOut", repeat: Infinity }}
         />
       )}
       <span className="relative h-1.5 w-1.5 rounded-full bg-gold" />
@@ -379,18 +272,16 @@ function LiveDot({ reduce }: { reduce: boolean }) {
   );
 }
 
-/* A minted gold coin that slowly rotates in place beneath the loupe and is
- * raked by a moving highlight — pure SVG, transform/opacity only. */
-function GoldCoin({ reduce }: { reduce: boolean }) {
+/* A minted gold coin presented beneath the loupe — pure SVG, fully still.
+ * No rotation, no moving highlight; it reads as a real object at rest. */
+function GoldCoin() {
   return (
-    <motion.svg
+    <svg
       width={148}
       height={148}
       viewBox="0 0 148 148"
       aria-hidden="true"
       className="drop-shadow-[0_18px_40px_-18px_rgba(0,0,0,0.7)]"
-      animate={reduce ? undefined : { rotate: [0, 360] }}
-      transition={{ duration: 36, ease: "linear", repeat: Infinity }}
     >
       <defs>
         <radialGradient id="coin-face" cx="40%" cy="34%" r="78%">
@@ -427,29 +318,6 @@ function GoldCoin({ reduce }: { reduce: boolean }) {
       >
         14
       </text>
-      {/* moving specular highlight raking the face */}
-      {!reduce && (
-        <motion.ellipse
-          cx="74"
-          cy="74"
-          rx="22"
-          ry="58"
-          fill="rgba(255,251,236,0.5)"
-          animate={{ cx: [26, 122, 26], opacity: [0, 0.55, 0] }}
-          transition={{ duration: 5, ease: "easeInOut", repeat: Infinity }}
-        />
-      )}
-    </motion.svg>
+    </svg>
   );
 }
-
-/* Deterministic mote field — no Math.random at module/render time so SSR and
- * client markup match (no hydration mismatch). */
-const MOTES = [
-  { left: "16%", top: "62%", size: 3, drift: 10, dur: 11, delay: 0 },
-  { left: "32%", top: "40%", size: 2, drift: -8, dur: 13, delay: 1.6 },
-  { left: "58%", top: "70%", size: 3, drift: 12, dur: 10, delay: 0.8 },
-  { left: "70%", top: "30%", size: 2, drift: -6, dur: 14, delay: 2.4 },
-  { left: "84%", top: "56%", size: 4, drift: 8, dur: 12, delay: 3.2 },
-  { left: "46%", top: "20%", size: 2, drift: -10, dur: 15, delay: 1.1 },
-] as const;

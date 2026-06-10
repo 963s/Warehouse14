@@ -52,58 +52,6 @@ const ss = (t: number) => {
 };
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
-// deterministic pseudo-random for the dust field
-const rnd = (i: number, s: number) => {
-  const x = Math.sin(i * 12.9898 + s * 78.233) * 43758.5453;
-  return x - Math.floor(x);
-};
-
-// ── drifting gold dust (CSS-driven, infinite, GPU-only) ──────────────────────
-function GoldDust({ active }: { active: boolean }) {
-  const motes = Array.from({ length: 22 });
-  return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
-      {motes.map((_, i) => {
-        const left = rnd(i, 1) * 100;
-        const size = 1.5 + rnd(i, 5) * 4;
-        const dur = 9 + rnd(i, 3) * 9;
-        const delay = -rnd(i, 4) * dur;
-        const drift = (rnd(i, 2) - 0.5) * 60;
-        return (
-          <span
-            key={i}
-            style={{
-              position: "absolute",
-              left: `${left}%`,
-              bottom: "-6%",
-              width: size,
-              height: size,
-              borderRadius: "50%",
-              background: GOLD_SOFT,
-              opacity: 0,
-              boxShadow: `0 0 ${size * 3}px ${GOLD}`,
-              // animation paused when off-screen so the loop costs nothing idle
-              animation: active ? `w14mote ${dur}s linear ${delay}s infinite` : "none",
-              ["--w14-drift" as string]: `${drift}px`,
-            }}
-          />
-        );
-      })}
-      <style>{`
-        @keyframes w14mote {
-          0%   { opacity: 0; transform: translate(0, 0) scale(0.7); }
-          12%  { opacity: 0.55; }
-          88%  { opacity: 0.45; }
-          100% { opacity: 0; transform: translate(var(--w14-drift), -560px) scale(1); }
-        }
-        @media (prefers-reduced-motion: reduce) {
-          @keyframes w14mote { 0%,100% { opacity: 0.3; transform: none; } }
-        }
-      `}</style>
-    </div>
-  );
-}
-
 // ── reusable atoms ────────────────────────────────────────────────────────────
 
 // The maison emblem: two rings draw in, ticks fade up, "14" settles.
@@ -139,8 +87,8 @@ function Emblem({ size, p }: { size: number; p: number }) {
   );
 }
 
-// A struck gold coin with a travelling specular glint.
-function Coin({ size, shimmer = 0 }: { size: number; shimmer?: number }) {
+// A struck gold coin — dimensional, but with no travelling gleam (restraint).
+function Coin({ size }: { size: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 200 200">
       <defs>
@@ -158,7 +106,6 @@ function Coin({ size, shimmer = 0 }: { size: number; shimmer?: number }) {
         return <line key={i} x1={100 + Math.cos(a) * 84} y1={100 + Math.sin(a) * 84} x2={100 + Math.cos(a) * 92} y2={100 + Math.sin(a) * 92} stroke={GOLD_DEEP} strokeWidth="1" opacity="0.4" />;
       })}
       <text x="100" y="104" textAnchor="middle" dominantBaseline="central" fontFamily="var(--font-cormorant), Georgia, serif" fontWeight={600} fontSize="86" fill={GOLD_DEEP} letterSpacing="-4">14</text>
-      <ellipse cx={40 + shimmer * 120} cy={62} rx="26" ry="54" fill="#fff" opacity={0.2} transform={`rotate(20 ${40 + shimmer * 120} 62)`} />
     </svg>
   );
 }
@@ -292,17 +239,14 @@ function ScenePrices({ p }: { p: number }) {
 const FACTS = ["Material spektral geprüft", "Gewicht bestätigt · 31,1035 g", "Feingehalt 999,9", "Echtheit zertifiziert"];
 
 function ScenePruefung({ p }: { p: number }) {
-  // loupe sweeps across the coin once, then the facts tick in
+  // loupe sweeps across the coin once (the meaningful gesture), then the facts tick in
   const sweep = lerp(-130, 130, ss(Math.min(1, p / 0.7)));
-  const shimmer = ss(Math.min(1, p / 0.7));
-  const breathe = 1 + Math.sin(p * Math.PI * 4) * 0.012;
   return (
     <div className="flex h-full w-full flex-col items-center justify-center gap-6 px-6">
       <Title p={p}>Jedes Stück wird geprüft.</Title>
       <div className="flex flex-col items-center gap-8 md:flex-row md:gap-14">
-        <div style={{ position: "relative", transform: `scale(${breathe})` }}>
-          <div style={{ position: "absolute", inset: -30, borderRadius: "50%", background: `radial-gradient(circle, ${GOLD}33, transparent 70%)` }} />
-          <Coin size={196} shimmer={shimmer} />
+        <div style={{ position: "relative" }}>
+          <Coin size={196} />
           <div style={{ position: "absolute", top: "50%", left: "50%", transform: `translate(calc(-50% + ${sweep}px), -58%)` }}>
             <Loupe size={108} />
           </div>
@@ -407,7 +351,7 @@ const BADGES = ["GoBD konform", "GwG konform", "Echtheitsgarantie"];
 
 function SceneOutro({ p }: { p: number }) {
   const grow = ss(Math.min(1, p / 0.5));
-  const sweep = lerp(-40, 150, ss(Math.min(1, p / 0.9)));
+  const word = ss(Math.min(1, p / 0.45));
   const badges = ss(Math.max(0, (p - 0.3) / 0.4));
   return (
     <div className="grid h-full w-full place-items-center">
@@ -415,11 +359,10 @@ function SceneOutro({ p }: { p: number }) {
         <div style={{ transform: `scale(${lerp(0.8, 1, grow)})` }}>
           <Emblem size={120} p={1} />
         </div>
-        <div style={{ position: "relative", marginTop: 16, overflow: "hidden" }}>
+        <div style={{ marginTop: 16, opacity: word, transform: `translateY(${lerp(10, 0, word)}px)` }}>
           <div style={{ ...SERIF, fontWeight: 600, fontSize: "clamp(30px, 5vw, 50px)", color: PAPER, letterSpacing: "0.02em" }}>
             warehouse<span style={{ color: GOLD }}>14</span>.de
           </div>
-          <div style={{ position: "absolute", top: 0, left: `${sweep}%`, width: "26%", height: "100%", background: "linear-gradient(100deg, transparent, rgba(255,255,255,0.45), transparent)" }} />
         </div>
         <div style={{ display: "flex", gap: 10, marginTop: 16, opacity: badges, flexWrap: "wrap", justifyContent: "center" }}>
           {BADGES.map((b) => (
@@ -506,18 +449,10 @@ export function ExplainerPlayer() {
       className="group relative m-0"
       style={reduce ? undefined : { y: enterYSpring, opacity: enterOpacity }}
     >
-      {/* Elegant frame: gilt hairline, deep ink mount, soft lift shadow. */}
-      <div
-        className="relative aspect-video w-full overflow-hidden rounded-[18px]"
-        style={{
-          background:
-            "radial-gradient(1100px 560px at 72% -8%, rgba(191,148,48,0.20), transparent 60%), radial-gradient(820px 460px at 8% 108%, rgba(70,88,63,0.18), transparent 58%), linear-gradient(180deg, #17130c 0%, #1e1810 55%, #14110b 100%)",
-          boxShadow: "0 40px 90px -40px rgba(0,0,0,0.75), inset 0 0 0 1px rgba(191,148,48,0.28), inset 0 0 160px rgba(0,0,0,0.55)",
-        }}
-      >
-        {/* dust ambience (paused when off-screen) */}
-        <GoldDust active={!!inView && !reduce} />
-
+      {/* Full-bleed stage — no frame, no gilt edge, no rounding: the film is a
+          band woven straight into the page. The deep-ink mount carries the
+          section's own backdrop so the film reads as part of the surface. */}
+      <div className="relative aspect-[4/5] w-full overflow-hidden sm:aspect-video">
         {/* the film stage */}
         <div className="absolute inset-0" style={{ opacity: sceneOpacity }}>
           <AnimatePresence mode="wait" initial={false}>
@@ -534,16 +469,8 @@ export function ExplainerPlayer() {
           </AnimatePresence>
         </div>
 
-        {/* vignette + faint film grain */}
-        <div className="grain pointer-events-none absolute inset-0 opacity-[0.10]" aria-hidden="true" />
-        <div
-          className="pointer-events-none absolute inset-0"
-          aria-hidden="true"
-          style={{ boxShadow: "inset 0 0 180px rgba(0,0,0,0.55)", borderRadius: 18 }}
-        />
-
         {/* lower-third caption */}
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between gap-4 p-4 md:p-5">
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between gap-4 px-5 pb-5 md:px-8 md:pb-7">
           <AnimatePresence mode="wait">
             <motion.span
               key={active.id}

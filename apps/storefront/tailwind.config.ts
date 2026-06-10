@@ -89,24 +89,25 @@ const config: Config = {
       transitionDelay: {
         stagger: "70ms",
       },
+      // KEPT: the marquee (price-ticker glide — meaningful, continuous motion)
+      // and the finite scroll-in entrances. RETIRED bling keyframes — `shimmer`
+      // (specular wipe), `floaty` (idle bob) and `spin-slow` (perpetual gilt
+      // turn) were decorative loops. They're mapped to inert no-ops below so any
+      // lingering `animate-shimmer/floaty/spin-slow` class renders nothing
+      // instead of re-introducing the shine the owner asked us to remove.
       keyframes: {
         marquee: {
           from: { transform: "translateX(0)" },
           to: { transform: "translateX(-50%)" },
         },
-        shimmer: {
-          "100%": { transform: "translateX(100%)" },
+        // inert placeholder — no visual motion (prevents accidental re-bling)
+        noop: {
+          from: {},
+          to: {},
         },
-        floaty: {
-          "0%,100%": { transform: "translateY(0)" },
-          "50%": { transform: "translateY(-10px)" },
-        },
-        "spin-slow": {
-          to: { transform: "rotate(360deg)" },
-        },
-        // Calm, finite entrance — opacity + 16px rise, one pass only.
+        // Calm, finite entrance — opacity + 20px rise, one pass only.
         "reveal-up": {
-          from: { opacity: "0", transform: "translateY(16px)" },
+          from: { opacity: "0", transform: "translateY(20px)" },
           to: { opacity: "1", transform: "translateY(0)" },
         },
         "fade-in": {
@@ -120,11 +121,12 @@ const config: Config = {
       },
       animation: {
         marquee: "marquee 40s linear infinite",
-        shimmer: "shimmer 2.2s infinite",
-        floaty: "floaty 6s ease-in-out infinite",
-        "spin-slow": "spin-slow 26s linear infinite",
+        // Retired bling → no-ops (kept as keys so class refs stay valid).
+        shimmer: "noop 1ms linear 1",
+        floaty: "noop 1ms linear 1",
+        "spin-slow": "noop 1ms linear 1",
         // Finite, directive-aligned entrances (use these on product UI).
-        "reveal-up": "reveal-up 650ms cubic-bezier(0.16,1,0.3,1) both",
+        "reveal-up": "reveal-up 820ms cubic-bezier(0.16,1,0.3,1) both",
         "fade-in": "fade-in 420ms cubic-bezier(0.16,1,0.3,1) both",
         "draw-x": "draw-x 650ms cubic-bezier(0.16,1,0.3,1) both",
       },

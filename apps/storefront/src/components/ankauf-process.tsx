@@ -2,7 +2,7 @@
 
 import { useRef } from "react";
 import { ScanLine, BadgeCheck, Banknote, ArrowRight } from "lucide-react";
-import { motion, useReducedMotion, useScroll, useSpring, useTransform, type Variants } from "framer-motion";
+import { motion, useReducedMotion, useScroll, useSpring, type Variants } from "framer-motion";
 import { Reveal } from "@/components/ui/reveal";
 import { metalRates, eur } from "@/lib/placeholder-data";
 
@@ -45,9 +45,6 @@ export function AnkaufProcess() {
     offset: ["start 80%", "end 60%"],
   });
   const lineScale = useSpring(scrollYProgress, { stiffness: 120, damping: 28, mass: 0.4 });
-  // a gold pulse rides down the same thread
-  const pulseTop = useTransform(lineScale, [0, 1], ["0%", "100%"]);
-  const pulseOpacity = useTransform(scrollYProgress, [0, 0.05, 0.95, 1], [0, 1, 1, 0]);
 
   return (
     <section id="ankauf" className="border-y border-rule bg-card py-section">
@@ -73,22 +70,24 @@ export function AnkaufProcess() {
 
             <Reveal delay={0.15} blur={false}>
               <motion.div
-                className="group mt-w14-4 flex flex-wrap items-center gap-w14-3 rounded-card border border-rule bg-surface p-card"
+                className="group mt-w14-4 flex flex-col gap-w14-3 rounded-card border border-rule bg-surface p-card sm:flex-row sm:items-center"
                 whileHover={reduce ? undefined : { y: -4 }}
                 transition={{ type: "spring", stiffness: 320, damping: 24 }}
               >
-                <span className="grid h-12 w-12 place-items-center rounded-full text-gold ring-gold-soft transition-shadow duration-base ease-hover group-hover:shadow-gold">
-                  <Banknote className="h-6 w-6" aria-hidden="true" />
-                </span>
-                <div>
-                  <div className="eyebrow">Tagespreis Gold</div>
-                  <div className="tnum mt-w14-1 font-display text-fluid-h3 font-medium text-ink">
-                    {eur(gold.pricePerGram)}/g
+                <div className="flex items-center gap-w14-3">
+                  <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-raised text-gold ring-gold-soft">
+                    <Banknote className="h-6 w-6" aria-hidden="true" />
+                  </span>
+                  <div>
+                    <div className="eyebrow">Tagespreis Gold</div>
+                    <div className="tnum mt-w14-1 font-display text-fluid-h3 font-medium text-ink">
+                      {eur(gold.pricePerGram)}/g
+                    </div>
                   </div>
                 </div>
                 <a
                   href="/goldankauf"
-                  className="group/cta ml-auto inline-flex min-h-[44px] items-center gap-2 rounded-button border border-gold/40 bg-surface px-5 py-3 text-fluid-body font-medium text-ink transition-colors duration-base ease-hover hover:border-gold hover:text-gold-deep"
+                  className="group/cta inline-flex min-h-[48px] items-center justify-center gap-2 rounded-button border border-gold/40 bg-surface px-5 py-3 text-fluid-body font-medium text-ink transition-colors duration-base ease-hover hover:border-gold hover:text-gold-deep sm:ml-auto"
                 >
                   Bewerten lassen
                   <ArrowRight className="h-4 w-4 transition-transform duration-base ease-hover group-hover/cta:translate-x-1" aria-hidden="true" />
@@ -98,19 +97,13 @@ export function AnkaufProcess() {
           </Reveal>
 
           <div ref={listRef} className="relative">
-            {/* the static track + the draw-on-scroll gold thread */}
+            {/* the static track + the draw-on-scroll gold thread — a single
+                quiet hairline that stitches the three steps as you scroll */}
             <div className="absolute left-[34px] top-10 hidden h-[calc(100%-5rem)] w-px bg-rule md:block" aria-hidden="true">
               <motion.span
                 className="absolute inset-x-0 top-0 origin-top bg-gradient-to-b from-gold via-gold-soft to-gold-deep"
                 style={reduce ? { height: "100%" } : { height: "100%", scaleY: lineScale, willChange: "transform" }}
               />
-              {!reduce && (
-                <motion.span
-                  className="absolute left-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-gold"
-                  style={{ top: pulseTop, opacity: pulseOpacity, boxShadow: "0 0 12px 3px rgba(191,148,48,.7)" }}
-                  aria-hidden="true"
-                />
-              )}
             </div>
 
             <motion.ol

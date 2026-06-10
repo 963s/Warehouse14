@@ -45,14 +45,8 @@ export function StatsBand() {
           {(stats as Stat[]).map((s, i) => {
             const isTenure = s.label === TENURE_LABEL;
             return (
-              <Reveal key={i} index={i} className="group/stat bg-card">
-                <div className="relative px-w14-3 py-w14-5 text-center">
-                  {/* a quiet gold wash rises behind each figure on hover */}
-                  <span
-                    aria-hidden="true"
-                    className="pointer-events-none absolute inset-x-0 bottom-0 h-2/3 opacity-0 transition-opacity duration-base ease-hover group-hover/stat:opacity-100"
-                    style={{ background: "linear-gradient(0deg, rgba(191,148,48,.10), transparent)" }}
-                  />
+              <Reveal key={i} index={i} className="bg-card">
+                <div className="relative px-w14-2 py-w14-4 text-center sm:px-w14-3 sm:py-w14-5">
                   <div className="relative font-display text-fluid-h1 font-medium leading-none tracking-tight text-ink tabular-nums">
                     {isTenure ? (
                       <span className="text-gold-gradient">{heritageStat.text}</span>

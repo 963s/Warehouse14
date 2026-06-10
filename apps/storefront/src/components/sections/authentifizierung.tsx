@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   motion,
   useScroll,
@@ -10,6 +10,22 @@ import {
   type MotionValue,
 } from "framer-motion";
 import { ScanLine, CheckCircle2, Scale, Gem, Award } from "lucide-react";
+
+// useIsDesktop — true at/above `lg` (1024px), the breakpoint where the coin and
+// the fact-list sit side-by-side. Below it (phones/tablets) the section FLOWS
+// in one column and reveals on scroll instead of pinning, so a 320vh pin can
+// never trap an overflowing stack on a 390px screen. SSR-safe.
+function useIsDesktop() {
+  const [isDesktop, setIsDesktop] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const update = () => setIsDesktop(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+  return isDesktop;
+}
 
 const FACTS = [
   {
@@ -41,6 +57,9 @@ function FactRow({
   opacity,
   x,
   glow,
+  pinned,
+  index,
+  reduced,
 }: {
   icon: typeof ScanLine;
   label: string;
@@ -48,36 +67,44 @@ function FactRow({
   opacity: MotionValue<number>;
   x: MotionValue<number>;
   glow: MotionValue<number>;
+  pinned: boolean;
+  index: number;
+  reduced: boolean | null;
 }) {
-  // Derived motion for the "commit" of each row — declared at the top of the
-  // component (never inside JSX/loops) to respect the Rules of Hooks.
-  const ruleOpacity = useTransform(glow, [0, 1], [0, 0.6]);
-  const corona = useTransform(
-    glow,
-    [0, 1],
-    ["0 0 0 0 rgba(191,148,48,0)", "0 0 16px 1px rgba(191,148,48,0.55)"],
-  );
+  const ref = useRef<HTMLDivElement>(null);
+  const selfInView = useInView(ref, { once: true, margin: "-10%" });
+
+  // The only "commit" cue is the check striking in — a small fade + settle.
+  // No gold rule-wipe, no corona glow: the certificate fills, it doesn't sparkle.
   const checkScale = useTransform(glow, [0, 1], [0.6, 1]);
+
+  // Pinned (desktop): the row rides the scroll timeline (slide-in + check).
+  // Flowing (mobile): the same fade+rise, self-triggered as it enters view.
+  const rowMotion = pinned
+    ? { style: { opacity, x } }
+    : {
+        initial: reduced ? false : ({ opacity: 0, x: -20 } as const),
+        animate: selfInView ? { opacity: 1, x: 0 } : {},
+        transition: { duration: 0.6, ease: [0.16, 1, 0.3, 1] as const },
+      };
+  const checkMotion = pinned
+    ? { style: { opacity: glow, scale: checkScale } }
+    : {
+        initial: reduced ? false : ({ opacity: 0, scale: 0.6 } as const),
+        animate: selfInView ? { opacity: 1, scale: 1 } : {},
+        transition: { duration: 0.45, delay: 0.25 + index * 0.05, ease: [0.16, 1, 0.3, 1] as const },
+      };
 
   return (
     <motion.div
-      style={{ opacity, x }}
-      className="group relative flex items-start gap-w14-2 border-b border-rule py-w14-1 last:border-0"
+      ref={ref}
+      {...rowMotion}
+      className="group relative flex items-start gap-w14-2 border-b border-rule py-w14-2 last:border-0"
     >
-      {/* A gold rule that wipes in beneath each fact as it locks — the
-          "stamp" feeling of a line on a certificate being filled. */}
-      <motion.span
-        aria-hidden="true"
-        className="bg-gold-gradient absolute bottom-0 left-0 h-px w-full origin-left"
-        style={{ scaleX: glow, opacity: ruleOpacity }}
-      />
-      <motion.span
-        className="bg-gold-gradient mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full"
-        style={{ boxShadow: corona }}
-      >
+      <span className="bg-gold-gradient mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full">
         <Icon size={14} className="text-black" strokeWidth={2.5} aria-hidden="true" />
-      </motion.span>
-      <div>
+      </span>
+      <div className="min-w-0">
         <p className="font-display text-fluid-body smallcaps tracking-wide text-white">
           {label}
         </p>
@@ -85,7 +112,7 @@ function FactRow({
       </div>
       <motion.span
         className="ml-auto mt-0.5 flex-shrink-0"
-        style={{ opacity: glow, scale: useTransform(glow, [0, 1], [0.6, 1]) }}
+        {...checkMotion}
       >
         <CheckCircle2 size={16} className="text-gold opacity-90" strokeWidth={1.5} aria-hidden="true" />
       </motion.span>
@@ -94,13 +121,12 @@ function FactRow({
 }
 
 /* ───────────────────────────────────────────────────────────────────────────
- * GoldCoin — a living, minted disc.
- *   · slow continuous mint-turn (the disc breathes, never frozen)
- *   · a travelling specular band that rakes across the face (the "shine")
- *   · a spectral authentication scan-bar that sweeps top→bottom under a clip
- *   · rim ticks that catch the light in a rotating arc
- * All heavy work is transform/opacity + SMIL on inview-gated SVG, 60fps.
- * Reduced-motion: everything still renders, just held still.
+ * GoldCoin — a struck, minted disc. Still and dignified.
+ *   · a single, very slow mint-turn of the milled rim (its quiet character)
+ *   · embossed "14", arched legends and an engraved ring
+ * No specular band, no spectral scan, no leading-edge glint — the bling is
+ * gone; what remains is the object, well lit. SVG, transform-only, 60fps.
+ * Reduced-motion: the rim holds still too.
  * ────────────────────────────────────────────────────────────────────────── */
 function GoldCoin({ active, reduced }: { active: boolean; reduced: boolean | null }) {
   const ticks = Array.from({ length: 60 }, (_, i) => i);
@@ -108,12 +134,10 @@ function GoldCoin({ active, reduced }: { active: boolean; reduced: boolean | nul
   const animate = active && !reduced;
 
   return (
-    <div className="relative select-none" aria-hidden="true">
+    <div className="relative h-full w-full select-none" aria-hidden="true">
       <svg
-        width="360"
-        height="360"
         viewBox="0 0 360 360"
-        className="drop-shadow-[0_24px_48px_rgba(0,0,0,0.5)]"
+        className="h-full w-full drop-shadow-[0_24px_48px_rgba(0,0,0,0.5)]"
       >
         <defs>
           <radialGradient id="coinFace" cx="42%" cy="38%" r="70%">
@@ -139,31 +163,13 @@ function GoldCoin({ active, reduced }: { active: boolean; reduced: boolean | nul
             <stop offset="50%" stopColor="white" stopOpacity="0.0" />
             <stop offset="100%" stopColor="white" stopOpacity="0.06" />
           </linearGradient>
-
-          {/* A narrow, bright specular band that rakes across the coin. */}
-          <linearGradient id="specBand" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#fff7df" stopOpacity="0" />
-            <stop offset="44%" stopColor="#fff7df" stopOpacity="0" />
-            <stop offset="50%" stopColor="#fffdf4" stopOpacity="0.85" />
-            <stop offset="56%" stopColor="#fff7df" stopOpacity="0" />
-            <stop offset="100%" stopColor="#fff7df" stopOpacity="0" />
-          </linearGradient>
-
-          {/* Spectral scan — a faint prismatic bar for the "authentication" read. */}
-          <linearGradient id="spectral" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor="#5ad1ff" stopOpacity="0" />
-            <stop offset="40%" stopColor="#7af0c8" stopOpacity="0.5" />
-            <stop offset="50%" stopColor="#eafff4" stopOpacity="0.85" />
-            <stop offset="60%" stopColor="#b88aff" stopOpacity="0.5" />
-            <stop offset="100%" stopColor="#b88aff" stopOpacity="0" />
-          </linearGradient>
         </defs>
 
         {/* Outer edge ring */}
         <circle cx="180" cy="180" r="176" fill="#2a1e00" stroke="#6b4f10" strokeWidth="1.5" />
         <circle cx="180" cy="180" r="170" fill="#1a1200" />
 
-        {/* Rim ticks — held in a group we slowly counter-rotate for a milled glint. */}
+        {/* Rim ticks — one very slow, dignified mint-turn (not a glint loop). */}
         <g>
           {animate && (
             <animateTransform
@@ -171,7 +177,7 @@ function GoldCoin({ active, reduced }: { active: boolean; reduced: boolean | nul
               type="rotate"
               from="0 180 180"
               to="360 180 180"
-              dur="90s"
+              dur="140s"
               repeatCount="indefinite"
             />
           )}
@@ -205,19 +211,8 @@ function GoldCoin({ active, reduced }: { active: boolean; reduced: boolean | nul
           <circle cx="180" cy="180" r={r} fill="url(#coinFace)" />
           <circle cx="180" cy="180" r={r} fill="url(#sheen)" />
 
-          {/* A slowly drifting warm aura on the face — gives it depth/turn. */}
-          <ellipse cx="150" cy="140" rx="150" ry="150" fill="url(#coinEdge)">
-            {animate && (
-              <animateTransform
-                attributeName="transform"
-                type="rotate"
-                from="0 180 180"
-                to="360 180 180"
-                dur="22s"
-                repeatCount="indefinite"
-              />
-            )}
-          </ellipse>
+          {/* A still warm aura on the face — depth, not a drifting gleam. */}
+          <ellipse cx="150" cy="140" rx="150" ry="150" fill="url(#coinEdge)" />
 
           {/* Inner engraved ring */}
           <circle cx="180" cy="180" r="120" fill="none" stroke="#6b4f10" strokeWidth="1.2" opacity="0.7" />
@@ -252,19 +247,8 @@ function GoldCoin({ active, reduced }: { active: boolean; reduced: boolean | nul
             14
           </text>
 
-          {/* Arch text top — slowly counter-drifts so legend "turns" with the mint. */}
+          {/* Arched legends — struck into the coin, held still. */}
           <g>
-            {animate && (
-              <animateTransform
-                attributeName="transform"
-                type="rotate"
-                from="0 180 180"
-                to="2.2 180 180"
-                dur="9s"
-                values="-2.2 180 180; 2.2 180 180; -2.2 180 180"
-                repeatCount="indefinite"
-              />
-            )}
             <path id="arcTop" d="M 60,180 A 120,120 0 0 1 300,180" fill="none" />
             <text fontSize="9.5" letterSpacing="3.5" fill="#c9960e" opacity="0.75">
               <textPath href="#arcTop" startOffset="50%" textAnchor="middle">
@@ -279,66 +263,8 @@ function GoldCoin({ active, reduced }: { active: boolean; reduced: boolean | nul
             </text>
           </g>
 
-          {/* ── The travelling specular band — the live "shine". ───────────── */}
-          <rect x="-180" y="0" width="180" height="360" fill="url(#specBand)" opacity="0.9">
-            {animate && (
-              <animateTransform
-                attributeName="transform"
-                type="translate"
-                from="-40 0"
-                to="540 0"
-                dur="4.6s"
-                repeatCount="indefinite"
-              />
-            )}
-          </rect>
-
-          {/* ── Spectral authentication scan — sweeps top→bottom, fades, repeats ── */}
-          <rect x="0" y="-90" width="360" height="90" fill="url(#spectral)" opacity="0.55">
-            {animate && (
-              <>
-                <animateTransform
-                  attributeName="transform"
-                  type="translate"
-                  from="0 -90"
-                  to="0 360"
-                  dur="3.4s"
-                  begin="0s;scan.end+2.2s"
-                  id="scan"
-                />
-                <animate
-                  attributeName="opacity"
-                  values="0; 0.55; 0.55; 0"
-                  keyTimes="0; 0.1; 0.85; 1"
-                  dur="3.4s"
-                  begin="0s;scan.end+2.2s"
-                />
-              </>
-            )}
-          </rect>
-
-          {/* The thin bright leading edge of the scan, for a crisper read. */}
-          {animate && (
-            <line x1="0" y1="0" x2="360" y2="0" stroke="#f4fffb" strokeWidth="1.2" opacity="0.9">
-              <animateTransform
-                attributeName="transform"
-                type="translate"
-                from="0 -6"
-                to="0 360"
-                dur="3.4s"
-                begin="0s;scan.end+2.2s"
-              />
-              <animate
-                attributeName="opacity"
-                values="0; 0.9; 0.9; 0"
-                keyTimes="0; 0.08; 0.85; 1"
-                dur="3.4s"
-                begin="0s;scan.end+2.2s"
-              />
-            </line>
-          )}
-
-          {/* Specular highlight (static base, the band rakes over it) */}
+          {/* A single, soft static highlight — the catch-light of good lighting,
+              not a travelling shine. (Specular band + spectral scan removed.) */}
           <ellipse cx="148" cy="148" rx="48" ry="30" fill="white" opacity="0.06" transform="rotate(-25 148 148)" />
         </g>
       </svg>
@@ -350,10 +276,17 @@ export function Authentifizierung() {
   const ref = useRef<HTMLElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const reduced = useReducedMotion();
+  const isDesktop = useIsDesktop();
 
-  // inview-gate the expensive coin SMIL: only run it while the sticky stage
-  // is actually on screen.
+  // PIN only with room (lg+) and motion welcome. On a phone the section flows:
+  // heading → coin → facts → seal stack and reveal on scroll.
+  const pinned = isDesktop && !reduced;
+
+  // inview-gate the expensive coin SMIL: only run it while the stage is on
+  // screen.
   const inView = useInView(stageRef, { margin: "-10% 0px -10% 0px" });
+  // Mobile (un-pinned) reveals: each block fades+rises as it enters the column.
+  const headInView = useInView(stageRef, { once: true, margin: "-15%" });
 
   const { scrollYProgress } = useScroll({
     target: ref,
@@ -405,18 +338,38 @@ export function Authentifizierung() {
   const sealOpacity = useTransform(scrollYProgress, [0.82, 0.9], [0, 1]);
   const sealRotate = useTransform(scrollYProgress, [0.82, 0.92], reduced ? [0, 0] : [-22, 0]);
 
+  // Heading / coin / seal motion: pin-driven on desktop, self-revealing on mobile.
+  const headMotion = pinned
+    ? { style: { opacity: headOpacity, y: headY } }
+    : {
+        initial: reduced ? false : ({ opacity: 0, y: 24 } as const),
+        animate: headInView ? { opacity: 1, y: 0 } : {},
+        transition: { duration: 0.65, ease: [0.16, 1, 0.3, 1] as const },
+      };
+  const sealMotion = pinned
+    ? { style: { opacity: sealOpacity } }
+    : {
+        initial: reduced ? false : ({ opacity: 0, y: 16 } as const),
+        animate: headInView ? { opacity: 1, y: 0 } : {},
+        transition: { duration: 0.6, delay: 0.2, ease: [0.16, 1, 0.3, 1] as const },
+      };
+
   return (
     <section
       ref={ref}
       className="relative bg-ink-deep grain"
-      style={{ minHeight: "320vh" }}
+      style={{ minHeight: pinned ? "320vh" : "auto" }}
       aria-label="Echtheitsprüfung"
     >
-      {/* Sticky stage */}
+      {/* Stage — pinned + scroll-choreographed on desktop, flowing on mobile. */}
       <div
         ref={stageRef}
-        className="sticky top-0 flex items-center justify-center overflow-hidden"
-        style={{ height: "100vh" }}
+        className={
+          pinned
+            ? "sticky top-0 flex items-center justify-center overflow-hidden"
+            : "relative flex flex-col items-center justify-center overflow-hidden py-section"
+        }
+        style={pinned ? { height: "100vh" } : undefined}
       >
         {/* Marble texture background, very subtle */}
         <div
@@ -425,30 +378,22 @@ export function Authentifizierung() {
           aria-hidden="true"
         />
 
-        {/* A faint conic gold sweep behind everything, very slowly turning, that
-            reads as light raking the room. Pure transform → cheap. */}
-        {!reduced && (
-          <motion.div
-            aria-hidden="true"
-            className="pointer-events-none absolute left-1/2 top-1/2 h-[140vmax] w-[140vmax] -translate-x-1/2 -translate-y-1/2 opacity-[0.06]"
-            style={{
-              background:
-                "conic-gradient(from 0deg, transparent 0deg, rgba(191,148,48,0.5) 30deg, transparent 70deg, transparent 180deg, rgba(191,148,48,0.35) 220deg, transparent 260deg)",
-            }}
-            animate={inView ? { rotate: 360 } : { rotate: 0 }}
-            transition={{ duration: 120, ease: "linear", repeat: Infinity }}
-          />
-        )}
+        {/* A single, still warm wash grounds the stage — no turning conic sweep. */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(60% 50% at 50% 42%, rgba(191,148,48,0.10) 0%, transparent 70%)",
+          }}
+        />
 
-        {/* Main layout */}
-        <div className="relative z-10 mx-auto flex w-full max-w-edge flex-col items-center gap-w14-5 px-6 md:px-12 lg:flex-row lg:gap-20">
-          {/* LEFT: heading block + facts */}
-          <div className="flex min-w-0 flex-1 flex-col gap-w14-4">
-            {/* Heading */}
-            <motion.div
-              style={{ opacity: headOpacity, y: headY }}
-              className="flex flex-col gap-w14-2"
-            >
+        {/* Main layout. On mobile the coin sits between the heading and the
+            facts so it reads as the hero of a single, calm column. */}
+        <div className="relative z-10 mx-auto flex w-full max-w-edge flex-col items-center gap-w14-4 px-6 md:px-12 lg:flex-row lg:items-center lg:gap-20">
+          {/* Heading — first in the column on mobile, top-left on desktop. */}
+          <div className="order-1 flex min-w-0 flex-1 flex-col gap-w14-4 lg:order-none">
+            <motion.div {...headMotion} className="flex flex-col gap-w14-2">
               <p className="eyebrow text-gold">Echtheitsprüfung</p>
               <h2 className="font-display text-fluid-h2 tracking-tight text-white">
                 Jedes Stück
@@ -462,9 +407,8 @@ export function Authentifizierung() {
               </p>
             </motion.div>
 
-            {/* Facts list — revealed one band at a time, like a certificate
-                being filled in line by line. */}
-            <ul className="max-w-sm list-none border-t border-rule pt-w14-1">
+            {/* Facts list — each band reveals like a line on a certificate. */}
+            <ul className="w-full max-w-md list-none border-t border-rule pt-w14-1 lg:max-w-sm">
               {FACTS.map((fact, i) => (
                 <li key={fact.label}>
                   <FactRow
@@ -474,18 +418,18 @@ export function Authentifizierung() {
                     opacity={factMotions[i].opacity}
                     x={factMotions[i].x}
                     glow={factMotions[i].glow}
+                    pinned={pinned}
+                    index={i}
+                    reduced={reduced}
                   />
                 </li>
               ))}
             </ul>
 
-            {/* The certificate seal — strikes once all four facts lock. */}
-            <motion.div
-              style={{ opacity: sealOpacity }}
-              className="flex items-center gap-w14-2"
-            >
+            {/* The certificate seal — struck, not glowing. */}
+            <motion.div {...sealMotion} className="flex items-center gap-w14-2">
               <motion.span
-                style={{ scale: sealScale, rotate: sealRotate }}
+                style={pinned ? { scale: sealScale, rotate: sealRotate } : undefined}
                 className="relative flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full"
               >
                 <span
@@ -493,8 +437,7 @@ export function Authentifizierung() {
                   style={{
                     background:
                       "radial-gradient(circle at 38% 32%, #e9c25a 0%, #bf9430 48%, #7a5c18 100%)",
-                    boxShadow:
-                      "0 0 18px rgba(191,148,48,0.6), inset 0 1px 2px rgba(255,255,255,0.4)",
+                    boxShadow: "inset 0 1px 2px rgba(255,255,255,0.4)",
                   }}
                 />
                 <CheckCircle2
@@ -515,52 +458,34 @@ export function Authentifizierung() {
             </motion.div>
           </div>
 
-          {/* RIGHT: the living coin */}
+          {/* The coin — hero between heading and facts on mobile (order-0),
+              right column on desktop. Sized fluidly so it never overflows a
+              390px screen. */}
           <motion.div
-            style={{ y: coinFloat }}
-            className="relative flex flex-shrink-0 items-center justify-center"
+            style={pinned ? { y: coinFloat } : undefined}
+            className="relative order-0 flex flex-shrink-0 items-center justify-center lg:order-none"
           >
-            <div
-              className="relative flex items-center justify-center"
-              style={{ width: 380, height: 380 }}
-            >
-              {/* Breathing gold halo behind the coin. */}
+            <div className="relative flex aspect-square w-[min(78vw,340px)] items-center justify-center sm:w-[360px] lg:w-[380px]">
+              {/* A still gold halo behind the coin — no breathing, no pulse. */}
               <motion.div
                 className="absolute inset-0 rounded-full blur-[80px]"
                 style={{
-                  opacity: haloOpacity,
-                  scale: haloScale,
+                  opacity: pinned ? haloOpacity : 0.2,
+                  scale: pinned ? haloScale : 1,
                   background:
                     "radial-gradient(circle, #d9a93c 0%, #bf9430 35%, transparent 70%)",
                 }}
                 aria-hidden="true"
               />
 
-              {/* A second, tighter cyan/violet ring that pulses with the scan —
-                  the "authentication" cue. Pure opacity/scale. */}
-              {!reduced && (
-                <motion.div
-                  className="absolute rounded-full"
-                  style={{
-                    width: 360,
-                    height: 360,
-                    border: "1px solid rgba(122,240,200,0.35)",
-                    boxShadow: "0 0 30px rgba(122,240,200,0.18)",
-                  }}
-                  aria-hidden="true"
-                  animate={
-                    inView
-                      ? { scale: [1, 1.06, 1], opacity: [0.0, 0.55, 0.0] }
-                      : { opacity: 0 }
-                  }
-                  transition={{ duration: 3.4, ease: "easeInOut", repeat: Infinity }}
-                />
-              )}
-
-              {/* The coin itself — entrance scale/rotate then a perpetual mint-turn. */}
+              {/* The coin itself — entrance scale/rotate on desktop, a quiet
+                  fade-in on mobile. (The pulsing auth-ring is removed.) */}
               <motion.div
-                style={{ scale: coinScale, rotate: coinRotate, opacity: coinEnter }}
-                className="relative"
+                style={pinned ? { scale: coinScale, rotate: coinRotate, opacity: coinEnter } : undefined}
+                initial={pinned || reduced ? false : { opacity: 0, scale: 0.92 }}
+                animate={pinned ? undefined : headInView ? { opacity: 1, scale: 1 } : {}}
+                transition={pinned ? undefined : { duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+                className="relative h-full w-full"
               >
                 <GoldCoin active={inView} reduced={reduced} />
               </motion.div>
@@ -568,8 +493,14 @@ export function Authentifizierung() {
           </motion.div>
         </div>
 
-        {/* Bottom caption */}
-        <p className="absolute bottom-w14-4 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] smallcaps tracking-[0.3em] text-white/75">
+        {/* Bottom caption — pinned to the foot on desktop, in-flow on mobile. */}
+        <p
+          className={
+            pinned
+              ? "absolute bottom-w14-4 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] smallcaps tracking-[0.3em] text-white/75"
+              : "mt-w14-5 text-center text-[10px] smallcaps tracking-[0.3em] text-white/75"
+          }
+        >
           Geprüft . Garantiert . Warehouse XIV
         </p>
       </div>

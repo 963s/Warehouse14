@@ -50,17 +50,10 @@ export function ValueProps() {
           {props.map((p, i) => (
             <motion.div key={i} variants={reduce ? undefined : itemV} className="group flex gap-w14-3" style={{ willChange: "transform, opacity" }}>
               <motion.span
-                className="relative grid h-12 w-12 shrink-0 place-items-center rounded-card text-gold ring-gold-soft"
+                className="relative grid h-12 w-12 shrink-0 place-items-center rounded-card bg-raised text-gold ring-gold-soft transition-colors duration-base ease-hover group-hover:bg-[color:color-mix(in_srgb,var(--w14-gold)_8%,transparent)]"
                 variants={reduce ? undefined : iconV}
-                whileHover={reduce ? undefined : { scale: 1.08, rotate: 3 }}
                 transition={{ type: "spring", stiffness: 300, damping: 18 }}
               >
-                {/* gold halo that breathes on hover */}
-                <span
-                  aria-hidden="true"
-                  className="pointer-events-none absolute inset-0 rounded-card opacity-0 transition-opacity duration-base ease-hover group-hover:opacity-100"
-                  style={{ boxShadow: "0 0 0 1px rgba(191,148,48,.5), 0 8px 22px -8px rgba(191,148,48,.6)" }}
-                />
                 <p.icon className="relative h-6 w-6" strokeWidth={1.5} aria-hidden="true" />
               </motion.span>
               <div>

@@ -6,21 +6,25 @@ import type { ReactNode } from "react";
 /**
  * Scroll-into-view entrance — the storefront's signature "vitrine light" gesture.
  *
- * The DEFAULT is rich and premium: the element rises further (28px), eases up
- * from a hair of scale (0.965→1) and lifts a soft blur (6px→0) as it settles on
- * the long "curator" ease (~820ms). Read together, a staggered group feels like
- * gallery lights coming up one case at a time — elegant, buttery, never flat.
+ * The DEFAULT is a refined, premium fade + gentle rise: the element comes up a
+ * comfortable 22px and settles on the long "curator" ease (~820ms). It moves on
+ * TRANSFORM + OPACITY ONLY — no scale, no blur, no shine — so it stays glassy at
+ * 60fps and reads, in a staggered group, like a curator raising the gallery
+ * lights one case at a time. Elegant choreography, zero bling.
  *
  * `index` drives an 80ms cascade for sibling groups. The public API is unchanged
- * (`children, delay, index, y, className`); `blur` lets a caller opt the focus
- * pull out. Reduced motion collapses to instant, transform-free opacity.
+ * (`children, delay, index, y, blur, className`); `blur` is retained for call-site
+ * compatibility but is now intentionally inert (the focus-pull was decorative).
+ * Reduced motion collapses to instant, transform-free opacity. The viewport
+ * margin is tuned so reveals fire a touch earlier — better on a tall phone feed.
  */
 export function Reveal({
   children,
   delay = 0,
   index,
-  y = 28,
-  blur = true,
+  y = 22,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  blur = false,
   className,
 }: {
   children: ReactNode;
@@ -28,7 +32,7 @@ export function Reveal({
   /** Position in a staggered group; adds index × 80ms to the delay. */
   index?: number;
   y?: number;
-  /** Lift a soft focus-blur on entrance (default on). */
+  /** Retained for API compatibility; the entrance blur was removed (now inert). */
   blur?: boolean;
   className?: string;
 }) {
@@ -42,10 +46,10 @@ export function Reveal({
   return (
     <motion.div
       className={className}
-      style={{ willChange: "transform, opacity, filter" }}
-      initial={{ opacity: 0, y, scale: 0.965, filter: blur ? "blur(6px)" : "blur(0px)" }}
-      whileInView={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
-      viewport={{ once: true, margin: "-12%" }}
+      style={{ willChange: "transform, opacity" }}
+      initial={{ opacity: 0, y }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-8% 0px -12% 0px" }}
       transition={{
         duration: 0.82,
         delay: totalDelay,
@@ -93,12 +97,10 @@ export function RevealGroup({
 }
 
 const childVariants: Variants = {
-  hidden: { opacity: 0, y: 26, scale: 0.97, filter: "blur(6px)" },
+  hidden: { opacity: 0, y: 22 },
   show: {
     opacity: 1,
     y: 0,
-    scale: 1,
-    filter: "blur(0px)",
     transition: { duration: 0.78, ease: [0.16, 1, 0.3, 1] },
   },
 };
@@ -113,7 +115,7 @@ export function RevealChild({
   const reduce = useReducedMotion();
   if (reduce) return <div className={className}>{children}</div>;
   return (
-    <motion.div className={className} style={{ willChange: "transform, opacity, filter" }} variants={childVariants}>
+    <motion.div className={className} style={{ willChange: "transform, opacity" }} variants={childVariants}>
       {children}
     </motion.div>
   );

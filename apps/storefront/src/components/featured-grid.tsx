@@ -34,10 +34,10 @@ export async function FeaturedGrid() {
           </a>
         </Reveal>
 
-        <RevealGroup className="grid gap-w14-3 sm:grid-cols-2 lg:grid-cols-3" stagger={0.09}>
+        <RevealGroup className="grid grid-cols-1 gap-w14-3 sm:grid-cols-2 lg:grid-cols-3" stagger={0.09}>
           {items.map((p, i) => (
             <RevealChild key={p.id}>
-              <ProductCard product={p} priority={i < 3} />
+              <ProductCard product={p} priority={i < 2} />
             </RevealChild>
           ))}
         </RevealGroup>

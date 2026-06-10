@@ -21,12 +21,17 @@ const pay = [VisaIcon, MastercardIcon, PaypalIcon, ApplePayIcon, GooglePayIcon, 
 export function SiteFooter() {
   return (
     <footer className="bg-[#14110b] text-white/70">
-      <div className="mx-auto max-w-edge px-5 pb-w14-4 pt-section">
-        <div className="grid gap-w14-4 lg:grid-cols-[1.4fr_1fr_1fr_1.1fr]">
+      {/* hairline gilt edge so the footer reads as a deliberate close, not a void */}
+      <div className="bg-gold-gradient h-px w-full opacity-30" aria-hidden="true" />
+      <div className="mx-auto max-w-edge px-5 pb-w14-4 pt-section sm:px-6">
+        {/* MOBILE-FIRST: one calm column on a phone (brand → links → links →
+            contact), opening to a 4-track grid only at lg. The two link
+            columns ride side-by-side already at sm to use the phone width well. */}
+        <div className="grid gap-w14-4 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1.1fr]">
           {/* brand */}
-          <div>
+          <div className="sm:col-span-2 lg:col-span-1">
             <Logo className="text-white" />
-            <p className="mt-w14-3 max-w-xs text-sm leading-relaxed text-white/55">
+            <p className="mt-w14-3 max-w-sm text-sm leading-relaxed text-white/55">
               Das Kontor für Anlagegold, seltene Münzen und geprüfte Antiquitäten.
               Sachkundig, fair und versichert — Ihr Goldhaus in Schorndorf.
             </p>
@@ -58,11 +63,11 @@ export function SiteFooter() {
 
           {cols.map((c) => (
             <div key={c.title}>
-              <h4 className="eyebrow mb-w14-3 text-white">{c.title}</h4>
-              <ul className="space-y-2.5 text-sm">
+              <h4 className="eyebrow mb-w14-2 text-white">{c.title}</h4>
+              <ul className="text-sm">
                 {c.links.map((l) => (
                   <li key={l}>
-                    <a href="#" className="inline-flex min-h-[32px] items-center text-white/55 transition-colors duration-fast ease-hover hover:text-gold">
+                    <a href="#" className="inline-flex min-h-[44px] items-center text-white/55 transition-colors duration-fast ease-hover hover:text-gold">
                       {l}
                     </a>
                   </li>
@@ -91,17 +96,18 @@ export function SiteFooter() {
           </div>
         </div>
 
-        {/* payment + legal */}
-        <div className="mt-w14-5 flex flex-wrap items-center justify-between gap-6 border-t border-white/10 pt-w14-4">
+        {/* payment + legal — stacks on a phone (payments, then legal links),
+            sits on one row from md up. */}
+        <div className="mt-w14-5 flex flex-col gap-w14-3 border-t border-white/10 pt-w14-4 md:flex-row md:items-center md:justify-between md:gap-6">
           <section aria-label="Akzeptierte Zahlungsmethoden" className="flex flex-wrap items-center gap-2">
             {pay.map((Icon, i) => (
               <Icon key={i} className="h-8 w-12 shrink-0" />
             ))}
           </section>
-          <ul className="flex flex-wrap gap-x-5 gap-y-1 text-sm">
+          <ul className="flex flex-wrap gap-x-5 text-sm">
             {legal.map((l) => (
               <li key={l}>
-                <a href="#" className="inline-flex min-h-[32px] items-center text-white/55 transition-colors duration-fast ease-hover hover:text-gold">
+                <a href="#" className="inline-flex min-h-[44px] items-center text-white/55 transition-colors duration-fast ease-hover hover:text-gold">
                   {l}
                 </a>
               </li>
@@ -109,7 +115,7 @@ export function SiteFooter() {
           </ul>
         </div>
 
-        <div className="mt-w14-3 flex flex-col items-center justify-between gap-2 text-xs text-white/40 sm:flex-row">
+        <div className="mt-w14-3 flex flex-col items-start justify-between gap-1.5 text-xs leading-relaxed text-white/40 sm:flex-row sm:items-center sm:gap-2">
           <p>© 2026 warehouse14 · Alle Preise inkl. ggf. Differenzbesteuerung (§25a UStG).</p>
           <p className="italic">Vorschau-Build · Platzhalter-Daten (Identität &amp; USt-IdNr folgen)</p>
         </div>

@@ -11,7 +11,7 @@ const ExplainerPlayer = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="aspect-video w-full animate-pulse rounded-[18px] bg-ink-deep" aria-hidden="true" />
+      <div className="aspect-[4/5] w-full animate-pulse bg-ink-deep sm:aspect-video" aria-hidden="true" />
     ),
   },
 );
@@ -27,40 +27,27 @@ export function ExplainerVideoSection() {
   // is ready by the time it scrolls in, but never on first paint.
   const nearViewport = useInView(playerRef, { once: true, margin: "60% 0px" });
 
-  // Subtle scroll-parallax on the dark mount + a drifting gilt aura behind the
-  // film — transform/opacity only, so it stays 60fps. Disabled for reduced motion.
+  // Subtle scroll-parallax on the headline — transform/opacity only, 60fps.
+  // Disabled for reduced motion.
   const { scrollYProgress } = useScroll({
     target: sectionRef,
     offset: ["start end", "end start"],
   });
-  const auraY = useTransform(scrollYProgress, [0, 1], ["-8%", "8%"]);
-  const auraScale = useTransform(scrollYProgress, [0, 0.5, 1], [0.92, 1.04, 0.96]);
   const headlineY = useTransform(scrollYProgress, [0, 1], reduce ? [0, 0] : [40, -40]);
 
   return (
     <section
       ref={sectionRef}
-      className="bg-ink-deep grain relative overflow-hidden py-section text-white"
+      className="bg-ink-deep grain relative pt-section pb-w14-5 text-white"
       aria-label="Markenfilm"
+      style={{ width: "100vw", marginLeft: "calc(50% - 50vw)" }}
     >
-      {/* soft top + bottom blends so the section melts into its neighbours */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-surface to-transparent" aria-hidden="true" />
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-surface to-transparent" aria-hidden="true" />
+      {/* soft top + bottom blends so the section melts into its neighbours.
+          clipped to the band so they never spill past it. */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-28 overflow-hidden bg-gradient-to-b from-surface to-transparent" aria-hidden="true" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-24 overflow-hidden bg-gradient-to-t from-surface to-transparent" aria-hidden="true" />
 
-      {/* drifting gilt aura behind the film */}
-      {!reduce && (
-        <motion.div
-          aria-hidden="true"
-          className="pointer-events-none absolute left-1/2 top-1/2 h-[120%] w-[80%] -translate-x-1/2 -translate-y-1/2"
-          style={{
-            y: auraY,
-            scale: auraScale,
-            background:
-              "radial-gradient(closest-side, rgba(191,148,48,0.18), rgba(191,148,48,0.05) 55%, transparent 72%)",
-          }}
-        />
-      )}
-
+      {/* constrained headline column — the only boxed element here */}
       <div className="relative mx-auto max-w-edge px-6">
         <motion.div
           className="mx-auto max-w-2xl text-center"
@@ -96,22 +83,24 @@ export function ExplainerVideoSection() {
             transition={{ delay: 0.25, duration: DUR_SLOW, ease: EASE }}
           />
         </motion.div>
-
-        <motion.div
-          ref={playerRef}
-          className="relative mx-auto mt-w14-5 max-w-5xl"
-          initial={reduce ? false : { opacity: 0, y: 24, scale: 0.985 }}
-          whileInView={{ opacity: 1, y: 0, scale: 1 }}
-          viewport={{ once: true, margin: "-10%" }}
-          transition={{ duration: 0.85, ease: EASE }}
-        >
-          {nearViewport ? (
-            <ExplainerPlayer />
-          ) : (
-            <div className="aspect-video w-full rounded-[18px] bg-ink-deep" aria-hidden="true" />
-          )}
-        </motion.div>
       </div>
+
+      {/* FULL-BLEED film band — the parent section is already 100vw edge-to-edge,
+          so the film simply fills it: no frame, no rounding, woven into the page. */}
+      <motion.div
+        ref={playerRef}
+        className="relative mt-w14-5 w-full"
+        initial={reduce ? false : { opacity: 0, y: 24 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: "-10%" }}
+        transition={{ duration: 0.85, ease: EASE }}
+      >
+        {nearViewport ? (
+          <ExplainerPlayer />
+        ) : (
+          <div className="aspect-[4/5] w-full bg-ink-deep sm:aspect-video" aria-hidden="true" />
+        )}
+      </motion.div>
     </section>
   );
 }

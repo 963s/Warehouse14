@@ -27,14 +27,17 @@ function Coin({ className }: { className?: string }) {
 export function Logo({ className, compact = false }: { className?: string; compact?: boolean }) {
   return (
     <span className={cn("inline-flex items-center gap-2.5 select-none", className)}>
-      <Coin className="h-9 w-9 shrink-0" />
+      <Coin className="h-8 w-8 shrink-0 sm:h-9 sm:w-9" />
       {!compact && (
         <span className="flex flex-col leading-none">
-          <span className="font-display text-[1.35rem] font-semibold leading-none tracking-[0.18em]">
+          <span className="font-display text-[1.2rem] font-semibold leading-none tracking-[0.16em] sm:text-[1.35rem] sm:tracking-[0.18em]">
             WAREHOUSE
           </span>
+          {/* the descriptor reads on a phone but the long form is reserved for
+           * the roomier ≥sm header so the wordmark never crowds the controls */}
           <span className="eyebrow mt-1.5 leading-none opacity-65">
-            Gold · Münzen · Antiquitäten
+            <span className="sm:hidden">Gold &amp; Raritäten</span>
+            <span className="hidden sm:inline">Gold · Münzen · Antiquitäten</span>
           </span>
         </span>
       )}

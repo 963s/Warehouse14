@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   motion,
   useScroll,
@@ -9,6 +9,25 @@ import {
   useReducedMotion,
   type MotionValue,
 } from "framer-motion";
+
+// ---------------------------------------------------------------------------
+// useIsDesktop — true at/above the `md` breakpoint (768px). Drives whether the
+// journey PINS (desktop: 4 stages fit one viewport, scroll-choreographed) or
+// FLOWS (mobile: the 4 stages stack in one narrow column and reveal on scroll,
+// so a desktop pin can never trap an overflowing column on a phone).
+// SSR-safe: starts false, syncs on mount.
+// ---------------------------------------------------------------------------
+function useIsDesktop() {
+  const [isDesktop, setIsDesktop] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const update = () => setIsDesktop(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+  return isDesktop;
+}
 
 // ---------------------------------------------------------------------------
 // Isometric helpers
@@ -103,12 +122,8 @@ function StageKontor({ animate }: { animate: boolean }) {
         W14
       </text>
 
-      {/* Lantern — a warm flame that flickers. */}
-      <rect x="80" y="60" width="8" height="12" rx="2" fill={GOLD_LIGHT} opacity="0.8">
-        {animate && (
-          <animate attributeName="opacity" values="0.55;0.95;0.7;0.95;0.6" dur="3.2s" repeatCount="indefinite" />
-        )}
-      </rect>
+      {/* Lantern — a steady warm light over the door (no flicker). */}
+      <rect x="80" y="60" width="8" height="12" rx="2" fill={GOLD_LIGHT} opacity="0.8" />
       <line x1="84" y1="60" x2="84" y2="56" stroke={GOLD} strokeWidth="1.2" />
       <polygon points="78,60 84,55 90,60" fill={GOLD} opacity="0.7" />
     </g>
@@ -138,13 +153,6 @@ function StagePrüfung({ animate }: { animate: boolean }) {
       <ellipse cx="72" cy="138" rx="16" ry="9" fill={GOLD} opacity="0.9" />
       <ellipse cx="72" cy="136" rx="16" ry="9" fill={GOLD_LIGHT} />
       <ellipse cx="72" cy="136" rx="10" ry="6" fill={GOLD} opacity="0.6" />
-      {/* A glint that travels across the coin under inspection. */}
-      {animate && (
-        <ellipse cx="72" cy="135" rx="3.4" ry="2" fill="#fffdf4" opacity="0.85">
-          <animate attributeName="cx" values="64;80;64" dur="2.8s" repeatCount="indefinite" />
-          <animate attributeName="opacity" values="0;0.9;0" dur="2.8s" repeatCount="indefinite" />
-        </ellipse>
-      )}
       {/* Eagle relief on coin */}
       <text x="72" y="139" textAnchor="middle" fill={IVORY} fontSize="7" fontFamily="serif" opacity="0.8">
         &#x2658;
@@ -164,12 +172,6 @@ function StagePrüfung({ animate }: { animate: boolean }) {
         )}
         <circle cx="72" cy="127" r="14" fill="none" stroke={GOLD} strokeWidth="2.5" />
         <circle cx="72" cy="127" r="13" fill={PATINA} opacity="0.18" />
-        {/* Loupe lens shimmer */}
-        {animate && (
-          <circle cx="72" cy="127" r="12" fill="#cfeede" opacity="0.0">
-            <animate attributeName="opacity" values="0;0.18;0" dur="4.2s" repeatCount="indefinite" />
-          </circle>
-        )}
         {/* Loupe cross-hairs */}
         <line x1="58" y1="127" x2="86" y2="127" stroke={GOLD_LIGHT} strokeWidth="0.6" opacity="0.5" />
         <line x1="72" y1="113" x2="72" y2="141" stroke={GOLD_LIGHT} strokeWidth="0.6" opacity="0.5" />
@@ -242,15 +244,10 @@ function StageVerpackt({ animate }: { animate: boolean }) {
         transform="skewY(-30) rotate(30)"
       />
 
-      {/* Wax seal — center of lid top, with a heat shimmer that settles. */}
+      {/* Wax seal — center of lid top, struck once and still. */}
       <ellipse cx="84" cy="144" rx="14" ry="9" fill="#8b1a1a" opacity="0.9" />
       <ellipse cx="84" cy="143" rx="14" ry="9" fill="#a52020" />
       <ellipse cx="84" cy="142" rx="10" ry="6.5" fill="#8b1a1a" opacity="0.8" />
-      {animate && (
-        <ellipse cx="80" cy="140" rx="4" ry="2.4" fill="#ff6a4a" opacity="0.0">
-          <animate attributeName="opacity" values="0;0.4;0" dur="3.6s" repeatCount="indefinite" />
-        </ellipse>
-      )}
       {/* W14 on seal */}
       <text x="84" y="145" textAnchor="middle" fill={GOLD_LIGHT} fontSize="7" fontFamily="serif" fontWeight="bold">
         W14
@@ -332,12 +329,8 @@ function StageBeiIhnen({ animate }: { animate: boolean }) {
       <polygon points="96,136 96,156 126,140 126,120" fill={PATINA} opacity="0.45" />
       <line x1="111" y1="120" x2="111" y2="140" stroke={INK} strokeWidth="0.8" opacity="0.5" />
       <line x1="96" y1="130" x2="126" y2="114" stroke={INK} strokeWidth="0.8" opacity="0.5" />
-      {/* Warm light glow in window — gently pulses, "someone's home". */}
-      <polygon points="96,136 96,156 126,140 126,120" fill="#f5c040" opacity="0.12">
-        {animate && (
-          <animate attributeName="opacity" values="0.08;0.22;0.08" dur="4.8s" repeatCount="indefinite" />
-        )}
-      </polygon>
+      {/* Warm light in the window — steady, "someone's home". */}
+      <polygon points="96,136 96,156 126,140 126,120" fill="#f5c040" opacity="0.16" />
 
       {/* Parcel on doorstep — smaller box */}
       <polygon points="36,192 36,206 62,220 62,206" fill="#4a3820" />
@@ -356,12 +349,8 @@ function StageBeiIhnen({ animate }: { animate: boolean }) {
       <polygon points="28,206 28,214 84,230 84,222" fill="#2a2010" />
       <polygon points="28,206 84,194 84,202 28,214" fill="#3a2e18" />
 
-      {/* Welcoming light beam from door — breathes warmer on arrival. */}
-      <polygon points="38,160 66,150 58,200 36,205" fill="#f5c040" opacity="0.06">
-        {animate && (
-          <animate attributeName="opacity" values="0.04;0.12;0.04" dur="4.8s" repeatCount="indefinite" />
-        )}
-      </polygon>
+      {/* Welcoming light from the door — a steady warm spill onto the step. */}
+      <polygon points="38,160 66,150 58,200 36,205" fill="#f5c040" opacity="0.08" />
     </g>
   );
 }
@@ -385,14 +374,20 @@ function StageCard({
   index,
   progress,
   reduced,
+  pinned,
 }: {
   stage: (typeof stages)[number];
   index: number;
   progress: MotionValue<number>;
   reduced: boolean | null;
+  pinned: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const inView = useInView(ref, { margin: "-8%" });
+  // On mobile (not pinned) each card reveals itself the moment it scrolls into
+  // view — the same fade+rise choreography, just self-driven rather than tied
+  // to a pin timeline the narrow column can't host.
+  const selfInView = useInView(ref, { once: true, margin: "-12%" });
 
   const { Scene } = stage;
 
@@ -405,49 +400,55 @@ function StageCard({
   const scale = useTransform(progress, [start, end], reduced ? [1, 1] : [0.9, 1]);
   // A soft per-card parallax bob across the rest of the timeline.
   const bob = useTransform(progress, [end, 1], reduced ? [0, 0] : [0, -10 - index * 4]);
-  // The card's gold border brightens as it commits.
-  const ringOpacity = useTransform(progress, [start, end], [0.1, 0.35]);
+  // The card's gold border quietly firms up as it commits — no glow.
+  const ringOpacity = useTransform(progress, [start, end], [0.1, 0.3]);
   const ringColor = useTransform(
     ringOpacity,
     (o) => `rgba(191,148,48,${o})`,
   );
-  const glowOpacity = useTransform(progress, [start, end], [0, 0.5]);
+
+  // Outer wrapper motion: pin-driven on desktop, scroll-into-view on mobile.
+  const outerMotion = pinned
+    ? { style: { opacity, y } }
+    : {
+        initial: reduced ? false : ({ opacity: 0, y: 28 } as const),
+        animate: selfInView ? { opacity: 1, y: 0 } : {},
+        transition: { duration: DUR_SLOW, ease: EASE },
+      };
+  // Inner illustration motion: pin scale+bob on desktop, still on mobile.
+  const innerStyle = pinned ? { scale, y: bob } : undefined;
 
   return (
     <motion.div
       ref={ref}
-      style={{ opacity, y }}
+      {...outerMotion}
       className="flex flex-col items-center gap-w14-2"
     >
       {/* Stage number chip */}
       <div className="mb-w14-1 flex items-center gap-2.5">
-        <motion.span
+        <span
           className="tnum inline-flex h-6 w-6 items-center justify-center rounded-full border text-xs"
           style={{
             borderColor: GOLD,
             color: GOLD,
             fontFamily: "var(--font-display, serif)",
-            boxShadow: useTransform(
-              glowOpacity,
-              (o) => `0 0 ${10 * o}px rgba(191,148,48,${0.7 * o})`,
-            ),
           }}
         >
           {index + 1}
-        </motion.span>
+        </span>
         <div className="h-px w-8 opacity-30" style={{ backgroundColor: GOLD }} />
       </div>
 
       {/* Isometric illustration */}
       <motion.div
-        style={{ scale, y: bob }}
+        style={innerStyle}
         className="relative w-full rounded-card overflow-hidden"
       >
         <motion.div
           className="absolute inset-0 rounded-card pointer-events-none"
           style={{
             border: "1px solid",
-            borderColor: ringColor,
+            borderColor: pinned ? ringColor : "rgba(191,148,48,0.26)",
             boxShadow: "0 4px 32px rgba(26,21,16,0.18), 0 1px 0 rgba(191,148,48,0.12) inset",
           }}
         />
@@ -459,13 +460,12 @@ function StageCard({
             minHeight: "220px",
           }}
         >
-          {/* A gold bloom that swells under the scene as it locks in. */}
-          <motion.div
+          {/* A single, still gold wash grounds the scene — no swelling bloom. */}
+          <div
             className="absolute inset-x-0 bottom-0 h-2/3 pointer-events-none"
             style={{
-              opacity: glowOpacity,
               background:
-                "radial-gradient(ellipse at 50% 100%, rgba(191,148,48,0.22) 0%, transparent 70%)",
+                "radial-gradient(ellipse at 50% 100%, rgba(191,148,48,0.10) 0%, transparent 70%)",
             }}
             aria-hidden="true"
           />
@@ -562,9 +562,6 @@ function AnimatedConnector({
   progress: MotionValue<number>;
   reduced: boolean | null;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const inView = useInView(ref, { margin: "-8%" });
-
   // The connector draws itself just after its left-hand stage commits.
   const start = 0.18 + index * 0.2;
 
@@ -574,30 +571,16 @@ function AnimatedConnector({
 
   return (
     <div
-      ref={ref}
       className="hidden md:flex items-center justify-center flex-1 min-w-0 relative mt-0"
       style={{ paddingBottom: "80px" }}
       aria-hidden="true"
     >
       <svg viewBox="0 0 80 40" className="w-full" style={{ overflow: "visible" }}>
+        {/* The route draws itself dot-by-dot as the journey advances — the
+            choreography is the reveal of the path, not a chasing spark. */}
         {Array.from({ length: DOT_COUNT }).map((_, i) => (
           <ConnectorDot key={i} i={i} draw={draw} reduced={reduced} />
         ))}
-
-        {/* A bright comet that runs the arc on a loop once revealed. */}
-        {inView && !reduced && (
-          <circle r="2.6" fill="#fffdf4">
-            <animateMotion
-              dur="2.4s"
-              repeatCount="indefinite"
-              keyPoints="0;1"
-              keyTimes="0;1"
-              path="M 4,20 Q 40,2 76,20"
-            />
-            <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.15;0.85;1" dur="2.4s" repeatCount="indefinite" />
-            <animate attributeName="r" values="1.6;2.8;1.6" dur="2.4s" repeatCount="indefinite" />
-          </circle>
-        )}
 
         {/* Arrowhead */}
         <motion.polygon points="76,20 68,16 68,24" fill={GOLD} style={{ opacity: arrowOpacity }} />
@@ -615,6 +598,12 @@ export function IsometricJourney() {
   const headingRef = useRef<HTMLDivElement>(null);
   const headingInView = useInView(headingRef, { once: true, margin: "-40px" });
   const prefersReduced = useReducedMotion();
+  const isDesktop = useIsDesktop();
+
+  // PIN only when there is room for the 4-across row AND motion is welcome:
+  // desktop + no reduced-motion. On a phone the stages flow and reveal on
+  // scroll instead, so a tall pin can never trap an overflowing column.
+  const pinned = isDesktop && !prefersReduced;
 
   // Drive the whole choreography off the section being scrolled through while
   // its inner stage is pinned. Long track = unhurried, cinematic.
@@ -642,12 +631,12 @@ export function IsometricJourney() {
     <section
       ref={sectionRef}
       className="relative"
-      style={{ minHeight: prefersReduced ? "auto" : "320vh" }}
+      style={{ minHeight: pinned ? "320vh" : "auto" }}
     >
-      {/* Pinned stage */}
+      {/* Stage — pinned + scroll-choreographed on desktop, flowing on mobile. */}
       <div
         ref={pinRef}
-        className={prefersReduced ? "relative overflow-hidden py-section" : "sticky top-0 flex min-h-screen items-center overflow-hidden py-section"}
+        className={pinned ? "sticky top-0 flex min-h-screen items-center overflow-hidden py-section" : "relative overflow-hidden py-section"}
         style={{
           background:
             "linear-gradient(170deg, #0e0b06 0%, #1a1510 35%, #12100c 65%, #0e0b06 100%)",
@@ -741,18 +730,19 @@ export function IsometricJourney() {
 
           {/* ── Four stages + connecting path ── */}
           <motion.div
-            style={{ y: rowY }}
-            className="flex flex-col md:flex-row items-start md:items-end gap-8 md:gap-0"
+            style={pinned ? { y: rowY } : undefined}
+            className="flex flex-col gap-w14-5 md:flex-row md:items-end md:gap-0"
           >
             {stages.map((stage, i) => (
-              <div key={stage.id} className="flex md:contents w-full md:w-auto">
+              <div key={stage.id} className="flex w-full md:contents md:w-auto">
                 {/* Stage card — takes equal width */}
-                <div className="flex-1 min-w-0 w-full md:w-auto">
+                <div className="w-full min-w-0 flex-1 md:w-auto">
                   <StageCard
                     stage={stage}
                     index={i}
                     progress={scrollYProgress}
                     reduced={prefersReduced}
+                    pinned={pinned}
                   />
                 </div>
 

@@ -7,11 +7,12 @@ import { data, eur } from "@/lib/storefront-data";
 type Rate = Awaited<ReturnType<typeof data.getMetalRates>>[number];
 
 /**
- * A living live-price strip. Reads the data layer (live metal_prices in live
+ * A calm live-price strip. Reads the data layer (live metal_prices in live
  * mode) after mount, so it embeds safely in server pages (home) and client
- * pages (PageShell). A single buttery marquee glides the kurse past forever,
- * edge-masked so they fade in/out rather than pop, and pauses on hover so a
- * reader can settle on a number. Reduced-motion users get a calm static row.
+ * pages (PageShell). A single smooth marquee glides the kurse past at a
+ * steady pace — no blinking, no glow — edge-masked so they fade in/out
+ * rather than pop, and pauses on hover so a reader can settle on a number.
+ * Reduced-motion users get a calm static row.
  */
 export function MetalTicker() {
   const [rates, setRates] = useState<Rate[]>([]);
@@ -40,19 +41,9 @@ export function MetalTicker() {
       aria-label="Aktuelle Edelmetallkurse"
       className="relative overflow-hidden border-b border-white/10 bg-[#14110b] text-white/85"
     >
-      {/* faint gold under-light so the strip reads as a lit terminal, not a bar */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0"
-        style={{
-          background:
-            "radial-gradient(120% 160% at 50% -40%, rgba(191,148,48,0.10), transparent 60%)",
-        }}
-      />
-
       <div className="relative mx-auto flex max-w-edge items-center gap-x-w14-4 px-5 py-2">
         <span className="eyebrow flex shrink-0 items-center gap-2 text-gold/80">
-          <LiveDot reduce={!!reduce} />
+          <LiveDot />
           Tageskurse
         </span>
 
@@ -111,18 +102,10 @@ function RateItem({ m }: { m: Rate }) {
   );
 }
 
-/* A breathing gold dot — the heartbeat that says "these prices are live". */
-function LiveDot({ reduce }: { reduce: boolean }) {
+/* A steady gold dot — a quiet "live" marker. No ping, no blink; the gliding
+ * tape itself is what says the prices are moving. */
+function LiveDot() {
   return (
-    <span className="relative inline-flex h-2 w-2 items-center justify-center">
-      {!reduce && (
-        <motion.span
-          className="absolute inset-0 rounded-full bg-gold"
-          animate={{ scale: [1, 2.4], opacity: [0.5, 0] }}
-          transition={{ duration: 1.8, ease: "easeOut", repeat: Infinity }}
-        />
-      )}
-      <span className="relative h-1.5 w-1.5 rounded-full bg-gold" />
-    </span>
+    <span className="inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-gold" />
   );
 }

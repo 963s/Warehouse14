@@ -18,32 +18,15 @@ const INK = "#1a1209";
 type Track = "kaufen" | "verkaufen";
 
 // ─── Motion-graphics vignettes ────────────────────────────────────────────────
-// Each draws in on reveal, THEN keeps a quiet, infinite life — a breathing glow,
-// a drifting specular gleam, a floating focal piece. Tasteful, buttery, never
-// frozen: a premium surface always breathes. prefers-reduced-motion users get
-// the calm settled engraving (handled by the global CSS block + `reduced` gate).
+// Each line-draws in on reveal, THEN holds a slow, purposeful idle — a gentle
+// float, a quiet weighing, a settling lid. No glitter: the motion is the
+// choreography (draw + rise + settle), never decorative shine. prefers-reduced-
+// motion users get the calm settled engraving (the `reduced` gate stills it).
 
-// Looping easings shared by the idle ambiences below.
-const FLOAT = { duration: 5.5, repeat: Infinity, ease: "easeInOut" } as const;
-const GLEAM = { duration: 3.4, repeat: Infinity, ease: "easeInOut" } as const;
+// One shared, unhurried float for the idle life of each focal piece.
+const FLOAT = { duration: 6, repeat: Infinity, ease: "easeInOut" } as const;
 
 type VProps = { reduced: boolean };
-
-// A travelling specular highlight that loops across a vignette focal area.
-function Gleam({ reduced, cx = 60, cy = 40 }: { reduced: boolean; cx?: number; cy?: number }) {
-  if (reduced) return null;
-  return (
-    <motion.ellipse
-      cx={cx} cy={cy} rx="5" ry="22"
-      fill="#fff" opacity={0.12}
-      initial={{ x: -46, opacity: 0 }}
-      animate={{ x: [-46, 46], opacity: [0, 0.18, 0] }}
-      transition={GLEAM}
-      transform="rotate(18)"
-      style={{ transformOrigin: `${cx}px ${cy}px` }}
-    />
-  );
-}
 
 function VignetteCoinCart({ reduced }: VProps) {
   return (
@@ -86,19 +69,16 @@ function VignetteCoinCart({ reduced }: VProps) {
         <circle cx="34" cy="40" r="12" fill={GOLD} opacity="0.95" />
         <circle cx="34" cy="40" r="9" fill="none" stroke={GOLD_DEEP} strokeWidth="1.5" />
         <text x="34" y="44" textAnchor="middle" fontSize="8" fontWeight="bold" fill="#fff" fontFamily="serif">W</text>
-        <Gleam reduced={reduced} cx={34} cy={40} />
       </motion.g>
-      {/* Cart content dots (items already in cart) */}
+      {/* Cart content dots (items already in cart) — fade in and hold. */}
       {[0, 1, 2].map((i) => (
         <motion.circle
           key={i}
           cx={66 + i * 12} cy={47} r={4}
           fill={GOLD_DEEP}
           initial={{ opacity: 0 }}
-          animate={reduced ? { opacity: 0.6 } : { opacity: [0.4, 0.7, 0.4] }}
-          transition={reduced
-            ? { delay: 0.7 + i * STAGGER, duration: DUR_BASE, ease: EASE }
-            : { duration: 3, repeat: Infinity, ease: "easeInOut", delay: i * 0.4 }}
+          animate={{ opacity: 0.6 }}
+          transition={{ delay: 0.7 + i * STAGGER, duration: DUR_BASE, ease: EASE }}
         />
       ))}
     </svg>
@@ -133,17 +113,8 @@ function VignetteCardPulse({ reduced }: VProps) {
             ))}
           </g>
         ))}
-        <Gleam reduced={reduced} cx={60} cy={44} />
       </motion.g>
-      {/* Lock badge — a soft security pulse radiates outward */}
-      {!reduced && (
-        <motion.circle cx="95" cy="40" r="11" fill="none" stroke={GOLD} strokeWidth="1.2"
-          initial={{ scale: 1, opacity: 0 }}
-          animate={{ scale: [1, 1.9], opacity: [0.5, 0] }}
-          transition={{ duration: 2.6, repeat: Infinity, ease: "easeOut", delay: 1.1 }}
-          style={{ transformOrigin: "95px 40px" }}
-        />
-      )}
+      {/* Lock badge — draws in and settles (no radiating pulse). */}
       <motion.g
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
@@ -197,15 +168,7 @@ function VignetteParcel({ reduced }: VProps) {
       <motion.path d="M60 22 Q64 14 70 16 Q66 22 60 22" fill={GOLD} opacity="0.8"
         initial={{ opacity: 0 }} animate={{ opacity: 0.8 }} transition={{ delay: 0.68, duration: DUR_BASE, ease: EASE }}
       />
-      {/* Checkmark seal — draws in, then keeps a slow approving glow */}
-      {!reduced && (
-        <motion.circle cx="88" cy="22" r="11" fill="none" stroke={GOLD} strokeWidth="1"
-          initial={{ scale: 1, opacity: 0 }}
-          animate={{ scale: [1, 1.7], opacity: [0.45, 0] }}
-          transition={{ duration: 2.8, repeat: Infinity, ease: "easeOut", delay: 1.4 }}
-          style={{ transformOrigin: "88px 22px" }}
-        />
-      )}
+      {/* Checkmark seal — draws in once and settles (no approving glow loop). */}
       <motion.g
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -243,7 +206,6 @@ function VignetteLoupe({ reduced }: VProps) {
         <circle cx="52" cy="40" r="22" fill={INK} stroke={GOLD_DEEP} strokeWidth="1.2" />
         <circle cx="52" cy="40" r="17" fill="none" stroke={GOLD} strokeWidth="0.8" opacity="0.5" />
         <text x="52" y="44" textAnchor="middle" fontSize="11" fontWeight="bold" fill={GOLD} fontFamily="serif" opacity="0.7">W14</text>
-        <Gleam reduced={reduced} cx={52} cy={40} />
       </motion.g>
       {/* Loupe glides in, then keeps inspecting — drifting slowly across the coin */}
       <motion.g
@@ -344,11 +306,11 @@ function VignetteBanknotes({ reduced }: VProps) {
           <text x="60" y="55" textAnchor="middle" fontSize="6" fill={GOLD} fontFamily="monospace" opacity="0.7">EUR</text>
         </motion.g>
       ))}
-      {/* Payout total — settles, then a gold sheen drifts through the figure */}
+      {/* Payout total — settles, then floats with the bills (no sheen drift). */}
       <motion.g
         initial={{ opacity: 0, y: 6 }}
         animate={reduced ? { opacity: 1, y: 0 } : { opacity: 1, y: [0, -1.5, 0] }}
-        transition={reduced ? { delay: 0.75, duration: DUR_BASE, ease: EASE } : { y: GLEAM, opacity: { delay: 0.75, duration: DUR_BASE } }}
+        transition={reduced ? { delay: 0.75, duration: DUR_BASE, ease: EASE } : { y: FLOAT, opacity: { delay: 0.75, duration: DUR_BASE } }}
       >
         <rect x="36" y="8" width="48" height="18" rx="9" fill="#0e0b04" stroke={GOLD} strokeWidth="1.3" />
         <text
@@ -362,7 +324,6 @@ function VignetteBanknotes({ reduced }: VProps) {
         >
           2.480 EUR
         </text>
-        <Gleam reduced={reduced} cx={60} cy={17} />
       </motion.g>
     </svg>
   );
@@ -436,34 +397,17 @@ function StepCard({
     >
       {/* Vignette area */}
       <div className="bg-ink-deep relative flex aspect-[3/2] w-full items-center justify-center overflow-hidden">
-        {/* breathing gilt aura behind the figure */}
-        {!reduced && (
-          <motion.div
-            className="pointer-events-none absolute inset-0"
-            aria-hidden="true"
-            style={{ background: "radial-gradient(circle at 50% 50%, rgba(191,148,48,0.16), transparent 62%)" }}
-            animate={{ opacity: [0.5, 0.85, 0.5], scale: [0.96, 1.04, 0.96] }}
-            transition={{ duration: 6, repeat: Infinity, ease: "easeInOut", delay: index * 0.6 }}
-          />
-        )}
+        {/* A single, still gilt wash for depth — no breathing, no scale loop. */}
+        <div
+          className="pointer-events-none absolute inset-0"
+          aria-hidden="true"
+          style={{ background: "radial-gradient(circle at 50% 55%, rgba(191,148,48,0.12), transparent 64%)" }}
+        />
         {/* Subtle grain overlay */}
         <div className="grain pointer-events-none absolute inset-0 z-10 opacity-30" />
-        {/* slow diagonal sheen sweeping across the vignette — luxury sparkle */}
-        {!reduced && (
-          <div
-            className="pointer-events-none absolute inset-0 z-20"
-            aria-hidden="true"
-            style={{
-              background: "linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.10) 50%, transparent 60%)",
-              backgroundSize: "260% 100%",
-              animation: "w14CardSheen 6s ease-in-out infinite",
-              animationDelay: `${index * 0.8}s`,
-            }}
-          />
-        )}
-        {/* Gold hairline at bottom of vignette — grows on hover */}
-        <div className="bg-gold-gradient absolute inset-x-8 bottom-0 h-px opacity-30 transition-all duration-base ease-hover group-hover/card:inset-x-4 group-hover/card:opacity-70" />
-        <div className="relative z-[15] h-full w-full p-4">
+        {/* Gold hairline at the foot of the vignette — grows on hover only. */}
+        <div className="bg-gold-gradient absolute inset-x-8 bottom-0 h-px opacity-30 transition-all duration-base ease-hover group-hover/card:inset-x-4 group-hover/card:opacity-60" />
+        <div className="relative z-[15] h-full w-full p-4 sm:p-5">
           <Vignette reduced={reduced} />
         </div>
       </div>
@@ -552,9 +496,10 @@ function TrackToggle({
 
 // ─── Decorative connector line between steps ─────────────────────────────────
 
-function StepConnector({ inView, reduced }: { inView: boolean; reduced: boolean }) {
+function StepConnector({ inView }: { inView: boolean }) {
   return (
     <div className="relative hidden items-center justify-center px-2 md:flex">
+      {/* The rule simply draws itself left→right as the step commits. No spark. */}
       <motion.div
         className="bg-gold-gradient h-px flex-1"
         initial={{ scaleX: 0, opacity: 0 }}
@@ -562,17 +507,6 @@ function StepConnector({ inView, reduced }: { inView: boolean; reduced: boolean 
         transition={{ delay: 0.5, duration: DUR_SLOW, ease: EASE }}
         style={{ transformOrigin: "0% 50%" }}
       />
-      {/* a single gilt spark travels along the rule — the flow of the process */}
-      {!reduced && inView && (
-        <motion.span
-          aria-hidden="true"
-          className="absolute top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-gold"
-          style={{ boxShadow: "0 0 8px var(--w14-gold)", left: 0 }}
-          initial={{ left: "8%", opacity: 0 }}
-          animate={{ left: ["8%", "92%"], opacity: [0, 1, 1, 0] }}
-          transition={{ duration: 2.6, repeat: Infinity, ease: "easeInOut", delay: 1 }}
-        />
-      )}
     </div>
   );
 }
@@ -593,17 +527,6 @@ export function MotionExplainer() {
       className="bg-surface relative w-full overflow-hidden py-section"
       aria-label="Einfach kaufen und verkaufen"
     >
-      {/* Scoped keyframes for the travelling sheen (globals.css is shared/owned
-          elsewhere, so the luxury sweep is defined locally). Reduced-motion
-          users get a no-op via the global prefers-reduced-motion block. */}
-      <style>{`
-        @keyframes w14CardSheen {
-          0%   { background-position: 200% 0; }
-          55%  { background-position: -60% 0; }
-          100% { background-position: -60% 0; }
-        }
-      `}</style>
-
       {/* Background marble texture — subtle, luxury */}
       <div
         className="pointer-events-none absolute inset-0"
@@ -625,17 +548,8 @@ export function MotionExplainer() {
           transition={{ duration: DUR_SLOW, ease: EASE }}
           className="flex max-w-xl flex-col items-center gap-w14-3 text-center"
         >
-          {/* Emblem — floats gently, with a soft gilt halo */}
+          {/* Emblem — floats gently. The pulsing gilt halo is gone. */}
           <div className="relative">
-            {!reduced && (
-              <motion.span
-                aria-hidden="true"
-                className="absolute inset-0 rounded-full"
-                style={{ background: "radial-gradient(circle, rgba(191,148,48,0.35), transparent 70%)" }}
-                animate={{ opacity: [0.3, 0.7, 0.3], scale: [0.85, 1.25, 0.85] }}
-                transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
-              />
-            )}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <motion.img
               src="/emblem.svg"
@@ -658,23 +572,14 @@ export function MotionExplainer() {
             Transparente Prozesse, faire Preise, persönlicher Service. Bei warehouse14 ist jeder Schritt klar.
           </p>
 
-          {/* Gold hairline — draws in, then a sheen keeps travelling through it */}
+          {/* Gold hairline — simply draws itself in once. No travelling sheen. */}
           <motion.div
-            className="relative h-px w-16 overflow-hidden opacity-70"
+            className="h-px w-16 opacity-70"
             style={{ transformOrigin: "left center", background: "linear-gradient(90deg, transparent, var(--w14-gold), transparent)" }}
             initial={{ scaleX: 0 }}
             animate={inView ? { scaleX: 1 } : {}}
             transition={{ delay: 0.3, duration: DUR_SLOW, ease: EASE }}
-          >
-            {!reduced && (
-              <motion.span
-                className="absolute inset-y-0 w-1/3"
-                style={{ background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.9), transparent)" }}
-                animate={{ x: ["-120%", "320%"] }}
-                transition={{ duration: 3.2, repeat: Infinity, ease: "easeInOut", delay: 1 }}
-              />
-            )}
-          </motion.div>
+          />
         </motion.div>
 
         {/* Track toggle */}
@@ -706,7 +611,7 @@ export function MotionExplainer() {
               {steps.map((step, i) => (
                 <React.Fragment key={step.number}>
                   <StepCard step={step} index={i} inView={inView} reduced={reduced} />
-                  {i < steps.length - 1 && <StepConnector inView={inView} reduced={reduced} />}
+                  {i < steps.length - 1 && <StepConnector inView={inView} />}
                 </React.Fragment>
               ))}
             </motion.div>
@@ -718,29 +623,17 @@ export function MotionExplainer() {
           initial={{ opacity: 0, y: 16 }}
           animate={inView ? { opacity: 1, y: 0 } : {}}
           transition={{ delay: 0.4, duration: DUR_SLOW, ease: EASE }}
-          className="flex flex-col items-center gap-w14-2 sm:flex-row"
+          className="flex w-full max-w-sm flex-col items-stretch gap-w14-2 sm:w-auto sm:max-w-none sm:flex-row sm:items-center"
         >
           <a
             href="#kontakt"
-            className="bg-gold-gradient relative inline-flex min-h-[44px] items-center gap-2 overflow-hidden rounded-button px-8 py-3.5 text-fluid-body font-semibold text-[#0e0b04] shadow-card ring-gold-soft transition-shadow duration-base ease-hover hover:shadow-gold focus:outline-none focus-visible:ring-2"
+            className="bg-gold-gradient inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-button px-8 py-3.5 text-fluid-body font-semibold text-[#0e0b04] shadow-card ring-gold-soft transition-shadow duration-base ease-hover hover:shadow-gold focus:outline-none focus-visible:ring-2 sm:w-auto"
           >
-            {/* continuous gilt sweep — the button never sits dead */}
-            {!reduced && (
-              <span
-                aria-hidden="true"
-                className="pointer-events-none absolute inset-0"
-                style={{
-                  background: "linear-gradient(105deg, transparent 35%, rgba(255,255,255,0.55) 50%, transparent 65%)",
-                  backgroundSize: "260% 100%",
-                  animation: "w14CardSheen 4.2s ease-in-out infinite",
-                }}
-              />
-            )}
-            <span className="relative">Jetzt Termin vereinbaren</span>
+            Jetzt Termin vereinbaren
           </a>
           <a
             href="#sortiment"
-            className="text-ink-aged inline-flex min-h-[44px] items-center gap-2 rounded-button border border-rule px-8 py-3.5 text-fluid-body font-medium ring-gold-soft transition-colors duration-base ease-hover hover:border-gold hover:text-gold focus:outline-none focus-visible:ring-2"
+            className="text-ink-aged inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-button border border-rule px-8 py-3.5 text-fluid-body font-medium ring-gold-soft transition-colors duration-base ease-hover hover:border-gold hover:text-gold focus:outline-none focus-visible:ring-2 sm:w-auto"
           >
             Sortiment entdecken
           </a>

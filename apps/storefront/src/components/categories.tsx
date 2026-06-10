@@ -23,61 +23,49 @@ export function Categories() {
           </p>
         </Reveal>
 
-        <div className="grid gap-w14-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-w14-3 sm:grid-cols-2 lg:grid-cols-3">
           {categories.map((c, i) => {
             const key = (KNOWN.has(c.slug) ? c.slug : FALLBACK) as SymbolKey;
             const tint = SYMBOL_TINTS[key].card;
             return (
-              <Reveal key={c.slug} index={i % 3}>
+              <Reveal key={c.slug} index={i % 2}>
                 <motion.a
                   href="#kollektion"
-                  className="group relative flex h-full flex-col overflow-hidden rounded-card border border-rule bg-card shadow-card"
+                  className="group relative flex h-full flex-col overflow-hidden rounded-card border border-rule bg-card shadow-card transition-[border-color,box-shadow] duration-base ease-hover hover:border-[color:color-mix(in_srgb,var(--tint)_40%,var(--w14-rule))] hover:shadow-lift"
                   style={{ ["--tint" as string]: tint, willChange: "transform" }}
                   initial={false}
-                  whileHover={reduce ? undefined : { y: -8, scale: 1.012 }}
+                  whileHover={reduce ? undefined : { y: -6 }}
                   whileTap={reduce ? undefined : { scale: 0.99 }}
                   transition={{ type: "spring", stiffness: 320, damping: 26, mass: 0.6 }}
                 >
-                  {/* gold corona that blooms on hover — the vitrine spotlight */}
-                  <span
-                    aria-hidden="true"
-                    className="pointer-events-none absolute -inset-px z-0 rounded-card opacity-0 transition-opacity duration-base ease-hover group-hover:opacity-100"
-                    style={{ boxShadow: `0 20px 50px -18px ${tint}9e, inset 0 0 0 1px ${tint}55` }}
-                  />
+                  {/* calm tinted plinth — a quiet wash, no sweep, no gleam */}
                   <div
-                    className="relative z-10 flex h-32 items-center justify-center overflow-hidden"
-                    style={{ background: `linear-gradient(155deg, ${tint}3d, ${tint}12 72%)` }}
+                    className="relative z-10 flex h-28 items-center justify-center overflow-hidden border-b border-rule sm:h-32"
+                    style={{ background: `linear-gradient(155deg, ${tint}26, ${tint}0d 78%)` }}
                   >
-                    {/* light sweep across the plinth on hover */}
-                    <span
-                      aria-hidden="true"
-                      className="pointer-events-none absolute inset-0 -translate-x-full transition-transform duration-700 ease-hover group-hover:translate-x-full"
-                      style={{ background: `linear-gradient(105deg, transparent, ${tint}33 45%, rgba(255,255,255,.5) 50%, ${tint}33 55%, transparent)` }}
-                    />
                     <motion.span
                       style={{ color: tint, willChange: "transform" }}
-                      className="relative drop-shadow-sm"
+                      className="relative"
                       initial={false}
-                      whileHover={reduce ? undefined : { scale: 1.12, rotate: -4 }}
-                      transition={{ type: "spring", stiffness: 260, damping: 18 }}
+                      whileHover={reduce ? undefined : { scale: 1.08 }}
+                      transition={{ type: "spring", stiffness: 260, damping: 20 }}
                     >
-                      <CollectionSymbol name={key} size={68} strokeWidth={1.4} />
+                      <CollectionSymbol name={key} size={64} strokeWidth={1.4} />
                     </motion.span>
-                    <span className="absolute inset-x-0 bottom-0 h-px" style={{ background: `${tint}5c` }} />
                   </div>
                   <div className="relative z-10 flex flex-1 flex-col p-card">
                     <div className="flex items-start justify-between gap-w14-2">
                       <h3 className="font-display text-fluid-h3 font-medium">
                         <span className="underline-draw">{c.name}</span>
                       </h3>
-                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-rule text-ink-faded transition-all duration-base ease-hover group-hover:border-[color:var(--tint)] group-hover:[background:color-mix(in_srgb,var(--tint)_12%,transparent)]">
+                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-rule text-ink-faded transition-colors duration-base ease-hover group-hover:border-[color:var(--tint)] group-hover:[color:var(--tint)]">
                         <ArrowUpRight
-                          className="h-[18px] w-[18px] transition-all duration-base ease-hover group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:[color:var(--tint)]"
+                          className="h-[18px] w-[18px] transition-transform duration-base ease-hover group-hover:-translate-y-0.5 group-hover:translate-x-0.5"
                           aria-hidden="true"
                         />
                       </span>
                     </div>
-                    <p className="mt-w14-1 flex-1 text-[0.8125rem] text-ink-faded">{c.blurb}</p>
+                    <p className="mt-w14-1 flex-1 text-[0.8125rem] leading-relaxed text-ink-faded">{c.blurb}</p>
                     <div className="tnum mt-w14-3 text-[0.8125rem] font-medium text-ink-aged">
                       {c.count.toLocaleString("de-DE")} <span className="font-normal text-ink-faded">Objekte</span>
                     </div>
