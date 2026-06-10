@@ -1,0 +1,252 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * warehouse14 STOREFRONT theme — warm, natural, antique/vintage.
+ * Simple & clean on the surface; gold anchor (#bf9430) + paper, patina, bronze.
+ * The cool "modern clean" POS tokens are warmed here for the customer-facing site.
+ * ────────────────────────────────────────────────────────────────────────── */
+:root {
+  /* clean, elegant cream surfaces (gold lives only in thin accents now) */
+  --w14-parchment: #f7f5ef;   /* app background — clean cream */
+  --w14-parchment-2: #fffefb; /* cards / panels — near-white cream */
+  --w14-parchment-3: #efece2; /* raised / hover */
+
+  /* warm ink */
+  --w14-ink: #211b13;         /* espresso near-black */
+  --w14-ink-aged: #4d4537;
+  --w14-ink-faded: #8a7f6c;
+  --w14-rule: #e8e3d7;        /* soft hairline */
+
+  /* gold anchor + naturals */
+  --w14-gold: #bf9430;
+  --w14-gold-soft: #ddc486;
+  --w14-gold-deep: #8a6a1f;
+  --w14-forest: #46583f;      /* deep olive — nature */
+  --w14-verdigris: #3f6b54;   /* patina green — positive */
+  --w14-terra: #a4633c;       /* terracotta / bronze warmth */
+  --w14-wax-red: #c0492f;     /* warm sealing-wax red — negative */
+
+  --w14-font-mono: "JetBrains Mono", "Menlo", monospace;
+
+  /* ── FLUID TYPE SCALE ─────────────────────────────────────────────────────
+   * One ratio-based ladder driven by clamp() so headings breathe with the
+   * viewport without media queries. Cormorant on display steps, Inter on body,
+   * JetBrains Mono on numerics. Steps map to the directive's role sizes. */
+  --w14-step--1: 0.8125rem;                              /* eyebrow / label    */
+  --w14-step-0:  clamp(1rem, 0.97rem + 0.15vw, 1.125rem);/* body               */
+  --w14-step-1:  clamp(1.125rem, 1.06rem + 0.3vw, 1.3rem);/* lead / large body */
+  --w14-step-2:  clamp(1.4rem, 1.2rem + 0.7vw, 1.75rem); /* H3                 */
+  --w14-step-3:  clamp(1.9rem, 1.4rem + 1.8vw, 2.75rem); /* H2                 */
+  --w14-step-4:  clamp(2.5rem, 1.6rem + 3.6vw, 4.5rem);  /* H1 / display       */
+  --w14-step-5:  clamp(3rem, 1.8rem + 5vw, 6rem);        /* oversized hero     */
+  --w14-step-6:  clamp(3.75rem, 2rem + 7vw, 8rem);       /* monumental         */
+
+  --w14-leading-display: 1.08;
+  --w14-leading-body: 1.65;
+  --w14-tracking-eyebrow: 0.14em;
+  --w14-measure: 62ch;
+
+  /* ── 8pt SPACING / VERTICAL RHYTHM ────────────────────────────────────────
+   * Every gap, pad and stack derives from an 8px base so rhythm stays exact. */
+  --w14-space-1: 8px;
+  --w14-space-2: 16px;
+  --w14-space-3: 24px;
+  --w14-space-4: 40px;
+  --w14-space-5: 64px;
+  --w14-space-6: 96px;
+  --w14-space-7: 128px;
+  --w14-section-pad: clamp(64px, 9vw, 128px); /* section padding-block        */
+  --w14-card-pad: 24px;                        /* card inner padding           */
+  --w14-gap-headline: 16px;                    /* headline → body              */
+  --w14-gap-group: 40px;                       /* group → group                */
+
+  /* ── MOTION PRIMITIVES ────────────────────────────────────────────────────
+   * One vocabulary so components stop hand-rolling timings. "curator" stays the
+   * entrance ease; a separate hover ease keeps micro-interactions snappy. */
+  --w14-ease-out: cubic-bezier(0.16, 1, 0.3, 1);   /* entrances (= curator)   */
+  --w14-ease-hover: cubic-bezier(0.4, 0, 0.2, 1);  /* hovers / micro          */
+  --w14-dur-fast: 180ms;   /* micro interactions                              */
+  --w14-dur-base: 420ms;   /* standard hover / state                          */
+  --w14-dur-slow: 650ms;   /* on-enter reveal                                 */
+  --w14-stagger: 70ms;     /* cascade step between siblings                   */
+}
+
+@layer base {
+  html { scroll-behavior: smooth; }
+  body {
+    background-color: var(--w14-parchment);
+    color: var(--w14-ink);
+    font-family: var(--font-inter), system-ui, sans-serif;
+    font-size: var(--w14-step-0);
+    line-height: var(--w14-leading-body);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  /* Lenis smooth-scroll hooks */
+  html.lenis, html.lenis body { height: auto; }
+  .lenis.lenis-smooth { scroll-behavior: auto !important; }
+  .lenis.lenis-stopped { overflow: hidden; }
+  ::selection { background: var(--w14-gold); color: #fff; }
+  h1, h2, h3 {
+    font-family: var(--font-cormorant), Georgia, serif;
+    letter-spacing: -0.01em;
+    line-height: var(--w14-leading-display);
+  }
+  /* Fluid heading defaults — components may still override with utilities. */
+  h1 { font-size: var(--w14-step-4); }
+  h2 { font-size: var(--w14-step-3); }
+  h3 { font-size: var(--w14-step-2); }
+
+  /* Global keyboard-focus safety net: every interactive control gets a visible
+     gold ring on keyboard focus (not on mouse click), even if a component
+     forgot one. Components may still override with their own focus-visible. */
+  :focus-visible {
+    outline: 2px solid var(--w14-gold);
+    outline-offset: 2px;
+    border-radius: 3px;
+  }
+  /* Prevent the 300ms double-tap zoom delay + intentional tap highlight on
+     all tappable controls (touch guideline). */
+  a, button, [role="button"], summary, label {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: rgba(191, 148, 48, 0.18);
+  }
+}
+
+@layer utilities {
+  .text-gold-gradient {
+    background: linear-gradient(120deg, #e7d49b 0%, #bf9430 42%, #8a6a1f 78%, #d8bd79 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .bg-gold-gradient { background: linear-gradient(120deg, #e7d49b 0%, #bf9430 45%, #9a7726 100%); }
+
+  /* Warm espresso "deep" backdrop for hero/footer — antique leather + gold light. */
+  .bg-ink-deep {
+    background:
+      radial-gradient(1100px 560px at 72% -8%, rgba(191,148,48,.20), transparent 60%),
+      radial-gradient(820px 460px at 8% 108%, rgba(70,88,63,.16), transparent 58%),
+      linear-gradient(180deg, #17130c 0%, #1e1810 55%, #14110b 100%);
+  }
+  .glass {
+    background: rgba(253,250,243,.72);
+    backdrop-filter: saturate(170%) blur(14px); -webkit-backdrop-filter: saturate(170%) blur(14px);
+  }
+  .glass-dark {
+    background: rgba(23,19,12,.55);
+    backdrop-filter: saturate(150%) blur(14px); -webkit-backdrop-filter: saturate(150%) blur(14px);
+  }
+  .hairline { border: 1px solid var(--w14-rule); }
+  .tnum { font-feature-settings: "tnum"; font-variant-numeric: tabular-nums; font-family: var(--font-mono), var(--w14-font-mono); }
+  .smallcaps { font-variant: all-small-caps; letter-spacing: 0.1em; }
+  .ring-gold-soft { box-shadow: inset 0 0 0 1px rgba(191,148,48,.28); }
+
+  /* Eyebrow / kicker — uppercase small-caps label sitting above a headline. */
+  .eyebrow {
+    font-size: var(--w14-step--1);
+    font-variant: all-small-caps;
+    letter-spacing: var(--w14-tracking-eyebrow);
+    color: var(--w14-ink-faded);
+    font-weight: 500;
+  }
+  /* Readable measure for body copy (~62ch). */
+  .measure { max-width: var(--w14-measure); }
+
+  /* ── REVEAL: opacity 0→1 + translateY 16px→0, once, calm. ──────────────────
+   * Base state sets the "before" pose; .reveal-in (toggled by IO/framer or
+   * the JS observer) animates to rest. A no-JS guard reveals after 1.2s so
+   * content is never trapped hidden. */
+  .reveal {
+    opacity: 0;
+    transform: translateY(16px);
+    transition:
+      opacity var(--w14-dur-slow) var(--w14-ease-out),
+      transform var(--w14-dur-slow) var(--w14-ease-out);
+    will-change: opacity, transform;
+  }
+  .reveal-in {
+    opacity: 1;
+    transform: none;
+  }
+  /* Stagger helper: set --w14-reveal-i on each child for a 70ms cascade. */
+  .reveal-stagger > * {
+    transition-delay: calc(var(--w14-reveal-i, 0) * var(--w14-stagger));
+  }
+
+  /* ── HOVER-LIFT: one calm change — translateY(-4px) + shadow swap. ─────────*/
+  .hover-lift {
+    transition:
+      transform var(--w14-dur-base) var(--w14-ease-hover),
+      box-shadow var(--w14-dur-base) var(--w14-ease-hover);
+  }
+  @media (hover: hover) {
+    .hover-lift:hover { transform: translateY(-4px); }
+  }
+
+  /* ── IMAGE-ZOOM: subtle 1.0→1.03 on the parent's hover (coins/objects). ───*/
+  .img-zoom { transition: transform var(--w14-dur-base) var(--w14-ease-hover); }
+  @media (hover: hover) {
+    .group:hover .img-zoom,
+    .img-zoom-trigger:hover .img-zoom { transform: scale(1.03); }
+  }
+
+  /* ── UNDERLINE-DRAW: 0→100% gold hairline under a title on hover. ─────────*/
+  .underline-draw {
+    background-image: linear-gradient(currentColor, currentColor);
+    background-position: 0 100%;
+    background-repeat: no-repeat;
+    background-size: 0% 1px;
+    transition: background-size var(--w14-dur-base) var(--w14-ease-hover);
+  }
+  @media (hover: hover) {
+    .group:hover .underline-draw,
+    .underline-draw:hover { background-size: 100% 1px; }
+  }
+
+  /* ── HAIRLINE-DRAW: a single gold rule grows left→right (hero accent). ─────*/
+  .hairline-draw {
+    transform-origin: left center;
+    transform: scaleX(0);
+    transition: transform var(--w14-dur-slow) var(--w14-ease-out);
+  }
+  .hairline-draw.reveal-in,
+  .reveal-in .hairline-draw { transform: scaleX(1); }
+
+  /* Barely-there paper texture. Kept whisper-faint so it never reads as "dust". */
+  .grain { position: relative; isolation: isolate; }
+  .grain::after {
+    content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; opacity: .12;
+    background-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.5 0 0 0 0 0.44 0 0 0 0 0.33 0 0 0 0.04 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 180px 180px;
+  }
+  /* grain sits at z-index -1 inside the isolated context, so in-flow content
+     paints above it WITHOUT forcing position on children (which broke sticky). */
+
+  .gold-sweep { position: relative; overflow: hidden; }
+  .gold-sweep::after {
+    content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,.5), transparent);
+    animation: sweep 2.8s infinite;
+  }
+  @keyframes sweep { 100% { transform: translateX(100%); } }
+  .marquee-mask {
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important; animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important; scroll-behavior: auto !important;
+  }
+  /* Collapse every new reveal/draw to its rest pose instantly — no transform,
+   * no hidden content. Covers .reveal/.hairline-draw/.underline-draw/.img-zoom
+   * even before any observer toggles .reveal-in. */
+  .reveal { opacity: 1 !important; transform: none !important; }
+  .hairline-draw { transform: scaleX(1) !important; }
+  .underline-draw { background-size: 100% 1px !important; }
+  .img-zoom, .hover-lift { transform: none !important; }
+}

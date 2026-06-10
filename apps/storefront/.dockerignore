@@ -1,0 +1,13 @@
+# Keep the build context tiny + never bake secrets / dev state.
+node_modules
+.next
+.git
+.env.local
+.env*.local
+npm-debug.log*
+*.log
+.DS_Store
+Dockerfile
+.dockerignore
+docker-compose*.yml
+README*.md

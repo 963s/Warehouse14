@@ -1093,11 +1093,26 @@ class StorefrontError extends Error {
   }
 }
 
+/**
+ * The api origin for SERVER-side data fetches (RSC + route handlers). In the
+ * private internal deployment, INTERNAL_API_URL (e.g. http://api:3001 on the
+ * Docker network) is preferred so catalog data never leaves the box; locally it
+ * falls back to NEXT_PUBLIC_API_URL (http://localhost:3001). The hard-coded prod
+ * URL is only a last-resort default, never used when either env is set.
+ */
+function serverApiBase(): string {
+  return (
+    process.env.INTERNAL_API_URL ??
+    process.env.NEXT_PUBLIC_API_URL ??
+    "https://api.warehouse14.de"
+  );
+}
+
 async function apiGet<T>(
   path: string,
   opts?: { revalidate?: number; noStore?: boolean },
 ): Promise<T | null> {
-  const base = process.env.NEXT_PUBLIC_API_URL ?? "https://api.warehouse14.de";
+  const base = serverApiBase();
   const nextOpts: RequestInit["next"] = opts?.noStore
     ? undefined
     : opts?.revalidate != null
@@ -1126,22 +1141,45 @@ async function apiGet<T>(
 // ─────────────────────────────────────────────────────────────────────────────
 // Live-contract adapters
 //
-// The backend's public product projection (`toStorefrontProduct`) deliberately
-// carries NO image data — the catalog SQL never joins `product_photos`, and the
-// storefront-catalog schema has no image field. The Next.js components, however,
-// expect `primaryImage` + `images` to always be present (`PhotoGallery` does
-// `[...images]`, which throws on `undefined`). These adapters normalise the wire
-// shape into the UI shape so a live product never crashes a page.
+// The backend's public product projection (`toStorefrontProduct`) now surfaces
+// an `imageUrls` array (primary-first) of API-relative photo paths, shaped
+// `/api/photos/<photoId>/{raw,thumb}` — the same public-by-UUID photo route the
+// POS catalog already consumes (see products-list.ts `primaryPhotoThumbUrl`).
+// The Next.js components expect `primaryImage` + `images` to always be present
+// (`PhotoGallery` does `[...images]`, which throws on `undefined`). These
+// adapters normalise the wire shape into the UI shape so a live product never
+// crashes a page, with a graceful parchment fallback when a product has no photo.
 //
-// Image strategy: when (and only when) the backend ever surfaces R2 keys, build
-// the absolute URL as `${R2_PUBLIC_URL_BASE}/${r2Key}`. Today the public API
-// returns no keys, so we hand back `null` / `[]` and the <ProductImage> renders
-// its graceful parchment fallback. We never hardcode `/img/products/*` for live
-// data — those local fixtures belong to placeholder mode only.
+// Image strategy (in priority order):
+//   1. `imageUrls` — the live contract (primary-first). API-relative paths are
+//      prefixed with NEXT_PUBLIC_API_URL so the public /raw + /thumb routes
+//      resolve cross-origin from the storefront. Already-absolute URLs (an
+//      absolute PHOTOS_PUBLIC_BASE_URL the api may emit) pass through untouched.
+//   2. `photos[]` / `primaryPhoto` — a richer object shape, if a future endpoint
+//      ever carries alt text + flags directly.
+//   3. R2 keys via `${R2_PUBLIC_URL_BASE}/${r2Key}` — legacy CDN fallback.
+// When none resolve we hand back `null` / `[]` and <ProductImage> renders its
+// graceful parchment tile. We never hardcode `/img/products/*` for live data —
+// those local fixtures belong to placeholder mode only.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Public R2 CDN base, e.g. https://media.warehouse14.de. Empty in dev. */
 const R2_PUBLIC_URL_BASE = (process.env.NEXT_PUBLIC_R2_PUBLIC_URL_BASE ?? "").replace(/\/+$/, "");
+
+/**
+ * Resolve any storefront photo reference to a URL Next/Image can load.
+ *   • absolute (http/https) → returned untouched (absolute PHOTOS_PUBLIC_BASE_URL)
+ *   • api-relative ("/api/photos/<id>/thumb") → kept SAME-ORIGIN so it routes
+ *     through the storefront's own photo-proxy (app/api/photos/[id]/[variant]),
+ *     which streams the public rendition from INTERNAL_API_URL. The browser
+ *     therefore never contacts the api host directly.
+ *   • anything else (already a full path on the same origin) → left as-is
+ */
+function resolveImageUrl(ref: string): string {
+  if (/^https?:\/\//i.test(ref)) return ref;
+  if (ref.startsWith("/api/")) return ref;
+  return ref;
+}
 
 /** A single photo as it *might* arrive from a future image-bearing endpoint. */
 interface WirePhoto {
@@ -1156,7 +1194,7 @@ interface WirePhoto {
 
 /** Resolve a wire photo to an absolute URL, or null if it can't be built. */
 function photoUrl(p: WirePhoto): string | null {
-  if (p.url) return p.url; // already absolute
+  if (p.url) return resolveImageUrl(p.url); // absolute or api-relative
   if (p.r2Key && R2_PUBLIC_URL_BASE) return `${R2_PUBLIC_URL_BASE}/${p.r2Key}`;
   return null;
 }
@@ -1173,30 +1211,78 @@ function toProductImage(p: WirePhoto): ProductImage | null {
 }
 
 /**
+ * Map the live `imageUrls` contract → the UI `ProductImage[]` shape.
+ *
+ * The array is PRIMARY-FIRST, so index 0 is the primary and the index doubles
+ * as `order`. Each entry is either a bare path string (`/api/photos/<id>/thumb`)
+ * or an object exposing `{ raw?, thumb?, url? }`; we prefer the full-resolution
+ * `raw` for the gallery and fall back to `thumb`/`url`. The product `name` seeds
+ * a reasonable German alt text since the wire carries none.
+ */
+function imagesFromImageUrls(raw: unknown[], productName: string): ProductImage[] {
+  const out: ProductImage[] = [];
+  raw.forEach((entry, i) => {
+    let ref: string | null = null;
+    if (typeof entry === "string") {
+      ref = entry;
+    } else if (entry && typeof entry === "object") {
+      const e = entry as { raw?: unknown; thumb?: unknown; url?: unknown };
+      const pick = [e.raw, e.url, e.thumb].find((v) => typeof v === "string" && v.length > 0);
+      ref = typeof pick === "string" ? pick : null;
+    }
+    if (!ref) return;
+    out.push({
+      url: resolveImageUrl(ref),
+      altDe: productName || null,
+      isPrimary: i === 0,
+      order: i,
+    });
+  });
+  return out;
+}
+
+/**
  * Normalise a raw backend product (StorefrontProduct schema shape) into the
- * storefront's ProductSummary/ProductDetail. Tolerates the current contract
- * (no images) and a future one (photos[]/primaryPhoto present).
+ * storefront's ProductSummary/ProductDetail. Tolerates the live contract
+ * (`imageUrls`, primary-first), a richer one (photos[]/primaryPhoto), and the
+ * legacy no-image contract (graceful parchment fallback).
  */
 function normaliseProduct<T extends ProductSummary>(raw: unknown): T {
-  const r = raw as Record<string, unknown> & { photos?: WirePhoto[]; primaryPhoto?: WirePhoto };
-  const gallery: ProductImage[] = Array.isArray(r.photos)
-    ? r.photos.map(toProductImage).filter((x): x is ProductImage => x !== null)
+  const r = raw as Record<string, unknown> & {
+    imageUrls?: unknown;
+    photos?: WirePhoto[];
+    primaryPhoto?: WirePhoto;
+    name?: unknown;
+  };
+  const name = typeof r.name === "string" ? r.name : "";
+
+  // 1. Live contract: primary-first `imageUrls`.
+  let gallery: ProductImage[] = Array.isArray(r.imageUrls)
+    ? imagesFromImageUrls(r.imageUrls, name)
     : [];
+
+  // 2. Richer object shape, if ever present.
+  if (gallery.length === 0 && Array.isArray(r.photos)) {
+    gallery = r.photos.map(toProductImage).filter((x): x is ProductImage => x !== null);
+  }
+
   const primaryImage: ProductImage | null =
-    (r.primaryPhoto ? toProductImage(r.primaryPhoto) : null) ??
     gallery.find((g) => g.isPrimary) ??
+    (r.primaryPhoto ? toProductImage(r.primaryPhoto) : null) ??
     gallery[0] ??
     null;
+
   return {
     ...(raw as T),
     primaryImage,
-    // Only present on the detail shape; harmless to attach to a summary.
-    ...(("images" in r || Array.isArray(r.photos)) ? { images: gallery } : { images: gallery }),
+    // `images` is the detail-shape gallery; always an array so PhotoGallery's
+    // `[...images]` never throws (harmless extra field on a summary).
+    images: gallery,
   } as T;
 }
 
 async function apiPost<T>(path: string, body: unknown): Promise<T> {
-  const base = process.env.NEXT_PUBLIC_API_URL ?? "https://api.warehouse14.de";
+  const base = serverApiBase();
   const res = await fetch(`${base}${path}`, {
     method: "POST",
     credentials: "include",
@@ -1209,7 +1295,7 @@ async function apiPost<T>(path: string, body: unknown): Promise<T> {
 }
 
 async function apiDelete<T>(path: string): Promise<T> {
-  const base = process.env.NEXT_PUBLIC_API_URL ?? "https://api.warehouse14.de";
+  const base = serverApiBase();
   const res = await fetch(`${base}${path}`, {
     method: "DELETE",
     credentials: "include",
@@ -1220,7 +1306,7 @@ async function apiDelete<T>(path: string): Promise<T> {
 }
 
 async function apiPatch<T>(path: string, body: unknown): Promise<T> {
-  const base = process.env.NEXT_PUBLIC_API_URL ?? "https://api.warehouse14.de";
+  const base = serverApiBase();
   const res = await fetch(`${base}${path}`, {
     method: "PATCH",
     credentials: "include",
