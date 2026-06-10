@@ -299,6 +299,67 @@ const photosRoutes: FastifyPluginAsync<PhotosRoutesOpts> = async (app, opts) => 
   );
 
   // ────────────────────────────────────────────────────────────────────
+  // PATCH /api/photos/:id/primary — promote one photo to the product's
+  // Hauptbild (the single image the Kasse/Verkauf catalog tile shows and the
+  // storefront gallery leads with). Exactly-one-primary-per-product is enforced
+  // by the partial unique index product_photos_one_primary_per_product_uq, so
+  // we unset the current primary BEFORE setting the new one, in ONE TX.
+  // ────────────────────────────────────────────────────────────────────
+  app.patch<{ Params: TPhotoIdParams }>(
+    '/api/photos/:id/primary',
+    {
+      schema: {
+        tags: ['photos'],
+        summary: "Set this photo as its product's primary (Hauptbild).",
+        description:
+          'Unsets the product\'s current primary and promotes this photo, in one ' +
+          'transaction (respects the one-primary-per-product partial unique index). ' +
+          'The photo must already be assigned to a product.',
+        params: PhotoIdParams,
+        response: { 200: PhotoRow, 400: ErrorResponse, 404: ErrorResponse, 409: ErrorResponse },
+      },
+    },
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'ADMIN', 'CASHIER');
+
+      const result = await app.db.transaction(async (tx) => {
+        const [current] = await tx
+          .select()
+          .from(productPhotos)
+          .where(eq(productPhotos.id, req.params.id))
+          .limit(1);
+        if (!current) throw new PhotoNotFoundError(`Photo ${req.params.id} not found`);
+        if (!current.productId) {
+          throw new PhotoValidationError(
+            'photo is not assigned to a product, so it cannot be the primary',
+          );
+        }
+        if (current.isPrimary) return current; // already primary — no-op
+
+        // 1. Demote the product's current primary (if any).
+        await tx
+          .update(productPhotos)
+          .set({ isPrimary: false })
+          .where(
+            and(eq(productPhotos.productId, current.productId), eq(productPhotos.isPrimary, true)),
+          );
+
+        // 2. Promote this photo.
+        const [updated] = await tx
+          .update(productPhotos)
+          .set({ isPrimary: true })
+          .where(eq(productPhotos.id, req.params.id))
+          .returning();
+        if (!updated) throw new Error('primary UPDATE returned no row');
+        return updated;
+      });
+
+      return reply.status(200).send(serializePhoto(result, opts.env));
+    },
+  );
+
+  // ────────────────────────────────────────────────────────────────────
   // GET /api/products/:id/photos
   // ────────────────────────────────────────────────────────────────────
   app.get<{ Params: { id: string }; Querystring: TProductPhotosQuery }>(

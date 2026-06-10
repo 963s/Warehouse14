@@ -38,12 +38,15 @@ import { Type } from '@sinclair/typebox';
 import { sql } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 
+import type { Env } from '../config/env.js';
+import { buildR2PublicUrl } from '../lib/r2.js';
 import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 import {
   StorefrontCategoriesResponse,
   type StorefrontCategoryNode,
   StorefrontLocationsResponse,
   type StorefrontProduct,
+  type StorefrontProductImage,
   StorefrontProduct as StorefrontProductSchema,
   StorefrontProductsResponse,
 } from '../schemas/storefront-catalog.js';
@@ -108,6 +111,21 @@ type ProductRow = {
   primary_category_name_de: string | null;
 } & Record<string, unknown>;
 
+/**
+ * Public photo row — exactly the columns the gallery projection needs. We never
+ * SELECT KYC/document tables here; only `product_photos`, which is PUBLIC media.
+ */
+type PhotoRow = {
+  id: string;
+  product_id: string | null;
+  storage_kind: string;
+  r2_key: string;
+  is_primary: boolean;
+  display_order: number;
+  alt_text_de: string | null;
+  alt_text_en: string | null;
+} & Record<string, unknown>;
+
 type CategoryRow = {
   id: string;
   parent_id: string | null;
@@ -139,14 +157,51 @@ type LocationRow = {
 // ────────────────────────────────────────────────────────────────────────
 
 /**
+ * Resolve a product_photos row to its public { full, thumb } URLs.
+ *
+ *   • local rows  → api-relative `/api/photos/<id>/{raw,thumb}` (the POS pattern;
+ *                   the storefront prefixes with its API base). The api serves
+ *                   these from PHOTOS_PUBLIC_BASE_URL via routes/photos.ts; here
+ *                   we emit the relative form so the response is host-agnostic
+ *                   and CDN-cacheable across origins.
+ *   • legacy R2   → the absolute R2 public URL; no separate thumb rendition, so
+ *                   thumb === full.
+ */
+function photoUrls(row: PhotoRow, env: Env): { full: string; thumb: string } {
+  if (row.storage_kind === 'local') {
+    return { full: `/api/photos/${row.id}/raw`, thumb: `/api/photos/${row.id}/thumb` };
+  }
+  const absolute = buildR2PublicUrl(env, row.r2_key);
+  return { full: absolute, thumb: absolute };
+}
+
+/** Project a photo row into the public gallery shape. */
+function toStorefrontImage(row: PhotoRow, env: Env): StorefrontProductImage {
+  const { full, thumb } = photoUrls(row, env);
+  return {
+    url: full,
+    thumbUrl: thumb,
+    altTextDe: row.alt_text_de,
+    altTextEn: row.alt_text_en,
+    isPrimary: row.is_primary,
+  };
+}
+
+/**
  * The MOAT. Every public product response goes through this function.
  * If a private column appears here, it leaks; otherwise it can't.
  *
  * Note we do not surface `weight_grams` if the row has no `metal` —
  * keeps non-metal antiques from showing a weight column on the
  * storefront listing.
+ *
+ * `images` is the (already primary-first) gallery for this product; the LIST
+ * endpoint passes just the primary thumb (in [primary]) while the DETAIL
+ * endpoint passes the full ordered set. `primaryImageThumbUrl` is derived from
+ * the first image's thumb so list-card consumers don't have to peek into images.
  */
-function toStorefrontProduct(row: ProductRow): StorefrontProduct {
+function toStorefrontProduct(row: ProductRow, images: StorefrontProductImage[]): StorefrontProduct {
+  const primaryThumb = images.find((i) => i.isPrimary)?.thumbUrl ?? images[0]?.thumbUrl ?? null;
   return {
     id: row.id,
     slug: row.slug,
@@ -174,6 +229,9 @@ function toStorefrontProduct(row: ProductRow): StorefrontProduct {
         ? row.published_at.toISOString()
         : new Date(row.published_at).toISOString()
       : null,
+    primaryImageThumbUrl: primaryThumb,
+    images,
+    imageUrls: images.map((i) => i.url),
     primaryCategory:
       row.primary_category_id && row.primary_category_slug && row.primary_category_name_de
         ? {
@@ -221,7 +279,12 @@ function composeCategoryTree(rows: readonly CategoryRow[]): StorefrontCategoryNo
 // Plugin
 // ────────────────────────────────────────────────────────────────────────
 
-const storefrontCatalog: FastifyPluginAsync = async (app) => {
+export interface StorefrontCatalogRoutesOpts {
+  env: Env;
+}
+
+const storefrontCatalog: FastifyPluginAsync<StorefrontCatalogRoutesOpts> = async (app, opts) => {
+  const { env } = opts;
   // ════════════════════════════════════════════════════════════════════
   // GET /api/storefront/products
   //
@@ -326,7 +389,38 @@ const storefrontCatalog: FastifyPluginAsync = async (app) => {
       OFFSET ${offset}
     `);
 
-      const items = Array.from(rows).map(toStorefrontProduct);
+      // Batch the PRIMARY photo per product (one extra query, thumb only) so the
+      // grid card has a hero image without paying for the full gallery payload.
+      // Falls back to the lowest display_order photo when no is_primary row
+      // exists (e.g. a product whose primary was never flagged). storage_kind in
+      // ('local','r2') — both are public media; never any KYC/document table.
+      const productIds = Array.from(rows).map((r) => r.id);
+      const primaryByProduct = new Map<string, StorefrontProductImage>();
+      if (productIds.length > 0) {
+        // Bind the ids as ONE Postgres array-literal text param ('{uuid,uuid}')
+        // cast to uuid[]. Interpolating a JS array into drizzle's `sql` template
+        // SPREADS it into comma-separated scalar params, so `ANY(${'${productIds}'}::uuid[])`
+        // casts a row/record → uuid[] and throws (22P02/42846) on any non-empty
+        // page. The ids are DB-sourced UUIDs, so the literal is one safe bound
+        // param. (Same fix as closing-export.ts / transactions-finalize.ts.)
+        const productIdArray = `{${productIds.join(',')}}`;
+        const photoRows = await app.db.execute<PhotoRow>(sql`
+          SELECT DISTINCT ON (product_id)
+            id, product_id, storage_kind, r2_key, is_primary, display_order,
+            alt_text_de, alt_text_en
+          FROM product_photos
+          WHERE product_id = ANY(${productIdArray}::uuid[])
+          ORDER BY product_id, is_primary DESC, display_order, created_at
+        `);
+        for (const ph of Array.from(photoRows)) {
+          if (ph.product_id) primaryByProduct.set(ph.product_id, toStorefrontImage(ph, env));
+        }
+      }
+
+      const items = Array.from(rows).map((r) => {
+        const primary = primaryByProduct.get(r.id);
+        return toStorefrontProduct(r, primary ? [primary] : []);
+      });
       const total = rows.length > 0 ? Number(rows[0]!.total_count) : 0;
 
       // Public catalog is heavily cacheable. CDN edge caches for 60 s;
@@ -388,8 +482,21 @@ const storefrontCatalog: FastifyPluginAsync = async (app) => {
       if (!row) {
         throw new StorefrontProductNotFoundError(`No published product with slug '${slug}'`);
       }
+
+      // DETAIL = full PDP gallery: ALL photos for this product, primary first
+      // then display_order. Public media only (product_photos), never PII.
+      const photoRows = await app.db.execute<PhotoRow>(sql`
+        SELECT
+          id, product_id, storage_kind, r2_key, is_primary, display_order,
+          alt_text_de, alt_text_en
+        FROM product_photos
+        WHERE product_id = ${row.id}
+        ORDER BY is_primary DESC, display_order, created_at
+      `);
+      const images = Array.from(photoRows).map((ph) => toStorefrontImage(ph, env));
+
       reply.header('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
-      return reply.status(200).send(toStorefrontProduct(row));
+      return reply.status(200).send(toStorefrontProduct(row, images));
     },
   );
 

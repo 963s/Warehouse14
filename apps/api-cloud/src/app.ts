@@ -267,7 +267,7 @@ export async function buildApp(opts: BuildAppOpts): Promise<FastifyInstance> {
   // Public read-only catalog endpoints. The path prefix
   // `/api/storefront/` is in PUBLIC_PREFIXES (lib/public-routes.ts),
   // so the auth + mTLS preHandlers bypass these routes automatically.
-  await app.register(storefrontCatalogRoutes);
+  await app.register(storefrontCatalogRoutes, { env: opts.env });
   // MCP server — ADMIN-only JSON-RPC 2.0 endpoint at /api/mcp.
   await app.register(mcpServer);
 

@@ -23,6 +23,37 @@ import { type Static, Type } from '@sinclair/typebox';
 import { DecimalString, FinenessString, WeightString } from './money.js';
 
 // ────────────────────────────────────────────────────────────────────────
+// Product image — public photo projection (PUBLIC bytes only)
+// ────────────────────────────────────────────────────────────────────────
+
+/**
+ * One public product photo, projected for the storefront gallery.
+ *
+ * URL SHAPE (documented for the storefront consumer):
+ *   • Local-store photos (storage_kind='local', the current upload path):
+ *       url      = `/api/photos/<id>/raw`    (full, ≤1600px WebP)
+ *       thumbUrl = `/api/photos/<id>/thumb`  (thumbnail WebP)
+ *     These are **api-relative** — the Next.js storefront prefixes them with its
+ *     configured API base (e.g. https://api.warehouse14.de). This mirrors the
+ *     POS catalog exactly (routes/products-list.ts → primaryPhotoThumbUrl).
+ *   • Legacy R2 photos (storage_kind='r2'):
+ *       url = thumbUrl = the **absolute** R2 public URL (R2 stores a single
+ *       rendition, so no separate thumb).
+ *
+ * The consumer can tell the two apart: api-relative URLs start with '/'.
+ * Photos are PUBLIC product images by design — no cost/PII ever reaches here.
+ */
+export const StorefrontProductImage = Type.Object({
+  url: Type.String(),
+  /** Thumbnail variant (== `url` for legacy R2 single-rendition rows). */
+  thumbUrl: Type.String(),
+  altTextDe: Type.Union([Type.String(), Type.Null()]),
+  altTextEn: Type.Union([Type.String(), Type.Null()]),
+  isPrimary: Type.Boolean(),
+});
+export type StorefrontProductImage = Static<typeof StorefrontProductImage>;
+
+// ────────────────────────────────────────────────────────────────────────
 // Product — public catalog item
 // ────────────────────────────────────────────────────────────────────────
 
@@ -83,6 +114,29 @@ export const StorefrontProduct = Type.Object({
 
   /** ISO timestamp — first publication. Drives sitemap.lastmod. */
   publishedAt: Type.Union([Type.String({ format: 'date-time' }), Type.Null()]),
+
+  // ─── Photos (PUBLIC product images) ─────────────────────────────────────
+  /**
+   * Primary photo's thumbnail URL, or null when the product has no photos.
+   * The LIST endpoint populates ONLY this (one extra batched query, no gallery
+   * payload) for grid-card perf; the DETAIL endpoint also fills it. Same shape
+   * as the POS catalog's `primaryPhotoThumbUrl`.
+   */
+  primaryImageThumbUrl: Type.Union([Type.String(), Type.Null()]),
+  /**
+   * Full ordered gallery — PRIMARY first, then by display_order. The DETAIL
+   * (/:slug) endpoint returns ALL photos here; the LIST endpoint returns just
+   * the primary (or [] when none) to keep the grid response small. Each entry
+   * carries both a full + thumb URL and alt text for a11y/SEO. See
+   * `StorefrontProductImage` for the URL shape (api-relative vs absolute R2).
+   */
+  images: Type.Array(StorefrontProductImage),
+  /**
+   * Convenience flat list of the FULL image URLs, primary first — same order as
+   * `images`. Provided so a consumer that only needs `<img src>` strings can use
+   * `imageUrls` directly without mapping `images`.
+   */
+  imageUrls: Type.Array(Type.String()),
 
   /**
    * Primary category ref — drives the breadcrumb on the product page.
