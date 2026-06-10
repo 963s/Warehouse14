@@ -18,14 +18,17 @@
  * `kyc_documents`) survives navigation.
  */
 
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import {
   ApiError,
   type KycDocumentType,
+  type PhotoRow,
   type PhotoUploadIntent,
   customersApi,
+  photosApi,
 } from '@warehouse14/api-client';
 import { Button, DiamondRule, ParchmentCard, Seal } from '@warehouse14/ui-kit';
 
@@ -66,6 +69,7 @@ const KYC_DOC_OPTIONS: Array<{ value: KycDocumentType; label: string }> = [
 
 export function Fotos(): JSX.Element {
   const api = useApiClient();
+  const qc = useQueryClient();
   const addToast = useToastStore((s) => s.addToast);
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -172,6 +176,13 @@ export function Fotos(): JSX.Element {
           publicUrl: row.publicUrl,
           status: 'done',
         });
+        // Refresh the product gallery so the new photo (and the auto-primary
+        // the backend sets on the FIRST photo) appears immediately, and the
+        // Verkauf/Kasse catalog tile picks up the primary thumb.
+        if (mode === 'produkt' && productId) {
+          void qc.invalidateQueries({ queryKey: ['products', productId, 'photos'] });
+          void qc.invalidateQueries({ queryKey: ['products', 'list'] });
+        }
       } catch (err) {
         const message =
           err instanceof ApiError
@@ -182,7 +193,7 @@ export function Fotos(): JSX.Element {
         updateSnapshot(snap.id, { status: 'failed', error: message });
       }
     },
-    [api, intent, mode, productId, updateSnapshot],
+    [api, intent, mode, productId, qc, updateSnapshot],
   );
 
   // Shutter: capture frame, then hand to CropStudio (except KYC mode
@@ -445,6 +456,7 @@ export function Fotos(): JSX.Element {
           }}
         >
           <UploadDropzone onFile={onFileSelect} />
+          {mode === 'produkt' && productId && <ProductGallery productId={productId} />}
           <Filmstrip
             snapshots={snapshots}
             mode={mode}
@@ -865,6 +877,233 @@ function FilmstripCell({
           }}
         >
           ×
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Product gallery — ALL of a product's saved photos + primary picker
+// ────────────────────────────────────────────────────────────────────────
+
+/**
+ * The professional gallery the operator manages per product:
+ *   • shows EVERY saved photo (not just this session's captures) as thumbnails,
+ *   • highlights the current Hauptbild (primary),
+ *   • lets the operator promote any photo to Hauptbild via
+ *     `photosApi.setPrimary` → PATCH /api/photos/:id/primary.
+ *
+ * The primary is the ONE image the Verkauf/Kasse catalog tile shows and the
+ * storefront gallery leads with; the others ride along for the website gallery.
+ * On a successful promotion we invalidate both the product-photos query (so the
+ * highlight moves) and the products list (so the catalog thumb updates).
+ *
+ * Graceful degradation: if the set-primary endpoint isn't deployed yet the
+ * backend answers 404/501 — we surface a calm German hint instead of a crash,
+ * and the upload + gallery still work (the FIRST photo is auto-primary server-
+ * side, so a product always has a sensible catalog image regardless).
+ */
+function ProductGallery({ productId }: { productId: string }): JSX.Element {
+  const api = useApiClient();
+  const qc = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+
+  const photosQuery = useQuery({
+    queryKey: ['products', productId, 'photos'],
+    queryFn: () => photosApi.listForProduct(api, productId),
+    staleTime: 5_000,
+  });
+  const photos = photosQuery.data?.items ?? [];
+
+  const setPrimary = useMutation({
+    mutationFn: (photoId: string) => photosApi.setPrimary(api, photoId),
+    onSuccess: async () => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['products', productId, 'photos'] }),
+        qc.invalidateQueries({ queryKey: ['products', 'list'] }),
+      ]);
+      addToast({
+        tone: 'success',
+        title: 'Hauptbild aktualisiert',
+        body: 'Dieses Foto erscheint jetzt in der Kasse und zuerst im Online-Shop.',
+      });
+    },
+    onError: (err) => {
+      const notImplemented =
+        err instanceof ApiError && (err.code === 'NOT_FOUND' || err.httpStatus === 501);
+      addToast({
+        tone: 'alert',
+        title: 'Hauptbild nicht geändert',
+        body: notImplemented
+          ? 'Die Hauptbild-Auswahl ist auf diesem Server noch nicht aktiv — bitte später erneut versuchen.'
+          : err instanceof ApiError
+            ? err.message
+            : 'Verbindung gestört — bitte erneut versuchen.',
+      });
+    },
+  });
+
+  return (
+    <ParchmentCard padding="md" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <span
+          className="w14-smallcaps"
+          style={{ color: 'var(--w14-ink-aged)', fontSize: '0.78rem', letterSpacing: '0.08em' }}
+        >
+          Galerie · gespeicherte Fotos
+        </span>
+        <span
+          className="w14-tabular"
+          style={{
+            fontFamily: 'var(--w14-font-mono)',
+            fontSize: '0.72rem',
+            color: 'var(--w14-ink-faded)',
+          }}
+        >
+          {photos.length}
+        </span>
+      </header>
+
+      <p style={{ margin: 0, fontSize: '0.76rem', color: 'var(--w14-ink-faded)' }}>
+        Das Hauptbild erscheint in der Kasse und zuerst im Online-Shop. Tippen Sie auf „Als
+        Hauptbild festlegen“, um es zu wechseln.
+      </p>
+
+      {photosQuery.isLoading && (
+        <p
+          style={{
+            margin: 0,
+            fontFamily: 'var(--w14-font-display)',
+            fontStyle: 'italic',
+            fontSize: '0.84rem',
+            color: 'var(--w14-ink-faded)',
+          }}
+        >
+          Fotos werden geladen…
+        </p>
+      )}
+
+      {photosQuery.isSuccess && photos.length === 0 && (
+        <p
+          style={{
+            margin: 0,
+            fontFamily: 'var(--w14-font-display)',
+            fontStyle: 'italic',
+            fontSize: '0.84rem',
+            color: 'var(--w14-ink-faded)',
+          }}
+        >
+          Noch keine gespeicherten Fotos — nehmen Sie links das erste auf.
+        </p>
+      )}
+
+      {photos.length > 0 && (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(112px, 1fr))',
+            gap: 10,
+          }}
+        >
+          {photos.map((p) => (
+            <GalleryCell
+              key={p.id}
+              photo={p}
+              busy={setPrimary.isPending && setPrimary.variables === p.id}
+              disabled={setPrimary.isPending}
+              onSetPrimary={() => setPrimary.mutate(p.id)}
+            />
+          ))}
+        </div>
+      )}
+    </ParchmentCard>
+  );
+}
+
+function GalleryCell({
+  photo,
+  busy,
+  disabled,
+  onSetPrimary,
+}: {
+  photo: PhotoRow;
+  busy: boolean;
+  disabled: boolean;
+  onSetPrimary: () => void;
+}): JSX.Element {
+  const imgSrc = photo.thumbUrl ?? photo.publicUrl ?? null;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div
+        style={{
+          position: 'relative',
+          aspectRatio: '1 / 1',
+          borderRadius: 'var(--w14-radius-card)',
+          overflow: 'hidden',
+          border: photo.isPrimary ? '2px solid var(--w14-gold)' : '1px solid var(--w14-rule)',
+          background: 'var(--w14-parchment-3)',
+        }}
+      >
+        {imgSrc ? (
+          <img
+            src={imgSrc}
+            alt={photo.altTextDe ?? 'Produktfoto'}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+        ) : null}
+        {photo.isPrimary && (
+          <span
+            className="w14-smallcaps"
+            style={{
+              position: 'absolute',
+              top: 4,
+              left: 4,
+              background: 'rgba(20,14,10,0.82)',
+              color: 'var(--w14-gold)',
+              fontSize: '0.6rem',
+              letterSpacing: '0.06em',
+              padding: '2px 6px',
+              borderRadius: 'var(--w14-radius-button)',
+            }}
+          >
+            ★ Hauptbild
+          </span>
+        )}
+      </div>
+      {photo.isPrimary ? (
+        <span
+          className="w14-smallcaps"
+          style={{
+            textAlign: 'center',
+            color: 'var(--w14-gold)',
+            fontSize: '0.66rem',
+            letterSpacing: '0.06em',
+            padding: '4px 0',
+          }}
+        >
+          aktuelles Hauptbild
+        </span>
+      ) : (
+        <button
+          type="button"
+          onClick={onSetPrimary}
+          disabled={disabled}
+          className="w14-smallcaps"
+          style={{
+            background: 'transparent',
+            border: '1px solid var(--w14-rule)',
+            borderRadius: 'var(--w14-radius-button)',
+            color: 'var(--w14-ink-aged)',
+            fontFamily: 'var(--w14-font-display)',
+            fontSize: '0.66rem',
+            letterSpacing: '0.05em',
+            padding: '5px 4px',
+            cursor: disabled ? 'wait' : 'pointer',
+            opacity: disabled && !busy ? 0.5 : 1,
+          }}
+        >
+          {busy ? 'wird gesetzt…' : 'Als Hauptbild festlegen'}
         </button>
       )}
     </div>

@@ -242,6 +242,7 @@ export {
   type PhotoDirectUploadResponse,
   type PhotoRegisterBody,
   type PhotoRow,
+  type PhotoSetPrimaryResponse,
   type PhotoSource,
   type PhotoUploadIntent,
   type PhotoUploadUrlBody,

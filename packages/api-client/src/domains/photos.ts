@@ -114,6 +114,27 @@ export interface PhotoDirectUploadResponse {
 }
 
 // ────────────────────────────────────────────────────────────────────────
+// PATCH /api/photos/:id/primary — choose the product's primary photo
+// ────────────────────────────────────────────────────────────────────────
+
+/**
+ * Response of the set-primary mutation. The chosen photo becomes the ONE
+ * `is_primary = true` row for its product (the previous primary is cleared in
+ * the same transaction, honouring the `product_photos_one_primary_per_product_uq`
+ * partial-unique index). The product's `primaryPhotoThumbUrl` in the Verkauf /
+ * Kasse catalog then resolves to this photo.
+ */
+export interface PhotoSetPrimaryResponse {
+  /** The photo now flagged primary. */
+  id: string;
+  /** Its product (never null — orphans cannot be primary). */
+  productId: string;
+  isPrimary: true;
+  /** The previously-primary photo id that was cleared, if any. */
+  previousPrimaryPhotoId: string | null;
+}
+
+// ────────────────────────────────────────────────────────────────────────
 // GET /api/photos/usage
 // ────────────────────────────────────────────────────────────────────────
 
@@ -148,6 +169,18 @@ export const photosApi = {
     return client.request<{ items: PhotoRow[] }>(
       'GET',
       `/api/products/${encodeURIComponent(productId)}/photos`,
+    );
+  },
+  /**
+   * Promote one of a product's photos to be its PRIMARY (the single image the
+   * Verkauf/Kasse catalog tile shows and the storefront gallery leads with).
+   * The backend clears the old primary + sets this one in one transaction so
+   * the exactly-one-primary-per-product invariant never breaks.
+   */
+  setPrimary(client: ApiClient, photoId: string): Promise<PhotoSetPrimaryResponse> {
+    return client.request<PhotoSetPrimaryResponse>(
+      'PATCH',
+      `/api/photos/${encodeURIComponent(photoId)}/primary`,
     );
   },
   /** Local photo-store usage gauge (bytes used vs the cap, + count). */
