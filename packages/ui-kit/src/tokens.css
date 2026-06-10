@@ -25,8 +25,12 @@
   /* ─── Ink (text + strokes) — high contrast for clarity ─────────── */
   --w14-ink: #16191d;
   --w14-ink-aged: #3a3f47;
-  --w14-ink-faded: #6b7280;
-  --w14-rule: #e3e6eb; /* hairline borders */
+  /* ink-faded is the smallest legible text tone (captions, hints, meta).
+     Darkened from #6b7280 → #646b76 so body-size text clears WCAG AA 4.5:1
+     even on the lowest input/hover surface (--w14-parchment-3): was 4.23,
+     now 4.71. Still reads as a quiet "elegant grey", just legible. */
+  --w14-ink-faded: #646b76;
+  --w14-rule: #e3e6eb; /* hairline borders (decorative — WCAG 1.4.11 exempt) */
 
   /* ─── Accent palette — gold as a sparing accent, modern semantics ─ */
   --w14-gold: #bf9430;
@@ -45,7 +49,14 @@
 
   /* ─── Scrims + utility ─────────────────────────────────────────── */
   --w14-overlay: rgba(17, 21, 28, 0.45);
-  --w14-focus-ring: #bf9430;
+  /* Focus ring colour — must clear WCAG 1.4.11 (≥3:1 against every surface).
+     The decorative brass #bf9430 only reached 2.45–2.80:1; the deeper brass
+     accent (#9a751f, already AA-grade) clears 3.72:1 on the worst surface,
+     ties focus to the brand, and is always visible. */
+  --w14-focus-ring: #9a751f;
+  /* Ready-to-use focus halo: a 3px brass ring (visible, ≥3:1). Apply via
+     `box-shadow: var(--w14-focus-shadow)` on :focus-visible. */
+  --w14-focus-shadow: 0 0 0 3px rgba(154, 117, 31, 0.45);
 
   /* ─── Typography — clean modern sans primary ───────────────────── */
   --w14-font-display: "Inter", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
@@ -70,6 +81,27 @@
   --space-10: 64px;
   --space-11: 80px;
   --space-12: 96px;
+
+  /* ─── Type scale — the canonical 3 sizes (brief §5c) ────────────────
+     Collapse stray inline font-sizes onto these. Three is the whole scale:
+       • --w14-text-body   15px  body / labels / list rows / inputs
+       • --w14-text-sub    20px  sub-headings / section titles / tile prices
+       • --w14-text-head   30px  screen titles / the money totals on payment
+     Two intentional aliases sit OUTSIDE the body↔head run, each load-bearing:
+       • --w14-text-caption 13px the smallest legible meta (uses ink-aged, not
+                                 faded, so 13px still clears AA) — captions, hints
+       • --w14-text-anchor  40px the single dominant element: the amount-/change-
+                                 due total on the payment screen (brief: "single
+                                 largest type", 80cm read). Use once per screen.
+     Line-heights tuned for an 8/4 vertical rhythm. */
+  --w14-text-caption: 13px;
+  --w14-text-body: 15px;
+  --w14-text-sub: 20px;
+  --w14-text-head: 30px;
+  --w14-text-anchor: 40px;
+  --w14-leading-tight: 1.2; /* heads / anchors */
+  --w14-leading-snug: 1.35; /* sub-heads */
+  --w14-leading-body: 1.55; /* body (matches the base reset) */
 
   --w14-radius-sharp: 0px; /* receipt-like surfaces */
   --w14-radius-button: 8px;
@@ -109,6 +141,11 @@
   --w14-overlay: rgba(0, 0, 0, 0.6);
   --w14-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
   --w14-shadow-modal: 0 18px 44px rgba(0, 0, 0, 0.55);
+
+  /* Focus on dark surfaces: the brighter brass accent (#d8b14e) clears
+     7.25:1 against the darkest panel — well above the 3:1 floor. */
+  --w14-focus-ring: #d8b14e;
+  --w14-focus-shadow: 0 0 0 3px rgba(216, 177, 78, 0.5);
 }
 
 /* ────────────────────────────────────────────────────────────────────
@@ -140,6 +177,25 @@ body {
 .w14-smallcaps {
   font-variant: all-small-caps;
   letter-spacing: 0.08em;
+}
+
+/* ────────────────────────────────────────────────────────────────────
+ * Visible focus ring — keyboard accessibility floor (WCAG 2.4.7 / 1.4.11).
+ * Opt-in class for any interactive element that doesn't already paint its
+ * own focus state; uses the contrast-checked --w14-focus-shadow (≥3:1).
+ * :focus-visible so a mouse click doesn't flash the ring, keyboard does.
+ * ──────────────────────────────────────────────────────────────────── */
+.w14-focusable:focus-visible {
+  outline: none;
+  box-shadow: var(--w14-focus-shadow);
+}
+
+/* Belt-and-braces: never let a global `outline: none` reset strip the
+   keyboard focus indicator from native controls. A faint UA outline would
+   regress 2.4.7; this guarantees a visible brass ring on tab. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--w14-focus-ring);
+  outline-offset: 2px;
 }
 
 /* Paper-noise overlay — retired in the modern theme (kept as a no-op so the

@@ -90,7 +90,9 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
         opacity: disabled ? 0.45 : 1,
         cursor: disabled ? 'default' : 'pointer',
         background: hover && !disabled ? 'var(--w14-parchment-3)' : 'transparent',
-        boxShadow: focus ? '0 0 0 3px rgba(191, 148, 48, 0.35)' : 'none',
+        /* Contrast-checked brass focus halo (≥3:1, WCAG 1.4.11) — was a faint
+           rgba that fell below the threshold. */
+        boxShadow: focus ? 'var(--w14-focus-shadow)' : 'none',
         ...style,
       }}
       {...rest}

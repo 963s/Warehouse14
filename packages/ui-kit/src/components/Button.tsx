@@ -68,6 +68,8 @@ export function Button({
   fullWidth,
   className,
   style,
+  onFocus,
+  onBlur,
   ...rest
 }: ButtonProps): JSX.Element {
   const merged: CSSProperties = {
@@ -104,6 +106,20 @@ export function Button({
         const el = ev.currentTarget as HTMLButtonElement;
         el.style.boxShadow = REST_SHADOW[variant];
         if (variant === 'primary') el.style.backgroundColor = 'var(--w14-accent)';
+      }}
+      onFocus={(ev) => {
+        if (!rest.disabled) {
+          // Visible, contrast-checked brass focus halo (WCAG 2.4.7 / 1.4.11),
+          // layered over the variant's resting shadow so the lift is preserved.
+          const el = ev.currentTarget as HTMLButtonElement;
+          el.style.boxShadow = `${REST_SHADOW[variant]}, var(--w14-focus-shadow)`;
+        }
+        onFocus?.(ev);
+      }}
+      onBlur={(ev) => {
+        const el = ev.currentTarget as HTMLButtonElement;
+        el.style.boxShadow = REST_SHADOW[variant];
+        onBlur?.(ev);
       }}
       {...rest}
     >

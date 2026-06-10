@@ -334,6 +334,24 @@ function VerkaufFloor(): JSX.Element {
   // Release handlers
   // ────────────────────────────────────────────────────────────────────
 
+  // Undo affordance (design-brief §1 "undo over confirm"): re-acquire a line the
+  // operator just removed. The remove already released the server reservation,
+  // so undo re-runs the SAME reserve→add path as a tile click — a fresh
+  // sessionId, no special-cased re-attach logic. Reuses `onSelectProduct` by
+  // reconstructing the minimal ProductListRow it needs from the cart snapshot.
+  const onUndoRemove = useCallback(
+    (line: CartLine): void => {
+      if (findLine(line.productId)) return; // already back (double-tap guard)
+      void onSelectProduct({
+        id: line.productId,
+        sku: line.sku,
+        name: line.name,
+        listPriceEur: line.listPriceEur,
+      } as ProductListRow);
+    },
+    [findLine, onSelectProduct],
+  );
+
   const onRemoveLine = useCallback(
     async (productId: string): Promise<void> => {
       const target = findLine(productId);
@@ -460,6 +478,7 @@ function VerkaufFloor(): JSX.Element {
       <CartPanel
         lines={lines}
         onRemoveLine={(id) => void onRemoveLine(id)}
+        onUndoRemove={onUndoRemove}
         releasingProductIds={releasingProductIds}
         onClearCart={() => void onClearCart()}
         clearingCart={clearingCart}

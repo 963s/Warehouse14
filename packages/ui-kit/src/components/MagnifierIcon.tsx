@@ -12,6 +12,14 @@ export interface MagnifierIconProps extends SVGProps<SVGSVGElement> {
   size?: number;
   /** Stroke colour token — defaults to current ink. */
   tone?: 'ink' | 'gold' | 'wax-red' | 'faded';
+  /**
+   * Accessible German name. Provide ONLY when this glyph is the sole label of
+   * an interactive control (then it announces as an image). Omitted by default
+   * because it almost always sits beside a labelled search input as a decorative
+   * adornment — in that case it must stay silent (aria-hidden) to avoid a
+   * double-announce. (Never English: the floor is German.)
+   */
+  label?: string;
 }
 
 const TONE_VAR: Record<NonNullable<MagnifierIconProps['tone']>, string> = {
@@ -24,6 +32,7 @@ const TONE_VAR: Record<NonNullable<MagnifierIconProps['tone']>, string> = {
 export function MagnifierIcon({
   size = 24,
   tone = 'ink',
+  label,
   style,
   ...rest
 }: MagnifierIconProps): JSX.Element {
@@ -31,21 +40,10 @@ export function MagnifierIcon({
     color: TONE_VAR[tone],
     ...style,
   };
-  return (
-    <svg
-      role="img"
-      aria-label="search"
-      viewBox="0 0 24 24"
-      width={size}
-      height={size}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      style={merged}
-      {...rest}
-    >
+  // Labelled → an announced image with a German name; otherwise decorative.
+  // (Two explicit branches so the role↔aria-label pairing is statically clear.)
+  const glyph = (
+    <>
       {/* lens — slightly hand-drawn proportions to echo the antique cartouche */}
       <circle cx="10.5" cy="10.5" r="6.5" />
       {/* handle — angled at 45°, with a knob at the end */}
@@ -55,6 +53,30 @@ export function MagnifierIcon({
       <path d="M2 9 L4 9.5" opacity="0.55" />
       <path d="M2 11 L4 11" opacity="0.4" />
       <path d="M2 13 L4 12.5" opacity="0.25" />
+    </>
+  );
+  const shared = {
+    viewBox: '0 0 24 24',
+    width: size,
+    height: size,
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: '1.5',
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+    style: merged,
+    ...rest,
+  } as const;
+  if (label) {
+    return (
+      <svg role="img" aria-label={label} {...shared}>
+        {glyph}
+      </svg>
+    );
+  }
+  return (
+    <svg aria-hidden="true" focusable="false" {...shared}>
+      {glyph}
     </svg>
   );
 }

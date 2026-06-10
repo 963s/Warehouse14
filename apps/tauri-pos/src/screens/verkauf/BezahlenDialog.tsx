@@ -102,6 +102,51 @@ import { StornoDialog } from './StornoDialog.js';
 import { type AppliedVoucher, VoucherField } from './VoucherField.js';
 import { computeSplitPayment } from './split-payment.js';
 
+/**
+ * Smart-denomination quick-tender chips (design-brief §1).
+ *
+ * PRESENTATION ONLY — every value is derived from the already-computed
+ * `dueCents` via the canonical `fromCents`/`toCents` primitives. No rounding,
+ * VAT or tender math is introduced here; the chips merely pre-fill the same
+ * `cashReceivedEur` string the keypad and keyboard already write, so the cash
+ * math downstream (computeTender) is byte-identical to a manual entry.
+ *
+ * The first chip is always "Passend" (exact due). The remaining chips are the
+ * smallest standard German note/coin denominations that are STRICTLY greater
+ * than the due — the realistic "what the customer hands over" set — capped at
+ * five chips total so the row never wraps (Hick: cap visible choices).
+ */
+const TENDER_DENOMINATIONS_CENTS: readonly bigint[] = [
+  500n,
+  1000n,
+  2000n,
+  5000n,
+  10_000n,
+  20_000n,
+  50_000n,
+];
+
+export interface TenderChip {
+  /** Canonical dot-decimal the chip writes into `cashReceivedEur`. */
+  readonly valueEur: string;
+  /** German label shown on the chip ("Passend" for the exact-due chip). */
+  readonly label: string;
+  /** True for the exact-tender chip (no change due). */
+  readonly exact: boolean;
+}
+
+export function computeTenderChips(dueCents: bigint): readonly TenderChip[] {
+  if (dueCents <= 0n) return [];
+  const chips: TenderChip[] = [{ valueEur: fromCents(dueCents), label: 'Passend', exact: true }];
+  for (const note of TENDER_DENOMINATIONS_CENTS) {
+    if (note > dueCents) {
+      chips.push({ valueEur: fromCents(note), label: '', exact: false });
+      if (chips.length >= 5) break;
+    }
+  }
+  return chips;
+}
+
 export interface BezahlenDialogProps {
   open: boolean;
   onClose: () => void;
@@ -1234,6 +1279,23 @@ export function BezahlenDialog({
     } else void submitCard();
   }, [needsBuyer, paymentChoice, splitCard, submit, submitCard, submitSplit]);
 
+  /**
+   * One-tap full-amount card (design-brief §1): from the cash panel the cashier
+   * taps `Karte` and goes STRAIGHT to the ZVT terminal for the full total — no
+   * intermediate amount screen. It flips the visible method to card (so the UI
+   * state stays coherent) and fires `submitCard` directly; routing through the
+   * dispatcher would read the not-yet-committed `paymentChoice`. The double-pay
+   * idempotency guard inside `submitCard` (inFlightRef) is untouched.
+   */
+  const payCardFull = useCallback(() => {
+    if (needsBuyer) {
+      setBuyerPickerOpen(true);
+      return;
+    }
+    setPaymentChoice('ZVT_CARD');
+    void submitCard();
+  }, [needsBuyer, submitCard]);
+
   if (!open) return null;
 
   return (
@@ -1305,6 +1367,7 @@ export function BezahlenDialog({
             submitting={submitting}
             error={error}
             onSubmit={dispatchSubmit}
+            onPayCardFull={payCardFull}
             onCancel={onClose}
             isB2b={isB2b}
             setIsB2b={setIsB2b}
@@ -1388,6 +1451,7 @@ function PaymentInput({
   submitting,
   error,
   onSubmit,
+  onPayCardFull,
   onCancel,
   isB2b,
   setIsB2b,
@@ -1426,6 +1490,8 @@ function PaymentInput({
   submitting: boolean;
   error: string | null;
   onSubmit: () => void;
+  /** One-tap full-amount card from the cash panel → straight to the terminal. */
+  onPayCardFull: () => void;
   onCancel: () => void;
   isB2b: boolean;
   setIsB2b: (v: boolean) => void;
@@ -1462,6 +1528,34 @@ function PaymentInput({
         ? canSubmitSplit
         : canSubmitCash
       : canSubmitCard;
+
+  // Smart-denomination quick-tender chips — presentation only, derived from the
+  // post-voucher `dueEur` via the canonical cents primitives (no math change).
+  // Hidden in split mode (the cash leg there is a deliberate partial amount).
+  const dueCents = (() => {
+    try {
+      return toCents(dueEur);
+    } catch {
+      return 0n;
+    }
+  })();
+  const tenderChips = splitCard ? [] : computeTenderChips(dueCents);
+
+  // Live "Noch zu zahlen" — outstanding cash (due minus entered cash, floored
+  // at 0). Presentation only; the authoritative gate stays `canSubmit`.
+  const cashOutstandingBasisCents = dueCents;
+  const cashOutstandingCents = (() => {
+    if (dueCents <= 0n) return 0n;
+    let entered = 0n;
+    if (isMoneyInput(cashReceivedEur)) {
+      try {
+        entered = toCents(cashReceivedEur);
+      } catch {
+        entered = 0n;
+      }
+    }
+    return entered >= dueCents ? 0n : dueCents - entered;
+  })();
 
   return (
     <>
@@ -1759,22 +1853,44 @@ function PaymentInput({
 
         <DiamondRule label="Beleg" />
 
-        <table
-          className="w14-tabular"
+        {/* Permanent money anchor (design-brief §1) — the amount due is the
+            single largest type on the payment screen, .w14-tabular, high
+            contrast for the 80cm read. It never hides behind a tap. */}
+        <div
           style={{
-            width: '100%',
-            borderCollapse: 'collapse',
-            fontFamily: 'var(--w14-font-mono)',
+            marginTop: 12,
+            display: 'flex',
+            alignItems: 'baseline',
+            justifyContent: 'space-between',
+            gap: 12,
+            padding: '14px 18px',
+            background: 'var(--w14-parchment-3)',
+            borderRadius: 'var(--w14-radius-card)',
           }}
         >
-          <tbody>
-            <Row
-              label="Zu zahlen"
-              value={<MoneyAmount valueEur={totalEur} emphasis />}
-              emphasised
-            />
-          </tbody>
-        </table>
+          <span
+            className="w14-smallcaps"
+            style={{
+              fontSize: '0.95rem',
+              letterSpacing: '0.08em',
+              color: 'var(--w14-ink-aged)',
+            }}
+          >
+            Zu zahlen
+          </span>
+          <span
+            className="w14-tabular"
+            style={{
+              fontFamily: 'var(--w14-font-mono)',
+              fontSize: '2.4rem',
+              fontWeight: 700,
+              lineHeight: 1,
+              color: 'var(--w14-ink)',
+            }}
+          >
+            <MoneyAmount valueEur={totalEur} />
+          </span>
+        </div>
 
         {paymentChoice === 'CASH' ? (
           <>
@@ -1845,6 +1961,63 @@ function PaymentInput({
               </label>
             )}
 
+            {/* Smart-denomination quick-tender (design-brief §1) — chips
+                computed from the due via money-core; one tap pre-fills the
+                exact cash field so the dominant cash sale needs zero keypad
+                entry, and the live Rückgeld below updates instantly. Plus a
+                one-tap full-amount Karte that goes straight to the terminal. */}
+            {tenderChips.length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <span
+                  className="w14-smallcaps"
+                  style={{
+                    display: 'block',
+                    marginBottom: 8,
+                    fontSize: '0.78rem',
+                    letterSpacing: '0.08em',
+                    color: 'var(--w14-ink-faded)',
+                  }}
+                >
+                  Schnellzahlung
+                </span>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {tenderChips.map((chip) => (
+                    <TenderChipButton
+                      key={chip.valueEur + chip.label}
+                      chip={chip}
+                      active={isMoneyInput(cashReceivedEur) && cashReceivedEur === chip.valueEur}
+                      disabled={submitting}
+                      onClick={() => setCashReceivedEur(chip.valueEur)}
+                    />
+                  ))}
+                  {cardConfigured && (
+                    <button
+                      type="button"
+                      onClick={onPayCardFull}
+                      disabled={submitting}
+                      style={{
+                        minHeight: 52,
+                        padding: '0 18px',
+                        flex: '1 1 auto',
+                        background: 'var(--w14-parchment-2)',
+                        border: '1px solid var(--w14-accent)',
+                        borderRadius: 'var(--w14-radius-button)',
+                        cursor: submitting ? 'not-allowed' : 'pointer',
+                        opacity: submitting ? 0.5 : 1,
+                        fontFamily: 'var(--w14-font-display)',
+                        fontSize: '0.95rem',
+                        fontWeight: 600,
+                        color: 'var(--w14-accent)',
+                        transition: 'background var(--w14-dur-short) var(--w14-ease-curator)',
+                      }}
+                    >
+                      Karte
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
             {toCents(dueEur) > 0n && (
               <div style={{ marginTop: 16 }}>
                 <span
@@ -1875,53 +2048,79 @@ function PaymentInput({
               </div>
             )}
 
-            {/* Prominent live Rückgeld — verdigris when the cash covers the total. */}
-            <div
-              style={{
-                marginTop: 16,
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'baseline',
-                gap: 12,
-                padding: '12px 16px',
-                background: 'var(--w14-parchment-2)',
-                border: '1px solid var(--w14-rule)',
-                borderRadius: 'var(--w14-radius-card)',
-              }}
-            >
-              <span
-                className="w14-smallcaps"
-                style={{
-                  fontSize: '0.95rem',
-                  letterSpacing: '0.08em',
-                  color: 'var(--w14-ink-aged)',
-                }}
-              >
-                {/* Split mode pays the remainder by CARD — there's no change to
-                    give back, so show the card amount instead of Rückgeld. */}
-                {splitCard ? 'Restbetrag (Karte)' : 'Rückgeld'}
-              </span>
-              <span
-                className="w14-tabular"
-                style={{
-                  fontFamily: 'var(--w14-font-mono)',
-                  fontSize: '1.8rem',
-                  fontWeight: 700,
-                  color: splitCard
-                    ? splitCardEur !== null
-                      ? 'var(--w14-gold)'
-                      : 'var(--w14-ink-faded)'
-                    : enoughCash
-                      ? 'var(--w14-verdigris)'
-                      : 'var(--w14-ink-faded)',
-                }}
-              >
-                <MoneyAmount
-                  valueEur={splitCard ? (splitCardEur ?? '0.00') : enoughCash ? changeEur : '0.00'}
-                  emphasis
-                />
-              </span>
-            </div>
+            {/* Prominent live money readout (design-brief §1). Three live
+                states, all presentation-only (derived from the entered cash vs
+                the post-voucher due via cents primitives):
+                  • split mode → the exact card remainder ("Restbetrag (Karte)");
+                  • cash short → "Noch zu zahlen" (the outstanding amount that
+                    keeps the Bezahlen button disabled until it hits €0,00);
+                  • cash covers → "Rückgeld" in verdigris (zero-change = €0,00). */}
+            {(() => {
+              // Outstanding = how much cash is still owed (0 once covered).
+              const outstandingCents = (() => {
+                if (cashOutstandingBasisCents <= 0n) return 0n;
+                return cashOutstandingCents;
+              })();
+              const isShort = !splitCard && outstandingCents > 0n;
+              const label = splitCard
+                ? 'Restbetrag (Karte)'
+                : isShort
+                  ? 'Noch zu zahlen'
+                  : 'Rückgeld';
+              const valueColor = splitCard
+                ? splitCardEur !== null
+                  ? 'var(--w14-gold)'
+                  : 'var(--w14-ink-faded)'
+                : isShort
+                  ? 'var(--w14-ink-aged)'
+                  : enoughCash
+                    ? 'var(--w14-verdigris)'
+                    : 'var(--w14-ink-faded)';
+              const displayValue = splitCard
+                ? (splitCardEur ?? '0.00')
+                : isShort
+                  ? fromCents(outstandingCents)
+                  : enoughCash
+                    ? changeEur
+                    : '0.00';
+              return (
+                <div
+                  style={{
+                    marginTop: 16,
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'baseline',
+                    gap: 12,
+                    padding: '12px 16px',
+                    background: 'var(--w14-parchment-2)',
+                    border: '1px solid var(--w14-rule)',
+                    borderRadius: 'var(--w14-radius-card)',
+                  }}
+                >
+                  <span
+                    className="w14-smallcaps"
+                    style={{
+                      fontSize: '0.95rem',
+                      letterSpacing: '0.08em',
+                      color: 'var(--w14-ink-aged)',
+                    }}
+                  >
+                    {label}
+                  </span>
+                  <span
+                    className="w14-tabular"
+                    style={{
+                      fontFamily: 'var(--w14-font-mono)',
+                      fontSize: '1.8rem',
+                      fontWeight: 700,
+                      color: valueColor,
+                    }}
+                  >
+                    <MoneyAmount valueEur={displayValue} emphasis />
+                  </span>
+                </div>
+              );
+            })()}
           </>
         ) : (
           <p
@@ -1968,7 +2167,13 @@ function PaymentInput({
           borderTop: '1px solid var(--w14-rule)',
         }}
       >
-        <Button variant="ghost" size="lg" onClick={onCancel} disabled={submitting}>
+        <Button
+          variant="ghost"
+          size="lg"
+          onClick={onCancel}
+          disabled={submitting}
+          style={{ flex: 'none', alignSelf: 'stretch' }}
+        >
           Abbrechen
         </Button>
         <Button
@@ -1979,6 +2184,12 @@ function PaymentInput({
           disabled={!canSubmit}
           style={{
             flex: 1,
+            // Bezahlen = effectively-infinite Fitts target (design-brief §1):
+            // 72–88px tall, brass, bottom-right-anchored. The largest, most
+            // dominant action in the dialog — survives the squint test.
+            minHeight: 78,
+            fontSize: '1.1rem',
+            fontWeight: 600,
             // Goes solid gold the moment it can record the sale — an
             // unmistakable "ready to finalize" affordance (matches the active
             // gold treatment used elsewhere).
@@ -2045,6 +2256,75 @@ function MethodChip({
       }}
     >
       {label}
+    </button>
+  );
+}
+
+/**
+ * Smart-denomination quick-tender chip (design-brief §1). A ≥48px touch target
+ * (hot-path / WCAG 2.5.5) that pre-fills the cash field with a single tap. The
+ * exact-tender chip ("Passend") reads brass to flag the zero-change happy path;
+ * the note chips render their euro value in tabular figures.
+ */
+function TenderChipButton({
+  chip,
+  active,
+  disabled,
+  onClick,
+}: {
+  chip: TenderChip;
+  active: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-pressed={active}
+      style={{
+        minHeight: 52,
+        padding: '0 16px',
+        flex: '1 1 auto',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 2,
+        background: active ? 'var(--w14-gold)' : 'var(--w14-parchment-2)',
+        border: `1px solid ${chip.exact ? 'var(--w14-accent)' : 'var(--w14-rule)'}`,
+        borderRadius: 'var(--w14-radius-button)',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.5 : 1,
+        transition: 'background var(--w14-dur-short) var(--w14-ease-curator)',
+      }}
+    >
+      {chip.exact ? (
+        <span
+          className="w14-smallcaps"
+          style={{
+            fontFamily: 'var(--w14-font-display)',
+            fontWeight: 600,
+            fontSize: '0.82rem',
+            letterSpacing: '0.06em',
+            color: active ? 'var(--w14-ink-aged)' : 'var(--w14-accent)',
+          }}
+        >
+          Passend
+        </span>
+      ) : null}
+      <span
+        className="w14-tabular"
+        style={{
+          fontFamily: 'var(--w14-font-mono)',
+          fontSize: chip.exact ? '0.92rem' : '1.05rem',
+          fontWeight: 600,
+          color: active ? 'var(--w14-ink-aged)' : 'var(--w14-ink)',
+        }}
+      >
+        <MoneyAmount valueEur={chip.valueEur} />
+      </span>
     </button>
   );
 }

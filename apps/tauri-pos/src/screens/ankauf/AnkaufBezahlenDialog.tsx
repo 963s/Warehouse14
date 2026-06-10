@@ -606,30 +606,45 @@ function ReviewPhase(props: {
         />
       </label>
 
-      <table
-        className="w14-tabular"
-        style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'var(--w14-font-mono)' }}
+      {/* Permanent money anchor (design-brief §1) — the payout is the single
+          largest type on the screen, .w14-tabular, high contrast for the 80cm
+          read. Wax-red because this is money LEAVING the till (a payout), the
+          same colour the receipt phase uses for the Auszahlung. */}
+      <div
+        style={{
+          marginTop: 12,
+          display: 'flex',
+          alignItems: 'baseline',
+          justifyContent: 'space-between',
+          gap: 12,
+          padding: '14px 18px',
+          background: 'var(--w14-parchment-3)',
+          borderRadius: 'var(--w14-radius-card)',
+        }}
       >
-        <tbody>
-          <tr>
-            <td
-              style={{
-                padding: '8px 0',
-                color: 'var(--w14-ink-faded)',
-                fontFamily: 'var(--w14-font-display)',
-                fontVariant: 'all-small-caps',
-                letterSpacing: '0.08em',
-                fontSize: '0.85rem',
-              }}
-            >
-              {items.length} Stück{items.length === 1 ? '' : 'e'}
-            </td>
-            <td style={{ padding: '8px 0', textAlign: 'right' }}>
-              <MoneyAmount valueEur={totalEur} emphasis />
-            </td>
-          </tr>
-        </tbody>
-      </table>
+        <span
+          className="w14-smallcaps"
+          style={{
+            fontSize: '0.9rem',
+            letterSpacing: '0.08em',
+            color: 'var(--w14-ink-aged)',
+          }}
+        >
+          Auszahlung · {items.length} Stück{items.length === 1 ? '' : 'e'}
+        </span>
+        <span
+          className="w14-tabular"
+          style={{
+            fontFamily: 'var(--w14-font-mono)',
+            fontSize: '2.4rem',
+            fontWeight: 700,
+            lineHeight: 1,
+            color: 'var(--w14-wax-red)',
+          }}
+        >
+          <MoneyAmount valueEur={totalEur} />
+        </span>
+      </div>
 
       {error && (
         <p
@@ -645,17 +660,69 @@ function ReviewPhase(props: {
         </p>
       )}
 
-      <div style={{ marginTop: 22, display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-        <Button variant="ghost" onClick={onCancel} disabled={submitting || stampingKyc}>
+      {/* Action footer (design-brief §1) — the primary action is a 72–88px
+          brass, bottom-right-anchored target (effectively-infinite Fitts); the
+          ghost Abbrechen stays compact to its left so it can't be mis-tapped for
+          the payout. The disabled state is driven by `canSubmit`, which already
+          encodes the §19.3 mutex + KYC + payout-valid guards — pressing it
+          disables it immediately (reinforces the existing double-pay guard). */}
+      <div
+        style={{
+          marginTop: 22,
+          display: 'flex',
+          gap: 12,
+          alignItems: 'stretch',
+          justifyContent: 'flex-end',
+        }}
+      >
+        <Button
+          variant="ghost"
+          size="lg"
+          onClick={onCancel}
+          disabled={submitting || stampingKyc}
+          style={{ flex: 'none' }}
+        >
           Abbrechen
         </Button>
         {needsKycStamp ? (
-          <Button variant="destructive" onClick={onStampKyc} disabled={blocked || stampingKyc}>
+          <Button
+            variant="destructive"
+            size="lg"
+            onClick={onStampKyc}
+            disabled={blocked || stampingKyc}
+            style={{ flex: 1, minHeight: 78, fontSize: '1.1rem', fontWeight: 600 }}
+          >
             {stampingKyc ? 'Bestätigt…' : 'KYC bestätigen'}
           </Button>
         ) : (
-          <Button variant="primary" onClick={onSubmit} disabled={!canSubmit}>
+          <Button
+            variant="primary"
+            size="lg"
+            onClick={onSubmit}
+            disabled={!canSubmit}
+            style={{
+              flex: 1,
+              minHeight: 78,
+              fontSize: '1.1rem',
+              fontWeight: 600,
+              // Solid gold once the payout can be recorded — an unmistakable
+              // "ready to finalize" affordance (matches the Verkauf footer).
+              ...(canSubmit
+                ? {
+                    backgroundColor: 'var(--w14-gold)',
+                    borderColor: 'var(--w14-gold)',
+                    color: '#fff',
+                  }
+                : {}),
+            }}
+          >
             {submitting ? 'Schließt ab…' : 'Auszahlen & Beleg'}
+            {!submitting ? (
+              <>
+                {' · '}
+                <MoneyAmount valueEur={totalEur} />
+              </>
+            ) : null}
           </Button>
         )}
       </div>
@@ -672,9 +739,12 @@ function PayoutChip({
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={active}
       style={{
         flex: 1,
-        padding: '10px 14px',
+        // ≥48px hot-path target (design-brief §1 / WCAG 2.5.5).
+        minHeight: 48,
+        padding: '0 14px',
         background: active ? 'var(--w14-parchment-3)' : 'transparent',
         border: `1px solid ${active ? 'var(--w14-gold)' : 'var(--w14-rule)'}`,
         borderRadius: 'var(--w14-radius-button)',
@@ -682,8 +752,9 @@ function PayoutChip({
         fontFamily: 'var(--w14-font-display)',
         fontVariant: 'all-small-caps',
         letterSpacing: '0.08em',
-        fontSize: '0.85rem',
+        fontSize: '0.9rem',
         color: active ? 'var(--w14-ink-aged)' : 'var(--w14-ink-faded)',
+        transition: 'background var(--w14-dur-short) var(--w14-ease-curator)',
       }}
     >
       {label}

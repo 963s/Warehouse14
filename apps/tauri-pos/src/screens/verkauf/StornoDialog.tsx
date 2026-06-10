@@ -6,6 +6,21 @@
  * api-client middleware opens the PIN modal). It creates a mirror transaction
  * with negated amounts so the Z-Bon balances; it does NOT auto-return the item
  * to stock (V1) — surfaced as a note so the operator re-lists it from Lager.
+ *
+ * UX (design-ux-brief §1 "Dangerous-proximity / reverse-Fitts"): Storno is
+ * fiscally irreversible, so a modal confirm is the CORRECT pattern here — the
+ * goal is to make the danger *unmistakable* and the destructive button *hard to
+ * hit by accident*, not to remove the friction:
+ *   • Redundant danger coding — red warning glyph + a red danger strip + the
+ *     wax-red header (color + icon + distinct alignment), so meaning survives
+ *     colour-blindness / shop glare (WCAG 1.4.1).
+ *   • Reverse-Fitts — the destructive "Storno bestätigen" button is exiled to
+ *     the LEFT, OUT of the bottom-right thumb cluster where the eye/finger rests
+ *     after a sale; the safe "Abbrechen" escape sits in the easy primary slot.
+ *   • An explicit acknowledgement checkbox gates the destructive button (a
+ *     second deliberate act in front of the existing PIN step-up).
+ * None of the fiscal storno logic, the request payload, error mapping, or query
+ * invalidations are changed.
  */
 
 import { useEffect, useState } from 'react';
@@ -19,6 +34,30 @@ import { currentShiftQueryKey } from '../../hooks/useCurrentShift.js';
 import { dashboardQueryKey } from '../../hooks/useDashboardSummary.js';
 import { useApiClient } from '../../lib/api-context.js';
 import { useToastStore } from '../../state/toast-store.js';
+
+/** Single canonical Storno glyph (outlined-2px, 24-grid) — a reversal arrow over
+ *  a document, reused identically wherever Storno is surfaced. */
+function StornoGlyph({ size = 22 }: { size?: number }): JSX.Element {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+      <path d="M14 3v5h5" />
+      <path d="M9 14h4.5a2 2 0 0 0 0-4H10" />
+      <path d="M10 12l-1.6-1.6M10 12l-1.6 1.6" />
+    </svg>
+  );
+}
 
 export function StornoDialog({
   transactionId,
@@ -35,6 +74,7 @@ export function StornoDialog({
   const qc = useQueryClient();
   const addToast = useToastStore((s) => s.addToast);
   const [reason, setReason] = useState('');
+  const [acknowledged, setAcknowledged] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,9 +90,10 @@ export function StornoDialog({
   }, [onClose, busy]);
 
   const valid = reason.trim().length >= 8;
+  const canSubmit = valid && acknowledged;
 
   async function submit(): Promise<void> {
-    if (!valid || busy) return;
+    if (!canSubmit || busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -111,39 +152,107 @@ export function StornoDialog({
         zIndex: 1100,
         display: 'grid',
         placeItems: 'center',
-        padding: 24,
+        padding: 'var(--space-6)',
       }}
     >
       <ParchmentCard
         padding="lg"
         onClick={(e) => e.stopPropagation()}
-        style={{ width: 'min(460px, 100%)', boxShadow: 'var(--w14-shadow-modal)' }}
+        style={{
+          width: 'min(460px, 100%)',
+          boxShadow: 'var(--w14-shadow-modal)',
+          /* Redundant danger coding #1 — a wax-red edge marks the whole surface
+             as a destructive context the moment it appears. */
+          borderTop: '3px solid var(--w14-wax-red)',
+        }}
       >
-        <h2
+        <div
           style={{
-            margin: 0,
-            fontFamily: 'var(--w14-font-display)',
-            fontWeight: 500,
-            fontSize: '1.4rem',
-            textAlign: 'center',
-            color: 'var(--w14-wax-red)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 'var(--space-2)',
           }}
         >
-          Beleg stornieren
-        </h2>
-        <p
-          style={{
-            margin: '4px 0 0',
-            textAlign: 'center',
-            color: 'var(--w14-ink-faded)',
-            fontSize: '0.85rem',
-          }}
-        >
-          Beleg-Nr. {receiptLocator}
-        </p>
+          {/* Redundant danger coding #2 — a wax-red warning glyph, never used
+              decoratively elsewhere. */}
+          <span
+            aria-hidden="true"
+            style={{
+              display: 'grid',
+              placeItems: 'center',
+              width: 44,
+              height: 44,
+              borderRadius: '50%',
+              color: 'var(--w14-wax-red)',
+              backgroundColor: 'color-mix(in srgb, var(--w14-wax-red) 12%, transparent)',
+            }}
+          >
+            <StornoGlyph size={24} />
+          </span>
+          <h2
+            style={{
+              margin: 0,
+              fontFamily: 'var(--w14-font-display)',
+              fontWeight: 500,
+              fontSize: '1.4rem',
+              textAlign: 'center',
+              color: 'var(--w14-wax-red)',
+            }}
+          >
+            Beleg stornieren
+          </h2>
+          <p
+            className="w14-tabular"
+            style={{
+              margin: 0,
+              textAlign: 'center',
+              color: 'var(--w14-ink-faded)',
+              fontSize: '0.85rem',
+            }}
+          >
+            Beleg-Nr. {receiptLocator}
+          </p>
+        </div>
         <DiamondRule />
 
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {/* Redundant danger coding #3 — a plain-German danger strip stating the
+            irreversibility, icon + colour + text together. */}
+        <div
+          style={{
+            display: 'flex',
+            gap: 'var(--space-3)',
+            alignItems: 'flex-start',
+            padding: 'var(--space-3) var(--space-4)',
+            borderRadius: 'var(--w14-radius-button)',
+            backgroundColor: 'color-mix(in srgb, var(--w14-wax-red) 9%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--w14-wax-red) 35%, transparent)',
+          }}
+        >
+          <span style={{ color: 'var(--w14-wax-red)', flexShrink: 0, marginTop: 1 }}>
+            <StornoGlyph size={20} />
+          </span>
+          <p
+            style={{
+              margin: 0,
+              color: 'var(--w14-ink-aged)',
+              fontSize: '0.82rem',
+              lineHeight: 1.45,
+            }}
+          >
+            Achtung — endgültiger Vorgang. Es wird ein Gegenbeleg mit negierten Beträgen erstellt
+            (Z-Bon gleicht aus). Eine Stornierung lässt sich fiskalisch nicht zurücknehmen.
+          </p>
+        </div>
+
+        <label
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 'var(--space-1)',
+            marginTop: 'var(--space-4)',
+          }}
+        >
           <span
             className="w14-smallcaps"
             style={{ color: 'var(--w14-ink-faded)', fontSize: '0.72rem', letterSpacing: '0.08em' }}
@@ -171,22 +280,53 @@ export function StornoDialog({
 
         <p
           style={{
-            margin: '12px 0 0',
+            margin: 'var(--space-3) 0 0',
             color: 'var(--w14-ink-faded)',
             fontSize: '0.78rem',
             fontStyle: 'italic',
           }}
         >
-          Erstellt einen Gegenbeleg mit negierten Beträgen (Z-Bon gleicht aus). Der Artikel wird
-          NICHT automatisch zurück in den Bestand gebucht — bei Bedarf im Lager neu freigeben.
+          Der Artikel wird NICHT automatisch zurück in den Bestand gebucht — bei Bedarf im Lager neu
+          freigeben.
         </p>
+
+        {/* Deliberate acknowledgement — a second conscious act gating the
+            destructive button, in front of the existing PIN step-up. */}
+        <label
+          style={{
+            display: 'flex',
+            gap: 'var(--space-3)',
+            alignItems: 'flex-start',
+            marginTop: 'var(--space-4)',
+            cursor: busy ? 'not-allowed' : 'pointer',
+            color: 'var(--w14-ink-aged)',
+            fontSize: '0.85rem',
+            lineHeight: 1.4,
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={acknowledged}
+            disabled={busy}
+            onChange={(e) => setAcknowledged(e.target.checked)}
+            style={{
+              width: 20,
+              height: 20,
+              flexShrink: 0,
+              marginTop: 1,
+              accentColor: 'var(--w14-wax-red)',
+              cursor: busy ? 'not-allowed' : 'pointer',
+            }}
+          />
+          <span>Ich bestätige, dass dieser Beleg endgültig storniert wird.</span>
+        </label>
 
         {error && (
           <p
             role="alert"
             style={{
               color: 'var(--w14-wax-red)',
-              margin: '14px 0 0',
+              margin: 'var(--space-4) 0 0',
               fontSize: '0.92rem',
               textAlign: 'center',
             }}
@@ -195,12 +335,31 @@ export function StornoDialog({
           </p>
         )}
 
-        <div style={{ marginTop: 20, display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-          <Button variant="ghost" onClick={onClose} disabled={busy}>
-            Abbrechen
-          </Button>
-          <Button variant="destructive" onClick={() => void submit()} disabled={!valid || busy}>
+        {/* Reverse-Fitts layout: the destructive action is exiled LEFT — out of
+            the bottom-right thumb cluster where the finger rests after a sale —
+            while the safe "Abbrechen" escape takes the easy primary slot.
+            `space-between` keeps a wide dead gap between the two so an overshoot
+            toward Storno lands on empty space, not the other button. */}
+        <div
+          style={{
+            marginTop: 'var(--space-5)',
+            display: 'flex',
+            gap: 'var(--space-7)',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}
+        >
+          <Button
+            variant="destructive"
+            size="sm"
+            iconLeft={<StornoGlyph size={16} />}
+            onClick={() => void submit()}
+            disabled={!canSubmit || busy}
+          >
             {busy ? 'Storniert…' : 'Storno bestätigen'}
+          </Button>
+          <Button variant="primary" size="lg" onClick={onClose} disabled={busy} autoFocus>
+            Abbrechen
           </Button>
         </div>
       </ParchmentCard>

@@ -257,6 +257,7 @@ export function Lager(): JSX.Element {
             display: 'flex',
             alignItems: 'center',
             gap: 'var(--space-3)',
+            minHeight: 48, // ≥48px scan-to-find target (brief §1/§3)
             padding: 'var(--space-2) var(--space-3)',
             background: 'var(--w14-parchment-2)',
             border: '1px solid var(--w14-rule)',
@@ -270,8 +271,10 @@ export function Lager(): JSX.Element {
             onChange={(ev) => setSearchInput(ev.target.value)}
             placeholder="SKU · Barcode · Bezeichnung — oder Barcode-Scanner verwenden"
             spellCheck={false}
+            aria-label="Lager durchsuchen"
             style={{
               flex: 1,
+              minWidth: 0,
               border: 'none',
               outline: 'none',
               background: 'transparent',
@@ -280,6 +283,30 @@ export function Lager(): JSX.Element {
               color: 'var(--w14-ink)',
             }}
           />
+          {searchInput.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setSearchInput('')}
+              aria-label="Suche leeren"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 28,
+                height: 28,
+                flexShrink: 0,
+                background: 'transparent',
+                border: 'none',
+                borderRadius: 'var(--w14-radius-button)',
+                color: 'var(--w14-ink-faded)',
+                fontSize: '1rem',
+                lineHeight: 1,
+                cursor: 'pointer',
+              }}
+            >
+              ×
+            </button>
+          )}
           {filters.barcode !== null && (
             <button
               type="button"
@@ -326,6 +353,7 @@ export function Lager(): JSX.Element {
             loading={q.isFetching}
             total={total}
             hasMore={hasMore}
+            baseUrl={api.baseUrl}
             onLoadMore={() => setPageOffset((prev) => prev + PAGE_SIZE)}
             onRowClick={(row) => {
               setSheetProductId(row.id);
@@ -357,14 +385,18 @@ function StatusChip({
       type="button"
       onClick={onClick}
       className="w14-smallcaps"
+      aria-pressed={active}
       style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        minHeight: 40, // comfortable filter target (brief §1 touch floor)
         background: active ? 'var(--w14-parchment-3)' : 'transparent',
         border: `1px solid ${active ? 'var(--w14-gold)' : 'var(--w14-rule)'}`,
-        color: active ? 'var(--w14-ink-aged)' : 'var(--w14-ink-faded)',
+        color: active ? 'var(--w14-ink)' : 'var(--w14-ink-aged)', // ≥4.5:1 both states
         fontFamily: 'var(--w14-font-display)',
         fontSize: '0.78rem',
         letterSpacing: '0.08em',
-        padding: 'var(--space-2) var(--space-3)',
+        padding: 'var(--space-2) var(--space-4)',
         borderRadius: 'var(--w14-radius-button)',
         cursor: 'pointer',
       }}

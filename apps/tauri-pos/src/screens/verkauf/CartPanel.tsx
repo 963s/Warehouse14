@@ -15,12 +15,19 @@
  * (the reservation will expire on its own via worker sweeper) but a wax-red
  * toast surfaces the network issue.
  *
+ * Undo-over-confirm (design-brief §1): removing a line is INSTANT — no modal,
+ * no "Sind Sie sicher?". Instead a calm ~8 s `Position entfernt — Rückgängig`
+ * snackbar slides in at the foot of the cart column; tapping Rückgängig re-runs
+ * the parent's reserve→add path (`onUndoRemove`) to put the piece back. Modal +
+ * PIN confirmation is reserved for the fiscally-irreversible acts (finalize,
+ * full Storno, Kassenabschluss) — never for a removable cart line.
+ *
  * State preservation: lines + totals live in Zustand; switching to Werkstatt
  * and back rehydrates the panel without re-fetching. The cart only clears on
  * (a) finalize-success, (b) explicit "Karte leeren", or (c) sign-out cascade.
  */
 
-import { type CSSProperties, useEffect, useMemo, useState } from 'react';
+import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   Button,
@@ -33,6 +40,7 @@ import {
   RomanIndex,
   Tag,
   Trash2,
+  X,
 } from '@warehouse14/ui-kit';
 
 import {
@@ -59,6 +67,12 @@ export interface CartPanelProps {
   lines: readonly CartLine[];
   /** Triggered by per-row × button. Parent handles release. */
   onRemoveLine: (productId: string) => void;
+  /**
+   * Undo affordance for a just-removed line — re-runs the parent's
+   * reserve→add path (same code as a tile click) with the removed line's
+   * snapshot. Drives the `Rückgängig` action on the undo snackbar.
+   */
+  onUndoRemove?: (line: CartLine) => void;
   /** Set of productIds currently being released (disable row click). */
   releasingProductIds: ReadonlySet<string>;
   /** Wipe-all action — invokes inventory release for every line in parallel. */
@@ -75,9 +89,13 @@ export interface CartPanelProps {
   onBezahlenOpenChange?: (open: boolean) => void;
 }
 
+/** How long the "Position entfernt — Rückgängig" snackbar lingers (brief: 6–10 s). */
+const UNDO_WINDOW_MS = 8_000;
+
 export function CartPanel({
   lines,
   onRemoveLine,
+  onUndoRemove,
   releasingProductIds,
   onClearCart,
   clearingCart,
@@ -85,6 +103,50 @@ export function CartPanel({
   onBezahlenOpenChange,
 }: CartPanelProps): JSX.Element {
   const [bezahlenOpen, setBezahlenOpen] = useState<boolean>(false);
+
+  // Undo snackbar state — the single most-recently-removed line. A new removal
+  // supersedes any pending snackbar (the operator only ever cares about the
+  // last action; queuing would clutter the calm POS surface).
+  const [undoLine, setUndoLine] = useState<CartLine | null>(null);
+  const undoTimerRef = useRef<number | null>(null);
+
+  const clearUndoTimer = useCallback((): void => {
+    if (undoTimerRef.current !== null) {
+      window.clearTimeout(undoTimerRef.current);
+      undoTimerRef.current = null;
+    }
+  }, []);
+
+  // Instant remove + arm the undo snackbar. The actual reservation release still
+  // runs in the parent via onRemoveLine — this only layers the undo affordance
+  // on top; no reservation/finalize logic changes.
+  const handleRemove = useCallback(
+    (line: CartLine): void => {
+      onRemoveLine(line.productId);
+      clearUndoTimer();
+      setUndoLine(line);
+      undoTimerRef.current = window.setTimeout(() => {
+        setUndoLine(null);
+        undoTimerRef.current = null;
+      }, UNDO_WINDOW_MS);
+    },
+    [onRemoveLine, clearUndoTimer],
+  );
+
+  const handleUndo = useCallback((): void => {
+    clearUndoTimer();
+    const line = undoLine;
+    setUndoLine(null);
+    if (line) onUndoRemove?.(line);
+  }, [undoLine, onUndoRemove, clearUndoTimer]);
+
+  const dismissUndo = useCallback((): void => {
+    clearUndoTimer();
+    setUndoLine(null);
+  }, [clearUndoTimer]);
+
+  // Cleanup on unmount (surface switch / sign-out) so a stray timer can't fire.
+  useEffect(() => clearUndoTimer, [clearUndoTimer]);
 
   // Mirror the dialog's open state up to Verkauf (scanner gate). Effect, not an
   // inline setter call, so it stays correct regardless of how it's toggled.
@@ -128,37 +190,70 @@ export function CartPanel({
         background: 'var(--w14-parchment-1)',
       }}
     >
-      {/* Header */}
+      {/* Header — title + permanent running-total / item-count anchor.
+          The anchor sits at a FROZEN position (top of the column, never behind a
+          tap, never scrolls away) so the cashier reads the live total with eyes
+          on the customer. Tabular, high-contrast `--w14-ink`. Mirrored by the
+          footer Gesamt row so the total is legible top OR bottom of the column. */}
       <header
         style={{
           display: 'flex',
           justifyContent: 'space-between',
-          alignItems: 'baseline',
+          alignItems: 'center',
           gap: 'var(--space-3)',
+          flexShrink: 0,
         }}
       >
-        <h2
-          style={{
-            margin: 0,
-            fontFamily: 'var(--w14-font-display)',
-            fontWeight: 500,
-            fontSize: '1.4rem',
-          }}
-        >
-          Karte
-        </h2>
-        <span
-          className="w14-smallcaps"
-          style={{
-            color: 'var(--w14-ink-faded)',
-            fontSize: '0.78rem',
-            letterSpacing: '0.08em',
-          }}
-        >
-          {lines.length === 0
-            ? 'leer'
-            : `${lines.length} Position${lines.length === 1 ? '' : 'en'}`}
-        </span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+          <h2
+            style={{
+              margin: 0,
+              fontFamily: 'var(--w14-font-display)',
+              fontWeight: 500,
+              fontSize: '1.4rem',
+              lineHeight: 1.1,
+            }}
+          >
+            Karte
+          </h2>
+          <span
+            className="w14-smallcaps"
+            style={{
+              color: 'var(--w14-ink-faded)',
+              fontSize: '0.78rem',
+              letterSpacing: '0.08em',
+            }}
+          >
+            {lines.length === 0
+              ? 'leer'
+              : `${lines.length} Position${lines.length === 1 ? '' : 'en'}`}
+          </span>
+        </div>
+        {lines.length > 0 && (
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-end',
+              gap: 0,
+              flexShrink: 0,
+            }}
+          >
+            <span
+              className="w14-smallcaps"
+              style={{
+                color: 'var(--w14-ink-faded)',
+                fontSize: '0.68rem',
+                letterSpacing: '0.1em',
+              }}
+            >
+              Gesamt
+            </span>
+            <span style={{ fontSize: '1.4rem', lineHeight: 1.05, color: 'var(--w14-ink)' }}>
+              <MoneyAmount valueEur={header.totalEur} emphasis />
+            </span>
+          </div>
+        )}
       </header>
 
       {/* Line list */}
@@ -182,13 +277,19 @@ export function CartPanel({
               line={line}
               math={math}
               releasing={releasingProductIds.has(line.productId)}
-              onRemove={() => onRemoveLine(line.productId)}
+              onRemove={() => handleRemove(line)}
             />
           ))
         )}
       </div>
 
-      {/* Footer — totals + actions */}
+      {/* Undo snackbar — non-modal, slides in just above the footer. The remove
+          already happened (instant); this is the 6–10 s window to take it back. */}
+      {undoLine && <UndoSnackbar line={undoLine} onUndo={handleUndo} onDismiss={dismissUndo} />}
+
+      {/* Footer — totals breakdown + the single edge-anchored primary action.
+          flexShrink:0 + the fixed header keep Bezahlen at FROZEN coordinates
+          regardless of cart size. */}
       <ParchmentCard padding="md" style={{ flexShrink: 0 }}>
         <DiamondRule label="Summe" />
         <table
@@ -224,30 +325,49 @@ export function CartPanel({
 
         <InvoiceDiscount lines={lines} />
 
+        {/* ONE obvious primary action. Bezahlen owns the full-width, ~80px,
+            bottom-anchored slot (Fitts: edge-anchored, the read-from-80cm tile).
+            "Karte leeren" is demoted to a quiet underlined link below so it never
+            competes for the eye and isn't in the resting thumb's path. */}
         <div
           style={{
             marginTop: 'var(--space-4)',
-            display: 'grid',
-            gridTemplateColumns: 'auto 1fr',
-            gap: 'var(--space-3)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 'var(--space-2)',
           }}
         >
           <Button
-            variant="ghost"
-            size="lg"
-            onClick={onClearCart}
-            disabled={lines.length === 0 || clearingCart}
-          >
-            {clearingCart ? 'Räumt…' : 'Karte leeren'}
-          </Button>
-          <Button
             variant="primary"
             size="lg"
+            fullWidth
             onClick={() => setBezahlenOpen(true)}
             disabled={!canPay}
+            style={{ minHeight: 80, fontSize: '1.25rem', fontWeight: 600 }}
           >
             Bezahlen
           </Button>
+          <button
+            type="button"
+            onClick={onClearCart}
+            disabled={lines.length === 0 || clearingCart}
+            style={{
+              alignSelf: 'center',
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--w14-ink-faded)',
+              fontFamily: 'var(--w14-font-display)',
+              fontSize: '0.82rem',
+              padding: '6px 10px',
+              minHeight: 32,
+              cursor: lines.length === 0 || clearingCart ? 'default' : 'pointer',
+              opacity: lines.length === 0 || clearingCart ? 0.5 : 1,
+              textDecoration: 'underline',
+              textUnderlineOffset: 3,
+            }}
+          >
+            {clearingCart ? 'Räumt…' : 'Karte leeren'}
+          </button>
         </div>
       </ParchmentCard>
 
@@ -260,6 +380,102 @@ export function CartPanel({
         onFinalizeSuccess={onAfterFinalize}
       />
     </section>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Undo snackbar
+// ────────────────────────────────────────────────────────────────────────
+
+/**
+ * UndoSnackbar — the non-modal "Position entfernt — Rückgängig" affordance.
+ * Renders inside the cart column (not a global toast) so the undo lives exactly
+ * where the removed line was. Sober ease-out slide-in (POS motion budget,
+ * `--w14-dur-medium`/`--w14-ease-curator`, GPU-only transform/opacity), a
+ * `--w14-wax-red` accent rule (remove is a danger-class act), and a clearly
+ * tappable Rückgängig button ≥48px tall. Honors prefers-reduced-motion via the
+ * shared motion tokens.
+ */
+function UndoSnackbar({
+  line,
+  onUndo,
+  onDismiss,
+}: {
+  line: CartLine;
+  onUndo: () => void;
+  onDismiss: () => void;
+}): JSX.Element {
+  const [entered, setEntered] = useState<boolean>(false);
+  useEffect(() => {
+    const id = window.requestAnimationFrame(() => setEntered(true));
+    return () => window.cancelAnimationFrame(id);
+  }, []);
+
+  return (
+    // <output> is the semantic live region (implicit role="status", polite).
+    <output
+      aria-live="polite"
+      style={{
+        flexShrink: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 'var(--space-3)',
+        padding: '10px 12px 10px 16px',
+        background: 'var(--w14-parchment-2)',
+        border: '1px solid var(--w14-rule)',
+        borderLeft: '4px solid var(--w14-wax-red)',
+        borderRadius: 'var(--w14-radius-card)',
+        boxShadow: 'var(--w14-shadow-modal)',
+        opacity: entered ? 1 : 0,
+        transform: entered ? 'translateY(0)' : 'translateY(8px)',
+        transition:
+          'opacity var(--w14-dur-medium) var(--w14-ease-curator),' +
+          ' transform var(--w14-dur-medium) var(--w14-ease-curator)',
+      }}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
+        <span
+          style={{
+            fontFamily: 'var(--w14-font-display)',
+            fontWeight: 500,
+            fontSize: '0.92rem',
+            color: 'var(--w14-ink)',
+          }}
+        >
+          Position entfernt
+        </span>
+        <span
+          style={{
+            fontSize: '0.8rem',
+            color: 'var(--w14-ink-faded)',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+          title={line.name}
+        >
+          {line.name}
+        </span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexShrink: 0 }}>
+        <Button
+          variant="ghost"
+          size="md"
+          onClick={onUndo}
+          style={{ minHeight: 48, color: 'var(--w14-gold)' }}
+        >
+          Rückgängig
+        </Button>
+        <IconButton
+          icon={X}
+          label="Hinweis schließen"
+          tone="muted"
+          iconSize={16}
+          onClick={onDismiss}
+        />
+      </div>
+    </output>
   );
 }
 
