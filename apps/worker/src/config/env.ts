@@ -73,6 +73,19 @@ const EnvSchema = Type.Object({
     default: '',
     description: 'eBay Trading API user token used by ebay_sync to call EndItem. Empty → mock.',
   }),
+  // ── Meta WhatsApp Cloud API — appointment_notifications sweep ───────
+  // Empty (default) → whatsapp rows are marked 'queued' with a log; the
+  // job stays fully wired but inert until both keys are set (eBay pattern).
+  WHATSAPP_PHONE_NUMBER_ID: Type.String({
+    default: '',
+    description:
+      'Meta WhatsApp Cloud API phone-number id for appointment reminders. Empty → queued only.',
+  }),
+  WHATSAPP_ACCESS_TOKEN: Type.String({
+    default: '',
+    description:
+      'Meta Graph API access token paired with WHATSAPP_PHONE_NUMBER_ID. Empty → queued only.',
+  }),
   // ── Fiskaly DSFinV-K (Epic K) — used by dsfinvk_daily_export ─────────
   // Empty → the job skips the Fiskaly push and logs "fiskaly not configured".
   FISKALY_API_KEY: Type.String({
@@ -145,7 +158,11 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   // the schema so a newly-added numeric field can't be forgotten here.
   for (const [key, propSchema] of Object.entries(EnvSchema.properties)) {
     const t = (propSchema as { type?: string }).type;
-    if ((t === 'integer' || t === 'number') && typeof coerced[key] === 'string' && coerced[key] !== '') {
+    if (
+      (t === 'integer' || t === 'number') &&
+      typeof coerced[key] === 'string' &&
+      coerced[key] !== ''
+    ) {
       const n = Number(coerced[key]);
       if (!Number.isNaN(n)) coerced[key] = n;
     }

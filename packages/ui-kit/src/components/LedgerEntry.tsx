@@ -31,7 +31,7 @@ export interface LedgerEntryProps {
 }
 
 function timeOnly(iso: string): string {
-  // ISO → HH:MM:SS in the local zone. The cashier is in Weil am Rhein so
+  // ISO → HH:MM:SS in the local zone. The cashier is in Schorndorf so
   // the browser's local zone is Europe/Berlin in practice.
   try {
     const d = new Date(iso);

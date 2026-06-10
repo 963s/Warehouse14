@@ -6,9 +6,18 @@
  *   POST  /api/appointments                 — book (txn: verify slot + insert +
  *                                              link VIEWING products + schedule
  *                                              reminders; ledger via DB trigger).
- *   PATCH /api/appointments/:id             — status transition (trigger-validated).
+ *   PATCH /api/appointments/:id             — status transition (trigger-validated)
+ *                                              or notes-only edit (no `status`).
  *   POST  /api/appointments/:id/reschedule  — clone + link + release old holds.
+ *   GET   /api/appointments/feed.ics        — iCalendar feed (CONTRACT 3; the
+ *                                              64-hex token IS the capability —
+ *                                              constant-time compared against
+ *                                              system_settings, public path).
+ *   POST  /api/appointments/feed-token      — rotate the feed token (ADMIN +
+ *                                              step-up; old token dies instantly).
  */
+
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 
 import { type Static, Type } from '@sinclair/typebox';
 import { type SQL, sql } from 'drizzle-orm';
@@ -18,15 +27,21 @@ import {
   type AppointmentType,
   DEFAULT_DURATION_MINUTES,
   computeReminderSchedule,
+  escapeIcsText,
+  formatIcsTimestamp,
 } from '@warehouse14/appointments';
 
 import type { Env } from '../config/env.js';
-import { requireAuth, requireRole } from '../lib/auth-policy.js';
+import { requireAuth, requireRole, requireStepUp } from '../lib/auth-policy.js';
 import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 
 class SlotUnavailableError extends DomainError {
   public readonly httpStatus = 409;
   public readonly code: ApiErrorCode = 'CONFLICT';
+}
+class FeedTokenError extends DomainError {
+  public readonly httpStatus = 401;
+  public readonly code: ApiErrorCode = 'UNAUTHORIZED';
 }
 class AppointmentNotFoundError extends DomainError {
   public readonly httpStatus = 404;
@@ -78,14 +93,21 @@ const BookBody = Type.Object({
 type TBookBody = Static<typeof BookBody>;
 
 const PatchBody = Type.Object({
-  status: Type.Union([
-    Type.Literal('CONFIRMED'),
-    Type.Literal('CHECKED_IN'),
-    Type.Literal('IN_PROGRESS'),
-    Type.Literal('COMPLETED'),
-    Type.Literal('CANCELLED'),
-    Type.Literal('NO_SHOW'),
-  ]),
+  /**
+   * Optional since the Termine cockpit: a status-less PATCH with `staffNotes`
+   * is a metadata-only edit — no transition, no marker-column re-stamp.
+   * Existing callers that always send `status` are unaffected.
+   */
+  status: Type.Optional(
+    Type.Union([
+      Type.Literal('CONFIRMED'),
+      Type.Literal('CHECKED_IN'),
+      Type.Literal('IN_PROGRESS'),
+      Type.Literal('COMPLETED'),
+      Type.Literal('CANCELLED'),
+      Type.Literal('NO_SHOW'),
+    ]),
+  ),
   cancellationReason: Type.Optional(Type.String({ maxLength: 500 })),
   staffNotes: Type.Optional(Type.String({ maxLength: 2000 })),
 });
@@ -164,6 +186,98 @@ const ListQuery = Type.Object({
 });
 type TListQuery = Static<typeof ListQuery>;
 
+// ── iCalendar feed (CONTRACT 3) ─────────────────────────────────────────
+
+const ICS_FEED_TOKEN_KEY = 'appointments.ics_feed_token';
+
+/** token is OPTIONAL in the schema so a missing token 401s (not a 400). */
+const FeedQuery = Type.Object({
+  token: Type.Optional(Type.String({ maxLength: 128 })),
+});
+type TFeedQuery = Static<typeof FeedQuery>;
+
+const FeedTokenResponse = Type.Object({
+  token: Type.String(),
+  url: Type.String(),
+});
+
+/**
+ * Constant-time token compare: hash both sides to a fixed length first so
+ * `timingSafeEqual` never throws on length mismatch and the comparison leaks
+ * neither length nor prefix.
+ */
+function feedTokenMatches(supplied: string, stored: string): boolean {
+  const a = createHash('sha256').update(supplied).digest();
+  const b = createHash('sha256').update(stored).digest();
+  return timingSafeEqual(a, b);
+}
+
+/** German VEVENT labels per appointment type (UI rule: 100% German). */
+const TYPE_LABEL_DE: Record<string, string> = {
+  VIEWING: 'Besichtigungs-Termin',
+  BUYBACK_EVAL: 'Ankauf-Termin',
+  CONSULTATION: 'Beratungs-Termin',
+  PICKUP: 'Abhol-Termin',
+};
+
+const STATUS_LABEL_DE: Record<string, string> = {
+  SCHEDULED: 'Geplant',
+  CONFIRMED: 'Bestätigt',
+  CHECKED_IN: 'Eingetroffen',
+  IN_PROGRESS: 'Laufend',
+  COMPLETED: 'Abgeschlossen',
+  NO_SHOW: 'Nicht erschienen',
+};
+
+/** "Max Mustermann" → "Max M." (privacy-lean calendar summaries). */
+function shortContactName(full: string): string {
+  const parts = full.trim().split(/\s+/);
+  const first = parts[0] ?? '';
+  if (parts.length < 2) return first;
+  const last = parts[parts.length - 1] ?? '';
+  return `${first} ${last.charAt(0)}.`;
+}
+
+type FeedRow = {
+  id: string;
+  appointment_type: string;
+  status: string;
+  starts_at: string;
+  ends_at: string;
+  contact_name: string | null;
+};
+
+/** Build the full VCALENDAR body (RFC 5545, CRLF line endings). */
+function buildFeedCalendar(rows: FeedRow[], now: Date): string {
+  const lines: string[] = [
+    'BEGIN:VCALENDAR',
+    'PRODID:-//Warehouse14//Termine//DE',
+    'VERSION:2.0',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    `X-WR-CALNAME:${escapeIcsText('Warehouse14 Termine')}`,
+  ];
+  for (const r of rows) {
+    const typeLabel = TYPE_LABEL_DE[r.appointment_type] ?? r.appointment_type;
+    const statusLabel = STATUS_LABEL_DE[r.status] ?? r.status;
+    const who = r.contact_name ? ` – ${shortContactName(r.contact_name)}` : '';
+    const summary = `${typeLabel}${who} (${statusLabel})`;
+    lines.push(
+      'BEGIN:VEVENT',
+      `UID:appt-${r.id}@warehouse14.de`,
+      `DTSTAMP:${formatIcsTimestamp(now)}`,
+      `DTSTART:${formatIcsTimestamp(new Date(r.starts_at))}`,
+      `DTEND:${formatIcsTimestamp(new Date(r.ends_at))}`,
+      `SUMMARY:${escapeIcsText(summary)}`,
+      `LOCATION:${escapeIcsText('Warehouse14, Schorndorf')}`,
+      `STATUS:${r.status === 'SCHEDULED' ? 'TENTATIVE' : 'CONFIRMED'}`,
+      'END:VEVENT',
+    );
+  }
+  lines.push('END:VCALENDAR');
+  return `${lines.join('\r\n')}\r\n`;
+}
+
 const appointmentsRoutes: FastifyPluginAsync<AppointmentsOpts> = async (app) => {
   // ── GET list (calendar + next-hour panel) ────────────────────────────────
   app.get<{ Querystring: TListQuery }>(
@@ -188,6 +302,7 @@ const appointmentsRoutes: FastifyPluginAsync<AppointmentsOpts> = async (app) => 
                a.status::text AS status, a.starts_at::text AS starts_at,
                a.ends_at::text AS ends_at, a.duration_minutes,
                a.staff_user_id::text AS staff_user_id, a.customer_id::text AS customer_id,
+               a.staff_notes, a.customer_notes,
                COALESCE(
                  (SELECT array_agg(lp.product_id::text)
                   FROM appointment_linked_products lp WHERE lp.appointment_id = a.id),
@@ -338,6 +453,23 @@ const appointmentsRoutes: FastifyPluginAsync<AppointmentsOpts> = async (app) => 
       requireRole(req, 'ADMIN', 'CASHIER');
       const { id } = req.params;
       const { status, cancellationReason, staffNotes } = req.body;
+
+      // Notes-only metadata edit: no transition, no marker re-stamp.
+      if (status === undefined) {
+        if (staffNotes === undefined) {
+          throw new AppointmentValidationError('Provide a status and/or staffNotes to update.');
+        }
+        const noteRows = (await app.db.execute<{ id: string; status: string }>(sql`
+          UPDATE appointments
+          SET staff_notes = ${staffNotes}
+          WHERE id = ${id}::uuid
+          RETURNING id::text AS id, status::text AS status
+        `)) as unknown as Array<{ id: string; status: string }>;
+        const noteRow = noteRows[0];
+        if (!noteRow) throw new AppointmentNotFoundError(`Appointment ${id} not found`);
+        return reply.status(200).send(noteRow);
+      }
+
       const markerCol = STATUS_MARKER_COLUMN[status];
 
       // Build the marker SET clause via column name (whitelisted above).
@@ -442,6 +574,94 @@ const appointmentsRoutes: FastifyPluginAsync<AppointmentsOpts> = async (app) => 
       });
 
       return reply.status(200).send({ id: newId, rescheduledFrom: id });
+    },
+  );
+
+  // ── GET feed.ics (CONTRACT 3) ────────────────────────────────────────────
+  //
+  // PUBLIC path (lib/public-routes.ts PUBLIC_PATH_PATTERNS): calendar clients
+  // (Google/Apple/Outlook subscriptions) can send neither a session cookie nor
+  // an mTLS client cert. The unguessable 64-hex token IS the capability, same
+  // model as the public photo routes. No token configured → the feed is OFF.
+  app.get<{ Querystring: TFeedQuery }>(
+    '/api/appointments/feed.ics',
+    {
+      config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+      schema: {
+        tags: ['appointments'],
+        summary: 'iCalendar feed of all non-cancelled appointments ±90 days (token-gated).',
+        querystring: FeedQuery,
+        // 200 is text/calendar (NOT JSON) — deliberately undeclared so the
+        // serializer never touches the raw VCALENDAR string.
+        response: { 401: ErrorResponse },
+      },
+    },
+    async (req, reply) => {
+      const supplied = req.query.token;
+      const stored = (await app.db.execute<{ token: string | null }>(sql`
+        SELECT value #>> '{}' AS token FROM system_settings
+        WHERE key = ${ICS_FEED_TOKEN_KEY} LIMIT 1
+      `)) as unknown as Array<{ token: string | null }>;
+      const token = stored[0]?.token;
+      if (!token || !supplied || !feedTokenMatches(supplied, token)) {
+        throw new FeedTokenError('Ungültiger oder fehlender Feed-Token.');
+      }
+
+      // RESCHEDULED is excluded with CANCELLED: its replacement clone is in
+      // the window already — emitting both would double-book the calendar.
+      const rows = (await app.db.execute<FeedRow>(sql`
+        SELECT a.id::text AS id, a.appointment_type::text AS appointment_type,
+               a.status::text AS status, a.starts_at::text AS starts_at,
+               a.ends_at::text AS ends_at, a.contact_name
+        FROM appointments a
+        WHERE a.starts_at >= now() - interval '90 days'
+          AND a.starts_at <  now() + interval '90 days'
+          AND a.status NOT IN ('CANCELLED', 'RESCHEDULED')
+        ORDER BY a.starts_at ASC
+      `)) as unknown as FeedRow[];
+
+      return reply
+        .status(200)
+        .header('content-type', 'text/calendar; charset=utf-8')
+        .header('content-disposition', 'inline; filename="warehouse14-termine.ics"')
+        .send(buildFeedCalendar(rows, new Date()));
+    },
+  );
+
+  // ── POST feed-token — rotate (ADMIN + step-up) ──────────────────────────
+  app.post(
+    '/api/appointments/feed-token',
+    {
+      schema: {
+        tags: ['appointments'],
+        summary: 'Rotate the iCalendar feed token (ADMIN + step-up). Old token dies instantly.',
+        response: {
+          200: FeedTokenResponse,
+          401: ErrorResponse,
+          403: ErrorResponse,
+        },
+      },
+    },
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'ADMIN');
+      requireStepUp(req);
+
+      const token = randomBytes(32).toString('hex'); // 64 hex chars (CSPRNG)
+      await app.db.execute(sql`
+        INSERT INTO system_settings (key, value, description, updated_by_user_id)
+        VALUES (${ICS_FEED_TOKEN_KEY}, to_jsonb(${token}::text),
+                'Geheimer Zugriffstoken für den iCalendar-Termin-Feed (GET /api/appointments/feed.ics). Rotation über POST /api/appointments/feed-token.',
+                ${req.actor.id}::uuid)
+        ON CONFLICT (key) DO UPDATE
+          SET value = EXCLUDED.value,
+              updated_by_user_id = EXCLUDED.updated_by_user_id,
+              updated_at = now()
+      `);
+
+      const host = req.headers.host ?? 'api.warehouse14.de';
+      const url = `${req.protocol}://${host}/api/appointments/feed.ics?token=${token}`;
+      return reply.status(200).send({ token, url });
     },
   );
 };

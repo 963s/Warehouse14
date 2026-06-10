@@ -38,10 +38,13 @@ pub fn run() {
     // by a background mDNS thread spawned in `.setup()` below.
     let peer_registry = commands::mdns::PeerRegistry::new();
 
-    // Companion LAN hub — the embedded axum server's lifecycle handle. Starts
-    // empty; companion_start binds it on demand. See commands/companion.rs and
-    // docs/companion-architecture.md.
+    // Companion LAN hub — the embedded axum server's lifecycle handle. It is
+    // AUTO-STARTED in `.setup()` below (frictionless phone link: persisted
+    // pairings reconnect without re-scanning the QR); the explicit
+    // companion_start from "Geräte koppeln" then only mints a fresh pairing
+    // code. See commands/companion.rs and docs/companion-architecture.md.
     let companion_state = commands::companion::CompanionState::new();
+    let companion_autostart_state = companion_state.clone();
 
     tauri::Builder::default()
         .manage(peer_registry.clone())
@@ -51,6 +54,22 @@ pub fn run() {
         // exits if mDNS is unavailable) and never blocks or crashes startup.
         .setup(move |app| {
             commands::mdns::start_mdns_daemon(app.handle().clone(), peer_registry.clone());
+            // Auto-start the companion hub so it is ALWAYS up at :8714 without
+            // opening "Geräte koppeln". Idempotent + fail-safe (a bind failure
+            // — e.g. AddrInUse on both the fixed and fallback port — is logged
+            // and never blocks startup). No pairing code is issued here; the
+            // mother's Bearer arrives later via companion_set_auth, and until
+            // then companions get a clear "Mutter noch nicht angemeldet".
+            // The app data dir anchors the persisted pairing registry.
+            use tauri::Manager as _;
+            let companion_data_dir = app.path().app_data_dir().ok();
+            tauri::async_runtime::spawn(async move {
+                commands::companion::companion_autostart(
+                    companion_autostart_state,
+                    companion_data_dir,
+                )
+                .await;
+            });
             Ok(())
         })
         // Plugins — order doesn't matter, registration is idempotent.

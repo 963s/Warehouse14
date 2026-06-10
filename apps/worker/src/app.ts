@@ -194,7 +194,15 @@ export async function buildWorker(opts: BuildWorkerOpts): Promise<WorkerHandle> 
     : undefined;
   runner.register(intakeSweepJob(intakeVision ? { vision: intakeVision } : {}));
   // Epic G: Smart Appointment System — reminder dispatch + no-show grace release.
-  runner.register(appointmentNotificationsJob);
+  // WhatsApp sends are token-gated: empty WHATSAPP_* env → rows queued (inert).
+  runner.register(
+    appointmentNotificationsJob({
+      whatsapp: {
+        phoneNumberId: opts.env.WHATSAPP_PHONE_NUMBER_ID,
+        accessToken: opts.env.WHATSAPP_ACCESS_TOKEN,
+      },
+    }),
+  );
   runner.register(appointmentNoShowDetectorJob);
   // Storage hygiene: product photos are TEMPORARY — purge files+rows once the
   // item is SOLD/ARCHIVED (or an unassigned orphan ages out). Empty PHOTOS_DIR

@@ -16,6 +16,12 @@
         "1420"
       ],
       "port": 1420
+    },
+    {
+      "name": "storefront-live",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["next", "dev", "-p", "4311"],
+      "port": 4311
     }
   ]
 }

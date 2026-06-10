@@ -36,10 +36,29 @@
 //! BOTH the 6-digit pairing **code** and the 32-byte companion **token** are
 //! drawn from the OS CSPRNG (`getrandom`) — never `fastrand`. The code is
 //! single-use (invalidated on the first successful pair), TTL-bounded, and
-//! rate-limited on the *real* TCP peer IP; the token is hex-encoded and
-//! TTL-bounded. The pairing code is compared with `subtle::ConstantTimeEq` to
-//! avoid a timing oracle. If the CSPRNG fails we REFUSE to mint (503) rather
-//! than fall back to a weak RNG.
+//! rate-limited on the *real* TCP peer IP. The pairing code is compared with
+//! `subtle::ConstantTimeEq` to avoid a timing oracle. If the CSPRNG fails we
+//! REFUSE to mint (503) rather than fall back to a weak RNG.
+//!
+//! # Persistent pairing (frictionless phone link)
+//!
+//! A paired device used to live only in memory with a 12 h TTL — every app
+//! restart and every shift evicted the phone and forced a re-scan of the QR.
+//! Pairing is now PERSISTENT:
+//!
+//! - The registry maps **SHA-256(token) → {role, label, created, last_seen}**.
+//!   Only the hash ever touches disk; the plaintext token exists solely on the
+//!   companion device.
+//! - The map is persisted as JSON under the app data dir
+//!   ([`PAIRING_STORE_FILE`], atomic tmp+rename write, 0600 on unix) and loaded
+//!   on every hub start.
+//! - Expiry is IDLE-based: a device is evicted only after
+//!   [`IDLE_EVICT_SECS`] (30 days) without use. `last_seen` refreshes on every
+//!   authenticated request and is flushed to disk lazily (~1/min).
+//! - The hub AUTO-STARTS on POS launch (no pairing code issued — the code is
+//!   minted on demand by the explicit `companion_start` from "Geräte koppeln");
+//!   until `companion_set_auth` arms the proxy, companions get a clear
+//!   503 "Mutter noch nicht angemeldet".
 //!
 //! # Hardening notes (security review)
 //!
@@ -60,8 +79,9 @@
 
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::path::{Path as FsPath, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use axum::{
     body::Bytes,
@@ -106,9 +126,21 @@ const PAIR_CODE_TTL: Duration = Duration::from_secs(5 * 60);
 /// distributed brute-force of the 6-digit space (10^6) cold.
 const PAIR_GLOBAL_FAIL_LOCK: u32 = 50;
 
-/// Companion-token lifetime. A token older than this is evicted on use (and by
-/// the periodic map sweep), forcing a re-pair. Belt for the H3 TTL ask.
-const TOKEN_TTL: Duration = Duration::from_secs(12 * 60 * 60);
+/// Idle eviction window for a paired companion. A device is evicted only after
+/// this long WITHOUT use (`last_seen` refreshes on every authenticated
+/// request) — replacing the old 12 h absolute TTL that forced a daily QR
+/// re-scan. 30 days idle ≈ "the phone genuinely left the shop".
+const IDLE_EVICT_SECS: u64 = 30 * 24 * 60 * 60;
+
+/// File name of the persisted pairing registry inside the app data dir.
+/// Contains ONLY SHA-256 token hashes + role/label/timestamps — never a
+/// plaintext token.
+const PAIRING_STORE_FILE: &str = "companion-pairing.json";
+
+/// Minimum interval between lazy disk flushes of `last_seen` refreshes. A new
+/// pairing or an eviction persists immediately; mere activity bookkeeping is
+/// throttled to roughly once a minute.
+const PERSIST_MIN_INTERVAL: Duration = Duration::from_secs(60);
 
 /// Hard caps on the in-memory maps so a flood of distinct IPs / stale tokens
 /// cannot grow them without bound (M2/M3). When exceeded we sweep expired
@@ -185,6 +217,16 @@ impl Role {
             Role::Display => "display",
         }
     }
+
+    /// German default device label, used when the pairing request carries no
+    /// explicit label (UI is 100% German).
+    fn german_label(self) -> &'static str {
+        match self {
+            Role::Warehouse => "Lager-Gerät",
+            Role::Cashier => "Zweitkasse",
+            Role::Display => "Kundenanzeige",
+        }
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -194,7 +236,7 @@ impl Role {
 /// Snapshot of the companion server returned to the React layer over IPC.
 ///
 /// Serializes `camelCase` to match the shared TS contract:
-/// `{ running, url, port, pairingCode, qrSvg }`.
+/// `{ running, url, port, pairingCode, qrSvg, pairedCount, pairedDevices }`.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompanionInfo {
@@ -204,10 +246,16 @@ pub struct CompanionInfo {
     pub url: String,
     /// The bound TCP port. `0` when down.
     pub port: u16,
-    /// Fresh 6-digit numeric pairing code. `""` when down.
+    /// Fresh 6-digit numeric pairing code. `""` when down OR when the hub was
+    /// auto-started (a code is only minted by the explicit "Geräte koppeln"
+    /// `companion_start`).
     pub pairing_code: String,
     /// SVG of a QR code encoding `url`. `""` when down.
     pub qr_svg: String,
+    /// Number of currently paired (non-idle-expired) companion devices.
+    pub paired_count: usize,
+    /// German labels of the paired devices, sorted, for the Einstellungen UI.
+    pub paired_devices: Vec<String>,
 }
 
 impl CompanionInfo {
@@ -219,6 +267,8 @@ impl CompanionInfo {
             port: 0,
             pairing_code: String::new(),
             qr_svg: String::new(),
+            paired_count: 0,
+            paired_devices: Vec::new(),
         }
     }
 }
@@ -228,19 +278,44 @@ impl CompanionInfo {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// A paired companion device entry in the registry.
+///
+/// Timestamps are WALL-CLOCK unix seconds (not `Instant`) so the entry
+/// round-trips through the persisted pairing store across app restarts.
 #[derive(Debug, Clone)]
 struct CompanionEntry {
     role: Role,
-    /// When the token was minted — used to enforce [`TOKEN_TTL`] (H3).
-    created_at: Instant,
-    last_seen: Instant,
+    /// Human label for the Einstellungen UI ("Lager-Gerät", "iPhone Basel"…).
+    label: String,
+    /// Unix seconds when the device paired.
+    created_unix: u64,
+    /// Unix seconds of the last authenticated use — drives idle eviction.
+    last_seen_unix: u64,
 }
 
 impl CompanionEntry {
-    /// A token is expired once it has outlived [`TOKEN_TTL`].
-    fn is_expired(&self, now: Instant) -> bool {
-        now.duration_since(self.created_at) > TOKEN_TTL
+    /// IDLE-based expiry: a device is evicted only after [`IDLE_EVICT_SECS`]
+    /// without use. Every authenticated request refreshes `last_seen_unix`.
+    fn is_expired(&self, now_unix: u64) -> bool {
+        now_unix.saturating_sub(self.last_seen_unix) > IDLE_EVICT_SECS
     }
+}
+
+/// One device row in the on-disk pairing store. Keyed by SHA-256(token) hex in
+/// [`PairingStore::devices`] — the plaintext token NEVER touches disk.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PersistedDevice {
+    role: String,
+    label: String,
+    created_unix: u64,
+    last_seen_unix: u64,
+}
+
+/// The on-disk pairing registry (serde_json, atomic tmp+rename write).
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct PairingStore {
+    version: u32,
+    /// SHA-256(token) hex → device.
+    devices: HashMap<String, PersistedDevice>,
 }
 
 /// Per-IP rate-limit bucket for `POST /pair`.
@@ -271,10 +346,18 @@ struct HubInner {
     bearer: String,
     /// The latest published cart snapshot (raw JSON string). `None` → default.
     cart_json: Option<String>,
-    /// token (hex) -> paired companion.
+    /// SHA-256(token) hex -> paired companion. Persisted to
+    /// [`PAIRING_STORE_FILE`]; survives restarts (30-day idle eviction).
     tokens: HashMap<String, CompanionEntry>,
     /// client-ip -> rate bucket for `POST /pair`.
     pair_rate: HashMap<String, RateBucket>,
+    /// Where the pairing registry is persisted. `None` until the app data dir
+    /// is resolved at launch (then it stays set for the process lifetime).
+    store_path: Option<PathBuf>,
+    /// True when in-memory pairing state has changed since the last flush.
+    store_dirty: bool,
+    /// When the registry was last flushed — throttles the lazy persist.
+    last_persist: Option<Instant>,
 }
 
 /// Shared companion-hub state. Cloned cheaply (Arc) into the router so every
@@ -587,6 +670,162 @@ fn default_cart() -> &'static str {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Persistent pairing registry (hash-only, atomic writes, idle eviction)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Wall-clock now as unix seconds. `0` only if the clock is before 1970 —
+/// in that pathological case entries simply never idle-expire until it heals.
+fn now_unix() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+/// SHA-256 of a companion token, lowercase hex. The registry (memory AND disk)
+/// is keyed by this — the plaintext token never persists anywhere on the
+/// mother. Preimage resistance makes the stored hash useless to an attacker
+/// who reads the file.
+fn token_hash_hex(token: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(token.as_bytes());
+    let digest = hasher.finalize();
+    let mut s = String::with_capacity(64);
+    for b in digest {
+        s.push_str(&format!("{b:02x}"));
+    }
+    s
+}
+
+/// Sanitize a device label from the pairing request: trim, strip control
+/// chars, cap at 40 chars; falls back to the role's German default label.
+fn sanitize_label(raw: &str, role: Role) -> String {
+    let cleaned: String = raw
+        .trim()
+        .chars()
+        .filter(|c| !c.is_control())
+        .take(40)
+        .collect();
+    if cleaned.is_empty() {
+        role.german_label().to_string()
+    } else {
+        cleaned
+    }
+}
+
+/// Build the serializable store from the live registry, skipping entries that
+/// are already idle-expired (they'd be evicted on load anyway).
+fn store_snapshot(inner: &HubInner) -> PairingStore {
+    let now = now_unix();
+    PairingStore {
+        version: 1,
+        devices: inner
+            .tokens
+            .iter()
+            .filter(|(_, e)| !e.is_expired(now))
+            .map(|(hash, e)| {
+                (
+                    hash.clone(),
+                    PersistedDevice {
+                        role: e.role.as_str().to_string(),
+                        label: e.label.clone(),
+                        created_unix: e.created_unix,
+                        last_seen_unix: e.last_seen_unix,
+                    },
+                )
+            })
+            .collect(),
+    }
+}
+
+/// Atomically write the pairing store: serialize → `<path>.tmp` → rename over
+/// `path`. On unix the file is chmod 0600 before the rename. The parent dir is
+/// created if missing (fresh install).
+fn write_store_atomic(path: &FsPath, store: &PairingStore) -> std::io::Result<()> {
+    let json = serde_json::to_vec_pretty(store)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, &json)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600));
+    }
+    std::fs::rename(&tmp, path)
+}
+
+/// Flush the registry to disk NOW (if a store path is configured). Failures
+/// are logged, never fatal — the worst case is a re-pair after a crash.
+fn persist_now(inner: &mut HubInner) {
+    if let Some(path) = inner.store_path.clone() {
+        let snapshot = store_snapshot(inner);
+        if let Err(err) = write_store_atomic(&path, &snapshot) {
+            eprintln!("warehouse14-pos: companion pairing store write failed: {err}");
+        }
+    }
+    inner.store_dirty = false;
+    inner.last_persist = Some(Instant::now());
+}
+
+/// Mark the registry dirty and flush it if the last flush is older than
+/// [`PERSIST_MIN_INTERVAL`] (the lazy ~1/min path for `last_seen` refreshes).
+fn persist_lazy(inner: &mut HubInner) {
+    inner.store_dirty = true;
+    let due = match inner.last_persist {
+        Some(t) => t.elapsed() >= PERSIST_MIN_INTERVAL,
+        None => true,
+    };
+    if due {
+        persist_now(inner);
+    }
+}
+
+/// Load the persisted registry into memory, skipping idle-expired devices and
+/// unparseable roles. In-memory entries win on conflict (they are fresher).
+/// Missing file / parse errors are non-fatal (fresh start).
+fn load_store(inner: &mut HubInner) {
+    let Some(path) = inner.store_path.clone() else {
+        return;
+    };
+    let raw = match std::fs::read(&path) {
+        Ok(b) => b,
+        Err(_) => return, // no store yet — first run.
+    };
+    let store: PairingStore = match serde_json::from_slice(&raw) {
+        Ok(s) => s,
+        Err(err) => {
+            eprintln!("warehouse14-pos: companion pairing store unreadable ({err}); starting empty");
+            return;
+        }
+    };
+    let now = now_unix();
+    let mut loaded = 0usize;
+    for (hash, dev) in store.devices {
+        let Some(role) = Role::parse(&dev.role) else {
+            continue;
+        };
+        let entry = CompanionEntry {
+            role,
+            label: dev.label,
+            created_unix: dev.created_unix,
+            last_seen_unix: dev.last_seen_unix,
+        };
+        if entry.is_expired(now) {
+            continue;
+        }
+        inner.tokens.entry(hash).or_insert(entry);
+        loaded += 1;
+    }
+    if loaded > 0 {
+        eprintln!("warehouse14-pos: companion pairing store loaded ({loaded} device(s))");
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // HTTP handlers
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -664,6 +903,10 @@ async fn subnet_guard(
 struct PairReq {
     code: String,
     role: String,
+    /// Optional device name shown in Einstellungen ("iPhone Basel"). Falls
+    /// back to the role's German label when absent/empty.
+    #[serde(default)]
+    label: String,
 }
 
 #[derive(Serialize)]
@@ -763,23 +1006,29 @@ async fn pair_handler(
     inner.pairing_code.clear();
     inner.code_issued_at = None;
 
-    // Cap the token map (M3): sweep expired entries first; refuse to grow past
-    // the hard cap (a working hub never has 256 live companions on one LAN).
+    // Cap the token map (M3): sweep idle-expired entries first; refuse to grow
+    // past the hard cap (a working hub never has 256 live companions on a LAN).
+    let now_wall = now_unix();
     if inner.tokens.len() >= MAX_TOKENS {
-        inner.tokens.retain(|_, e| !e.is_expired(now));
+        inner.tokens.retain(|_, e| !e.is_expired(now_wall));
         if inner.tokens.len() >= MAX_TOKENS {
             return (StatusCode::SERVICE_UNAVAILABLE, "too many paired devices").into_response();
         }
     }
 
+    // Registry keyed by SHA-256(token); the plaintext goes ONLY to the device.
     inner.tokens.insert(
-        token.clone(),
+        token_hash_hex(&token),
         CompanionEntry {
             role,
-            created_at: now,
-            last_seen: now,
+            label: sanitize_label(&req.label, role),
+            created_unix: now_wall,
+            last_seen_unix: now_wall,
         },
     );
+    // A new pairing is rare and precious — flush it to disk immediately so an
+    // app restart right after pairing cannot lose the device.
+    persist_now(&mut inner);
 
     Json(PairRes {
         token,
@@ -801,18 +1050,27 @@ async fn auth_role_token(hub: &HubShared, token: &str) -> Option<Role> {
     if token.is_empty() {
         return None;
     }
-    let now = Instant::now();
+    // Registry is keyed by SHA-256(token) — hash the presented token first.
+    let key = token_hash_hex(token);
+    let now = now_unix();
     let mut inner = hub.inner.write().await;
-    // Evict-on-use if the token has outlived its TTL.
-    if let Some(entry) = inner.tokens.get(token) {
+    // Evict-on-use if the device has been idle past the eviction window.
+    if let Some(entry) = inner.tokens.get(&key) {
         if entry.is_expired(now) {
-            inner.tokens.remove(token);
+            inner.tokens.remove(&key);
+            persist_now(&mut inner);
             return None;
         }
     }
-    let entry = inner.tokens.get_mut(token)?;
-    entry.last_seen = now;
-    Some(entry.role)
+    let role = {
+        let entry = inner.tokens.get_mut(&key)?;
+        entry.last_seen_unix = now;
+        entry.role
+    };
+    // Lazy flush (~1/min) so `last_seen` survives a restart without hammering
+    // the disk on every request.
+    persist_lazy(&mut inner);
+    Some(role)
 }
 
 /// Read and validate the `X-Companion-Token` header. On success returns the
@@ -1110,6 +1368,53 @@ fn is_item_action(lower_path: &str, base: &str, action: &str) -> bool {
     )
 }
 
+/// True when `lower_path` is exactly `<base>/<id>` (two segments, id
+/// non-empty) — the item-level sibling of [`is_item_action`]. Used to allow
+/// the warehouse appointment status PATCH (`appointments/<id>`) WITHOUT
+/// matching any deeper sub-action (e.g. `appointments/<id>/reschedule`).
+fn is_single_item(lower_path: &str, base: &str) -> bool {
+    let mut it = lower_path.split('/');
+    matches!(
+        (it.next(), it.next(), it.next()),
+        (Some(b), Some(id), None) if b == base && !id.is_empty()
+    )
+}
+
+/// The ONLY appointment-PATCH body shape a companion may send: the status
+/// transition `{ status, cancellationReason?, staffNotes? }` from the live
+/// `PATCH /api/appointments/:id` contract. Any extra key, wrong type, or
+/// unknown status value is rejected — a companion can move an appointment
+/// through its state graph but can never repurpose the PATCH for anything
+/// else.
+fn is_appointment_status_patch_body(body: &[u8]) -> bool {
+    const ALLOWED_STATUS: &[&str] = &[
+        "CONFIRMED",
+        "CHECKED_IN",
+        "IN_PROGRESS",
+        "COMPLETED",
+        "NO_SHOW",
+        "CANCELLED",
+    ];
+    let value: serde_json::Value = match serde_json::from_slice(body) {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+    let Some(obj) = value.as_object() else {
+        return false;
+    };
+    // `status` is mandatory and must be a known transition.
+    match obj.get("status").and_then(|s| s.as_str()) {
+        Some(s) if ALLOWED_STATUS.contains(&s) => {}
+        _ => return false,
+    }
+    // Every other key must be one of the two optional string fields.
+    obj.iter().all(|(k, v)| match k.as_str() {
+        "status" => true,
+        "cancellationReason" | "staffNotes" => v.is_string(),
+        _ => false,
+    })
+}
+
 /// Role-scoped POSITIVE allow-set for the proxy (C1) — deny-by-default.
 ///
 /// Returns `true` only when `role` may call `method <lower_path>`, where
@@ -1150,9 +1455,10 @@ fn proxy_allowed(role: Role, method: &Method, lower_path: &str) -> bool {
                     || get_under("metal-prices")
                     || get_under("metal-rates"))
         }
-        // Cashier: catalog/customer reads + recent transactions; POST limited
-        // to cart-create + finalize. NEVER ankauf / storno / return / void /
-        // refund (those are blocked positively here AND by `hard_denied`).
+        // Cashier: catalog/customer reads + recent transactions + appointment
+        // READS (the Zweitkasse sees the Termine list, never writes it); POST
+        // limited to cart-create + finalize. NEVER ankauf / storno / return /
+        // void / refund (blocked positively here AND by `hard_denied`).
         Role::Cashier => {
             (is_get
                 && (get_under("products")
@@ -1160,6 +1466,7 @@ fn proxy_allowed(role: Role, method: &Method, lower_path: &str) -> bool {
                     || get_under("customers")
                     || get_under("metal-prices")
                     || get_under("metal-rates")
+                    || get_under("appointments")
                     || p == "transactions"
                     || p == "transactions/recent"))
                 || (is_post && (p == "transactions" || p == "transactions/finalize"))
@@ -1183,6 +1490,15 @@ fn proxy_allowed(role: Role, method: &Method, lower_path: &str) -> bool {
         //          register an uploaded photo (`POST photos`), and set the
         //          product's primary photo (`PATCH photos/<id>/primary`).
         //
+        // TERMINE (phone Termine tab) — appointments reads (`appointments`,
+        //          `appointments/<id>`, `?from/to` rides the stripped query),
+        //          create (`POST appointments`), and the item-level status
+        //          PATCH (`appointments/<id>` ONLY — `proxy_handler`
+        //          additionally pins the PATCH body to the status-transition
+        //          shape). Customer READS (`customers`, `customers/<id>`,
+        //          search via query) so a Termin can be linked to a customer —
+        //          never a customer write.
+        //
         // NEVER any transaction, payout, ankauf, storno, archive/delete, photo
         // workflow-state transition, or category mutation — those are blocked
         // positively here (deny-by-default) AND by `hard_denied`. Label/barcode
@@ -1195,6 +1511,8 @@ fn proxy_allowed(role: Role, method: &Method, lower_path: &str) -> bool {
                     || get_under("inventory")
                     || get_under("categories")
                     || get_under("storefront/locations")
+                    || get_under("appointments")
+                    || get_under("customers")
                     // public photo renditions only (id-scoped) so the inventory
                     // list can render thumbnails — NOT photos/unassigned|usage.
                     || is_item_action(p, "photos", "thumb")
@@ -1204,10 +1522,13 @@ fn proxy_allowed(role: Role, method: &Method, lower_path: &str) -> bool {
                         || p == "photos"
                         || p == "photos/upload"
                         || p == "inventory/adjust"
+                        || p == "appointments"
                         || is_product_item_action(p, "inventory-adjustment")
                         || is_product_item_action(p, "photos")))
                 || (is_put && is_product_item())
-                || (is_patch && is_item_action(p, "photos", "primary"))
+                || (is_patch
+                    && (is_item_action(p, "photos", "primary")
+                        || is_single_item(p, "appointments")))
         }
     }
 }
@@ -1246,7 +1567,23 @@ async fn proxy_handler(
         return (StatusCode::FORBIDDEN, "forbidden for role").into_response();
     }
 
-    // 5) Resolve the mother's Bearer; without it, the proxy cannot speak.
+    // 4b) Shape gate: the item-level appointments PATCH may ONLY carry the
+    //     status-transition body. Anything else (reschedule payloads, extra
+    //     fields, non-JSON) is rejected before it ever reaches the cloud.
+    if method == Method::PATCH
+        && is_single_item(&lower_path, "appointments")
+        && !is_appointment_status_patch_body(&body)
+    {
+        return (
+            StatusCode::FORBIDDEN,
+            "nur Status-Übergänge erlaubt",
+        )
+            .into_response();
+    }
+
+    // 5) Resolve the mother's Bearer; without it, the proxy cannot speak. The
+    //    hub auto-starts BEFORE the owner logs in, so this is a normal early
+    //    state — answer with a clear German message the SPA can show.
     let bearer = {
         let inner = hub.inner.read().await;
         inner.bearer.clone()
@@ -1254,7 +1591,7 @@ async fn proxy_handler(
     if bearer.is_empty() {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
-            "mother session not available",
+            "Mutter noch nicht angemeldet",
         )
             .into_response();
     }
@@ -1360,53 +1697,114 @@ async fn bind_listener() -> std::io::Result<(tokio::net::TcpListener, u16)> {
 // IPC commands
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Start the companion hub. Idempotent: if it is already running, returns the
-/// existing snapshot untouched. On bind failure returns the `stopped()`
-/// snapshot (the POS keeps working — companions just stay unavailable).
-#[tauri::command]
-pub async fn companion_start(state: State<'_, CompanionState>) -> Result<CompanionInfo, ()> {
+/// Stamp the live paired-device summary (count + sorted labels of every
+/// non-idle-expired device) onto a snapshot before returning it over IPC.
+async fn fill_paired(hub: &HubShared, info: &mut CompanionInfo) {
+    let inner = hub.inner.read().await;
+    let now = now_unix();
+    let mut names: Vec<String> = inner
+        .tokens
+        .values()
+        .filter(|e| !e.is_expired(now))
+        .map(|e| e.label.clone())
+        .collect();
+    names.sort();
+    info.paired_count = names.len();
+    info.paired_devices = names;
+}
+
+/// Rotate a fresh single-use pairing code into an ALREADY-RUNNING hub (the
+/// explicit "Geräte koppeln" action) and return the updated snapshot. Returns
+/// `None` when the hub is not running. On CSPRNG failure the existing snapshot
+/// is returned unchanged (no weak code is ever minted). Paired tokens are
+/// deliberately KEPT — pairing is persistent now.
+async fn rotate_pairing_code(state: &CompanionState) -> Option<CompanionInfo> {
+    let mut info = {
+        let guard = state.running.lock().unwrap_or_else(|p| p.into_inner());
+        guard.as_ref().map(|r| r.info.clone())?
+    };
+    let Some(code) = fresh_pairing_code() else {
+        eprintln!("warehouse14-pos: companion CSPRNG unavailable; keeping current code state");
+        return Some(info);
+    };
+    {
+        let mut inner = state.hub.inner.write().await;
+        inner.pairing_code = code.clone();
+        inner.code_issued_at = Some(Instant::now());
+        inner.global_fail_count = 0;
+        inner.pair_rate.clear();
+    }
+    info.pairing_code = code;
+    {
+        let mut guard = state.running.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(running) = guard.as_mut() {
+            running.info = info.clone();
+        }
+    }
+    Some(info)
+}
+
+/// Bind + start the hub server. `issue_code` controls whether a pairing code
+/// is minted: the explicit "Geräte koppeln" start issues one; the launch-time
+/// auto-start does NOT (no silent pairing window — persisted devices reconnect
+/// with their tokens, new devices wait for the owner to open pairing).
+///
+/// Persisted pairings are LOADED here, never cleared — the 12 h wipe-on-start
+/// is gone. On bind failure returns the `stopped()` snapshot (the POS keeps
+/// working — companions just stay unavailable).
+async fn start_hub(state: &CompanionState, issue_code: bool) -> CompanionInfo {
     // Fast path: already running → return the live snapshot.
     {
         let guard = state.running.lock().unwrap_or_else(|p| p.into_inner());
         if let Some(running) = guard.as_ref() {
-            return Ok(running.info.clone());
+            return running.info.clone();
         }
     }
 
     let (listener, port) = match bind_listener().await {
         Ok(bound) => bound,
         Err(err) => {
+            // Both the fixed port AND the ephemeral fallback failed (e.g. the
+            // fallback also hit AddrInUse) — log and keep the POS alive.
             eprintln!("warehouse14-pos: companion server bind failed: {err}");
-            return Ok(CompanionInfo::stopped());
+            return CompanionInfo::stopped();
         }
     };
 
     let ip = lan_ip();
     let url = format!("http://{ip}:{port}");
     // CSPRNG-only pairing code. If the OS CSPRNG is unavailable we refuse to
-    // start a pairable hub (returning the stopped snapshot) rather than issue a
-    // weak code — the POS itself keeps working.
-    let pairing_code = match fresh_pairing_code() {
-        Some(c) => c,
-        None => {
-            eprintln!("warehouse14-pos: companion CSPRNG unavailable; not starting hub");
-            return Ok(CompanionInfo::stopped());
+    // start a PAIRABLE hub rather than issue a weak code; a code-less
+    // auto-start is unaffected (it never mints).
+    let pairing_code = if issue_code {
+        match fresh_pairing_code() {
+            Some(c) => c,
+            None => {
+                eprintln!("warehouse14-pos: companion CSPRNG unavailable; not starting hub");
+                return CompanionInfo::stopped();
+            }
         }
+    } else {
+        String::new()
     };
     let qr_svg = qr_svg_for(&url);
 
-    // Rotate the pairing code into shared hub state; clear any stale tokens +
-    // rate buckets from a previous session so a fresh code means a fresh start.
-    // Record the LAN IP (subnet guard), the code-issued instant (TTL), and
-    // reset the global failed-attempt lock.
+    // Arm shared hub state: pairing code (when issued), LAN IP (subnet guard),
+    // reset rate buckets + the global failed-attempt lock. PERSISTENT PAIRING:
+    // tokens are NOT cleared — the disk registry is merged in instead, so a
+    // phone paired last week reconnects without touching the QR.
     {
         let mut inner = state.hub.inner.write().await;
         inner.pairing_code = pairing_code.clone();
-        inner.code_issued_at = Some(Instant::now());
+        inner.code_issued_at = if pairing_code.is_empty() {
+            None
+        } else {
+            Some(Instant::now())
+        };
         inner.lan_ip = Some(ip);
         inner.global_fail_count = 0;
-        inner.tokens.clear();
         inner.pair_rate.clear();
+        load_store(&mut inner);
     }
 
     let info = CompanionInfo {
@@ -1415,6 +1813,8 @@ pub async fn companion_start(state: State<'_, CompanionState>) -> Result<Compani
         port,
         pairing_code,
         qr_svg,
+        paired_count: 0,
+        paired_devices: Vec::new(),
     };
 
     let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
@@ -1439,7 +1839,7 @@ pub async fn companion_start(state: State<'_, CompanionState>) -> Result<Compani
         if let Some(running) = guard.as_ref() {
             drop(shutdown_tx);
             task.abort();
-            return Ok(running.info.clone());
+            return running.info.clone();
         }
         *guard = Some(RunningCompanion {
             info,
@@ -1448,7 +1848,52 @@ pub async fn companion_start(state: State<'_, CompanionState>) -> Result<Compani
         });
     }
 
-    Ok(snapshot)
+    snapshot
+}
+
+/// Launch-time auto-start (called from `lib.rs` `.setup()`): set the pairing
+/// store path under the app data dir, then bring the hub up WITHOUT a pairing
+/// code. Idempotent and fail-safe — a bind failure (port races, AddrInUse on
+/// both binds) is logged and never blocks POS startup. The mother's Bearer
+/// arrives later via the normal `companion_set_auth` flow; until then the
+/// proxy answers 503 "Mutter noch nicht angemeldet".
+pub async fn companion_autostart(state: CompanionState, data_dir: Option<PathBuf>) {
+    match data_dir {
+        Some(dir) => {
+            let mut inner = state.hub.inner.write().await;
+            inner.store_path = Some(dir.join(PAIRING_STORE_FILE));
+        }
+        None => {
+            eprintln!(
+                "warehouse14-pos: app data dir unresolved; companion pairing will not persist"
+            );
+        }
+    }
+    let mut info = start_hub(&state, false).await;
+    if info.running {
+        fill_paired(&state.hub, &mut info).await;
+        eprintln!(
+            "warehouse14-pos: companion hub auto-started at {} ({} paired device(s) restored)",
+            info.url, info.paired_count
+        );
+    } else {
+        eprintln!("warehouse14-pos: companion hub auto-start failed (see bind error above)");
+    }
+}
+
+/// Start the companion hub (the explicit "Geräte koppeln" action). Idempotent:
+/// when the hub is already running (normal case — it auto-starts at launch)
+/// this ROTATES a fresh single-use pairing code instead of returning the
+/// stale/spent one, so the pairing dialog always shows a live code. On bind
+/// failure returns the `stopped()` snapshot (the POS keeps working).
+#[tauri::command]
+pub async fn companion_start(state: State<'_, CompanionState>) -> Result<CompanionInfo, ()> {
+    let mut info = match rotate_pairing_code(&state).await {
+        Some(info) => info,
+        None => start_hub(&state, true).await,
+    };
+    fill_paired(&state.hub, &mut info).await;
+    Ok(info)
 }
 
 /// Stop the companion hub. Idempotent — a no-op when nothing is running.
@@ -1462,28 +1907,37 @@ pub async fn companion_stop(state: State<'_, CompanionState>) -> Result<(), ()> 
         let _ = running.shutdown.send(());
         let _ = running.task.await;
     }
-    // Invalidate paired companions + reset the pairing code so a stopped hub
-    // can't be reached with a previously-minted token if it restarts.
+    // Reset the pairing window + per-session counters. Paired tokens are
+    // deliberately KEPT (and flushed if dirty): pairing is persistent — a
+    // stop/start cycle must not evict the phone. Idle eviction (30 days)
+    // remains the only way a device falls off.
     {
         let mut inner = state.hub.inner.write().await;
+        if inner.store_dirty {
+            persist_now(&mut inner);
+        }
         inner.pairing_code.clear();
         inner.code_issued_at = None;
         inner.lan_ip = None;
         inner.global_fail_count = 0;
-        inner.tokens.clear();
         inner.pair_rate.clear();
     }
     Ok(())
 }
 
-/// Return the current companion snapshot (running or stopped).
+/// Return the current companion snapshot (running or stopped), including the
+/// live paired-device summary (count + labels) for the Einstellungen UI.
 #[tauri::command]
 pub async fn companion_status(state: State<'_, CompanionState>) -> Result<CompanionInfo, ()> {
-    let guard = state.running.lock().unwrap_or_else(|p| p.into_inner());
-    Ok(guard
-        .as_ref()
-        .map(|r| r.info.clone())
-        .unwrap_or_else(CompanionInfo::stopped))
+    let mut info = {
+        let guard = state.running.lock().unwrap_or_else(|p| p.into_inner());
+        guard
+            .as_ref()
+            .map(|r| r.info.clone())
+            .unwrap_or_else(CompanionInfo::stopped)
+    };
+    fill_paired(&state.hub, &mut info).await;
+    Ok(info)
 }
 
 /// Store the mother's current cloud session Bearer so the proxy can inject it.
@@ -1521,4 +1975,229 @@ pub async fn companion_publish_cart(
     // Fan out to live displays. `Err` here means "no subscribers" — fine.
     let _ = state.hub.cart_tx.send(cart_json);
     Ok(())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── Proxy allow-list: WAREHOUSE Termine grants ───────────────────────────
+
+    #[test]
+    fn warehouse_can_read_create_and_status_patch_appointments() {
+        let r = Role::Warehouse;
+        // Reads: list, item, (the ?from/to query is stripped before matching).
+        assert!(proxy_allowed(r, &Method::GET, "appointments"));
+        assert!(proxy_allowed(r, &Method::GET, "appointments/0d9f3a1e"));
+        // Create.
+        assert!(proxy_allowed(r, &Method::POST, "appointments"));
+        // Item-level status PATCH (shape pinned separately by the body gate).
+        assert!(proxy_allowed(r, &Method::PATCH, "appointments/0d9f3a1e"));
+        // NOT a deeper sub-action, NOT collection-level PATCH, NOT DELETE.
+        assert!(!proxy_allowed(r, &Method::PATCH, "appointments/0d9f3a1e/reschedule"));
+        assert!(!proxy_allowed(r, &Method::PATCH, "appointments"));
+        assert!(!proxy_allowed(r, &Method::DELETE, "appointments/0d9f3a1e"));
+        assert!(!proxy_allowed(r, &Method::PUT, "appointments/0d9f3a1e"));
+    }
+
+    #[test]
+    fn warehouse_can_read_customers_but_never_write_them() {
+        let r = Role::Warehouse;
+        assert!(proxy_allowed(r, &Method::GET, "customers"));
+        assert!(proxy_allowed(r, &Method::GET, "customers/42"));
+        assert!(!proxy_allowed(r, &Method::POST, "customers"));
+        assert!(!proxy_allowed(r, &Method::PATCH, "customers/42"));
+        assert!(!proxy_allowed(r, &Method::PUT, "customers/42"));
+    }
+
+    // ── Proxy allow-list: ZWEITKASSE gets appointment READS only ────────────
+
+    #[test]
+    fn cashier_gets_appointment_reads_but_no_writes() {
+        let r = Role::Cashier;
+        assert!(proxy_allowed(r, &Method::GET, "appointments"));
+        assert!(proxy_allowed(r, &Method::GET, "appointments/0d9f3a1e"));
+        assert!(!proxy_allowed(r, &Method::POST, "appointments"));
+        assert!(!proxy_allowed(r, &Method::PATCH, "appointments/0d9f3a1e"));
+    }
+
+    // ── Proxy allow-list: KUNDENANZEIGE gets nothing new ─────────────────────
+
+    #[test]
+    fn display_gets_no_appointments_and_no_customers() {
+        let r = Role::Display;
+        assert!(!proxy_allowed(r, &Method::GET, "appointments"));
+        assert!(!proxy_allowed(r, &Method::POST, "appointments"));
+        assert!(!proxy_allowed(r, &Method::GET, "customers"));
+    }
+
+    // ── Money / fiscal paths stay hard-denied for every companion role ──────
+
+    #[test]
+    fn money_and_fiscal_paths_stay_denied_for_warehouse() {
+        let r = Role::Warehouse;
+        assert!(!proxy_allowed(r, &Method::POST, "transactions"));
+        assert!(!proxy_allowed(r, &Method::POST, "transactions/finalize"));
+        assert!(!proxy_allowed(r, &Method::GET, "transactions"));
+        assert!(!proxy_allowed(r, &Method::GET, "closings"));
+        // Belt-and-braces deny list still bites regardless of role rules.
+        assert!(hard_denied("transactions/abc/storno"));
+        assert!(hard_denied("ankauf/payout"));
+        assert!(hard_denied("tse/export"));
+        assert!(hard_denied("export/datev"));
+        // The new namespaces are NOT hard-denied (sanity).
+        assert!(!hard_denied("appointments"));
+        assert!(!hard_denied("appointments/0d9f3a1e"));
+        assert!(!hard_denied("customers/42"));
+    }
+
+    // ── Status-transition PATCH body shape ──────────────────────────────────
+
+    #[test]
+    fn appointment_patch_body_accepts_only_the_status_shape() {
+        // The plain transition.
+        assert!(is_appointment_status_patch_body(br#"{"status":"CHECKED_IN"}"#));
+        // With the two optional string fields from the live contract.
+        assert!(is_appointment_status_patch_body(
+            br#"{"status":"CANCELLED","cancellationReason":"Kunde abgesagt"}"#
+        ));
+        assert!(is_appointment_status_patch_body(
+            br#"{"status":"COMPLETED","staffNotes":"Goldring abgeholt"}"#
+        ));
+        // Unknown status value.
+        assert!(!is_appointment_status_patch_body(br#"{"status":"SCHEDULED"}"#));
+        // Missing status.
+        assert!(!is_appointment_status_patch_body(br#"{"staffNotes":"x"}"#));
+        // Extra / unexpected keys (e.g. a smuggled reschedule).
+        assert!(!is_appointment_status_patch_body(
+            br#"{"status":"CONFIRMED","startsAt":"2026-06-11T10:00:00Z"}"#
+        ));
+        // Wrong types and non-objects.
+        assert!(!is_appointment_status_patch_body(br#"{"status":7}"#));
+        assert!(!is_appointment_status_patch_body(br#"[]"#));
+        assert!(!is_appointment_status_patch_body(b"not json"));
+        assert!(!is_appointment_status_patch_body(
+            br#"{"status":"CONFIRMED","staffNotes":42}"#
+        ));
+    }
+
+    // ── Path-shape helper ────────────────────────────────────────────────────
+
+    #[test]
+    fn single_item_matcher_is_exactly_two_segments() {
+        assert!(is_single_item("appointments/abc", "appointments"));
+        assert!(!is_single_item("appointments", "appointments"));
+        assert!(!is_single_item("appointments//", "appointments"));
+        assert!(!is_single_item("appointments/abc/status", "appointments"));
+        assert!(!is_single_item("customers/abc", "appointments"));
+    }
+
+    // ── Token hashing ────────────────────────────────────────────────────────
+
+    #[test]
+    fn token_hash_is_stable_sha256_hex() {
+        let h = token_hash_hex("abc");
+        // SHA-256("abc") — well-known vector.
+        assert_eq!(
+            h,
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+        assert_eq!(h.len(), 64);
+        assert_ne!(token_hash_hex("abd"), h);
+    }
+
+    // ── Idle expiry ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn entries_expire_on_idle_not_age() {
+        let now = 1_750_000_000u64;
+        // Paired ages ago but USED recently → alive (the old 12 h TTL is gone).
+        let active = CompanionEntry {
+            role: Role::Warehouse,
+            label: "Lager-Gerät".into(),
+            created_unix: now - 90 * 24 * 60 * 60,
+            last_seen_unix: now - 60,
+        };
+        assert!(!active.is_expired(now));
+        // Untouched for 31 days → evicted.
+        let idle = CompanionEntry {
+            role: Role::Warehouse,
+            label: "Lager-Gerät".into(),
+            created_unix: now - 90 * 24 * 60 * 60,
+            last_seen_unix: now - 31 * 24 * 60 * 60,
+        };
+        assert!(idle.is_expired(now));
+    }
+
+    // ── Persistence round-trip ───────────────────────────────────────────────
+
+    #[test]
+    fn pairing_store_roundtrips_and_drops_idle_devices_on_load() {
+        let path = std::env::temp_dir().join(format!(
+            "w14-companion-pairing-test-{}.json",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+
+        let now = now_unix();
+        let mut writer = HubInner::default();
+        writer.store_path = Some(path.clone());
+        writer.tokens.insert(
+            token_hash_hex("fresh-token"),
+            CompanionEntry {
+                role: Role::Warehouse,
+                label: "iPhone Basel".into(),
+                created_unix: now - 1000,
+                last_seen_unix: now - 10,
+            },
+        );
+        writer.tokens.insert(
+            token_hash_hex("stale-token"),
+            CompanionEntry {
+                role: Role::Display,
+                label: "Altes iPad".into(),
+                created_unix: now - 40 * 24 * 60 * 60,
+                last_seen_unix: now - 31 * 24 * 60 * 60,
+            },
+        );
+        persist_now(&mut writer);
+        assert!(!writer.store_dirty);
+        assert!(path.exists());
+
+        // The file must contain hashes only — never a plaintext token.
+        let raw = std::fs::read_to_string(&path).expect("store readable");
+        assert!(!raw.contains("fresh-token"));
+        assert!(raw.contains(&token_hash_hex("fresh-token")));
+
+        // Fresh process: load → only the active device survives.
+        let mut reader = HubInner::default();
+        reader.store_path = Some(path.clone());
+        load_store(&mut reader);
+        assert_eq!(reader.tokens.len(), 1);
+        let entry = reader
+            .tokens
+            .get(&token_hash_hex("fresh-token"))
+            .expect("active device restored");
+        assert_eq!(entry.role, Role::Warehouse);
+        assert_eq!(entry.label, "iPhone Basel");
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    // ── Label sanitising ─────────────────────────────────────────────────────
+
+    #[test]
+    fn labels_are_sanitised_with_german_role_fallback() {
+        assert_eq!(sanitize_label("", Role::Warehouse), "Lager-Gerät");
+        assert_eq!(sanitize_label("   ", Role::Cashier), "Zweitkasse");
+        assert_eq!(sanitize_label("\u{0007}", Role::Display), "Kundenanzeige");
+        assert_eq!(sanitize_label(" iPhone Basel ", Role::Warehouse), "iPhone Basel");
+        // Capped at 40 chars.
+        let long = "x".repeat(120);
+        assert_eq!(sanitize_label(&long, Role::Warehouse).len(), 40);
+    }
 }

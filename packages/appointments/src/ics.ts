@@ -8,7 +8,7 @@
 import type { IcsAppointment } from './types.js';
 
 const PRODID = '-//Warehouse14//EN';
-const LOCATION = 'Warehouse14, Weil am Rhein';
+const LOCATION = 'warehouse14, Schornbacher Weg 66, 73614 Schorndorf';
 
 /** Format a Date as an iCalendar UTC timestamp: YYYYMMDDTHHMMSSZ. */
 export function formatIcsTimestamp(date: Date): string {

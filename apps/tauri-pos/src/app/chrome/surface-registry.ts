@@ -106,6 +106,9 @@ const SteuerExport = lazy(() =>
 const Tagebuch = lazy(() =>
   import('../../screens/secondary/Tagebuch.js').then((m) => ({ default: m.Tagebuch })),
 );
+const Termine = lazy(() =>
+  import('../../screens/termine/Termine.js').then((m) => ({ default: m.Termine })),
+);
 const WhatsApp = lazy(() =>
   import('../../screens/secondary/WhatsApp.js').then((m) => ({ default: m.WhatsApp })),
 );
@@ -286,6 +289,24 @@ export const SURFACES: readonly SurfaceDescriptor[] = [
     tier: 'secondary',
     component: Einstellungen,
     searchAliases: ['settings', 'preferences', 'drucker', 'gerät'],
+  },
+  {
+    path: '/termine',
+    label: 'Termine',
+    description: 'Terminkalender — Besichtigung, Ankauf-Bewertung, Beratung, Abholung.',
+    tier: 'secondary',
+    component: Termine,
+    searchAliases: [
+      'termin',
+      'kalender',
+      'calendar',
+      'besichtigung',
+      'beratung',
+      'abholung',
+      'ankauf-termin',
+      'ics',
+      'appointment',
+    ],
   },
   {
     path: '/whatsapp',

@@ -181,6 +181,38 @@ describe('appointments — booking + transition (integration)', () => {
     expect(row.status).toBe('CHECKED_IN');
   });
 
+  it('notes-only edit (PATCH without status): same-status UPDATE of staff_notes passes the trigger and the app role holds the grant', async () => {
+    const id = one(
+      await migratorSql<{ id: string }[]>`
+        INSERT INTO appointments
+          (appointment_type, starts_at, duration_minutes, staff_user_id, booked_via)
+        VALUES ('BUYBACK_EVAL'::appointment_type, ${startsAt.toISOString()}::timestamptz, 45,
+                ${staffId}::uuid, 'pos')
+        RETURNING id`,
+    ).id;
+
+    // The Termine drawer's note edit is a status-less PATCH → an UPDATE that
+    // keeps status unchanged. The 0012 §9 trigger must let it through without
+    // re-stamping any marker column.
+    await migratorSql`UPDATE appointments SET staff_notes = 'Kunde bringt Konvolut mit' WHERE id = ${id}::uuid`;
+    const row = one(
+      await migratorSql<{ status: string; staff_notes: string; confirmed_at: string | null }[]>`
+        SELECT status::text AS status, staff_notes, confirmed_at::text AS confirmed_at
+        FROM appointments WHERE id = ${id}::uuid`,
+    );
+    expect(row.status).toBe('SCHEDULED');
+    expect(row.staff_notes).toBe('Kunde bringt Konvolut mit');
+    expect(row.confirmed_at).toBeNull();
+
+    // The api runs as warehouse14_app — the column-level UPDATE grant from
+    // 0012 must cover staff_notes or the route 42501s in prod.
+    const grant = one(
+      await migratorSql<{ ok: boolean }[]>`
+        SELECT has_column_privilege('warehouse14_app', 'appointments', 'staff_notes', 'UPDATE') AS ok`,
+    );
+    expect(grant.ok).toBe(true);
+  });
+
   it('rejects an illegal transition SCHEDULED → COMPLETED', async () => {
     const id = one(
       await migratorSql<{ id: string }[]>`

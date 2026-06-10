@@ -211,7 +211,7 @@ export async function classifyCustomerIntent(
 export const DEFAULT_BOT_SIGNATURE = '— Automatische Antwort · Warehouse14';
 
 const COMPOSE_SYSTEM =
-  'You are the assistant for a German gold/antiques shop in Weil am Rhein. ' +
+  'You are the assistant for a German gold/antiques shop in Schorndorf. ' +
   'Answer the customer in their language (default German), concise and friendly. ' +
   'Use ONLY the provided context; never invent prices or stock. When a buyback ' +
   'price is mentioned, state it is "vorbehaltlich der physischen Prüfung".';

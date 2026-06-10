@@ -13,6 +13,8 @@ describe('telemetry is optional + fail-safe', () => {
     const env = loadEnv({
       DATABASE_URL: 'postgres://warehouse14_app@localhost:5432/warehouse14',
       WAREHOUSE14_PII_KEY: 'test-pii-key-do-not-use-in-production-32b',
+      // AUTH_SECRET is mandatory since the 2026-06-09 hardening (no default).
+      AUTH_SECRET: 'test-auth-secret-not-for-production-0000',
     });
     // Absent DSN → empty/undefined, never a thrown validation error.
     expect(env.SENTRY_DSN ?? '').toBe('');

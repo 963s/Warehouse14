@@ -50,6 +50,12 @@ export const PUBLIC_PREFIXES = [
 export const PUBLIC_PATH_PATTERNS: readonly RegExp[] = [
   /^\/api\/photos\/[^/]+\/raw$/,
   /^\/api\/photos\/[^/]+\/thumb$/,
+  // iCalendar feed (CONTRACT 3): calendar subscription clients (Google/Apple/
+  // Outlook) can send neither a session cookie nor an mTLS client cert. The
+  // 64-hex CSPRNG token in the querystring IS the capability — the handler
+  // constant-time-compares it against system_settings and 401s otherwise
+  // (routes/appointments.ts). No PII beyond shortened contact names is emitted.
+  /^\/api\/appointments\/feed\.ics$/,
 ];
 
 export const AUTHENTICATED_PATHS_UNDER_PUBLIC_PREFIX: ReadonlySet<string> = new Set([

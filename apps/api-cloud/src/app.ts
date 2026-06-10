@@ -89,6 +89,7 @@ import shiftsRoutes from './routes/shifts.js';
 import shippingRoutes from './routes/shipping.js';
 import shopInfoRoute from './routes/shop-info.js';
 import sseLedger from './routes/sse-ledger.js';
+import storefrontAppointmentsRoutes from './routes/storefront-appointments.js';
 import storefrontAuthRoutes from './routes/storefront-auth.js';
 import storefrontCartRoutes from './routes/storefront-cart.js';
 // Phase 2.A — Storefront catalog (public read-only) + MCP server
@@ -268,6 +269,9 @@ export async function buildApp(opts: BuildAppOpts): Promise<FastifyInstance> {
   // `/api/storefront/` is in PUBLIC_PREFIXES (lib/public-routes.ts),
   // so the auth + mTLS preHandlers bypass these routes automatically.
   await app.register(storefrontCatalogRoutes, { env: opts.env });
+  // Public appointment booking (CONTRACT 1+2) — same public `/api/storefront/`
+  // scope as the catalog; strict per-route rate limits inside the plugin.
+  await app.register(storefrontAppointmentsRoutes, { env: opts.env });
   // MCP server — ADMIN-only JSON-RPC 2.0 endpoint at /api/mcp.
   await app.register(mcpServer);
 

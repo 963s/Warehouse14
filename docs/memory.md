@@ -303,7 +303,7 @@ Delivered as chunks with explicit approval between each.
 | **0.2 Database (fiscal spine)** | ⏳ pending | `packages/db` Drizzle schema — full 7-migration spine (auth, products, customers/KYC, transactions, audit chain, TSE, closing) + role grants + hash-chain trigger + seed data |
 | **0.3 API skeleton** | ⏳ pending | `apps/api-cloud` Fastify + better-auth + `/health` + OpenAPI auto-gen + first endpoint (`POST /transactions/begin`) wired to Fiskaly sandbox |
 | **0.4 POS Desktop** | ⏳ pending | `apps/pos-desktop` Tauri 2 + React shell + cherry-picked UI from Oliver + first-sale-end-to-end |
-| **0.5 Control Desktop** | ⏳ pending | `apps/control-desktop` Tauri 2 wrapper + admin-web stub + mTLS pairing flow |
+| **0.5 Control Desktop** | ✅ built — see **#104** | `apps/control-desktop` is a **self-contained** Tauri 2 + React app (NO admin-web). 8 surfaces, typecheck-clean, on real `/api/*`. ⏳ remaining: mTLS pairing + WebAuthn + offline mirror (post-MVP) |
 
 ---
 
@@ -3018,10 +3018,16 @@ tools still stubs; Apple Developer ID signing.
 > Continues §27. The strategist closed §27.6's pending UX items, then walked the compliance go-live
 > path — and discovered the central memory was **stale three times over**: every item §26 flagged
 > "unbuilt/absent" was in fact already shipped. The executor (Claude Code) correctly *reconciled and
+<<<<<<< Updated upstream
 > extended* prior art rather than duplicating; the strategist **re-ran every gate independently** —
 > and this section was **itself corrected** after a strategist claim (the "live" Morning Briefing)
 > proved wrong on a closer read (§28.5 / §28.8). Source-of-truth discipline: this corrects §26's
 > "Next priorities" + §27.6, and corrects an over-eager mid-session review note.
+=======
+> extended* prior art rather than duplicating; the strategist **re-ran every gate independently and
+> even rejected an over-enthusiastic audit that mislabeled working code as a gap** (the Morning
+> Briefing). Source-of-truth discipline: this section corrects §26's "Next priorities" + §27.6.
+>>>>>>> Stashed changes
 
 ### 28.1 Memory was stale 3× — search prior art FIRST (Decision #100)
 - **#100 — The three "unbuilt" go-live items were all already BUILT.** §26's "Next priorities"
@@ -3063,6 +3069,7 @@ tools still stubs; Apple Developer ID signing.
 - **#104 — `apps/control-desktop` exists, is real, and typechecks clean.** Corrects §26/§27 + Decisions
   **#30/#41** "entirely unbuilt". It is a **self-contained Tauri 2 + React 18 + Vite app** — there is
   **NO `apps/admin-web`, and none is needed** (corrects #41's "Tauri wrapper around admin-web
+<<<<<<< Updated upstream
   (Next.js)"). Independent receipt: `pnpm --filter @warehouse14/control-desktop typecheck` → **exit 0**.
   **Eight Karteikasten surfaces**, all on real `/api/*` routes: Übersicht/**Bridge**, Genehmigungen
   (`/api/approvals/*`), Kassenabschluss (`/api/closings` + DATEV), Kunden (trust + KYC PATCH), Lager
@@ -3084,6 +3091,27 @@ tools still stubs; Apple Developer ID signing.
 - **Genuine remaining (NONE block go-live):** ✅ dead duplicate removed (#107); ⚠️ the briefing product
   decision above; post-MVP: mTLS device pairing, WebAuthn unlock, offline SQLite mirror + action
   outbox, anomaly watchdog (z-score).
+=======
+  (Next.js)"; the offline fallback is the seed, not a bundled Next export). Independent receipt:
+  `pnpm --filter @warehouse14/control-desktop typecheck` → **exit 0**. **Eight Karteikasten surfaces**,
+  all on real `/api/*` routes: Übersicht/**Bridge** (`/api/bridge/overview`), Genehmigungen
+  (`/api/approvals/*`), Kassenabschluss (`/api/closings` + DATEV), Kunden (trust + KYC PATCH), Lager
+  (price/status), Termine (read-only), Konformität (`/api/ledger`), Einstellungen (settings + device
+  fleet). Auth: cookie session + global `StepUpModal` (403 STEP_UP_REQUIRED → PIN → replay).
+- **The Morning Briefing is ALREADY REAL — and deliberately deterministic, NOT an LLM.** `bridge.ts`
+  builds `briefing.lines[]` from a German/Arabic **template filled with today's live numbers** (drafts,
+  unread, approvals, appointments, sales/Ankauf, TSE-expiring) every request; `MOCK_BRIDGE` is only
+  the instant-paint `initialData`. The "Claude-generated" wording (ADR-0019 §5 / `types.ts`) is an
+  *aspiration*, not the implementation — and the template is the **correct** choice: no hallucinated
+  fiscal numbers, no ai-gateway cost/latency, deterministic. **Do NOT replace it with an LLM.** (An
+  over-eager audit called this a "gap"; review rejected it.)
+- **Genuine remaining (NONE block go-live):** ⚠️ dedupe the dead `src/bridge/BridgeDashboard.tsx` (the
+  live one is `src/screens/übersicht/BridgeDashboard.tsx`; the bridge/ copy has **zero importers**);
+  ⚠️ optional SSE consumer of `/api/sse/ledger` (`event: ledger`) to push-invalidate the
+  `['bridge','overview',baseUrl]` query — purely an enhancement over the working **30s poll**;
+  post-MVP: mTLS device pairing, WebAuthn unlock, offline SQLite mirror + action outbox, anomaly
+  watchdog (z-score). Branch for the first two: `control-desktop-polish` (pending).
+>>>>>>> Stashed changes
 
 ### 28.6 §27.6 UX blockers — closed (Decision #105)
 - **#105 — the live-test blockers are fixed.** Cash-confirm (#96): pinned "Zahlung abschließen" footer
@@ -3105,11 +3133,16 @@ tools still stubs; Apple Developer ID signing.
      scanner (#98), Fiskaly TSE in prod, camera. Physical round-trip validation.
   3. **Deploy to prod** — PR #2 (reserve fix) + migrations **0045–0049** are NOT on prod yet
      (Basel's operational trigger; every dev POS click must stay off the prod GoBD ledger).
+<<<<<<< Updated upstream
 - **Branches pushed for backup:** all `ux-*` (incl. `ux-productsheet-inplace`, `ux-metal-margin`,
+=======
+- **Branches now pushed for backup:** all `ux-*` (incl. `ux-productsheet-inplace`, `ux-metal-margin`,
+>>>>>>> Stashed changes
   `ux-steuer-export`), plus `aml-smurfing-framework`, `tse-compliance-tables`, `fix-reserve-sell-bug`
   (= PR #2). Reviewer doctrine held: nothing here was rubber-stamped; the audit that overclaimed
   "production-ready / blockers: NONE" was tempered to "structurally real + typecheck-clean; runtime
   contracts + auth flow await the running stack / HIL".
+<<<<<<< Updated upstream
 
 ### 28.8 Control-Desktop polish — done, with a strategist lesson (Decision #107)
 - **#107 — dedupe + live SSE, and a no-facade catch on the strategist's own brief.** Branch
@@ -3266,3 +3299,5 @@ tools still stubs; Apple Developer ID signing.
 - **Truly remaining (NOT buildable):** the api-cloud integration-harness boot fix (pgcrypto/hmac — test-infra),
   the accountant's per-treatment account numbers, and Basel's operational/physical triggers (prod deploy,
   `v1.0.0` OTA tag, HIL hardware session).
+=======
+>>>>>>> Stashed changes

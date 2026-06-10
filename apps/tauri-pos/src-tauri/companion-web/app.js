@@ -60,6 +60,33 @@
     ["EXEMPT_25C","Steuerbefreit §25c (Anlagegold)"]
   ];
 
+  // Appointment types (cloud enum → German label + tile icon). Mirrors
+  // packages/api-client APPOINTMENT_TYPE_LABELS; chip label per design brief.
+  var APPT_TYPES = [
+    ["VIEWING",      "Besichtigung", "👁"],
+    ["BUYBACK_EVAL", "Ankauf",       "🪙"],
+    ["CONSULTATION", "Beratung",     "💬"],
+    ["PICKUP",       "Abholung",     "📦"]
+  ];
+  function apptTypeLabel(t) {
+    var i;
+    for (i = 0; i < APPT_TYPES.length; i++) {
+      if (APPT_TYPES[i][0] === t) return APPT_TYPES[i][1];
+    }
+    return t || "Termin";
+  }
+  // Appointment status → German label + pill style (av/dr/muted/bad).
+  var APPT_STATUS = {
+    SCHEDULED:   ["Geplant",           "muted"],
+    CONFIRMED:   ["Bestätigt",         "dr"],
+    CHECKED_IN:  ["Eingecheckt",       "av"],
+    IN_PROGRESS: ["Läuft",             "av"],
+    COMPLETED:   ["Abgeschlossen",     "muted"],
+    NO_SHOW:     ["Nicht erschienen",  "bad"],
+    CANCELLED:   ["Storniert",         "bad"],
+    RESCHEDULED: ["Verschoben",        "muted"]
+  };
+
   // ── State ──────────────────────────────────────────────────────────
   var token = localStorage.getItem(LS_TOKEN) || "";
   var role  = localStorage.getItem(LS_ROLE)  || "";
@@ -68,6 +95,13 @@
   var displayReconnect = null; // pending socket-reconnect timer.
   var whTab = "scan"; // active warehouse tool tab.
   var snackTimer = null; // active undo-snackbar timer.
+  var zkTab = "kasse"; // active Zweitkasse tab (kasse | termine).
+  var zkCart = []; // Zweitkasse cart — module scope so a tab switch keeps it.
+  var apptDayKey = ""; // selected Termine day (YYYY-MM-DD local), set lazily.
+  var apptTimer = null; // 60s Termine refresh interval (visible-tab only).
+  var apptVisHandler = null; // visibilitychange hook for the Termine poll.
+  var custNames = {}; // in-memory customer-id → name cache (NEVER persisted).
+  var sessionChecked = false; // stored token revalidated against the mother.
 
   var app = document.getElementById("app");
 
@@ -132,6 +166,68 @@
     var parts = [loc.locationStorageUnit, loc.locationDrawer, loc.locationPosition]
       .filter(function (x) { return x; });
     return parts.length ? parts.join(" · ") : "—";
+  }
+
+  // ── Termine helpers ────────────────────────────────────────────────
+  // Parse a cloud timestamp. postgres-js returns timestamptz as TEXT like
+  // "2026-06-10 09:00:00+00" — Safari/WebKit rejects the space + short offset,
+  // so normalise to strict ISO before Date().
+  function parseTs(v) {
+    if (v == null) return null;
+    var s = String(v).trim();
+    if (!s) return null;
+    s = s.replace(" ", "T");
+    if (/[+-]\d\d$/.test(s)) s += ":00";
+    var d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  function pad2(n) { return (n < 10 ? "0" : "") + n; }
+  // Local-day key (YYYY-MM-DD) — the Termine strip thinks in shop-local days.
+  function dayKeyOf(d) {
+    return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());
+  }
+  function dayKeyToDate(key) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(key) || "");
+    if (!m) return new Date();
+    return new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+  }
+  // [fromIso, toIso) UTC bounds of one local day — what GET /appointments wants.
+  function dayBoundsIso(key) {
+    var d = dayKeyToDate(key);
+    var from = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    var to = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+    return [from.toISOString(), to.toISOString()];
+  }
+  function fmtTimeHM(d) {
+    if (!d) return "—";
+    return pad2(d.getHours()) + ":" + pad2(d.getMinutes());
+  }
+  var WEEKDAYS_DE = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+  var WEEKDAYS_DE_LONG = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
+  var MONTHS_DE = ["Januar", "Februar", "März", "April", "Mai", "Juni",
+    "Juli", "August", "September", "Oktober", "November", "Dezember"];
+  function fmtDayLong(key) {
+    var d = dayKeyToDate(key);
+    return WEEKDAYS_DE_LONG[d.getDay()] + ", " + d.getDate() + ". " + MONTHS_DE[d.getMonth()];
+  }
+  // 60s day-refresh, gated on tab visibility; an extra immediate refresh fires
+  // the moment the tab becomes visible again (stale list never greets Basel).
+  function startApptPoll(fn) {
+    stopApptPoll();
+    apptTimer = setInterval(function () {
+      if (document.visibilityState === "visible") fn();
+    }, 60000);
+    apptVisHandler = function () {
+      if (document.visibilityState === "visible") fn();
+    };
+    document.addEventListener("visibilitychange", apptVisHandler);
+  }
+  function stopApptPoll() {
+    if (apptTimer) { clearInterval(apptTimer); apptTimer = null; }
+    if (apptVisHandler) {
+      document.removeEventListener("visibilitychange", apptVisHandler);
+      apptVisHandler = null;
+    }
   }
 
   // ── Multimodal scan/save feedback (design brief: <100ms, distinct OK/FAIL) ─
@@ -263,10 +359,81 @@
   function logout() {
     stopDisplayTimer();
     stopDisplaySocket();
+    stopApptPoll();
     token = ""; role = "";
+    sessionChecked = false;
+    zkCart = [];
+    custNames = {};
     localStorage.removeItem(LS_TOKEN);
     localStorage.removeItem(LS_ROLE);
     render();
+  }
+
+  // ── Silent reconnect (stored token → straight to the role home) ────
+  // On load with a stored token we do NOT show the pairing QR flow again.
+  // Instead: a calm "Verbindung wird wiederhergestellt…" state while the token
+  // is revalidated against the mother (GET /cart — cheap, any-role). Network
+  // trouble keeps retrying quietly; ONLY a definitive 401/403 (token rejected/
+  // expired) surfaces the re-pair CTA.
+  function renderReconnect() {
+    stopDisplayTimer();
+    stopDisplaySocket();
+    stopApptPoll();
+    clear(app);
+
+    var attempts = 0;
+    var alive = true;
+    var statusLine = el("p", { class: "sub", role: "status", "aria-live": "polite" },
+      "Die Kopplung mit der Hauptkasse wird geprüft…");
+    var hintBox = el("div", {});
+    var card = el("div", { class: "card" }, [
+      el("div", { class: "reconnect-dot", "aria-hidden": "true" }),
+      el("h1", {}, "Verbindung wird wiederhergestellt…"),
+      statusLine,
+      hintBox
+    ]);
+    app.appendChild(el("div", { class: "screen" }, [
+      el("div", { class: "center" }, card)
+    ]));
+
+    function showRejected() {
+      if (!alive) return;
+      alive = false;
+      clear(card);
+      card.appendChild(el("h1", {}, "Kopplung abgelaufen"));
+      card.appendChild(el("p", { class: "sub" },
+        "Die Hauptkasse erkennt dieses Gerät nicht mehr. Bitte koppeln Sie es neu — " +
+        "den Code finden Sie an der Hauptkasse unter Einstellungen → Geräte koppeln."));
+      card.appendChild(el("button", { class: "btn-primary", type: "button",
+        onclick: function () { logout(); } }, "Neu koppeln"));
+    }
+
+    function retry() {
+      if (!alive) return;
+      attempts += 1;
+      statusLine.textContent = "Hauptkasse nicht erreichbar — neuer Versuch…";
+      if (attempts === 3) {
+        clear(hintBox);
+        hintBox.appendChild(el("div", { class: "notice info" },
+          "Stellen Sie sicher, dass die Hauptkasse eingeschaltet ist und dieses Gerät " +
+          "im selben WLAN bleibt. Die Verbindung wird automatisch wiederhergestellt."));
+      }
+      setTimeout(attempt, 3000);
+    }
+
+    function attempt() {
+      if (!alive || !token) return;
+      fetch("/cart", { headers: { "X-Companion-Token": token } })
+        .then(function (r) {
+          if (!alive) return;
+          if (r.ok) { alive = false; sessionChecked = true; render(); return; }
+          if (r.status === 401 || r.status === 403) { showRejected(); return; }
+          retry();
+        })
+        .catch(function () { retry(); });
+    }
+
+    attempt();
   }
 
   // ── Top bar ────────────────────────────────────────────────────────
@@ -293,6 +460,7 @@
   function renderPairing() {
     stopDisplayTimer();
     stopDisplaySocket();
+    stopApptPoll();
     clear(app);
 
     var codeVal = "";
@@ -365,6 +533,7 @@
         errBox.style.color = "var(--fg-dim)";
         pair(codeVal, chosen).then(function (res) {
           token = res.token; role = res.role;
+          sessionChecked = true; // freshly minted by the mother — no re-check.
           localStorage.setItem(LS_TOKEN, token);
           localStorage.setItem(LS_ROLE, role);
           render();
@@ -405,6 +574,7 @@
   function renderDisplay() {
     stopDisplayTimer();
     stopDisplaySocket();
+    stopApptPoll();
     clear(app);
 
     var head  = el("div", { class: "display-head" }, "Ihr Einkauf");
@@ -564,14 +734,52 @@
   function renderCashier() {
     stopDisplayTimer();
     stopDisplaySocket();
+    stopApptPoll();
     clear(app);
     app.appendChild(topbar());
 
+    // Two tools on the Zweitkasse: the ring-up Kasse + a READ-ONLY Termine
+    // day view (status changes + booking stay on the Lager device/mother).
+    var ZK_TABS = [
+      ["kasse",   "Kasse"],
+      ["termine", "Termine"]
+    ];
+    var bodyBox = el("div", {});
+
+    function drawTabs() {
+      return el("div", { class: "tabs", role: "tablist" }, ZK_TABS.map(function (t) {
+        return el("button", {
+          class: "tab", type: "button", role: "tab",
+          "aria-selected": t[0] === zkTab ? "true" : "false",
+          onclick: function () { zkTab = t[0]; mount(); }
+        }, t[1]);
+      }));
+    }
+
+    var tabsEl = drawTabs();
+    app.appendChild(tabsEl);
+    app.appendChild(bodyBox);
+
+    function mount() {
+      var newTabs = drawTabs();
+      tabsEl.replaceWith(newTabs);
+      tabsEl = newTabs;
+      stopApptPoll();
+      clear(bodyBox);
+      if (zkTab === "termine") bodyBox.appendChild(terminePane(true));
+      else bodyBox.appendChild(zkKassePane());
+    }
+    mount();
+  }
+
+  // The Zweitkasse ring-up pane. The cart lives in module scope (zkCart) so a
+  // Termine peek never wipes a half-built sale.
+  function zkKassePane() {
     var statusMsg = el("div", { class: "state-msg" }, "Katalog wird geladen…");
     var listBox = el("div", { class: "list" });
     var all = [];
 
-    var cart = []; // { key, id, sku, name, unitCents, qty }
+    var cart = zkCart; // { key, id, sku, name, unitCents, qty } — mutated in place.
     var cartBox = el("div", {});
     var bottomBar = el("div", {}); // thumb-zone Bezahlen bar (fixed).
 
@@ -709,14 +917,16 @@
       });
     }
 
-    app.appendChild(el("div", { class: "pad has-bottombar" }, [
-      search,
-      el("div", { class: "hint" }, "Auf „+“ tippen, um einen Artikel in den Warenkorb zu legen."),
-      statusMsg,
-      listBox,
-      cartBox
-    ]));
-    app.appendChild(bottomBar);
+    var pane = el("div", {}, [
+      el("div", { class: "pad has-bottombar" }, [
+        search,
+        el("div", { class: "hint" }, "Auf „+“ tippen, um einen Artikel in den Warenkorb zu legen."),
+        statusMsg,
+        listBox,
+        cartBox
+      ]),
+      bottomBar
+    ]);
 
     paintCart();
 
@@ -730,12 +940,15 @@
       .catch(function (err) {
         statusMsg.textContent = "Katalog konnte nicht geladen werden. (" + (err.message || "Fehler") + ")";
       });
+
+    return pane;
   }
 
   // ── Warehouse (Lager) — tabbed tools ───────────────────────────────
   function renderWarehouse() {
     stopDisplayTimer();
     stopDisplaySocket();
+    stopApptPoll();
     clear(app);
     app.appendChild(topbar());
 
@@ -743,6 +956,7 @@
       ["scan",    "Scannen"],
       ["stock",   "Bestand"],
       ["add",     "Neu"],
+      ["termine", "Termine"],
       ["printer", "Drucker"]
     ];
     var bodyBox = el("div", {});
@@ -765,10 +979,12 @@
       var newTabs = drawTabs();
       tabsEl.replaceWith(newTabs);
       tabsEl = newTabs;
+      stopApptPoll();
       clear(bodyBox);
       if (whTab === "scan")    bodyBox.appendChild(whScan());
       else if (whTab === "stock") bodyBox.appendChild(whStock());
       else if (whTab === "add")   bodyBox.appendChild(whAdd());
+      else if (whTab === "termine") bodyBox.appendChild(terminePane(false));
       else if (whTab === "printer") bodyBox.appendChild(whPrinter());
     }
     mount();
@@ -1246,6 +1462,548 @@
           "(funktioniert sofort). Direkter LAN-Druck und Druck über die Hauptkasse folgen.")
       ])
     ]);
+  }
+
+  // ── Termine — TODAY view + week strip + one-tap status flow ────────
+  // Warehouse: full control (status transitions + Neuer Termin). Zweitkasse:
+  // the same day view read-only. Data via the mother's proxy:
+  //   GET   appointments?from&to            (day window)
+  //   GET   appointments/available-slots    (30-min grid → startsAt+staff)
+  //   GET   customers?q=                    (booking search)
+  //   POST  appointments / PATCH appointments/<id>  (warehouse only)
+  function normalizeAppointments(data) {
+    var arr = (data && Array.isArray(data.appointments)) ? data.appointments
+            : (Array.isArray(data) ? data : []);
+    return arr.map(function (a) {
+      return {
+        id: a.id || null,
+        type: a.appointment_type || a.appointmentType || a.type || "",
+        status: String(a.status || "SCHEDULED").toUpperCase(),
+        startsAt: parseTs(a.starts_at != null ? a.starts_at : a.startsAt),
+        endsAt: parseTs(a.ends_at != null ? a.ends_at : a.endsAt),
+        customerId: a.customer_id || a.customerId || null,
+        // Walk-in contact fields (shared contract, migration 0062) + any
+        // server-side customer-name join — all read defensively.
+        contactName: a.contact_name || a.contactName || null,
+        customerName: a.customer_name || a.customerName || a.customer_full_name || null
+      };
+    }).filter(function (a) {
+      return a.id && a.startsAt && a.status !== "CANCELLED" && a.status !== "RESCHEDULED";
+    });
+  }
+
+  // Resolve customer display names for a day's cards (in-memory cache only —
+  // PII never touches localStorage). Failures cache `null` → calm fallback.
+  function resolveCustomerNames(rows, done) {
+    var missing = {};
+    rows.forEach(function (a) {
+      if (a.customerId && custNames[a.customerId] === undefined) missing[a.customerId] = true;
+    });
+    var ids = Object.keys(missing);
+    if (!ids.length) { done(); return; }
+    Promise.all(ids.map(function (id) {
+      return proxy("customers/" + encodeURIComponent(id))
+        .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(function (d) {
+          custNames[id] = (d && (d.fullName || d.full_name)) || null;
+        })
+        .catch(function () { custNames[id] = null; });
+    })).then(function () { done(); }, function () { done(); });
+  }
+
+  function apptDisplayName(a) {
+    if (a.contactName) return String(a.contactName);
+    if (a.customerName) return String(a.customerName);
+    if (a.customerId) return custNames[a.customerId] || "Kunde";
+    return "Ohne Kundenangabe";
+  }
+
+  function terminePane(readOnly) {
+    var todayKey = dayKeyOf(new Date());
+    if (!apptDayKey) apptDayKey = todayKey;
+
+    var listBox = el("div", {});
+    var headBox = el("div", {});
+    var stripBox = el("div", {});
+    var bbInfoT = el("div", { class: "t" }, "Termine");
+    var bbInfoS = el("div", { class: "s" }, "");
+    var busy = false;
+
+    function selectDay(key) {
+      apptDayKey = key;
+      paintStrip();
+      paintHead();
+      loadDay();
+    }
+
+    // Week strip (Mo–So of the selected day's week) + ‹ › week paging.
+    function paintStrip() {
+      var sel = dayKeyToDate(apptDayKey);
+      var dow = (sel.getDay() + 6) % 7; // 0 = Montag.
+      var mon = new Date(sel.getFullYear(), sel.getMonth(), sel.getDate() - dow);
+      var chips = [];
+      var i;
+      for (i = 0; i < 7; i++) {
+        (function (d) {
+          var key = dayKeyOf(d);
+          chips.push(el("button", {
+            class: "daychip" + (key === todayKey ? " today" : ""), type: "button",
+            "aria-pressed": key === apptDayKey ? "true" : "false",
+            "aria-label": fmtDayLong(key),
+            onclick: function () { selectDay(key); }
+          }, [
+            el("span", { class: "dw" }, WEEKDAYS_DE[(d.getDay() + 6) % 7]),
+            el("span", { class: "dn" }, String(d.getDate()))
+          ]));
+        })(new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + i));
+      }
+      function shiftWeek(days) {
+        var d = dayKeyToDate(apptDayKey);
+        selectDay(dayKeyOf(new Date(d.getFullYear(), d.getMonth(), d.getDate() + days)));
+      }
+      var strip = el("div", { class: "weekstrip" }, [
+        el("button", { class: "wk-nav", type: "button", "aria-label": "Vorherige Woche",
+          onclick: function () { shiftWeek(-7); } }, "‹"),
+        el("div", { class: "wk-days" }, chips),
+        el("button", { class: "wk-nav", type: "button", "aria-label": "Nächste Woche",
+          onclick: function () { shiftWeek(7); } }, "›")
+      ]);
+      clear(stripBox);
+      stripBox.appendChild(strip);
+    }
+
+    function paintHead() {
+      clear(headBox);
+      headBox.appendChild(el("div", { class: "day-head" }, [
+        el("span", { class: "dh-t" }, fmtDayLong(apptDayKey)),
+        apptDayKey !== todayKey
+          ? el("button", { class: "dh-today", type: "button",
+              onclick: function () { selectDay(todayKey); } }, "Heute")
+          : null
+      ]));
+    }
+
+    function paintCards(rows) {
+      clear(listBox);
+      if (!rows.length) {
+        listBox.appendChild(el("div", { class: "state-msg" },
+          "Keine Termine an diesem Tag." + (readOnly ? "" : " Über „Neuer Termin“ einen anlegen.")));
+        return;
+      }
+      var list = el("div", { class: "list" });
+      rows.forEach(function (a) { list.appendChild(apptCard(a)); });
+      listBox.appendChild(list);
+    }
+
+    function loadDay() {
+      var bounds = dayBoundsIso(apptDayKey);
+      var requestedKey = apptDayKey;
+      clear(listBox);
+      listBox.appendChild(el("div", { class: "state-msg" }, "Termine werden geladen…"));
+      proxy("appointments?from=" + encodeURIComponent(bounds[0]) +
+            "&to=" + encodeURIComponent(bounds[1]))
+        .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(function (data) {
+          if (requestedKey !== apptDayKey) return; // day changed mid-flight.
+          var rows = normalizeAppointments(data).sort(function (x, y) {
+            return x.startsAt - y.startsAt;
+          });
+          bbInfoT.textContent = rows.length
+            ? (rows.length + (rows.length === 1 ? " Termin" : " Termine"))
+            : "Keine Termine";
+          bbInfoS.textContent = fmtDayLong(apptDayKey);
+          paintCards(rows);
+          // Names arrive async — repaint once the cache is warm.
+          resolveCustomerNames(rows, function () {
+            if (requestedKey === apptDayKey) paintCards(rows);
+          });
+        })
+        .catch(function (err) {
+          if (requestedKey !== apptDayKey) return;
+          clear(listBox);
+          listBox.appendChild(el("div", { class: "notice bad" },
+            "Termine konnten nicht geladen werden. (" + (err.message || "Fehler") + ")"));
+          listBox.appendChild(el("div", { class: "btn-row" }, [
+            el("button", { class: "btn-ghost", type: "button", onclick: loadDay }, "Erneut versuchen")
+          ]));
+        });
+    }
+
+    // One appointment card: time + name + type/status chips + one-tap actions.
+    function apptCard(a) {
+      var statusMeta = APPT_STATUS[a.status] || [a.status, "muted"];
+      var who = el("span", { class: "appt-who" }, apptDisplayName(a));
+      var timeTxt = fmtTimeHM(a.startsAt) + (a.endsAt ? ("–" + fmtTimeHM(a.endsAt)) : "");
+
+      var kids = [
+        el("div", { class: "appt-top" }, [
+          el("span", { class: "appt-time" }, timeTxt),
+          who
+        ]),
+        el("div", { class: "appt-sub" }, [
+          el("span", { class: "pill dr" }, apptTypeLabel(a.type)),
+          el("span", { class: "pill " + statusMeta[1] }, statusMeta[0])
+        ])
+      ];
+
+      if (!readOnly) {
+        var actions = [];
+        // The happy chain: Bestätigen → Einchecken → Abschließen (one tap each).
+        if (a.status === "SCHEDULED") {
+          actions.push(actionBtn("Bestätigen", "primary", "CONFIRMED", null));
+        } else if (a.status === "CONFIRMED") {
+          actions.push(actionBtn("Einchecken", "primary", "CHECKED_IN", null));
+        } else if (a.status === "CHECKED_IN" || a.status === "IN_PROGRESS") {
+          actions.push(actionBtn("Abschließen", "primary", "COMPLETED", null));
+        }
+        // Exceptions: no-show (before check-in) + cancel (confirm-guarded).
+        if (a.status === "SCHEDULED" || a.status === "CONFIRMED") {
+          actions.push(actionBtn("Nicht erschienen", "", "NO_SHOW", null));
+        }
+        if (a.status === "SCHEDULED" || a.status === "CONFIRMED" ||
+            a.status === "CHECKED_IN" || a.status === "IN_PROGRESS") {
+          actions.push(actionBtn("Stornieren", "danger", "CANCELLED",
+            "Vom Begleiter-Gerät storniert"));
+        }
+        if (actions.length) kids.push(el("div", { class: "appt-actions" }, actions));
+      }
+
+      function actionBtn(label, cls, status, cancellationReason) {
+        return el("button", { class: cls || "", type: "button", onclick: function (e) {
+          if (busy) return;
+          if (status === "CANCELLED" &&
+              !confirm("Termin um " + fmtTimeHM(a.startsAt) + " (" + apptDisplayName(a) +
+                       ") wirklich stornieren?")) return;
+          var body = { status: status };
+          if (cancellationReason) body.cancellationReason = cancellationReason;
+          busy = true;
+          var btn = e.currentTarget || e.target;
+          btn.disabled = true;
+          proxyJson("appointments/" + encodeURIComponent(a.id), "PATCH", body)
+            .then(function () {
+              busy = false;
+              var meta = APPT_STATUS[status] || [status, "muted"];
+              scanFeedback(true, "Termin aktualisiert",
+                fmtTimeHM(a.startsAt) + " · " + meta[0]);
+              loadDay();
+            })
+            .catch(function (err) {
+              busy = false;
+              btn.disabled = false;
+              scanFeedback(false, "Status nicht geändert", err.message || "");
+            });
+        } }, label);
+      }
+
+      return el("div", { class: "appt-card" }, kids);
+    }
+
+    var padKids = [stripBox, headBox, listBox];
+    var paneKids = [el("div", { class: "pad" + (readOnly ? "" : " has-bottombar") }, padKids)];
+    if (!readOnly) {
+      paneKids.push(el("div", { class: "bottombar" }, [
+        el("div", { class: "bb-info" }, [bbInfoT, bbInfoS]),
+        el("button", { class: "bb-action", type: "button",
+          onclick: function () {
+            openTerminSheet(apptDayKey, function (createdDayKey) {
+              if (createdDayKey) apptDayKey = createdDayKey;
+              paintStrip();
+              paintHead();
+              loadDay();
+            });
+          } }, "＋ Neuer Termin")
+      ]));
+    }
+
+    paintStrip();
+    paintHead();
+    loadDay();
+    startApptPoll(loadDay);
+
+    return el("div", {}, paneKids);
+  }
+
+  // ── Neuer-Termin sheet: type tiles → 30-min slots → Kunde/Kontakt ──
+  function openTerminSheet(defaultDayKey, onCreated) {
+    var todayKey = dayKeyOf(new Date());
+    var selType = "";
+    var selSlot = null;     // { iso, staffUserId, label }
+    var selCustomer = null; // { id, name }
+    var busy = false;
+    var debTimer = null;
+
+    var errBox = el("div", {});
+    function setMsg(kind, text) {
+      clear(errBox);
+      if (text) errBox.appendChild(el("div", { class: "notice " + kind }, text));
+    }
+
+    // 1) Type tiles.
+    var typeBox = el("div", { class: "typegrid" });
+    function paintTypes() {
+      clear(typeBox);
+      APPT_TYPES.forEach(function (t) {
+        typeBox.appendChild(el("button", {
+          class: "type-tile", type: "button",
+          "aria-pressed": selType === t[0] ? "true" : "false",
+          onclick: function () { selType = t[0]; paintTypes(); loadSlots(); }
+        }, [
+          el("span", { class: "ico" }, t[2]),
+          el("span", {}, t[1])
+        ]));
+      });
+    }
+
+    // 2) Date + 30-min slot grid (from the cloud's availability — each slot
+    // carries its staffUserId, which the booking POST requires).
+    var dateI = el("input", { class: "inp", type: "date", min: todayKey,
+      value: (defaultDayKey && defaultDayKey >= todayKey) ? defaultDayKey : todayKey,
+      onchange: function () { loadSlots(); } });
+    var slotBox = el("div", {});
+    function loadSlots() {
+      selSlot = null;
+      clear(slotBox);
+      if (!selType) {
+        slotBox.appendChild(el("div", { class: "scan-help" }, "Zuerst eine Termin-Art wählen."));
+        return;
+      }
+      var key = dateI.value || todayKey;
+      var bounds = dayBoundsIso(key);
+      slotBox.appendChild(el("div", { class: "state-msg" }, "Freie Zeiten werden geladen…"));
+      proxy("appointments/available-slots?type=" + encodeURIComponent(selType) +
+            "&from=" + encodeURIComponent(bounds[0]) +
+            "&to=" + encodeURIComponent(bounds[1]))
+        .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(function (data) {
+          var raw = (data && Array.isArray(data.slots)) ? data.slots : [];
+          var now = new Date();
+          var seen = {};
+          var slots = [];
+          raw.forEach(function (s) {
+            var d = parseTs(s.slot_starts_at != null ? s.slot_starts_at : s.startsAt);
+            var staff = s.staff_user_id || s.staffUserId || null;
+            if (!d || !staff || d <= now) return;
+            var label = fmtTimeHM(d);
+            if (seen[label]) return;
+            seen[label] = true;
+            slots.push({ iso: d.toISOString(), staffUserId: staff, label: label });
+          });
+          clear(slotBox);
+          if (!slots.length) {
+            slotBox.appendChild(el("div", { class: "notice info" },
+              "Keine freien Zeiten an diesem Tag. Bitte einen anderen Tag wählen."));
+            return;
+          }
+          var grid = el("div", { class: "slotgrid" });
+          slots.forEach(function (s) {
+            grid.appendChild(el("button", {
+              class: "slot-chip", type: "button",
+              "aria-pressed": "false",
+              onclick: function (e) {
+                selSlot = s;
+                var pressed = grid.querySelectorAll('[aria-pressed="true"]');
+                var i;
+                for (i = 0; i < pressed.length; i++) pressed[i].setAttribute("aria-pressed", "false");
+                (e.currentTarget || e.target).setAttribute("aria-pressed", "true");
+              }
+            }, s.label));
+          });
+          slotBox.appendChild(grid);
+        })
+        .catch(function (err) {
+          clear(slotBox);
+          slotBox.appendChild(el("div", { class: "notice bad" },
+            "Freie Zeiten konnten nicht geladen werden. (" + (err.message || "Fehler") + ")"));
+        });
+    }
+
+    // 3) Customer: live search OR free-text Name+Telefon.
+    var custResBox = el("div", {});
+    var custPickBox = el("div", {});
+    var freeBox = el("div", {});
+    var custI = el("input", { class: "inp", type: "search",
+      placeholder: "Name, Telefon oder E-Mail suchen…",
+      "aria-label": "Kunde suchen",
+      oninput: function (e) {
+        var q = e.target.value.trim();
+        if (debTimer) clearTimeout(debTimer);
+        if (q.length < 2) { clear(custResBox); return; }
+        debTimer = setTimeout(function () { searchCustomers(q); }, 300);
+      } });
+    var nameI = el("input", { class: "inp", type: "text", autocomplete: "off",
+      placeholder: "Vor- und Nachname" });
+    var phoneI = el("input", { class: "inp", type: "tel", autocomplete: "off",
+      placeholder: "Optional — Telefonnummer" });
+
+    function searchCustomers(q) {
+      proxy("customers?q=" + encodeURIComponent(q) + "&limit=6")
+        .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(function (data) {
+          var items = (data && Array.isArray(data.items)) ? data.items : [];
+          clear(custResBox);
+          if (!items.length) {
+            custResBox.appendChild(el("div", { class: "scan-help" },
+              "Kein Kunde gefunden — unten Name und Telefon eintragen."));
+            return;
+          }
+          var list = el("div", { class: "list" });
+          items.slice(0, 6).forEach(function (c) {
+            var nm = String(c.fullName || "Ohne Namen");
+            list.appendChild(el("button", { class: "invrow", type: "button",
+              "aria-label": nm + " auswählen",
+              onclick: function () {
+                selCustomer = { id: c.id, name: nm };
+                if (c.id) custNames[c.id] = nm;
+                custI.value = "";
+                clear(custResBox);
+                paintCustPick();
+              } }, [
+              el("div", { class: "meta" }, [
+                el("div", { class: "nm" }, nm),
+                el("div", { class: "sub" }, c.customerNumber ? ("Kunde " + c.customerNumber) : "—")
+              ])
+            ]));
+          });
+          custResBox.appendChild(list);
+        })
+        .catch(function () {
+          clear(custResBox);
+          custResBox.appendChild(el("div", { class: "notice info" },
+            "Kundensuche derzeit nicht möglich — Name und Telefon unten eintragen."));
+        });
+    }
+
+    function paintCustPick() {
+      clear(custPickBox);
+      if (selCustomer) {
+        custPickBox.appendChild(el("div", { class: "custpick" }, [
+          el("span", { class: "cp-n" }, selCustomer.name),
+          el("button", { class: "cp-x", type: "button", "aria-label": "Kundenauswahl entfernen",
+            onclick: function () { selCustomer = null; paintCustPick(); } }, "×")
+        ]));
+        freeBox.style.display = "none";
+      } else {
+        freeBox.style.display = "";
+      }
+    }
+
+    // 4) Note.
+    var noteTa = el("textarea", { class: "ta", maxlength: "500",
+      placeholder: "Optional — Notiz (z. B. Anlass, mitgebrachte Stücke)" });
+
+    var saveBtn = el("button", { class: "btn-primary inline", type: "button", onclick: submit },
+      "Termin anlegen");
+
+    function submit() {
+      if (busy) return;
+      if (!selType) { setMsg("bad", "Bitte eine Termin-Art wählen."); return; }
+      if (!selSlot) { setMsg("bad", "Bitte ein freies Zeitfenster wählen."); return; }
+      var freeName = nameI.value.trim();
+      var freePhone = phoneI.value.trim();
+      if (!selCustomer) {
+        if (freeName.length < 2) {
+          setMsg("bad", "Bitte einen Kunden wählen oder einen Namen (mind. 2 Zeichen) eintragen.");
+          return;
+        }
+        if (freeName.length > 120) { setMsg("bad", "Der Name ist zu lang (max. 120 Zeichen)."); return; }
+        if (freePhone && (freePhone.length < 6 || freePhone.length > 32)) {
+          setMsg("bad", "Die Telefonnummer muss 6–32 Zeichen haben."); return;
+        }
+      }
+      var note = noteTa.value.trim().slice(0, 500);
+
+      var payload = {
+        type: selType,
+        startsAt: selSlot.iso,
+        staffUserId: selSlot.staffUserId,
+        bookedVia: "pos"
+      };
+      if (selCustomer) {
+        payload.customerId = selCustomer.id;
+        if (note) payload.customerNotes = note;
+      } else {
+        // Walk-in contact: dedicated fields per the shared 0062 contract (the
+        // cloud strips unknown keys until that lands) + a notes fallback so
+        // the contact is never lost on today's schema.
+        payload.contactName = freeName;
+        if (freePhone) {
+          payload.contactPhone = freePhone;
+          payload.customerPhone = freePhone;
+        }
+        payload.customerNotes = "Termin-Kontakt: " + freeName +
+          (freePhone ? (", Tel. " + freePhone) : "") + (note ? (" — " + note) : "");
+      }
+
+      busy = true;
+      saveBtn.disabled = true;
+      setMsg("info", "Termin wird angelegt…");
+      proxyJson("appointments", "POST", payload)
+        .then(function () {
+          busy = false;
+          var bookedKey = dateI.value || todayKey;
+          scanFeedback(true, "Termin angelegt",
+            fmtDayLong(bookedKey) + " · " + selSlot.label + " · " + apptTypeLabel(selType));
+          close();
+          if (onCreated) onCreated(bookedKey);
+        })
+        .catch(function (err) {
+          busy = false;
+          saveBtn.disabled = false;
+          var msgTxt = err.message || "Termin konnte nicht angelegt werden.";
+          if (/no longer available|nicht mehr verfügbar|conflict/i.test(msgTxt)) {
+            msgTxt = "Dieses Zeitfenster ist inzwischen belegt. Bitte eine andere Zeit wählen.";
+            loadSlots();
+          }
+          setMsg("bad", msgTxt);
+          scanFeedback(false, "Termin nicht angelegt", msgTxt);
+        });
+    }
+
+    var sheet = el("div", { class: "sheet", role: "dialog", "aria-label": "Neuer Termin" }, [
+      el("div", { class: "sheet-head" }, [
+        el("span", { class: "t" }, "Neuer Termin"),
+        el("button", { class: "x", type: "button", "aria-label": "Schließen", onclick: close }, "×")
+      ]),
+      el("div", { class: "sheet-body scroll" }, [
+        el("div", { class: "form" }, [
+          el("div", { class: "sectionhead", style: "margin-top:0" }, "Termin-Art"),
+          typeBox,
+          el("div", { class: "sectionhead" }, "Tag & Uhrzeit"),
+          el("div", { class: "fl" }, [ el("span", { class: "lab" }, "Tag"), dateI ]),
+          slotBox,
+          el("div", { class: "sectionhead" }, "Kunde"),
+          custPickBox,
+          el("div", { class: "fl" }, [ el("span", { class: "lab" }, "Bestandskunde suchen (optional)"), custI ]),
+          custResBox,
+          freeBox,
+          el("div", { class: "sectionhead" }, "Notiz"),
+          noteTa,
+          errBox,
+          el("div", { class: "btn-row" }, [
+            el("button", { class: "btn-ghost", type: "button", onclick: close }, "Abbrechen"),
+            saveBtn
+          ]),
+          el("div", { class: "scan-help" },
+            "Die freien Zeiten folgen den Öffnungszeiten der Hauptkasse (30-Minuten-Raster). " +
+            "Ohne Bestandskunde genügen Name und Telefonnummer.")
+        ])
+      ])
+    ]);
+
+    freeBox.appendChild(el("div", { class: "form-row two" }, [
+      el("div", { class: "fl" }, [ el("span", { class: "lab" }, "Name (ohne Kundenkonto)"), nameI ]),
+      el("div", { class: "fl" }, [ el("span", { class: "lab" }, "Telefon"), phoneI ])
+    ]));
+
+    function close() {
+      if (debTimer) clearTimeout(debTimer);
+      try { sheet.remove(); } catch (e) {}
+    }
+
+    paintTypes();
+    paintCustPick();
+    loadSlots();
+    document.body.appendChild(sheet);
   }
 
   // ── Shared warehouse UI bits ───────────────────────────────────────
@@ -1816,6 +2574,9 @@
   // ── Router ─────────────────────────────────────────────────────────
   function render() {
     if (!token || !role || !ROLES[role]) { renderPairing(); return; }
+    // A restored (not freshly paired) token gets silently revalidated first —
+    // straight to the role home on success, re-pair CTA only on real rejection.
+    if (!sessionChecked) { renderReconnect(); return; }
     if (role === "display")   { renderDisplay();   return; }
     if (role === "cashier")   { renderCashier();   return; }
     if (role === "warehouse") { renderWarehouse(); return; }

@@ -41,6 +41,14 @@ export const appointments = pgTable(
     customerNotes: text('customer_notes'),
     staffNotes: text('staff_notes'),
 
+    // ── Migration 0062: public web booking ────────────────────────────────
+    /** Booking origin per the cross-team CONTRACT: 'POS' | 'WEB' | 'WHATSAPP'. */
+    source: text('source').notNull().default('POS'),
+    /** Walk-in contact fields for bookings without a customer record (source=WEB). */
+    contactName: text('contact_name'),
+    contactPhone: text('contact_phone'),
+    contactEmail: text('contact_email'),
+
     confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
     checkedInAt: timestamp('checked_in_at', { withTimezone: true }),
     earlyArrivalMinutes: integer('early_arrival_minutes'),
@@ -81,6 +89,10 @@ export const appointments = pgTable(
     bookedViaDomain: check(
       'appointments_booked_via_domain',
       sql`${table.bookedVia} IN ('control_desktop', 'storefront', 'pos', 'whatsapp_bot')`,
+    ),
+    sourceDomain: check(
+      'appointments_source_domain',
+      sql`${table.source} IN ('POS', 'WEB', 'WHATSAPP')`,
     ),
     checkedInHasMarker: check(
       'appointments_checked_in_has_marker',

@@ -20,6 +20,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { whatsappInboundMessages } from '@warehouse14/db/schema';
 
 import type { Env } from '../config/env.js';
+import { detectBookingIntent, runBookingAutoReply } from '../lib/appointment-whatsapp.js';
 import { verifyMetaSignature } from '../lib/meta-signature.js';
 import { runWhatsAppBot } from '../lib/whatsapp-bot-runner.js';
 import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
@@ -152,6 +153,11 @@ const whatsappWebhookRoutes: FastifyPluginAsync<WhatsAppWebhookOpts> = async (ap
       let stored = 0;
       // Text messages to hand to the bot orchestrator AFTER we ack Meta.
       const botTriggers: Array<{ fromPhone: string; body: string }> = [];
+      // Booking-intent messages get ONE deterministic German auto-reply with
+      // the public booking link instead of the AI bot (no double answers).
+      // Only NEWLY-stored message ids land here (UNIQUE meta_message_id
+      // dedupes Meta retries) → idempotent per inbound message id, no loops.
+      const bookingReplies: Array<{ fromPhone: string }> = [];
       const entries = parsed.entry ?? [];
       for (const entry of entries) {
         for (const change of entry.changes ?? []) {
@@ -185,7 +191,13 @@ const whatsappWebhookRoutes: FastifyPluginAsync<WhatsAppWebhookOpts> = async (ap
                 } catch (err) {
                   req.log.warn({ err }, 'whatsapp webhook: body encryption failed');
                 }
-                if (fromPhone.length > 0) botTriggers.push({ fromPhone, body: textBody });
+                if (fromPhone.length > 0) {
+                  if (detectBookingIntent(textBody)) {
+                    bookingReplies.push({ fromPhone });
+                  } else {
+                    botTriggers.push({ fromPhone, body: textBody });
+                  }
+                }
               }
             } catch (err) {
               // UNIQUE on meta_message_id means Meta retried this delivery.
@@ -205,6 +217,11 @@ const whatsappWebhookRoutes: FastifyPluginAsync<WhatsAppWebhookOpts> = async (ap
       // withPii() calls inherit the PII key via AsyncLocalStorage.
       for (const trigger of botTriggers) {
         void runWhatsAppBot(app, opts.env, trigger);
+      }
+      // Booking-intent auto-replies — detached for the same reason; the
+      // runner is token-gated (no WHATSAPP_* keys → recorded as 'queued').
+      for (const r of bookingReplies) {
+        void runBookingAutoReply(app, opts.env, r.fromPhone);
       }
 
       return reply.status(200).send({ received: true, stored });
