@@ -6,6 +6,18 @@ and the project adheres to [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+## [0.4.11] — 2026-06-10
+
+- **World-class cashier & inventory redesign** (grounded in a 13-agent UX-research
+  brief): the payment screen now shows the amount due as the dominant figure with
+  one-tap exact-change & note chips and one-tap card; removing a cart line is
+  instant with an Undo (no more confirm dialog); the number pad, Storno safety,
+  inventory list and contrast/icons were all tightened for speed and calm. No
+  change to any amount, tax, or receipt — money logic untouched, proven by tests.
+- **Product photos reach the online shop**: a published product now shows its real
+  photo on the website (with a multi-image gallery), and the cashier picks which
+  photo is the main one. Products also get a clean web address automatically.
+
 ## [0.4.10] — 2026-06-08
 
 - **DSFinV-K export** (Steuer-Export + Owner-Desktop): one-click download of the
