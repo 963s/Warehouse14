@@ -97,6 +97,11 @@ const Einstellungen = lazy(() =>
 const Fotos = lazy(() =>
   import('../../screens/secondary/Fotos.js').then((m) => ({ default: m.Fotos })),
 );
+const Kalender = lazy(() =>
+  import('../../screens/werkstatt/KalenderSurface.js').then((m) => ({
+    default: m.KalenderSurface,
+  })),
+);
 const Kurse = lazy(() =>
   import('../../screens/secondary/Kurse.js').then((m) => ({ default: m.Kurse })),
 );
@@ -307,6 +312,14 @@ export const SURFACES: readonly SurfaceDescriptor[] = [
       'ics',
       'appointment',
     ],
+  },
+  {
+    path: '/kalender',
+    label: 'Kalender',
+    description: 'Google Kalender des Geschäfts — eingebettete Wochenansicht, ganzseitig.',
+    tier: 'secondary',
+    component: Kalender,
+    searchAliases: ['google', 'google kalender', 'gcal', 'wochenansicht', 'embed'],
   },
   {
     path: '/whatsapp',

@@ -10,8 +10,8 @@
  *   │ ◆ Übersicht                  │ ◆ Tagebuch              │
  *   │ [6 stat tiles 3×2]           │  ledger feed (live)     │
  *   │                              │                         │
- *   │ ◆ Edelmetallkurs             │                         │
- *   │ [4-row prices]               │                         │
+ *   │ ◆ Google Kalender            │                         │
+ *   │ [embed / 3-step explainer]   │                         │
  *   ├──────────────────────────────┴─────────────────────────┤
  *   │ Footer (N° · Heute · Shift OPEN · €4.231,42)            │
  *   └────────────────────────────────────────────────────────┘
@@ -25,13 +25,12 @@
  * of the dashboard query — see useLedgerStream.ts.
  */
 
-import { Seal } from '@warehouse14/ui-kit';
-
 import { useDashboardSummary } from '../../hooks/useDashboardSummary.js';
 import { useLedgerStream } from '../../hooks/useLedgerStream.js';
 import { useSessionStore } from '../../state/session-store.js';
 
 import { DayControl } from './DayControl.js';
+import { GoogleKalenderCard } from './GoogleKalenderCard.js';
 import { TagebuchFeed } from './TagebuchFeed.js';
 import { UebersichtPanel } from './UebersichtPanel.js';
 import { WerkstattFooter } from './WerkstattFooter.js';
@@ -105,16 +104,18 @@ export function Werkstatt(): JSX.Element {
             retrying={isFetching}
           />
 
-          {/* Tiny seal in the negative space at the bottom — anchoring brand */}
+          {/* Google Kalender fills the former negative space under Übersicht.
+              Full-page twin: Spotlight → „Kalender“ (/kalender). */}
           <div
             style={{
               flex: 1,
-              display: 'grid',
-              placeItems: 'center',
-              paddingTop: 'var(--space-8)',
+              minHeight: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              paddingTop: 'var(--space-6)',
             }}
           >
-            <Seal size="sm" tone="faded" />
+            <GoogleKalenderCard />
           </div>
         </div>
 

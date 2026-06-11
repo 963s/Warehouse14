@@ -24,7 +24,7 @@
 import { type CSSProperties, memo, useState } from 'react';
 
 import type { ProductListRow } from '@warehouse14/api-client';
-import { MoneyAmount, ParchmentCard } from '@warehouse14/ui-kit';
+import { IconButton, MoneyAmount, ParchmentCard, Trash2 } from '@warehouse14/ui-kit';
 
 import { itemTypeLabel } from '../../lib/item-type-label.js';
 import { PRODUCT_STATUS_COLOR, PRODUCT_STATUS_LABEL } from '../../lib/product-status-label.js';
@@ -32,7 +32,7 @@ import { PRODUCT_STATUS_COLOR, PRODUCT_STATUS_LABEL } from '../../lib/product-st
 // Frozen column geometry (brief: spatial stability). Foto thumb · SKU/Barcode ·
 // Bezeichnung · Status · Kategorie · Lagerort · Preis · Aktion.
 const GRID_TEMPLATE =
-  '56px minmax(120px, 1fr) minmax(0, 2fr) 124px 130px minmax(140px, 1.2fr) 116px 88px';
+  '56px minmax(120px, 1fr) minmax(0, 2fr) 124px 130px minmax(140px, 1.2fr) 116px 132px';
 const CELL_PADDING = 'var(--space-3) var(--space-3)';
 const ROW_MIN_HEIGHT = 56; // ≥48px dense scan-rows (brief §3).
 
@@ -65,6 +65,8 @@ export interface LagerTableProps {
   baseUrl: string;
   onLoadMore: () => void;
   onRowClick: (row: ProductListRow) => void;
+  /** „Endgültig löschen" row action — opens the DeleteProductDialog. */
+  onDelete: (row: ProductListRow) => void;
 }
 
 export function LagerTable({
@@ -76,6 +78,7 @@ export function LagerTable({
   baseUrl,
   onLoadMore,
   onRowClick,
+  onDelete,
 }: LagerTableProps): JSX.Element {
   return (
     <div
@@ -104,6 +107,7 @@ export function LagerTable({
             highlighted={highlightedId === row.id}
             baseUrl={baseUrl}
             onClick={onRowClick}
+            onDelete={onDelete}
           />
         ))
       )}
@@ -222,10 +226,11 @@ interface LagerRowProps {
   highlighted: boolean;
   baseUrl: string;
   onClick: (row: ProductListRow) => void;
+  onDelete: (row: ProductListRow) => void;
 }
 
 const LagerRow = memo(
-  function LagerRow({ row, highlighted, baseUrl, onClick }: LagerRowProps): JSX.Element {
+  function LagerRow({ row, highlighted, baseUrl, onClick, onDelete }: LagerRowProps): JSX.Element {
     const lagerort = [row.locationStorageUnit, row.locationDrawer, row.locationPosition]
       .filter((s): s is string => s !== null && s.length > 0)
       .join(' · ');
@@ -394,22 +399,41 @@ const LagerRow = memo(
         <div
           style={{
             ...cellBase,
-            textAlign: 'right',
-            fontFamily: 'var(--w14-font-display)',
-            fontStyle: 'italic',
-            fontSize: '0.82rem',
-            color: 'var(--w14-ink-faded)',
+            overflow: 'visible',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            gap: 'var(--space-1)',
           }}
         >
-          anpassen
+          <span
+            style={{
+              fontFamily: 'var(--w14-font-display)',
+              fontStyle: 'italic',
+              fontSize: '0.82rem',
+              color: 'var(--w14-ink-faded)',
+            }}
+          >
+            anpassen
+          </span>
+          {/* „Endgültig löschen" — stops the row-click (which opens the
+              ProductSheet) and hands off to the DeleteProductDialog. */}
+          <IconButton
+            icon={Trash2}
+            label={`${row.sku} endgültig löschen`}
+            tone="danger"
+            iconSize={17}
+            onClick={(ev) => {
+              ev.stopPropagation();
+              onDelete(row);
+            }}
+          />
         </div>
       </div>
     );
   },
   (prev, next) =>
-    prev.highlighted === next.highlighted &&
-    prev.row === next.row &&
-    prev.baseUrl === next.baseUrl,
+    prev.highlighted === next.highlighted && prev.row === next.row && prev.baseUrl === next.baseUrl,
 );
 
 // ────────────────────────────────────────────────────────────────────────

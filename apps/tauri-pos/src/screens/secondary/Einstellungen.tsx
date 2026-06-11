@@ -395,6 +395,8 @@ function ServerSection(): JSX.Element {
 function SocialSection(): JSX.Element {
   const social = useIntegrationSettings((s) => s.settings.social);
   const setSocial = useIntegrationSettings((s) => s.setSocial);
+  const gcal = useIntegrationSettings((s) => s.settings.googleCalendar);
+  const setGoogleCalendar = useIntegrationSettings((s) => s.setGoogleCalendar);
   return (
     <div style={pad}>
       <SectionTitle
@@ -421,6 +423,19 @@ function SocialSection(): JSX.Element {
           onChange={(v) => setSocial({ facebookPage: v })}
           placeholder="facebook.com/…"
         />
+      </div>
+      <div style={card}>
+        <Field
+          title="Google Kalender (Embed-URL)"
+          value={gcal.embedUrl}
+          onChange={(v) => setGoogleCalendar({ embedUrl: v })}
+          placeholder="https://calendar.google.com/calendar/embed?src=…&mode=WEEK&hl=de"
+          mono
+        />
+        <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--w14-ink-faded)' }}>
+          Kalender in Google auf „öffentlich“ stellen oder die private Embed-URL einfügen. Der
+          Kalender erscheint in der Werkstatt und unter „Kalender“ (Spotlight).
+        </p>
       </div>
       <div style={card}>
         <StatusDot ok={false} label="Meta/WhatsApp-Token: serverseitig (in .env setzen)" />

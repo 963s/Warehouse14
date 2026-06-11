@@ -164,6 +164,15 @@ export const products = pgTable(
     soldAt: timestamp('sold_at', { withTimezone: true }),
 
     // ───────────────────────────────────────────────────────────────
+    // Migration 0063: Briefmarken stamp attributes. Both NULL-able —
+    // only stamp products carry them. Erhaltung uses the dealer
+    // notation: POSTFRISCH (**), FALZ (*), GESTEMPELT (,), AUF_BRIEF.
+    // stamp_minr = Michel catalog number ("MiNr. 27").
+    // ───────────────────────────────────────────────────────────────
+    stampErhaltung: text('stamp_erhaltung'),
+    stampMinr: integer('stamp_minr'),
+
+    // ───────────────────────────────────────────────────────────────
     // Phase 2.A storefront gate (migration 0029).
     //
     // SINGLE source-of-truth flag for "show this SKU on warehouse14.de".
@@ -256,6 +265,14 @@ export const products = pgTable(
     collectorPremiumNonNeg: check(
       'products_collector_premium_nonneg',
       sql`${table.collectorPremiumEur} IS NULL OR ${table.collectorPremiumEur} >= 0`,
+    ),
+    stampErhaltungDomain: check(
+      'products_stamp_erhaltung_check',
+      sql`${table.stampErhaltung} IS NULL OR ${table.stampErhaltung} IN ('POSTFRISCH','FALZ','GESTEMPELT','AUF_BRIEF')`,
+    ),
+    stampMinrPositive: check(
+      'products_stamp_minr_positive',
+      sql`${table.stampMinr} IS NULL OR ${table.stampMinr} > 0`,
     ),
   }),
 );

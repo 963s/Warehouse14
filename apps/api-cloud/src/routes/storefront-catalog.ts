@@ -101,6 +101,9 @@ type ProductRow = {
   metal: string | null;
   weight_grams: string | null;
   fineness_decimal: string | null;
+  // Briefmarken facets (migration 0063) — NULL for non-stamp items.
+  stamp_erhaltung: string | null;
+  stamp_minr: number | null;
   // Raw app.db.execute() (postgres-js) returns timestamptz columns as ISO
   // strings, not JS Date — accept both so toStorefrontProduct never assumes
   // .toISOString() exists (was a 500 on every catalog request with data).
@@ -224,6 +227,8 @@ function toStorefrontProduct(row: ProductRow, images: StorefrontProductImage[]):
     metal: row.metal,
     weightGrams: row.metal ? row.weight_grams : null,
     finenessDecimal: row.metal ? row.fineness_decimal : null,
+    stampErhaltung: (row.stamp_erhaltung ?? null) as StorefrontProduct['stampErhaltung'],
+    stampMinr: row.stamp_minr,
     publishedAt: row.published_at
       ? row.published_at instanceof Date
         ? row.published_at.toISOString()
@@ -294,8 +299,16 @@ const storefrontCatalog: FastifyPluginAsync<StorefrontCatalogRoutesOpts> = async
   //                                       drop off the public list
   //                                       immediately, even if the
   //                                       publish flag stays TRUE)
-  //   • category (slug)                  (optional facet)
+  //   • category (slug)                  (optional facet — includes ALL
+  //                                       descendant categories via a
+  //                                       recursive CTE, so
+  //                                       ?category=briefmarken matches a
+  //                                       product filed under
+  //                                       Altdeutschland → Baden)
   //   • metal (e.g. 'GOLD')              (optional facet)
+  //   • erhaltung                        (optional Briefmarken facet —
+  //                                       POSTFRISCH/FALZ/GESTEMPELT/AUF_BRIEF)
+  //   • minrVon / minrBis                (optional MiNr range, inclusive)
   //   • q  (free-text)                   (optional — ILIKE on name +
   //                                       sku for V1; ts_vector lands
   //                                       in Phase 2.B)
@@ -320,6 +333,16 @@ const storefrontCatalog: FastifyPluginAsync<StorefrontCatalogRoutesOpts> = async
           offset: Type.Optional(Type.Integer({ minimum: 0 })),
           category: Type.Optional(Type.String({ maxLength: 80 })),
           metal: Type.Optional(Type.String({ maxLength: 16 })),
+          erhaltung: Type.Optional(
+            Type.Union([
+              Type.Literal('POSTFRISCH'),
+              Type.Literal('FALZ'),
+              Type.Literal('GESTEMPELT'),
+              Type.Literal('AUF_BRIEF'),
+            ]),
+          ),
+          minrVon: Type.Optional(Type.Integer({ minimum: 1, maximum: 1_000_000 })),
+          minrBis: Type.Optional(Type.Integer({ minimum: 1, maximum: 1_000_000 })),
           q: Type.Optional(Type.String({ maxLength: 80 })),
         }),
         response: {
@@ -334,6 +357,9 @@ const storefrontCatalog: FastifyPluginAsync<StorefrontCatalogRoutesOpts> = async
         offset?: number;
         category?: string;
         metal?: string;
+        erhaltung?: 'POSTFRISCH' | 'FALZ' | 'GESTEMPELT' | 'AUF_BRIEF';
+        minrVon?: number;
+        minrBis?: number;
         q?: string;
       };
       const limit = Math.min(Math.max(q.limit ?? 24, 1), 100);
@@ -355,6 +381,7 @@ const storefrontCatalog: FastifyPluginAsync<StorefrontCatalogRoutesOpts> = async
           p.year_minted_from, p.year_minted_to, p.origin_country,
           p.period, p.catalog_reference,
           p.metal, p.weight_grams, p.fineness_decimal,
+          p.stamp_erhaltung, p.stamp_minr,
           p.published_at,
           pc.category_id        AS primary_category_id,
           c.slug                AS primary_category_slug,
@@ -367,12 +394,28 @@ const storefrontCatalog: FastifyPluginAsync<StorefrontCatalogRoutesOpts> = async
         WHERE p.is_published_to_web = TRUE
           AND p.status = 'AVAILABLE'
           AND (${q.metal ?? null}::text IS NULL OR p.metal = ${q.metal ?? null})
+          AND (${q.erhaltung ?? null}::text IS NULL OR p.stamp_erhaltung = ${q.erhaltung ?? null})
+          AND (${q.minrVon ?? null}::int IS NULL OR p.stamp_minr >= ${q.minrVon ?? null})
+          AND (${q.minrBis ?? null}::int IS NULL OR p.stamp_minr <= ${q.minrBis ?? null})
           AND (
             ${q.category ?? null}::text IS NULL
             OR EXISTS (
+              -- Descendant-inclusive category match (0063): the requested
+              -- slug plus EVERYTHING below it (depth ≤ 3), so a root like
+              -- 'briefmarken' matches products filed under
+              -- Altdeutschland → Baden.
               SELECT 1 FROM product_categories pc2
-              JOIN categories c2 ON c2.id = pc2.category_id
-              WHERE pc2.product_id = p.id AND c2.slug = ${q.category ?? null}
+              WHERE pc2.product_id = p.id
+                AND pc2.category_id IN (
+                  WITH RECURSIVE cat_descendants AS (
+                    SELECT id FROM categories WHERE slug = ${q.category ?? null}
+                    UNION ALL
+                    SELECT child.id
+                    FROM categories child
+                    JOIN cat_descendants parent ON child.parent_id = parent.id
+                  )
+                  SELECT id FROM cat_descendants
+                )
             )
           )
           AND (
@@ -464,6 +507,7 @@ const storefrontCatalog: FastifyPluginAsync<StorefrontCatalogRoutesOpts> = async
         p.year_minted_from, p.year_minted_to, p.origin_country,
         p.period, p.catalog_reference,
         p.metal, p.weight_grams, p.fineness_decimal,
+        p.stamp_erhaltung, p.stamp_minr,
         p.published_at,
         pc.category_id        AS primary_category_id,
         c.slug                AS primary_category_slug,
@@ -504,8 +548,10 @@ const storefrontCatalog: FastifyPluginAsync<StorefrontCatalogRoutesOpts> = async
   // GET /api/storefront/categories — full taxonomy tree
   //
   // Filters out `hidden_from_storefront = TRUE` rows. Top-level roots
-  // appear first; children follow their parent. V1 schema caps depth
-  // at 2 so the tree is always at most root → leaf.
+  // appear first; children follow their parent (ORDER BY parent_id
+  // NULLS FIRST is not strictly depth-first, but composeCategoryTree
+  // pre-registers every node before linking, so depth-3 subtrees —
+  // Briefmarken → Altdeutschland → states since 0063 — compose fine).
   // ════════════════════════════════════════════════════════════════════
   app.get(
     '/api/storefront/categories',

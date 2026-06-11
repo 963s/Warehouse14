@@ -21,6 +21,14 @@ export interface SocialConfig {
   instagramHandle: string;
   facebookPage: string;
 }
+export interface GoogleCalendarConfig {
+  /**
+   * Google-Kalender Embed-URL (oder nur die Kalender-ID). Wird RAW als
+   * iframe-`src` eingebettet — z. B.
+   * https://calendar.google.com/calendar/embed?src=…&mode=WEEK&hl=de
+   */
+  embedUrl: string;
+}
 export interface AiConfig {
   visionEnabled: boolean; // AI photo → attributes
   priceEstimateEnabled: boolean; // AI price suggestion
@@ -29,12 +37,14 @@ export interface IntegrationSettings {
   chatwoot: ChatwootConfig;
   social: SocialConfig;
   ai: AiConfig;
+  googleCalendar: GoogleCalendarConfig;
 }
 
 const DEFAULT: IntegrationSettings = {
   chatwoot: { enabled: false, baseUrl: '', websiteToken: '' },
   social: { whatsappNumber: '', instagramHandle: '', facebookPage: '' },
   ai: { visionEnabled: true, priceEstimateEnabled: true },
+  googleCalendar: { embedUrl: '' },
 };
 
 interface State {
@@ -42,6 +52,7 @@ interface State {
   setChatwoot: (patch: Partial<ChatwootConfig>) => void;
   setSocial: (patch: Partial<SocialConfig>) => void;
   setAi: (patch: Partial<AiConfig>) => void;
+  setGoogleCalendar: (patch: Partial<GoogleCalendarConfig>) => void;
 }
 
 function load(): IntegrationSettings {
@@ -53,6 +64,7 @@ function load(): IntegrationSettings {
       chatwoot: { ...DEFAULT.chatwoot, ...(p.chatwoot ?? {}) },
       social: { ...DEFAULT.social, ...(p.social ?? {}) },
       ai: { ...DEFAULT.ai, ...(p.ai ?? {}) },
+      googleCalendar: { ...DEFAULT.googleCalendar, ...(p.googleCalendar ?? {}) },
     };
   } catch {
     return DEFAULT;
@@ -80,6 +92,14 @@ export const useIntegrationSettings = create<State>((set, get) => ({
   },
   setAi: (patch) => {
     const next = { ...get().settings, ai: { ...get().settings.ai, ...patch } };
+    persist(next);
+    set({ settings: next });
+  },
+  setGoogleCalendar: (patch) => {
+    const next = {
+      ...get().settings,
+      googleCalendar: { ...get().settings.googleCalendar, ...patch },
+    };
     persist(next);
     set({ settings: next });
   },

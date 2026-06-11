@@ -112,6 +112,21 @@ export const StorefrontProduct = Type.Object({
   weightGrams: Type.Union([WeightString, Type.Null()]),
   finenessDecimal: Type.Union([FinenessString, Type.Null()]),
 
+  // ─── Briefmarken facets (migration 0063). NULL for non-stamp items. ───
+  /**
+   * Erhaltung in the dealer notation: Postfrisch = ⭐⭐ (**), Falz = ⭐ (*),
+   * Gestempelt = (,), Auf Brief. Renders e.g. "MiNr. 27 · Postfrisch".
+   */
+  stampErhaltung: Type.Union([
+    Type.Literal('POSTFRISCH'),
+    Type.Literal('FALZ'),
+    Type.Literal('GESTEMPELT'),
+    Type.Literal('AUF_BRIEF'),
+    Type.Null(),
+  ]),
+  /** Michel-Katalognummer (MiNr.). Drives the minrVon/minrBis range facet. */
+  stampMinr: Type.Union([Type.Integer(), Type.Null()]),
+
   /** ISO timestamp — first publication. Drives sitemap.lastmod. */
   publishedAt: Type.Union([Type.String({ format: 'date-time' }), Type.Null()]),
 
@@ -180,7 +195,7 @@ export type StorefrontCategoryNode = {
   descriptionDe: string | null;
   descriptionEn: string | null;
   schemaOrgType: string | null;
-  /** Recursive — V1 ships a 2-level cap, so depth ≤ 2 in practice. */
+  /** Recursive — capped at 3 levels since 0063 (Briefmarken → Altdeutschland → states). */
   children: StorefrontCategoryNode[];
 };
 

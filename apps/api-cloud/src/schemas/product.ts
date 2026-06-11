@@ -65,6 +65,21 @@ export const FinenessString = Type.String({
   description: 'Metal fineness as a decimal 0..1 (e.g. 585/1000 → "0.5850").',
 });
 
+/**
+ * Briefmarken-Erhaltung (migration 0063) — the owner's dealer notation:
+ * Postfrisch = ⭐⭐ (**), Falz = ⭐ (*), Gestempelt = (,), Auf Brief.
+ * Display string e.g. "MiNr. 27 · Postfrisch".
+ */
+export const StampErhaltung = Type.Union([
+  Type.Literal('POSTFRISCH'),
+  Type.Literal('FALZ'),
+  Type.Literal('GESTEMPELT'),
+  Type.Literal('AUF_BRIEF'),
+]);
+
+/** Michel catalog number (MiNr.) — positive integer. */
+export const StampMinr = Type.Integer({ minimum: 1, maximum: 1_000_000 });
+
 // ────────────────────────────────────────────────────────────────────────
 // POST /api/products — CreateProductBody
 // ────────────────────────────────────────────────────────────────────────
@@ -101,6 +116,17 @@ export const CreateProductBody = Type.Object({
   descriptionDe: Type.Optional(Type.String({ maxLength: 8192 })),
   marketingAttributes: Type.Optional(Type.Array(Type.Any(), { default: [] })),
 
+  // ─── Migration 0063: Briefmarken attributes + primary category ─────
+  /** Briefmarken-Erhaltung (POSTFRISCH/FALZ/GESTEMPELT/AUF_BRIEF). Stamp items only. */
+  stampErhaltung: Type.Optional(StampErhaltung),
+  /** Michel-Katalognummer (MiNr.). Stamp items only. */
+  stampMinr: Type.Optional(StampMinr),
+  /**
+   * Primary taxonomy category. Writes a product_categories row with
+   * is_primary=TRUE in the same transaction as the product INSERT.
+   */
+  primaryCategoryId: Type.Optional(Type.String({ format: 'uuid' })),
+
   // Initial channel flags (default off — Owner publishes later via PUT)
   listedOnStorefront: Type.Boolean({ default: false }),
   listedOnEbay: Type.Boolean({ default: false }),
@@ -132,7 +158,8 @@ export const UpdateProductBody = Type.Object(
     condition: Type.Optional(ProductCondition),
     listPriceEur: Type.Optional(DecimalString),
     name: Type.Optional(Type.String({ minLength: 1, maxLength: 256 })),
-    descriptionDe: Type.Optional(Type.String({ maxLength: 8192 })),
+    /** Omit = keep current; `null` clears (matches descriptionEn). */
+    descriptionDe: Type.Optional(Type.Union([Type.String({ maxLength: 8192 }), Type.Null()])),
     marketingAttributes: Type.Optional(Type.Array(Type.Any())),
     listedOnStorefront: Type.Optional(Type.Boolean()),
     listedOnEbay: Type.Optional(Type.Boolean()),
@@ -179,6 +206,18 @@ export const UpdateProductBody = Type.Object(
     descriptionEn: Type.Optional(Type.Union([Type.String({ maxLength: 8192 }), Type.Null()])),
     seoTitleEn: Type.Optional(Type.Union([Type.String({ maxLength: 256 }), Type.Null()])),
     seoDescriptionEn: Type.Optional(Type.Union([Type.String({ maxLength: 4096 }), Type.Null()])),
+
+    // ─── Migration 0063: Briefmarken attributes + primary category ────
+    /** Briefmarken-Erhaltung. `null` clears. */
+    stampErhaltung: Type.Optional(Type.Union([StampErhaltung, Type.Null()])),
+    /** Michel-Katalognummer (MiNr.). `null` clears. */
+    stampMinr: Type.Optional(Type.Union([StampMinr, Type.Null()])),
+    /**
+     * Primary taxonomy category. Replaces the prior primary atomically
+     * (unsets the old is_primary row, upserts the new one). `null`
+     * clears the primary flag without removing the membership.
+     */
+    primaryCategoryId: Type.Optional(Type.Union([Type.String({ format: 'uuid' }), Type.Null()])),
   },
   { additionalProperties: false },
 );

@@ -117,6 +117,14 @@ const productsListRoute: FastifyPluginAsync = async (app) => {
             listPriceEur: products.listPriceEur,
             name: products.name,
             descriptionDe: products.descriptionDe,
+            // Migration 0063: Briefmarken + collector facts for the POS tile.
+            stampErhaltung: products.stampErhaltung,
+            stampMinr: products.stampMinr,
+            yearMintedFrom: products.yearMintedFrom,
+            yearMintedTo: products.yearMintedTo,
+            originCountry: products.originCountry,
+            period: products.period,
+            catalogReference: products.catalogReference,
             listedOnStorefront: products.listedOnStorefront,
             listedOnEbay: products.listedOnEbay,
             isCommission: products.isCommission,
@@ -207,6 +215,18 @@ const productsListRoute: FastifyPluginAsync = async (app) => {
           listPriceEur: r.listPriceEur,
           name: r.name,
           descriptionDe: r.descriptionDe,
+          stampErhaltung: r.stampErhaltung as
+            | 'POSTFRISCH'
+            | 'FALZ'
+            | 'GESTEMPELT'
+            | 'AUF_BRIEF'
+            | null,
+          stampMinr: r.stampMinr,
+          yearMintedFrom: r.yearMintedFrom,
+          yearMintedTo: r.yearMintedTo,
+          originCountry: r.originCountry,
+          period: r.period,
+          catalogReference: r.catalogReference,
           listedOnStorefront: r.listedOnStorefront,
           listedOnEbay: r.listedOnEbay,
           isCommission: r.isCommission,

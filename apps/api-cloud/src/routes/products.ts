@@ -23,11 +23,13 @@
 
 import { randomUUID } from 'node:crypto';
 import { Type } from '@sinclair/typebox';
-import { count, eq } from 'drizzle-orm';
+import { and, count, eq } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 
 import {
+  appointmentLinkedProducts,
   auditLog,
+  categories as categoriesTable,
   productCategories,
   productEbayListingEvents,
   productPhotos,
@@ -82,6 +84,17 @@ class R2NotConfiguredError extends DomainError {
 class ProductNotDeletableError extends DomainError {
   public readonly httpStatus = 409;
   public readonly code: ApiErrorCode = 'CONFLICT';
+}
+
+/** 400 with a field-scoped reason (mirrors categories.ts / product-categories.ts). */
+class ProductValidationError extends DomainError {
+  public readonly httpStatus = 400;
+  public readonly code: ApiErrorCode = 'VALIDATION_ERROR';
+  public readonly details: { field: string; reason: string };
+  public constructor(field: string, reason: string) {
+    super(`Product validation failed for "${field}": ${reason}`);
+    this.details = { field, reason };
+  }
 }
 
 const ErrorResponse = Type.Object({
@@ -140,6 +153,22 @@ const productsRoutes: FastifyPluginAsync<ProductsRoutesOpts> = async (app, opts)
       const actorId = req.actor.id;
       const deviceId = req.deviceId ?? null;
 
+      // Validate the primary category BEFORE opening the tx — friendlier 400
+      // than the raw FK 23503.
+      if (body.primaryCategoryId) {
+        const [cat] = await app.db
+          .select({ id: categoriesTable.id })
+          .from(categoriesTable)
+          .where(eq(categoriesTable.id, body.primaryCategoryId))
+          .limit(1);
+        if (!cat) {
+          throw new ProductValidationError(
+            'primaryCategoryId',
+            `Category ${body.primaryCategoryId} not found.`,
+          );
+        }
+      }
+
       const inserted = await app.db.transaction(async (tx) => {
         const [row] = await tx
           .insert(products)
@@ -161,6 +190,9 @@ const productsRoutes: FastifyPluginAsync<ProductsRoutesOpts> = async (app, opts)
             name: body.name,
             descriptionDe: body.descriptionDe ?? null,
             marketingAttributes: body.marketingAttributes ?? [],
+            // Migration 0063: Briefmarken attributes (NULL for non-stamps).
+            stampErhaltung: body.stampErhaltung ?? null,
+            stampMinr: body.stampMinr ?? null,
             listedOnStorefront: body.listedOnStorefront,
             listedOnEbay: body.listedOnEbay,
             // Storage location (Lagerort) — optional at intake.
@@ -181,6 +213,15 @@ const productsRoutes: FastifyPluginAsync<ProductsRoutesOpts> = async (app, opts)
           });
         if (!row) throw new Error('product INSERT returned no row');
 
+        // Primary taxonomy category — same tx as the product INSERT.
+        if (body.primaryCategoryId) {
+          await tx.insert(productCategories).values({
+            productId: row.id,
+            categoryId: body.primaryCategoryId,
+            isPrimary: true,
+          });
+        }
+
         await tx.insert(auditLog).values({
           eventType: 'product.created',
           actorUserId: actorId,
@@ -197,6 +238,9 @@ const productsRoutes: FastifyPluginAsync<ProductsRoutesOpts> = async (app, opts)
             taxTreatmentCode: body.taxTreatmentCode,
             itemType: body.itemType,
             condition: body.condition,
+            primaryCategoryId: body.primaryCategoryId ?? null,
+            stampErhaltung: body.stampErhaltung ?? null,
+            stampMinr: body.stampMinr ?? null,
           },
         });
 
@@ -292,7 +336,11 @@ const productsRoutes: FastifyPluginAsync<ProductsRoutesOpts> = async (app, opts)
         maybe('condition', body.condition, before.condition);
         maybe('listPriceEur', body.listPriceEur, before.listPriceEur);
         maybe('name', body.name, before.name);
-        maybe('descriptionDe', body.descriptionDe ?? null, before.descriptionDe);
+        // NOTE: no `?? null` here — the old coercion turned EVERY partial PUT
+        // that omitted descriptionDe into a wipe (caught by taxonomy.test.ts:
+        // the publish PUT cleared the description). `undefined` = keep,
+        // explicit `null` = clear (schema allows both, like descriptionEn).
+        maybe('descriptionDe', body.descriptionDe, before.descriptionDe);
         maybe(
           'marketingAttributes',
           body.marketingAttributes,
@@ -322,6 +370,62 @@ const productsRoutes: FastifyPluginAsync<ProductsRoutesOpts> = async (app, opts)
         maybe('seoTitleEn', body.seoTitleEn, before.seoTitleEn);
         maybe('seoDescriptionEn', body.seoDescriptionEn, before.seoDescriptionEn);
 
+        // ─── Migration 0063: Briefmarken attributes ────────────────────
+        maybe('stampErhaltung', body.stampErhaltung, before.stampErhaltung);
+        maybe('stampMinr', body.stampMinr, before.stampMinr);
+
+        // ─── Migration 0063: primary category (product_categories) ────
+        // Replaces the prior primary atomically inside this tx: unset the
+        // old is_primary row FIRST (the partial UNIQUE
+        // product_categories_one_primary_uq allows at most one), then
+        // upsert the new membership with is_primary=TRUE. `null` clears
+        // the primary flag but keeps the membership row.
+        if (body.primaryCategoryId !== undefined) {
+          const [currentPrimary] = await tx
+            .select({ categoryId: productCategories.categoryId })
+            .from(productCategories)
+            .where(and(eq(productCategories.productId, id), eq(productCategories.isPrimary, true)))
+            .limit(1);
+
+          if (body.primaryCategoryId === null) {
+            if (currentPrimary) {
+              await tx
+                .update(productCategories)
+                .set({ isPrimary: false })
+                .where(
+                  and(eq(productCategories.productId, id), eq(productCategories.isPrimary, true)),
+                );
+              changedFields.push('primaryCategoryId');
+            }
+          } else if (currentPrimary?.categoryId !== body.primaryCategoryId) {
+            const [cat] = await tx
+              .select({ id: categoriesTable.id })
+              .from(categoriesTable)
+              .where(eq(categoriesTable.id, body.primaryCategoryId))
+              .limit(1);
+            if (!cat) {
+              throw new ProductValidationError(
+                'primaryCategoryId',
+                `Category ${body.primaryCategoryId} not found.`,
+              );
+            }
+            await tx
+              .update(productCategories)
+              .set({ isPrimary: false })
+              .where(
+                and(eq(productCategories.productId, id), eq(productCategories.isPrimary, true)),
+              );
+            await tx
+              .insert(productCategories)
+              .values({ productId: id, categoryId: body.primaryCategoryId, isPrimary: true })
+              .onConflictDoUpdate({
+                target: [productCategories.productId, productCategories.categoryId],
+                set: { isPrimary: true },
+              });
+            changedFields.push('primaryCategoryId');
+          }
+        }
+
         if (body.status !== undefined && body.status !== before.status) {
           // Refuse anything other than DRAFT → AVAILABLE here.
           if (!(before.status === 'DRAFT' && body.status === 'AVAILABLE')) {
@@ -342,11 +446,18 @@ const productsRoutes: FastifyPluginAsync<ProductsRoutesOpts> = async (app, opts)
           return { id, updatedAt: before.updatedAt, changedFields };
         }
 
-        const [row] = await tx.update(products).set(update).where(eq(products.id, id)).returning({
-          id: products.id,
-          updatedAt: products.updatedAt,
-        });
-        if (!row) throw new Error('product UPDATE returned no row');
+        // The products UPDATE only runs when a product COLUMN changed — a
+        // primaryCategoryId-only change touches product_categories alone
+        // (drizzle's .set({}) throws on an empty object).
+        let updatedAt = before.updatedAt;
+        if (Object.keys(update).length > 0) {
+          const [row] = await tx.update(products).set(update).where(eq(products.id, id)).returning({
+            id: products.id,
+            updatedAt: products.updatedAt,
+          });
+          if (!row) throw new Error('product UPDATE returned no row');
+          updatedAt = row.updatedAt;
+        }
 
         await tx.insert(auditLog).values({
           eventType: 'product.updated',
@@ -362,7 +473,7 @@ const productsRoutes: FastifyPluginAsync<ProductsRoutesOpts> = async (app, opts)
           },
         });
 
-        return { id: row.id, updatedAt: row.updatedAt, changedFields };
+        return { id, updatedAt, changedFields };
       });
 
       return reply.status(200).send({
@@ -456,34 +567,55 @@ const productsRoutes: FastifyPluginAsync<ProductsRoutesOpts> = async (app, opts)
   );
 
   // ══════════════════════════════════════════════════════════════════════
-  // DELETE /api/products/:id — hard-delete an UNSOLD DRAFT product
+  // DELETE /api/products/:id — hard-delete a NEVER-TRANSACTED product
   //
   // Lifecycle UX: an operator who created a product by mistake (wrong SKU,
-  // duplicate intake, test row) needs a clean way to remove it. This is the
-  // ONLY destructive product route and it is deliberately narrow:
+  // duplicate intake, test row) — or wants a never-sold piece gone for good —
+  // needs a clean way to remove it. This is the ONLY destructive product
+  // route and it stays deliberately narrow:
   //
-  //   • status MUST be DRAFT — a published / reserved / SOLD row is never
+  //   • status MUST be DRAFT or AVAILABLE — RESERVED / SOLD rows are never
   //     deletable (SOLD rows are fiscally immutable; use /archive instead).
   //   • the row MUST NOT be archived (archived rows are kept for the trail).
-  //   • the row MUST NOT be referenced by any transaction_items (defence in
-  //     depth — a DRAFT cannot have a sale, but we verify the fiscal FK
-  //     before touching anything).
+  //   • the row MUST NOT be referenced by any transaction_items (fiscal FK)
+  //     nor by any appointment link (appointment_linked_products carries the
+  //     viewing-hold/reservation trail and is INSERT-only by discipline).
+  //   • a LIVE eBay listing (ebay_state = 'ONLINE') blocks the delete — the
+  //     external listing must be ended first.
   //
-  // Owned child rows (photos, eBay events, category links) are removed in the
-  // same transaction so no FK orphans block the delete. Step-up is required
-  // (same bar as archive) and a `product.deleted` audit row is written.
+  // Web delisting is automatic: removing the row removes it from the
+  // storefront catalog (which reads `products`); the publish flags at delete
+  // time are preserved in the audit payload. Owned child rows (photos, eBay
+  // events, category links) are removed in the same transaction so no FK
+  // orphans block the delete. Any OTHER FK still referencing the row
+  // (documents, inventory scans, carts, …) rolls the whole transaction back
+  // and surfaces as a German 409 — never a half-deleted product. Step-up is
+  // required (same bar as archive) and a `product.deleted` audit row is
+  // written.
   // ══════════════════════════════════════════════════════════════════════
+
+  /** postgres-js raises PostgresError with code 23503 on FK violations. */
+  function isForeignKeyViolation(e: unknown): boolean {
+    return (
+      typeof e === 'object' &&
+      e !== null &&
+      'code' in e &&
+      (e as { code?: unknown }).code === '23503'
+    );
+  }
+
   app.delete<{ Params: { id: string } }>(
     '/api/products/:id',
     {
       schema: {
         tags: ['products'],
-        summary: 'Delete an unsold DRAFT product (Owner-only, step-up).',
+        summary: 'Delete a never-transacted product (Owner-only, step-up).',
         description:
-          'Hard-deletes a product that is still a DRAFT and has never been part of a fiscal ' +
-          'transaction. Published / reserved / SOLD / archived rows are refused (409). Owned ' +
-          'photo, eBay-event and category-link rows are removed in the same transaction. ' +
-          'Writes a product.deleted audit row.',
+          'Hard-deletes a DRAFT or AVAILABLE product that has never been part of a fiscal ' +
+          'transaction and carries no reservation/appointment link. RESERVED / SOLD / archived ' +
+          'rows and live eBay listings are refused (409). Owned photo, eBay-event and ' +
+          'category-link rows are removed in the same transaction; storefront delisting is ' +
+          'implicit (the catalog reads the products table). Writes a product.deleted audit row.',
         params: Type.Object({ id: Type.String({ format: 'uuid' }) }),
         response: {
           200: DeleteProductResponse,
@@ -503,80 +635,125 @@ const productsRoutes: FastifyPluginAsync<ProductsRoutesOpts> = async (app, opts)
       const actorId = req.actor.id;
       const deviceId = req.deviceId ?? null;
 
-      const outcome = await app.db.transaction(async (tx) => {
-        const rows = await tx
-          .select({
-            id: products.id,
-            sku: products.sku,
-            name: products.name,
-            status: products.status,
-            archivedAt: products.archivedAt,
-            soldAt: products.soldAt,
-            acquisitionCostEur: products.acquisitionCostEur,
-          })
-          .from(products)
-          .where(eq(products.id, id))
-          .limit(1);
-        const before = rows[0];
-        if (!before) throw new ProductNotFoundError(`Product ${id} not found.`);
+      const runDelete = (): Promise<{ id: string; sku: string; deletedAt: Date }> =>
+        app.db.transaction(async (tx) => {
+          const rows = await tx
+            .select({
+              id: products.id,
+              sku: products.sku,
+              name: products.name,
+              status: products.status,
+              archivedAt: products.archivedAt,
+              soldAt: products.soldAt,
+              acquisitionCostEur: products.acquisitionCostEur,
+              ebayState: products.ebayState,
+              isPublishedToWeb: products.isPublishedToWeb,
+              listedOnStorefront: products.listedOnStorefront,
+              listedOnEbay: products.listedOnEbay,
+            })
+            .from(products)
+            .where(eq(products.id, id))
+            .limit(1);
+          const before = rows[0];
+          if (!before) throw new ProductNotFoundError(`Product ${id} not found.`);
 
-        if (before.status !== 'DRAFT') {
-          throw new ProductNotDeletableError(
-            `Nur Entwürfe können gelöscht werden. Produkt ${before.sku} ist ${before.status}. Verkaufte Stücke werden archiviert, nicht gelöscht.`,
-          );
-        }
-        if (before.archivedAt) {
-          throw new ProductNotDeletableError(
-            `Produkt ${before.sku} ist bereits archiviert und kann nicht gelöscht werden.`,
-          );
-        }
-        if (before.soldAt) {
-          throw new ProductNotDeletableError(
-            `Produkt ${before.sku} ist fiskalisch verknüpft (Verkaufsdatum gesetzt) und kann nicht gelöscht werden.`,
-          );
-        }
+          if (before.archivedAt) {
+            throw new ProductNotDeletableError(
+              `Produkt ${before.sku} ist bereits archiviert und kann nicht gelöscht werden.`,
+            );
+          }
+          if (before.status === 'SOLD' || before.soldAt) {
+            throw new ProductNotDeletableError(
+              `Produkt ${before.sku} wurde verkauft und ist Teil der fiskalischen Aufzeichnung — es kann nur archiviert werden, nicht gelöscht.`,
+            );
+          }
+          if (before.status !== 'DRAFT' && before.status !== 'AVAILABLE') {
+            throw new ProductNotDeletableError(
+              `Produkt ${before.sku} ist derzeit reserviert und kann nicht gelöscht werden. Bitte zuerst die Reservierung aufheben.`,
+            );
+          }
+          if (before.ebayState === 'ONLINE') {
+            throw new ProductNotDeletableError(
+              `Produkt ${before.sku} ist aktuell live bei eBay gelistet. Bitte das Listing zuerst beenden — danach kann gelöscht werden.`,
+            );
+          }
 
-        // Defence in depth: never delete a row any fiscal line item references.
-        const [itemCount] = await tx
-          .select({ n: count() })
-          .from(transactionItems)
-          .where(eq(transactionItems.productId, id));
-        if (Number(itemCount?.n ?? 0) > 0) {
-          throw new ProductNotDeletableError(
-            `Produkt ${before.sku} ist mit einem Beleg verknüpft und kann nicht gelöscht werden.`,
-          );
-        }
+          // Defence in depth: never delete a row any fiscal line item references.
+          const [itemCount] = await tx
+            .select({ n: count() })
+            .from(transactionItems)
+            .where(eq(transactionItems.productId, id));
+          if (Number(itemCount?.n ?? 0) > 0) {
+            throw new ProductNotDeletableError(
+              `Produkt ${before.sku} ist mit einem Beleg verknüpft und kann nicht gelöscht werden.`,
+            );
+          }
 
-        // Remove owned children first (no ON DELETE CASCADE on these FKs).
-        await tx.delete(productCategories).where(eq(productCategories.productId, id));
-        await tx.delete(productEbayListingEvents).where(eq(productEbayListingEvents.productId, id));
-        await tx.delete(productPhotos).where(eq(productPhotos.productId, id));
+          // Reservation trail: appointment links (and their viewing holds) are
+          // INSERT-only — a linked row means the piece was promised to a
+          // customer appointment at some point and keeps its history.
+          const [linkCount] = await tx
+            .select({ n: count() })
+            .from(appointmentLinkedProducts)
+            .where(eq(appointmentLinkedProducts.productId, id));
+          if (Number(linkCount?.n ?? 0) > 0) {
+            throw new ProductNotDeletableError(
+              `Produkt ${before.sku} ist mit einem Termin (Besichtigung/Reservierung) verknüpft und kann nicht gelöscht werden.`,
+            );
+          }
 
-        const deleted = await tx
-          .delete(products)
-          .where(eq(products.id, id))
-          .returning({ id: products.id, sku: products.sku });
-        const row = deleted[0];
-        if (!row) throw new Error('product DELETE returned no row');
+          // Remove owned children first (no ON DELETE CASCADE on these FKs).
+          await tx.delete(productCategories).where(eq(productCategories.productId, id));
+          await tx
+            .delete(productEbayListingEvents)
+            .where(eq(productEbayListingEvents.productId, id));
+          await tx.delete(productPhotos).where(eq(productPhotos.productId, id));
 
-        const now = new Date();
-        await tx.insert(auditLog).values({
-          eventType: 'product.deleted',
-          actorUserId: actorId,
-          deviceId,
-          ipAddress: req.ip ?? null,
-          userAgent: req.headers['user-agent'] ?? null,
-          payload: {
-            productId: id,
-            sku: before.sku,
-            name: before.name,
-            acquisitionCostEur: before.acquisitionCostEur,
-            deletedAt: now.toISOString(),
-          },
+          const deleted = await tx
+            .delete(products)
+            .where(eq(products.id, id))
+            .returning({ id: products.id, sku: products.sku });
+          const row = deleted[0];
+          if (!row) throw new Error('product DELETE returned no row');
+
+          const now = new Date();
+          await tx.insert(auditLog).values({
+            eventType: 'product.deleted',
+            actorUserId: actorId,
+            deviceId,
+            ipAddress: req.ip ?? null,
+            userAgent: req.headers['user-agent'] ?? null,
+            payload: {
+              productId: id,
+              sku: before.sku,
+              name: before.name,
+              status: before.status,
+              acquisitionCostEur: before.acquisitionCostEur,
+              // Web-delisting evidence: what the row was exposed as when it died.
+              wasPublishedToWeb: before.isPublishedToWeb,
+              listedOnStorefront: before.listedOnStorefront,
+              listedOnEbay: before.listedOnEbay,
+              deletedAt: now.toISOString(),
+            },
+          });
+
+          return { id: row.id, sku: row.sku, deletedAt: now };
         });
 
-        return { id: row.id, sku: row.sku, deletedAt: now };
-      });
+      let outcome: { id: string; sku: string; deletedAt: Date };
+      try {
+        outcome = await runDelete();
+      } catch (err) {
+        // Catch-all FK guard: any reference we did not explicitly check
+        // (documents, inventory scans, carts, appraisal/intake rows, …)
+        // aborts the transaction — map it to a calm German 409 instead of a 500.
+        if (isForeignKeyViolation(err)) {
+          throw new ProductNotDeletableError(
+            'Das Produkt ist noch mit anderen Datensätzen verknüpft (z. B. Dokument, Inventur oder Warenkorb) und kann nicht endgültig gelöscht werden.',
+          );
+        }
+        throw err;
+      }
 
       return reply.status(200).send({
         id: outcome.id,

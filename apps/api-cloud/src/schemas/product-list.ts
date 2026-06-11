@@ -13,7 +13,7 @@
 import { type Static, Type } from '@sinclair/typebox';
 
 import { DecimalString, WeightString } from './money.js';
-import { ItemType, ProductCondition } from './product.js';
+import { ItemType, ProductCondition, StampErhaltung } from './product.js';
 
 export const ProductStatus = Type.Union([
   Type.Literal('DRAFT'),
@@ -91,6 +91,16 @@ export const ProductListItem = Type.Object({
   listPriceEur: DecimalString,
   name: Type.String(),
   descriptionDe: Type.Union([Type.String(), Type.Null()]),
+  // ─── Migration 0063: Briefmarken + collector facts for the POS tile ──
+  /** Erhaltung: POSTFRISCH (**), FALZ (*), GESTEMPELT (,), AUF_BRIEF. NULL für Nicht-Briefmarken. */
+  stampErhaltung: Type.Union([StampErhaltung, Type.Null()]),
+  /** Michel-Katalognummer (MiNr.) — display "MiNr. 27 · Postfrisch". */
+  stampMinr: Type.Union([Type.Integer(), Type.Null()]),
+  yearMintedFrom: Type.Union([Type.Integer(), Type.Null()]),
+  yearMintedTo: Type.Union([Type.Integer(), Type.Null()]),
+  originCountry: Type.Union([Type.String(), Type.Null()]),
+  period: Type.Union([Type.String(), Type.Null()]),
+  catalogReference: Type.Union([Type.String(), Type.Null()]),
   listedOnStorefront: Type.Boolean(),
   listedOnEbay: Type.Boolean(),
   isCommission: Type.Boolean(),

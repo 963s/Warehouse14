@@ -151,7 +151,10 @@ describe('Day 16 — Product Management + audit fixes', () => {
   });
 
   beforeEach(async () => {
-    await migratorSql`DELETE FROM users WHERE is_owner = TRUE`;
+    // Demote (don't DELETE) the previous owner: devices/sessions/products from
+    // earlier tests still reference it via FK (devices_paired_by_user_id_fkey),
+    // and 0014's partial unique index only allows ONE is_owner = TRUE row.
+    await migratorSql`UPDATE users SET is_owner = FALSE WHERE is_owner = TRUE`;
 
     const [owner] = await migratorSql<{ id: string }[]>`
       INSERT INTO users (email, name, role, is_owner)
@@ -317,7 +320,11 @@ describe('Day 16 — Product Management + audit fixes', () => {
       expect(out.changedFields).toContain('listPriceEur');
     });
 
-    it('rejects unknown / intake-locked field (additionalProperties: false)', async () => {
+    it('intake-locked field is stripped, never applied (additionalProperties: false)', async () => {
+      // Fastify's DEFAULT AJV config has `removeAdditional: true`, so
+      // `additionalProperties: false` STRIPS unknown fields instead of
+      // 400-ing. The invariant that matters: acquisitionCostEur (intake-
+      // locked, not in the PUT schema) can NEVER be changed via PUT.
       const id = await createOne();
       const res = await app.inject({
         method: 'PUT',
@@ -325,8 +332,16 @@ describe('Day 16 — Product Management + audit fixes', () => {
         headers: headers(ownerTokenStepUp),
         payload: { acquisitionCostEur: '999.99' }, // intake-locked, not in PUT schema
       });
-      expect(res.statusCode).toBe(400);
-      expect((res.json() as { error: { code: string } }).error.code).toBe('VALIDATION_ERROR');
+      expect(res.statusCode).toBe(200);
+      expect((res.json() as { changedFields: string[] }).changedFields).toEqual([]);
+
+      const detail = await app.inject({
+        method: 'GET',
+        url: `/api/products/${id}`,
+        headers: headers(ownerTokenStepUp),
+      });
+      expect(detail.statusCode).toBe(200);
+      expect((detail.json() as { acquisitionCostEur: string }).acquisitionCostEur).toBe('50.00');
     });
 
     it('unknown product id → 404 NOT_FOUND', async () => {

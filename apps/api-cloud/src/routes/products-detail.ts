@@ -92,6 +92,17 @@ const ProductDetail = Type.Object({
   period: Type.Union([Type.String(), Type.Null()]),
   catalogReference: Type.Union([Type.String(), Type.Null()]),
   provenanceNotes: Type.Union([Type.String(), Type.Null()]),
+  // ─── Migration 0063: Briefmarken attributes ────────────────────────
+  /** Erhaltung: POSTFRISCH (**), FALZ (*), GESTEMPELT (,), AUF_BRIEF. NULL für Nicht-Briefmarken. */
+  stampErhaltung: Type.Union([
+    Type.Literal('POSTFRISCH'),
+    Type.Literal('FALZ'),
+    Type.Literal('GESTEMPELT'),
+    Type.Literal('AUF_BRIEF'),
+    Type.Null(),
+  ]),
+  /** Michel-Katalognummer (MiNr.). NULL für Nicht-Briefmarken. */
+  stampMinr: Type.Union([Type.Integer(), Type.Null()]),
   // ─── Channel flags ─────────────────────────────────────────────────
   isCommission: Type.Boolean(),
   listedOnStorefront: Type.Boolean(),
@@ -219,6 +230,13 @@ const productsDetailRoute: FastifyPluginAsync = async (app) => {
         period: row.period,
         catalogReference: row.catalogReference,
         provenanceNotes: row.provenanceNotes,
+        stampErhaltung: row.stampErhaltung as
+          | 'POSTFRISCH'
+          | 'FALZ'
+          | 'GESTEMPELT'
+          | 'AUF_BRIEF'
+          | null,
+        stampMinr: row.stampMinr,
         isCommission: row.isCommission,
         listedOnStorefront: row.listedOnStorefront,
         listedOnEbay: row.listedOnEbay,

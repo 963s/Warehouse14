@@ -20,11 +20,16 @@
  * not shift presence.
  */
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
-import { type ProductStatus, productsApi } from '@warehouse14/api-client';
+import {
+  type ProductListResponse,
+  type ProductListRow,
+  type ProductStatus,
+  productsApi,
+} from '@warehouse14/api-client';
 import {
   Button,
   DiamondRule,
@@ -40,6 +45,7 @@ import { useApiClient } from '../../lib/api-context.js';
 import { type StatusFilter, useLagerFilterStore } from '../../state/lager-filter-store.js';
 import { useToastStore } from '../../state/toast-store.js';
 
+import { DeleteProductDialog } from './DeleteProductDialog.js';
 import { LagerTable } from './LagerTable.js';
 import { ProductSheet } from './ProductSheet.js';
 
@@ -55,6 +61,7 @@ const PAGE_SIZE = 50;
 
 export function Lager(): JSX.Element {
   const api = useApiClient();
+  const queryClient = useQueryClient();
   const addToast = useToastStore((s) => s.addToast);
   const filters = useLagerFilterStore();
   const setStatus = useLagerFilterStore((s) => s.setStatus);
@@ -65,6 +72,8 @@ export function Lager(): JSX.Element {
   // One unified ProductSheet: productId === null ⇒ create, a id ⇒ manage.
   const [sheetOpen, setSheetOpen] = useState<boolean>(false);
   const [sheetProductId, setSheetProductId] = useState<string | null>(null);
+  // „Endgültig löschen" row action — the dialog handles deletable vs. sold.
+  const [deleteTarget, setDeleteTarget] = useState<ProductListRow | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchInput, setSearchInput] = useState<string>('');
   const [pageOffset, setPageOffset] = useState<number>(0);
@@ -131,8 +140,9 @@ export function Lager(): JSX.Element {
   const hasMore = q.data?.hasMore ?? false;
 
   // ── Barcode scanner integration ──
-  // Disable scanner while the product sheet wants Enter for its own fields.
-  const scannerEnabled = !sheetOpen;
+  // Disable scanner while the product sheet or the delete dialog is open
+  // (both want their own key handling).
+  const scannerEnabled = !sheetOpen && deleteTarget === null;
 
   const onScan = useCallback(
     (code: string) => {
@@ -359,6 +369,7 @@ export function Lager(): JSX.Element {
               setSheetProductId(row.id);
               setSheetOpen(true);
             }}
+            onDelete={(row) => setDeleteTarget(row)}
           />
         )}
       </div>
@@ -369,6 +380,34 @@ export function Lager(): JSX.Element {
         onClose={() => {
           setSheetOpen(false);
           setSheetProductId(null);
+        }}
+      />
+
+      <DeleteProductDialog
+        open={deleteTarget !== null}
+        product={deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onDeleted={(productId) => {
+          // Optimistic removal: drop the row from every cached list page
+          // immediately, then re-sync with the server in the background.
+          // The delete is final on the server — there is nothing to roll back.
+          queryClient.setQueriesData<ProductListResponse>(
+            { queryKey: ['products', 'list'] },
+            (old) =>
+              old
+                ? {
+                    ...old,
+                    items: old.items.filter((item) => item.id !== productId),
+                    total: Math.max(0, old.total - 1),
+                  }
+                : old,
+          );
+          void queryClient.invalidateQueries({ queryKey: ['products', 'list'] });
+          setDeleteTarget(null);
+        }}
+        onArchived={() => {
+          void queryClient.invalidateQueries({ queryKey: ['products', 'list'] });
+          setDeleteTarget(null);
         }}
       />
     </section>

@@ -8,9 +8,10 @@
  *                                        surfaces as 409 CONFLICT when
  *                                        product_categories references the id.
  *
- * Hierarchy cap: the DB trigger `enforce_no_grandparent_category` refuses
- * any INSERT/UPDATE that would create grandchildren. Route also pre-checks
- * for a friendlier 400 message.
+ * Hierarchy cap: the DB trigger `enforce_no_grandparent_category` (relaxed
+ * to 3 levels in migration 0063 — Briefmarken → Altdeutschland → states)
+ * refuses any INSERT/UPDATE that would create a 4th level. Route also
+ * pre-checks for a friendlier 400 message.
  *
  * No step-up — categories are operator-curated, not security-sensitive
  * (no PII, no fiscal impact, no inventory mutation).
@@ -175,7 +176,7 @@ const categoriesRoutes: FastifyPluginAsync = async (app) => {
     {
       schema: {
         tags: ['categories'],
-        summary: 'Create a category (ADMIN). Hierarchy capped at 2 levels.',
+        summary: 'Create a category (ADMIN). Hierarchy capped at 3 levels.',
         body: CreateCategoryBody,
         response: {
           200: Type.Object({ id: Type.String({ format: 'uuid' }) }),
@@ -191,8 +192,9 @@ const categoriesRoutes: FastifyPluginAsync = async (app) => {
       requireRole(req, 'ADMIN');
       const body = req.body;
 
-      // Pre-check 2-level cap for a friendlier error (the DB trigger is the
-      // authoritative gate).
+      // Pre-check 3-level cap for a friendlier error (the DB trigger is the
+      // authoritative gate). A parent at depth 1 or 2 is fine; a parent at
+      // depth 3 (its grandparent exists) would create a 4th level.
       if (body.parentId) {
         const [parent] = await app.db
           .select({ parentId: categoriesTable.parentId })
@@ -203,10 +205,17 @@ const categoriesRoutes: FastifyPluginAsync = async (app) => {
           throw new CategoryValidationError('parentId', 'Parent category not found.');
         }
         if (parent.parentId !== null) {
-          throw new CategoryValidationError(
-            'parentId',
-            'Hierarchy capped at 2 levels — cannot nest grandchildren.',
-          );
+          const [grandparent] = await app.db
+            .select({ parentId: categoriesTable.parentId })
+            .from(categoriesTable)
+            .where(eq(categoriesTable.id, parent.parentId))
+            .limit(1);
+          if (grandparent && grandparent.parentId !== null) {
+            throw new CategoryValidationError(
+              'parentId',
+              'Hierarchy capped at 3 levels — cannot nest a 4th level.',
+            );
+          }
         }
       }
 
@@ -268,7 +277,7 @@ const categoriesRoutes: FastifyPluginAsync = async (app) => {
         throw new CategoryValidationError('body', 'At least one field is required.');
       }
 
-      // Pre-check 2-level cap when parent_id changes.
+      // Pre-check 3-level cap when parent_id changes.
       if (body.parentId !== undefined && body.parentId !== null) {
         if (body.parentId === id) {
           throw new CategoryValidationError('parentId', 'A category cannot be its own parent.');
@@ -280,10 +289,17 @@ const categoriesRoutes: FastifyPluginAsync = async (app) => {
           .limit(1);
         if (!parent) throw new CategoryValidationError('parentId', 'Parent category not found.');
         if (parent.parentId !== null) {
-          throw new CategoryValidationError(
-            'parentId',
-            'Hierarchy capped at 2 levels — cannot nest grandchildren.',
-          );
+          const [grandparent] = await app.db
+            .select({ parentId: categoriesTable.parentId })
+            .from(categoriesTable)
+            .where(eq(categoriesTable.id, parent.parentId))
+            .limit(1);
+          if (grandparent && grandparent.parentId !== null) {
+            throw new CategoryValidationError(
+              'parentId',
+              'Hierarchy capped at 3 levels — cannot nest a 4th level.',
+            );
+          }
         }
       }
 

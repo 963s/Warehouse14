@@ -28,7 +28,9 @@ import {
   EBAY_STATE_LABELS,
   type InventoryAdjustmentReason,
   type ProductDetail,
+  type ProductUpdateBody,
   type TaxTreatmentCode,
+  categoriesApi,
   ebayApi,
   photosApi,
   productsApi,
@@ -69,10 +71,35 @@ import { type LifecycleStage, deriveLifecycleStage } from '../../lib/product-lif
 import { decidePublish, isPositivePrice } from '../../lib/product-publish.js';
 import { PRODUCT_STATUS_LABEL } from '../../lib/product-status-label.js';
 import { TAX_TREATMENT_LABEL } from '../../lib/tax-treatment-label.js';
+import { type StampErhaltung, formatStampDisplay, sortierTipp } from '../../lib/taxonomy-hints.js';
 import { useLabelPrinter } from '../../lib/use-label-printer.js';
 import { useToastStore } from '../../state/toast-store.js';
 
+import {
+  BeschreibungDetailsFields,
+  CategoryPickerField,
+  type CategorySelection,
+  type CollectorDetailsDraft,
+  EMPTY_COLLECTOR_DETAILS,
+  StampAttributeFields,
+  buildDetailsUpdate,
+  hasCollectorDetails,
+  isOriginCountryValid,
+  resolveCategorySelection,
+  useCategoryTree,
+} from './CategoryPicker.js';
 import { WebSeoPanel, productDetailQueryKey } from './WebSeoPanel.js';
+
+/**
+ * Stamp attribute columns (stamp_erhaltung / stamp_minr) ship with the
+ * Briefmarken taxonomy wave — typed locally until the api-client domain
+ * declares them. The PUT for these two fields runs SEPARATELY so a server
+ * that does not accept them yet never poisons the rest of a save.
+ */
+type ProductDetailExt = ProductDetail & {
+  stampErhaltung?: StampErhaltung | null;
+  stampMinr?: number | null;
+};
 
 export interface ProductSheetProps {
   open: boolean;
@@ -281,12 +308,22 @@ function CreateBody({
   const [publishNow, setPublishNow] = useState<boolean>(true);
   const [busy, setBusy] = useState(false);
 
+  // Kategorie (primaryCategoryId) + Online-Shop-Beschreibung + Details +
+  // Briefmarken-Merkmale — progressive disclosure, hot path stays calm.
+  const [category, setCategory] = useState<CategorySelection | null>(null);
+  const [description, setDescription] = useState('');
+  const [details, setDetails] = useState<CollectorDetailsDraft>(EMPTY_COLLECTOR_DETAILS);
+  const [showBeschreibung, setShowBeschreibung] = useState(false);
+  const [stampErhaltung, setStampErhaltung] = useState<StampErhaltung | null>(null);
+  const [stampMinr, setStampMinr] = useState('');
+
   const valid =
     name.trim().length > 0 &&
     sku.trim().length > 0 &&
     isMoneyInput(acquisitionCostEur.trim()) &&
     isMoneyInput(listPriceEur.trim()) &&
-    (weightGrams.trim().length === 0 || isMoneyInput(weightGrams.trim(), 3));
+    (weightGrams.trim().length === 0 || isMoneyInput(weightGrams.trim(), 3)) &&
+    isOriginCountryValid(details);
 
   const pricePositive = isPositivePrice(listPriceEur);
   const willPublish = publishNow && pricePositive;
@@ -312,8 +349,61 @@ function CreateBody({
       if (locUnit.trim().length > 0) body.locationStorageUnit = locUnit.trim();
       if (locDrawer.trim().length > 0) body.locationDrawer = locDrawer.trim();
       if (locPosition.trim().length > 0) body.locationPosition = locPosition.trim();
+      if (description.trim().length > 0) body.descriptionDe = description.trim();
 
       const res = await client.request<CreatedResponse>('POST', '/api/products', body);
+
+      // ── Non-fatal follow-ups: Kategorie, Details, Briefmarken-Merkmale ──
+      // Each runs separately so one missing server feature never undoes the
+      // created product; failures surface as honest toasts.
+      if (category) {
+        try {
+          await categoriesApi.setForProduct(client, res.id, {
+            categoryIds: [category.id],
+            primaryCategoryId: category.id,
+          });
+        } catch {
+          addToast({
+            tone: 'alert',
+            title: 'Kategorie nicht gespeichert',
+            body: `${res.sku}: Kategorie später im Produkt unter „Details" setzen.`,
+          });
+        }
+      }
+      if (hasCollectorDetails(details)) {
+        const full = buildDetailsUpdate('', details);
+        const patch: ProductUpdateBody = {};
+        if (full.period) patch.period = full.period;
+        if (typeof full.yearMintedFrom === 'number') patch.yearMintedFrom = full.yearMintedFrom;
+        if (typeof full.yearMintedTo === 'number') patch.yearMintedTo = full.yearMintedTo;
+        if (full.originCountry) patch.originCountry = full.originCountry;
+        if (full.catalogReference) patch.catalogReference = full.catalogReference;
+        if (Object.keys(patch).length > 0) {
+          try {
+            await productsApi.update(client, res.id, patch);
+          } catch {
+            addToast({
+              tone: 'alert',
+              title: 'Details nicht gespeichert',
+              body: `${res.sku}: Epoche/Prägejahr/Herkunft später unter „Details" nachtragen.`,
+            });
+          }
+        }
+      }
+      if (stampErhaltung !== null || stampMinr.trim().length > 0) {
+        const stampPatch: Record<string, unknown> = {};
+        if (stampErhaltung !== null) stampPatch.stampErhaltung = stampErhaltung;
+        if (stampMinr.trim().length > 0) stampPatch.stampMinr = Number.parseInt(stampMinr, 10);
+        try {
+          await client.request('PUT', `/api/products/${encodeURIComponent(res.id)}`, stampPatch);
+        } catch {
+          addToast({
+            tone: 'alert',
+            title: 'Briefmarken-Merkmale nicht gespeichert',
+            body: `${res.sku}: Erhaltung/MiNr. später unter „Details" nachtragen.`,
+          });
+        }
+      }
 
       // Auto-print the shelf label when a printer is configured (intake tagging).
       if (printer.configured) {
@@ -444,6 +534,16 @@ function CreateBody({
           </Button>
         </div>
 
+        <CategoryPickerField value={category?.id ?? null} onChange={setCategory} disabled={busy} />
+        <StampAttributeFields
+          pathSlugs={category?.pathSlugs ?? []}
+          erhaltung={stampErhaltung}
+          minr={stampMinr}
+          onErhaltungChange={setStampErhaltung}
+          onMinrChange={setStampMinr}
+          disabled={busy}
+        />
+
         <div style={TWO_COL}>
           <Field label="Gewicht (g)">
             <Input
@@ -541,6 +641,32 @@ function CreateBody({
           </div>
         </div>
 
+        {/* Beschreibung & Details — collapsed by default (hot path stays calm). */}
+        <button
+          type="button"
+          aria-expanded={showBeschreibung}
+          onClick={() => setShowBeschreibung((o) => !o)}
+          style={DISCLOSE_ROW}
+        >
+          <span style={{ color: 'var(--w14-ink-aged)' }}>
+            Beschreibung & Details (Online-Shop)
+            {description.trim().length > 0 || hasCollectorDetails(details) ? ' · ausgefüllt' : ''}
+          </span>
+          <span aria-hidden style={{ color: 'var(--w14-ink-faded)', flexShrink: 0 }}>
+            {showBeschreibung ? '▾' : '▸'}
+          </span>
+        </button>
+        {showBeschreibung && (
+          <BeschreibungDetailsFields
+            description={description}
+            onDescriptionChange={setDescription}
+            details={details}
+            onDetailsChange={setDetails}
+            defaultDetailsOpen={hasCollectorDetails(details)}
+            disabled={busy}
+          />
+        )}
+
         <Checkbox
           checked={willPublish}
           disabled={!pricePositive}
@@ -611,26 +737,31 @@ function ManageBody({
         ) : (
           <Accordion>
             {justCreated && (
-              <p
-                aria-live="polite"
-                style={{
-                  margin: '0 0 4px',
-                  padding: '10px 14px',
-                  borderRadius: 'var(--w14-radius-card)',
-                  background: 'var(--w14-parchment-3)',
-                  border: '1px solid var(--w14-gold)',
-                  color: 'var(--w14-ink-aged)',
-                  fontSize: '0.88rem',
-                  lineHeight: 1.4,
-                }}
-              >
-                <strong style={{ color: 'var(--w14-ink)' }}>Produkt angelegt.</strong> Es geht hier
-                im selben Fenster weiter: <strong>Fotos</strong>, <strong>Preis</strong>,{' '}
-                <strong>Etikett</strong>. Schließen Sie mit dem ✕ oben, wenn Sie fertig sind.
-              </p>
+              <div aria-live="polite" style={{ display: 'grid', gap: 8, margin: '0 0 4px' }}>
+                <p
+                  style={{
+                    margin: 0,
+                    padding: '10px 14px',
+                    borderRadius: 'var(--w14-radius-card)',
+                    background: 'var(--w14-parchment-3)',
+                    border: '1px solid var(--w14-gold)',
+                    color: 'var(--w14-ink-aged)',
+                    fontSize: '0.88rem',
+                    lineHeight: 1.4,
+                  }}
+                >
+                  <strong style={{ color: 'var(--w14-ink)' }}>Produkt angelegt.</strong> Es geht
+                  hier im selben Fenster weiter: <strong>Fotos</strong>, <strong>Preis</strong>,{' '}
+                  <strong>Etikett</strong>. Schließen Sie mit dem ✕ oben, wenn Sie fertig sind.
+                </p>
+                <EinsortierenHinweis product={product} />
+              </div>
             )}
             <AccordionItem id="details" title="Details" defaultOpen={!justCreated}>
-              <DetailsSection product={product} />
+              <div style={{ display: 'grid', gap: 18 }}>
+                <DetailsSection product={product} />
+                <DetailsEditor key={product.updatedAt} product={product} />
+              </div>
             </AccordionItem>
             <AccordionItem id="fotos" title="Fotos" defaultOpen={justCreated}>
               <FotosSection product={product} />
@@ -663,8 +794,12 @@ function ManageBody({
 }
 
 function DetailsSection({ product }: { product: ProductDetail }): JSX.Element {
+  const ext = product as ProductDetailExt;
+  const primary = product.categories.find((c) => c.isPrimary) ?? null;
+  const stampLine = formatStampDisplay(ext.stampMinr ?? null, ext.stampErhaltung ?? null);
   const rows: Array<[string, string]> = [
     ['Art', itemTypeLabel(product.itemType)],
+    ['Kategorie', primary ? primary.nameDe : '—'],
     ['Zustand', conditionLabel(product.condition)],
     [
       'Steuerart',
@@ -679,6 +814,7 @@ function DetailsSection({ product }: { product: ProductDetail }): JSX.Element {
         .filter((s): s is string => !!s && s.length > 0)
         .join(' · ') || '—',
     ],
+    ...(stampLine ? ([['Briefmarke', stampLine]] as Array<[string, string]>) : []),
   ];
   return (
     <dl style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px 16px', margin: 0 }}>
@@ -694,6 +830,164 @@ function DetailsSection({ product }: { product: ProductDetail }): JSX.Element {
         </div>
       ))}
     </dl>
+  );
+}
+
+/**
+ * EinsortierenHinweis — the "where does it go" answer, shown plainly in the
+ * just-created success path: SKU + assigned Lagerort + a one-line Sortier-Tipp
+ * derived from the chosen root category. Reads the EXISTING location triplet —
+ * no new bin system.
+ */
+function EinsortierenHinweis({ product }: { product: ProductDetail }): JSX.Element {
+  const { roots } = useCategoryTree();
+  const primaryId = product.categories.find((c) => c.isPrimary)?.id ?? null;
+  const selection = resolveCategorySelection(roots, primaryId);
+  const loc = [product.locationStorageUnit, product.locationDrawer, product.locationPosition]
+    .filter((s): s is string => !!s && s.length > 0)
+    .join(' · ');
+  const tip = sortierTipp(selection?.rootSlug);
+
+  return (
+    <div
+      style={{
+        padding: '10px 14px',
+        border: '1px solid var(--w14-rule)',
+        borderRadius: 'var(--w14-radius-card)',
+        background: 'var(--w14-parchment-2)',
+        display: 'grid',
+        gap: 4,
+        fontSize: '0.86rem',
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <span
+          className="w14-tabular"
+          style={{ fontFamily: 'var(--w14-font-mono)', fontWeight: 600 }}
+        >
+          {product.sku}
+        </span>
+        <span>
+          <span style={{ color: 'var(--w14-ink-faded)' }}>Lagerort: </span>
+          <strong>{loc || 'noch nicht zugewiesen'}</strong>
+        </span>
+      </div>
+      {tip && (
+        <span style={{ color: 'var(--w14-ink-faded)', fontStyle: 'italic' }}>
+          Sortier-Tipp: {tip}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * DetailsEditor — capture EVERYTHING the shop page shows, post-create:
+ * Kategorie (primaryCategoryId), Online-Shop-Beschreibung, the Details group
+ * (Epoche · Prägejahr von/bis · Herkunftsland · Katalog-Referenz) and — for
+ * Briefmarken — Erhaltung + MiNr. Keyed by `product.updatedAt` upstream so a
+ * fresh detail re-hydrates the drafts.
+ */
+function DetailsEditor({ product }: { product: ProductDetail }): JSX.Element {
+  const api = useApiClient();
+  const qc = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  const { roots } = useCategoryTree();
+  const ext = product as ProductDetailExt;
+
+  const initialPrimaryId = product.categories.find((c) => c.isPrimary)?.id ?? null;
+  const [categoryId, setCategoryId] = useState<string | null>(initialPrimaryId);
+  const [description, setDescription] = useState(product.descriptionDe ?? '');
+  const [details, setDetails] = useState<CollectorDetailsDraft>({
+    period: product.period ?? '',
+    yearFrom: product.yearMintedFrom != null ? String(product.yearMintedFrom) : '',
+    yearTo: product.yearMintedTo != null ? String(product.yearMintedTo) : '',
+    originCountry: product.originCountry ?? '',
+    catalogReference: product.catalogReference ?? '',
+  });
+  const [erhaltung, setErhaltung] = useState<StampErhaltung | null>(ext.stampErhaltung ?? null);
+  const [minr, setMinr] = useState(ext.stampMinr != null ? String(ext.stampMinr) : '');
+  const [busy, setBusy] = useState(false);
+
+  const selection = resolveCategorySelection(roots, categoryId);
+  const stampDirty =
+    (ext.stampErhaltung ?? null) !== erhaltung ||
+    (ext.stampMinr != null ? String(ext.stampMinr) : '') !== minr.trim();
+  const canSave = isOriginCountryValid(details) && !busy;
+
+  async function save(): Promise<void> {
+    if (!canSave) return;
+    setBusy(true);
+    try {
+      // 1) Beschreibung + Details — the typed PUT (explicit null clears).
+      await productsApi.update(api, product.id, buildDetailsUpdate(description, details));
+
+      // 2) Kategorie → primaryCategoryId (only when actually changed).
+      if (categoryId !== initialPrimaryId) {
+        await categoriesApi.setForProduct(api, product.id, {
+          categoryIds: categoryId ? [categoryId] : [],
+          primaryCategoryId: categoryId,
+        });
+      }
+
+      // 3) Briefmarken-Merkmale — SEPARATE PUT with its own catch, so an api
+      //    that does not yet accept stampErhaltung/stampMinr never undoes 1+2.
+      if (stampDirty) {
+        try {
+          await api.request('PUT', `/api/products/${encodeURIComponent(product.id)}`, {
+            stampErhaltung: erhaltung,
+            stampMinr: minr.trim().length > 0 ? Number.parseInt(minr, 10) : null,
+          });
+        } catch {
+          addToast({
+            tone: 'alert',
+            title: 'Briefmarken-Merkmale nicht gespeichert',
+            body: 'Erhaltung/MiNr. konnte der Server noch nicht annehmen — Rest ist gespeichert.',
+          });
+        }
+      }
+
+      addToast({ tone: 'success', title: 'Details gespeichert', body: product.sku });
+      await qc.invalidateQueries({ queryKey: productDetailQueryKey(product.id) });
+      await qc.invalidateQueries({ queryKey: ['products', 'list'] });
+    } catch (err) {
+      const msg =
+        err instanceof ApiError ? err.message : 'Verbindung gestört — bitte erneut versuchen.';
+      addToast({ tone: 'alert', title: 'Speichern fehlgeschlagen', body: msg });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 12 }}>
+      <CategoryPickerField
+        value={categoryId}
+        onChange={(sel) => setCategoryId(sel?.id ?? null)}
+        disabled={busy}
+      />
+      <StampAttributeFields
+        pathSlugs={selection?.pathSlugs ?? []}
+        erhaltung={erhaltung}
+        minr={minr}
+        onErhaltungChange={setErhaltung}
+        onMinrChange={setMinr}
+        disabled={busy}
+      />
+      <BeschreibungDetailsFields
+        description={description}
+        onDescriptionChange={setDescription}
+        details={details}
+        onDetailsChange={setDetails}
+        defaultDetailsOpen={hasCollectorDetails(details)}
+        disabled={busy}
+      />
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <Button variant="primary" disabled={!canSave} onClick={() => void save()}>
+          {busy ? 'Speichert…' : 'Beschreibung & Kategorie speichern'}
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -1351,6 +1645,22 @@ const TWO_COL: CSSProperties = {
   display: 'grid',
   gridTemplateColumns: '1fr 1fr',
   gap: 'var(--space-3)',
+};
+const DISCLOSE_ROW: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 10,
+  width: '100%',
+  minHeight: 48,
+  padding: '0 12px',
+  border: '1px solid var(--w14-rule)',
+  borderRadius: 'var(--w14-radius-button)',
+  background: 'transparent',
+  fontFamily: 'var(--w14-font-body)',
+  fontSize: '0.9rem',
+  cursor: 'pointer',
+  textAlign: 'left',
 };
 const MINI_LABEL: CSSProperties = {
   display: 'block',
