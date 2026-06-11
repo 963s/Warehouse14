@@ -39,6 +39,13 @@ export interface ProductImage {
   order: number;
 }
 
+/**
+ * Stamp preservation grade — mirrors the backend `products.stamp_erhaltung`
+ * CHECK constraint. German labels + the dealer-notation hints (⭐⭐ / ⭐) live
+ * in `components/product/erhaltung.tsx`, not here.
+ */
+export type StampErhaltung = "POSTFRISCH" | "FALZ" | "GESTEMPELT" | "AUF_BRIEF";
+
 /** Lightweight shape for grid cards and search results. */
 export interface ProductSummary {
   id: string;
@@ -55,6 +62,10 @@ export interface ProductSummary {
   originCountry: string | null;
   primaryImage: ProductImage | null;
   primaryCategory: { id: string; slug: string; nameDe: string } | null;
+  /** Stamp attributes (nullable backend columns; only Briefmarken carry them). */
+  stampErhaltung?: StampErhaltung | null;
+  /** Michel catalogue number, e.g. 27 → displayed as "MiNr. 27". */
+  stampMinr?: number | null;
 }
 
 /** Full detail page shape - extends the grid card. */
@@ -70,7 +81,7 @@ export interface ProductDetail extends ProductSummary {
   images: ProductImage[];               // full gallery
 }
 
-/** Hierarchical category node; children depth ≤ 2 in V1. */
+/** Hierarchical category node; depth ≤ 3 (Briefmarken → Altdeutschland → Staaten). */
 export interface CategoryNode {
   id: string;
   slug: string;
@@ -208,6 +219,10 @@ export interface ProductQuery {
   q?: string;                           // full-text
   minPriceEur?: number;
   maxPriceEur?: number;
+  /** Stamp facets — map 1:1 onto the API's erhaltung/minrVon/minrBis params. */
+  erhaltung?: StampErhaltung;
+  minrVon?: number;
+  minrBis?: number;
   sort?: "published_desc" | "price_asc" | "price_desc" | "year_desc";
 }
 
@@ -317,118 +332,123 @@ function gradientImage(emoji: string, altDe: string): ProductImage {
 }
 
 // ── Categories ──────────────────────────────────────────────────────────────
+// The owner's real taxonomy (mirrors the backend seed, slug-for-slug): 19
+// roots in his order; Münzen/Schmuck/Barren/Briefmarken carry children and
+// Briefmarken → Altdeutschland carries the 18 old-German states (depth 3,
+// MiNr ranges as descriptions).
+
+function cat(
+  slug: string,
+  nameDe: string,
+  children: CategoryNode[] = [],
+  descriptionDe: string | null = null,
+): CategoryNode {
+  return {
+    id: `cat-${slug}`,
+    slug,
+    nameDe,
+    nameEn: null,
+    descriptionDe,
+    schemaOrgType: "ProductCategory",
+    children,
+  };
+}
+
+const ALTDEUTSCHLAND_STATES: Array<[string, string, string]> = [
+  ["baden", "Baden", "MiNr. 1–25"],
+  ["bayern", "Bayern", "MiNr. 1–191"],
+  ["bergedorf", "Bergedorf", "MiNr. 1–5"],
+  ["braunschweig", "Braunschweig", "MiNr. 1–20"],
+  ["bremen", "Bremen", "MiNr. 1–19"],
+  ["hamburg", "Hamburg", "MiNr. 1–20"],
+  ["hannover", "Hannover", "MiNr. 1–25"],
+  ["helgoland", "Helgoland", "MiNr. 1–20"],
+  ["luebeck", "Lübeck", "MiNr. 1–20"],
+  ["mecklenburg-schwerin", "Mecklenburg-Schwerin", "MiNr. 1–25"],
+  ["mecklenburg-strelitz", "Mecklenburg-Strelitz", "MiNr. 1–6"],
+  ["oldenburg", "Oldenburg", "MiNr. 1–19"],
+  ["preussen", "Preußen", "MiNr. 1–32"],
+  ["sachsen", "Sachsen", "MiNr. 1–21"],
+  ["schleswig-holstein", "Schleswig-Holstein", "MiNr. 1–15"],
+  ["thurn-und-taxis", "Thurn und Taxis", "MiNr. 1–54"],
+  ["wuerttemberg", "Württemberg", "MiNr. 1–52"],
+  ["norddeutscher-postbezirk", "Norddeutscher Postbezirk", "MiNr. 1–26"],
+];
 
 const CATEGORIES: CategoryNode[] = [
-  {
-    id: "cat-gold",
-    slug: "gold",
-    nameDe: "Gold",
-    nameEn: "Gold",
-    descriptionDe: "Anlagemünzen und Barren aus purem Gold, LBMA-zertifiziert.",
-    schemaOrgType: "ProductCategory",
-    children: [
-      {
-        id: "cat-goldmuenzen",
-        slug: "goldmuenzen",
-        nameDe: "Goldmünzen",
-        nameEn: "Gold Coins",
-        descriptionDe: "Klassische Anlagemünzen weltweit geprüft.",
-        schemaOrgType: "ProductCategory",
-        children: [],
-      },
-      {
-        id: "cat-goldbarren",
-        slug: "goldbarren",
-        nameDe: "Goldbarren",
-        nameEn: "Gold Bars",
-        descriptionDe: "Barren von 1 g bis 1 kg, alle LBMA-zertifiziert.",
-        schemaOrgType: "ProductCategory",
-        children: [],
-      },
-    ],
-  },
-  {
-    id: "cat-silber",
-    slug: "silber",
-    nameDe: "Silber",
-    nameEn: "Silver",
-    descriptionDe: "Silbermünzen und Barren, mehrwertsteuerfrei nach §25a UStG.",
-    schemaOrgType: "ProductCategory",
-    children: [
-      {
-        id: "cat-silbermuenzen",
-        slug: "silbermuenzen",
-        nameDe: "Silbermünzen",
-        nameEn: "Silver Coins",
-        descriptionDe: "Anlage- und Sammlermünzen in Silber.",
-        schemaOrgType: "ProductCategory",
-        children: [],
-      },
-    ],
-  },
-  {
-    id: "cat-muenzen",
-    slug: "muenzen",
-    nameDe: "Münzen",
-    nameEn: "Coins",
-    descriptionDe: "Historische und numismatische Münzen aus Deutschland und der Welt.",
-    schemaOrgType: "ProductCategory",
-    children: [],
-  },
-  {
-    id: "cat-antiquitaeten",
-    slug: "antiquitaeten",
-    nameDe: "Antiquitäten",
-    nameEn: "Antiques",
-    descriptionDe: "Geprüfte Einzelstücke mit dokumentierter Provenienz.",
-    schemaOrgType: "ProductCategory",
-    children: [],
-  },
-  {
-    id: "cat-schmuck",
-    slug: "schmuck",
-    nameDe: "Schmuck",
-    nameEn: "Jewellery",
-    descriptionDe: "Gold, Silber und Vintage-Preziosen aus verschiedenen Epochen.",
-    schemaOrgType: "ProductCategory",
-    children: [],
-  },
-  {
-    id: "cat-briefmarken",
-    slug: "briefmarken",
-    nameDe: "Briefmarken",
-    nameEn: "Stamps",
-    descriptionDe: "Deutschland, weltweit und thematische Sammlungen.",
-    schemaOrgType: "ProductCategory",
-    children: [],
-  },
-  {
-    id: "cat-uhren",
-    slug: "uhren",
-    nameDe: "Uhren",
-    nameEn: "Watches",
-    descriptionDe: "Vintage-Taschenuhren und klassische Armbanduhren.",
-    schemaOrgType: "ProductCategory",
-    children: [],
-  },
-  {
-    id: "cat-sammlerobjekte",
-    slug: "sammlerobjekte",
-    nameDe: "Sammlerobjekte",
-    nameEn: "Collectibles",
-    descriptionDe: "Militaria, historische Dokumente und seltene Raritäten.",
-    schemaOrgType: "ProductCategory",
-    children: [],
-  },
-  {
-    id: "cat-platin",
-    slug: "platin",
-    nameDe: "Platin",
-    nameEn: "Platinum",
-    descriptionDe: "Platinmünzen und Barren als Wertanlage.",
-    schemaOrgType: "ProductCategory",
-    children: [],
-  },
+  cat("gold", "Gold"),
+  cat("silber", "Silber"),
+  cat("platin", "Platin"),
+  cat("palladium", "Palladium"),
+  cat("muenzen", "Münzen", [
+    cat("goldmuenzen", "Goldmünzen"),
+    cat("silbermuenzen", "Silbermünzen"),
+    cat("platinmuenzen", "Platinmünzen"),
+    cat("palladiummuenzen", "Palladiummünzen"),
+    cat("kaiserreich", "Kaiserreich"),
+    cat("weimarer-republik", "Weimarer Republik"),
+    cat("deutsches-reich", "Deutsches Reich"),
+    cat("ddr", "DDR"),
+    cat("bund", "Bund"),
+    cat("berlin", "Berlin"),
+    cat("euro", "Euro"),
+    cat("ausland", "Ausland"),
+    cat("antike-muenzen", "Antike Münzen"),
+    cat("notmuenzen", "Notmünzen"),
+    cat("muenzen-medaillen", "Medaillen"),
+    cat("muenzen-konvolute", "Konvolute"),
+  ]),
+  cat("briefmarken", "Briefmarken", [
+    cat("briefmarken-deutsches-reich", "Deutsches Reich", [], "MiNr. 1–910 · Block 1–11"),
+    cat("briefmarken-berlin", "Berlin (West)", [], "MiNr. 1–879 · Block 1–8"),
+    cat("briefmarken-bund", "Bund", [], "MiNr. 111–laufend · Block 2–laufend"),
+    cat("briefmarken-ddr", "DDR", [], "MiNr. 242–3365 · Block 7–100"),
+    cat(
+      "altdeutschland",
+      "Altdeutschland",
+      ALTDEUTSCHLAND_STATES.map(([slug, name, minr]) => cat(slug, name, [], minr)),
+    ),
+  ]),
+  cat("schmuck", "Schmuck", [
+    cat("goldschmuck", "Goldschmuck"),
+    cat("silberschmuck", "Silberschmuck"),
+    cat("platinschmuck", "Platinschmuck"),
+    cat("vintage-schmuck", "Vintage Schmuck"),
+    cat("antiker-schmuck", "Antiker Schmuck"),
+    cat("designerschmuck", "Designerschmuck"),
+    cat("ringe", "Ringe"),
+    cat("ketten", "Ketten"),
+    cat("armbaender", "Armbänder"),
+    cat("ohrringe", "Ohrringe"),
+    cat("broschen", "Broschen"),
+    cat("anhaenger", "Anhänger"),
+    cat("edelsteinschmuck", "Edelsteinschmuck"),
+    cat("bernsteinschmuck", "Bernsteinschmuck"),
+    cat("schmuckkonvolute", "Schmuckkonvolute"),
+  ]),
+  cat("barren", "Barren", [
+    cat("goldbarren", "Goldbarren"),
+    cat("silberbarren", "Silberbarren"),
+    cat("platinbarren", "Platinbarren"),
+    cat("palladiumbarren", "Palladiumbarren"),
+    cat("geiger", "Geiger"),
+    cat("heraeus", "Heraeus"),
+    cat("degussa", "Degussa"),
+    cat("umicore", "Umicore"),
+    cat("argor-heraeus", "Argor Heraeus"),
+    cat("diverse-hersteller", "Diverse Hersteller"),
+  ]),
+  cat("medaillen", "Medaillen"),
+  cat("banknoten", "Banknoten"),
+  cat("postkarten", "Postkarten"),
+  cat("militaria", "Militaria"),
+  cat("antiquitaeten", "Antiquitäten"),
+  cat("uhren", "Uhren"),
+  cat("orden-ehrenzeichen", "Orden & Ehrenzeichen"),
+  cat("ansichtskarten", "Ansichtskarten"),
+  cat("konvolute", "Konvolute"),
+  cat("neuheiten", "Neuheiten"),
+  cat("ankauf", "Ankauf"),
 ];
 
 // ── Products ─────────────────────────────────────────────────────────────────
@@ -767,6 +787,7 @@ function mkProduct(p: {
   slug: string; sku: string; name: string; price: string; metal: string | null;
   weightGrams?: string | null; fineness?: string | null; year?: number | null;
   catSlug: string; catName: string; period?: string | null; desc: string;
+  stampErhaltung?: StampErhaltung | null; stampMinr?: number | null;
 }): ProductDetail {
   return {
     id: p.slug, slug: p.slug, sku: p.sku, name: p.name, listPriceEur: p.price, currency: "EUR",
@@ -774,6 +795,7 @@ function mkProduct(p: {
     yearMintedFrom: p.year ?? null, yearMintedTo: null, originCountry: "DE",
     primaryImage: gradientImage("🔎", p.name),
     primaryCategory: { id: `cat-${p.catSlug}`, slug: p.catSlug, nameDe: p.catName },
+    stampErhaltung: p.stampErhaltung ?? null, stampMinr: p.stampMinr ?? null,
     descriptionDe: p.desc, descriptionEn: null,
     seoTitle: `${p.name} kaufen | warehouse14`, seoDescription: p.desc.slice(0, 155),
     schemaOrgType: "Product", period: p.period ?? null, catalogReference: p.sku,
@@ -792,6 +814,9 @@ PRODUCTS.push(
   mkProduct({ slug: "kaminuhr-bronze-1880", sku: "KU-BRZ-1880", name: "Kaminuhr Bronze, um 1880", price: "980.00", metal: "Bronze, vergoldet", catSlug: "antiquitaeten", catName: "Antiquitäten", period: "um 1880", desc: "Repräsentative Kaminuhr aus vergoldeter Bronze, um 1880. Aufwendig ziseliertes Gehäuse, Pendulenwerk geprüft, ein Schmuckstück fürs Interieur." }),
   mkProduct({ slug: "porzellanvase-antik", sku: "PV-19JH", name: "Antike Porzellanvase, 19. Jh.", price: "720.00", metal: "Porzellan", catSlug: "antiquitaeten", catName: "Antiquitäten", period: "19. Jahrhundert", desc: "Handbemalte Porzellanvase des 19. Jahrhunderts. Feine Malerei, unbeschädigt, ein elegantes Einzelstück mit Geschichte." }),
   mkProduct({ slug: "tabatiere-silber", sku: "TAB-800", name: "Silberne Tabatiere", price: "420.00", metal: "Silber 800", catSlug: "antiquitaeten", catName: "Antiquitäten", period: "19. Jh.", desc: "Fein gravierte Tabatiere (Schnupftabakdose) aus 800er Silber, 19. Jahrhundert. Punziert, in gepflegtem Sammlerzustand." }),
+  // ── Single stamps: exercise the stamp facets (Erhaltung + MiNr) end-to-end ──
+  mkProduct({ slug: "baden-3-kreuzer-1851-minr-2", sku: "BM-BAD-MI2", name: "Baden 3 Kreuzer 1851", price: "85.00", metal: null, year: 1851, catSlug: "baden", catName: "Baden", period: "Altdeutschland", desc: "Baden MiNr. 2, 3 Kreuzer schwarz auf orangegelb, sauber gestempelt. Unter der Lupe geprüft, mit klarem Vollstempel.", stampErhaltung: "GESTEMPELT", stampMinr: 2 }),
+  mkProduct({ slug: "bund-posthorn-90pf-postfrisch", sku: "BM-BUND-MI138", name: "Bund Posthorn 90 Pf", price: "120.00", metal: null, year: 1951, catSlug: "briefmarken-bund", catName: "Bund", period: "Bundesrepublik (ab 1949)", desc: "Bund MiNr. 138, Posthorn 90 Pf, postfrisch mit Originalgummi, ohne Falz. Der Höchstwert der ersten Dauerserie der Bundesrepublik.", stampErhaltung: "POSTFRISCH", stampMinr: 138 }),
 );
 
 // Real product photographs (Wikimedia Commons, freely licensed) replace the
@@ -835,17 +860,45 @@ function toSummary(p: ProductDetail): ProductSummary {
   return summary;
 }
 
+/** Find a node anywhere in the tree (depth ≤ 3). */
+function findCategoryNode(nodes: CategoryNode[], slug: string): CategoryNode | null {
+  for (const n of nodes) {
+    if (n.slug === slug) return n;
+    const hit = findCategoryNode(n.children, slug);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/** All slugs of a subtree (the node itself + every descendant). */
+function collectSlugs(node: CategoryNode, into: Set<string> = new Set()): Set<string> {
+  into.add(node.slug);
+  for (const c of node.children) collectSlugs(c, into);
+  return into;
+}
+
 function filterProducts(items: ProductDetail[], q: ProductQuery): ProductDetail[] {
   let result = [...items];
 
   if (q.category) {
+    // descendant-aware: a parent slug matches everything in its subtree
+    const node = findCategoryNode(CATEGORIES, q.category);
+    const allowed = node ? collectSlugs(node) : new Set([q.category]);
     result = result.filter(
-      (p) =>
-        p.primaryCategory?.slug === q.category ||
-        // also match parent slug for flat lookups
-        CATEGORIES.find((c) => c.slug === q.category)?.children
-          .some((ch) => ch.slug === p.primaryCategory?.slug),
+      (p) => p.primaryCategory != null && allowed.has(p.primaryCategory.slug),
     );
+  }
+
+  if (q.erhaltung) {
+    result = result.filter((p) => p.stampErhaltung === q.erhaltung);
+  }
+
+  if (q.minrVon != null) {
+    result = result.filter((p) => p.stampMinr != null && p.stampMinr >= q.minrVon!);
+  }
+
+  if (q.minrBis != null) {
+    result = result.filter((p) => p.stampMinr != null && p.stampMinr <= q.minrBis!);
   }
 
   if (q.metal) {
@@ -1429,6 +1482,9 @@ export const httpData: StorefrontData = {
     if (q.q) params.set("q", q.q);
     if (q.minPriceEur != null) params.set("minPriceEur", String(q.minPriceEur));
     if (q.maxPriceEur != null) params.set("maxPriceEur", String(q.maxPriceEur));
+    if (q.erhaltung) params.set("erhaltung", q.erhaltung);
+    if (q.minrVon != null) params.set("minrVon", String(q.minrVon));
+    if (q.minrBis != null) params.set("minrBis", String(q.minrBis));
     if (q.sort) params.set("sort", q.sort);
     const result = await apiGet<Paged<ProductSummary>>(
       `/api/storefront/products?${params}`,

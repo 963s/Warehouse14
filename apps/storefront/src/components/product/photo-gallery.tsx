@@ -149,16 +149,12 @@ export function PhotoGallery({ images }: { images: PImage[] }) {
   // No-image state: a single framed neutral cream tile, no chrome.
   if (count === 0) {
     return (
-      <div className="relative aspect-square w-full overflow-hidden rounded-card border border-rule bg-raised p-w14-3 shadow-card">
+      <div className="relative aspect-square w-full overflow-hidden rounded-card border border-rule bg-raised shadow-card">
         <ProductImage
           image={null}
           className="h-full w-full"
           emojiClassName="text-8xl"
           sizes="(max-width: 768px) 100vw, 50vw"
-        />
-        <span
-          className="pointer-events-none absolute inset-0 rounded-card ring-1 ring-inset ring-black/[0.06]"
-          aria-hidden="true"
         />
       </div>
     );
@@ -166,10 +162,11 @@ export function PhotoGallery({ images }: { images: PImage[] }) {
 
   return (
     <div className="flex flex-col gap-w14-2">
-      {/* Framed main image (matches the catalog card frame), click to zoom.
-       *  Generous neutral cream matting so coins/objects read whole. */}
+      {/* ONE refined frame (matches the catalog card): a single hairline,
+       *  the piece on its quiet matte with one balanced margin — no nested
+       *  boxes, no inner rings. Click to zoom. */}
       <div
-        className="group relative aspect-square w-full overflow-hidden rounded-card border border-rule bg-raised p-w14-3 shadow-card"
+        className="group relative aspect-square w-full overflow-hidden rounded-card border border-rule bg-raised shadow-card"
         onPointerMove={onLensMove}
         onPointerLeave={hideLens}
         onPointerDown={hideLens}
@@ -190,7 +187,7 @@ export function PhotoGallery({ images }: { images: PImage[] }) {
             onDragEnd={onDragEnd}
             onClick={() => setZoom(true)}
             aria-label="Bild vergrössern"
-            className="absolute inset-w14-3 cursor-zoom-in touch-pan-y focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ink/40"
+            className="absolute inset-0 cursor-zoom-in touch-pan-y focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ink/40"
           >
             <ProductImage
               image={current}
@@ -201,10 +198,6 @@ export function PhotoGallery({ images }: { images: PImage[] }) {
             />
           </motion.button>
         </AnimatePresence>
-        <span
-          className="pointer-events-none absolute inset-0 rounded-card ring-1 ring-inset ring-black/[0.06]"
-          aria-hidden="true"
-        />
 
         {/* THE LOUPE — a clipped 2x copy registered with the photo below,
          *  plus a hairline ring with the loupe's handle hint. Mouse only. */}
@@ -213,7 +206,7 @@ export function PhotoGallery({ images }: { images: PImage[] }) {
             ref={lensBoxRef}
             aria-hidden="true"
             className={cn(
-              'pointer-events-none absolute inset-w14-3 z-10 transition-opacity duration-150',
+              'pointer-events-none absolute inset-0 z-10 transition-opacity duration-150',
               lensActive ? 'opacity-100' : 'opacity-0',
             )}
           >
@@ -294,7 +287,7 @@ export function PhotoGallery({ images }: { images: PImage[] }) {
               aria-label={img.altDe ?? `Bild ${idx + 1}`}
               aria-current={selected === idx}
               className={cn(
-                'relative h-16 w-16 flex-none overflow-hidden rounded-card border bg-raised p-1.5 transition-[border-color,opacity] duration-fast ease-hover motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink/40',
+                'relative h-16 w-16 flex-none overflow-hidden rounded-card border bg-raised transition-[border-color,opacity] duration-fast ease-hover motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink/40',
                 selected === idx ? 'border-ink' : 'border-rule opacity-65 hover:opacity-100',
               )}
             >

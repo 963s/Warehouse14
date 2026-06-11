@@ -8,6 +8,7 @@ import { PageShell } from "@/components/page-shell";
 import { Reveal } from "@/components/ui/reveal";
 import { PhotoGallery } from "@/components/product/photo-gallery";
 import { SpecsTable } from "@/components/product/specs-table";
+import { ErhaltungBadge, stampLine } from "@/components/product/erhaltung";
 import { UnikatBadge } from "@/components/product/scarcity-badge";
 import { StickyBuyBar } from "@/components/product/sticky-buy-bar";
 import { RelatedPieces } from "@/components/product/related-pieces";
@@ -72,6 +73,9 @@ export default async function ArtikelDetailPage({
 
   const jsonLd = buildJsonLd(p);
   const unikat = isUnikat(p.schemaOrgType);
+  // the collector's line, e.g. "MiNr. 27 · Postfrisch" — only when the
+  // cashier recorded the stamp attributes
+  const stamp = stampLine(p);
 
   const breadcrumbs = [
     { href: "/", label: "Start" },
@@ -157,6 +161,17 @@ export default async function ArtikelDetailPage({
                 {p.name}
               </h1>
 
+              {/* The philatelist's line: MiNr + Erhaltung, straight from the
+                  cashier's record — quiet, directly under the title */}
+              {stamp && (
+                <div className="-mt-3 flex flex-wrap items-center gap-2.5">
+                  {p.stampMinr != null && (
+                    <span className="tnum text-sm text-ink-aged">MiNr. {p.stampMinr}</span>
+                  )}
+                  {p.stampErhaltung && <ErhaltungBadge value={p.stampErhaltung} />}
+                </div>
+              )}
+
               {/* Price + scarcity */}
               <div className="flex flex-wrap items-center gap-3">
                 <span className="tnum text-2xl font-semibold text-ink">
@@ -178,9 +193,15 @@ export default async function ArtikelDetailPage({
                 <TrustItem icon={Package}>Versicherter Versand</TrustItem>
               </ul>
 
-              {/* Description */}
+              {/* Beschreibung — the cashier's full text as a proper section,
+                  line breaks preserved; gracefully absent when not written */}
               {p.descriptionDe && (
-                <p className="leading-relaxed text-ink-aged">{p.descriptionDe}</p>
+                <section aria-label="Beschreibung" className="border-t border-rule pt-5">
+                  <h2 className="smallcaps mb-2 text-sm text-ink-faded">Beschreibung</h2>
+                  <p className="whitespace-pre-line leading-relaxed text-ink-aged">
+                    {p.descriptionDe}
+                  </p>
+                </section>
               )}
             </div>
           </Reveal>

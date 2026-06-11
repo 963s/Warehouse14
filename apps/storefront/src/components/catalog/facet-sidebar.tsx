@@ -1,12 +1,18 @@
 'use client';
 
+import {
+  ERHALTUNG_LABELS,
+  ERHALTUNG_NOTATION,
+  ERHALTUNG_VALUES,
+  erhaltungToParam,
+} from '@/components/product/erhaltung';
 import { cn } from '@/lib/cn';
 import type { CategoryNode } from '@/lib/storefront-data';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { ChevronDown, SlidersHorizontal, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 const EASE_OUT = [0.16, 1, 0.3, 1] as const; // curator entrance ease
 
@@ -17,6 +23,27 @@ interface FacetSidebarProps {
   activeSort?: string;
   activeMin?: string;
   activeMax?: string;
+  /** Stamp facets, URL-form (?erhaltung=postfrisch&minrVon=1&minrBis=910). */
+  activeErhaltung?: string;
+  activeMinrVon?: string;
+  activeMinrBis?: string;
+}
+
+/** All slugs of a subtree — used to decide when the stamp facets apply. */
+function collectSlugs(node: CategoryNode, into: Set<string> = new Set()): Set<string> {
+  into.add(node.slug);
+  for (const c of node.children) collectSlugs(c, into);
+  return into;
+}
+
+/** The slug path from a root down to `slug`, or null when absent. */
+function pathToSlug(nodes: CategoryNode[], slug: string): string[] | null {
+  for (const n of nodes) {
+    if (n.slug === slug) return [n.slug];
+    const sub = pathToSlug(n.children, slug);
+    if (sub) return [n.slug, ...sub];
+  }
+  return null;
 }
 
 const METALS = [
@@ -45,6 +72,9 @@ export function FacetSidebar({
   activeSort,
   activeMin,
   activeMax,
+  activeErhaltung,
+  activeMinrVon,
+  activeMinrBis,
 }: FacetSidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -53,9 +83,45 @@ export function FacetSidebar({
 
   const [minInput, setMinInput] = useState(activeMin ?? '');
   const [maxInput, setMaxInput] = useState(activeMax ?? '');
+  const [minrVonInput, setMinrVonInput] = useState(activeMinrVon ?? '');
+  const [minrBisInput, setMinrBisInput] = useState(activeMinrBis ?? '');
   const [mobileOpen, setMobileOpen] = useState(false);
   const sheetRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
+
+  /* The tree folds: the path down to the active category starts open, the
+   * visitor's own toggles are kept on top of that. */
+  const activePath = useMemo(
+    () => (activeCategory ? (pathToSlug(categories, activeCategory) ?? []) : []),
+    [categories, activeCategory],
+  );
+  const [openSlugs, setOpenSlugs] = useState<Set<string>>(() => new Set(activePath));
+  useEffect(() => {
+    if (activePath.length === 0) return;
+    setOpenSlugs((prev) => new Set([...prev, ...activePath]));
+  }, [activePath]);
+
+  function toggleBranch(slug: string) {
+    setOpenSlugs((prev) => {
+      const next = new Set(prev);
+      if (next.has(slug)) next.delete(slug);
+      else next.add(slug);
+      return next;
+    });
+  }
+
+  /* The stamp facets (Erhaltung + MiNr) belong to the Briefmarken world:
+   * shown on the unfiltered Kollektion, anywhere inside the Briefmarken
+   * subtree, and whenever one of them is already active. */
+  const briefmarkenSlugs = useMemo(() => {
+    const root = categories.find((c) => c.slug === 'briefmarken');
+    return root ? collectSlugs(root) : new Set<string>();
+  }, [categories]);
+  const stampContext =
+    !activeCategory ||
+    briefmarkenSlugs.has(activeCategory) ||
+    !!activeErhaltung ||
+    !!(activeMinrVon || activeMinrBis);
 
   const buildParams = useCallback(
     (overrides: Record<string, string | undefined>) => {
@@ -87,16 +153,25 @@ export function FacetSidebar({
     navigate({ sort });
   }
 
+  /* Applies every pending range input in one navigation: price + MiNr. */
   function applyPrice() {
     navigate({
       min: minInput || undefined,
       max: maxInput || undefined,
+      minrVon: minrVonInput || undefined,
+      minrBis: minrBisInput || undefined,
     });
+  }
+
+  function setErhaltung(param: string) {
+    navigate({ erhaltung: activeErhaltung === param ? undefined : param });
   }
 
   function clearAll() {
     setMinInput('');
     setMaxInput('');
+    setMinrVonInput('');
+    setMinrBisInput('');
     router.push(pathname.startsWith('/kategorien') ? '/kollektion' : pathname);
   }
 
@@ -111,6 +186,8 @@ export function FacetSidebar({
     (activeCategory ? 1 : 0) +
     (activeMetal ? 1 : 0) +
     (activeMin || activeMax ? 1 : 0) +
+    (activeErhaltung ? 1 : 0) +
+    (activeMinrVon || activeMinrBis ? 1 : 0) +
     (activeSort && activeSort !== 'published_desc' ? 1 : 0);
   const hasActiveFilters = activeCount > 0;
 
@@ -168,7 +245,57 @@ export function FacetSidebar({
 
   /* The FULL category tree from the data seam — every world stays navigable
    * even when the current result set holds nothing from it. The seam delivers
-   * no per-category counts, so none are shown (never invented). */
+   * no per-category counts, so none are shown (never invented). Depth ≤ 3:
+   * branches fold behind a chevron, the active path stands open. */
+  function renderCategoryNode(node: CategoryNode, depth: number): React.ReactNode {
+    const hasKids = node.children.length > 0;
+    const open = openSlugs.has(node.slug);
+    const isActive = activeCategory === node.slug;
+    return (
+      <li key={node.id}>
+        <div className="flex items-center gap-0.5">
+          <Link
+            href={`/kategorien/${node.slug}`}
+            className={cn(
+              'flex min-h-[44px] min-w-0 flex-1 items-center rounded px-2.5 transition-colors duration-fast ease-hover lg:min-h-0',
+              depth === 0 ? 'text-sm lg:py-1.5' : 'text-sm lg:py-1 lg:text-xs',
+              isActive
+                ? 'bg-raised font-medium text-ink'
+                : depth === 0
+                  ? 'text-ink-aged hover:bg-raised hover:text-ink'
+                  : 'text-ink-faded hover:text-ink',
+            )}
+          >
+            <span className="truncate">{node.nameDe}</span>
+          </Link>
+          {hasKids && (
+            <button
+              type="button"
+              onClick={() => toggleBranch(node.slug)}
+              aria-expanded={open}
+              aria-label={open ? `${node.nameDe} einklappen` : `${node.nameDe} aufklappen`}
+              className="grid h-11 w-11 shrink-0 place-items-center rounded text-ink-faded transition-colors duration-fast ease-hover hover:bg-raised hover:text-ink lg:h-7 lg:w-7"
+            >
+              <ChevronDown
+                className={cn(
+                  'h-4 w-4 transition-transform duration-base ease-hover motion-reduce:transition-none',
+                  open && 'rotate-180',
+                )}
+                strokeWidth={1.7}
+                aria-hidden="true"
+              />
+            </button>
+          )}
+        </div>
+        {hasKids && open && (
+          <ul className="ml-2.5 mt-0.5 space-y-0.5 border-l border-rule pl-2.5">
+            {node.children.map((child) => renderCategoryNode(child, depth + 1))}
+          </ul>
+        )}
+      </li>
+    );
+  }
+
   const categoriesSection = (
     <section>
         <h3 className="eyebrow mb-w14-2">Kategorie</h3>
@@ -186,41 +313,85 @@ export function FacetSidebar({
               Alle Kategorien
             </Link>
           </li>
-          {categories.map((cat) => (
-            <li key={cat.id}>
-              <Link
-                href={`/kategorien/${cat.slug}`}
+          {categories.map((cat) => renderCategoryNode(cat, 0))}
+        </ul>
+      </section>
+  );
+
+  /* Erhaltung — the stamp preservation grade in the owner's dealer notation
+   * (Postfrisch ⭐⭐ · Falz ⭐ · Gestempelt · Auf Brief). One active grade. */
+  const erhaltungSection = stampContext && (
+    <section>
+        <h3 className="eyebrow mb-w14-2">Erhaltung</h3>
+        <div className="flex flex-wrap gap-2">
+          {ERHALTUNG_VALUES.map((v) => {
+            const param = erhaltungToParam(v);
+            const active = activeErhaltung === param;
+            return (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setErhaltung(param)}
+                aria-pressed={active}
                 className={cn(
-                  'flex min-h-[44px] items-center rounded px-2.5 text-sm transition-colors duration-fast ease-hover lg:min-h-0 lg:py-1.5',
-                  activeCategory === cat.slug
-                    ? 'bg-raised font-medium text-ink'
-                    : 'text-ink-aged hover:bg-raised hover:text-ink',
+                  'inline-flex min-h-[44px] items-center gap-1.5 rounded-button border px-4 text-sm font-medium transition-[border-color,color,background-color] duration-fast ease-hover motion-reduce:transition-none lg:min-h-0 lg:px-3 lg:py-1.5 lg:text-xs',
+                  active
+                    ? 'border-ink bg-ink text-white'
+                    : 'border-rule bg-surface text-ink-aged hover:border-ink/50 hover:text-ink',
                 )}
               >
-                {cat.nameDe}
-              </Link>
-              {cat.children.length > 0 && (
-                <ul className="ml-3 mt-0.5 space-y-0.5 border-l border-rule pl-3">
-                  {cat.children.map((child) => (
-                    <li key={child.id}>
-                      <Link
-                        href={`/kategorien/${child.slug}`}
-                        className={cn(
-                          'flex min-h-[44px] items-center rounded px-2.5 text-sm transition-colors duration-fast ease-hover lg:min-h-0 lg:py-1 lg:text-xs',
-                          activeCategory === child.slug
-                            ? 'font-medium text-ink'
-                            : 'text-ink-faded hover:text-ink',
-                        )}
-                      >
-                        {child.nameDe}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </li>
-          ))}
-        </ul>
+                {ERHALTUNG_LABELS[v]}
+                {ERHALTUNG_NOTATION[v] && (
+                  <span aria-hidden="true" className="text-[0.625rem] leading-none">
+                    {ERHALTUNG_NOTATION[v]}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </section>
+  );
+
+  /* Michel number range — 16px inputs so iOS never zoom-jumps. Applied
+   * together with the price range (desktop "Übernehmen" / phone footer). */
+  const minrSection = stampContext && (
+    <section>
+        <h3 className="eyebrow mb-w14-2">Michel-Nr. (MiNr.)</h3>
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            min={1}
+            placeholder="von"
+            value={minrVonInput}
+            name="minr_von"
+            inputMode="numeric"
+            autoComplete="off"
+            aria-label="Michel-Nummer von"
+            onChange={(e) => setMinrVonInput(e.target.value)}
+            className="tnum h-11 w-full rounded border border-rule bg-surface px-3 text-base text-ink placeholder-ink-faded transition-colors duration-fast ease-hover focus:border-ink/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink/40"
+          />
+          <span className="text-ink-faded text-xs shrink-0">bis</span>
+          <input
+            type="number"
+            min={1}
+            placeholder="bis"
+            value={minrBisInput}
+            name="minr_bis"
+            inputMode="numeric"
+            autoComplete="off"
+            aria-label="Michel-Nummer bis"
+            onChange={(e) => setMinrBisInput(e.target.value)}
+            className="tnum h-11 w-full rounded border border-rule bg-surface px-3 text-base text-ink placeholder-ink-faded transition-colors duration-fast ease-hover focus:border-ink/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink/40"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={applyPrice}
+          className="mt-w14-2 hidden w-full rounded-button border border-rule bg-surface py-1.5 text-xs font-medium text-ink-aged transition-colors duration-fast ease-hover hover:border-ink/50 hover:text-ink lg:block"
+        >
+          Übernehmen
+        </button>
       </section>
   );
 
@@ -322,6 +493,8 @@ export function FacetSidebar({
       {clearAllSection}
       {sortSection}
       {categoriesSection}
+      {erhaltungSection}
+      {minrSection}
       {metalSection}
       {priceSection}
     </div>
@@ -332,6 +505,8 @@ export function FacetSidebar({
     <div className="space-y-w14-4">
       {clearAllSection}
       {categoriesSection}
+      {erhaltungSection}
+      {minrSection}
       {metalSection}
       {priceSection}
       {sortSection}

@@ -2,14 +2,13 @@
 
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Banknote, FileCheck2, Info, Landmark, MapPin, ShieldCheck, Store, Truck } from "lucide-react";
 import { PageShell } from "@/components/page-shell";
 import { Kicker } from "@/components/brand/kicker";
 import { BrandLoupeSketch } from "@/components/brand/marks";
 import { KlarnaIcon, MastercardIcon, PaypalIcon, VisaIcon } from "@/components/brand-icons";
 import { AddressForm, type AddressFormValues } from "@/components/checkout/address-form";
-import { writeCheckoutRecap } from "./bestaetigung/order-recap";
+import { PaymentGateModal } from "./payment-gate-modal";
 import { ProductImage } from "@/components/product/product-image";
 import { useCart } from "@/components/cart/cart-provider";
 import { eur } from "@/lib/storefront-data";
@@ -139,9 +138,8 @@ function ComingSoonRow({ icons, title }: { icons: ReactNode; title: string }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function KassePage() {
-  const router = useRouter();
   const { cart, meta, count } = useCart();
-  const [pending, setPending] = useState(false);
+  const [gateOpen, setGateOpen] = useState(false);
   const [shippingMethod, setShippingMethod] = useState<ShippingMethod>("versand");
   const [payment, setPayment] = useState<PaymentMethod>("vorkasse");
 
@@ -151,28 +149,14 @@ export default function KassePage() {
     if (method === "versand" && payment === "barzahlung") setPayment("vorkasse");
   }
 
-  /* The seam exposes no order submission for Vorkasse/Abholung (its checkout()
-   * creates a Stripe payment intent, and the gateway is deliberately deferred).
-   * The validated journey therefore ends in the composed Bestätigung with an
-   * honest Vorschau hinweis; the choices travel along for the right next steps,
-   * and a compact recap goes over via sessionStorage so the Bestätigung can
-   * show what was requested before it empties the cart. */
+  /* HONEST PAYMENT GATE: the api's checkout() reserves stock AND creates a
+   * Stripe payment intent in one step — with the gateway deliberately not yet
+   * configured there is no order submission that does not claim a payment.
+   * So the validated journey ends in the PaymentGateModal: no fake success,
+   * no invented order, the cart stays intact, and the shopper gets the two
+   * real channels (WhatsApp-Reservierung, Termin im Geschäft). */
   function handleAddressSubmit(_values: AddressFormValues) {
-    if (pending) return;
-    setPending(true);
-    writeCheckoutRecap({
-      items: (cart?.items ?? []).map((it) => ({
-        name: meta[it.productId]?.name ?? "Artikel",
-        quantity: it.quantity,
-        unitPriceEur: it.unitPriceEur,
-      })),
-      totalEur: cart?.totalEur ?? "0.00",
-      zahlart: payment,
-      versand: shippingMethod,
-      placedAt: new Date().toISOString(),
-    });
-    const params = new URLSearchParams({ zahlart: payment, versand: shippingMethod });
-    router.push(`/kasse/bestaetigung?${params.toString()}`);
+    setGateOpen(true);
   }
 
   // ── Empty cart guard ────────────────────────────────────────────────────────
@@ -221,7 +205,7 @@ export default function KassePage() {
               title="Kontakt & Lieferadresse"
               sub="Wohin dürfen wir liefern, und wie erreichen wir Sie?"
             >
-              <AddressForm onSubmit={handleAddressSubmit} pending={pending} />
+              <AddressForm onSubmit={handleAddressSubmit} />
             </StepCard>
 
             {/* 2 · Versand */}
@@ -383,12 +367,13 @@ export default function KassePage() {
               </p>
             </section>
 
-            {/* Vorschau notice — honest by design, no fake order */}
+            {/* Honest notice — the gate states it again at the final action */}
             <div className="flex gap-3 rounded-button border border-rule bg-raised p-4">
               <Info aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-ink-aged" />
               <p className="text-sm leading-relaxed text-ink-aged">
-                Vorschau-Modus: Die Online-Bestellung wird mit dem Livegang freigeschaltet.
-                Es wird noch keine Bestellung übermittelt und keine Zahlung ausgelöst.
+                Die Online-Zahlung ist noch nicht verfügbar — die Zahlungsanbindung wird
+                derzeit eingerichtet. Es wird keine Zahlung ausgelöst; Ihre Auswahl können
+                Sie im Geschäft oder telefonisch reservieren.
               </p>
             </div>
 
@@ -396,10 +381,9 @@ export default function KassePage() {
             <button
               type="submit"
               form="checkout-address-form"
-              disabled={pending}
-              className="hidden min-h-[48px] w-full rounded-button bg-ink px-6 py-4 text-sm font-semibold text-white shadow-card transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 lg:block"
+              className="hidden min-h-[48px] w-full rounded-button bg-ink px-6 py-4 text-sm font-semibold text-white shadow-card transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 lg:block"
             >
-              {pending ? "Wird verarbeitet ..." : "Bestellung absenden"}
+              Kostenpflichtig bestellen
             </button>
 
             <p className="text-center text-xs leading-relaxed text-ink-faded">
@@ -432,13 +416,23 @@ export default function KassePage() {
           <button
             type="submit"
             form="checkout-address-form"
-            disabled={pending}
-            className="min-h-[48px] flex-1 rounded-button bg-ink px-5 py-3 text-sm font-semibold text-white shadow-card transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            className="min-h-[48px] flex-1 rounded-button bg-ink px-5 py-3 text-sm font-semibold text-white shadow-card transition-opacity hover:opacity-90"
           >
-            {pending ? "Wird verarbeitet ..." : "Bestellung absenden"}
+            Kostenpflichtig bestellen
           </button>
         </div>
       </div>
+
+      {/* The honest end state: no fake order, the cart stays intact */}
+      <PaymentGateModal
+        open={gateOpen}
+        onClose={() => setGateOpen(false)}
+        items={items.map((it) => ({
+          name: meta[it.productId]?.name ?? "Artikel",
+          quantity: it.quantity,
+        }))}
+        totalEur={totalEur}
+      />
     </PageShell>
   );
 }

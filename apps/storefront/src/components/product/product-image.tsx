@@ -24,11 +24,12 @@ const MATTE_BG = "radial-gradient(120% 120% at 30% 20%, #f7f6f3 0%, #f1efea 55%,
  *      so the grid never flashes raw <img> pop-in.
  *
  * `fit` controls how the live photo meets the frame:
- *   • "contain" (DEFAULT — unchanged behaviour) → the whole piece is shown on the
- *      cream matte with a soft floor-shadow. Used by the PDP gallery + cart, where
- *      the object must read whole and uncropped.
+ *   • "contain" (DEFAULT) → the whole piece on the quiet cream matte with ONE
+ *      balanced margin (5%) — used by the PDP gallery + cart, where the object
+ *      must read whole and uncropped. No extra rings, no floor-shadow: the
+ *      single hairline of the surrounding frame is the only edge.
  *   • "cover" → the photo fills the frame edge-to-edge, present and jewel-clean
- *      (the catalog card on mobile). No matte, no floor-shadow.
+ *      (the catalog card). No matte.
  *
  * Place inside a relative box; the component fills it.
  */
@@ -97,13 +98,6 @@ export function ProductImage({
       className={cn("relative overflow-hidden bg-raised", className)}
       style={isCover ? undefined : { background: MATTE_BG }}
     >
-      {/* contain: soft floor-shadow so the piece sits in the frame, not cut off */}
-      {!isCover && (
-        <span
-          className="pointer-events-none absolute inset-x-[18%] bottom-[9%] h-[8%] rounded-[50%] bg-ink/[0.16] blur-md"
-          aria-hidden="true"
-        />
-      )}
       <Image
         src={url}
         alt={image?.altDe ?? ""}
@@ -115,7 +109,8 @@ export function ProductImage({
         onLoad={() => setLoaded(true)}
         className={cn(
           "transition-opacity duration-slow ease-curator motion-reduce:transition-none",
-          isCover ? "object-cover" : "object-contain p-[7%]",
+          // ONE balanced margin — not skinny, not the old thick double matting
+          isCover ? "object-cover" : "object-contain p-[5%]",
           loaded ? "opacity-100" : "opacity-0",
         )}
       />

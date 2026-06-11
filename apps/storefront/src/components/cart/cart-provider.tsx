@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { data, productHref, type Cart, type CartItem, type ProductImage, type ProductSummary } from "@/lib/storefront-data";
+import { data, productHref, StorefrontError, type Cart, type CartItem, type ProductImage, type ProductSummary } from "@/lib/storefront-data";
 
 /** Display metadata we keep client-side so the drawer can show names + images. */
 export type ItemMeta = { name: string; href: string; image: ProductImage | null; priceEur: string };
@@ -152,7 +152,24 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const add: CartContextValue["add"] = useCallback(async (product) => {
     setPending(true);
     try {
-      const next = await data.addToCart(product.id);
+      let next: Cart;
+      try {
+        next = await data.addToCart(product.id);
+      } catch (err) {
+        /* Live-contract realities (storefront-cart.ts): every piece is a
+         * Unikat, so the api enforces one line per product (409 CONFLICT —
+         * the item is already in the cart, refresh and show it), and the
+         * server cart needs a shopper session (401 — hand over to Anmelden
+         * instead of failing silently). */
+        if (err instanceof StorefrontError && err.status === 409) {
+          next = await data.getCart();
+        } else if (err instanceof StorefrontError && err.status === 401) {
+          window.location.assign("/anmelden");
+          return;
+        } else {
+          throw err;
+        }
+      }
       setCart(next);
       setMeta((m) => ({
         ...m,
@@ -188,6 +205,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
       setMutatingId(item.id);
       try {
         setCart(await data.addToCart(item.productId));
+      } catch (err) {
+        /* Live mode: one line per product (Unikate) — the api answers 409,
+         * the quantity simply stays at 1. Anything else still surfaces. */
+        if (!(err instanceof StorefrontError && err.status === 409)) throw err;
       } finally {
         setMutatingId(null);
       }
@@ -202,7 +223,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
       try {
         let next = await data.removeFromCart(item.id);
         for (let n = 0; n < item.quantity - 1; n++) {
-          next = await data.addToCart(item.productId);
+          try {
+            next = await data.addToCart(item.productId);
+          } catch (err) {
+            // Live mode caps at one line per product (409): rebuild stops at 1.
+            if (err instanceof StorefrontError && err.status === 409) break;
+            throw err;
+          }
         }
         setCart(next);
       } finally {

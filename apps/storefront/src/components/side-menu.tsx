@@ -1,32 +1,44 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  X, Search, ChevronRight, Coins, Circle, CircleDot, Watch, Landmark,
-  Stamp, Layers, Gem, Hexagon, ArrowRight, Clock,
+  X, Search, ChevronDown, ChevronRight, Coins, Circle, CircleDot, Watch, Landmark,
+  Stamp, Layers, Gem, Hexagon, ArrowRight, Clock, Medal, Banknote, Mail, Shield,
+  Award, Image as ImageIcon, Boxes, Sparkles, HandCoins, type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { Logo } from "@/components/logo";
 import { useCart } from "@/components/cart/cart-provider";
 import { useWishlist } from "@/components/wishlist/wishlist-provider";
+import { useCategories } from "@/components/catalog/use-categories";
+import type { CategoryNode } from "@/lib/storefront-data";
 
 const EASE_OUT = [0.16, 1, 0.3, 1] as const; // curator entrance ease
 
-/* The shop's real category tree (slugs match storefront-data, the
- * /kollektion?category= filter resolves every one of them). No counts:
- * we never show numbers the backend does not deliver. */
-const categories = [
-  { slug: "gold", name: "Gold", icon: Coins, hint: "Anlagemünzen & Barren" },
-  { slug: "silber", name: "Silber", icon: CircleDot, hint: "Münzen & Barren" },
-  { slug: "platin", name: "Platin", icon: Hexagon, hint: "Münzen & Barren" },
-  { slug: "muenzen", name: "Münzen", icon: Circle, hint: "Historisch & numismatisch" },
-  { slug: "schmuck", name: "Schmuck", icon: Gem, hint: "Gold, Silber & Vintage" },
-  { slug: "uhren", name: "Uhren", icon: Watch, hint: "Vintage & Klassiker" },
-  { slug: "antiquitaeten", name: "Antiquitäten", icon: Landmark, hint: "Mit Provenienz" },
-  { slug: "briefmarken", name: "Briefmarken", icon: Stamp, hint: "Deutschland & weltweit" },
-  { slug: "sammlerobjekte", name: "Sammlerobjekte", icon: Layers, hint: "Militaria & Raritäten" },
-];
+/* Icon per world — keyed by the live slug, with a calm fallback so a new
+ * category from the backend never renders empty. */
+const CATEGORY_ICONS: Record<string, LucideIcon> = {
+  gold: Coins,
+  silber: CircleDot,
+  platin: Hexagon,
+  palladium: Hexagon,
+  muenzen: Circle,
+  briefmarken: Stamp,
+  schmuck: Gem,
+  barren: Layers,
+  medaillen: Medal,
+  banknoten: Banknote,
+  postkarten: Mail,
+  militaria: Shield,
+  antiquitaeten: Landmark,
+  uhren: Watch,
+  "orden-ehrenzeichen": Award,
+  ansichtskarten: ImageIcon,
+  konvolute: Boxes,
+  neuheiten: Sparkles,
+  ankauf: HandCoins,
+};
 
 const services = [
   { label: "Goldankauf", href: "/goldankauf" },
@@ -53,6 +65,13 @@ export function SideMenu({
   const closeRef = useRef<HTMLButtonElement>(null);
   const { count: cartCount } = useCart();
   const { count: wishlistCount } = useWishlist();
+
+  /* The LIVE taxonomy — roots as the menu, children behind a calm accordion
+   * (one root open at a time), and Briefmarken's Altdeutschland states as a
+   * third, hairline-indented level. */
+  const categories = useCategories() ?? [];
+  const [openRoot, setOpenRoot] = useState<string | null>(null);
+  const [openChild, setOpenChild] = useState<string | null>(null);
 
   /* Native-feeling overlay behaviour: lock the page scroll behind the menu,
    * close on ESC, keep Tab cycling inside the panel, focus the close button
@@ -89,6 +108,14 @@ export function SideMenu({
       window.removeEventListener("keydown", onKey);
     };
   }, [open, onClose]);
+
+  // a fresh visit starts folded — no half-remembered accordion state
+  useEffect(() => {
+    if (!open) {
+      setOpenRoot(null);
+      setOpenChild(null);
+    }
+  }, [open]);
 
   return (
     <AnimatePresence>
@@ -150,32 +177,26 @@ export function SideMenu({
               <nav className="flex-1 overflow-y-auto overscroll-contain px-3 pb-10">
                 <div className="smallcaps px-2 pb-2 text-xs font-semibold text-ink-faded">Sortiment</div>
                 <ul>
-                  {categories.map((c, i) => {
-                    const Icon = c.icon;
-                    return (
-                      <motion.li
-                        key={c.slug}
-                        initial={{ opacity: 0, x: -12 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ duration: 0.42, delay: 0.05 + i * 0.07, ease: EASE_OUT }}
-                      >
-                        <Link
-                          href={`/kollektion?category=${c.slug}`}
-                          onClick={onClose}
-                          className="group flex min-h-[44px] items-center gap-3.5 rounded-button px-2 py-2 transition-colors duration-fast ease-hover hover:bg-raised"
-                        >
-                          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-button bg-ink/5 text-ink-aged transition-colors duration-base ease-hover group-hover:bg-ink group-hover:text-white">
-                            <Icon className="h-[18px] w-[18px]" strokeWidth={1.7} aria-hidden="true" />
-                          </span>
-                          <span className="flex-1">
-                            <span className="block font-medium leading-tight text-ink">{c.name}</span>
-                            <span className="block text-xs text-ink-faded">{c.hint}</span>
-                          </span>
-                          <ChevronRight className="h-4 w-4 text-ink-faded transition-transform duration-base ease-hover group-hover:translate-x-0.5 group-hover:text-ink" aria-hidden="true" />
-                        </Link>
-                      </motion.li>
-                    );
-                  })}
+                  {categories.map((root, i) => (
+                    <motion.li
+                      key={root.slug}
+                      initial={{ opacity: 0, x: -12 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.42, delay: Math.min(0.05 + i * 0.035, 0.4), ease: EASE_OUT }}
+                    >
+                      <RootRow
+                        node={root}
+                        expanded={openRoot === root.slug}
+                        onToggle={() => {
+                          setOpenRoot(openRoot === root.slug ? null : root.slug);
+                          setOpenChild(null);
+                        }}
+                        openChild={openChild}
+                        onToggleChild={(slug) => setOpenChild(openChild === slug ? null : slug)}
+                        onNavigate={onClose}
+                      />
+                    </motion.li>
+                  ))}
                 </ul>
                 <Link
                   href="/kollektion"
@@ -270,5 +291,150 @@ export function SideMenu({
         </>
       )}
     </AnimatePresence>
+  );
+}
+
+/**
+ * One root of the Sortiment. The name always navigates; roots with children
+ * carry a separate 44px chevron toggle that folds their world open in place.
+ * The hint line under the name is data, not copy: the first child names.
+ */
+function RootRow({
+  node,
+  expanded,
+  onToggle,
+  openChild,
+  onToggleChild,
+  onNavigate,
+}: {
+  node: CategoryNode;
+  expanded: boolean;
+  onToggle: () => void;
+  openChild: string | null;
+  onToggleChild: (slug: string) => void;
+  onNavigate: () => void;
+}) {
+  const Icon = CATEGORY_ICONS[node.slug] ?? Layers;
+  const hasChildren = node.children.length > 0;
+  const hint = hasChildren
+    ? node.children
+        .slice(0, 3)
+        .map((c) => c.nameDe)
+        .join(" · ") + (node.children.length > 3 ? " …" : "")
+    : null;
+
+  return (
+    <div>
+      <div className="group flex items-center gap-1">
+        <Link
+          href={`/kategorien/${node.slug}`}
+          onClick={onNavigate}
+          className="flex min-h-[44px] min-w-0 flex-1 items-center gap-3.5 rounded-button px-2 py-2 transition-colors duration-fast ease-hover hover:bg-raised"
+        >
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-button bg-ink/5 text-ink-aged transition-colors duration-base ease-hover group-hover:bg-ink group-hover:text-white">
+            <Icon className="h-[18px] w-[18px]" strokeWidth={1.7} aria-hidden="true" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate font-medium leading-tight text-ink">{node.nameDe}</span>
+            {hint && <span className="block truncate text-xs text-ink-faded">{hint}</span>}
+          </span>
+          {!hasChildren && (
+            <ChevronRight
+              className="h-4 w-4 shrink-0 text-ink-faded transition-transform duration-base ease-hover group-hover:translate-x-0.5 group-hover:text-ink"
+              aria-hidden="true"
+            />
+          )}
+        </Link>
+        {hasChildren && (
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={expanded}
+            aria-label={expanded ? `${node.nameDe} einklappen` : `${node.nameDe} aufklappen`}
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-button text-ink-faded transition-colors duration-fast ease-hover hover:bg-raised hover:text-ink"
+          >
+            <ChevronDown
+              className={`h-4 w-4 transition-transform duration-base ease-hover ${expanded ? "rotate-180" : ""}`}
+              aria-hidden="true"
+            />
+          </button>
+        )}
+      </div>
+
+      <AnimatePresence initial={false}>
+        {expanded && hasChildren && (
+          <motion.ul
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.3, ease: EASE_OUT }}
+            className="overflow-hidden"
+          >
+            {node.children.map((child) => (
+              <li key={child.id} className="ml-[52px]">
+                <div className="flex items-center gap-1">
+                  <Link
+                    href={`/kategorien/${child.slug}`}
+                    onClick={onNavigate}
+                    className="flex min-h-[40px] min-w-0 flex-1 items-center rounded-button px-2 text-sm text-ink-aged transition-colors duration-fast ease-hover hover:bg-raised hover:text-ink"
+                  >
+                    <span className="truncate">{child.nameDe}</span>
+                  </Link>
+                  {child.children.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => onToggleChild(child.slug)}
+                      aria-expanded={openChild === child.slug}
+                      aria-label={
+                        openChild === child.slug
+                          ? `${child.nameDe} einklappen`
+                          : `${child.nameDe} aufklappen`
+                      }
+                      className="grid h-10 w-10 shrink-0 place-items-center rounded-button text-ink-faded transition-colors duration-fast ease-hover hover:bg-raised hover:text-ink"
+                    >
+                      <ChevronDown
+                        className={`h-4 w-4 transition-transform duration-base ease-hover ${openChild === child.slug ? "rotate-180" : ""}`}
+                        aria-hidden="true"
+                      />
+                    </button>
+                  )}
+                </div>
+
+                {/* the third level: Altdeutschland → its 18 states, behind a
+                 * hairline, each with the honest MiNr range from the seam */}
+                <AnimatePresence initial={false}>
+                  {openChild === child.slug && child.children.length > 0 && (
+                    <motion.ul
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.3, ease: EASE_OUT }}
+                      className="ml-2 overflow-hidden border-l border-rule pl-3"
+                    >
+                      {child.children.map((grand) => (
+                        <li key={grand.id}>
+                          <Link
+                            href={`/kategorien/${grand.slug}`}
+                            onClick={onNavigate}
+                            className="flex min-h-[38px] items-center justify-between gap-2 rounded-button px-2 text-[0.8125rem] text-ink-aged transition-colors duration-fast ease-hover hover:bg-raised hover:text-ink"
+                          >
+                            <span className="truncate">{grand.nameDe}</span>
+                            {grand.descriptionDe?.startsWith("MiNr.") && (
+                              <span className="tnum shrink-0 text-[0.6875rem] text-ink-faded">
+                                {grand.descriptionDe}
+                              </span>
+                            )}
+                          </Link>
+                        </li>
+                      ))}
+                    </motion.ul>
+                  )}
+                </AnimatePresence>
+              </li>
+            ))}
+          </motion.ul>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }

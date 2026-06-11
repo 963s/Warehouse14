@@ -3,6 +3,7 @@ import { FacetSidebar } from '@/components/catalog/facet-sidebar';
 import { PaginationBar } from '@/components/catalog/pagination-bar';
 import { ProductGrid } from '@/components/catalog/product-grid';
 import { PageShell } from '@/components/page-shell';
+import { erhaltungFromParam } from '@/components/product/erhaltung';
 import { data } from '@/lib/storefront-data';
 import type { ProductQuery } from '@/lib/storefront-data';
 import type { Metadata } from 'next';
@@ -17,28 +18,44 @@ const LIMIT = 12;
 
 interface PageProps {
   searchParams: {
+    /** `kategorie` is the canonical param; `category` stays as an alias. */
+    kategorie?: string;
     category?: string;
     metal?: string;
     sort?: string;
     min?: string;
     max?: string;
+    erhaltung?: string;
+    minrVon?: string;
+    minrBis?: string;
     q?: string;
     page?: string;
   };
 }
 
+/** Parse a positive integer URL param; anything else → undefined. */
+function intParam(raw: string | undefined): number | undefined {
+  if (!raw) return undefined;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
 export default async function KollektionPage({ searchParams }: PageProps) {
   const page = Math.max(1, Number.parseInt(searchParams.page ?? '1', 10) || 1);
   const offset = (page - 1) * LIMIT;
+  const category = searchParams.kategorie ?? searchParams.category;
 
   const query: ProductQuery = {
     limit: LIMIT,
     offset,
-    category: searchParams.category,
+    category,
     metal: searchParams.metal,
     sort: searchParams.sort as ProductQuery['sort'],
     minPriceEur: searchParams.min ? Number.parseFloat(searchParams.min) : undefined,
     maxPriceEur: searchParams.max ? Number.parseFloat(searchParams.max) : undefined,
+    erhaltung: erhaltungFromParam(searchParams.erhaltung),
+    minrVon: intParam(searchParams.minrVon),
+    minrBis: intParam(searchParams.minrBis),
     q: searchParams.q,
   };
 
@@ -48,10 +65,13 @@ export default async function KollektionPage({ searchParams }: PageProps) {
 
   const hasActiveSearch = !!(
     searchParams.q ||
-    searchParams.category ||
+    category ||
     searchParams.metal ||
     searchParams.min ||
-    searchParams.max
+    searchParams.max ||
+    searchParams.erhaltung ||
+    searchParams.minrVon ||
+    searchParams.minrBis
   );
 
   return (
@@ -89,11 +109,14 @@ export default async function KollektionPage({ searchParams }: PageProps) {
           <div className="w-full lg:w-64 shrink-0">
             <FacetSidebar
               categories={categories}
-              activeCategory={searchParams.category}
+              activeCategory={category}
               activeMetal={searchParams.metal}
               activeSort={searchParams.sort}
               activeMin={searchParams.min}
               activeMax={searchParams.max}
+              activeErhaltung={searchParams.erhaltung}
+              activeMinrVon={searchParams.minrVon}
+              activeMinrBis={searchParams.minrBis}
             />
           </div>
 

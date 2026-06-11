@@ -6,6 +6,7 @@ import { FacetSidebar } from "@/components/catalog/facet-sidebar";
 import { PaginationBar } from "@/components/catalog/pagination-bar";
 import { Kicker } from "@/components/brand/kicker";
 import { engravedIconBySlug } from "@/components/brand/engraved-icons";
+import { erhaltungFromParam } from "@/components/product/erhaltung";
 import { data } from "@/lib/storefront-data";
 import type { ProductQuery } from "@/lib/storefront-data";
 
@@ -51,8 +52,18 @@ interface PageProps {
     sort?: string;
     min?: string;
     max?: string;
+    erhaltung?: string;
+    minrVon?: string;
+    minrBis?: string;
     page?: string;
   };
+}
+
+/** Parse a positive integer URL param; anything else → undefined. */
+function intParam(raw: string | undefined): number | undefined {
+  if (!raw) return undefined;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
@@ -86,6 +97,9 @@ export default async function KategoriePage({ params, searchParams }: PageProps)
     sort: searchParams.sort as ProductQuery["sort"],
     minPriceEur: searchParams.min ? parseFloat(searchParams.min) : undefined,
     maxPriceEur: searchParams.max ? parseFloat(searchParams.max) : undefined,
+    erhaltung: erhaltungFromParam(searchParams.erhaltung),
+    minrVon: intParam(searchParams.minrVon),
+    minrBis: intParam(searchParams.minrBis),
   };
 
   const paged = await data.listProducts(query);
@@ -155,6 +169,9 @@ export default async function KategoriePage({ params, searchParams }: PageProps)
               activeSort={searchParams.sort}
               activeMin={searchParams.min}
               activeMax={searchParams.max}
+              activeErhaltung={searchParams.erhaltung}
+              activeMinrVon={searchParams.minrVon}
+              activeMinrBis={searchParams.minrBis}
             />
           </div>
 

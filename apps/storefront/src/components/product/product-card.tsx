@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ProductImage } from "./product-image";
+import { stampLine } from "./erhaltung";
 import { AddToCartButton } from "@/components/cart/add-to-cart-button";
 import { WishlistButton } from "@/components/wishlist/wishlist-button";
 import { eur, grams, productHref, type ProductSummary } from "@/lib/storefront-data";
@@ -20,7 +21,9 @@ export function ProductCard({
   priority?: boolean;
 }) {
   const href = productHref(p);
-  const meta = [p.metal, p.weightGrams ? grams(p.weightGrams, 2) : null, p.yearMintedFrom ? String(p.yearMintedFrom) : null]
+  // stamps lead with the collector's line (MiNr + Erhaltung); metal worlds
+  // keep their material · weight · year caption — never both invented
+  const meta = [stampLine(p), p.metal, p.weightGrams ? grams(p.weightGrams, 2) : null, p.yearMintedFrom ? String(p.yearMintedFrom) : null]
     .filter(Boolean)
     .join(" · ");
   const eyebrow = p.primaryCategory?.nameDe ?? p.metal ?? "Sammlerstück";
