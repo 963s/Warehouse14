@@ -2,8 +2,10 @@
 
 import type { FormEvent } from "react";
 import { useState } from "react";
-import { PageShell } from "@/components/page-shell";
+import { PageHeader, PageShell } from "@/components/page-shell";
+import { WhatsAppIcon } from "@/components/brand-icons";
 import { Reveal } from "@/components/ui/reveal";
+import { waLink } from "@/lib/contact";
 import { data } from "@/lib/storefront-data";
 
 export function KontaktView() {
@@ -30,15 +32,30 @@ export function KontaktView() {
       <article className="mx-auto max-w-3xl px-5 py-16 md:py-24 space-y-16">
         {/* Seitenheader */}
         <Reveal>
-          <header className="space-y-4">
-            <h1 className="font-display text-4xl md:text-5xl font-semibold text-ink">
-              Kontakt
-            </h1>
-            <p className="text-ink-aged leading-relaxed max-w-xl">
-              Wir sind gerne persönlich, telefonisch oder per Nachricht für
-              Sie da. Kommen Sie einfach vorbei oder schreiben Sie uns.
+          <PageHeader
+            eyebrow="Kontor Schorndorf"
+            title="Kontakt"
+            lead="Wir sind gerne persönlich, telefonisch oder per Nachricht für Sie da. Kommen Sie einfach vorbei oder schreiben Sie uns."
+          />
+        </Reveal>
+
+        {/* Die direkte Alternative: WhatsApp statt Formular. */}
+        <Reveal delay={0.04}>
+          <div className="flex flex-col gap-3 rounded-card border border-rule bg-card p-4 sm:flex-row sm:items-center">
+            <p className="text-sm leading-relaxed text-ink-aged sm:mr-auto">
+              Oder direkt per WhatsApp: Schreiben Sie uns Ihre Frage, wir
+              antworten so schnell wie möglich.
             </p>
-          </header>
+            <a
+              href={waLink("Guten Tag, ich habe eine Frage an warehouse14.")}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex min-h-[44px] shrink-0 items-center justify-center gap-2.5 rounded-button border border-ink/25 bg-card px-5 py-2.5 text-sm font-medium text-ink transition-colors duration-fast ease-hover hover:border-[#25D366]/60"
+            >
+              <WhatsAppIcon className="h-[18px] w-[18px] text-[#25D366]" />
+              WhatsApp öffnen
+            </a>
+          </div>
         </Reveal>
 
         {/* Adresse, Öffnungszeiten, Kontaktdaten */}
@@ -50,38 +67,40 @@ export function KontaktView() {
                 Anschrift
               </h2>
               <address className="not-italic text-ink-aged leading-relaxed space-y-1">
-                <p className="font-medium text-ink">Warehouse14</p>
-                <p>Musterstrasse 14</p>
+                <p className="font-medium text-ink">warehouse14</p>
+                <p>Musterstraße 14</p>
                 <p>73614 Schorndorf</p>
               </address>
-              <div className="pt-4 space-y-2 text-ink-aged text-sm leading-relaxed">
+              {/* 44px touch rows: the whole line is the link, not just a word. */}
+              <div className="pt-2 text-ink-aged text-sm leading-relaxed">
                 <p>
-                  <span className="text-gold font-medium">Telefon&nbsp;</span>
                   <a
-                    href="tel:+4971812345678"
-                    className="hover:text-gold transition-colors"
+                    href="tel:+497181000000"
+                    className="inline-flex min-h-[44px] items-center gap-1.5 transition-colors duration-fast ease-hover hover:text-ink"
                   >
-                    +49 7181 234 5678
+                    <span className="font-medium text-ink">Telefon</span>
+                    <span className="tnum">+49 (0)7181 000000</span>
                   </a>
                 </p>
                 <p>
-                  <span className="text-gold font-medium">E-Mail&nbsp;</span>
                   <a
                     href="mailto:hallo@warehouse14.de"
-                    className="hover:text-gold transition-colors"
+                    className="inline-flex min-h-[44px] items-center gap-1.5 transition-colors duration-fast ease-hover hover:text-ink"
                   >
+                    <span className="font-medium text-ink">E-Mail</span>
                     hallo@warehouse14.de
                   </a>
                 </p>
                 <p>
-                  <span className="text-gold font-medium">WhatsApp&nbsp;</span>
                   <a
-                    href="https://wa.me/4971812345678"
+                    href={waLink()}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="hover:text-gold transition-colors"
+                    className="inline-flex min-h-[44px] items-center gap-1.5 transition-colors duration-fast ease-hover hover:text-ink"
                   >
+                    <span className="font-medium text-ink">WhatsApp</span>
                     Nachricht senden
+                    <WhatsAppIcon className="h-4 w-4 text-[#25D366]" />
                   </a>
                 </p>
               </div>
@@ -128,7 +147,7 @@ export function KontaktView() {
 
             {status === "sent" ? (
               <div className="rounded-card bg-surface border border-rule px-6 py-8 text-center space-y-2">
-                <p className="font-display text-xl font-semibold text-gold">
+                <p className="font-display text-xl font-semibold text-ink">
                   Vielen Dank, wir melden uns.
                 </p>
                 <p className="text-ink-aged text-sm leading-relaxed">
@@ -155,7 +174,7 @@ export function KontaktView() {
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       placeholder="Ihr vollständiger Name"
-                      className="w-full rounded-button border border-rule bg-surface px-4 py-2.5 text-ink placeholder:text-ink-faded text-sm focus:outline-none focus:ring-2 focus:ring-gold/40 transition-[border-color,box-shadow]"
+                      className="min-h-[44px] w-full rounded-button border border-rule bg-surface px-4 py-2.5 text-base text-ink placeholder:text-ink-faded focus:outline-none focus:ring-2 focus:ring-ink/40 transition-[border-color,box-shadow]"
                     />
                   </div>
 
@@ -176,7 +195,7 @@ export function KontaktView() {
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="ihre@email.de"
-                      className="w-full rounded-button border border-rule bg-surface px-4 py-2.5 text-ink placeholder:text-ink-faded text-sm focus:outline-none focus:ring-2 focus:ring-gold/40 transition-[border-color,box-shadow]"
+                      className="min-h-[44px] w-full rounded-button border border-rule bg-surface px-4 py-2.5 text-base text-ink placeholder:text-ink-faded focus:outline-none focus:ring-2 focus:ring-ink/40 transition-[border-color,box-shadow]"
                     />
                   </div>
                 </div>
@@ -197,12 +216,12 @@ export function KontaktView() {
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
                     placeholder="Womit können wir Ihnen helfen?"
-                    className="w-full rounded-button border border-rule bg-surface px-4 py-2.5 text-ink placeholder:text-ink-faded text-sm focus:outline-none focus:ring-2 focus:ring-gold/40 transition-[border-color,box-shadow] resize-none"
+                    className="w-full resize-none rounded-button border border-rule bg-surface px-4 py-2.5 text-base text-ink placeholder:text-ink-faded focus:outline-none focus:ring-2 focus:ring-ink/40 transition-[border-color,box-shadow]"
                   />
                 </div>
 
                 {status === "error" && (
-                  <p role="alert" className="text-sm text-red-600">
+                  <p role="alert" className="text-sm text-wax-red">
                     Leider ist etwas schiefgelaufen. Bitte versuchen Sie es
                     erneut oder schreiben Sie uns direkt per E-Mail.
                   </p>
@@ -211,7 +230,7 @@ export function KontaktView() {
                 <button
                   type="submit"
                   disabled={status === "sending"}
-                  className="rounded-button bg-gold px-7 py-2.5 text-sm font-semibold text-white hover:bg-gold/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/40 transition-[background-color,box-shadow] disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="inline-flex min-h-[48px] w-full items-center justify-center rounded-button bg-ink px-7 py-2.5 text-sm font-semibold text-white transition-[background-color,box-shadow] duration-fast ease-hover hover:bg-ink-aged focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink/40 disabled:opacity-60 disabled:cursor-not-allowed sm:w-auto"
                 >
                   {status === "sending"
                     ? "Wird gesendet ..."

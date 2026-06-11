@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { KontaktView } from "./kontakt-view";
 
 export const metadata: Metadata = {
-  title: "Kontakt – Warehouse14",
+  title: "Kontakt",
   description:
     "Besuchen Sie uns in Schorndorf oder schreiben Sie uns. Wir freuen uns auf Ihre Nachricht.",
 };

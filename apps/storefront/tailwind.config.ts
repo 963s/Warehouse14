@@ -2,7 +2,7 @@ import type { Config } from "tailwindcss";
 
 /**
  * warehouse14 storefront — Tailwind theme bound to the @warehouse14/ui-kit
- * design tokens (modern clean neutral + sparing gold). Values mirror
+ * design tokens (calm cream + ink, no gold). Values mirror
  * packages/ui-kit/src/tokens.css so web + POS share one identity.
  */
 const config: Config = {
@@ -10,28 +10,38 @@ const config: Config = {
   content: ["./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
+      // rgb(var(--…-rgb) / <alpha-value>) — NOT plain var(--hex): Tailwind can
+      // only compile slash-opacity utilities (bg-ink/45, border-rule/60 …)
+      // when the color exposes raw channels. The hex vars still exist in
+      // globals.css for non-Tailwind use; the -rgb triplets mirror them.
       colors: {
-        surface: "var(--w14-parchment)",
-        card: "var(--w14-parchment-2)",
-        raised: "var(--w14-parchment-3)",
+        surface: "rgb(var(--w14-parchment-rgb) / <alpha-value>)",
+        card: "rgb(var(--w14-parchment-2-rgb) / <alpha-value>)",
+        raised: "rgb(var(--w14-parchment-3-rgb) / <alpha-value>)",
         ink: {
-          DEFAULT: "var(--w14-ink)",
-          aged: "var(--w14-ink-aged)",
-          faded: "var(--w14-ink-faded)",
+          DEFAULT: "rgb(var(--w14-ink-rgb) / <alpha-value>)",
+          aged: "rgb(var(--w14-ink-aged-rgb) / <alpha-value>)",
+          faded: "rgb(var(--w14-ink-faded-rgb) / <alpha-value>)",
         },
-        rule: "var(--w14-rule)",
+        rule: "rgb(var(--w14-rule-rgb) / <alpha-value>)",
         gold: {
-          DEFAULT: "var(--w14-gold)",
-          soft: "var(--w14-gold-soft)",
-          deep: "var(--w14-gold-deep)",
+          DEFAULT: "rgb(var(--w14-gold-rgb) / <alpha-value>)",
+          soft: "rgb(var(--w14-gold-soft-rgb) / <alpha-value>)",
+          deep: "rgb(var(--w14-gold-deep-rgb) / <alpha-value>)",
         },
-        "wax-red": "var(--w14-wax-red)",
-        verdigris: "var(--w14-verdigris)",
-        forest: "var(--w14-forest)",
-        terra: "var(--w14-terra)",
+        "wax-red": "rgb(var(--w14-wax-red-rgb) / <alpha-value>)",
+        verdigris: "rgb(var(--w14-verdigris-rgb) / <alpha-value>)",
+        forest: "rgb(var(--w14-forest-rgb) / <alpha-value>)",
+        terra: "rgb(var(--w14-terra-rgb) / <alpha-value>)",
+        // House gilding (stamp-edge gold): threads, edges and seals ONLY —
+        // never fills, never grounds, never body text.
+        gilt: {
+          DEFAULT: "rgb(var(--w14-gilt-rgb) / <alpha-value>)",
+          deep: "rgb(var(--w14-gilt-deep-rgb) / <alpha-value>)",
+        },
       },
       fontFamily: {
-        display: ["var(--font-cormorant)", "Cormorant Garamond", "Georgia", "serif"],
+        display: ["var(--font-display)", "Bricolage Grotesque", "system-ui", "sans-serif"],
         sans: ["var(--font-inter)", "Inter", "system-ui", "sans-serif"],
         mono: ["var(--font-mono)", "JetBrains Mono", "Menlo", "monospace"],
       },
@@ -73,8 +83,9 @@ const config: Config = {
         card: "0 1px 2px rgba(16,24,40,.05), 0 1px 3px rgba(16,24,40,.08)",
         lift: "0 12px 32px -8px rgba(16,24,40,.18)",
         modal: "0 18px 44px rgba(16,24,40,.20)",
-        gold: "0 8px 30px -6px rgba(191,148,48,.45)",
-        "gold-lg": "0 20px 60px -12px rgba(191,148,48,.55)",
+        // legacy names — now quiet neutral lifts, never a gold glow
+        gold: "0 8px 30px -6px rgba(28,28,28,.16)",
+        "gold-lg": "0 20px 60px -12px rgba(28,28,28,.22)",
       },
       transitionTimingFunction: {
         curator: "cubic-bezier(0.16, 1, 0.3, 1)", // entrances

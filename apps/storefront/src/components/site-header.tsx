@@ -36,14 +36,16 @@ export function SiteHeader({ solid = false }: { solid?: boolean }) {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  const dark = !scrolled && !solid;
+  // One light identity everywhere: transparent over the cream hero at the
+  // top, frosted cream with a hairline once scrolled (or on solid pages).
+  const dark = false;
 
   return (
     <>
       <header
         className={cn(
-          "sticky top-0 z-50 transition-[background-color,color,border-color,box-shadow] duration-base ease-hover",
-          scrolled || solid ? "glass border-b border-rule text-ink" : "bg-[#17130c] text-white",
+          "sticky top-0 z-50 text-ink transition-[background-color,color,border-color,box-shadow] duration-base ease-hover",
+          scrolled || solid ? "glass border-b border-rule" : "bg-transparent",
         )}
       >
         <div className="mx-auto flex h-16 max-w-edge items-center justify-between gap-2 px-4 sm:h-[72px] sm:gap-3 sm:px-5">
@@ -60,7 +62,8 @@ export function SiteHeader({ solid = false }: { solid?: boolean }) {
             >
               <Menu className="h-[20px] w-[20px]" aria-hidden="true" />
             </button>
-            <a href="#top" className="rounded-button transition-opacity duration-fast ease-hover hover:opacity-80">
+            {/* the wordmark always leads home, also from sub-pages */}
+            <a href="/" aria-label="Zur Startseite" className="rounded-button transition-opacity duration-fast ease-hover hover:opacity-80">
               <Logo />
             </a>
           </div>
@@ -76,7 +79,7 @@ export function SiteHeader({ solid = false }: { solid?: boolean }) {
                 )}
               >
                 {l.label}
-                <span className="absolute -bottom-0.5 left-0 h-px w-0 bg-gold transition-[width] duration-base ease-out group-hover:w-full" />
+                <span className="absolute -bottom-0.5 left-0 h-px w-0 bg-ink transition-[width] duration-base ease-out group-hover:w-full" />
               </a>
             ))}
           </nav>
@@ -100,7 +103,7 @@ export function SiteHeader({ solid = false }: { solid?: boolean }) {
             <button
               onClick={openCart}
               aria-label="Warenkorb öffnen"
-              className="bg-gold-gradient relative ml-1 inline-flex h-11 w-11 items-center justify-center gap-2 rounded-button text-sm font-semibold text-[#2b210a] transition-transform duration-fast ease-hover hover:-translate-y-px sm:ml-1.5 sm:w-auto sm:px-4"
+              className="relative ml-1 inline-flex h-11 w-11 items-center justify-center gap-2 rounded-button bg-ink text-sm font-semibold text-white transition-[transform,background-color] duration-fast ease-hover hover:-translate-y-px hover:bg-ink-aged sm:ml-1.5 sm:w-auto sm:px-4"
             >
               <ShoppingBag className="h-[18px] w-[18px]" aria-hidden="true" />
               <span className="hidden sm:inline">Warenkorb</span>
@@ -110,7 +113,12 @@ export function SiteHeader({ solid = false }: { solid?: boolean }) {
         </div>
       </header>
 
-      <SideMenu open={menu} onClose={() => setMenu(false)} onSignIn={() => setSignIn(true)} />
+      <SideMenu
+        open={menu}
+        onClose={() => setMenu(false)}
+        onSignIn={() => setSignIn(true)}
+        onSearch={() => setSearch(true)}
+      />
       <SearchOverlay open={search} onClose={() => setSearch(false)} />
       <SignInPanel open={signIn} onClose={() => setSignIn(false)} />
     </>
@@ -150,7 +158,7 @@ function CountBadge({ value }: { value: number }) {
     <span
       aria-live="polite"
       aria-atomic="true"
-      className="tnum absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-ink px-1 text-[0.62rem] font-bold text-white"
+      className="tnum absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-ink px-1 text-[0.62rem] font-bold text-white ring-2 ring-surface"
     >
       {value}
     </span>

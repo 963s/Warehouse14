@@ -1,14 +1,16 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
+import { BadgeCheck, Package, ShieldCheck, type LucideIcon } from "lucide-react";
 
 import { data, eur } from "@/lib/storefront-data";
 import { PageShell } from "@/components/page-shell";
-import { AddToCartButton } from "@/components/cart/add-to-cart-button";
 import { Reveal } from "@/components/ui/reveal";
 import { PhotoGallery } from "@/components/product/photo-gallery";
 import { SpecsTable } from "@/components/product/specs-table";
 import { UnikatBadge } from "@/components/product/scarcity-badge";
+import { StickyBuyBar } from "@/components/product/sticky-buy-bar";
+import { RelatedPieces } from "@/components/product/related-pieces";
 
 // ── Metadata ──────────────────────────────────────────────────────────────────
 
@@ -76,7 +78,7 @@ export default async function ArtikelDetailPage({
     ...(p.primaryCategory
       ? [
           {
-            href: `/kategorie/${p.primaryCategory.slug}`,
+            href: `/kategorien/${p.primaryCategory.slug}`,
             label: p.primaryCategory.nameDe,
           },
         ]
@@ -93,22 +95,32 @@ export default async function ArtikelDetailPage({
       />
 
       <div className="max-w-edge mx-auto px-4 py-8 sm:px-6 lg:px-8">
-        {/* Breadcrumb */}
+        {/* Breadcrumb — one quiet line; only the product name truncates,
+            so a long title never pushes the trail onto a second row */}
         <nav aria-label="Brotkrumenpfad" className="mb-6">
-          <ol className="flex flex-wrap items-center gap-1.5 text-sm text-ink-faded">
+          <ol className="flex items-center gap-1.5 text-sm text-ink-faded">
             {breadcrumbs.map((crumb, idx) => (
-              <li key={idx} className="flex items-center gap-1.5">
+              <li
+                key={idx}
+                className={
+                  idx === breadcrumbs.length - 1
+                    ? "flex min-w-0 items-center gap-1.5"
+                    : "flex shrink-0 items-center gap-1.5"
+                }
+              >
                 {idx > 0 && (
                   <span aria-hidden="true" className="text-ink-faded/50">
                     /
                   </span>
                 )}
                 {idx === breadcrumbs.length - 1 ? (
-                  <span className="font-medium text-ink-aged">{crumb.label}</span>
+                  <span className="block truncate font-medium text-ink-aged">
+                    {crumb.label}
+                  </span>
                 ) : (
                   <Link
                     href={crumb.href}
-                    className="transition-colors hover:text-ink"
+                    className="whitespace-nowrap py-2 transition-colors hover:text-ink"
                   >
                     {crumb.label}
                   </Link>
@@ -125,14 +137,16 @@ export default async function ArtikelDetailPage({
             <PhotoGallery images={p.images} />
           </Reveal>
 
-          {/* Right: product info */}
+          {/* Right: product info. Order is tuned for the phone: name, price,
+              then the action right away (thumb-reachable just under the
+              gallery), the quiet trust line, and only then the longer read. */}
           <Reveal delay={0.08}>
             <div className="flex flex-col gap-6">
               {/* Category label */}
               {p.primaryCategory && (
                 <Link
-                  href={`/kategorie/${p.primaryCategory.slug}`}
-                  className="smallcaps text-sm text-gold hover:underline"
+                  href={`/kategorien/${p.primaryCategory.slug}`}
+                  className="eyebrow -my-3 flex min-h-[44px] w-fit items-center transition-colors duration-fast ease-hover hover:text-ink"
                 >
                   {p.primaryCategory.nameDe}
                 </Link>
@@ -151,34 +165,40 @@ export default async function ArtikelDetailPage({
                 {unikat && <UnikatBadge />}
               </div>
 
+              {/* Add to cart — plus the quiet phone companion bar that rises
+                  once the visitor scrolls past this primary action */}
+              <div className="pt-1">
+                <StickyBuyBar product={p} />
+              </div>
+
+              {/* Trust signals */}
+              <ul className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-ink-faded">
+                <TrustItem icon={ShieldCheck}>Versichert</TrustItem>
+                <TrustItem icon={BadgeCheck}>Echtheitsgarantie</TrustItem>
+                <TrustItem icon={Package}>Versicherter Versand</TrustItem>
+              </ul>
+
               {/* Description */}
               {p.descriptionDe && (
                 <p className="leading-relaxed text-ink-aged">{p.descriptionDe}</p>
               )}
-
-              {/* Add to cart */}
-              <div className="pt-1">
-                <AddToCartButton
-                  product={p}
-                  full
-                  label="In den Warenkorb"
-                />
-              </div>
-
-              {/* Trust signals */}
-              <ul className="flex flex-wrap gap-x-5 gap-y-1.5 text-sm text-ink-faded">
-                <TrustItem icon="🔒">Versichert</TrustItem>
-                <TrustItem icon="✓">Echtheitsgarantie</TrustItem>
-                <TrustItem icon="📦">Versicherter Versand</TrustItem>
-              </ul>
             </div>
           </Reveal>
         </div>
 
-        {/* Specs table */}
+        {/* Exponat-Karte */}
         <Reveal delay={0.1} className="mt-14">
           <SpecsTable product={p} />
         </Reveal>
+
+        {/* Aus derselben Vitrine — siblings from the same category, same frame */}
+        {p.primaryCategory && (
+          <RelatedPieces
+            categorySlug={p.primaryCategory.slug}
+            categoryName={p.primaryCategory.nameDe}
+            excludeId={p.id}
+          />
+        )}
       </div>
     </PageShell>
   );
@@ -187,15 +207,15 @@ export default async function ArtikelDetailPage({
 // ── Sub-component ─────────────────────────────────────────────────────────────
 
 function TrustItem({
-  icon,
+  icon: Icon,
   children,
 }: {
-  icon: string;
+  icon: LucideIcon;
   children: React.ReactNode;
 }) {
   return (
     <li className="flex items-center gap-1.5">
-      <span aria-hidden="true">{icon}</span>
+      <Icon className="h-[18px] w-[18px]" strokeWidth={1.7} aria-hidden="true" />
       {children}
     </li>
   );

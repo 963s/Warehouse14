@@ -35,7 +35,7 @@ export function MerklisteClient() {
           </div>
           <Link
             href="/kollektion"
-            className="bg-gold-gradient rounded-button px-6 py-2.5 text-sm font-semibold text-[#2b210a] shadow-gold transition-transform hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2"
+            className="inline-flex min-h-[44px] items-center rounded-button bg-ink px-6 py-2.5 text-sm font-semibold text-white shadow-card transition-transform hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2"
           >
             Zur Kollektion
           </Link>

@@ -3,7 +3,7 @@ import { PageShell } from "@/components/page-shell";
 import { Reveal } from "@/components/ui/reveal";
 
 export const metadata: Metadata = {
-  title: "Widerrufsrecht | Warehouse14",
+  title: "Widerrufsrecht | warehouse14",
   description:
     "Informationen zum gesetzlichen Widerrufsrecht bei Sammlermünzen und Antiquitäten sowie zum Ausschluss des Widerrufsrechts bei Anlagegold und Edelmetallbarren gemäß Paragraf 312g Abs. 2 Nr. 8 BGB.",
 };
@@ -27,7 +27,7 @@ export default function WiderrufsrechtPage() {
             Widerrufsrecht
           </h1>
           <p className="text-ink-faded text-sm mb-12">
-            Warehouse14 &middot; Musterstraße 14 &middot; 73614 Schorndorf
+            warehouse14 &middot; Musterstraße 14 &middot; 73614 Schorndorf
             &middot; USt-IdNr folgt
           </p>
         </Reveal>
@@ -130,7 +130,7 @@ export default function WiderrufsrechtPage() {
               </p>
               <div className="rounded-card border border-rule bg-card px-6 py-4 shadow-card space-y-1 text-sm">
                 <p className="font-semibold text-ink">Kontakt für den Widerruf</p>
-                <p className="text-ink-aged">Warehouse14</p>
+                <p className="text-ink-aged">warehouse14</p>
                 <p className="text-ink-aged">Musterstraße 14, 73614 Schorndorf</p>
                 <p className="text-ink-aged">
                   E-Mail: widerruf@warehouse14.de (Platzhalter)
@@ -197,7 +197,7 @@ export default function WiderrufsrechtPage() {
 
             <div className="rounded-card border border-rule bg-card shadow-card px-6 py-6 space-y-4 text-sm text-ink-aged leading-relaxed">
               <p className="font-semibold text-ink text-base">
-                An: Warehouse14, Musterstraße 14, 73614 Schorndorf
+                An: warehouse14, Musterstraße 14, 73614 Schorndorf
                 &middot; widerruf@warehouse14.de (Platzhalter)
               </p>
 

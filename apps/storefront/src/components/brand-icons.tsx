@@ -1,87 +1,101 @@
-/* Real payment + identity brand marks (inline SVG, brand-accurate colours). */
+/* Payment + shipping acceptance marks — the REAL logos, self-hosted under
+ * /public/brands/ and shown in their original brand colours (standard
+ * acceptance-mark practice: the mark itself is never recoloured; the calm
+ * house treatment lives in the uniform white chip + hairline border around it).
+ *
+ * Sources (official vector files via Wikimedia Commons, sanitised: editor
+ * metadata stripped, no scripts/rasters, colours untouched):
+ *   visa.svg        https://commons.wikimedia.org/wiki/File:Visa_Inc._logo_(2021–present).svg
+ *   mastercard.svg  https://commons.wikimedia.org/wiki/File:Mastercard_2019_logo.svg
+ *   paypal.svg      https://commons.wikimedia.org/wiki/File:PayPal.svg
+ *   apple-pay.svg   https://commons.wikimedia.org/wiki/File:Apple_Pay_logo.svg
+ *   google-pay.svg  https://commons.wikimedia.org/wiki/File:Google_Pay_Logo.svg
+ *   klarna.svg      https://commons.wikimedia.org/wiki/File:Klarna_Logo_black.svg
+ *   sepa.svg        https://commons.wikimedia.org/wiki/File:Single_Euro_Payments_Area_logo.svg
+ *   dhl.svg         https://commons.wikimedia.org/wiki/File:DHL_Logo.svg
+ */
 
-export function VisaIcon({ className = "h-6" }: { className?: string }) {
+function PayChip({ src, label, className = "h-6", pad = "p-[4px]" }: {
+  src: string;
+  label: string;
+  className?: string;
+  pad?: string;
+}) {
   return (
-    <svg className={className} viewBox="0 0 48 32" role="img" aria-label="Visa">
-      <rect width="48" height="32" rx="4" fill="#fff" stroke="#e6e6e6" />
-      <text x="24" y="21" textAnchor="middle" fontFamily="Arial, sans-serif" fontWeight="700" fontStyle="italic" fontSize="13" fill="#1434CB" letterSpacing="0.5">VISA</text>
-    </svg>
+    <span className={`inline-flex aspect-[3/2] items-center justify-center overflow-hidden rounded-[4px] border border-rule bg-card ${className}`}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={src} alt={label} loading="lazy" decoding="async" className={`h-full w-full object-contain ${pad}`} />
+    </span>
   );
 }
 
-export function MastercardIcon({ className = "h-6" }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 48 32" role="img" aria-label="Mastercard">
-      <rect width="48" height="32" rx="4" fill="#fff" stroke="#e6e6e6" />
-      <circle cx="20" cy="16" r="8" fill="#EB001B" />
-      <circle cx="28" cy="16" r="8" fill="#F79E1B" />
-      <path d="M24 10a8 8 0 0 0 0 12 8 8 0 0 0 0-12Z" fill="#FF5F00" />
-    </svg>
-  );
+export function VisaIcon({ className }: { className?: string }) {
+  return <PayChip src="/brands/visa.svg" label="Visa" className={className} pad="px-[6px] py-[4px]" />;
 }
 
-export function PaypalIcon({ className = "h-6" }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 48 32" role="img" aria-label="PayPal">
-      <rect width="48" height="32" rx="4" fill="#fff" stroke="#e6e6e6" />
-      <text x="24" y="21" textAnchor="middle" fontFamily="Arial, sans-serif" fontWeight="700" fontStyle="italic" fontSize="11">
-        <tspan fill="#003087">Pay</tspan><tspan fill="#009cde">Pal</tspan>
-      </text>
-    </svg>
-  );
+export function MastercardIcon({ className }: { className?: string }) {
+  return <PayChip src="/brands/mastercard.svg" label="Mastercard" className={className} pad="p-[4px]" />;
 }
 
-export function ApplePayIcon({ className = "h-6" }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 48 32" role="img" aria-label="Apple Pay">
-      <rect width="48" height="32" rx="4" fill="#fff" stroke="#e6e6e6" />
-      <g transform="translate(9.5 9.2)" fill="#000">
-        <path d="M4.9 2.2c.3-.4.5-1 .45-1.55-.46.02-1.02.3-1.35.7-.3.34-.56.9-.49 1.43.51.04 1.04-.26 1.39-.58Zm.44.7c-.75-.04-1.39.42-1.75.42-.36 0-.91-.4-1.5-.39-.77.01-1.48.45-1.88 1.14-.8 1.39-.21 3.45.57 4.58.38.55.84 1.17 1.44 1.15.57-.02.79-.37 1.48-.37.69 0 .89.37 1.5.36.62-.01 1.01-.56 1.39-1.12.44-.64.62-1.26.63-1.29-.01-.01-1.21-.47-1.22-1.85-.01-1.16.94-1.71.99-1.74-.54-.8-1.39-.89-1.68-.91Z" />
-      </g>
-      <text x="29" y="21" fontFamily="Arial, sans-serif" fontWeight="600" fontSize="11" fill="#000">Pay</text>
-    </svg>
-  );
+export function PaypalIcon({ className }: { className?: string }) {
+  return <PayChip src="/brands/paypal.svg" label="PayPal" className={className} pad="px-[5px] py-[4px]" />;
 }
 
-export function GooglePayIcon({ className = "h-6" }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 48 32" role="img" aria-label="Google Pay">
-      <rect width="48" height="32" rx="4" fill="#fff" stroke="#e6e6e6" />
-      <text x="11" y="21" fontFamily="Arial, sans-serif" fontWeight="700" fontSize="11">
-        <tspan fill="#4285F4">G</tspan><tspan fill="#EA4335">o</tspan><tspan fill="#FBBC05">o</tspan><tspan fill="#4285F4">g</tspan><tspan fill="#34A853">l</tspan><tspan fill="#EA4335">e</tspan>
-      </text>
-      <text x="35" y="21" fontFamily="Arial, sans-serif" fontWeight="500" fontSize="11" fill="#5F6368">Pay</text>
-    </svg>
-  );
+export function ApplePayIcon({ className }: { className?: string }) {
+  return <PayChip src="/brands/apple-pay.svg" label="Apple Pay" className={className} pad="px-[7px] py-[5px]" />;
 }
 
-export function KlarnaIcon({ className = "h-6" }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 48 32" role="img" aria-label="Klarna">
-      <rect width="48" height="32" rx="4" fill="#FFB3C7" />
-      <text x="24" y="21" textAnchor="middle" fontFamily="Arial, sans-serif" fontWeight="700" fontSize="11" fill="#0B051D">Klarna</text>
-    </svg>
-  );
+export function GooglePayIcon({ className }: { className?: string }) {
+  return <PayChip src="/brands/google-pay.svg" label="Google Pay" className={className} pad="px-[7px] py-[4px]" />;
+}
+
+export function KlarnaIcon({ className }: { className?: string }) {
+  return <PayChip src="/brands/klarna.svg" label="Klarna" className={className} pad="px-[5px] py-[4px]" />;
 }
 
 export function SepaIcon({ className = "h-6" }: { className?: string }) {
+  /* The official SEPA lockup carries two subtext lines ("Single Euro Payments
+   * Area" / "Einheitlicher Euro-Zahlungsverkehrsraum") that turn into grey
+   * noise at chip size. A wrapper svg crops the file to the S€PA wordmark:
+   * its bbox in the file's user units is x 0..192.2, y 0..52.7, and the
+   * image rect mirrors the file's viewBox (-2.408 -2.408 196.951 85.082) so
+   * file coordinates map 1:1 onto ours. The clipPath does the real cropping —
+   * a viewBox alone only remaps coordinates, letterbox bands would still
+   * expose the subtext. Asset and brand colours stay untouched. */
   return (
-    <svg className={className} viewBox="0 0 48 32" role="img" aria-label="SEPA Überweisung">
-      <rect width="48" height="32" rx="4" fill="#fff" stroke="#e6e6e6" />
-      <text x="24" y="20" textAnchor="middle" fontFamily="Arial, sans-serif" fontWeight="700" fontSize="11" fill="#10298E">SEPA</text>
-    </svg>
+    <span className={`inline-flex aspect-[3/2] items-center justify-center overflow-hidden rounded-[4px] border border-rule bg-card ${className}`}>
+      <svg viewBox="0 0 192.2 52.7" className="h-full w-full px-[5px] py-[7px]" role="img" aria-label="SEPA Überweisung">
+        <clipPath id="sepa-wordmark-clip">
+          <rect x="0" y="0" width="192.2" height="52.7" />
+        </clipPath>
+        <image
+          href="/brands/sepa.svg"
+          x="-2.408"
+          y="-2.408"
+          width="196.951"
+          height="85.082"
+          clipPath="url(#sepa-wordmark-clip)"
+        />
+      </svg>
+    </span>
   );
+}
+
+export function DhlIcon({ className }: { className?: string }) {
+  return <PayChip src="/brands/dhl.svg" label="DHL" className={className} pad="px-[4px] py-[8px]" />;
 }
 
 /* ── Identity marks for social login ─────────────────────────────────── */
 
+/* Monochrome by design (currentColor): the house palette allows no brand
+ * yellow/blue at rest. The G silhouette stays recognisable in plain ink. */
 export function GoogleG({ className = "h-5 w-5" }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 48 48" role="img" aria-label="Google">
-      <path fill="#4285F4" d="M45.12 24.5c0-1.56-.14-3.06-.4-4.5H24v8.51h11.84c-.51 2.75-2.06 5.08-4.39 6.64v5.52h7.11c4.16-3.83 6.56-9.47 6.56-16.17Z" />
-      <path fill="#34A853" d="M24 46c5.94 0 10.92-1.97 14.56-5.33l-7.11-5.52c-1.97 1.32-4.49 2.1-7.45 2.1-5.73 0-10.58-3.87-12.31-9.07H4.34v5.7C7.96 41.07 15.4 46 24 46Z" />
-      <path fill="#FBBC05" d="M11.69 28.18C11.25 26.86 11 25.45 11 24s.25-2.86.69-4.18v-5.7H4.34A21.99 21.99 0 0 0 2 24c0 3.55.85 6.91 2.34 9.88l7.35-5.7Z" />
-      <path fill="#EA4335" d="M24 10.75c3.23 0 6.13 1.11 8.41 3.29l6.31-6.31C34.91 4.18 29.93 2 24 2 15.4 2 7.96 6.93 4.34 14.12l7.35 5.7c1.73-5.2 6.58-9.07 12.31-9.07Z" />
+    <svg className={className} viewBox="0 0 48 48" role="img" aria-label="Google" fill="currentColor">
+      <path d="M45.12 24.5c0-1.56-.14-3.06-.4-4.5H24v8.51h11.84c-.51 2.75-2.06 5.08-4.39 6.64v5.52h7.11c4.16-3.83 6.56-9.47 6.56-16.17Z" />
+      <path d="M24 46c5.94 0 10.92-1.97 14.56-5.33l-7.11-5.52c-1.97 1.32-4.49 2.1-7.45 2.1-5.73 0-10.58-3.87-12.31-9.07H4.34v5.7C7.96 41.07 15.4 46 24 46Z" />
+      <path d="M11.69 28.18C11.25 26.86 11 25.45 11 24s.25-2.86.69-4.18v-5.7H4.34A21.99 21.99 0 0 0 2 24c0 3.55.85 6.91 2.34 9.88l7.35-5.7Z" />
+      <path d="M24 10.75c3.23 0 6.13 1.11 8.41 3.29l6.31-6.31C34.91 4.18 29.93 2 24 2 15.4 2 7.96 6.93 4.34 14.12l7.35 5.7c1.73-5.2 6.58-9.07 12.31-9.07Z" />
     </svg>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { Package } from "lucide-react";
 import { PageShell } from "@/components/page-shell";
 import { Reveal } from "@/components/ui/reveal";
 import { data, eur } from "@/lib/storefront-data";
@@ -25,12 +26,13 @@ const SHIPPING_LABELS: Record<string, string> = {
 function statusBadge(status: string): string {
   switch (status) {
     case "DELIVERED":
-      return "bg-emerald-50 text-emerald-700 border-emerald-200";
+      // verdigris = positive/complete; rgba literal, token colors carry no alpha
+      return "bg-[rgba(63,107,84,0.10)] text-verdigris border-[rgba(63,107,84,0.30)]";
     case "SHIPPED":
     case "PROCESSING":
-      return "bg-amber-50 text-amber-700 border-amber-200";
+      return "bg-raised text-ink-aged border-rule";
     case "CANCELLED":
-      return "bg-red-50 text-red-700 border-red-200";
+      return "bg-[rgba(192,73,47,0.07)] text-wax-red border-[rgba(192,73,47,0.35)]";
     default:
       return "bg-surface text-ink-aged border-rule";
   }
@@ -63,7 +65,7 @@ export default function BestellungenPage() {
           <div className="flex items-center gap-4">
             <Link
               href="/konto"
-              className="text-ink-faded text-sm hover:text-gold transition-colors"
+              className="inline-flex min-h-[44px] items-center text-ink-faded text-sm hover:text-ink transition-colors"
             >
               &larr; Mein Konto
             </Link>
@@ -73,7 +75,7 @@ export default function BestellungenPage() {
               Meine Bestellungen
             </h1>
             <p className="text-ink-aged">
-              Alle Bestellungen, die Sie bei Warehouse14 aufgegeben haben.
+              Alle Bestellungen, die Sie bei warehouse14 aufgegeben haben.
             </p>
           </div>
         </Reveal>
@@ -87,7 +89,9 @@ export default function BestellungenPage() {
         ) : orders === null || orders.length === 0 ? (
           <Reveal delay={0.08}>
             <div className="bg-card border border-rule rounded-card shadow-card px-8 py-16 text-center space-y-5">
-              <p className="text-4xl">📦</p>
+              <span className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-surface shadow-card">
+                <Package aria-hidden="true" className="h-9 w-9 text-ink-faded" strokeWidth={1.6} />
+              </span>
               <h2 className="font-display text-xl font-semibold text-ink">
                 Noch keine Bestellungen
               </h2>
@@ -97,7 +101,7 @@ export default function BestellungenPage() {
               </p>
               <Link
                 href="/kollektion"
-                className="inline-block rounded-button bg-gold px-7 py-2.5 text-sm font-semibold text-white hover:bg-gold/90 focus:outline-none focus:ring-2 focus:ring-gold/40 transition"
+                className="inline-flex min-h-[44px] items-center rounded-button bg-ink px-7 py-2.5 text-sm font-semibold text-white hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 transition-opacity"
               >
                 Zur Kollektion
               </Link>
@@ -140,9 +144,9 @@ export default function BestellungenPage() {
                     </p>
                     <Link
                       href={`/konto/bestellungen/${order.id}`}
-                      className="text-xs text-gold hover:underline"
+                      className="inline-flex min-h-[44px] items-center text-xs font-medium text-ink underline underline-offset-2 hover:text-ink-aged"
                     >
-                      Details ansehen<span className="sr-only"> fur Bestellung {order.id}</span>
+                      Details ansehen<span className="sr-only"> für Bestellung {order.id}</span>
                     </Link>
                   </div>
                 </li>

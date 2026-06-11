@@ -39,8 +39,9 @@ export function AddToCartButton({ product, full = false, label = "Warenkorb" }: 
       disabled={state === "loading"}
       aria-label={!full ? srLabel : undefined}
       className={cn(
-        "inline-flex items-center justify-center gap-1.5 rounded-button bg-ink text-sm font-medium text-white ring-1 ring-inset ring-transparent transition-[background-color,box-shadow,opacity] hover:bg-ink-aged hover:ring-gold/40 disabled:opacity-70",
-        full ? "w-full px-6 py-3.5 text-base" : "px-3.5 py-2",
+        "inline-flex items-center justify-center gap-1.5 rounded-button bg-ink text-sm font-medium text-white transition-[background-color,opacity] hover:bg-ink-aged disabled:opacity-70",
+        // both variants stay >= 44px tall, a real thumb target on touch
+        full ? "min-h-[48px] w-full px-6 py-3.5 text-base" : "min-h-[44px] px-3.5 py-2",
       )}
     >
       {state === "loading" ? (

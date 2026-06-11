@@ -39,7 +39,7 @@ export default function ImpressumPage() {
               <br />
               Inhaber: [Vorname Nachname]
               <br />
-              Musterstrasse 14
+              Musterstraße 14
               <br />
               73614 Schorndorf
               <br />
@@ -59,16 +59,16 @@ export default function ImpressumPage() {
             <p>
               Telefon:{" "}
               <a
-                href="tel:+4971812345678"
-                className="text-gold hover:underline focus-visible:ring-2 focus-visible:ring-[--w14-gold] focus-visible:ring-offset-2 rounded-sm outline-none"
+                href="tel:+497181000000"
+                className="tnum text-ink underline underline-offset-2 hover:opacity-80 transition-opacity focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 rounded-sm outline-none"
               >
-                +49 7181 234567-8
+                +49 (0)7181 000000
               </a>
               <br />
               E-Mail:{" "}
               <a
                 href="mailto:kontakt@warehouse14.de"
-                className="text-gold hover:underline focus-visible:ring-2 focus-visible:ring-[--w14-gold] focus-visible:ring-offset-2 rounded-sm outline-none"
+                className="text-ink underline underline-offset-2 hover:opacity-80 transition-opacity focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 rounded-sm outline-none"
               >
                 kontakt@warehouse14.de
               </a>
@@ -101,7 +101,7 @@ export default function ImpressumPage() {
             <p>
               [Vorname Nachname]
               <br />
-              Musterstrasse 14
+              Musterstraße 14
               <br />
               73614 Schorndorf
             </p>
@@ -117,7 +117,7 @@ export default function ImpressumPage() {
               Berufsrecht und Aufsichtsbehörde
             </h2>
             <p>
-              Der Betrieb unterliegt den gewerberechtlichen Vorschriften des
+              Der Betrieb unterliegt den gewerberechtlichen Vorschriften der
               Gewerbeordnung (GewO) sowie den einschlägigen Bestimmungen des
               Geldwäschegesetzes (GwG). Zuständige Aufsichtsbehörde ist das
               Ordnungsamt der Stadt Schorndorf sowie, in Fragen des GwG, die

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   CalendarDays,
+  Check,
   CheckCircle2,
   Coins,
   Download,
@@ -13,9 +14,11 @@ import {
   MessagesSquare,
   PackageCheck,
 } from "lucide-react";
-import { PageShell } from "@/components/page-shell";
+import { PageHeader, PageShell } from "@/components/page-shell";
+import { WhatsAppIcon } from "@/components/brand-icons";
 import { Reveal } from "@/components/ui/reveal";
 import { cn } from "@/lib/cn";
+import { waLink } from "@/lib/contact";
 import {
   data,
   StorefrontError,
@@ -41,8 +44,8 @@ const TYPES: {
   },
   {
     value: "BUYBACK_EVAL",
-    label: "Goldankauf",
-    desc: "Gold, Münzen oder Schmuck bewerten und verkaufen",
+    label: "Ankauf & Bewertung",
+    desc: "Gold, Schmuck, Münzen, Briefmarken oder einen Nachlass bewerten lassen",
     Icon: Coins,
   },
   {
@@ -125,7 +128,7 @@ function buildIcs(typeLabel: string, startsAt: string, id: string): string {
     `DTSTAMP:${fmt(new Date())}`,
     `DTSTART:${fmt(start)}`,
     `DTEND:${fmt(end)}`,
-    `SUMMARY:${typeLabel} – warehouse14 Schorndorf`,
+    `SUMMARY:${typeLabel}, warehouse14 Schorndorf`,
     "LOCATION:warehouse14\\, Musterstraße 14\\, 73614 Schorndorf",
     "DESCRIPTION:Ihr Termin bei warehouse14. Wir bestätigen Ihren Termin.",
     "STATUS:TENTATIVE",
@@ -170,6 +173,18 @@ export function TerminView() {
     setDays(built);
     setDateKey((cur) => cur ?? built.find((d) => !d.closed)?.key ?? built[0].key);
   }, []);
+
+  // Step 4 mounts below the fold on a phone — bring the summary + contact
+  // form into view once a time is chosen, so submit needs no scroll-hunting.
+  // Honors prefers-reduced-motion (jump instead of glide).
+  useEffect(() => {
+    if (!selectedSlot) return;
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    document
+      .getElementById("termin-kontakt")
+      ?.closest("section")
+      ?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+  }, [selectedSlot]);
 
   // Load slots whenever Anliegen + Tag are chosen (and on explicit reload).
   useEffect(() => {
@@ -237,7 +252,7 @@ export function TerminView() {
         // The slot grid reloads (clearing the stale selection), so the honest
         // message lives in step 3 — right where the user picks the new time.
         setSlotNotice(
-          "Diese Uhrzeit wurde soeben anderweitig vergeben. Die verfügbaren Zeiten wurden aktualisiert – bitte wählen Sie eine andere Uhrzeit.",
+          "Diese Uhrzeit wurde soeben anderweitig vergeben. Die verfügbaren Zeiten wurden aktualisiert. Bitte wählen Sie eine andere Uhrzeit.",
         );
         setSlotsReload((k) => k + 1);
       } else if (status === 429) {
@@ -275,7 +290,7 @@ export function TerminView() {
       <PageShell>
         <article className="mx-auto max-w-2xl px-5 py-16 md:py-24">
           <div className="rounded-card border border-rule bg-card p-6 text-center shadow-card md:p-10">
-            <CheckCircle2 className="mx-auto h-12 w-12 text-gold" aria-hidden="true" />
+            <CheckCircle2 className="mx-auto h-12 w-12 text-verdigris" aria-hidden="true" />
             <h1 className="mt-5 font-display text-3xl font-semibold text-ink md:text-4xl">
               Ihre Terminanfrage ist eingegangen
             </h1>
@@ -290,7 +305,7 @@ export function TerminView() {
               Wir bestätigen Ihren Termin. Sie hören telefonisch oder per E-Mail von uns.
             </p>
             <p className="mt-5 flex items-start justify-center gap-2 text-sm text-ink-faded">
-              <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-gold" aria-hidden="true" />
+              <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-ink-aged" aria-hidden="true" />
               <span>
                 warehouse14 · Musterstraße 14 · 73614 Schorndorf
               </span>
@@ -301,7 +316,7 @@ export function TerminView() {
                 <a
                   href={icsHref}
                   download="warehouse14-termin.ics"
-                  className="bg-gold-gradient inline-flex min-h-[44px] items-center justify-center gap-2 rounded-button px-6 py-3 text-sm font-semibold text-[#2b210a] transition-transform duration-fast ease-hover hover:-translate-y-px"
+                  className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-button bg-ink px-6 py-3 text-sm font-semibold text-white transition-[background-color,transform] duration-fast ease-hover hover:-translate-y-px hover:bg-ink-aged"
                 >
                   <Download className="h-4 w-4" aria-hidden="true" />
                   Termin in Kalender speichern (.ics)
@@ -310,7 +325,7 @@ export function TerminView() {
               <button
                 type="button"
                 onClick={resetAll}
-                className="inline-flex min-h-[44px] items-center justify-center rounded-button border border-rule px-6 py-3 text-sm font-medium text-ink-aged transition-colors duration-fast ease-hover hover:border-gold hover:text-gold"
+                className="inline-flex min-h-[44px] items-center justify-center rounded-button border border-rule px-6 py-3 text-sm font-medium text-ink-aged transition-colors duration-fast ease-hover hover:border-ink hover:text-ink"
               >
                 Weiteren Termin anfragen
               </button>
@@ -322,20 +337,109 @@ export function TerminView() {
   }
 
   // ── Booking flow ────────────────────────────────────────────────────────────
+
+  // The quiet roadmap: the lead promises "Anliegen, Tag und Uhrzeit", so all
+  // three steps stay visible before anything is chosen. Locked steps explain
+  // themselves, done steps carry the chosen value (a day is preselected the
+  // moment the strip appears, so step 2 reads as done right after step 1).
+  const chosenDay = days?.find((d) => d.key === dateKey) ?? null;
+  const roadmap: { label: string; state: "locked" | "current" | "done"; value: string }[] = [
+    {
+      label: "Anliegen",
+      state: type ? "done" : "current",
+      value: TYPES.find((t) => t.value === type)?.label ?? "",
+    },
+    {
+      label: "Tag",
+      state: !type ? "locked" : chosenDay ? "done" : "current",
+      value: chosenDay
+        ? chosenDay.isToday
+          ? "Heute"
+          : `${chosenDay.weekday}, ${chosenDay.dayOfMonth}. ${chosenDay.month}`
+        : "",
+    },
+    {
+      label: "Uhrzeit",
+      state: !type || !chosenDay ? "locked" : selectedSlot ? "done" : "current",
+      value: selectedSlot ? `${timeFmt.format(new Date(selectedSlot))} Uhr` : "",
+    },
+  ];
+
   return (
     <PageShell>
       <article className="mx-auto max-w-2xl space-y-12 px-5 py-16 md:py-24">
         {/* Seitenheader */}
         <Reveal>
-          <header className="space-y-4">
-            <h1 className="font-display text-4xl font-semibold text-ink md:text-5xl">
-              Termin vereinbaren
-            </h1>
-            <p className="max-w-xl leading-relaxed text-ink-aged">
-              Wählen Sie Anliegen, Tag und Uhrzeit – wir nehmen uns eine halbe
-              Stunde Zeit für Sie und bestätigen jeden Termin persönlich.
+          <PageHeader
+            eyebrow="Service"
+            title="Termin vereinbaren"
+            lead="Wählen Sie Anliegen, Tag und Uhrzeit. Wir nehmen uns eine halbe Stunde Zeit für Sie und bestätigen jeden Termin persönlich."
+          />
+        </Reveal>
+
+        {/* Die direkte Alternative: WhatsApp statt Formular. Bald nimmt hier
+            ein Bot die Buchung entgegen — der Weg ist heute schon derselbe. */}
+        <Reveal delay={0.04}>
+          <div className="flex flex-col gap-3 rounded-card border border-rule bg-card p-4 sm:flex-row sm:items-center">
+            <p className="text-sm leading-relaxed text-ink-aged sm:mr-auto">
+              Oder direkt per WhatsApp: Schreiben Sie uns kurz Ihr Anliegen,
+              wir melden uns mit einem Terminvorschlag.
             </p>
-          </header>
+            <a
+              href={waLink("Guten Tag, ich möchte gern einen Termin vereinbaren.")}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex min-h-[44px] shrink-0 items-center justify-center gap-2.5 rounded-button border border-ink/25 bg-card px-5 py-2.5 text-sm font-medium text-ink transition-colors duration-fast ease-hover hover:border-[#25D366]/60"
+            >
+              <WhatsAppIcon className="h-[18px] w-[18px] text-[#25D366]" />
+              WhatsApp öffnen
+            </a>
+          </div>
+        </Reveal>
+
+        {/* Ablauf — hairline grid, tnum numerals, no buttons: a map, kein Menü */}
+        <Reveal delay={0.05}>
+          <ol
+            aria-label="Ablauf: Anliegen, Tag und Uhrzeit"
+            className="grid grid-cols-3 gap-px overflow-hidden rounded-card border border-rule bg-rule"
+          >
+            {roadmap.map((step, i) => (
+              <li
+                key={step.label}
+                aria-current={step.state === "current" ? "step" : undefined}
+                className={cn("min-w-0 px-3 py-3", step.state === "locked" ? "bg-surface" : "bg-card")}
+              >
+                <span className="flex items-center gap-1.5">
+                  <span
+                    className={cn(
+                      "tnum text-sm font-semibold",
+                      step.state === "locked" ? "text-ink-faded" : "text-ink",
+                    )}
+                  >
+                    {i + 1}
+                  </span>
+                  {step.state === "done" && (
+                    <Check className="h-3.5 w-3.5 shrink-0 text-verdigris" aria-hidden="true" />
+                  )}
+                </span>
+                <span
+                  className={cn(
+                    "mt-1 block text-xs font-semibold",
+                    step.state === "locked" ? "text-ink-faded" : "text-ink",
+                  )}
+                >
+                  {step.label}
+                </span>
+                <span className="tnum mt-0.5 block break-words text-[0.6875rem] leading-snug text-ink-faded">
+                  {step.state === "locked"
+                    ? "Erscheint nach Auswahl"
+                    : step.state === "current"
+                      ? "Bitte wählen"
+                      : step.value}
+                </span>
+              </li>
+            ))}
+          </ol>
         </Reveal>
 
         {/* 1 · Anliegen */}
@@ -359,12 +463,12 @@ export function TerminView() {
                     className={cn(
                       "flex min-h-[44px] items-start gap-3 rounded-card border p-4 text-left transition-colors duration-fast ease-hover",
                       active
-                        ? "border-gold bg-card shadow-card"
-                        : "border-rule bg-card hover:border-gold/60",
+                        ? "border-ink bg-raised shadow-card"
+                        : "border-rule bg-card hover:border-ink/40",
                     )}
                   >
                     <Icon
-                      className={cn("mt-0.5 h-5 w-5 shrink-0", active ? "text-gold" : "text-ink-faded")}
+                      className={cn("mt-0.5 h-5 w-5 shrink-0", active ? "text-ink" : "text-ink-faded")}
                       aria-hidden="true"
                     />
                     <span>
@@ -409,15 +513,15 @@ export function TerminView() {
                         d.closed
                           ? "cursor-not-allowed border-rule/60 text-ink-faded/60"
                           : active
-                            ? "border-gold bg-card shadow-card"
-                            : "border-rule bg-card hover:border-gold/60",
+                            ? "border-ink bg-ink shadow-card"
+                            : "border-rule bg-card hover:border-ink/40",
                       )}
                     >
-                      <span className={cn("text-[0.68rem] font-medium uppercase tracking-wide", active ? "text-gold" : "text-ink-faded")}>
+                      <span className={cn("text-[0.68rem] font-medium uppercase tracking-wide", active ? "text-white/80" : "text-ink-faded")}>
                         {d.isToday ? "Heute" : d.weekday}
                       </span>
-                      <span className="tnum text-base font-semibold text-ink">{d.dayOfMonth}</span>
-                      <span className="text-[0.68rem] text-ink-faded">
+                      <span className={cn("tnum text-base font-semibold", active ? "text-white" : "text-ink")}>{d.dayOfMonth}</span>
+                      <span className={cn("text-[0.68rem]", active ? "text-white/80" : "text-ink-faded")}>
                         {d.closed ? "geschl." : d.month}
                       </span>
                     </button>
@@ -460,7 +564,7 @@ export function TerminView() {
                 <button
                   type="button"
                   onClick={() => setSlotsReload((k) => k + 1)}
-                  className="inline-flex min-h-[44px] items-center justify-center rounded-button border border-rule px-5 text-sm font-medium text-ink-aged transition-colors duration-fast ease-hover hover:border-gold hover:text-gold"
+                  className="inline-flex min-h-[44px] items-center justify-center rounded-button border border-rule px-5 text-sm font-medium text-ink-aged transition-colors duration-fast ease-hover hover:border-ink hover:text-ink"
                 >
                   Erneut versuchen
                 </button>
@@ -493,8 +597,8 @@ export function TerminView() {
                         !s.available
                           ? "cursor-not-allowed border-rule/60 text-ink-faded/50 line-through"
                           : active
-                            ? "border-gold bg-card font-semibold text-gold shadow-card"
-                            : "border-rule bg-card text-ink hover:border-gold/60",
+                            ? "border-ink bg-ink font-semibold text-white shadow-card"
+                            : "border-rule bg-card text-ink hover:border-ink/40",
                       )}
                     >
                       {timeFmt.format(new Date(s.startsAt))}
@@ -506,15 +610,15 @@ export function TerminView() {
           </section>
         )}
 
-        {/* 4 · Kontakt */}
+        {/* 4 · Kontakt — scroll-mt keeps the heading clear of the sticky header */}
         {type && selectedSlot && (
-          <section aria-labelledby="termin-kontakt">
+          <section aria-labelledby="termin-kontakt" className="scroll-mt-24">
             <h2 id="termin-kontakt" className="eyebrow mb-4 text-ink-faded">
               4 · Ihre Kontaktdaten
             </h2>
             <form onSubmit={handleSubmit} noValidate className="space-y-5 rounded-card border border-rule bg-card p-5 shadow-card md:p-6">
               <p className="flex items-start gap-2 text-sm leading-relaxed text-ink-aged">
-                <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-gold" aria-hidden="true" />
+                <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-ink" aria-hidden="true" />
                 <span>
                   {typeLabel} · {longDateFmt.format(new Date(selectedSlot))},{" "}
                   <span className="tnum">{timeFmt.format(new Date(selectedSlot))} Uhr</span>
@@ -534,7 +638,7 @@ export function TerminView() {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Ihr vollständiger Name"
-                  className="min-h-[44px] w-full rounded-button border border-rule bg-surface px-4 py-2.5 text-sm text-ink transition-[border-color,box-shadow] placeholder:text-ink-faded focus:outline-none focus:ring-2 focus:ring-gold/40"
+                  className="min-h-[44px] w-full rounded-button border border-rule bg-surface px-4 py-2.5 text-base text-ink transition-[border-color,box-shadow] placeholder:text-ink-faded focus:outline-none focus:ring-2 focus:ring-ink/40"
                 />
               </div>
 
@@ -552,7 +656,7 @@ export function TerminView() {
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="z. B. 07181 000000"
-                    className="min-h-[44px] w-full rounded-button border border-rule bg-surface px-4 py-2.5 text-sm text-ink transition-[border-color,box-shadow] placeholder:text-ink-faded focus:outline-none focus:ring-2 focus:ring-gold/40"
+                    className="min-h-[44px] w-full rounded-button border border-rule bg-surface px-4 py-2.5 text-base text-ink transition-[border-color,box-shadow] placeholder:text-ink-faded focus:outline-none focus:ring-2 focus:ring-ink/40"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -567,7 +671,7 @@ export function TerminView() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="ihre@email.de"
-                    className="min-h-[44px] w-full rounded-button border border-rule bg-surface px-4 py-2.5 text-sm text-ink transition-[border-color,box-shadow] placeholder:text-ink-faded focus:outline-none focus:ring-2 focus:ring-gold/40"
+                    className="min-h-[44px] w-full rounded-button border border-rule bg-surface px-4 py-2.5 text-base text-ink transition-[border-color,box-shadow] placeholder:text-ink-faded focus:outline-none focus:ring-2 focus:ring-ink/40"
                   />
                 </div>
               </div>
@@ -584,7 +688,7 @@ export function TerminView() {
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
                   placeholder="Worum geht es? Z. B. „Erbschmuck bewerten lassen“"
-                  className="w-full resize-none rounded-button border border-rule bg-surface px-4 py-2.5 text-sm text-ink transition-[border-color,box-shadow] placeholder:text-ink-faded focus:outline-none focus:ring-2 focus:ring-gold/40"
+                  className="w-full resize-none rounded-button border border-rule bg-surface px-4 py-2.5 text-base text-ink transition-[border-color,box-shadow] placeholder:text-ink-faded focus:outline-none focus:ring-2 focus:ring-ink/40"
                 />
               </div>
 
@@ -598,7 +702,7 @@ export function TerminView() {
               <button
                 type="submit"
                 disabled={submitting}
-                className="bg-gold-gradient inline-flex min-h-[48px] w-full items-center justify-center rounded-button px-7 py-3 text-sm font-semibold text-[#2b210a] transition-transform duration-fast ease-hover hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                className="inline-flex min-h-[48px] w-full items-center justify-center rounded-button bg-ink px-7 py-3 text-sm font-semibold text-white transition-[background-color,transform] duration-fast ease-hover hover:-translate-y-px hover:bg-ink-aged disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
               >
                 {submitting ? "Wird gesendet …" : "Termin anfragen"}
               </button>

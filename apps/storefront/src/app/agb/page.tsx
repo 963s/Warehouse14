@@ -3,9 +3,9 @@ import { PageShell } from "@/components/page-shell";
 import { Reveal } from "@/components/ui/reveal";
 
 export const metadata: Metadata = {
-  title: "Allgemeine Geschäftsbedingungen | Warehouse14",
+  title: "Allgemeine Geschäftsbedingungen | warehouse14",
   description:
-    "AGB von Warehouse14, Schorndorf. Geltungsbereich, Vertragsschluss, Preise, Zahlung, Lieferung, Widerruf, Gewährleistung und GwG-Hinweise.",
+    "AGB von warehouse14, Schorndorf. Geltungsbereich, Vertragsschluss, Preise, Zahlung, Lieferung, Widerruf, Gewährleistung und GwG-Hinweise.",
 };
 
 export default function AgbPage() {
@@ -14,7 +14,7 @@ export default function AgbPage() {
       <article className="mx-auto max-w-3xl px-5 py-16 md:py-24">
         {/* Placeholder notice */}
         <Reveal>
-          <div className="mb-10 rounded-card border border-gold/40 bg-card px-5 py-4 text-sm text-ink-aged shadow-card">
+          <div className="mb-10 rounded-card border border-rule bg-card px-5 py-4 text-sm text-ink-aged shadow-card">
             <strong className="text-ink">Hinweis:</strong> Vorschau-Platzhalter.
             Die rechtsverbindlichen Texte werden vor dem Livegang anwaltlich
             finalisiert.
@@ -28,7 +28,7 @@ export default function AgbPage() {
             Geschäftsbedingungen
           </h1>
           <p className="mt-3 text-sm text-ink-faded">
-            Stand: Januar 2025 &middot; Warehouse14 &middot; Musterstraße 14,
+            Stand: Januar 2025 &middot; warehouse14 &middot; Musterstraße 14,
             73614 Schorndorf &middot; USt-IdNr folgt
           </p>
         </Reveal>
@@ -43,21 +43,21 @@ export default function AgbPage() {
               </h2>
               <p>
                 Diese Allgemeinen Geschäftsbedingungen (AGB) regeln alle
-                Kaufverträge, die zwischen Ihnen (nachfolgend "Käuferin"
-                oder "Käufer") und
+                Kaufverträge, die zwischen Ihnen (nachfolgend „Käuferin“
+                oder „Käufer“) und
               </p>
               <p className="rounded-card bg-card px-4 py-3 text-ink shadow-card">
-                Warehouse14 &middot; Musterstraße 14 &middot; 73614
+                warehouse14 &middot; Musterstraße 14 &middot; 73614
                 Schorndorf<br />
                 Inhaber: [Name folgt] &middot; USt-IdNr folgt<br />
                 E-Mail: shop@warehouse14.de
               </p>
               <p>
                 über den Onlineshop unter{" "}
-                <span className="text-gold">warehouse14.de</span> geschlossen
-                werden. Abweichende Bedingungen des Käufenden werden nicht
-                anerkannt, es sei denn, wir stimmen ihrer Geltung ausdrücklich
-                schriftlich zu.
+                <span className="font-medium text-ink">warehouse14.de</span> geschlossen
+                werden. Abweichende Bedingungen des Käufers oder der Käuferin
+                werden nicht anerkannt, es sei denn, wir stimmen ihrer Geltung
+                ausdrücklich schriftlich zu.
               </p>
             </section>
           </Reveal>
@@ -88,7 +88,7 @@ export default function AgbPage() {
               <p>
                 Wir behalten uns vor, Bestellungen ohne Angabe von Gründen
                 abzulehnen, insbesondere bei Nichtverfügbarkeit des Artikels
-                oder bei begegneten Sicherheitsbedenken.
+                oder bei begründeten Sicherheitsbedenken.
               </p>
             </section>
           </Reveal>
@@ -203,7 +203,7 @@ export default function AgbPage() {
               <p>
                 Die gelieferte Ware bleibt bis zur vollständigen Bezahlung
                 des Kaufpreises unser Eigentum. Sie sind verpflichtet, die
-                Ware bis zur Eigentumsübergang sorgsam aufzubewahren und
+                Ware bis zum Eigentumsübergang sorgsam aufzubewahren und
                 vor Zugriff Dritter zu schützen. Im Falle von
                 Zahlungsverzug sind wir berechtigt, die Ware
                 zurückzuverlangen.
@@ -234,12 +234,12 @@ export default function AgbPage() {
               </p>
               <p>
                 Den Widerruf können Sie erklären per E-Mail an{" "}
-                <a href="mailto:widerruf@warehouse14.de" className="text-gold underline underline-offset-2 hover:opacity-80 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--w14-gold] focus-visible:ring-offset-2 rounded-sm">widerruf@warehouse14.de</a>{" "}
+                <a href="mailto:widerruf@warehouse14.de" className="text-ink underline underline-offset-2 hover:opacity-80 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 rounded-sm">widerruf@warehouse14.de</a>{" "}
                 oder über unser Kontaktformular. Ausführliche Informationen
                 finden Sie in unserer{" "}
                 <a
                   href="/widerruf"
-                  className="text-gold underline underline-offset-2 hover:opacity-80 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--w14-gold] focus-visible:ring-offset-2 rounded-sm"
+                  className="text-ink underline underline-offset-2 hover:opacity-80 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 rounded-sm"
                 >
                   Widerrufsbelehrung
                 </a>
@@ -266,14 +266,14 @@ export default function AgbPage() {
                 Bei Münzen und Edelmetallen gilt als Mangel eine
                 wesentliche Abweichung vom vereinbarten Feingehalt, Gewicht
                 oder Echtheitsnachweis. Normale Gebrauchsspuren, die dem
-                numismatischen Zustand entsprechen (z.B. "sehr schön" bis
-                "fast vorzüglich"), stellen keinen Mangel dar, sofern sie
+                numismatischen Zustand entsprechen (z. B. „sehr schön“ bis
+                „fast vorzüglich“), stellen keinen Mangel dar, sofern sie
                 in der Produktbeschreibung dokumentiert sind.
               </p>
               <p>
                 Zur Geltendmachung von Gewährleistungsansprüchen wenden
                 Sie sich bitte an:{" "}
-                <a href="mailto:service@warehouse14.de" className="text-gold underline underline-offset-2 hover:opacity-80 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--w14-gold] focus-visible:ring-offset-2 rounded-sm">service@warehouse14.de</a>.
+                <a href="mailto:service@warehouse14.de" className="text-ink underline underline-offset-2 hover:opacity-80 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 rounded-sm">service@warehouse14.de</a>.
               </p>
             </section>
           </Reveal>
@@ -283,7 +283,7 @@ export default function AgbPage() {
           {/* 9 GwG-Hinweis */}
           <Reveal delay={0.07}>
             <section className="space-y-4">
-              <div className="rounded-card border border-gold/50 bg-card px-5 py-5 shadow-card">
+              <div className="rounded-card border border-rule bg-card px-5 py-5 shadow-card">
                 <h2 className="font-display text-2xl font-semibold text-ink">
                   9. Hinweis gemäß Geldwäschegesetz (GwG)
                 </h2>
@@ -311,7 +311,7 @@ export default function AgbPage() {
                   in unserer{" "}
                   <a
                     href="/datenschutz"
-                    className="text-gold underline underline-offset-2 hover:opacity-80 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--w14-gold] focus-visible:ring-offset-2 rounded-sm"
+                    className="text-ink underline underline-offset-2 hover:opacity-80 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 rounded-sm"
                   >
                     Datenschutzerklärung
                   </a>
@@ -344,7 +344,7 @@ export default function AgbPage() {
                 nächsten kommt.
               </p>
               <p className="text-sm text-ink-faded">
-                Warehouse14 &middot; Musterstraße 14 &middot; 73614
+                warehouse14 &middot; Musterstraße 14 &middot; 73614
                 Schorndorf &middot; shop@warehouse14.de
               </p>
             </section>

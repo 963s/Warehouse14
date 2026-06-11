@@ -1,14 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { Search, X, TrendingUp } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { BrandLoupeSketch } from "@/components/brand/marks";
 import { searchSuggestions } from "@/lib/placeholder-data";
 
 export function SearchOverlay({ open, onClose }: { open: boolean; onClose: () => void }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
+  const reduceMotion = useReducedMotion();
   const router = useRouter();
 
   function navigate(term: string) {
@@ -21,10 +23,14 @@ export function SearchOverlay({ open, onClose }: { open: boolean; onClose: () =>
 
   useEffect(() => {
     if (!open) return;
+    // lock the page behind the overlay, restore on close
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     const t = setTimeout(() => inputRef.current?.focus(), 120);
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
     return () => {
+      document.body.style.overflow = prevOverflow;
       clearTimeout(t);
       window.removeEventListener("keydown", onKey);
     };
@@ -67,7 +73,7 @@ export function SearchOverlay({ open, onClose }: { open: boolean; onClose: () =>
                 }}
               >
                 <div className="flex items-center gap-3 border-b border-rule px-5 py-4">
-                  <Search className="h-5 w-5 text-gold" aria-hidden="true" />
+                  <Search className="h-5 w-5 text-ink-faded" aria-hidden="true" />
                   <input
                     ref={inputRef}
                     type="search"
@@ -84,12 +90,27 @@ export function SearchOverlay({ open, onClose }: { open: boolean; onClose: () =>
                     type="button"
                     aria-label="Schließen"
                     onClick={onClose}
-                    className="grid h-8 w-8 shrink-0 place-items-center rounded-button text-ink-faded transition-colors hover:bg-raised hover:text-ink"
+                    className="-mr-1.5 grid h-11 w-11 shrink-0 place-items-center rounded-button text-ink-faded transition-colors hover:bg-raised hover:text-ink"
                   >
                     <X className="h-[18px] w-[18px]" aria-hidden="true" />
                   </button>
                 </div>
               </form>
+              {/* the idle moment: the hand-sketched loupe from the plaque,
+                  whispered in, until the first letter is typed */}
+              {query.trim() === "" && (
+                <motion.div
+                  initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ ease: [0.16, 1, 0.3, 1], duration: 0.5, delay: 0.12 }}
+                  className="flex flex-col items-center gap-3 border-b border-rule px-5 pb-6 pt-7 text-center"
+                >
+                  <BrandLoupeSketch className="w-24 text-ink" />
+                  <p className="max-w-xs text-sm leading-relaxed text-ink-aged">
+                    Was suchen Sie? Wir haben es vielleicht schon gefunden.
+                  </p>
+                </motion.div>
+              )}
               <div className="p-5">
                 <div className="smallcaps mb-3 flex items-center gap-1.5 text-xs font-semibold text-ink-faded">
                   <TrendingUp className="h-3.5 w-3.5" aria-hidden="true" /> Beliebte Suchen
@@ -100,14 +121,14 @@ export function SearchOverlay({ open, onClose }: { open: boolean; onClose: () =>
                       key={s}
                       type="button"
                       onClick={() => navigate(s)}
-                      className="rounded-full border border-rule bg-surface px-3.5 py-1.5 text-sm text-ink-aged transition-colors hover:border-gold/50 hover:text-ink"
+                      className="min-h-[44px] rounded-full border border-rule bg-surface px-4 py-2 text-sm text-ink-aged transition-colors hover:border-ink/30 hover:text-ink"
                     >
                       {s}
                     </button>
                   ))}
                 </div>
                 <p className="mt-5 text-xs text-ink-faded">
-                  Tipp: Tippfehler-tolerant &amp; auf Deutsch optimiert. "Goldmünze" findet auch "Gold Münze".
+                  Tipp: Die Suche verzeiht Tippfehler. "Goldmünze" findet auch "Gold Münze".
                 </p>
               </div>
             </div>

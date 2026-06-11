@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import { PageShell } from "@/components/page-shell";
+import { Kicker } from "@/components/brand/kicker";
 import { Reveal } from "@/components/ui/reveal";
 
 export const metadata: Metadata = {
   title: "Über uns | warehouse14 Schorndorf",
   description:
-    "Ihr Fachgeschäft in Schorndorf für Gold, Münzen und Antiquitäten. Persönliche Beratung, Echtheitsgarantie und Goldankauf zu tagesaktuellen Preisen.",
+    "Ihr Fachgeschäft für Antiquitäten, Briefmarken, Münzen und Gold in Schorndorf. Persönliche Beratung, Echtheitsgarantie und Goldankauf zu tagesaktuellen Preisen.",
 };
 
 const stats: { value: string; label: string }[] = [
@@ -21,15 +22,17 @@ export default function UeberUnsPage() {
       <article className="mx-auto max-w-3xl px-5 py-16 md:py-24">
         {/* Hero */}
         <Reveal>
-          <p className="smallcaps text-gold mb-3 tracking-widest text-sm">
-            Ihr Goldhaus in Schorndorf
-          </p>
+          {/* the house kicker, full trade: "Goldhaus" sold the Kontor short,
+           * Gold ist ein Teil des Hauses, nie das ganze. */}
+          <Kicker className="mb-3">
+            Antiquitäten, Briefmarken &amp; Münzen in Schorndorf
+          </Kicker>
           <h1 className="font-display text-4xl md:text-5xl font-semibold text-ink mb-6 leading-tight">
             Ein Haus, das Zeit versteht.
           </h1>
-          <p className="text-ink-aged leading-relaxed text-lg max-w-2xl">
-            Manche Dinge gewinnen mit den Jahren. Gold, alte Münzen, ein gut
-            gearbeitetes Silberstück. Und das Vertrauen, das entsteht, wenn
+          <p className="measure text-ink-aged leading-relaxed text-lg">
+            Manche Dinge gewinnen mit den Jahren. Gold, alte Münzen, seltene
+            Briefmarken, ein gut gearbeitetes Silberstück. Und das Vertrauen, das entsteht, wenn
             man weiß, mit wem man es zu tun hat. warehouse14 steht in
             Schorndorf für genau das: Sachkenntnis, Ehrlichkeit und eine
             echte Leidenschaft für das, was wir tun.
@@ -44,12 +47,18 @@ export default function UeberUnsPage() {
             {stats.map(({ value, label }) => (
               <div
                 key={label}
-                className="bg-card rounded-card shadow-card py-6 px-4 flex flex-col gap-1"
+                className="flex min-w-0 flex-col gap-1 rounded-card border border-rule bg-card px-2 py-6 shadow-card"
               >
-                <span className="font-display text-3xl font-semibold text-gold">
+                {/* whole words only: break-words once sliced "Schorndo/rf" and
+                 * "Tagesprei/s" mid-word. The clamp is sized to the tightest
+                 * tile (4-up just past 640px), so the longest value fits on
+                 * one line at every width. */}
+                <span className="whitespace-nowrap font-display text-[clamp(1.0625rem,0.55rem+1.3vw,1.375rem)] font-semibold leading-tight text-ink">
                   {value}
                 </span>
-                <span className="text-ink-faded text-sm">{label}</span>
+                <span className="whitespace-nowrap text-[clamp(0.75rem,0.45rem+0.65vw,0.875rem)] text-ink-faded">
+                  {label}
+                </span>
               </div>
             ))}
           </div>
@@ -62,7 +71,7 @@ export default function UeberUnsPage() {
           <h2 className="font-display text-3xl md:text-4xl font-semibold text-ink mb-5">
             Wie alles begann
           </h2>
-          <div className="space-y-4 text-ink-aged leading-relaxed">
+          <div className="measure space-y-4 text-ink-aged leading-relaxed">
             <p>
               Was als kleines Spezialgeschäft für Münzen und Edelmetalle in
               Schorndorf begann, ist heute ein gewachsenes Fachhaus, das Gold,
@@ -87,12 +96,13 @@ export default function UeberUnsPage() {
           <h2 className="font-display text-3xl md:text-4xl font-semibold text-ink mb-5">
             Unsere Sachkunde
           </h2>
-          <div className="space-y-4 text-ink-aged leading-relaxed">
+          <div className="measure space-y-4 text-ink-aged leading-relaxed">
             <p>
               Gold und Edelmetalle sind unser tägliches Handwerk. Wir kennen
               Feingehalt, Marktpreis und Geschichte jedes Stücks, das uns
-              vorgelegt wird. Gleiches gilt für die Numismatik: antike Münzen,
-              Gedenkprägungen, Raritäten aus aller Welt. Wir schätzen sachlich
+              vorgelegt wird. Gleiches gilt für Numismatik und Philatelie:
+              antike Münzen, Gedenkprägungen, Briefmarken, Raritäten aus
+              aller Welt. Wir schätzen sachlich
               und transparent, ohne Druck und ohne Übervorteilung.
             </p>
             <p>
@@ -115,7 +125,7 @@ export default function UeberUnsPage() {
             {[
               {
                 title: "Natur und Beständigkeit",
-                body: "Gold wächst nicht in Fabriken. Es entsteht in der Erde, über Millionen von Jahren. Diese Nähe zur Natur, zum Echten und Dauerhaften, prägt unsere Haltung gegenüber jedem Stück, das wir in den Händen halten.",
+                body: "Gold wächst nicht in Fabriken. Es entsteht in der Erde, über Millionen von Jahren. Eine alte Münze, eine Briefmarke, ein Möbelstück tragen dieselbe Tiefe der Zeit in sich. Diese Nähe zum Echten und Dauerhaften prägt unsere Haltung gegenüber jedem Stück, das wir in den Händen halten.",
               },
               {
                 title: "Zeit als Wert",
@@ -128,7 +138,7 @@ export default function UeberUnsPage() {
             ].map(({ title, body }) => (
               <div
                 key={title}
-                className="bg-card rounded-card shadow-card p-6 flex flex-col gap-3"
+                className="flex flex-col gap-3 rounded-card border border-rule bg-card p-6 shadow-card"
               >
                 <h3 className="font-display text-xl font-semibold text-ink">
                   {title}
@@ -146,17 +156,17 @@ export default function UeberUnsPage() {
           <h2 className="font-display text-3xl md:text-4xl font-semibold text-ink mb-5">
             Unser Versprechen an Sie
           </h2>
-          <div className="space-y-4 text-ink-aged leading-relaxed">
+          <div className="measure space-y-4 text-ink-aged leading-relaxed">
             <p>
-              Alles, was wir verkaufen, verläuft mit einer klaren
+              Alles, was wir verkaufen, verlässt unser Haus mit einer klaren
               Echtheitsgarantie. Wir stehen mit unserem Namen dafür ein, dass
               Edelmetalle echt, Münzen wie beschrieben und Antiquitäten so sind,
               wie wir sie vorstellen. Sollte einmal etwas nicht stimmen, lösen
               wir es. Unkompliziert.
             </p>
             <p>
-              Versand ist versichert, sorgfältig verpackt und diskret. Ob ein
-              einzelnes Goldmünzstück oder eine größere Sammlung, alles kommt
+              Versand ist versichert, sorgfältig verpackt und diskret. Ob eine
+              einzelne Goldmünze oder eine größere Sammlung, alles kommt
               sicher bei Ihnen an.
             </p>
           </div>
@@ -169,7 +179,7 @@ export default function UeberUnsPage() {
           <h2 className="font-display text-3xl md:text-4xl font-semibold text-ink mb-5">
             Goldankauf zu Tagespreisen
           </h2>
-          <div className="space-y-4 text-ink-aged leading-relaxed">
+          <div className="measure space-y-4 text-ink-aged leading-relaxed">
             <p>
               Sie möchten Gold, Silber oder Platin verkaufen? Wir zahlen den
               tagesaktuellen Marktpreis, immer fair, immer transparent. Kein
@@ -187,14 +197,13 @@ export default function UeberUnsPage() {
           <div className="mt-8 flex flex-wrap gap-4">
             <a
               href="/kontakt"
-              className="inline-block rounded-button bg-gold px-7 py-3 text-sm font-medium text-white shadow-card transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--w14-gold] focus-visible:ring-offset-2"
-              style={{ backgroundColor: "#bf9430" }}
+              className="inline-flex min-h-[48px] items-center justify-center rounded-button bg-ink px-7 py-3 text-sm font-medium text-white transition-colors duration-fast ease-hover hover:bg-ink-aged focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2"
             >
               Kontakt aufnehmen
             </a>
             <a
-              href="/ankauf"
-              className="inline-block rounded-button border border-rule px-7 py-3 text-sm font-medium text-ink transition hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--w14-gold] focus-visible:ring-offset-2"
+              href="/goldankauf"
+              className="inline-flex min-h-[48px] items-center justify-center rounded-button border border-rule px-7 py-3 text-sm font-medium text-ink transition-colors duration-fast ease-hover hover:bg-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2"
             >
               Zum Goldankauf
             </a>

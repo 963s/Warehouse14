@@ -35,15 +35,15 @@ export function MetalCalculator() {
       : null;
 
   return (
-    <div className="rounded-card border border-rule bg-card p-6 shadow-card ring-gold-soft md:p-8">
+    <div className="rounded-card border border-rule bg-card p-6 shadow-card md:p-8">
       <div className="mb-6 flex items-center gap-3">
-        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gold/12 text-gold">
-          <Calculator aria-hidden="true" className="h-5 w-5" strokeWidth={1.5} />
+        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-raised text-ink">
+          <Calculator aria-hidden="true" className="h-5 w-5" strokeWidth={1.7} />
         </div>
         <div>
-          <h2 className="font-display text-xl font-semibold text-ink">
+          <h3 className="font-display text-xl font-semibold text-ink">
             Ankaufswert berechnen
-          </h2>
+          </h3>
           <p className="text-xs text-ink-faded">Indikativ auf Basis des Tagespreises</p>
         </div>
       </div>
@@ -59,16 +59,14 @@ export function MetalCalculator() {
               id="calc-metal"
               value={selectedMetal}
               onChange={(e) => setSelectedMetal(e.target.value as MetalRate["metal"])}
-              className="w-full appearance-none rounded-button border border-rule bg-surface px-4 py-2.5 pr-10 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-gold/40 transition-[border-color,box-shadow]"
+              className="min-h-[44px] w-full appearance-none rounded-button border border-rule bg-surface px-4 py-2.5 pr-10 text-base text-ink focus:outline-none focus:ring-2 focus:ring-ink/40 transition-[border-color,box-shadow]"
             >
               {loading && (
-                <option value="gold">Gold wird geladen...</option>
+                <option value="gold">Gold wird geladen …</option>
               )}
               {rates.map((r) => (
                 <option key={r.metal} value={r.metal}>
-                  {r.label}
-                  {" "}
-                  &mdash; {eur(r.pricePerGramEur)}/g
+                  {r.label}, {eur(r.pricePerGramEur)}/g
                 </option>
               ))}
             </select>
@@ -88,19 +86,19 @@ export function MetalCalculator() {
             value={weightInput}
             onChange={(e) => setWeightInput(e.target.value)}
             placeholder="z. B. 31,1 oder 100"
-            className="w-full rounded-button border border-rule bg-surface px-4 py-2.5 text-sm text-ink placeholder:text-ink-faded focus:outline-none focus:ring-2 focus:ring-gold/40 transition-[border-color,box-shadow]"
+            className="min-h-[44px] w-full rounded-button border border-rule bg-surface px-4 py-2.5 text-base text-ink placeholder:text-ink-faded focus:outline-none focus:ring-2 focus:ring-ink/40 transition-[border-color,box-shadow]"
           />
         </div>
       </div>
 
       {/* Ergebnis */}
-      <div aria-live="polite" aria-atomic="true" className="mt-6 rounded-card border border-gold/25 bg-surface p-5">
+      <div aria-live="polite" aria-atomic="true" className="mt-6 rounded-card border border-rule bg-surface p-5">
         {indicativeValue !== null ? (
           <div className="flex flex-col gap-1">
             <span className="text-xs uppercase tracking-widest text-ink-faded">
               Indikativer Ankaufswert
             </span>
-            <span className="tnum font-display text-3xl font-semibold text-gold">
+            <span className="tnum text-3xl font-semibold text-ink">
               {eur(indicativeValue)}
             </span>
             {activeRate && (
@@ -117,7 +115,7 @@ export function MetalCalculator() {
       </div>
 
       <p className="mt-3 text-xs leading-relaxed text-ink-faded">
-        Indikativ, finaler Preis nach Prufung. Gewichtsangabe in Feingold, Feinsilber
+        Indikativ, finaler Preis nach Prüfung. Gewichtsangabe in Feingold, Feinsilber
         oder entsprechendem Reinmetall. Legierungen werden anteilig bewertet.
       </p>
     </div>

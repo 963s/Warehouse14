@@ -55,13 +55,6 @@ export const featured: Product[] = [
   { id: "deco-585", name: "Art-Déco Armband", category: "Schmuck", metal: "Gold 585", detail: "um 1925 · Unikat", priceEur: 1450.0, glyph: "gem", unique: true },
 ];
 
-export const stats = [
-  { value: 12480, suffix: "+", label: "geprüfte Objekte" },
-  { value: 38, prefix: "", suffix: "", label: "Jahre Erfahrung", note: "seit 1987" },
-  { value: 4.9, decimals: 1, suffix: " ★", label: "aus 2.347 Bewertungen" },
-  { value: 100, suffix: " %", label: "versichert & GoBD-konform" },
-];
-
 export const nav = [
   { label: "Kollektion", href: "#kollektion" },
   { label: "Münzen", href: "#kategorien" },
@@ -72,18 +65,6 @@ export const nav = [
 ];
 
 /** Side-menu taxonomy (icon = lucide key resolved in the menu component). */
-export const megaCategories = [
-  { slug: "gold", name: "Gold", icon: "coins", count: 612, hint: "Barren & Anlagemünzen" },
-  { slug: "silber", name: "Silber", icon: "circle-dot", count: 438, hint: "Barren & Münzen" },
-  { slug: "muenzen", name: "Münzen", icon: "circle", count: 1840, hint: "Anlage & Numismatik" },
-  { slug: "uhren", name: "Uhren", icon: "watch", count: 214, hint: "Vintage & Luxus" },
-  { slug: "antiquitaeten", name: "Antiquitäten", icon: "landmark", count: 967, hint: "mit Provenienz" },
-  { slug: "briefmarken", name: "Briefmarken", icon: "stamp", count: 2451, hint: "DE & weltweit" },
-  { slug: "sammlungen", name: "Sammlungen", icon: "layers", count: 183, hint: "Konvolute & Nachlässe" },
-  { slug: "raritaeten", name: "Raritäten", icon: "gem", count: 96, hint: "Einzelstücke" },
-  { slug: "geschenke", name: "Geschenke", icon: "gift", count: 120, hint: "kuratiert" },
-];
-
 export const searchSuggestions = [
   "Krügerrand 1 oz",
   "Goldbarren 100 g",

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
+import { Lock } from "lucide-react";
 import { PageShell } from "@/components/page-shell";
 import { Reveal } from "@/components/ui/reveal";
 import { data } from "@/lib/storefront-data";
@@ -29,7 +30,9 @@ function LoginGate() {
       <div className="mx-auto max-w-edge px-5 py-20 md:py-32 text-center space-y-8">
         <Reveal>
           <div className="space-y-4">
-            <p className="text-5xl">🔐</p>
+            <span className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-card shadow-card">
+              <Lock aria-hidden="true" className="h-9 w-9 text-ink-faded" strokeWidth={1.6} />
+            </span>
             <h1 className="font-display text-3xl md:text-4xl font-semibold text-ink">
               Mein Profil
             </h1>
@@ -41,7 +44,7 @@ function LoginGate() {
         <Reveal delay={0.1}>
           <Link
             href="/anmelden"
-            className="inline-block rounded-button bg-gold px-8 py-3 text-sm font-semibold text-white hover:bg-gold/90 focus:outline-none focus:ring-2 focus:ring-gold/40 transition"
+            className="inline-flex min-h-[48px] items-center rounded-button bg-ink px-8 py-3 text-sm font-semibold text-white hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 transition-opacity"
           >
             Anmelden
           </Link>
@@ -107,7 +110,7 @@ export default function ProfilPage() {
           <div className="flex items-center gap-4">
             <Link
               href="/konto"
-              className="text-ink-faded text-sm hover:text-gold transition-colors"
+              className="inline-flex min-h-[44px] items-center text-ink-faded text-sm hover:text-ink transition-colors"
             >
               &larr; Mein Konto
             </Link>
@@ -147,7 +150,7 @@ export default function ProfilPage() {
                 onChange={(e) => setFullName(e.target.value)}
                 autoComplete="name"
                 placeholder="Vor- und Nachname"
-                className="w-full rounded-button border border-rule bg-surface px-4 py-2.5 text-ink placeholder:text-ink-faded text-sm focus:outline-none focus:ring-2 focus:ring-gold/40 transition"
+                className="min-h-[44px] w-full rounded-button border border-rule bg-surface px-4 py-2.5 text-base text-ink placeholder:text-ink-faded focus:outline-none focus:border-ink focus:ring-2 focus:ring-[rgba(28,28,28,0.12)] transition-shadow"
               />
             </div>
 
@@ -165,7 +168,7 @@ export default function ProfilPage() {
                 onChange={(e) =>
                   setPreferredLanguage(e.target.value as "de" | "en" | "ar")
                 }
-                className="w-full rounded-button border border-rule bg-surface px-4 py-2.5 text-ink text-sm focus:outline-none focus:ring-2 focus:ring-gold/40 transition"
+                className="min-h-[44px] w-full cursor-pointer rounded-button border border-rule bg-surface px-4 py-2.5 text-base text-ink focus:outline-none focus:border-ink focus:ring-2 focus:ring-[rgba(28,28,28,0.12)] transition-shadow"
               >
                 <option value="de">Deutsch</option>
                 <option value="en">Englisch</option>
@@ -186,7 +189,7 @@ export default function ProfilPage() {
                   type="checkbox"
                   checked={marketingConsent}
                   onChange={(e) => setMarketingConsent(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 rounded border-rule text-gold focus:ring-gold/40 focus-visible:ring-2 focus-visible:ring-gold/40 focus-visible:ring-offset-1 transition"
+                  className="mt-0.5 h-5 w-5 shrink-0 rounded border-rule accent-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-1 transition"
                 />
                 <span className="text-sm text-ink-aged leading-relaxed group-hover:text-ink transition-colors">
                   Ich möchte den Newsletter mit Ankündigungen, neuen Stücken
@@ -200,7 +203,7 @@ export default function ProfilPage() {
               Ihre E-Mail-Adresse ({account.emailMasked}) kann hier nicht
               geändert werden. Bitte wenden Sie sich für Änderungen an
               unseren{" "}
-              <Link href="/kontakt" className="text-gold hover:underline">
+              <Link href="/kontakt" className="text-ink underline hover:text-ink-aged">
                 Kundenservice
               </Link>
               .
@@ -208,7 +211,7 @@ export default function ProfilPage() {
 
             {/* Fehlermeldung */}
             {saveStatus === "error" && (
-              <p role="alert" className="text-sm text-red-600">
+              <p role="alert" className="text-sm text-wax-red">
                 Beim Speichern ist ein Fehler aufgetreten. Bitte versuchen
                 Sie es erneut.
               </p>
@@ -216,7 +219,7 @@ export default function ProfilPage() {
 
             {/* Erfolg */}
             {saveStatus === "saved" && (
-              <p role="status" className="text-sm text-emerald-700">
+              <p role="status" className="text-sm text-verdigris">
                 Ihre Angaben wurden erfolgreich gespeichert.
               </p>
             )}
@@ -225,7 +228,7 @@ export default function ProfilPage() {
               <button
                 type="submit"
                 disabled={saveStatus === "saving"}
-                className="rounded-button bg-gold px-7 py-2.5 text-sm font-semibold text-white hover:bg-gold/90 focus:outline-none focus:ring-2 focus:ring-gold/40 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                className="inline-flex min-h-[48px] w-full items-center justify-center rounded-button bg-ink px-7 py-2.5 text-sm font-semibold text-white hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 transition-opacity disabled:opacity-60 disabled:cursor-not-allowed sm:w-auto"
               >
                 {saveStatus === "saving" ? "Wird gespeichert ..." : "Änderungen speichern"}
               </button>

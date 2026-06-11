@@ -1,3 +1,4 @@
+import { ArrowRight } from "lucide-react";
 import { Reveal } from "@/components/ui/reveal";
 import { metalRates, eur } from "@/lib/placeholder-data";
 
@@ -24,40 +25,46 @@ function sparkPath(points: number[], w = 120, h = 38) {
 
 export function LivePrices() {
   return (
-    <section className="border-y border-rule bg-card py-16 md:py-20">
+    <section className="border-y border-rule bg-raised py-section">
       <div className="mx-auto max-w-edge px-5">
-        <Reveal className="mb-10 flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <div className="smallcaps mb-2 inline-flex items-center gap-2 text-sm font-semibold text-gold">
-              <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-verdigris opacity-70" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-verdigris" />
-              </span>
+        <Reveal className="mb-w14-4 flex flex-wrap items-end justify-between gap-w14-3">
+          <div className="measure">
+            {/* a steady verdigris dot — live data, no strobing ping */}
+            <div className="eyebrow inline-flex items-center gap-2">
+              <span className="inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-verdigris" />
               Live · Echtzeit
             </div>
-            <h2 className="font-display text-3xl font-semibold md:text-4xl">Edelmetallkurse</h2>
-            <p className="mt-2 text-ink-faded">
+            <h2 className="mt-w14-2 font-display text-fluid-h2 font-medium">Edelmetallkurse</h2>
+            <p className="mt-w14-2 text-ink-faded">
               Direkt aus unserem Marktdaten-Feed, dieselben Kurse wie an der Ladentheke.
             </p>
           </div>
-          <a href="#kollektion" className="text-sm font-semibold text-gold hover:underline">
-            Alle Anlageprodukte →
+          <a
+            href="#kollektion"
+            className="group/link inline-flex min-h-[44px] items-center gap-w14-1 text-eyebrow font-medium text-ink"
+          >
+            <span className="underline-draw">Alle Anlageprodukte</span>
+            <ArrowRight
+              className="h-[18px] w-[18px] transition-transform duration-base ease-hover group-hover/link:translate-x-1"
+              strokeWidth={1.8}
+              aria-hidden="true"
+            />
           </a>
         </Reveal>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-w14-2 sm:grid-cols-2 sm:gap-w14-3 lg:grid-cols-4">
           {metalRates.map((m, i) => {
             const up = m.changePct >= 0;
             const pts = series[m.symbol];
             return (
               <Reveal key={m.symbol} delay={i * 0.07}>
-                <div className="group rounded-card border border-rule bg-surface p-5 transition-[transform,box-shadow,border-color] duration-300 hover:-translate-y-1 hover:border-gold/40 hover:shadow-lift">
+                <div className="group rounded-card border border-rule bg-surface p-card transition-[transform,box-shadow,border-color] duration-base ease-hover hover:-translate-y-1 hover:border-[color:color-mix(in_srgb,var(--w14-ink)_30%,transparent)] hover:shadow-lift">
                   <div className="flex items-center justify-between">
                     <span className="font-semibold">{m.metal}</span>
                     <span className="text-[0.68rem] uppercase tracking-widest text-ink-faded">{m.symbol}</span>
                   </div>
                   <div className="mt-3 flex items-end justify-between">
-                    <div className="tnum font-display text-2xl font-semibold">{eur(m.pricePerGram)}<span className="text-base text-ink-faded">/g</span></div>
+                    <div className="tnum text-fluid-h3 font-medium">{eur(m.pricePerGram)}<span className="text-base text-ink-faded">/g</span></div>
                     <svg viewBox="0 0 120 38" aria-hidden="true" className="h-9 w-[120px] overflow-visible">
                       <path
                         d={sparkPath(pts)}

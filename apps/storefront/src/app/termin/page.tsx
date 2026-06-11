@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { TerminView } from "./termin-view";
 
 export const metadata: Metadata = {
-  title: "Termin vereinbaren – warehouse14",
+  title: "Termin vereinbaren",
   description:
     "Vereinbaren Sie online Ihren Termin in Schorndorf: Besichtigung, Goldankauf, Beratung oder Abholung. Wir bestätigen Ihren Termin persönlich.",
 };

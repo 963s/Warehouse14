@@ -3,9 +3,9 @@ import { PageShell } from "@/components/page-shell";
 import { Reveal } from "@/components/ui/reveal";
 
 export const metadata: Metadata = {
-  title: "Datenschutzerklärung | Warehouse 14",
+  title: "Datenschutzerklärung | warehouse14",
   description:
-    "Informationen zur Erhebung, Verarbeitung und Speicherung personenbezogener Daten gemäß DSGVO bei Warehouse 14 in Schorndorf.",
+    "Informationen zur Erhebung, Verarbeitung und Speicherung personenbezogener Daten gemäß DSGVO bei warehouse14 in Schorndorf.",
 };
 
 export default function DatenschutzPage() {
@@ -41,15 +41,15 @@ export default function DatenschutzPage() {
               datenschutzrechtlicher Bestimmungen ist:
             </p>
             <div className="rounded-card bg-card border border-rule px-6 py-5 space-y-1 text-sm">
-              <p className="font-semibold text-ink">Warehouse 14</p>
-              <p>Musterstrasse 14</p>
+              <p className="font-semibold text-ink">warehouse14</p>
+              <p>Musterstraße 14</p>
               <p>73614 Schorndorf</p>
               <p>Deutschland</p>
               <p className="pt-2">
                 E-Mail:{" "}
                 <a
                   href="mailto:info@warehouse14.de"
-                  className="text-gold underline underline-offset-2 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-[--w14-gold] focus-visible:ring-offset-2"
+                  className="text-ink underline underline-offset-2 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2"
                 >
                   info@warehouse14.de
                 </a>
@@ -141,7 +141,7 @@ export default function DatenschutzPage() {
                     href="https://stripe.com/de/privacy"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-gold underline underline-offset-2 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-[--w14-gold] focus-visible:ring-offset-2"
+                    className="text-ink underline underline-offset-2 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2"
                   >
                     stripe.com/de/privacy
                   </a>
@@ -163,7 +163,7 @@ export default function DatenschutzPage() {
                     href="https://www.dhl.de/de/toolbar/footer/datenschutz.html"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-gold underline underline-offset-2 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-[--w14-gold] focus-visible:ring-offset-2"
+                    className="text-ink underline underline-offset-2 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2"
                   >
                     dhl.de
                   </a>
@@ -188,7 +188,7 @@ export default function DatenschutzPage() {
                     href="https://www.cloudflare.com/de-de/privacypolicy/"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-gold underline underline-offset-2 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-[--w14-gold] focus-visible:ring-offset-2"
+                    className="text-ink underline underline-offset-2 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2"
                   >
                     cloudflare.com
                   </a>
@@ -211,7 +211,7 @@ export default function DatenschutzPage() {
                     href="https://www.brevo.com/de/datenschutzrichtlinie/"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-gold underline underline-offset-2 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-[--w14-gold] focus-visible:ring-offset-2"
+                    className="text-ink underline underline-offset-2 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2"
                   >
                     brevo.com
                   </a>
@@ -249,7 +249,7 @@ export default function DatenschutzPage() {
               sogenannte Server-Log-Dateien. Diese enthalten:
             </p>
             <ul className="list-disc list-inside space-y-1 pl-2 text-sm">
-              <li>IP-Adresse des anfragenden Gerät (anonymisiert nach 7 Tagen)</li>
+              <li>IP-Adresse des anfragenden Geräts (anonymisiert nach 7 Tagen)</li>
               <li>Datum und Uhrzeit des Zugriffs</li>
               <li>Aufgerufene URL und HTTP-Statuscode</li>
               <li>Browsertyp, Betriebssystem und Referrer-URL</li>
@@ -260,8 +260,8 @@ export default function DatenschutzPage() {
               DSGVO zum Zweck der Sicherstellung des technischen Betriebs und
               der Abwehr von Angriffen. Eine Zusammenführung mit anderen
               personenbezogenen Daten findet nicht statt. Log-Dateien werden
-              nach spätestens 30 Tagen gelöscht, sofern keine Sicherheitsvor-
-              fälle eine längere Aufbewahrung erfordern.
+              nach spätestens 30 Tagen gelöscht, sofern keine
+              Sicherheitsvorfälle eine längere Aufbewahrung erfordern.
             </p>
           </section>
         </Reveal>
@@ -358,7 +358,7 @@ export default function DatenschutzPage() {
               </div>
               <div className="rounded-card border border-rule bg-card px-6 py-4 space-y-1">
                 <h3 className="font-semibold text-ink text-sm">
-                  Löschung (Art. 17 DSGVO, "Recht auf Vergessenwerden")
+                  Löschung (Art. 17 DSGVO, „Recht auf Vergessenwerden“)
                 </h3>
                 <p className="text-sm">
                   Sie können die Löschung Ihrer personenbezogenen Daten
@@ -418,7 +418,7 @@ export default function DatenschutzPage() {
               Zur Ausübung Ihrer Rechte wenden Sie sich bitte per E-Mail an{" "}
               <a
                 href="mailto:datenschutz@warehouse14.de"
-                className="text-gold underline underline-offset-2 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-[--w14-gold] focus-visible:ring-offset-2"
+                className="text-ink underline underline-offset-2 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2"
               >
                 datenschutz@warehouse14.de
               </a>

@@ -3,30 +3,61 @@
 @tailwind utilities;
 
 /* ──────────────────────────────────────────────────────────────────────────
- * warehouse14 STOREFRONT theme — warm, natural, antique/vintage.
- * Simple & clean on the surface; gold anchor (#bf9430) + paper, patina, bronze.
- * The cool "modern clean" POS tokens are warmed here for the customer-facing site.
+ * warehouse14 STOREFRONT theme — calm cream + ink. Quiet, precise, trustworthy.
+ * One warm ground, one ink, hairline rules. Accents are functional only
+ * (verdigris = positive, wax red = negative). No gold, no dark chrome.
  * ────────────────────────────────────────────────────────────────────────── */
 :root {
-  /* clean, elegant cream surfaces (gold lives only in thin accents now) */
-  --w14-parchment: #f7f5ef;   /* app background — clean cream */
-  --w14-parchment-2: #fffefb; /* cards / panels — near-white cream */
-  --w14-parchment-3: #efece2; /* raised / hover */
+  /* calm cream surfaces (aligned with the house identity) */
+  --w14-parchment: #faf9f6;   /* app background — calm cream */
+  --w14-parchment-2: #ffffff; /* cards / panels — clean white */
+  --w14-parchment-3: #f1efea; /* raised / hover */
 
-  /* warm ink */
-  --w14-ink: #211b13;         /* espresso near-black */
-  --w14-ink-aged: #4d4537;
-  --w14-ink-faded: #8a7f6c;
-  --w14-rule: #e8e3d7;        /* soft hairline */
+  /* neutral ink */
+  --w14-ink: #1c1c1c;         /* near-black ink */
+  --w14-ink-aged: #4c4a45;    /* secondary text */
+  --w14-ink-faded: #6e6b64;   /* muted text */
+  --w14-rule: #e9e7e1;        /* soft hairline */
 
-  /* gold anchor + naturals */
-  --w14-gold: #bf9430;
-  --w14-gold-soft: #ddc486;
-  --w14-gold-deep: #8a6a1f;
+  /* accent = ink itself. The historical gold tokens now resolve to deep
+   * neutral umber so every legacy `*-gold` utility renders as quiet ink,
+   * never yellow. Functional colors stay for meaning, not decoration. */
+  --w14-gold: #2e2b26;        /* primary accent — deep ink-umber */
+  --w14-gold-soft: #59554d;   /* hover companion of the accent */
+  --w14-gold-deep: #17150f;   /* pressed / deepest accent */
   --w14-forest: #46583f;      /* deep olive — nature */
   --w14-verdigris: #3f6b54;   /* patina green — positive */
-  --w14-terra: #a4633c;       /* terracotta / bronze warmth */
+  --w14-terra: #a4633c;       /* terracotta — sparing warmth */
   --w14-wax-red: #c0492f;     /* warm sealing-wax red — negative */
+
+  /* GILT — the house gilding, inspired by the gilded edges of rare stamps
+   * and antique trading cards. BINDING RULE: gilt is a THREAD, an EDGE or a
+   * SEAL — hairlines, underline-draws, the ◆ diamond, badge borders, tiny
+   * dots. It is NEVER a fill, NEVER a background, NEVER body text. */
+  --w14-gilt: #a3823b;        /* aged gilt thread on cream */
+  --w14-gilt-deep: #876a2c;   /* pressed / hover gilt */
+
+  /* RGB channel triplets — REQUIRED so Tailwind slash-opacity utilities
+   * (bg-ink/45, border-rule/60 …) actually compile. Tailwind cannot inject
+   * an alpha into a plain var(--hex) color; the config maps every theme
+   * color to rgb(var(--w14-x-rgb) / <alpha-value>). KEEP IN SYNC with the
+   * hex tokens above. */
+  --w14-parchment-rgb: 250 249 246;
+  --w14-parchment-2-rgb: 255 255 255;
+  --w14-parchment-3-rgb: 241 239 234;
+  --w14-ink-rgb: 28 28 28;
+  --w14-ink-aged-rgb: 76 74 69;
+  --w14-ink-faded-rgb: 110 107 100;
+  --w14-rule-rgb: 233 231 225;
+  --w14-gold-rgb: 46 43 38;
+  --w14-gold-soft-rgb: 89 85 77;
+  --w14-gold-deep-rgb: 23 21 15;
+  --w14-forest-rgb: 70 88 63;
+  --w14-verdigris-rgb: 63 107 84;
+  --w14-terra-rgb: 164 99 60;
+  --w14-wax-red-rgb: 192 73 47;
+  --w14-gilt-rgb: 163 130 59;
+  --w14-gilt-deep-rgb: 135 106 44;
 
   --w14-font-mono: "JetBrains Mono", "Menlo", monospace;
 
@@ -34,7 +65,7 @@
    * MOBILE-FIRST ladder. 95% of visitors land on a ~390px phone, so the small
    * end of every clamp() is tuned to read perfectly there — headings that fill
    * the column with authority but never overwhelm or overflow it — then breathe
-   * up gracefully toward desktop. Cormorant on display steps, Inter on body,
+   * up gracefully toward desktop. Bricolage on display steps, Inter on body,
    * JetBrains Mono on numerics. The vw coefficients stay gentle so growth is
    * smooth rather than jumpy across the 390→1240px span. */
   --w14-step--1: 0.8125rem;                                 /* eyebrow / label   */
@@ -96,11 +127,11 @@
   html.lenis, html.lenis body { height: auto; }
   .lenis.lenis-smooth { scroll-behavior: auto !important; }
   .lenis.lenis-stopped { overflow: hidden; }
-  /* Restrained selection — a warm gold wash, not a hard gold block. */
-  ::selection { background: rgba(191, 148, 48, 0.22); color: var(--w14-ink); }
+  /* Restrained selection — a quiet ink wash. */
+  ::selection { background: rgba(28, 28, 28, 0.12); color: var(--w14-ink); }
   h1, h2, h3 {
-    font-family: var(--font-cormorant), Georgia, serif;
-    letter-spacing: -0.01em;
+    font-family: var(--font-display), "Bricolage Grotesque", system-ui, sans-serif;
+    letter-spacing: -0.015em;
     line-height: var(--w14-leading-display);
   }
   /* Fluid heading defaults — components may still override with utilities. */
@@ -109,10 +140,10 @@
   h3 { font-size: var(--w14-step-2); }
 
   /* Global keyboard-focus safety net: every interactive control gets a visible
-     gold ring on keyboard focus (not on mouse click), even if a component
+     ink ring on keyboard focus (not on mouse click), even if a component
      forgot one. Components may still override with their own focus-visible. */
   :focus-visible {
-    outline: 2px solid var(--w14-gold);
+    outline: 2px solid var(--w14-ink);
     outline-offset: 2px;
     border-radius: 3px;
   }
@@ -120,36 +151,34 @@
      all tappable controls (touch guideline). */
   a, button, [role="button"], summary, label {
     touch-action: manipulation;
-    -webkit-tap-highlight-color: rgba(191, 148, 48, 0.18);
+    -webkit-tap-highlight-color: rgba(28, 28, 28, 0.08);
   }
 }
 
 @layer utilities {
-  .text-gold-gradient {
-    background: linear-gradient(120deg, #e7d49b 0%, #bf9430 42%, #8a6a1f 78%, #d8bd79 100%);
-    -webkit-background-clip: text; background-clip: text; color: transparent;
-  }
-  .bg-gold-gradient { background: linear-gradient(120deg, #e7d49b 0%, #bf9430 45%, #9a7726 100%); }
+  /* Legacy class names kept so call sites stay valid — both now resolve to
+   * quiet ink, never a gold gradient. */
+  .text-gold-gradient { color: var(--w14-ink); }
+  .bg-gold-gradient { background: linear-gradient(120deg, #34312b 0%, #1c1c1c 100%); }
 
-  /* Warm espresso "deep" backdrop for hero/footer — antique leather + gold light. */
+  /* The former espresso backdrop is now a deep cream panel: same class name,
+   * light identity. Sections that used it must use ink text, not white. */
   .bg-ink-deep {
     background:
-      radial-gradient(1100px 560px at 72% -8%, rgba(191,148,48,.20), transparent 60%),
-      radial-gradient(820px 460px at 8% 108%, rgba(70,88,63,.16), transparent 58%),
-      linear-gradient(180deg, #17130c 0%, #1e1810 55%, #14110b 100%);
+      radial-gradient(1100px 560px at 72% -8%, rgba(28,28,28,.035), transparent 60%),
+      linear-gradient(180deg, #f3f1ec 0%, #faf9f6 70%);
   }
   .glass {
-    background: rgba(253,250,243,.72);
-    backdrop-filter: saturate(170%) blur(14px); -webkit-backdrop-filter: saturate(170%) blur(14px);
+    background: rgba(250,249,246,.82);
+    backdrop-filter: saturate(160%) blur(14px); -webkit-backdrop-filter: saturate(160%) blur(14px);
   }
   .glass-dark {
-    background: rgba(23,19,12,.55);
+    background: rgba(28,28,28,.55);
     backdrop-filter: saturate(150%) blur(14px); -webkit-backdrop-filter: saturate(150%) blur(14px);
   }
   .hairline { border: 1px solid var(--w14-rule); }
   .tnum { font-feature-settings: "tnum"; font-variant-numeric: tabular-nums; font-family: var(--font-mono), var(--w14-font-mono); }
   .smallcaps { font-variant: all-small-caps; letter-spacing: 0.1em; }
-  .ring-gold-soft { box-shadow: inset 0 0 0 1px rgba(191,148,48,.28); }
 
   /* Eyebrow / kicker — uppercase small-caps label sitting above a headline. */
   .eyebrow {
@@ -224,7 +253,12 @@
   .reveal-in .hairline-draw { transform: scaleX(1); }
 
   /* Barely-there paper texture. Kept whisper-faint so it never reads as "dust". */
-  .grain { position: relative; isolation: isolate; }
+  /* TRAP GUARD: .grain must never override a positioned utility. An
+   * unconditional position:relative here silently beat Tailwind's .fixed
+   * and broke the side menu's viewport pinning. Only static elements get
+   * the relative context the ::after needs. */
+  .grain { isolation: isolate; }
+  .grain:not(.fixed):not(.absolute):not(.sticky) { position: relative; }
   .grain::after {
     content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; opacity: .12;
     background-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.5 0 0 0 0 0.44 0 0 0 0 0.33 0 0 0 0.04 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");

@@ -4,12 +4,13 @@ import { PageShell } from "@/components/page-shell";
 import { AnkaufProcess } from "@/components/ankauf-process";
 import { MetalCalculator } from "@/components/goldankauf/metal-calculator";
 import { IntakeForm } from "@/components/goldankauf/intake-form";
+import { Kicker } from "@/components/brand/kicker";
 import { Reveal } from "@/components/ui/reveal";
 
 export const metadata: Metadata = {
   title: "Goldankauf | warehouse14 Schorndorf",
   description:
-    "Gold, Silber, Platin und Münzen zum fairen Tagespreis verkaufen. Kostenlose Bewertung, sachkundige Prüfung und sofortige Auszahlung in Schorndorf.",
+    "Gold, Silber, Platin, Münzen und Schmuck zum fairen Tagespreis verkaufen, vom Einzelstück bis zum ganzen Nachlass. Kostenlose Bewertung, sachkundige Prüfung und sofortige Auszahlung in Schorndorf.",
 };
 
 const TRUST_ITEMS = [
@@ -37,15 +38,14 @@ export default function GoldankaufPage() {
       <section className="border-b border-rule bg-surface py-16 md:py-24">
         <div className="mx-auto max-w-edge px-5">
           <Reveal>
-            <div className="smallcaps mb-3 text-sm font-semibold text-gold">
-              Goldankauf Schorndorf
-            </div>
+            <Kicker className="mb-3">Ankauf Schorndorf</Kicker>
             <h1 className="font-display text-4xl font-semibold leading-tight text-ink md:text-5xl lg:text-6xl">
               Gold verkaufen
             </h1>
             <p className="mt-4 max-w-2xl text-lg leading-relaxed text-ink-aged">
-              Faire Tagespreise, sachkundige Bewertung und sofortige Auszahlung. Wir kaufen
-              Gold, Silber, Platin, Münzen, Schmuck und Antiquitäten — kompetent und
+              Faire Tagespreise, sachkundige Bewertung und sofortige Auszahlung. Wir
+              kaufen Gold, Silber, Platin, Münzen, Schmuck, Briefmarken und
+              Antiquitäten, vom Einzelstück bis zum ganzen Nachlass, kompetent und
               diskret.
             </p>
           </Reveal>
@@ -55,8 +55,8 @@ export default function GoldankaufPage() {
             {TRUST_ITEMS.map((item, i) => (
               <Reveal key={item.title} delay={i * 0.1}>
                 <div className="flex gap-4 rounded-card border border-rule bg-card p-5 shadow-card">
-                  <div className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gold/12 text-gold">
-                    <item.icon className="h-4.5 w-4.5" strokeWidth={1.5} />
+                  <div className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-raised text-ink">
+                    <item.icon className="h-[18px] w-[18px]" strokeWidth={1.7} />
                   </div>
                   <div>
                     <h2 className="font-display text-base font-semibold text-ink">
@@ -78,16 +78,14 @@ export default function GoldankaufPage() {
       <section className="py-16 md:py-24">
         <div className="mx-auto max-w-edge px-5">
           <Reveal>
-            <div className="smallcaps mb-2 text-sm font-semibold text-gold">
-              Kostenloses Angebot
-            </div>
+            <Kicker className="mb-2">Kostenloses Angebot</Kicker>
             <h2 className="font-display text-3xl font-semibold text-ink md:text-4xl">
               Wert ermitteln und anfragen
             </h2>
             <p className="mt-3 max-w-xl text-ink-aged">
               Berechnen Sie unverbindlich den indikativen Wert Ihres Edelmetalls und
-              senden Sie uns anschließend Ihre Anfrage. Wir melden uns noch am gleichen
-              Werktag.
+              senden Sie uns anschließend Ihre Anfrage, ob Einzelstück oder ganzer
+              Nachlass. Wir melden uns noch am gleichen Werktag.
             </p>
           </Reveal>
 
@@ -114,8 +112,8 @@ export default function GoldankaufPage() {
         </div>
       </section>
 
-      {/* FAQ / Vertrauens-Fußband */}
-      <section className="border-t border-rule bg-card py-14">
+      {/* FAQ / Vertrauens-Fußband (anchor target for the footer FAQ link) */}
+      <section id="faq" className="border-t border-rule bg-card py-14 scroll-mt-24">
         <div className="mx-auto max-w-edge px-5">
           <Reveal>
             <h2 className="font-display text-2xl font-semibold text-ink mb-8">
@@ -150,7 +148,7 @@ const FAQ = [
     a: "Bei Einigung zahlen wir sofort, entweder bar oder per Sofortüberweisung. Geldeingang auf Ihrem Konto in der Regel noch am selben Tag.",
   },
   {
-    q: "Nehmen Sie auch angelaufenes Silber oder beschädigtes Schmuck?",
+    q: "Nehmen Sie auch angelaufenes Silber oder beschädigten Schmuck?",
     a: "Ja. Anlauf und leichte Beschädigungen mindern den Wert kaum, da wir das Material nach Feingehalt und Gewicht bewerten, nicht nach optischem Zustand.",
   },
   {

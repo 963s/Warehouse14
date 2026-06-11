@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Mail, ArrowRight, CheckCircle } from "lucide-react";
+import { ArrowRight, CheckCircle } from "lucide-react";
 import { Reveal } from "@/components/ui/reveal";
+import { Kicker } from "@/components/brand/kicker";
+import { BrandRoundel } from "@/components/brand/marks";
 import { data } from "@/lib/storefront-data";
 
 export function Newsletter() {
@@ -29,33 +31,29 @@ export function Newsletter() {
   return (
     <section className="px-5 py-w14-5">
       <Reveal className="mx-auto max-w-edge">
-        <div className="bg-ink-deep relative overflow-hidden rounded-card px-6 py-w14-6 text-white md:px-14">
-          <img
-            src="/emblem.svg"
-            alt=""
-            aria-hidden="true"
-            className="pointer-events-none absolute -bottom-20 -right-10 hidden w-80 select-none opacity-[0.06] [filter:invert(1)] md:block"
-          />
+        {/* phone gets w14-5 padding — 96px of inner air stranded the panel on
+            a 390px screen; the wide step returns from md up */}
+        <div className="bg-ink-deep hairline relative overflow-hidden rounded-card px-5 py-w14-5 text-ink sm:px-8 md:px-14 md:py-w14-6">
+          {/* the registered 14 roundel as a faint ink watermark, never redrawn */}
+          <BrandRoundel className="pointer-events-none absolute -bottom-20 -right-10 hidden h-auto w-80 select-none text-ink opacity-[0.04] md:block" />
           <div className="relative grid items-center gap-w14-4 md:grid-cols-[1.1fr_0.9fr]">
             <div>
-              <div className="eyebrow mb-w14-2 inline-flex items-center gap-2 text-gold">
-                <Mail className="h-4 w-4" aria-hidden="true" /> Newsletter
-              </div>
-              <h2 className="font-display text-fluid-h2 font-semibold text-white">
+              <Kicker className="mb-w14-2">Newsletter</Kicker>
+              <h2 className="font-display text-fluid-h2 font-semibold text-ink">
                 Marktbewegungen und neue Unikate zuerst
               </h2>
-              <p className="mt-w14-2 max-w-md text-fluid-body text-white/65">
+              <p className="mt-w14-2 max-w-md text-fluid-body text-ink-aged">
                 Kursbewegungen, frisch eingetroffene Stücke und Einschätzungen unserer
-                Experten — etwa zweimal im Monat, ohne Eile.
+                Experten, etwa zweimal im Monat, ohne Eile.
               </p>
             </div>
 
             <div aria-live="polite" aria-atomic="true">
               {status === "success" ? (
-                <div className="flex items-center gap-3 rounded-button border border-white/15 bg-white/5 px-5 py-4">
-                  <CheckCircle className="h-5 w-5 shrink-0 text-gold" aria-hidden="true" />
-                  <p className="text-sm font-medium leading-snug text-white">
-                    Vielen Dank — Sie sind angemeldet.
+                <div className="flex items-center gap-3 rounded-button border border-rule bg-card px-5 py-4 shadow-card">
+                  <CheckCircle className="h-5 w-5 shrink-0 text-verdigris" strokeWidth={1.8} aria-hidden="true" />
+                  <p className="text-sm font-medium leading-snug text-ink">
+                    Vielen Dank. Sie sind angemeldet.
                   </p>
                 </div>
               ) : (
@@ -64,6 +62,7 @@ export function Newsletter() {
                     <label htmlFor="newsletter-email" className="sr-only">
                       E-Mail-Adresse
                     </label>
+                    {/* text-base keeps iOS from zoom-jumping into the field */}
                     <input
                       id="newsletter-email"
                       type="email"
@@ -75,10 +74,10 @@ export function Newsletter() {
                       placeholder="Ihre E-Mail-Adresse"
                       aria-invalid={hasError}
                       aria-describedby={hasError ? "newsletter-error" : undefined}
-                      className="w-full rounded-button border border-white/15 bg-white/5 px-4 py-3.5 text-white transition-colors duration-fast ease-hover placeholder:text-white/40 focus-visible:border-gold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/40"
+                      className="min-h-[48px] w-full rounded-button border border-rule bg-card px-4 py-3.5 text-base text-ink transition-colors duration-fast ease-hover placeholder:text-ink-faded focus-visible:border-ink-faded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:color-mix(in_srgb,var(--w14-ink)_18%,transparent)]"
                     />
                     {hasError && (
-                      <p id="newsletter-error" role="alert" className="text-xs text-gold-soft">
+                      <p id="newsletter-error" role="alert" className="text-xs text-wax-red">
                         {errorMsg}
                       </p>
                     )}
@@ -86,16 +85,16 @@ export function Newsletter() {
                   <button
                     type="submit"
                     disabled={status === "sending"}
-                    className="bg-gold-gradient inline-flex shrink-0 items-center justify-center gap-2 rounded-button px-6 py-3.5 font-semibold text-[#2b210a] transition-transform duration-base ease-hover hover:-translate-y-0.5 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex min-h-[48px] shrink-0 items-center justify-center gap-2 rounded-button bg-ink px-6 py-3.5 font-semibold text-white transition-[transform,background-color] duration-base ease-hover hover:-translate-y-0.5 hover:bg-ink-aged disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {status === "sending" ? "Bitte warten …" : "Abonnieren"}
-                    <ArrowRight className="h-[18px] w-[18px]" aria-hidden="true" />
+                    <ArrowRight className="h-[18px] w-[18px]" strokeWidth={1.8} aria-hidden="true" />
                   </button>
                 </form>
               )}
             </div>
           </div>
-          <p className="relative mt-w14-2 text-xs text-white/40">
+          <p className="relative mt-w14-2 text-xs text-ink-faded">
             Jederzeit abbestellbar. Es gilt unsere Datenschutzerklärung. Kein Spam.
           </p>
         </div>

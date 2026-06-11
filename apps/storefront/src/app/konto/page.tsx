@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { Lock, Mail, Package, UserRound, MapPin } from "lucide-react";
 import { PageShell } from "@/components/page-shell";
 import { Reveal } from "@/components/ui/reveal";
+import { GoogleG, AppleLogo } from "@/components/brand-icons";
 import { data } from "@/lib/storefront-data";
 
 type Account = {
@@ -26,29 +28,31 @@ const HUB_CARDS = [
     href: "/konto/bestellungen",
     title: "Bestellungen",
     description: "Alle Ihre Bestellungen im Überblick, inklusive Status und Lieferverfolgung.",
-    icon: "📦",
+    icon: Package,
   },
   {
     href: "/konto/profil",
     title: "Mein Profil",
     description: "Name, Sprache und Kommunikationspräferenzen anpassen.",
-    icon: "👤",
+    icon: UserRound,
   },
   {
     href: "/konto/adressbuch",
     title: "Adressbuch",
     description: "Gespeicherte Liefer- und Rechnungsadressen verwalten.",
-    icon: "📍",
+    icon: MapPin,
   },
 ] as const;
 
 function LoginGate() {
   return (
     <PageShell>
-      <div className="mx-auto max-w-edge px-5 py-20 md:py-32 text-center space-y-8">
+      <div className="mx-auto max-w-edge px-5 py-16 md:py-32 text-center space-y-8">
         <Reveal>
           <div className="space-y-4">
-            <p className="text-5xl">🔐</p>
+            <span className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-card shadow-card">
+              <Lock aria-hidden="true" className="h-9 w-9 text-ink-faded" strokeWidth={1.6} />
+            </span>
             <h1 className="font-display text-3xl md:text-4xl font-semibold text-ink">
               Mein Konto
             </h1>
@@ -63,13 +67,13 @@ function LoginGate() {
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Link
               href="/anmelden"
-              className="rounded-button bg-gold px-8 py-3 text-sm font-semibold text-white hover:bg-gold/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/40 transition-[background-color,box-shadow]"
+              className="inline-flex min-h-[48px] items-center justify-center rounded-button bg-ink px-8 py-3 text-sm font-semibold text-white hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 transition-opacity"
             >
               Anmelden
             </Link>
             <Link
               href="/registrieren"
-              className="rounded-button border border-rule px-8 py-3 text-sm font-medium text-ink hover:bg-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/40 transition-[background-color,box-shadow]"
+              className="inline-flex min-h-[48px] items-center justify-center rounded-button border border-rule px-8 py-3 text-sm font-medium text-ink hover:bg-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 transition-colors"
             >
               Konto erstellen
             </Link>
@@ -82,14 +86,14 @@ function LoginGate() {
               Anmeldeoptionen
             </p>
             <ul className="space-y-2 text-sm text-ink-aged">
-              <li className="flex items-center gap-2">
-                <span className="text-base">✉️</span> E-Mail und Passwort
+              <li className="flex min-h-[28px] items-center gap-2.5">
+                <Mail aria-hidden="true" className="h-[18px] w-[18px] text-ink-faded" strokeWidth={1.7} /> E-Mail und Passwort
               </li>
-              <li className="flex items-center gap-2">
-                <span className="text-base">🔵</span> Google-Konto
+              <li className="flex min-h-[28px] items-center gap-2.5">
+                <GoogleG aria-hidden="true" className="h-[18px] w-[18px]" /> Google-Konto
               </li>
-              <li className="flex items-center gap-2">
-                <span className="text-base">⚫</span> Apple-ID
+              <li className="flex min-h-[28px] items-center gap-2.5">
+                <AppleLogo aria-hidden="true" className="h-[18px] w-[18px]" /> Apple-ID
               </li>
             </ul>
           </div>
@@ -141,20 +145,22 @@ export default function KontoPage() {
 
         <Reveal delay={0.08}>
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {HUB_CARDS.map((card, i) => (
+            {HUB_CARDS.map((card) => (
               <Link
                 key={card.href}
                 href={card.href}
-                className="group bg-card border border-rule rounded-card shadow-card p-6 space-y-3 hover:shadow-lift transition-shadow focus:outline-none focus:ring-2 focus:ring-gold/40"
+                className="group bg-card border border-rule rounded-card shadow-card p-6 space-y-3 hover:shadow-lift transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink"
               >
-                <span className="text-3xl">{card.icon}</span>
-                <h2 className="font-display text-lg font-semibold text-ink group-hover:text-gold transition-colors">
+                <span className="grid h-10 w-10 place-items-center rounded-button bg-raised">
+                  <card.icon aria-hidden="true" className="h-5 w-5 text-ink-aged" strokeWidth={1.7} />
+                </span>
+                <h2 className="font-display text-lg font-semibold text-ink">
                   {card.title}
                 </h2>
                 <p className="text-sm text-ink-aged leading-relaxed">
                   {card.description}
                 </p>
-                <span className="inline-block text-gold text-sm font-medium">
+                <span className="inline-block text-sm font-medium text-ink underline-draw">
                   Öffnen &rarr;
                 </span>
               </Link>
@@ -167,7 +173,7 @@ export default function KontoPage() {
             <button
               type="button"
               onClick={handleSignOut}
-              className="rounded-button border border-rule px-6 py-2.5 text-sm font-medium text-ink-aged hover:text-ink hover:bg-raised focus:outline-none focus:ring-2 focus:ring-gold/40 transition"
+              className="min-h-[44px] rounded-button border border-rule px-6 py-2.5 text-sm font-medium text-ink-aged hover:text-ink hover:bg-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink transition-colors"
             >
               Abmelden
             </button>

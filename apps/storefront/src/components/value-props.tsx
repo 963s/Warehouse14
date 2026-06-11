@@ -13,13 +13,15 @@ const props = [
   { icon: Award, title: "Geprüfte Sachkunde", body: "Fundierte Expertise in Numismatik, Edelmetallen und Antiquitäten." },
 ];
 
+/* One-pass rise on the curator ease — transform/opacity only (the blur and
+ * the spinning icon pop were decorative; calm > zing). */
 const itemV: Variants = {
-  hidden: { opacity: 0, y: 24, filter: "blur(5px)" },
-  show: { opacity: 1, y: 0, filter: "blur(0px)", transition: { duration: 0.7, ease: [0.16, 1, 0.3, 1] } },
+  hidden: { opacity: 0, y: 24 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.7, ease: [0.16, 1, 0.3, 1] } },
 };
 const iconV: Variants = {
-  hidden: { opacity: 0, scale: 0.4, rotate: -12 },
-  show: { opacity: 1, scale: 1, rotate: 0, transition: { type: "spring", stiffness: 320, damping: 17, delay: 0.08 } },
+  hidden: { opacity: 0, scale: 0.9 },
+  show: { opacity: 1, scale: 1, transition: { duration: 0.6, ease: [0.16, 1, 0.3, 1], delay: 0.08 } },
 };
 
 export function ValueProps() {
@@ -31,7 +33,7 @@ export function ValueProps() {
         <Reveal className="max-w-measure">
           <p className="eyebrow">Worauf Sie zählen können</p>
           <motion.span
-            className="mt-w14-3 block h-px w-16 origin-left bg-gradient-to-r from-gold to-transparent"
+            className="mt-w14-3 block h-px w-16 origin-left bg-[color:color-mix(in_srgb,var(--w14-ink)_35%,transparent)]"
             aria-hidden="true"
             initial={reduce ? false : { scaleX: 0 }}
             whileInView={{ scaleX: 1 }}
@@ -50,15 +52,15 @@ export function ValueProps() {
           {props.map((p, i) => (
             <motion.div key={i} variants={reduce ? undefined : itemV} className="group flex gap-w14-3" style={{ willChange: "transform, opacity" }}>
               <motion.span
-                className="relative grid h-12 w-12 shrink-0 place-items-center rounded-card bg-raised text-gold ring-gold-soft transition-colors duration-base ease-hover group-hover:bg-[color:color-mix(in_srgb,var(--w14-gold)_8%,transparent)]"
+                className="relative grid h-12 w-12 shrink-0 place-items-center rounded-card border border-rule bg-raised text-ink transition-colors duration-base ease-hover group-hover:bg-[color:color-mix(in_srgb,var(--w14-ink)_8%,transparent)]"
                 variants={reduce ? undefined : iconV}
-                transition={{ type: "spring", stiffness: 300, damping: 18 }}
               >
-                <p.icon className="relative h-6 w-6" strokeWidth={1.5} aria-hidden="true" />
+                {/* 20px / 1.7 — the one icon spec across the home page */}
+                <p.icon className="relative h-5 w-5" strokeWidth={1.7} aria-hidden="true" />
               </motion.span>
               <div>
                 <h3 className="font-display text-fluid-h3 font-medium leading-snug">
-                  <span className="underline-draw decoration-gold">{p.title}</span>
+                  <span className="underline-draw">{p.title}</span>
                 </h3>
                 <p className="mt-w14-1 max-w-measure text-fluid-body text-ink-aged">{p.body}</p>
               </div>

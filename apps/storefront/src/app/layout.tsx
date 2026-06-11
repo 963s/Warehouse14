@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, Fraunces } from "next/font/google";
+import { Inter, Bricolage_Grotesque, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { SmoothScroll } from "@/components/smooth-scroll";
 import { Providers } from "@/components/providers";
@@ -11,15 +11,21 @@ const inter = Inter({
   variable: "--font-inter",
 });
 
-// Fraunces: a soft, characterful old-style serif. Warmer + more human than
-// a neutral classic, fitting the natural/antique soul. Kept under the same
-// CSS var so every `font-display` usage updates at once.
-const display = Fraunces({
+// Bricolage Grotesque: formal with creative character. Modern e-commerce
+// voice, deliberately not the classical serif of the landing page.
+const display = Bricolage_Grotesque({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
-  style: ["normal", "italic"],
   display: "swap",
-  variable: "--font-cormorant",
+  variable: "--font-display",
+});
+
+// JetBrains Mono: tabular numerics for prices, specs and live rates.
+const mono = JetBrains_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  display: "swap",
+  variable: "--font-mono",
 });
 
 export const metadata: Metadata = {
@@ -45,7 +51,7 @@ export const dynamic = "force-dynamic";
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="de" className={`${inter.variable} ${display.variable}`}>
+    <html lang="de" className={`${inter.variable} ${display.variable} ${mono.variable}`}>
       <body className="min-h-screen bg-surface text-ink antialiased">
         <Providers>
           <SmoothScroll>{children}</SmoothScroll>

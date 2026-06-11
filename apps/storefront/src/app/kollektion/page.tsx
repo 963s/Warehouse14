@@ -1,3 +1,4 @@
+import { Kicker } from '@/components/brand/kicker';
 import { FacetSidebar } from '@/components/catalog/facet-sidebar';
 import { PaginationBar } from '@/components/catalog/pagination-bar';
 import { ProductGrid } from '@/components/catalog/product-grid';
@@ -9,7 +10,7 @@ import type { Metadata } from 'next';
 export const metadata: Metadata = {
   title: 'Kollektion | warehouse14',
   description:
-    'Entdecken Sie unsere gesamte Kollektion: Goldmunzen, Goldbarren, Silber, Platin, historische Munzen, Antiquitaten, Schmuck und mehr.',
+    'Entdecken Sie unsere gesamte Kollektion: Goldmünzen, Goldbarren, Silber, Platin, historische Münzen, Antiquitäten, Schmuck und mehr.',
 };
 
 const LIMIT = 12;
@@ -55,10 +56,10 @@ export default async function KollektionPage({ searchParams }: PageProps) {
 
   return (
     <PageShell>
-      <div className="max-w-edge mx-auto px-4 py-w14-5 sm:px-6 lg:px-8">
+      <div className="max-w-edge mx-auto px-4 py-w14-4 sm:px-6 sm:py-w14-5 lg:px-8">
         {/* Page header */}
-        <header className="mb-w14-4 border-b border-rule pb-w14-4">
-          <p className="eyebrow mb-w14-1 text-gold">warehouse14</p>
+        <header className="mb-w14-3 border-b border-rule pb-w14-3 sm:mb-w14-4 sm:pb-w14-4">
+          <Kicker className="mb-w14-1">warehouse14</Kicker>
           <h1 className="font-display text-fluid-h1 font-medium text-ink">Kollektion</h1>
           {searchParams.q ? (
             <p className="mt-w14-2 text-fluid-body text-ink-faded">
@@ -83,7 +84,7 @@ export default async function KollektionPage({ searchParams }: PageProps) {
         </header>
 
         {/* 2-column layout: sidebar + grid */}
-        <div className="flex flex-col gap-w14-4 lg:flex-row lg:gap-w14-5">
+        <div className="flex flex-col gap-w14-3 lg:flex-row lg:gap-w14-5">
           {/* Sidebar */}
           <div className="w-full lg:w-64 shrink-0">
             <FacetSidebar
