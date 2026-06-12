@@ -42,6 +42,7 @@ import { useCartStore } from '../../state/cart-store.js';
 import { useLedgerFeed } from '../../state/ledger-feed-store.js';
 import { useRecents } from '../../state/recents-store.js';
 import { useSessionStore } from '../../state/session-store.js';
+import { registerSignOut } from '../../lib/session-actions.js';
 import { useTheme } from '../../state/theme-store.js';
 import { useToastStore } from '../../state/toast-store.js';
 
@@ -213,6 +214,10 @@ export function AppShell(): JSX.Element {
     setUnauthenticated,
     snapshotAndClearCart,
   ]);
+
+  // Expose sign-out to routed surfaces (Einstellungen → "Abmelden"); the lock
+  // icon was removed from the header.
+  useEffect(() => registerSignOut(() => void handleSignOut()), [handleSignOut]);
 
   // Tier-2 surfaces render the SubBreadcrumb (memory.md §11.5).
   const secondarySurface = SECONDARY_SURFACES.find((s) => location.pathname.startsWith(s.path));

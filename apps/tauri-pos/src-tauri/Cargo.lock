@@ -7238,7 +7238,7 @@ dependencies = [
 
 [[package]]
 name = "warehouse14-tauri-pos"
-version = "0.4.14"
+version = "0.4.15"
 dependencies = [
  "aes-gcm",
  "axum",

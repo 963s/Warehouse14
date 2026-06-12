@@ -203,3 +203,14 @@ export function IconRefresh(p: IconProps): JSX.Element {
     </Base>
   );
 }
+
+/** Life-buoy — the "Support / Hilfe" affordance (lucide life-buoy geometry). */
+export function IconSupport(p: IconProps): JSX.Element {
+  return (
+    <Base {...p}>
+      <circle cx="12" cy="12" r="10" />
+      <circle cx="12" cy="12" r="4" />
+      <path d="m4.93 4.93 4.24 4.24M14.83 14.83l4.24 4.24M14.83 9.17l4.24-4.24M14.83 9.17 18.36 5.64M4.93 19.07l4.24-4.24" />
+    </Base>
+  );
+}

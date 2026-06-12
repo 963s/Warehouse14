@@ -17,6 +17,7 @@ import { Button, DiamondRule } from '@warehouse14/ui-kit';
 import {
   IconBox,
   IconChat,
+  IconPower,
   IconReceipt,
   IconServer,
   IconSparkles,
@@ -24,13 +25,23 @@ import {
 } from '../../app/chrome/Icons.js';
 import { useApiClient } from '../../lib/api-context.js';
 import { openChatwoot } from '../../lib/chatwoot.js';
+import { requestSignOut } from '../../lib/session-actions.js';
 import { useIntegrationSettings } from '../../state/integration-settings-store.js';
 import { useToastStore } from '../../state/toast-store.js';
 import { Belegdesigner } from './Belegdesigner.js';
 import { GeraeteKoppeln } from './GeraeteKoppeln.js';
 import { GeraeteManager } from './GeraeteManager.js';
+import { IntegrationenSection } from './IntegrationenSection.js';
 
-type SectionId = 'hardware' | 'pairing' | 'ai' | 'server' | 'social' | 'chatwoot' | 'beleg';
+type SectionId =
+  | 'hardware'
+  | 'pairing'
+  | 'ai'
+  | 'integrationen'
+  | 'server'
+  | 'social'
+  | 'chatwoot'
+  | 'beleg';
 
 const SECTIONS: Array<{ id: SectionId; label: string; icon: ReactNode; desc: string }> = [
   {
@@ -50,6 +61,12 @@ const SECTIONS: Array<{ id: SectionId; label: string; icon: ReactNode; desc: str
     label: 'KI & Automatisierung',
     icon: <IconSparkles size={18} />,
     desc: 'Bild-Analyse · Preis-KI',
+  },
+  {
+    id: 'integrationen',
+    label: 'Integrationen',
+    icon: <IconServer size={18} />,
+    desc: 'API-Schlüssel · Dienste',
   },
   {
     id: 'server',
@@ -89,6 +106,8 @@ export function Einstellungen(): JSX.Element {
           background: 'var(--w14-parchment-2)',
           padding: 14,
           overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
         }}
       >
         <h1
@@ -138,12 +157,15 @@ export function Einstellungen(): JSX.Element {
             );
           })}
         </div>
+
+        <SignOutFooter />
       </nav>
 
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
         {section === 'hardware' && <GeraeteManager />}
         {section === 'pairing' && <GeraeteKoppeln />}
         {section === 'ai' && <AiSection />}
+        {section === 'integrationen' && <IntegrationenSection />}
         {section === 'server' && <ServerSection />}
         {section === 'social' && <SocialSection />}
         {section === 'chatwoot' && <ChatwootSection />}
@@ -305,6 +327,44 @@ function Toggle({
         />
       </span>
     </button>
+  );
+}
+
+/**
+ * SignOutFooter — pinned to the bottom of the section rail. The header lock was
+ * removed, so this is the operator's way out. A calm confirm guards the click;
+ * `requestSignOut` runs the AppShell-owned sign-out (store resets + PIN logout).
+ */
+function SignOutFooter(): JSX.Element {
+  const onAbmelden = (): void => {
+    if (window.confirm('Wirklich abmelden?')) requestSignOut();
+  };
+  return (
+    <div style={{ marginTop: 'auto', paddingTop: 14 }}>
+      <button
+        type="button"
+        onClick={onAbmelden}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 9,
+          width: '100%',
+          minHeight: 44,
+          padding: '10px 12px',
+          border: '1px solid var(--w14-rule)',
+          borderRadius: 'var(--w14-radius-button)',
+          cursor: 'pointer',
+          background: 'var(--w14-parchment)',
+          color: 'var(--w14-ink)',
+          fontSize: '0.9rem',
+          fontWeight: 600,
+        }}
+      >
+        <IconPower size={18} />
+        Abmelden
+      </button>
+    </div>
   );
 }
 
