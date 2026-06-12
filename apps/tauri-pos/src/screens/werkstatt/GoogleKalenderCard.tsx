@@ -133,19 +133,29 @@ export function GoogleKalenderCard({ variant = 'card' }: GoogleKalenderCardProps
     try {
       const res = await fetch(url, { signal: ctrl.signal });
       if (!res.ok) {
-        if (res.status === 401 || res.status === 403) {
-          setState({
-            kind: 'error',
-            message: 'Zugriff verweigert — Schlüssel oder Freigabe prüfen.',
-          });
-        } else if (res.status === 404) {
-          setState({
-            kind: 'error',
-            message: 'Kalender nicht gefunden — Kalender-ID prüfen.',
-          });
-        } else {
-          setState({ kind: 'error', message: `Kalender konnte nicht geladen werden (${res.status}).` });
+        // Surface Google's OWN reason so the cause is unmistakable.
+        let reason = '';
+        try {
+          const errJson = (await res.json()) as {
+            error?: { message?: string; errors?: Array<{ reason?: string }> };
+          };
+          reason = errJson.error?.message ?? errJson.error?.errors?.[0]?.reason ?? '';
+        } catch {
+          /* no JSON body */
         }
+        let message: string;
+        if (res.status === 400) {
+          message = 'API-Schlüssel ungültig — in der Google Cloud Console prüfen.';
+        } else if (res.status === 401 || res.status === 403 || res.status === 404) {
+          // A private calendar returns 404 to an API key; "not enabled" → 403.
+          message =
+            'Kalender nicht lesbar. Bitte (1) den Kalender in Google auf „Öffentlich für alle Nutzer“ stellen, ' +
+            '(2) die „Google Calendar API“ in der Cloud Console aktivieren und (3) Kalender-ID + Schlüssel prüfen.';
+        } else {
+          message = `Kalender konnte nicht geladen werden (${res.status}).`;
+        }
+        if (reason) message += ` — Google: ${reason}`;
+        setState({ kind: 'error', message });
         return;
       }
       const json = (await res.json()) as { items?: RawEvent[] };
