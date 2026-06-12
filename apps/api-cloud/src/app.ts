@@ -67,6 +67,7 @@ import documentsRoutes from './routes/documents.js';
 import healthRoute from './routes/health.js';
 import intakeDraftsRoutes from './routes/intake-drafts.js';
 import integrationsRoute from './routes/integrations.js';
+import calendarRoute from './routes/calendar.js';
 import inventoryAdjustmentRoute from './routes/inventory-adjustment.js';
 import inventoryRelease from './routes/inventory-release.js';
 import inventoryReserve from './routes/inventory-reserve.js';
@@ -261,6 +262,7 @@ export async function buildApp(opts: BuildAppOpts): Promise<FastifyInstance> {
   await app.register(approvalsRoutes);
   await app.register(settingsRoute);
   await app.register(integrationsRoute, { env: opts.env });
+  await app.register(calendarRoute);
   await app.register(shopInfoRoute);
   await app.register(aiComposeRoute, { env: opts.env });
   await app.register(ledgerRoutes);

@@ -90,6 +90,8 @@ const EnvSchema = Type.Object({
   }),
   R2_ACCESS_KEY_ID: Type.String({ default: '', description: 'R2 API token access key id.' }),
   R2_SECRET_ACCESS_KEY: Type.String({ default: '', description: 'R2 API token secret.' }),
+  GOOGLE_SERVICE_ACCOUNT_B64: Type.String({ default: '', description: 'Base64 of the Google service-account JSON (Calendar).' }),
+  GOOGLE_CALENDAR_ID: Type.String({ default: '', description: 'Target Google Calendar id for the shop calendar.' }),
   R2_PUBLIC_URL_BASE: Type.String({
     default: '',
     description:
