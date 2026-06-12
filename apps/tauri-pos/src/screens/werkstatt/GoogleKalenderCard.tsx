@@ -1,38 +1,66 @@
 /**
- * GoogleKalenderCard — renders the shop's Google Calendar NATIVELY in the
- * house style (ink / parchment / gold-hairline), driven by the Google Calendar
- * API instead of an iframe embed.
+ * GoogleKalenderCard — the shop's Google Calendar, rendered NATIVELY in the
+ * house style (ink / parchment / gold-hairline) and fully controllable from
+ * the POS: list · anlegen · bearbeiten · löschen.
  *
- * The owner pastes an API-Schlüssel + Kalender-ID in Einstellungen → Social &
- * Nachrichten. We then fetch the upcoming events client-side via the public
- * Calendar v3 REST endpoint and paint them ourselves — grouped by day, calm,
- * touch-friendly. This sidesteps the Tauri-webview third-party-cookie problem
- * that left the old iframe blank for private calendars.
+ * The calendar is wired SERVER-SIDE (Service-Account) — the POS no longer
+ * talks to Google directly and needs no API key. Everything routes through the
+ * existing POS api client (Bearer auth, same base URL every screen uses):
+ *
+ *   GET    /api/calendar/status            → { configured }
+ *   GET    /api/calendar/events?days=28    → CalendarEvent[]
+ *   POST   /api/calendar/events            → CalendarEvent
+ *   PATCH  /api/calendar/events/:id        → CalendarEvent
+ *   DELETE /api/calendar/events/:id        → 204
  *
  * Used twice (same component, two fits):
  *   • Werkstatt left column — `variant="card"` (compact, fills the rail).
  *   • /kalender secondary surface — `variant="full"` (full-page).
- *
- * CSP: `connect-src https://www.googleapis.com` is allowed in tauri.conf.json.
  */
 
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { ApiError } from '@warehouse14/api-client';
 import { DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 
-import { useIntegrationSettings } from '../../state/integration-settings-store.js';
+import { useApiClient } from '../../lib/api-context.js';
 
-/** A single calendar event, reduced to what we render. */
+import { TerminDialog } from './TerminDialog.js';
+
+/** The server's calendar-event shape (mirrors the api route). */
+export interface CalendarEvent {
+  id: string;
+  summary: string;
+  description: string | null;
+  location: string | null;
+  /** ISO start (dateTime, or `YYYY-MM-DD` for all-day). */
+  start: string;
+  /** ISO end, or null. */
+  end: string | null;
+  allDay: boolean;
+  htmlLink: string | null;
+}
+
+/** A single event, reduced to what we render. */
 interface CalEvent {
   id: string;
   summary: string;
+  description: string | null;
   location: string | null;
   /** Start as a Date (timed) — for all-day events this is local midnight. */
   start: Date;
   /** End as a Date — for all-day events the exclusive end midnight. */
   end: Date | null;
   allDay: boolean;
+  /** Keep the raw server shape so the edit dialog can reload exact fields. */
+  raw: CalendarEvent;
 }
+
+type StatusState =
+  | { kind: 'checking' }
+  | { kind: 'configured' }
+  | { kind: 'not-configured' }
+  | { kind: 'status-error' };
 
 type LoadState =
   | { kind: 'idle' }
@@ -41,7 +69,6 @@ type LoadState =
   | { kind: 'error'; message: string };
 
 const HOW_FAR_AHEAD_DAYS = 28;
-const MAX_RESULTS = 50;
 
 /** The German calendar.google.com manage URL — opened in the system browser. */
 const MANAGE_URL = 'https://calendar.google.com/calendar/u/0/r';
@@ -58,34 +85,21 @@ const dayKeyFmt = new Intl.DateTimeFormat('de-DE', {
   day: '2-digit',
 });
 
-interface RawEvent {
-  id?: string;
-  summary?: string;
-  location?: string;
-  start?: { dateTime?: string; date?: string };
-  end?: { dateTime?: string; date?: string };
-}
-
-/** Map a Google API event into our reduced shape; null = unrenderable. */
-function toCalEvent(raw: RawEvent): CalEvent | null {
-  const startRaw = raw.start;
-  if (!startRaw) return null;
-  const allDay = typeof startRaw.date === 'string';
-  const startIso = startRaw.dateTime ?? startRaw.date;
-  if (!startIso) return null;
-  const start = new Date(startIso);
+/** Map a server CalendarEvent into our reduced shape; null = unrenderable. */
+function toCalEvent(raw: CalendarEvent): CalEvent | null {
+  if (!raw.start) return null;
+  const start = new Date(raw.start);
   if (Number.isNaN(start.getTime())) return null;
-
-  const endIso = raw.end?.dateTime ?? raw.end?.date ?? null;
-  const end = endIso ? new Date(endIso) : null;
-
+  const end = raw.end ? new Date(raw.end) : null;
   return {
-    id: raw.id ?? `${startIso}-${raw.summary ?? ''}`,
-    summary: (raw.summary ?? '').trim() || 'Ohne Titel',
+    id: raw.id,
+    summary: raw.summary.trim() || 'Ohne Titel',
+    description: raw.description?.trim() ? raw.description.trim() : null,
     location: raw.location?.trim() ? raw.location.trim() : null,
     start,
     end: end && !Number.isNaN(end.getTime()) ? end : null,
-    allDay,
+    allDay: raw.allDay,
+    raw,
   };
 }
 
@@ -97,85 +111,73 @@ export interface GoogleKalenderCardProps {
   variant?: 'card' | 'full';
 }
 
+/** What the create/edit dialog is currently doing — null = closed. */
+type DialogState =
+  | null
+  | { mode: 'create' }
+  | { mode: 'edit'; event: CalendarEvent };
+
 export function GoogleKalenderCard({ variant = 'card' }: GoogleKalenderCardProps): JSX.Element {
-  const apiKey = useIntegrationSettings((s) => s.settings.googleCalendar.apiKey);
-  const calendarId = useIntegrationSettings((s) => s.settings.googleCalendar.calendarId);
+  const api = useApiClient();
   const full = variant === 'full';
 
-  const configured = apiKey.trim().length > 0 && calendarId.trim().length > 0;
-
+  const [status, setStatus] = useState<StatusState>({ kind: 'checking' });
   const [state, setState] = useState<LoadState>({ kind: 'idle' });
+  const [dialog, setDialog] = useState<DialogState>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  const load = useCallback(async (): Promise<void> => {
-    const key = apiKey.trim();
-    const id = calendarId.trim();
-    if (key.length === 0 || id.length === 0) {
-      setState({ kind: 'idle' });
-      return;
+  const checkStatus = useCallback(async (): Promise<boolean> => {
+    setStatus({ kind: 'checking' });
+    try {
+      const res = await api.request<{ configured: boolean }>('GET', '/api/calendar/status');
+      const configured = res?.configured === true;
+      setStatus({ kind: configured ? 'configured' : 'not-configured' });
+      return configured;
+    } catch {
+      setStatus({ kind: 'status-error' });
+      return false;
     }
+  }, [api]);
 
+  const load = useCallback(async (): Promise<void> => {
     abortRef.current?.abort();
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     setState({ kind: 'loading' });
-
-    const now = new Date();
-    const until = new Date(now.getTime() + HOW_FAR_AHEAD_DAYS * 24 * 60 * 60 * 1000);
-    const url =
-      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(id)}/events` +
-      `?key=${encodeURIComponent(key)}` +
-      `&singleEvents=true&orderBy=startTime` +
-      `&timeMin=${encodeURIComponent(now.toISOString())}` +
-      `&timeMax=${encodeURIComponent(until.toISOString())}` +
-      `&maxResults=${MAX_RESULTS}`;
-
     try {
-      const res = await fetch(url, { signal: ctrl.signal });
-      if (!res.ok) {
-        // Surface Google's OWN reason so the cause is unmistakable.
-        let reason = '';
-        try {
-          const errJson = (await res.json()) as {
-            error?: { message?: string; errors?: Array<{ reason?: string }> };
-          };
-          reason = errJson.error?.message ?? errJson.error?.errors?.[0]?.reason ?? '';
-        } catch {
-          /* no JSON body */
-        }
-        let message: string;
-        if (res.status === 400) {
-          message = 'API-Schlüssel ungültig — in der Google Cloud Console prüfen.';
-        } else if (res.status === 401 || res.status === 403 || res.status === 404) {
-          // A private calendar returns 404 to an API key; "not enabled" → 403.
-          message =
-            'Kalender nicht lesbar. Bitte (1) den Kalender in Google auf „Öffentlich für alle Nutzer“ stellen, ' +
-            '(2) die „Google Calendar API“ in der Cloud Console aktivieren und (3) Kalender-ID + Schlüssel prüfen.';
-        } else {
-          message = `Kalender konnte nicht geladen werden (${res.status}).`;
-        }
-        if (reason) message += ` — Google: ${reason}`;
-        setState({ kind: 'error', message });
-        return;
-      }
-      const json = (await res.json()) as { items?: RawEvent[] };
-      const events = (json.items ?? [])
+      const items = await api.request<CalendarEvent[]>(
+        'GET',
+        `/api/calendar/events?days=${HOW_FAR_AHEAD_DAYS}`,
+        undefined,
+        { signal: ctrl.signal },
+      );
+      const events = (items ?? [])
         .map(toCalEvent)
         .filter((e): e is CalEvent => e !== null)
         .sort((a, b) => a.start.getTime() - b.start.getTime());
       setState({ kind: 'ready', events });
-    } catch {
+    } catch (err) {
       if (ctrl.signal.aborted) return;
-      setState({ kind: 'error', message: 'Keine Verbindung — bitte erneut versuchen.' });
+      const message =
+        err instanceof ApiError
+          ? `Termine konnten nicht geladen werden — ${err.message}`
+          : 'Keine Verbindung — bitte erneut versuchen.';
+      setState({ kind: 'error', message });
     }
-  }, [apiKey, calendarId]);
+  }, [api]);
+
+  // On mount (and on manual refresh): check status, then load if configured.
+  const refresh = useCallback(async (): Promise<void> => {
+    const configured = await checkStatus();
+    if (configured) await load();
+  }, [checkStatus, load]);
 
   useEffect(() => {
-    void load();
+    void refresh();
     return () => {
       abortRef.current?.abort();
     };
-  }, [load]);
+  }, [refresh]);
 
   const openInBrowser = useCallback((): void => {
     try {
@@ -185,13 +187,15 @@ export function GoogleKalenderCard({ variant = 'card' }: GoogleKalenderCardProps
     }
   }, []);
 
+  const configured = status.kind === 'configured';
+
   return (
     <section
-      aria-label="Google Kalender"
+      aria-label="Geschäftskalender"
       style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }}
     >
       <div style={{ marginBottom: 'var(--space-4)' }}>
-        <DiamondRule label="Google Kalender" />
+        <DiamondRule label="Kalender" />
         <p
           style={{
             margin: '-8px 0 0',
@@ -202,19 +206,28 @@ export function GoogleKalenderCard({ variant = 'card' }: GoogleKalenderCardProps
             textAlign: 'center',
           }}
         >
-          {configured ? 'Termine des Geschäfts · nächste 4 Wochen' : 'Noch nicht verbunden'}
+          {configured ? 'Termine des Geschäfts · nächste 4 Wochen' : 'Geschäftskalender'}
         </p>
-        {configured && (
-          <div
-            style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 'var(--space-3)',
-              marginTop: 'var(--space-2)',
-            }}
-          >
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 'var(--space-3)',
+            marginTop: 'var(--space-3)',
+          }}
+        >
+          {configured && (
+            <ToolbarButton
+              onClick={() => setDialog({ mode: 'create' })}
+              title="Neuen Termin anlegen"
+              emphasis
+            >
+              ＋ Neuer Termin
+            </ToolbarButton>
+          )}
+          {configured && (
             <ToolbarButton
               onClick={() => void load()}
               disabled={state.kind === 'loading'}
@@ -222,32 +235,74 @@ export function GoogleKalenderCard({ variant = 'card' }: GoogleKalenderCardProps
             >
               {state.kind === 'loading' ? 'Aktualisiert…' : 'Aktualisieren'}
             </ToolbarButton>
-            <ToolbarButton onClick={openInBrowser} title="Kalender im Browser verwalten">
-              Im Browser öffnen ↗
-            </ToolbarButton>
-          </div>
-        )}
+          )}
+          <ToolbarButton onClick={openInBrowser} title="Kalender im Browser öffnen">
+            Im Browser öffnen ↗
+          </ToolbarButton>
+        </div>
       </div>
 
-      {!configured ? (
-        <EmptyExplainer />
+      {status.kind === 'checking' ? (
+        <CardBox full={full}>
+          <Skeleton />
+        </CardBox>
+      ) : !configured ? (
+        <NotConfiguredExplainer
+          errored={status.kind === 'status-error'}
+          onRetry={() => void refresh()}
+        />
       ) : (
-        <div
-          style={{
-            flex: 1,
-            minHeight: full ? 0 : 260,
-            overflowY: 'auto',
-            border: '1px solid var(--w14-rule)',
-            borderRadius: 'var(--w14-radius-card)',
-            background: 'var(--w14-parchment-2)',
-            boxShadow: 'var(--w14-shadow-card)',
-            padding: 'var(--space-3)',
-          }}
-        >
-          <CalendarBody state={state} onRetry={() => void load()} />
-        </div>
+        <CardBox full={full}>
+          <CalendarBody
+            state={state}
+            onRetry={() => void load()}
+            onSelect={(ev) => setDialog({ mode: 'edit', event: ev.raw })}
+          />
+        </CardBox>
       )}
+
+      {dialog !== null &&
+        (dialog.mode === 'edit' ? (
+          <TerminDialog
+            mode="edit"
+            event={dialog.event}
+            onClose={() => setDialog(null)}
+            onSaved={() => {
+              setDialog(null);
+              void load();
+            }}
+          />
+        ) : (
+          <TerminDialog
+            mode="create"
+            onClose={() => setDialog(null)}
+            onSaved={() => {
+              setDialog(null);
+              void load();
+            }}
+          />
+        ))}
     </section>
+  );
+}
+
+/** The scrollable parchment frame the event list / states live in. */
+function CardBox({ full, children }: { full: boolean; children: ReactNode }): JSX.Element {
+  return (
+    <div
+      style={{
+        flex: 1,
+        minHeight: full ? 0 : 260,
+        overflowY: 'auto',
+        border: '1px solid var(--w14-rule)',
+        borderRadius: 'var(--w14-radius-card)',
+        background: 'var(--w14-parchment-2)',
+        boxShadow: 'var(--w14-shadow-card)',
+        padding: 'var(--space-3)',
+      }}
+    >
+      {children}
+    </div>
   );
 }
 
@@ -256,11 +311,13 @@ function ToolbarButton({
   onClick,
   disabled,
   title,
+  emphasis,
   children,
 }: {
   onClick: () => void;
   disabled?: boolean;
   title: string;
+  emphasis?: boolean;
   children: ReactNode;
 }): JSX.Element {
   return (
@@ -273,12 +330,12 @@ function ToolbarButton({
         display: 'inline-flex',
         alignItems: 'center',
         gap: 6,
-        minHeight: 36,
-        padding: '6px 14px',
-        fontSize: '0.8rem',
+        minHeight: 44,
+        padding: '8px 16px',
+        fontSize: '0.85rem',
         fontWeight: 600,
-        color: 'var(--w14-ink)',
-        background: 'var(--w14-parchment-2)',
+        color: emphasis ? 'var(--w14-parchment)' : 'var(--w14-ink)',
+        background: emphasis ? 'var(--w14-gold)' : 'var(--w14-parchment-2)',
         border: '1px solid var(--w14-gold)',
         borderRadius: 'var(--w14-radius-button)',
         cursor: disabled ? 'default' : 'pointer',
@@ -294,9 +351,11 @@ function ToolbarButton({
 function CalendarBody({
   state,
   onRetry,
+  onSelect,
 }: {
   state: LoadState;
   onRetry: () => void;
+  onSelect: (event: CalEvent) => void;
 }): JSX.Element {
   const grouped = useMemo(() => {
     if (state.kind !== 'ready') return [];
@@ -352,7 +411,7 @@ function CalendarBody({
   return (
     <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
       {grouped.map((day) => (
-        <DayBlock key={day.key} label={day.label} events={day.events} />
+        <DayBlock key={day.key} label={day.label} events={day.events} onSelect={onSelect} />
       ))}
     </div>
   );
@@ -378,7 +437,15 @@ function groupByDay(events: CalEvent[]): DayGroup[] {
   return [...map.values()];
 }
 
-function DayBlock({ label, events }: { label: string; events: CalEvent[] }): JSX.Element {
+function DayBlock({
+  label,
+  events,
+  onSelect,
+}: {
+  label: string;
+  events: CalEvent[];
+  onSelect: (event: CalEvent) => void;
+}): JSX.Element {
   return (
     <div style={{ display: 'grid', gap: 'var(--space-2)' }}>
       <h3
@@ -396,7 +463,7 @@ function DayBlock({ label, events }: { label: string; events: CalEvent[] }): JSX
       </h3>
       <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 'var(--space-2)' }}>
         {events.map((ev) => (
-          <EventRow key={ev.id} event={ev} />
+          <EventRow key={ev.id} event={ev} onSelect={onSelect} />
         ))}
       </ul>
     </div>
@@ -410,50 +477,64 @@ function formatRange(ev: CalEvent): string {
   return `${start}–${timeFmt.format(ev.end)}`;
 }
 
-function EventRow({ event }: { event: CalEvent }): JSX.Element {
+function EventRow({
+  event,
+  onSelect,
+}: {
+  event: CalEvent;
+  onSelect: (event: CalEvent) => void;
+}): JSX.Element {
   return (
-    <li
-      style={{
-        display: 'flex',
-        alignItems: 'flex-start',
-        gap: 'var(--space-3)',
-        minHeight: 44,
-        padding: '8px 12px',
-        background: 'var(--w14-parchment-1)',
-        border: '1px solid var(--w14-gold-soft)',
-        borderRadius: 'var(--w14-radius-button)',
-      }}
-    >
-      <span
+    <li>
+      <button
+        type="button"
+        onClick={() => onSelect(event)}
+        title="Termin bearbeiten"
         style={{
-          flex: '0 0 auto',
-          minWidth: 92,
-          fontFamily: 'var(--w14-font-mono)',
-          fontSize: '0.8rem',
-          fontWeight: 600,
-          color: 'var(--w14-gold)',
-          paddingTop: 1,
+          width: '100%',
+          textAlign: 'left',
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 'var(--space-3)',
+          minHeight: 44,
+          padding: '8px 12px',
+          background: 'var(--w14-parchment-1)',
+          border: '1px solid var(--w14-gold-soft)',
+          borderRadius: 'var(--w14-radius-button)',
+          cursor: 'pointer',
         }}
       >
-        {formatRange(event)}
-      </span>
-      <span style={{ display: 'grid', gap: 2, minWidth: 0 }}>
         <span
           style={{
-            color: 'var(--w14-ink)',
-            fontSize: '0.92rem',
+            flex: '0 0 auto',
+            minWidth: 92,
+            fontFamily: 'var(--w14-font-mono)',
+            fontSize: '0.8rem',
             fontWeight: 600,
-            lineHeight: 1.25,
+            color: 'var(--w14-gold)',
+            paddingTop: 1,
           }}
         >
-          {event.summary}
+          {formatRange(event)}
         </span>
-        {event.location && (
-          <span style={{ color: 'var(--w14-ink-faded)', fontSize: '0.8rem' }}>
-            {event.location}
+        <span style={{ display: 'grid', gap: 2, minWidth: 0 }}>
+          <span
+            style={{
+              color: 'var(--w14-ink)',
+              fontSize: '0.92rem',
+              fontWeight: 600,
+              lineHeight: 1.25,
+            }}
+          >
+            {event.summary}
           </span>
-        )}
-      </span>
+          {event.location && (
+            <span style={{ color: 'var(--w14-ink-faded)', fontSize: '0.8rem' }}>
+              {event.location}
+            </span>
+          )}
+        </span>
+      </button>
     </li>
   );
 }
@@ -489,74 +570,45 @@ function Skeleton(): JSX.Element {
   );
 }
 
-/** Calm 3-step explainer shown until an API key + calendar ID are configured. */
-function EmptyExplainer(): JSX.Element {
-  const steps: ReadonlyArray<{ title: string; body: string }> = [
-    {
-      title: 'Calendar API aktivieren',
-      body: 'In der Google Cloud Console ein Projekt wählen und die „Google Calendar API“ aktivieren.',
-    },
-    {
-      title: 'API-Schlüssel erstellen',
-      body: 'Unter „APIs & Dienste → Anmeldedaten“ einen API-Schlüssel anlegen — er liest die Termine nur.',
-    },
-    {
-      title: 'Kalender freigeben & hinterlegen',
-      body: 'Den Kalender auf „öffentlich“ stellen oder freigeben, dann Schlüssel + Kalender-ID unter Einstellungen → Social & Nachrichten eintragen. Die Termine erscheinen dann hier automatisch.',
-    },
-  ];
-
+/**
+ * Calm state shown when the calendar is not yet wired server-side. No inputs —
+ * the Service-Account is configured on the server, not here.
+ */
+function NotConfiguredExplainer({
+  errored,
+  onRetry,
+}: {
+  errored: boolean;
+  onRetry: () => void;
+}): JSX.Element {
   return (
     <ParchmentCard padding="md">
       <p
         style={{
-          margin: '0 0 var(--space-4)',
-          color: 'var(--w14-ink-aged)',
+          margin: '0 0 var(--space-3)',
+          color: 'var(--w14-ink)',
           fontFamily: 'var(--w14-font-display)',
-          fontSize: '0.95rem',
+          fontSize: '1.05rem',
+          fontWeight: 600,
         }}
       >
-        Hier erscheinen die Termine des Google Kalenders — in drei Schritten:
+        {errored ? 'Kalender vorübergehend nicht erreichbar' : 'Kalender noch nicht eingerichtet'}
       </p>
-      <ol
+      <p
         style={{
-          margin: 0,
-          padding: 0,
-          listStyle: 'none',
-          display: 'grid',
-          gap: 'var(--space-3)',
+          margin: '0 0 var(--space-4)',
+          color: 'var(--w14-ink-faded)',
+          fontSize: '0.88rem',
+          lineHeight: 1.5,
         }}
       >
-        {steps.map((step, i) => (
-          <li key={step.title} style={{ display: 'flex', gap: 'var(--space-3)' }}>
-            <span
-              aria-hidden="true"
-              style={{
-                flex: '0 0 auto',
-                width: 24,
-                height: 24,
-                display: 'grid',
-                placeItems: 'center',
-                borderRadius: '50%',
-                border: '1px solid var(--w14-rule)',
-                color: 'var(--w14-gold)',
-                fontFamily: 'var(--w14-font-display)',
-                fontSize: '0.8rem',
-              }}
-            >
-              {i + 1}
-            </span>
-            <span style={{ display: 'grid', gap: 2 }}>
-              <span style={{ color: 'var(--w14-ink)', fontSize: '0.88rem', fontWeight: 600 }}>
-                {step.title}
-              </span>
-              <span style={{ color: 'var(--w14-ink-faded)', fontSize: '0.82rem' }}>
-                {step.body}
-              </span>
-            </span>
-          </li>
-        ))}
-      </ol>
+        {errored
+          ? 'Der Geschäftskalender konnte gerade nicht geladen werden. Bitte gleich erneut versuchen.'
+          : 'Der Geschäftskalender wird serverseitig über ein Service-Konto angebunden. Sobald er eingerichtet ist, erscheinen die Termine hier automatisch.'}
+      </p>
+      <ToolbarButton onClick={onRetry} title="Erneut prüfen">
+        Erneut prüfen
+      </ToolbarButton>
     </ParchmentCard>
   );
 }

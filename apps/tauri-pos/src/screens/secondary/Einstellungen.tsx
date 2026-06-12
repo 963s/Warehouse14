@@ -10,7 +10,7 @@
  * feature toggles) lives in the integration-settings store.
  */
 
-import { type CSSProperties, type ReactNode, useState } from 'react';
+import { type CSSProperties, type ReactNode, useEffect, useState } from 'react';
 
 import { Button, DiamondRule } from '@warehouse14/ui-kit';
 
@@ -458,8 +458,6 @@ function ServerSection(): JSX.Element {
 function SocialSection(): JSX.Element {
   const social = useIntegrationSettings((s) => s.settings.social);
   const setSocial = useIntegrationSettings((s) => s.setSocial);
-  const gcal = useIntegrationSettings((s) => s.settings.googleCalendar);
-  const setGoogleCalendar = useIntegrationSettings((s) => s.setGoogleCalendar);
   return (
     <div style={pad}>
       <SectionTitle
@@ -487,32 +485,58 @@ function SocialSection(): JSX.Element {
           placeholder="facebook.com/…"
         />
       </div>
-      <div style={card}>
-        <Field
-          title="Google Kalender API-Schlüssel"
-          value={gcal.apiKey}
-          onChange={(v) => setGoogleCalendar({ apiKey: v })}
-          placeholder="AIza…"
-          type="password"
-          mono
-        />
-        <Field
-          title="Kalender-ID"
-          value={gcal.calendarId}
-          onChange={(v) => setGoogleCalendar({ calendarId: v })}
-          placeholder="xyz@group.calendar.google.com"
-          mono
-        />
-        <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--w14-ink-faded)' }}>
-          In der Google Cloud Console die „Google Calendar API“ aktivieren und einen API-Schlüssel
-          erstellen. Den Kalender entweder auf „öffentlich“ stellen oder so freigeben, dass der
-          Schlüssel ihn lesen darf. Die Termine erscheinen dann in der Werkstatt und unter
-          „Kalender“ (Spotlight).
-        </p>
-      </div>
+      <GoogleKalenderStatusCard />
       <div style={card}>
         <StatusDot ok={false} label="Meta/WhatsApp-Token: serverseitig (in .env setzen)" />
       </div>
+    </div>
+  );
+}
+
+/**
+ * Google-Kalender-Status — der Kalender ist serverseitig über ein
+ * Service-Konto angebunden, daher KEINE Eingabefelder mehr (früher
+ * API-Schlüssel + Kalender-ID). Wir zeigen nur, ob die Anbindung steht,
+ * abgefragt über `GET /api/calendar/status`.
+ */
+function GoogleKalenderStatusCard(): JSX.Element {
+  const api = useApiClient();
+  const [state, setState] = useState<'checking' | 'configured' | 'not-configured' | 'error'>(
+    'checking',
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await api.request<{ configured: boolean }>('GET', '/api/calendar/status');
+        if (!cancelled) setState(res?.configured === true ? 'configured' : 'not-configured');
+      } catch {
+        if (!cancelled) setState('error');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [api]);
+
+  const label =
+    state === 'configured'
+      ? 'Geschäftskalender verbunden ✓'
+      : state === 'checking'
+        ? 'Status wird geprüft…'
+        : state === 'error'
+          ? 'Kalender vorübergehend nicht erreichbar'
+          : 'Nicht eingerichtet';
+
+  return (
+    <div style={card}>
+      <StatusDot ok={state === 'configured'} label={label} />
+      <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--w14-ink-faded)' }}>
+        Der Kalender ist serverseitig angebunden (Service-Account). Die Termine erscheinen in der
+        Werkstatt und unter „Kalender“ (Spotlight) und lassen sich dort direkt anlegen, bearbeiten
+        und löschen.
+      </p>
     </div>
   );
 }
