@@ -148,6 +148,7 @@ export function NeuesProduktDialog({
   const [description, setDescription] = useState('');
   const [details, setDetails] = useState<CollectorDetailsDraft>(EMPTY_COLLECTOR_DETAILS);
   const [showBeschreibung, setShowBeschreibung] = useState(false);
+  const [showMerkmale, setShowMerkmale] = useState(false);
   const [stampErhaltung, setStampErhaltung] = useState<StampErhaltung | null>(null);
   const [stampMinr, setStampMinr] = useState('');
 
@@ -422,57 +423,16 @@ export function NeuesProduktDialog({
         {/* ── Stage 0 — Eckdaten ───────────────────────────────────────── */}
         {stage === 0 && (
           <>
+            {/* Hot path first: Bezeichnung → Kategorie. The cooler fields move
+                into a 'Merkmale' disclosure so Stage 0 opens uncluttered. */}
             <Field label="Bezeichnung" required>
               <Input
+                autoFocus
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="z. B. Goldring 585 mit Brillant"
               />
             </Field>
-
-            <div style={TWO_COL}>
-              <Field label="SKU / Artikelnr." required>
-                <Input
-                  mono
-                  value={sku}
-                  onChange={(e) => setSku(e.target.value)}
-                  placeholder="RING-585-001"
-                />
-              </Field>
-              <Field label="Gewicht (g)">
-                <Input
-                  mono
-                  inputMode="decimal"
-                  value={weightGrams}
-                  onChange={(e) => setWeightGrams(e.target.value)}
-                  placeholder="optional"
-                />
-              </Field>
-            </div>
-
-            <div style={TWO_COL}>
-              <Field label="Art">
-                <Select value={itemType} onChange={(e) => setItemType(e.target.value as ItemType)}>
-                  {ITEM_TYPE_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              <Field label="Zustand">
-                <Select
-                  value={condition}
-                  onChange={(e) => setCondition(e.target.value as Condition)}
-                >
-                  {CONDITION_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-            </div>
 
             <CategoryPickerField
               value={category?.id ?? null}
@@ -488,7 +448,70 @@ export function NeuesProduktDialog({
               disabled={busy}
             />
 
-            {/* Beschreibung & Details — collapsed: the hot path stays ≤6 fields. */}
+            <Field label="SKU / Artikelnr." required>
+              <Input
+                mono
+                value={sku}
+                onChange={(e) => setSku(e.target.value)}
+                placeholder="RING-585-001"
+              />
+            </Field>
+
+            {/* Merkmale — Art · Zustand · Gewicht (progressive disclosure). */}
+            <button
+              type="button"
+              aria-expanded={showMerkmale}
+              onClick={() => setShowMerkmale((o) => !o)}
+              style={DISCLOSE_ROW}
+            >
+              <span style={{ color: 'var(--w14-ink-aged)' }}>
+                Merkmale — Art · Zustand · Gewicht
+              </span>
+              <span aria-hidden style={{ color: 'var(--w14-ink-faded)', flexShrink: 0 }}>
+                {showMerkmale ? '▾' : '▸'}
+              </span>
+            </button>
+            {showMerkmale && (
+              <>
+                <div style={TWO_COL}>
+                  <Field label="Art">
+                    <Select
+                      value={itemType}
+                      onChange={(e) => setItemType(e.target.value as ItemType)}
+                    >
+                      {ITEM_TYPE_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label="Zustand">
+                    <Select
+                      value={condition}
+                      onChange={(e) => setCondition(e.target.value as Condition)}
+                    >
+                      {CONDITION_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                </div>
+                <Field label="Gewicht (g)">
+                  <Input
+                    mono
+                    inputMode="decimal"
+                    value={weightGrams}
+                    onChange={(e) => setWeightGrams(e.target.value)}
+                    placeholder="optional"
+                  />
+                </Field>
+              </>
+            )}
+
+            {/* Beschreibung & Details — collapsed: the hot path stays calm. */}
             <button
               type="button"
               aria-expanded={showBeschreibung}

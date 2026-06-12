@@ -1,20 +1,26 @@
 /**
  * Werkstatt — the home screen the operator sees on every successful login.
  *
- * Layout (memory.md §10, #74-G):
+ * Calendar-first layout (memory.md §10, #74-G):
  *
  *   ┌────────────────────────────────────────────────────────┐
  *   │  Header (Seal · Werkstatt · SSE status)                │
  *   │  ◆ — diamond rule —                                    │
- *   ├──────────────────────────────┬─────────────────────────┤
- *   │ ◆ Übersicht                  │ ◆ Tagebuch              │
- *   │ [6 stat tiles 3×2]           │  ledger feed (live)     │
- *   │                              │                         │
- *   │ ◆ Google Kalender            │                         │
- *   │ [embed / 3-step explainer]   │                         │
- *   ├──────────────────────────────┴─────────────────────────┤
+ *   ├──────────┬─────────────────────────────────────────────┤
+ *   │ ◆ Tag    │                                             │
+ *   │ ◆ Über-  │           ◆ Google Kalender                 │
+ *   │   sicht  │     (MAIN — full height & width,            │
+ *   │ ◆ Tage-  │      month/week reads in FULL)              │
+ *   │   buch   │                                             │
+ *   │ (rail,   │                                             │
+ *   │  ~300px) │                                             │
+ *   ├──────────┴─────────────────────────────────────────────┤
  *   │ Footer (N° · Heute · Shift OPEN · €4.231,42)            │
  *   └────────────────────────────────────────────────────────┘
+ *
+ * The display panels (DayControl · Übersicht · Tagebuch) are display-only,
+ * so they collapse into a THIN scannable rail on the LEFT; the calendar gets
+ * every remaining pixel.
  *
  * Data ownership:
  *   • Dashboard summary  → TanStack Query (useDashboardSummary)
@@ -79,49 +85,50 @@ export function Werkstatt(): JSX.Element {
         todayLabel={todayLabel}
       />
 
-      {/* A4: guided start/end of day — one clear control on the landing screen. */}
-      <div style={{ padding: 'var(--space-1) var(--space-7) 0' }}>
-        <DayControl />
-      </div>
-
       <main
         style={{
           flex: 1,
           minHeight: 0,
           display: 'grid',
-          gridTemplateColumns: 'minmax(0, 1.4fr) minmax(0, 1fr)',
-          gap: 'var(--space-7)',
+          // Calendar-first: a thin scannable display rail on the LEFT,
+          // the calendar claiming every remaining pixel on the RIGHT.
+          gridTemplateColumns: 'clamp(280px, 22vw, 320px) minmax(0, 1fr)',
+          gap: 'var(--space-6)',
           padding: 'var(--space-3) var(--space-7) var(--space-6)',
         }}
       >
-        {/* Left column — Übersicht (Edelmetallkurs now lives in the chrome ticker, UX P2) */}
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
+        {/* Left rail — display-only summaries, compact & stacked. */}
+        <aside
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 'var(--space-5)',
+            minHeight: 0,
+            overflowY: 'auto',
+          }}
+        >
+          {/* A4: guided start/end of day — one clear control. */}
+          <DayControl />
+
           <UebersichtPanel
             data={data}
             isLoading={isLoading}
             isError={isError && data === undefined}
             onRetry={() => void refetch()}
             retrying={isFetching}
+            compact
           />
 
-          {/* Google Kalender fills the former negative space under Übersicht.
-              Full-page twin: Spotlight → „Kalender“ (/kalender). */}
-          <div
-            style={{
-              flex: 1,
-              minHeight: 0,
-              display: 'flex',
-              flexDirection: 'column',
-              paddingTop: 'var(--space-6)',
-            }}
-          >
-            <GoogleKalenderCard />
+          {/* Tagebuch (live ledger feed) — condensed in the rail. */}
+          <div style={{ flex: 1, minHeight: 200, display: 'flex', flexDirection: 'column' }}>
+            <TagebuchFeed compact />
           </div>
-        </div>
+        </aside>
 
-        {/* Right column — Tagebuch (live ledger feed) */}
-        <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-          <TagebuchFeed />
+        {/* MAIN — Google Kalender fills full height & width so month/week reads
+            in FULL. Full-page twin: Spotlight → „Kalender“ (/kalender). */}
+        <div style={{ minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+          <GoogleKalenderCard variant="full" />
         </div>
       </main>
 

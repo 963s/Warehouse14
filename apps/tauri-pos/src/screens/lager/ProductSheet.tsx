@@ -317,6 +317,12 @@ function CreateBody({
   const [stampErhaltung, setStampErhaltung] = useState<StampErhaltung | null>(null);
   const [stampMinr, setStampMinr] = useState('');
 
+  // Progressive disclosure for the cooler fields — the hot path (Bezeichnung,
+  // Preis, Kategorie, Foto) stays first and uncluttered; Merkmale (Art/Zustand/
+  // Gewicht/Steuerart) and Lagerort open on demand.
+  const [showMerkmale, setShowMerkmale] = useState(false);
+  const [showLagerort, setShowLagerort] = useState(false);
+
   const valid =
     name.trim().length > 0 &&
     sku.trim().length > 0 &&
@@ -500,14 +506,50 @@ function CreateBody({
         onClose={onClose}
       />
       <DialogBody style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+        {/* ── Hot path — the 4 things every product needs, first & uncluttered:
+            Bezeichnung · Verkaufspreis (+ Einkaufswert) · Kategorie · (Foto folgt). ── */}
         <Field label="Bezeichnung" required>
           <Input
+            autoFocus
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="z. B. Goldring 585 mit Brillant"
           />
         </Field>
 
+        <div style={TWO_COL}>
+          <Field label="Verkaufspreis €" required>
+            <Input
+              mono
+              inputMode="decimal"
+              value={listPriceEur}
+              onChange={(e) => setListPriceEur(e.target.value)}
+              placeholder="0,00"
+            />
+          </Field>
+          <Field label="Einkaufswert €" required>
+            <Input
+              mono
+              inputMode="decimal"
+              value={acquisitionCostEur}
+              onChange={(e) => setAcquisitionCostEur(e.target.value)}
+              placeholder="0,00"
+            />
+          </Field>
+        </div>
+
+        <CategoryPickerField value={category?.id ?? null} onChange={setCategory} disabled={busy} />
+        <StampAttributeFields
+          pathSlugs={category?.pathSlugs ?? []}
+          erhaltung={stampErhaltung}
+          minr={stampMinr}
+          onErhaltungChange={setStampErhaltung}
+          onMinrChange={setStampMinr}
+          disabled={busy}
+        />
+
+        {/* SKU is auto-assigned — shown plainly, regenerate on demand. The
+            operator rarely edits it, so it sits just below the hot path. */}
         <div
           style={{
             display: 'grid',
@@ -516,7 +558,7 @@ function CreateBody({
             alignItems: 'end',
           }}
         >
-          <Field label="SKU / Artikelnr." required>
+          <Field label="SKU / Artikelnr. (automatisch)" required>
             <Input
               mono
               value={sku}
@@ -534,87 +576,89 @@ function CreateBody({
           </Button>
         </div>
 
-        <CategoryPickerField value={category?.id ?? null} onChange={setCategory} disabled={busy} />
-        <StampAttributeFields
-          pathSlugs={category?.pathSlugs ?? []}
-          erhaltung={stampErhaltung}
-          minr={stampMinr}
-          onErhaltungChange={setStampErhaltung}
-          onMinrChange={setStampMinr}
-          disabled={busy}
-        />
+        {/* ── Merkmale — Art · Zustand · Gewicht · Steuerart (progressive). ── */}
+        <button
+          type="button"
+          aria-expanded={showMerkmale}
+          onClick={() => setShowMerkmale((o) => !o)}
+          style={DISCLOSE_ROW}
+        >
+          <span style={{ color: 'var(--w14-ink-aged)' }}>
+            Merkmale — Art · Zustand · Gewicht · Steuerart
+          </span>
+          <span aria-hidden style={{ color: 'var(--w14-ink-faded)', flexShrink: 0 }}>
+            {showMerkmale ? '▾' : '▸'}
+          </span>
+        </button>
+        {showMerkmale && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+            <div style={TWO_COL}>
+              <Field label="Art">
+                <Select value={itemType} onChange={(e) => setItemType(e.target.value as ItemType)}>
+                  {ITEM_TYPE_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Zustand">
+                <Select
+                  value={condition}
+                  onChange={(e) => setCondition(e.target.value as Condition)}
+                >
+                  {CONDITION_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+            <div style={TWO_COL}>
+              <Field label="Gewicht (g)">
+                <Input
+                  mono
+                  inputMode="decimal"
+                  value={weightGrams}
+                  onChange={(e) => setWeightGrams(e.target.value)}
+                  placeholder="optional"
+                />
+              </Field>
+              <Field label="Steuerart">
+                <Select value={tax} onChange={(e) => setTax(e.target.value as TaxTreatmentCode)}>
+                  {TAX_OPTIONS.map((t) => (
+                    <option key={t} value={t}>
+                      {TAX_TREATMENT_LABEL[t]}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+          </div>
+        )}
 
-        <div style={TWO_COL}>
-          <Field label="Gewicht (g)">
-            <Input
-              mono
-              inputMode="decimal"
-              value={weightGrams}
-              onChange={(e) => setWeightGrams(e.target.value)}
-              placeholder="optional"
-            />
-          </Field>
-          <Field label="Art">
-            <Select value={itemType} onChange={(e) => setItemType(e.target.value as ItemType)}>
-              {ITEM_TYPE_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        </div>
-
-        <div style={TWO_COL}>
-          <Field label="Zustand">
-            <Select value={condition} onChange={(e) => setCondition(e.target.value as Condition)}>
-              {CONDITION_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Steuerart">
-            <Select value={tax} onChange={(e) => setTax(e.target.value as TaxTreatmentCode)}>
-              {TAX_OPTIONS.map((t) => (
-                <option key={t} value={t}>
-                  {TAX_TREATMENT_LABEL[t]}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        </div>
-
-        <div style={TWO_COL}>
-          <Field label="Einkaufswert €" required>
-            <Input
-              mono
-              inputMode="decimal"
-              value={acquisitionCostEur}
-              onChange={(e) => setAcquisitionCostEur(e.target.value)}
-              placeholder="0,00"
-            />
-          </Field>
-          <Field label="Verkaufspreis €" required>
-            <Input
-              mono
-              inputMode="decimal"
-              value={listPriceEur}
-              onChange={(e) => setListPriceEur(e.target.value)}
-              placeholder="0,00"
-            />
-          </Field>
-        </div>
-
-        <div>
-          <span style={MINI_LABEL}>Lagerort (optional)</span>
+        {/* ── Lagerort (optional, progressive). ── */}
+        <button
+          type="button"
+          aria-expanded={showLagerort}
+          onClick={() => setShowLagerort((o) => !o)}
+          style={DISCLOSE_ROW}
+        >
+          <span style={{ color: 'var(--w14-ink-aged)' }}>
+            Lagerort (optional)
+            {locUnit.trim() || locDrawer.trim() || locPosition.trim() ? ' · gesetzt' : ''}
+          </span>
+          <span aria-hidden style={{ color: 'var(--w14-ink-faded)', flexShrink: 0 }}>
+            {showLagerort ? '▾' : '▸'}
+          </span>
+        </button>
+        {showLagerort && (
           <div
             style={{
               display: 'grid',
               gridTemplateColumns: '1fr 1fr 1fr',
               gap: 'var(--space-3)',
-              marginTop: 'var(--space-2)',
             }}
           >
             <Input
@@ -639,7 +683,7 @@ function CreateBody({
               aria-label="Position"
             />
           </div>
-        </div>
+        )}
 
         {/* Beschreibung & Details — collapsed by default (hot path stays calm). */}
         <button

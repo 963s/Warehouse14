@@ -1,14 +1,14 @@
 /**
  * CategoryPicker — calm cascading category capture for the product forms.
  *
- *   • Hauptkategorie tiles → Unterkategorie chips → third level (Briefmarken
- *     → Altdeutschland states), loaded from GET /api/categories (cached under
- *     the same TanStack key as WebSeoPanel: ['categories','tree']).
- *   • Search-as-you-type across ALL levels (shows the full path per hit).
+ *   • Breadcrumb-led level navigation: 'Alle › Briefmarken › Altdeutschland'
+ *     chips + a 'Zurück' step-up; tapping a tile with children DRILLS IN,
+ *     tapping a leaf SELECTS (one obvious tap). Tree from GET /api/categories
+ *     (cached under the same TanStack key as WebSeoPanel: ['categories','tree']).
+ *   • Prominent search across ALL levels — each hit shows its parent path.
  *   • MiNr-range hints for stamp categories (lib/taxonomy-hints constants,
- *     falling back to the node's seeded descriptionDe).
- *   • Click = select. A node with children stays open so the operator can
- *     refine; a leaf closes the picker. Selection = primaryCategoryId.
+ *     falling back to the node's seeded descriptionDe), shown calmly.
+ *   • Selection = primaryCategoryId.
  *
  * Also exports the shared progressive-disclosure field groups both product
  * forms reuse (smallest-diff wiring in NeuesProduktDialog + ProductSheet):
@@ -21,7 +21,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { type CSSProperties, useMemo, useState } from 'react';
+import { type CSSProperties, useEffect, useMemo, useState } from 'react';
 
 import {
   type CategoryNode,
@@ -29,11 +29,12 @@ import {
   type ProductUpdateBody,
   categoriesApi,
 } from '@warehouse14/api-client';
-import { Field, Input, Textarea } from '@warehouse14/ui-kit';
+import { Check, ChevronLeft, Field, Icon, Input, Search, Textarea } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
 import {
   ERHALTUNG_OPTIONS,
+  STAMP_ROOT_SLUG,
   type StampErhaltung,
   formatRangeHint,
   isStampPath,
@@ -141,9 +142,17 @@ export function CategoryPicker({ value, onChange, disabled }: CategoryPickerProp
   const { roots, isLoading, isError } = useCategoryTree();
   const [query, setQuery] = useState('');
 
+  // The path we are BROWSING (root→current parent). Drilling into a node with
+  // children pushes it here WITHOUT selecting; "Zurück" pops one level. This is
+  // separate from the SELECTED value so the operator can navigate freely.
+  const [browse, setBrowse] = useState<CategoryNode[]>([]);
+
+  // When a value is set from outside (hydrate / edit), open the picker AT that
+  // node's parent level so the selection is visible in context.
   const selectedPath = useMemo(() => (value ? (findPath(roots, value) ?? []) : []), [roots, value]);
-  const activeRoot = selectedPath[0] ?? null;
-  const activeSecond = selectedPath[1] ?? null;
+  useEffect(() => {
+    if (selectedPath.length > 0) setBrowse(selectedPath.slice(0, -1));
+  }, [selectedPath]);
 
   const flat = useMemo<FlatEntry[]>(() => {
     const out: FlatEntry[] = [];
@@ -171,10 +180,35 @@ export function CategoryPicker({ value, onChange, disabled }: CategoryPickerProp
       .slice(0, 30);
   }, [flat, q]);
 
+  // The nodes shown at the current browse level + the trail that leads there.
+  const parent = browse[browse.length - 1] ?? null;
+  const levelNodes = parent ? parent.children : roots;
+  const underStamps = browse.some((p) => p.slug === STAMP_ROOT_SLUG);
+
+  /** Select a node (one tap = chosen). Clears the search if running. */
   const pick = (path: CategoryNode[]): void => {
     if (disabled) return;
     setQuery('');
     onChange(toSelection(path));
+  };
+
+  /** Drill into a node WITH children — browse without selecting. */
+  const drill = (node: CategoryNode): void => {
+    if (disabled) return;
+    setBrowse((b) => [...b, node]);
+  };
+
+  /** Tap a tile: leaves select; parents drill in. */
+  const tapTile = (node: CategoryNode): void => {
+    if (node.children.length > 0) drill(node);
+    else pick([...browse, node]);
+  };
+
+  /** Jump the breadcrumb to a given depth (0 = Alle / Hauptkategorien). */
+  const jumpTo = (depth: number): void => {
+    if (disabled) return;
+    setQuery('');
+    setBrowse((b) => b.slice(0, depth));
   };
 
   if (isLoading) {
@@ -185,17 +219,24 @@ export function CategoryPicker({ value, onChange, disabled }: CategoryPickerProp
   }
 
   return (
-    <div style={{ display: 'grid', gap: 10 }}>
-      <Input
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder="Kategorie suchen — z. B. Baden, Goldmünzen…"
-        aria-label="Kategorie suchen"
-        disabled={disabled === true}
-      />
+    <div style={{ display: 'grid', gap: 12 }}>
+      {/* Prominent search — matches across ALL levels, shows the parent path. */}
+      <div style={SEARCH_WRAP}>
+        <span aria-hidden style={SEARCH_ICON}>
+          <Icon icon={Search} size={18} />
+        </span>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Kategorie suchen — z. B. Baden, Goldmünzen, Sachsen…"
+          aria-label="Kategorie über alle Ebenen suchen"
+          disabled={disabled === true}
+          style={SEARCH_INPUT}
+        />
+      </div>
 
       {q.length > 0 ? (
-        // ── Search results across all levels ───────────────────────────
+        // ── Search results across all levels (parent path shown) ───────
         hits.length === 0 ? (
           <p style={QUIET_TEXT}>Keine Kategorie passt zu „{query.trim()}“.</p>
         ) : (
@@ -203,9 +244,10 @@ export function CategoryPicker({ value, onChange, disabled }: CategoryPickerProp
             {hits.map((e) => {
               const range = nodeRangeText(
                 e.node,
-                e.path.some((p) => p.slug === 'briefmarken'),
+                e.path.some((p) => p.slug === STAMP_ROOT_SLUG),
               );
               const isSel = e.node.id === value;
+              const trail = e.path.slice(0, -1);
               return (
                 <button
                   key={e.node.id}
@@ -214,9 +256,14 @@ export function CategoryPicker({ value, onChange, disabled }: CategoryPickerProp
                   onClick={() => pick(e.path)}
                   style={{ ...HIT_ROW, ...(isSel ? TILE_SELECTED : {}) }}
                 >
-                  <span style={{ fontWeight: 600 }}>{e.node.nameDe}</span>
+                  <span style={HIT_NAME}>
+                    {isSel && <Icon icon={Check} size={15} aria-hidden style={{ flexShrink: 0 }} />}
+                    {e.node.nameDe}
+                  </span>
                   <span style={HIT_PATH}>
-                    {e.path.map((p) => p.nameDe).join(' › ')}
+                    {trail.length > 0
+                      ? `in ${trail.map((p) => p.nameDe).join(' › ')}`
+                      : 'Hauptkategorie'}
                     {range ? ` · ${range}` : ''}
                   </span>
                 </button>
@@ -225,76 +272,85 @@ export function CategoryPicker({ value, onChange, disabled }: CategoryPickerProp
           </div>
         )
       ) : (
-        // ── Calm cascade: roots → children → grandchildren ─────────────
+        // ── Browse: breadcrumb path + Zurück + larger tiles ────────────
         <>
-          <div>
-            <span style={LEVEL_LABEL}>Hauptkategorie</span>
-            <div style={TILE_WRAP}>
-              {roots.map((r) => (
+          {/* Breadcrumb chips: 'Alle › Briefmarken › Altdeutschland' — each a
+              tap-target back to that level. */}
+          <nav aria-label="Kategorie-Pfad" style={CRUMB_ROW}>
+            <button
+              type="button"
+              disabled={disabled === true}
+              onClick={() => jumpTo(0)}
+              aria-current={browse.length === 0 ? 'true' : undefined}
+              style={{ ...CRUMB_CHIP, ...(browse.length === 0 ? CRUMB_CHIP_ACTIVE : {}) }}
+            >
+              Alle
+            </button>
+            {browse.map((n, i) => (
+              <span key={n.id} style={CRUMB_SEG}>
+                <span aria-hidden style={CRUMB_SEP}>
+                  ›
+                </span>
                 <button
-                  key={r.id}
                   type="button"
                   disabled={disabled === true}
-                  aria-pressed={activeRoot?.id === r.id}
-                  onClick={() => pick([r])}
-                  style={{ ...TILE, ...(activeRoot?.id === r.id ? TILE_SELECTED : {}) }}
+                  onClick={() => jumpTo(i + 1)}
+                  aria-current={i === browse.length - 1 ? 'true' : undefined}
+                  style={{ ...CRUMB_CHIP, ...(i === browse.length - 1 ? CRUMB_CHIP_ACTIVE : {}) }}
                 >
-                  {r.nameDe}
+                  {n.nameDe}
                 </button>
-              ))}
-            </div>
+              </span>
+            ))}
+          </nav>
+
+          {/* Zurück — step up one level (only when we have somewhere to go). */}
+          {parent && (
+            <button
+              type="button"
+              disabled={disabled === true}
+              onClick={() => jumpTo(browse.length - 1)}
+              style={BACK_BTN}
+            >
+              <Icon icon={ChevronLeft} size={18} aria-hidden />
+              Zurück
+              <span style={BACK_SUB}>
+                {browse.length > 1 ? (browse[browse.length - 2]?.nameDe ?? 'Alle') : 'Alle'}
+              </span>
+            </button>
+          )}
+
+          <span style={LEVEL_LABEL}>
+            {parent ? `${parent.nameDe} — wählen` : 'Hauptkategorie wählen'}
+          </span>
+          <div style={TILE_WRAP}>
+            {levelNodes.map((n) => {
+              const range = nodeRangeText(n, underStamps || n.slug === STAMP_ROOT_SLUG);
+              const hasKids = n.children.length > 0;
+              const isSel = n.id === value;
+              return (
+                <button
+                  key={n.id}
+                  type="button"
+                  disabled={disabled === true}
+                  aria-pressed={isSel}
+                  onClick={() => tapTile(n)}
+                  style={{ ...TILE, ...(isSel ? TILE_SELECTED : {}) }}
+                >
+                  <span style={TILE_TOP}>
+                    {isSel && <Icon icon={Check} size={15} aria-hidden style={{ flexShrink: 0 }} />}
+                    <span style={TILE_NAME}>{n.nameDe}</span>
+                    {hasKids && (
+                      <span aria-hidden style={TILE_CHEVRON}>
+                        ›
+                      </span>
+                    )}
+                  </span>
+                  {range && <span style={TILE_SUB}>{range}</span>}
+                </button>
+              );
+            })}
           </div>
-
-          {activeRoot && activeRoot.children.length > 0 && (
-            <div>
-              <span style={LEVEL_LABEL}>Unterkategorie — {activeRoot.nameDe}</span>
-              <div style={TILE_WRAP}>
-                {activeRoot.children.map((c) => {
-                  const range = nodeRangeText(c, activeRoot.slug === 'briefmarken');
-                  return (
-                    <button
-                      key={c.id}
-                      type="button"
-                      disabled={disabled === true}
-                      aria-pressed={c.id === value || activeSecond?.id === c.id}
-                      onClick={() => pick([activeRoot, c])}
-                      style={{
-                        ...TILE,
-                        ...(c.id === value || activeSecond?.id === c.id ? TILE_SELECTED : {}),
-                      }}
-                    >
-                      <span>{c.nameDe}</span>
-                      {range && <span style={TILE_SUB}>{range}</span>}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {activeRoot && activeSecond && activeSecond.children.length > 0 && (
-            <div>
-              <span style={LEVEL_LABEL}>{activeSecond.nameDe} — Gebiet wählen</span>
-              <div style={TILE_WRAP}>
-                {activeSecond.children.map((g) => {
-                  const range = nodeRangeText(g, true);
-                  return (
-                    <button
-                      key={g.id}
-                      type="button"
-                      disabled={disabled === true}
-                      aria-pressed={g.id === value}
-                      onClick={() => pick([activeRoot, activeSecond, g])}
-                      style={{ ...TILE, ...(g.id === value ? TILE_SELECTED : {}) }}
-                    >
-                      <span>{g.nameDe}</span>
-                      {range && <span style={TILE_SUB}>{range}</span>}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
         </>
       )}
     </div>
@@ -345,12 +401,13 @@ export function CategoryPickerField({
           {selection ? selection.pathNames.join(' › ') : 'Kategorie wählen…'}
         </span>
         <span aria-hidden style={{ color: 'var(--w14-ink-faded)', flexShrink: 0 }}>
-          {open ? '▾' : '▸'}
+          {open ? 'Ändern ▾' : selection ? 'Ändern ▸' : '▸'}
         </span>
       </button>
 
+      {/* MiNr-Bereich calmly shown for a chosen stamp category (collapsed). */}
       {selection && rangeHint && !open && (
-        <span style={QUIET_TEXT}>{formatRangeHint(rangeHint)}</span>
+        <span style={QUIET_TEXT}>Bereich: {formatRangeHint(rangeHint)}</span>
       )}
 
       {open && (
@@ -369,9 +426,11 @@ export function CategoryPickerField({
             disabled={disabled === true}
           />
           {selection && (
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
-              <span style={{ ...QUIET_TEXT, alignSelf: 'center' }}>
-                Ausgewählt: {selection.pathNames.join(' › ')}
+            <div style={SELECTED_BAR}>
+              <span style={{ display: 'grid', gap: 2, minWidth: 0 }}>
+                <span style={SELECTED_LABEL}>Ausgewählt</span>
+                <span style={SELECTED_PATH}>{selection.pathNames.join(' › ')}</span>
+                {rangeHint && <span style={QUIET_TEXT}>Bereich: {formatRangeHint(rangeHint)}</span>}
               </span>
               <button
                 type="button"
@@ -663,7 +722,91 @@ const LEVEL_LABEL: CSSProperties = {
 const TILE_WRAP: CSSProperties = {
   display: 'flex',
   flexWrap: 'wrap',
-  gap: 6,
+  gap: 8,
+};
+
+// ── Prominent search box (icon + borderless input on a bordered shell) ──────
+const SEARCH_WRAP: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  minHeight: 48,
+  padding: '0 14px',
+  border: '1px solid var(--w14-rule)',
+  borderRadius: 'var(--w14-radius-button)',
+  background: 'var(--w14-parchment-2)',
+};
+const SEARCH_ICON: CSSProperties = {
+  display: 'inline-flex',
+  flexShrink: 0,
+  color: 'var(--w14-ink-faded)',
+};
+const SEARCH_INPUT: CSSProperties = {
+  flex: 1,
+  minWidth: 0,
+  height: 46,
+  border: 'none',
+  outline: 'none',
+  background: 'transparent',
+  color: 'var(--w14-ink)',
+  fontFamily: 'var(--w14-font-body)',
+  fontSize: '0.95rem',
+};
+
+// ── Breadcrumb path chips ───────────────────────────────────────────────────
+const CRUMB_ROW: CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: 2,
+};
+const CRUMB_SEG: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 2,
+};
+const CRUMB_SEP: CSSProperties = {
+  color: 'var(--w14-ink-faded)',
+  padding: '0 1px',
+  fontSize: '0.85rem',
+};
+const CRUMB_CHIP: CSSProperties = {
+  minHeight: 32,
+  padding: '4px 10px',
+  border: '1px solid transparent',
+  borderRadius: 'var(--w14-radius-button)',
+  background: 'transparent',
+  color: 'var(--w14-ink-aged)',
+  fontFamily: 'var(--w14-font-body)',
+  fontSize: '0.82rem',
+  cursor: 'pointer',
+};
+const CRUMB_CHIP_ACTIVE: CSSProperties = {
+  borderColor: 'var(--w14-rule)',
+  background: 'var(--w14-parchment-3)',
+  color: 'var(--w14-ink)',
+  fontWeight: 600,
+};
+
+// ── Zurück (step up one level) ──────────────────────────────────────────────
+const BACK_BTN: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 8,
+  alignSelf: 'flex-start',
+  minHeight: 44,
+  padding: '0 14px 0 10px',
+  border: '1px solid var(--w14-rule)',
+  borderRadius: 'var(--w14-radius-button)',
+  background: 'transparent',
+  color: 'var(--w14-ink-aged)',
+  fontFamily: 'var(--w14-font-body)',
+  fontSize: '0.88rem',
+  cursor: 'pointer',
+};
+const BACK_SUB: CSSProperties = {
+  color: 'var(--w14-ink-faded)',
+  fontSize: '0.8rem',
 };
 
 const GRID_2: CSSProperties = {
@@ -683,15 +826,15 @@ const TILE: CSSProperties = {
   flexDirection: 'column',
   alignItems: 'flex-start',
   justifyContent: 'center',
-  gap: 2,
-  minHeight: 44,
-  padding: '8px 12px',
+  gap: 3,
+  minHeight: 52,
+  padding: '10px 14px',
   border: '1px solid var(--w14-rule)',
   borderRadius: 'var(--w14-radius-button)',
   background: 'transparent',
   color: 'var(--w14-ink)',
   fontFamily: 'var(--w14-font-body)',
-  fontSize: '0.86rem',
+  fontSize: '0.92rem',
   cursor: 'pointer',
   textAlign: 'left',
 };
@@ -702,8 +845,24 @@ const TILE_SELECTED: CSSProperties = {
   fontWeight: 600,
 };
 
+const TILE_TOP: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 6,
+};
+
+const TILE_NAME: CSSProperties = {
+  fontWeight: 500,
+};
+
+const TILE_CHEVRON: CSSProperties = {
+  color: 'var(--w14-ink-faded)',
+  fontSize: '1rem',
+  lineHeight: 1,
+};
+
 const TILE_SUB: CSSProperties = {
-  fontSize: '0.72rem',
+  fontSize: '0.74rem',
   fontWeight: 400,
   color: 'var(--w14-ink-faded)',
   fontFamily: 'var(--w14-font-mono)',
@@ -715,8 +874,15 @@ const HIT_ROW: CSSProperties = {
   alignItems: 'stretch',
 };
 
+const HIT_NAME: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 6,
+  fontWeight: 600,
+};
+
 const HIT_PATH: CSSProperties = {
-  fontSize: '0.74rem',
+  fontSize: '0.76rem',
   color: 'var(--w14-ink-faded)',
 };
 
@@ -755,6 +921,7 @@ const STAMP_BOX: CSSProperties = {
 };
 
 const CLEAR_BTN: CSSProperties = {
+  flexShrink: 0,
   minHeight: 44,
   padding: '0 14px',
   border: '1px solid var(--w14-rule)',
@@ -764,6 +931,32 @@ const CLEAR_BTN: CSSProperties = {
   fontFamily: 'var(--w14-font-body)',
   fontSize: '0.84rem',
   cursor: 'pointer',
+};
+
+const SELECTED_BAR: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 12,
+  padding: '8px 12px',
+  border: '1px solid var(--w14-accent, var(--w14-gold))',
+  borderRadius: 'var(--w14-radius-button)',
+  background: 'var(--w14-parchment-3)',
+};
+
+const SELECTED_LABEL: CSSProperties = {
+  fontSize: '0.7rem',
+  letterSpacing: '0.06em',
+  textTransform: 'uppercase',
+  color: 'var(--w14-ink-faded)',
+};
+
+const SELECTED_PATH: CSSProperties = {
+  fontWeight: 600,
+  color: 'var(--w14-ink)',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
 };
 
 const QUIET_TEXT: CSSProperties = {

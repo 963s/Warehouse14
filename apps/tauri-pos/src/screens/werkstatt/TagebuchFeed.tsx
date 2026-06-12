@@ -23,14 +23,21 @@ import { DiamondRule, LedgerEntry, MoneyAmount, ParchmentCard } from '@warehouse
 import { selectEvents, selectLastEventId, useLedgerFeed } from '../../state/ledger-feed-store.js';
 
 const VISIBLE_LIMIT = 50;
+const COMPACT_VISIBLE_LIMIT = 20;
 
-export function TagebuchFeed(): JSX.Element {
+export interface TagebuchFeedProps {
+  /** Thin-rail mode: fewer visible rows, tighter padding for the left column. */
+  compact?: boolean;
+}
+
+export function TagebuchFeed({ compact = false }: TagebuchFeedProps): JSX.Element {
   // `selectEvents` returns the same array reference until a new event arrives
   // → only re-renders the feed on actual change.
   const events = useLedgerFeed(selectEvents);
   const lastId = useLedgerFeed(selectLastEventId);
 
-  const visible = useMemo(() => events.slice(0, VISIBLE_LIMIT), [events]);
+  const limit = compact ? COMPACT_VISIBLE_LIMIT : VISIBLE_LIMIT;
+  const visible = useMemo(() => events.slice(0, limit), [events, limit]);
 
   return (
     <section

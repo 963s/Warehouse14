@@ -25,6 +25,8 @@ export interface UebersichtPanelProps {
   isError?: boolean;
   onRetry?: () => void;
   retrying?: boolean;
+  /** Thin-rail mode: tighter 2-column tile grid for the Werkstatt left column. */
+  compact?: boolean;
 }
 
 export function UebersichtPanel({
@@ -33,8 +35,10 @@ export function UebersichtPanel({
   isError = false,
   onRetry,
   retrying = false,
+  compact = false,
 }: UebersichtPanelProps): JSX.Element {
   const placeholder = isLoading || data === undefined;
+  const columns = compact ? 2 : 3;
 
   // Honest failure: don't sit on "Lädt…" forever or render zeros as if the day
   // were quiet — say the figures aren't retrievable and offer a retry.
@@ -68,8 +72,8 @@ export function UebersichtPanel({
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-          gap: 'var(--space-4)',
+          gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+          gap: compact ? 'var(--space-2)' : 'var(--space-4)',
         }}
       >
         <StatTile
