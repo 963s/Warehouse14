@@ -44,6 +44,21 @@ export function GoogleKalenderCard({ variant = 'card' }: GoogleKalenderCardProps
   const src = resolveEmbedSrc(embedUrl);
   const full = variant === 'full';
 
+  // Google's iframe embed needs third-party cookies + a Google session, which
+  // the Tauri webview doesn't have — a PRIVATE calendar then renders blank or
+  // asks to enable cookies. The reliable escape hatch: open it in the system
+  // browser, where the owner is already signed in.
+  const openInBrowser = (): void => {
+    if (src === null) return;
+    // Same pattern the Chatwoot button uses — Tauri routes an external http(s)
+    // target to the OS browser, where the owner's Google session lives.
+    try {
+      window.open(src, '_blank', 'noopener');
+    } catch {
+      /* nothing else we can do */
+    }
+  };
+
   return (
     <section
       aria-label="Google Kalender"
@@ -63,6 +78,43 @@ export function GoogleKalenderCard({ variant = 'card' }: GoogleKalenderCardProps
         >
           {src === null ? 'Noch nicht verbunden' : 'Wochenansicht · Termine des Geschäfts'}
         </p>
+        {src !== null && (
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 'var(--space-3)',
+              marginTop: 'var(--space-2)',
+            }}
+          >
+            <button
+              type="button"
+              onClick={openInBrowser}
+              title="Kalender im Browser öffnen"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                minHeight: 36,
+                padding: '6px 14px',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                color: 'var(--w14-ink)',
+                background: 'var(--w14-parchment-2)',
+                border: '1px solid var(--w14-gold)',
+                borderRadius: 'var(--w14-radius-button)',
+                cursor: 'pointer',
+              }}
+            >
+              Im Browser öffnen ↗
+            </button>
+            <span style={{ color: 'var(--w14-ink-faded)', fontSize: '0.74rem' }}>
+              Privater Kalender oder leer? Im Browser öffnen — dort bist du angemeldet.
+            </span>
+          </div>
+        )}
       </div>
 
       {src === null ? (

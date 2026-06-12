@@ -90,9 +90,9 @@ export function AppShellHeader(_props: AppShellHeaderProps): JSX.Element {
         ))}
       </nav>
 
-      {/* Support · Status-Dot · Einstellungen · Update · Darstellung */}
+      {/* Darstellung · Status-Dot · Einstellungen · Update · Support */}
       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-        <SupportButton />
+        <ThemeToggle />
         <HealthDot />
         <button
           type="button"
@@ -117,7 +117,7 @@ export function AppShellHeader(_props: AppShellHeaderProps): JSX.Element {
           <IconSettings size={18} />
         </button>
         <UpdateButton />
-        <ThemeToggle />
+        <SupportButton />
       </div>
     </header>
   );

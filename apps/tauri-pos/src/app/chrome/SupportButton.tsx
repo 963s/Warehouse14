@@ -33,6 +33,18 @@ const SPRUECH = [
   'Älles guad bei dir?',
   'Ha noi, du Schwätzer',
   'Drmit muasch leba',
+  'Schaffe, schaffe, Häusle baua',
+  'Net g’schimpft isch globt gnuag',
+  'Du Glomp, du’s!',
+  'Sell isch hald so',
+  'Muggeseggele Geduld no',
+  'I hau ab, machs guad',
+  'Probier’s mit Bügeln',
+  'Frag de Chef — ah, des bisch du',
+  'Heidenei, scho wieder?',
+  'Wo bisch denn du her?',
+  'Bruddl net rum',
+  'Geh fort, gugg Maultäschle',
 ] as const;
 
 export function SupportButton(): JSX.Element {
@@ -80,9 +92,9 @@ export function SupportButton(): JSX.Element {
           aria-live="polite"
           style={{
             position: 'absolute',
-            bottom: 'calc(100% + 8px)',
+            top: 'calc(100% + 8px)',
             left: '50%',
-            transform: `translateX(-50%) translateY(${shown ? '0' : '6px'})`,
+            transform: `translateX(-50%) translateY(${shown ? '0' : '-6px'})`,
             opacity: shown ? 1 : 0,
             transition: 'opacity .28s ease, transform .28s cubic-bezier(0.16,1,0.3,1)',
             whiteSpace: 'nowrap',
