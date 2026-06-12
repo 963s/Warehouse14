@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   X, Search, ChevronDown, ChevronRight, Coins, Circle, CircleDot, Watch, Landmark,
   Stamp, Layers, Gem, Hexagon, ArrowRight, Clock, Medal, Banknote, Mail, Shield,
-  Award, Image as ImageIcon, Boxes, Sparkles, HandCoins, type LucideIcon,
+  Award, Image as ImageIcon, Boxes, Sparkles, type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { Logo } from "@/components/logo";
@@ -37,7 +37,6 @@ const CATEGORY_ICONS: Record<string, LucideIcon> = {
   ansichtskarten: ImageIcon,
   konvolute: Boxes,
   neuheiten: Sparkles,
-  ankauf: HandCoins,
 };
 
 const services = [

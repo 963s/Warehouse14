@@ -43,6 +43,18 @@ function Accent({ children }: { children: ReactNode }) {
   return <g className="w14-engraved-accent transition-colors duration-300 group-hover:text-gilt">{children}</g>;
 }
 
+/** A GILT EDGE: a thin gilt hairline tracing ONLY the object's outermost
+ * contour, so the gold seasons just the silhouette's edge — never a fill,
+ * never a glow. Low opacity keeps it a whisper in every context (ink card
+ * icon, faint watermark plate), gold on the LINE not the field. */
+function GiltEdge({ children }: { children: ReactNode }) {
+  return (
+    <g stroke="var(--w14-gilt)" strokeWidth={0.9} opacity={0.45} fill="none">
+      {children}
+    </g>
+  );
+}
+
 /** A struck taler: reeded rim, re-struck inner ring, small crest, luster ticks. */
 export function EngravedTaler({ className }: IconProps) {
   return (
@@ -65,6 +77,10 @@ export function EngravedTaler({ className }: IconProps) {
       <Accent>
         <path strokeWidth={1.3} d="M37.2 9.8l2.5-2.6M40 13.6l2.6-1.4M33.8 7.4l1.2-2.3" />
       </Accent>
+      {/* gilt edge — the reeded rim */}
+      <GiltEdge>
+        <circle cx="24" cy="24.6" r="16.4" />
+      </GiltEdge>
     </Plate>
   );
 }
@@ -83,6 +99,10 @@ export function EngravedRing({ className }: IconProps) {
       <Accent>
         <path strokeWidth={1.3} d="M32.6 12.4l3.1-1M31.6 8.8l2.3-2.1M28.3 7.3l.6-2.6" />
       </Accent>
+      {/* gilt edge — the band */}
+      <GiltEdge>
+        <circle cx="24" cy="30" r="9.8" />
+      </GiltEdge>
     </Plate>
   );
 }
@@ -112,6 +132,10 @@ export function EngravedPocketWatch({ className }: IconProps) {
         <path strokeWidth={1.4} d="M22 28.4v-6.2M22 28.4l4.6-2.6" />
         <circle cx="22" cy="28.4" r="0.9" strokeWidth={1.2} />
       </Accent>
+      {/* gilt edge — the case */}
+      <GiltEdge>
+        <circle cx="22" cy="28.4" r="12.4" />
+      </GiltEdge>
     </Plate>
   );
 }
@@ -132,6 +156,10 @@ export function EngravedStamp({ className }: IconProps) {
       <Accent>
         <rect x="10.4" y="10.4" width="27.2" height="27.2" strokeWidth={1.6} strokeDasharray="0.1 3.4" />
       </Accent>
+      {/* gilt edge — the inner frame contour */}
+      <GiltEdge>
+        <rect x="14.6" y="14.6" width="18.8" height="18.8" />
+      </GiltEdge>
     </Plate>
   );
 }
@@ -161,6 +189,11 @@ export function EngravedCandelabra({ className }: IconProps) {
         <path strokeWidth={1.1} d="M12.5 9.8c1 1.2.9 2.6-.1 3.5-.9-1-1-2.4.1-3.5z" />
         <path strokeWidth={1.1} d="M35.5 9.8c1 1.2.9 2.6-.1 3.5-.9-1-1-2.4.1-3.5z" />
       </Accent>
+      {/* gilt edge — the foot and base line */}
+      <GiltEdge>
+        <path d="M18.4 36.4c1.4-2.4 3.6-3.6 5.6-3.6s4.2 1.2 5.6 3.6" />
+        <path d="M15.8 36.4h16.4" />
+      </GiltEdge>
     </Plate>
   );
 }
@@ -180,6 +213,10 @@ export function EngravedBrooch({ className }: IconProps) {
       <Accent>
         <ellipse cx="24" cy="24" rx="12" ry="14.6" strokeWidth={1.6} strokeDasharray="0.1 4.55" />
       </Accent>
+      {/* gilt edge — the mount oval */}
+      <GiltEdge>
+        <ellipse cx="24" cy="24" rx="9.4" ry="12" />
+      </GiltEdge>
     </Plate>
   );
 }
@@ -202,6 +239,10 @@ export function EngravedBar({ className }: IconProps) {
       <Accent>
         <ellipse cx="23" cy="33.4" rx="3.9" ry="1.9" strokeWidth={1.1} />
       </Accent>
+      {/* gilt edge — the lower cast bar's profile */}
+      <GiltEdge>
+        <path d="M11 37.2l3-8.6h20l3 8.6z" />
+      </GiltEdge>
     </Plate>
   );
 }
@@ -226,6 +267,10 @@ export function EngravedCarton({ className }: IconProps) {
       <Accent>
         <path strokeWidth={1.3} d="M28.8 8.2v4.4M26.6 10.4H31M24.4 6.9l-1 2.4M33.2 14.2l2-1.4" />
       </Accent>
+      {/* gilt edge — the mouth of the box */}
+      <GiltEdge>
+        <path d="M10 22.6l17.8 1.8 9.7-3.7-17.3-2z" />
+      </GiltEdge>
     </Plate>
   );
 }

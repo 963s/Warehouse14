@@ -74,7 +74,14 @@ function Drift({
 /* ── Engraved objects — drawn here, watermark-grade, NOT brand marks ──────
  * Pure hairline stroke work in currentColor: an old engraver's vocabulary
  * (perforation, reeding, hatching, a swash), abstract enough to never read
- * as clipart at 4–8% ink. */
+ * as clipart at 4–8% ink.
+ *
+ * GILT EDGE: each object traces ONLY its outermost contour with a thin gilt
+ * hairline (`stroke: var(--w14-gilt)`, ~1px, low opacity) so the gold seasons
+ * just the edges — gold on the LINES, never a fill, never a glow. The engraved
+ * detail stays in `currentColor` (ink) so the object reads as one silhouette. */
+
+const GILT = "var(--w14-gilt)";
 
 /** A postage stamp: perforated edge, double frame, engraved sky lines and an
  * oval cartouche with hatched shading. */
@@ -120,6 +127,8 @@ function StampEngraving({ className }: { className?: string }) {
       {/* corner value medallions */}
       <circle cx="44" cy="220" r="9" strokeWidth="1.2" />
       <circle cx="176" cy="220" r="9" strokeWidth="1.2" />
+      {/* GILT EDGE — only the outer sheet contour, a thin gilt hairline */}
+      <rect x="24" y="24" width="172" height="216" strokeWidth="1.1" stroke={GILT} opacity={0.85} />
     </svg>
   );
 }
@@ -154,6 +163,8 @@ function CoinEngraving({ className }: { className?: string }) {
       <path d="M 130 206 Q 200 156 270 206" strokeWidth="1.3" />
       <path d="M 142 206 Q 200 166 258 206" strokeWidth="0.9" />
       <line x1="92" y1="206" x2="308" y2="206" strokeWidth="1.6" />
+      {/* GILT EDGE — only the rim, a thin gilt hairline */}
+      <circle cx="200" cy="200" r="196" strokeWidth="1.2" stroke={GILT} opacity={0.85} />
     </svg>
   );
 }
@@ -176,6 +187,13 @@ function FlourishEngraving({ className }: { className?: string }) {
         d="M 60 140 C 170 96 260 142 352 122 C 430 106 470 130 560 110"
         strokeWidth="0.9"
       />
+      {/* GILT EDGE — trace the leading swash in a thin gilt hairline */}
+      <path
+        d="M 14 118 C 80 30 150 26 196 84 C 232 130 196 158 168 144 C 140 130 168 88 232 78 C 330 62 360 128 444 106 C 506 90 540 64 588 76"
+        strokeWidth="0.8"
+        stroke={GILT}
+        opacity={0.85}
+      />
     </svg>
   );
 }
@@ -194,10 +212,15 @@ export function HeroTableau() {
        * ellipse over the left copy column. */
       className="pointer-events-none absolute inset-0 z-0 select-none overflow-hidden text-ink [-webkit-mask-image:linear-gradient(to_bottom,black_0%,rgba(0,0,0,0.45)_22%,rgba(0,0,0,0.3)_48%,rgba(0,0,0,0.55)_78%,black_100%)] [mask-image:linear-gradient(to_bottom,black_0%,rgba(0,0,0,0.45)_22%,rgba(0,0,0,0.3)_48%,rgba(0,0,0,0.55)_78%,black_100%)] md:[-webkit-mask-image:radial-gradient(130%_92%_at_20%_42%,transparent_0%,rgba(0,0,0,0.4)_42%,black_74%)] md:[mask-image:radial-gradient(130%_92%_at_20%_42%,transparent_0%,rgba(0,0,0,0.4)_42%,black_74%)]"
     >
+      {/* A whisper-soft darkening wash behind the tableau so the drifting
+       * watermark objects are perceptible against the cream the moment the
+       * page opens. Calm, never a panel — a faint top-anchored gradient. */}
+      <div className="absolute inset-0 [background:radial-gradient(120%_90%_at_72%_18%,rgba(28,28,28,0.05),transparent_62%)] md:[background:radial-gradient(115%_95%_at_62%_46%,rgba(28,28,28,0.055),transparent_60%)]" />
+
       {/* the coin — large, anchoring the lower right; on phones a sliver
        * peeking from the right edge */}
       <Drift
-        className="absolute -right-[42%] top-[30%] w-[340px] opacity-[0.05] md:-right-[6%] md:top-[52%] md:w-[600px] md:opacity-[0.055]"
+        className="absolute -right-[42%] top-[30%] w-[340px] opacity-[0.10] md:-right-[6%] md:top-[52%] md:w-[600px] md:opacity-[0.11]"
         x={-10}
         y={-18}
         rotate={0.6}
@@ -209,7 +232,7 @@ export function HeroTableau() {
 
       {/* the stamp — top right corner on desktop, settling low on phones */}
       <Drift
-        className="absolute -bottom-[7%] right-[5%] w-[148px] opacity-[0.05] md:bottom-auto md:right-[3%] md:top-[2%] md:w-[190px] md:opacity-[0.06]"
+        className="absolute -bottom-[7%] right-[5%] w-[148px] opacity-[0.10] md:bottom-auto md:right-[3%] md:top-[2%] md:w-[190px] md:opacity-[0.12]"
         x={-8}
         y={14}
         rotate={1.4}
@@ -221,7 +244,7 @@ export function HeroTableau() {
 
       {/* the flourish — desktop only (phones carry 2 objects) */}
       <Drift
-        className="absolute bottom-[5%] left-[30%] hidden w-[540px] opacity-[0.05] md:block"
+        className="absolute bottom-[5%] left-[30%] hidden w-[540px] opacity-[0.10] md:block"
         x={22}
         y={-8}
         duration={95 * slow}
@@ -242,7 +265,7 @@ export function HeroTableau() {
        * settles beside the headline — one pass, then rests. Reduced motion
        * renders it already at rest. Opacity rides an inner element so the
        * watermark strength on the wrapper stays authoritative. */}
-      <div className="absolute -right-[5%] top-[0.5%] w-[200px] opacity-[0.06] md:left-[63%] md:right-auto md:top-[30%] md:w-[360px] md:opacity-[0.07]">
+      <div className="absolute -right-[5%] top-[0.5%] w-[200px] opacity-[0.11] md:left-[63%] md:right-auto md:top-[30%] md:w-[360px] md:opacity-[0.12]">
         <motion.div
           className="will-change-transform"
           initial={reduce ? false : { x: "26vw", y: 30, rotate: 5, opacity: 0 }}

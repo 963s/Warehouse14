@@ -15,6 +15,36 @@ let cache: CategoryNode[] | null = null;
 let inflight: Promise<CategoryNode[]> | null = null;
 
 /**
+ * Root slugs that are NOT a shop world and must never appear in the storefront
+ * navigation. `ankauf` is a SERVICE (we BUY from customers) — it carries its own
+ * "Goldankauf" link in the header/side-menu service group, so it has no place in
+ * the Sortiment. The live `GET /api/storefront/categories` already excludes
+ * `hidden_from_storefront = TRUE` rows server-side; this is the matching
+ * client-side guard so it also stays out of the placeholder/fallback tree.
+ */
+const HIDDEN_ROOT_SLUGS = new Set(["ankauf"]);
+
+/**
+ * A category node that may carry the backend's `hiddenFromStorefront` flag.
+ * The public projection drops hidden rows already, but we honour the flag too
+ * (and the slug denylist) so a stray hidden category can never surface in nav.
+ */
+type MaybeHidden = CategoryNode & { hiddenFromStorefront?: boolean | null };
+
+function isVisible(node: CategoryNode): boolean {
+  if (HIDDEN_ROOT_SLUGS.has(node.slug)) return false;
+  if ((node as MaybeHidden).hiddenFromStorefront === true) return false;
+  return true;
+}
+
+/** Drop hidden nodes at every level, preserving the visible tree shape. */
+function pruneHidden(nodes: CategoryNode[]): CategoryNode[] {
+  return nodes
+    .filter(isVisible)
+    .map((n) => (n.children.length > 0 ? { ...n, children: pruneHidden(n.children) } : n));
+}
+
+/**
  * SSR fallback so the header carries real links before the tree arrives
  * (and if the backend is briefly unreachable): the owner's roots, slug-true.
  * Names/children are replaced by the live tree the moment it loads.
@@ -36,8 +66,9 @@ export function useCategories(): CategoryNode[] | null {
     inflight ??= data
       .listCategories()
       .then((t) => {
-        cache = t;
-        return t;
+        const visible = pruneHidden(t);
+        cache = visible;
+        return visible;
       })
       .catch(() => {
         inflight = null; // a failed fetch may retry on the next mount
