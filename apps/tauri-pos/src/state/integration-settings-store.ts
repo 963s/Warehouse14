@@ -23,11 +23,16 @@ export interface SocialConfig {
 }
 export interface GoogleCalendarConfig {
   /**
-   * Google-Kalender Embed-URL (oder nur die Kalender-ID). Wird RAW als
-   * iframe-`src` eingebettet — z. B.
-   * https://calendar.google.com/calendar/embed?src=…&mode=WEEK&hl=de
+   * Google-Cloud API-Schlüssel (Calendar API aktiviert). Wird terminal-lokal
+   * gespeichert und nur für den clientseitigen Lese-Fetch der Termine genutzt.
    */
-  embedUrl: string;
+  apiKey: string;
+  /**
+   * Kalender-ID — z. B. `xyz@group.calendar.google.com` oder die Gmail-Adresse
+   * des Kontos. Der Kalender muss öffentlich oder für den Schlüssel freigegeben
+   * sein, damit die Termine gelesen werden können.
+   */
+  calendarId: string;
 }
 export interface AiConfig {
   visionEnabled: boolean; // AI photo → attributes
@@ -44,7 +49,7 @@ const DEFAULT: IntegrationSettings = {
   chatwoot: { enabled: false, baseUrl: '', websiteToken: '' },
   social: { whatsappNumber: '', instagramHandle: '', facebookPage: '' },
   ai: { visionEnabled: true, priceEstimateEnabled: true },
-  googleCalendar: { embedUrl: '' },
+  googleCalendar: { apiKey: '', calendarId: '' },
 };
 
 interface State {

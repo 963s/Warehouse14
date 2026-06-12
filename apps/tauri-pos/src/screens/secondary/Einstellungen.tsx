@@ -243,6 +243,7 @@ function Field({
   placeholder,
   mono,
   readOnly,
+  type,
 }: {
   title: string;
   value: string;
@@ -250,11 +251,13 @@ function Field({
   placeholder?: string;
   mono?: boolean;
   readOnly?: boolean;
+  type?: 'text' | 'password';
 }): JSX.Element {
   return (
     <label style={{ display: 'grid', gap: 5 }}>
       <span style={labelStyle}>{title}</span>
       <input
+        type={type ?? 'text'}
         style={{
           ...inputStyle,
           fontFamily: mono ? 'var(--w14-font-mono)' : 'var(--w14-font-body)',
@@ -486,15 +489,25 @@ function SocialSection(): JSX.Element {
       </div>
       <div style={card}>
         <Field
-          title="Google Kalender (Embed-URL)"
-          value={gcal.embedUrl}
-          onChange={(v) => setGoogleCalendar({ embedUrl: v })}
-          placeholder="https://calendar.google.com/calendar/embed?src=…&mode=WEEK&hl=de"
+          title="Google Kalender API-Schlüssel"
+          value={gcal.apiKey}
+          onChange={(v) => setGoogleCalendar({ apiKey: v })}
+          placeholder="AIza…"
+          type="password"
+          mono
+        />
+        <Field
+          title="Kalender-ID"
+          value={gcal.calendarId}
+          onChange={(v) => setGoogleCalendar({ calendarId: v })}
+          placeholder="xyz@group.calendar.google.com"
           mono
         />
         <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--w14-ink-faded)' }}>
-          Kalender in Google auf „öffentlich“ stellen oder die private Embed-URL einfügen. Der
-          Kalender erscheint in der Werkstatt und unter „Kalender“ (Spotlight).
+          In der Google Cloud Console die „Google Calendar API“ aktivieren und einen API-Schlüssel
+          erstellen. Den Kalender entweder auf „öffentlich“ stellen oder so freigeben, dass der
+          Schlüssel ihn lesen darf. Die Termine erscheinen dann in der Werkstatt und unter
+          „Kalender“ (Spotlight).
         </p>
       </div>
       <div style={card}>
