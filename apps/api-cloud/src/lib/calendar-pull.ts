@@ -20,6 +20,7 @@
 import { sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 
+import { ensureWatchChannel } from './calendar-watch.js';
 import { calendarConfigured, syncEvents } from './google-calendar.js';
 
 const SYNC_TOKEN_KEY = 'calendar.pull_sync_token';
@@ -197,20 +198,39 @@ export async function runCalendarPull(db: DbLike, log: LoggerLike): Promise<void
   }
 }
 
-/** Start the ~90s background poller (production only — called from server.ts). */
+const POLL_INTERVAL_MS = 15_000;
+
+/**
+ * Start the background sync (production only — called from server.ts):
+ *   • a 15s incremental poll (near-instant + the backstop), and
+ *   • events.watch push channel upkeep — once the webhook domain is verified
+ *     in GCP, Google pushes changes to /api/calendar/notifications in
+ *     sub-second time and the poll just covers any missed notification.
+ */
 export function startCalendarPoller(app: FastifyInstance): NodeJS.Timeout | null {
   if (!calendarConfigured()) {
     app.log.info({}, 'calendar poller: not configured — skipping');
     return null;
   }
+  const webhookUrl = process.env.CALENDAR_WEBHOOK_URL ?? '';
+  const webhookToken = process.env.CALENDAR_WEBHOOK_TOKEN ?? '';
+  const db = app.db as unknown as DbLike;
   const tick = () => {
-    void runCalendarPull(app.db as unknown as DbLike, app.log).catch((err: unknown) =>
+    void runCalendarPull(db, app.log).catch((err: unknown) =>
       app.log.error({ err }, 'calendar pull tick failed'),
     );
+    if (webhookUrl && webhookToken) {
+      void ensureWatchChannel(db, app.log, { webhookUrl, token: webhookToken }).catch(
+        (err: unknown) => app.log.error({ err }, 'calendar watch: ensure channel failed'),
+      );
+    }
   };
   setTimeout(tick, 5_000); // first pass shortly after boot
-  const handle = setInterval(tick, 90_000);
+  const handle = setInterval(tick, POLL_INTERVAL_MS);
   handle.unref?.();
-  app.log.info({}, 'calendar poller: started (90s interval)');
+  app.log.info(
+    { pollIntervalMs: POLL_INTERVAL_MS, watch: webhookUrl && webhookToken ? 'enabled' : 'off' },
+    'calendar sync: started',
+  );
   return handle;
 }

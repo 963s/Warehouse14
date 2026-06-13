@@ -93,6 +93,8 @@ const EnvSchema = Type.Object({
   GOOGLE_SERVICE_ACCOUNT_B64: Type.String({ default: '', description: 'Base64 of the Google service-account JSON (Calendar).' }),
   GOOGLE_CALENDAR_ID: Type.String({ default: '', description: 'Target Google Calendar id for the shop calendar.' }),
   GOOGLE_CALENDAR_IMPERSONATE: Type.String({ default: '', description: 'Workspace user to impersonate via DWD (e.g. admin@warehouse14.de) so GOOGLE_CALENDAR_ID can be their primary calendar.' }),
+  CALENDAR_WEBHOOK_URL: Type.String({ default: '', description: 'Public HTTPS callback for Google Calendar events.watch (e.g. https://api.warehouse14.de/api/calendar/notifications). Domain must be GCP-verified.' }),
+  CALENDAR_WEBHOOK_TOKEN: Type.String({ default: '', description: 'Shared secret echoed by Google as X-Goog-Channel-Token; empty disables push (poll only).' }),
   R2_PUBLIC_URL_BASE: Type.String({
     default: '',
     description:

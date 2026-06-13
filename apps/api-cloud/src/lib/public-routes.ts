@@ -56,6 +56,11 @@ export const PUBLIC_PATH_PATTERNS: readonly RegExp[] = [
   // constant-time-compares it against system_settings and 401s otherwise
   // (routes/appointments.ts). No PII beyond shortened contact names is emitted.
   /^\/api\/appointments\/feed\.ics$/,
+  // Google Calendar events.watch push callback: Google POSTs here with no
+  // session cookie / device cert. The capability is the X-Goog-Channel-Token
+  // header (constant-compared in routes/calendar.ts); an invalid token is a
+  // silent 200 no-op. Body is empty — no PII is involved.
+  /^\/api\/calendar\/notifications$/,
 ];
 
 export const AUTHENTICATED_PATHS_UNDER_PUBLIC_PREFIX: ReadonlySet<string> = new Set([

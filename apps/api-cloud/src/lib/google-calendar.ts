@@ -231,6 +231,52 @@ export async function deleteEvent(id: string): Promise<void> {
   });
 }
 
+export interface WatchChannel {
+  id: string;
+  resourceId: string;
+  /** epoch millis the channel expires (Google returns ms as a string). */
+  expiration: number;
+}
+
+/** Register an events.watch push channel pointed at our webhook. */
+export async function watchEvents(input: {
+  channelId: string;
+  address: string;
+  token: string;
+  ttlSeconds?: number;
+}): Promise<WatchChannel> {
+  const body = {
+    id: input.channelId,
+    type: 'web_hook',
+    address: input.address,
+    token: input.token,
+    ...(input.ttlSeconds ? { params: { ttl: String(input.ttlSeconds) } } : {}),
+  };
+  const j = (await call(`/calendars/${encodeURIComponent(calendarId())}/events/watch`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })) as { id?: string; resourceId?: string; expiration?: string };
+  return {
+    id: j.id ?? input.channelId,
+    resourceId: j.resourceId ?? '',
+    expiration: Number(j.expiration ?? 0),
+  };
+}
+
+/** Stop a previously-created channel (best-effort; 404 = already gone). */
+export async function stopChannel(channelId: string, resourceId: string): Promise<void> {
+  const token = await accessToken();
+  const res = await fetch(`${API}/channels/stop`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ id: channelId, resourceId }),
+  });
+  if (!res.ok && res.status !== 404) {
+    const b = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
+    throw new GoogleCalendarError(b.error?.message ?? `channel stop (${res.status})`, res.status);
+  }
+}
+
 export interface SyncedEvent {
   id: string;
   status: string; // 'confirmed' | 'tentative' | 'cancelled'

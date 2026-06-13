@@ -16,6 +16,8 @@
 import { Type } from '@sinclair/typebox';
 import type { FastifyPluginAsync, FastifyReply } from 'fastify';
 
+import { runCalendarPull } from '../lib/calendar-pull.js';
+import { classifyWatchNotification } from '../lib/calendar-watch.js';
 import {
   type CalendarEventInput,
   calendarConfigured,
@@ -70,6 +72,25 @@ const calendarRoute: FastifyPluginAsync = async (app) => {
       return { configured: calendarConfigured() };
     },
   );
+
+  // PUBLIC (in PUBLIC_PATH_PATTERNS): Google's events.watch push callback. It
+  // carries no auth — the secret is the X-Goog-Channel-Token we set on watch().
+  // Body is empty (just "something changed") → run the incremental pull. Always
+  // 200 fast so Google doesn't retry/back off; never reveal token validity.
+  app.post('/api/calendar/notifications', async (req, reply) => {
+    const h = req.headers as Record<string, string | undefined>;
+    const { triggerPull } = classifyWatchNotification(
+      h['x-goog-channel-token'],
+      h['x-goog-resource-state'],
+      process.env.CALENDAR_WEBHOOK_TOKEN ?? '',
+    );
+    if (triggerPull) {
+      void runCalendarPull(app.db, app.log).catch((err: unknown) =>
+        app.log.error({ err }, 'calendar watch: triggered pull failed'),
+      );
+    }
+    return reply.code(200).send();
+  });
 
   app.get(
     '/api/calendar/events',
