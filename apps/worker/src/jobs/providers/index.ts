@@ -13,6 +13,7 @@
  * must not take the whole worker down.
  */
 
+import { GoldApiComProvider } from './goldapicom-provider.js';
 import { GoldApiProvider } from './goldapi-provider.js';
 import { JsonUrlProvider } from './json-url-provider.js';
 import { MetalPriceApiProvider } from './metalpriceapi-provider.js';
@@ -25,6 +26,7 @@ export type MetalPriceProviderKind =
   | 'json_url'
   | 'metalpriceapi'
   | 'goldapi'
+  | 'gold_api_com'
   | 'stooq'
   | 'disabled';
 
@@ -49,6 +51,8 @@ export function createMetalPriceProvider(config: ProviderFactoryConfig): MetalPr
       return config.apiKey ? new GoldApiProvider({ apiKey: config.apiKey }) : null;
     case 'stooq':
       return new StooqProvider();
+    case 'gold_api_com':
+      return new GoldApiComProvider();
     default: {
       // Exhaustiveness guard — a new kind must be handled above.
       const _never: never = config.provider;
@@ -57,6 +61,7 @@ export function createMetalPriceProvider(config: ProviderFactoryConfig): MetalPr
   }
 }
 
+export { GoldApiComProvider } from './goldapicom-provider.js';
 export { GoldApiProvider } from './goldapi-provider.js';
 export { JsonUrlProvider } from './json-url-provider.js';
 export { MetalPriceApiProvider } from './metalpriceapi-provider.js';
