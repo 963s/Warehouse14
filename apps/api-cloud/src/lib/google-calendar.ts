@@ -86,9 +86,20 @@ async function accessToken(): Promise<string> {
   if (!sa) throw new GoogleCalendarError('Service-Account nicht konfiguriert.', 503);
 
   const header = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
-  const claim = b64url(
-    JSON.stringify({ iss: sa.client_email, scope: SCOPE, aud: TOKEN_URL, iat: now, exp: now + 3600 }),
-  );
+  // Optional Domain-Wide-Delegation impersonation: when GOOGLE_CALENDAR_IMPERSONATE
+  // is set, the SA acts AS that Workspace user (e.g. admin@warehouse14.de), so
+  // GOOGLE_CALENDAR_ID can be that user's own primary calendar — the same one
+  // their phone uses by default (no separate shared calendar to select).
+  const claimObj: Record<string, unknown> = {
+    iss: sa.client_email,
+    scope: SCOPE,
+    aud: TOKEN_URL,
+    iat: now,
+    exp: now + 3600,
+  };
+  const subject = process.env.GOOGLE_CALENDAR_IMPERSONATE;
+  if (subject && subject.length > 0) claimObj.sub = subject;
+  const claim = b64url(JSON.stringify(claimObj));
   const signer = createSign('RSA-SHA256');
   signer.update(`${header}.${claim}`);
   const jwt = `${header}.${claim}.${b64url(signer.sign(sa.private_key))}`;
