@@ -15,7 +15,7 @@
     --line-soft: #1f2430;
     --fg: #f3f4f6;
     --fg-dim: #9ca3af;
-    --fg-faint: #6b7280;
+    --fg-faint: #8b93a3;       /* lifted to clear WCAG AA (~4.6:1) — it carries real help text */
     --accent: #f0b429;        /* gold */
     --accent-fg: #1a1205;
     --ok: #34d399;
@@ -25,6 +25,9 @@
     --tap: 56px;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  /* A visible keyboard/switch-control focus ring everywhere (tap-highlight is
+     killed above for touch, but the keyboard ring must never be suppressed). */
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   html, body { height: 100%; }
   body {
     margin: 0;
@@ -119,15 +122,21 @@
 
   /* ── Tabs (warehouse tool switcher) ────────────────────── */
   .tabs {
-    display: flex; gap: .4rem; padding: .6rem 1.1rem 0;
-    overflow-x: auto; -webkit-overflow-scrolling: touch;
+    display: flex; gap: .3rem; padding: .6rem 1.1rem 0;
+    overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
     border-bottom: 1px solid var(--line-soft); background: var(--bg-elev);
     position: sticky; top: 0; z-index: 5;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+  /* When more tabs sit off the right edge, JS adds .has-more → a fade hint. */
+  .tabs.has-more {
+    -webkit-mask-image: linear-gradient(to right, #000 90%, transparent);
+            mask-image: linear-gradient(to right, #000 90%, transparent);
   }
   .tab {
     appearance: none; cursor: pointer; white-space: nowrap;
     border: none; background: transparent; color: var(--fg-dim);
-    font-size: .92rem; font-weight: 600; padding: .7rem .9rem; min-height: 48px;
+    font-size: .92rem; font-weight: 600; padding: .7rem .65rem; min-height: 48px;
     border-bottom: 2px solid transparent;
   }
   .tab[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); }
@@ -160,6 +169,7 @@
     padding: .9rem; min-height: var(--tap);
   }
   .btn-ghost:active { background: var(--bg-elev-2); }
+  .btn-ghost[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: #221a08; }
   .btn-primary.inline { width: auto; flex: 1; margin-top: 0; }
   .notice {
     border-radius: var(--radius-sm); padding: .85rem 1rem; font-size: .9rem; line-height: 1.45;
@@ -168,6 +178,10 @@
   .notice.ok { border-color: rgba(52,211,153,.4); color: var(--ok); }
   .notice.bad { border-color: rgba(248,113,113,.4); color: var(--danger); }
   .notice.info { color: var(--fg-dim); }
+  /* Non-colour cue (colour-blind safe) — match the scan toast's ✓/✕ language. */
+  .notice.ok::before  { content: "✓\00a0"; font-weight: 800; }
+  .notice.bad::before { content: "✕\00a0"; font-weight: 800; }
+  .notice.info::before{ content: "ℹ\00a0"; }
 
   /* Big, unambiguous scan field. */
   .scanwrap { display: flex; flex-direction: column; gap: .75rem; }
@@ -193,6 +207,8 @@
   .pill.av { color: var(--ok); border: 1px solid rgba(52,211,153,.4); }
   .pill.dr { color: var(--accent); border: 1px solid rgba(240,180,41,.4); }
   .pill.muted { color: var(--fg-faint); border: 1px solid var(--line-soft); }
+  .pill.av::before { content: "✓\00a0"; }
+  .pill.bad::before { content: "✕\00a0"; }
 
   .skuhit .actions { display: flex; gap: .6rem; margin-top: 1rem; flex-wrap: wrap; }
   .skuhit .actions button {
@@ -211,6 +227,7 @@
   }
   .btn-primary:disabled { opacity: .45; cursor: default; }
   .btn-primary:active:not(:disabled) { filter: brightness(.94); }
+  .btn-primary.danger { background: var(--danger); color: #fff; }
 
   .err {
     color: var(--danger); font-size: .9rem; margin: .25rem 0 1rem;
@@ -258,22 +275,49 @@
   }
   .search:focus { border-color: var(--accent); }
   .list { display: flex; flex-direction: column; gap: .6rem; }
+  /* Status filter chips (Bestand). Horizontal scroll, never cut off mid-glyph. */
+  .filterbar { display: flex; gap: .4rem; overflow-x: auto; scrollbar-width: none; margin-bottom: 1rem; }
+  .filterbar::-webkit-scrollbar { display: none; }
+  .filterchip {
+    appearance: none; cursor: pointer; white-space: nowrap; flex: none;
+    border: 1px solid var(--line); background: var(--bg-elev-2); color: var(--fg-dim);
+    border-radius: 999px; padding: .5rem .9rem; min-height: 44px; font-weight: 600; font-size: .85rem;
+  }
+  .filterchip:active { background: #20252f; }
+  .filterchip[aria-pressed="true"] { border-color: var(--accent); background: #221a08; color: var(--accent); }
   .row {
-    display: flex; align-items: center; gap: 1rem;
+    display: flex; align-items: center; gap: .85rem;
     background: var(--bg-elev); border: 1px solid var(--line-soft);
-    border-radius: var(--radius-sm); padding: .85rem 1rem;
+    border-radius: var(--radius-sm); padding: .65rem .8rem; min-height: var(--tap);
+  }
+  /* Photo-led catalog tile: thumbnail (or item glyph) like the Lager list. */
+  .row .thumb {
+    width: 48px; height: 48px; flex: none; border-radius: 8px; object-fit: cover;
+    background: var(--bg-elev-2); border: 1px solid var(--line-soft);
+    display: grid; place-items: center; color: var(--fg-faint); font-size: 1.3rem;
   }
   .row .meta { flex: 1; min-width: 0; }
-  .row .nm { font-weight: 600; }
+  /* An item already in the cart stays visible but de-emphasised + non-tappable.
+     The indicator is a compact ✓ circle with the SAME footprint as the + button,
+     so the row layout (and the meta width) never changes — no name overflow. */
+  .row.in-cart { opacity: .6; }
+  .row .incart {
+    flex: none; display: grid; place-items: center; width: 48px; height: 48px;
+    border-radius: 999px; background: rgba(52,211,153,.16); color: var(--ok);
+    font-size: 1.45rem; font-weight: 800;
+  }
+  .row .nm { font-weight: 600; overflow: hidden; text-overflow: ellipsis;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    word-break: break-word; }
   .row .sku { font-size: .8rem; color: var(--fg-dim); margin-top: .15rem;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .row .price { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
   .row .add {
-    appearance: none; cursor: pointer; border: 1px solid var(--accent);
-    background: transparent; color: var(--accent); border-radius: 999px;
-    width: 44px; height: 44px; font-size: 1.4rem; line-height: 1; flex: none;
+    appearance: none; cursor: pointer; border: none;
+    background: var(--accent); color: var(--accent-fg); border-radius: 999px;
+    width: 48px; height: 48px; font-size: 1.5rem; font-weight: 700; line-height: 1; flex: none;
   }
-  .row .add:active { background: #221a08; }
+  .row .add:active { filter: brightness(.92); }
   .hint { color: var(--fg-faint); font-size: .82rem; margin: .25rem 0 1rem; }
   .state-msg { color: var(--fg-dim); text-align: center; padding: 2.5rem 1rem; }
   .badge-soft {
@@ -309,7 +353,7 @@
   .cart-row .ln { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
   .qty-ctrl { display: flex; align-items: center; gap: .4rem; }
   .qty-ctrl button {
-    appearance: none; cursor: pointer; width: 36px; height: 36px; flex: none;
+    appearance: none; cursor: pointer; width: 44px; height: 44px; flex: none;
     border: 1px solid var(--line); background: var(--bg-elev-2); color: var(--fg);
     border-radius: 8px; font-size: 1.25rem; line-height: 1;
   }
@@ -317,7 +361,7 @@
   .qty-ctrl .q { min-width: 1.6em; text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; }
   .cart-row .rm {
     appearance: none; cursor: pointer; flex: none; border: none; background: transparent;
-    color: var(--fg-faint); font-size: 1.4rem; line-height: 1; width: 32px; height: 36px;
+    color: var(--fg-faint); font-size: 1.4rem; line-height: 1; width: 44px; height: 44px;
   }
   .cart-row .rm:active { color: var(--danger); }
   .cart-total {

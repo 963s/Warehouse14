@@ -89,7 +89,7 @@ use axum::{
         ws::{Message, WebSocket, WebSocketUpgrade},
         ConnectInfo, Path, State as AxumState,
     },
-    http::{header, HeaderMap, HeaderValue, Method, StatusCode},
+    http::{header, HeaderMap, HeaderValue, Method, StatusCode, Uri},
     middleware::{self, Next},
     response::{Html, IntoResponse, Response},
     routing::{any, get, post},
@@ -169,7 +169,7 @@ const MAX_RATE_BUCKETS: usize = 1024;
 /// Router hardening limits (M2/M3/L2): cap request bodies, bound per-request
 /// wall-clock, and cap in-flight concurrency so a companion device cannot
 /// exhaust the mother's webview process.
-const MAX_BODY_BYTES: usize = 1024 * 1024; // 1 MiB — generous for JSON payloads.
+const MAX_BODY_BYTES: usize = 4 * 1024 * 1024; // 4 MiB — JSON is tiny; only base64 photo uploads approach this.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_CONCURRENT_REQUESTS: usize = 64;
 
@@ -1338,8 +1338,21 @@ fn normalize_proxy_path(raw: &str) -> NormPath {
             if dq.contains('\\') || dq.chars().any(|c| c.is_control()) {
                 return NormPath::Rejected;
             }
-            // Forward the ORIGINAL (still-encoded) query untouched.
-            Some(q.to_string())
+            // Forward the ORIGINAL (still-encoded) query, MINUS the companion
+            // auth-token params (`t` / `access_token`). Those exist only for the
+            // `<img>` query-token auth fallback and must never reach the cloud.
+            let kept: Vec<&str> = q
+                .split('&')
+                .filter(|pair| {
+                    let key = pair.split_once('=').map(|(k, _)| k).unwrap_or(pair);
+                    key != "t" && key != "access_token"
+                })
+                .collect();
+            if kept.is_empty() {
+                None
+            } else {
+                Some(kept.join("&"))
+            }
         }
         None => None,
     };
@@ -1502,6 +1515,10 @@ fn proxy_allowed(role: Role, method: &Method, lower_path: &str) -> bool {
                     || get_under("metal-prices")
                     || get_under("metal-rates")
                     || get_under("appointments")
+                    // public photo renditions only (id-scoped) so the till's
+                    // catalog tiles show the same thumbnails as the Lager list.
+                    || is_item_action(p, "photos", "thumb")
+                    || is_item_action(p, "photos", "raw")
                     || p == "transactions"
                     || p == "transactions/recent"))
                 || (is_post
@@ -1577,28 +1594,64 @@ fn proxy_allowed(role: Role, method: &Method, lower_path: &str) -> bool {
     }
 }
 
+/// Extract a companion token from a request query string (`t=` or
+/// `access_token=`). This is the auth fallback for GET image renditions: a
+/// browser `<img>` cannot send the `X-Companion-Token` header, so the SPA carries
+/// the token in the photo URL's query. Never honoured for writes (GET-only at the
+/// call site) and stripped from the forwarded query by `normalize_proxy_path`.
+fn query_token(query: Option<&str>) -> Option<String> {
+    let q = query?;
+    for pair in q.split('&') {
+        if let Some((k, v)) = pair.split_once('=') {
+            if (k == "t" || k == "access_token") && !v.is_empty() {
+                return Some(v.to_string());
+            }
+        }
+    }
+    None
+}
+
 /// `ANY /api/proxy/*path` — role-scoped reverse proxy to the cloud, injecting
 /// the mother's `Authorization: Bearer`. Companions never see the credential.
 async fn proxy_handler(
     AxumState(hub): AxumState<HubShared>,
     method: Method,
     Path(path): Path<String>,
+    uri: Uri,
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    // 1) Authenticate the companion + resolve its role.
-    let role = match auth_role(&hub, &headers).await {
-        Some(r) => r,
-        None => return (StatusCode::UNAUTHORIZED, "unauthorized").into_response(),
-    };
-
-    // 2) Normalise + validate the captured path BEFORE matching (C2). Reject
-    //    traversal / control-byte / smuggling attempts with 400.
+    // 1) Normalise + validate the captured path FIRST (C2). Reject traversal /
+    //    control-byte / smuggling attempts with 400. Done before auth so the
+    //    image-token fallback below can scope itself to photo renditions.
     let (fwd_path, lower_path) = match normalize_proxy_path(&path) {
         NormPath::Ok { path, lower } => (path, lower),
         NormPath::Rejected => {
             return (StatusCode::BAD_REQUEST, "invalid path").into_response();
         }
+    };
+
+    // 2) Authenticate the companion + resolve its role. A plain <img> tag cannot
+    //    send the `X-Companion-Token` header, so for GET photo renditions
+    //    (`photos/<id>/thumb|raw`) we ALSO accept the token from a `?t=` /
+    //    `?access_token=` query param. Scoped to GET image renditions only so the
+    //    credential-in-URL surface stays minimal; the param is stripped from the
+    //    forwarded query (see `normalize_proxy_path`) so it never reaches the cloud.
+    let is_photo_rendition = is_item_action(&lower_path, "photos", "thumb")
+        || is_item_action(&lower_path, "photos", "raw");
+    let role = match auth_role(&hub, &headers).await {
+        Some(r) => Some(r),
+        None if method == Method::GET && is_photo_rendition => {
+            match query_token(uri.query()) {
+                Some(tok) => auth_role_token(&hub, &tok).await,
+                None => None,
+            }
+        }
+        None => None,
+    };
+    let role = match role {
+        Some(r) => r,
+        None => return (StatusCode::UNAUTHORIZED, "unauthorized").into_response(),
     };
 
     // 3) Second gate: hard-deny list on the normalised, lowercased path.
@@ -2354,6 +2407,32 @@ mod tests {
         assert!(!proxy_allowed(Role::Warehouse, &Method::POST, "inventory/release"));
         // Display gets nothing here.
         assert!(!proxy_allowed(Role::Display, &Method::POST, "inventory/reserve"));
+    }
+
+    #[test]
+    fn cashier_gets_public_photo_renditions_for_tiles() {
+        let r = Role::Cashier;
+        // The till's catalog tiles render the same id-scoped thumbnails as Lager.
+        assert!(proxy_allowed(r, &Method::GET, "photos/0d9f3a1e/thumb"));
+        assert!(proxy_allowed(r, &Method::GET, "photos/0d9f3a1e/raw"));
+        // …but never the photo workflow lists or any photo write.
+        assert!(!proxy_allowed(r, &Method::GET, "photos/unassigned"));
+        assert!(!proxy_allowed(r, &Method::POST, "photos"));
+        assert!(!proxy_allowed(r, &Method::PATCH, "photos/0d9f3a1e/primary"));
+    }
+
+    #[test]
+    fn query_token_reads_image_auth_fallback() {
+        // The <img> auth fallback pulls the token from `t=` / `access_token=`.
+        assert_eq!(query_token(Some("t=abc123")), Some("abc123".to_string()));
+        assert_eq!(
+            query_token(Some("foo=1&access_token=xyz&bar=2")),
+            Some("xyz".to_string())
+        );
+        // No token param, an empty value, or no query at all → None.
+        assert_eq!(query_token(Some("foo=1&bar=2")), None);
+        assert_eq!(query_token(Some("t=")), None);
+        assert_eq!(query_token(None), None);
     }
 
     // ── Proxy allow-list: WAREHOUSE may re-shelve via the no-step-up route ──

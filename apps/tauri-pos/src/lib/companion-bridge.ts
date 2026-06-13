@@ -43,6 +43,20 @@ export async function pushCompanionAuth(): Promise<void> {
   }
 }
 
+/**
+ * Clear the Bearer the hub holds. MUST run on sign-out: otherwise the hub keeps
+ * proxying a now-invalid mother token to the cloud, every companion call 401s,
+ * and the phones loop on "Sitzung abgelaufen" / forced re-pair even though the
+ * fix is a fresh MOTHER login. Best-effort, same swallow-everything contract.
+ */
+export async function clearCompanionAuth(): Promise<void> {
+  try {
+    await invoke('companion_set_auth', { bearer: '' });
+  } catch {
+    /* not in Tauri, command missing, or hub down — best-effort only */
+  }
+}
+
 // ────────────────────────────────────────────────────────────────────────
 // 2. Live cart publish
 // ────────────────────────────────────────────────────────────────────────
