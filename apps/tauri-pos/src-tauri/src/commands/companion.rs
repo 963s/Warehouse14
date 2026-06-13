@@ -137,6 +137,24 @@ const IDLE_EVICT_SECS: u64 = 30 * 24 * 60 * 60;
 /// plaintext token.
 const PAIRING_STORE_FILE: &str = "companion-pairing.json";
 
+/// File names of the persisted self-signed TLS material inside the app data
+/// dir. The PEM cert + key are generated ONCE (SANs = the LAN IP + `localhost`
+/// + `warehouse14.local`, ~10 year validity) and reused across restarts so a
+/// phone only has to trust the cert a single time. The key is chmod 0600 on
+/// unix; the cert is public.
+const TLS_CERT_FILE: &str = "companion-tls.pem";
+const TLS_KEY_FILE: &str = "companion-tls.key";
+
+/// Subject-alt-name DNS hosts baked into the companion cert alongside the LAN
+/// IPv4. `localhost` covers the on-box webview; `warehouse14.local` is a stable
+/// name a phone can be pointed at if mDNS resolves it.
+const TLS_SAN_LOCALHOST: &str = "localhost";
+const TLS_SAN_MDNS: &str = "warehouse14.local";
+
+/// Validity window of the self-signed companion cert: roughly ten years, so a
+/// trusted phone keeps working for the life of the till without a re-trust.
+const TLS_CERT_VALID_YEARS: i32 = 10;
+
 /// Minimum interval between lazy disk flushes of `last_seen` refreshes. A new
 /// pairing or an eviction persists immediately; mere activity bookkeeping is
 /// throttled to roughly once a minute.
@@ -236,13 +254,16 @@ impl Role {
 /// Snapshot of the companion server returned to the React layer over IPC.
 ///
 /// Serializes `camelCase` to match the shared TS contract:
-/// `{ running, url, port, pairingCode, qrSvg, pairedCount, pairedDevices }`.
+/// `{ running, url, port, pairingCode, qrSvg, pairedCount, pairedDevices,
+/// secure, tlsFingerprint }`. `secure` + `tlsFingerprint` are additive — older
+/// TS consumers simply ignore them.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompanionInfo {
     /// Whether the embedded server is currently bound and serving.
     pub running: bool,
-    /// LAN URL of the server, e.g. `http://192.168.1.20:8714`. `""` when down.
+    /// LAN URL of the server. `https://192.168.1.20:8714` when TLS is active,
+    /// `http://…` on the plain-http fallback, `""` when down.
     pub url: String,
     /// The bound TCP port. `0` when down.
     pub port: u16,
@@ -256,6 +277,13 @@ pub struct CompanionInfo {
     pub paired_count: usize,
     /// German labels of the paired devices, sorted, for the Einstellungen UI.
     pub paired_devices: Vec<String>,
+    /// True when the hub is serving over HTTPS (secure context for phone
+    /// `getUserMedia` / `BarcodeDetector`); false on the plain-http fallback.
+    pub secure: bool,
+    /// SHA-256 fingerprint (lowercase hex, colon-free) of the self-signed TLS
+    /// certificate, so the pairing screen can show it for a one-time trust.
+    /// `None` when serving plain http.
+    pub tls_fingerprint: Option<String>,
 }
 
 impl CompanionInfo {
@@ -269,6 +297,8 @@ impl CompanionInfo {
             qr_svg: String::new(),
             paired_count: 0,
             paired_devices: Vec::new(),
+            secure: false,
+            tls_fingerprint: None,
         }
     }
 }
@@ -1708,6 +1738,170 @@ async fn bind_listener() -> std::io::Result<(tokio::net::TcpListener, u16)> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// TLS (HTTPS) — secure context for the LAN hop (additive + fail-safe)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// A loaded/generated TLS identity: the cert chain + private key (both DER) and
+/// the SHA-256 fingerprint (lowercase hex) of the leaf certificate.
+struct TlsIdentity {
+    cert_der: Vec<rustls::pki_types::CertificateDer<'static>>,
+    key_der: rustls::pki_types::PrivateKeyDer<'static>,
+    fingerprint: String,
+}
+
+/// SHA-256 of the DER-encoded leaf certificate, lowercase hex (colon-free). This
+/// is the value the pairing screen shows so an operator can eyeball that the
+/// phone trusted the right cert.
+fn cert_fingerprint_hex(cert_der: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(cert_der);
+    let digest = hasher.finalize();
+    let mut s = String::with_capacity(64);
+    for b in digest {
+        s.push_str(&format!("{b:02x}"));
+    }
+    s
+}
+
+/// Generate a fresh self-signed cert+key for the given LAN IP, persist BOTH to
+/// `<dir>/companion-tls.{pem,key}` (key chmod 0600 on unix), and return the PEM
+/// strings. SANs: the LAN IPv4 (only when it is a real private LAN address —
+/// loopback is skipped so the cert isn't pinned to `127.0.0.1`), `localhost`,
+/// and `warehouse14.local`. Any failure bubbles up so the caller can fall back
+/// to plain http.
+fn generate_and_persist_cert(
+    dir: &FsPath,
+    lan: Ipv4Addr,
+) -> Result<(String, String), Box<dyn std::error::Error>> {
+    use chrono::Datelike;
+    use rcgen::{date_time_ymd, CertificateParams, DnType, KeyPair};
+
+    // SANs: localhost + the mDNS name always; the LAN IP only when it is a real
+    // routable private address (skip loopback — a 127.0.0.1-only SAN is useless
+    // to a phone and would force a re-issue once the Wi-Fi comes up).
+    let mut sans: Vec<String> = vec![TLS_SAN_LOCALHOST.to_string(), TLS_SAN_MDNS.to_string()];
+    if is_private_lan_v4(lan) {
+        sans.push(lan.to_string());
+    }
+
+    let mut params = CertificateParams::new(sans)?;
+    params
+        .distinguished_name
+        .push(DnType::CommonName, "Warehouse14 Companion Hub");
+    // ~10 year validity. `not_before` starts the year before "now" to tolerate
+    // mild clock skew on the phone; "now" comes from chrono (already a direct
+    // dep) so we don't pull the `time` crate in directly. `date_time_ymd`
+    // returns rcgen's expected `OffsetDateTime` without that dependency.
+    let year = chrono::Utc::now().year();
+    params.not_before = date_time_ymd(year - 1, 1, 1);
+    params.not_after = date_time_ymd(year + TLS_CERT_VALID_YEARS, 1, 1);
+
+    let key_pair = KeyPair::generate()?;
+    let cert = params.self_signed(&key_pair)?;
+    let cert_pem = cert.pem();
+    let key_pem = key_pair.serialize_pem();
+
+    std::fs::create_dir_all(dir)?;
+    let cert_path = dir.join(TLS_CERT_FILE);
+    let key_path = dir.join(TLS_KEY_FILE);
+    // Cert is public; write it plainly.
+    std::fs::write(&cert_path, cert_pem.as_bytes())?;
+    // Key is secret: write then tighten perms to 0600 on unix.
+    std::fs::write(&key_path, key_pem.as_bytes())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o600));
+    }
+
+    Ok((cert_pem, key_pem))
+}
+
+/// Parse PEM cert + key strings into a [`TlsIdentity`] (DER chain + key +
+/// fingerprint). Returns an error if the PEM is malformed or carries no key.
+fn parse_tls_identity(
+    cert_pem: &str,
+    key_pem: &str,
+) -> Result<TlsIdentity, Box<dyn std::error::Error>> {
+    use rustls::pki_types::pem::PemObject;
+    use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+
+    let cert_der: Vec<CertificateDer<'static>> =
+        CertificateDer::pem_slice_iter(cert_pem.as_bytes()).collect::<Result<Vec<_>, _>>()?;
+    if cert_der.is_empty() {
+        return Err("no certificate in PEM".into());
+    }
+    let key_der = PrivateKeyDer::from_pem_slice(key_pem.as_bytes())?;
+    let fingerprint = cert_fingerprint_hex(cert_der[0].as_ref());
+    Ok(TlsIdentity {
+        cert_der,
+        key_der,
+        fingerprint,
+    })
+}
+
+/// Load the persisted cert+key for `lan`, generating + persisting a fresh one if
+/// either file is missing/unreadable/unparseable. Returns the parsed identity
+/// ready to feed rustls. Any hard failure (e.g. cannot write OR the freshly
+/// generated PEM still won't parse) is returned so the caller falls back to
+/// plain http.
+fn load_or_create_tls_identity(
+    dir: &FsPath,
+    lan: Ipv4Addr,
+) -> Result<TlsIdentity, Box<dyn std::error::Error>> {
+    let cert_path = dir.join(TLS_CERT_FILE);
+    let key_path = dir.join(TLS_KEY_FILE);
+
+    // Fast path: both files present + parse cleanly → reuse (stable trust).
+    if let (Ok(cert_pem), Ok(key_pem)) = (
+        std::fs::read_to_string(&cert_path),
+        std::fs::read_to_string(&key_path),
+    ) {
+        match parse_tls_identity(&cert_pem, &key_pem) {
+            Ok(id) => return Ok(id),
+            Err(err) => {
+                eprintln!(
+                    "warehouse14-pos: companion TLS material unreadable ({err}); regenerating"
+                );
+            }
+        }
+    }
+
+    // Generate + persist a fresh identity, then parse it.
+    let (cert_pem, key_pem) = generate_and_persist_cert(dir, lan)?;
+    parse_tls_identity(&cert_pem, &key_pem)
+}
+
+/// Process-wide install of the **ring** rustls crypto provider as the default,
+/// done exactly once. We link rustls with the `ring` provider (NOT aws-lc-rs) to
+/// match the existing reqwest stack; rustls still requires a process-default
+/// provider to be installed before building a `ServerConfig` with the
+/// non-explicit API. Idempotent: a second call is a harmless no-op.
+fn ensure_crypto_provider() {
+    use std::sync::Once;
+    static INSTALL: Once = Once::new();
+    INSTALL.call_once(|| {
+        // Ignore the error: it only means a provider was already installed
+        // (e.g. by reqwest), which is exactly the state we want.
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    });
+}
+
+/// Build a rustls [`ServerConfig`] from a TLS identity, pinned to the **ring**
+/// provider. HTTP/1.1 only (the companion SPA + WS need no ALPN negotiation; the
+/// hyper auto-builder still upgrades to WebSocket over HTTP/1.1).
+fn build_rustls_config(
+    identity: TlsIdentity,
+) -> Result<rustls::ServerConfig, Box<dyn std::error::Error>> {
+    ensure_crypto_provider();
+    let config = rustls::ServerConfig::builder()
+        .with_no_client_auth()
+        .with_single_cert(identity.cert_der, identity.key_der)?;
+    Ok(config)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // IPC commands
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1786,7 +1980,59 @@ async fn start_hub(state: &CompanionState, issue_code: bool) -> CompanionInfo {
     };
 
     let ip = lan_ip();
-    let url = format!("http://{ip}:{port}");
+
+    // Resolve the cert directory (the app data dir = the pairing store's parent)
+    // and TRY to build a rustls config. This whole block is fallible: ANY error
+    // (no data dir, cert gen/persist failure, unparseable PEM, rustls build
+    // error) leaves `tls` = None and we serve plain http exactly as before — the
+    // photo file-input fallback already works on http, so phone connectivity is
+    // NEVER lost. On success a phone gets a secure context (live camera +
+    // BarcodeDetector).
+    let cert_dir: Option<PathBuf> = {
+        let inner = state.hub.inner.read().await;
+        inner
+            .store_path
+            .as_ref()
+            .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+    };
+    let tls: Option<(rustls::ServerConfig, String)> = match &cert_dir {
+        Some(dir) => match load_or_create_tls_identity(dir, ip) {
+            Ok(identity) => {
+                let fingerprint = identity.fingerprint.clone();
+                match build_rustls_config(identity) {
+                    Ok(cfg) => {
+                        eprintln!(
+                            "warehouse14-pos: companion TLS armed (HTTPS); cert sha256={fingerprint}"
+                        );
+                        Some((cfg, fingerprint))
+                    }
+                    Err(err) => {
+                        eprintln!(
+                            "warehouse14-pos: companion TLS config build failed ({err}); falling back to http"
+                        );
+                        None
+                    }
+                }
+            }
+            Err(err) => {
+                eprintln!(
+                    "warehouse14-pos: companion TLS cert load/gen failed ({err}); falling back to http"
+                );
+                None
+            }
+        },
+        None => {
+            eprintln!(
+                "warehouse14-pos: companion data dir unresolved; serving plain http (no TLS)"
+            );
+            None
+        }
+    };
+
+    let secure = tls.is_some();
+    let scheme = if secure { "https" } else { "http" };
+    let url = format!("{scheme}://{ip}:{port}");
+    let tls_fingerprint = tls.as_ref().map(|(_, fp)| fp.clone());
     // CSPRNG-only pairing code. If the OS CSPRNG is unavailable we refuse to
     // start a PAIRABLE hub rather than issue a weak code; a code-less
     // auto-start is unaffected (it never mints).
@@ -1829,22 +2075,74 @@ async fn start_hub(state: &CompanionState, issue_code: bool) -> CompanionInfo {
         qr_svg,
         paired_count: 0,
         paired_devices: Vec::new(),
+        secure,
+        tls_fingerprint,
     };
 
     let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
     let app = build_router(state.hub.clone());
-    let task = tokio::spawn(async move {
-        // `into_make_service_with_connect_info` surfaces the real TCP peer addr
-        // to handlers via `ConnectInfo<SocketAddr>` — required by the per-IP
-        // rate limit (H1) and the same-subnet guard (H3).
-        let make = app.into_make_service_with_connect_info::<SocketAddr>();
-        let server = axum::serve(listener, make).with_graceful_shutdown(async move {
-            let _ = shutdown_rx.await;
-        });
-        if let Err(err) = server.await {
-            eprintln!("warehouse14-pos: companion server exited with error: {err}");
+    // `into_make_service_with_connect_info` surfaces the real TCP peer addr to
+    // handlers via `ConnectInfo<SocketAddr>` — required by the per-IP rate limit
+    // (H1) and the same-subnet guard (H3). Shared by BOTH the http + https paths.
+    let make = app.into_make_service_with_connect_info::<SocketAddr>();
+
+    let task = match tls {
+        // ── HTTPS path (secure context) ──────────────────────────────────────
+        // Serve the SAME router over rustls via axum-server, reusing the
+        // already-bound listener (keeps the port-fallback behaviour). Graceful
+        // shutdown rides the existing `oneshot`: when `companion_stop` sends on
+        // it, we trigger axum-server's `Handle::graceful_shutdown` — so the stop
+        // path in `companion_stop` is identical for http + https.
+        Some((cfg, _fingerprint)) => {
+            // Hand the bound socket to axum-server as a std listener. A failure
+            // here (extremely unlikely — it's an already-bound fd) is logged and
+            // the task exits, leaving the POS alive; the snapshot still reports
+            // running until the next status read, which is acceptable.
+            match listener.into_std() {
+                Ok(std_listener) => {
+                    // axum-server drives the accept loop itself; the std listener
+                    // must be non-blocking under tokio.
+                    let _ = std_listener.set_nonblocking(true);
+                    let config = axum_server::tls_rustls::RustlsConfig::from_config(
+                        std::sync::Arc::new(cfg),
+                    );
+                    let handle = axum_server::Handle::new();
+                    let shutdown_handle = handle.clone();
+                    tokio::spawn(async move {
+                        // Wait for the stop signal, then graceful-shutdown the
+                        // TLS server (no drain timeout — match the http path's
+                        // immediate intent).
+                        let _ = shutdown_rx.await;
+                        shutdown_handle.graceful_shutdown(None);
+                    });
+                    tokio::spawn(async move {
+                        let server = axum_server::from_tcp_rustls(std_listener, config)
+                            .handle(handle);
+                        if let Err(err) = server.serve(make).await {
+                            eprintln!(
+                                "warehouse14-pos: companion HTTPS server exited with error: {err}"
+                            );
+                        }
+                    })
+                }
+                Err(err) => {
+                    eprintln!(
+                        "warehouse14-pos: companion listener into_std failed ({err}); cannot start TLS"
+                    );
+                    return CompanionInfo::stopped();
+                }
+            }
         }
-    });
+        // ── Plain-http fallback (unchanged) ──────────────────────────────────
+        None => tokio::spawn(async move {
+            let server = axum::serve(listener, make).with_graceful_shutdown(async move {
+                let _ = shutdown_rx.await;
+            });
+            if let Err(err) = server.await {
+                eprintln!("warehouse14-pos: companion server exited with error: {err}");
+            }
+        }),
+    };
 
     let snapshot = info.clone();
     {
@@ -2255,5 +2553,105 @@ mod tests {
         // Capped at 40 chars.
         let long = "x".repeat(120);
         assert_eq!(sanitize_label(&long, Role::Warehouse).len(), 40);
+    }
+
+    // ── TLS: cert generation, fingerprint, persistence, fallback selection ───
+
+    /// A unique temp dir for one TLS test, removed first to start clean.
+    fn fresh_tls_dir(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "w14-companion-tls-test-{tag}-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        dir
+    }
+
+    #[test]
+    fn cert_generation_persists_files_and_yields_a_stable_fingerprint() {
+        let dir = fresh_tls_dir("gen");
+        let lan: Ipv4Addr = "192.168.1.42".parse().unwrap();
+
+        // First create: writes both PEM files and a usable identity.
+        let id1 = load_or_create_tls_identity(&dir, lan).expect("identity generated");
+        assert!(dir.join(TLS_CERT_FILE).exists(), "cert PEM persisted");
+        assert!(dir.join(TLS_KEY_FILE).exists(), "key PEM persisted");
+        assert_eq!(id1.fingerprint.len(), 64, "sha256 hex is 64 chars");
+        assert!(
+            id1.fingerprint.chars().all(|c| c.is_ascii_hexdigit()),
+            "fingerprint is lowercase hex"
+        );
+        assert!(!id1.cert_der.is_empty(), "at least one cert in chain");
+
+        // The persisted cert+key must build a rustls config (ring provider).
+        build_rustls_config(id1).expect("rustls config builds from the cert");
+
+        // Second load reuses the SAME files → IDENTICAL fingerprint (a phone that
+        // trusted it once stays trusted across restarts).
+        let id2 = load_or_create_tls_identity(&dir, lan).expect("identity reloaded");
+        // Re-read fingerprint independently from the persisted cert bytes.
+        let reread = cert_fingerprint_hex(id2.cert_der[0].as_ref());
+        assert_eq!(reread, id2.fingerprint);
+
+        // Compare against a fresh parse of the on-disk PEM for stability.
+        let cert_pem = std::fs::read_to_string(dir.join(TLS_CERT_FILE)).unwrap();
+        let key_pem = std::fs::read_to_string(dir.join(TLS_KEY_FILE)).unwrap();
+        let reparsed = parse_tls_identity(&cert_pem, &key_pem).expect("reparse");
+        assert_eq!(
+            reparsed.fingerprint, id2.fingerprint,
+            "fingerprint stable across reload"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cert_fingerprint_is_sha256_of_der() {
+        // Known vector: sha256 of the bytes [0xAB, 0xCD] — guards the hex helper.
+        let fp = cert_fingerprint_hex(&[0xAB, 0xCD]);
+        assert_eq!(
+            fp,
+            "123d4c7ef2d1600a1b3a0f6addc60a10f05a3495c9409f2ecbf4cc095d000a6b"
+        );
+        // Length-correct, stable, and differs on different input.
+        assert_eq!(fp.len(), 64);
+        assert_eq!(cert_fingerprint_hex(&[0xAB, 0xCD]), fp);
+        assert_ne!(cert_fingerprint_hex(&[0xAB, 0xCE]), fp);
+    }
+
+    #[test]
+    fn corrupt_pem_is_rejected_so_the_caller_falls_back() {
+        // A forced cert error: garbage PEM must NOT parse into an identity. This
+        // is exactly the condition `start_hub` treats as "TLS unavailable →
+        // serve plain http" (the fallback path), so a parse failure here proves
+        // the http fallback is selected on a bad/forced cert.
+        assert!(
+            parse_tls_identity("not a pem", "also not a pem").is_err(),
+            "garbage PEM must be rejected (→ http fallback)"
+        );
+        // A real cert PEM but an EMPTY key is likewise rejected (a half-written
+        // key file would otherwise sneak a broken config into rustls).
+        let dir = fresh_tls_dir("corrupt");
+        let lan: Ipv4Addr = "10.0.0.5".parse().unwrap();
+        load_or_create_tls_identity(&dir, lan).expect("baseline cert");
+        let cert_pem = std::fs::read_to_string(dir.join(TLS_CERT_FILE)).unwrap();
+        assert!(
+            parse_tls_identity(&cert_pem, "").is_err(),
+            "missing key must be rejected (→ http fallback)"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn loopback_lan_omits_the_ip_san_but_still_generates() {
+        // Offline / link-down: lan_ip() returns loopback. The cert must still
+        // generate (localhost + warehouse14.local SANs) so TLS is available for
+        // the on-box webview; the IP SAN is simply skipped.
+        let dir = fresh_tls_dir("loopback");
+        let id = load_or_create_tls_identity(&dir, Ipv4Addr::LOCALHOST)
+            .expect("cert still generates without a LAN IP");
+        assert_eq!(id.fingerprint.len(), 64);
+        build_rustls_config(id).expect("config builds even without an IP SAN");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -104,3 +104,17 @@ percent-encoding = "2"
 # them direct just makes them usable here without new downloads.
 getrandom = "0.2"
 subtle = "2"
+# Companion HTTPS (secure-context on the LAN hop). `axum-server` 0.7 binds the
+# SAME axum 0.7 Router over rustls (hyper 1.x + rustls 0.23 + tokio-rustls 0.26
+# — already the exact versions in the lock graph) with graceful shutdown;
+# `rcgen` 0.13 mints the persisted self-signed cert (SANs = LAN IP + localhost +
+# warehouse14.local). Both are rustls-only (NO OpenSSL — the project is
+# OpenSSL-free). We pick `tls-rustls-no-provider` and bring the **ring** crypto
+# provider (NOT aws-lc-rs) so we reuse the exact rustls+ring stack reqwest
+# already links — no new `aws-lc-sys` C build, which keeps the Windows OTA
+# cross-compile unchanged. `rcgen` defaults to `ring` too. If TLS setup fails at
+# runtime we fall back to plain `axum::serve`, so these deps never become a hard
+# runtime requirement.
+axum-server = { version = "0.7", default-features = false, features = ["tls-rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "logging", "std", "tls12"] }
+rcgen = "0.13"
