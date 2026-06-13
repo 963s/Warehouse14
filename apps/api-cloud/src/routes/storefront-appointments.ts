@@ -28,6 +28,11 @@
 
 import { type Static, Type } from '@sinclair/typebox';
 import { sql } from 'drizzle-orm';
+
+import {
+  type AppointmentEventInput,
+  mirrorAppointmentCreate,
+} from '../lib/appointment-calendar-sync.js';
 import type { FastifyPluginAsync } from 'fastify';
 
 import { berlinBusinessDay } from '@warehouse14/appointments';
@@ -360,6 +365,19 @@ const storefrontAppointmentsRoutes: FastifyPluginAsync<StorefrontAppointmentsOpt
         }
 
         return row;
+      });
+
+      // Mirror into the shop's Google Calendar (best-effort, post-commit — a
+      // calendar outage never fails a real booking).
+      await mirrorAppointmentCreate(app.db, app.log, result.id, {
+        type: b.type as AppointmentEventInput['type'],
+        startIso,
+        durationMinutes: SLOT_MINUTES,
+        name: b.name.trim(),
+        phone: b.phone.trim(),
+        email: b.email ?? null,
+        notes: b.note ?? null,
+        source: 'WEB',
       });
 
       // NO PII echo — exactly the booked slot (CONTRACT 2).

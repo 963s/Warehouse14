@@ -63,6 +63,10 @@ export const appointments = pgTable(
 
     linkedTransactionId: uuid('linked_transaction_id').references(() => transactions.id),
 
+    // ── Migration 0064: Google Calendar mirror ────────────────────────────
+    /** Id of the mirrored Google Calendar event (NULL until synced; best-effort). */
+    googleEventId: text('google_event_id'),
+
     ...timestamps(),
   },
   (table) => ({

@@ -32,6 +32,12 @@ import {
 } from '@warehouse14/appointments';
 
 import type { Env } from '../config/env.js';
+import {
+  type AppointmentEventInput,
+  mirrorAppointmentCreate,
+  mirrorAppointmentDelete,
+  mirrorAppointmentReschedule,
+} from '../lib/appointment-calendar-sync.js';
 import { requireAuth, requireRole, requireStepUp } from '../lib/auth-policy.js';
 import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 
@@ -137,6 +143,11 @@ type ApptRow = {
   duration_minutes: number;
   staff_user_id: string;
   customer_id: string | null;
+  google_event_id: string | null;
+  contact_name: string | null;
+  contact_phone: string | null;
+  contact_email: string | null;
+  customer_notes: string | null;
 };
 
 function durationFor(type: AppointmentType, override?: number): number {
@@ -427,6 +438,21 @@ const appointmentsRoutes: FastifyPluginAsync<AppointmentsOpts> = async (app) => 
         return apptId;
       });
 
+      // Mirror into the shop's Google Calendar (best-effort; covers POS staff
+      // bookings AND the future WhatsApp bot, which books via this same route
+      // with bookedVia='whatsapp_bot'). Registered-customer names are encrypted
+      // PII and deliberately NOT sent to Google — the type label + any contact
+      // fields supplied on the request are enough for the calendar.
+      await mirrorAppointmentCreate(app.db, app.log, id, {
+        type: b.type as AppointmentEventInput['type'],
+        startIso: startsAt.toISOString(),
+        durationMinutes: dur,
+        phone: b.customerPhone ?? null,
+        email: b.customerEmail ?? null,
+        notes: b.customerNotes ?? null,
+        source: b.bookedVia,
+      });
+
       return reply.status(200).send({ id, status: 'SCHEDULED' });
     },
   );
@@ -483,15 +509,25 @@ const appointmentsRoutes: FastifyPluginAsync<AppointmentsOpts> = async (app) => 
           : sql``;
       const notesSet = staffNotes !== undefined ? sql`, staff_notes = ${staffNotes}` : sql``;
 
-      const rows = (await app.db.execute<{ id: string; status: string }>(sql`
+      const rows = (await app.db.execute<{
+        id: string;
+        status: string;
+        google_event_id: string | null;
+      }>(sql`
         UPDATE appointments
         SET status = ${status}::appointment_status ${markerSet} ${cancelSet} ${notesSet}
         WHERE id = ${id}::uuid
-        RETURNING id::text AS id, status::text AS status
-      `)) as unknown as Array<{ id: string; status: string }>;
+        RETURNING id::text AS id, status::text AS status, google_event_id
+      `)) as unknown as Array<{ id: string; status: string; google_event_id: string | null }>;
       const row = rows[0];
       if (!row) throw new AppointmentNotFoundError(`Appointment ${id} not found`);
-      return reply.status(200).send(row);
+
+      // A cancellation removes the mirrored Google event (best-effort).
+      if (status === 'CANCELLED') {
+        await mirrorAppointmentDelete(app.db, app.log, id, row.google_event_id);
+      }
+
+      return reply.status(200).send({ id: row.id, status: row.status });
     },
   );
 
@@ -527,7 +563,8 @@ const appointmentsRoutes: FastifyPluginAsync<AppointmentsOpts> = async (app) => 
         const origRows = (await tx.execute<ApptRow>(sql`
           SELECT id::text AS id, appointment_type::text AS appointment_type, status::text AS status,
                  starts_at::text AS starts_at, duration_minutes,
-                 staff_user_id::text AS staff_user_id, customer_id::text AS customer_id
+                 staff_user_id::text AS staff_user_id, customer_id::text AS customer_id,
+                 google_event_id, contact_name, contact_phone, contact_email, customer_notes
           FROM appointments WHERE id = ${id}::uuid LIMIT 1
         `)) as unknown as ApptRow[];
         const orig = origRows[0];
@@ -570,10 +607,29 @@ const appointmentsRoutes: FastifyPluginAsync<AppointmentsOpts> = async (app) => 
           WHERE appointment_id = ${orig.id}::uuid AND released_at IS NULL
         `);
 
-        return cloneId;
+        return { cloneId, orig, dur };
       });
 
-      return reply.status(200).send({ id: newId, rescheduledFrom: id });
+      // Move the mirrored Google event to the new time and hand it to the clone
+      // (best-effort). Carries over the original contact details.
+      await mirrorAppointmentReschedule(
+        app.db,
+        app.log,
+        newId.orig.id,
+        newId.orig.google_event_id,
+        newId.cloneId,
+        {
+          type: newId.orig.appointment_type as AppointmentEventInput['type'],
+          startIso: startsAt.toISOString(),
+          durationMinutes: newId.dur,
+          name: newId.orig.contact_name,
+          phone: newId.orig.contact_phone,
+          email: newId.orig.contact_email,
+          notes: newId.orig.customer_notes,
+        },
+      );
+
+      return reply.status(200).send({ id: newId.cloneId, rescheduledFrom: id });
     },
   );
 
