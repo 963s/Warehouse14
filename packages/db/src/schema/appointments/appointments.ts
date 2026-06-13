@@ -92,11 +92,11 @@ export const appointments = pgTable(
     ),
     bookedViaDomain: check(
       'appointments_booked_via_domain',
-      sql`${table.bookedVia} IN ('control_desktop', 'storefront', 'pos', 'whatsapp_bot')`,
+      sql`${table.bookedVia} IN ('control_desktop', 'storefront', 'pos', 'whatsapp_bot', 'google_calendar')`,
     ),
     sourceDomain: check(
       'appointments_source_domain',
-      sql`${table.source} IN ('POS', 'WEB', 'WHATSAPP')`,
+      sql`${table.source} IN ('POS', 'WEB', 'WHATSAPP', 'GOOGLE')`,
     ),
     checkedInHasMarker: check(
       'appointments_checked_in_has_marker',

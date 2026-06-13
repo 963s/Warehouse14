@@ -14,6 +14,7 @@ import closeWithGrace from 'close-with-grace';
 
 import { buildApp } from './app.js';
 import { assertAppRoleInDatabaseUrl, loadEnv } from './config/env.js';
+import { startCalendarPoller } from './lib/calendar-pull.js';
 
 async function main(): Promise<void> {
   const env = loadEnv();
@@ -39,6 +40,10 @@ async function main(): Promise<void> {
     app.log.error({ err }, 'failed to start');
     process.exit(1);
   }
+
+  // Two-way Google Calendar sync: pull changes made directly in Google back
+  // into the appointments table on a ~90s interval (no-op if not configured).
+  startCalendarPoller(app);
 }
 
 main().catch((err: unknown) => {

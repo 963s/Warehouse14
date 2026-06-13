@@ -219,3 +219,73 @@ export async function deleteEvent(id: string): Promise<void> {
     method: 'DELETE',
   });
 }
+
+export interface SyncedEvent {
+  id: string;
+  status: string; // 'confirmed' | 'tentative' | 'cancelled'
+  summary: string | null;
+  description: string | null;
+  startIso: string | null; // dateTime (null for all-day / cancelled stubs)
+  endIso: string | null;
+  created: string | null;
+}
+
+interface RawSyncEvent extends RawEvent {
+  status?: string;
+  created?: string;
+}
+
+/**
+ * Incremental sync (Google → us). Pass the stored `syncToken` to get only the
+ * events that changed since last time; omit it for an initial bounded sync
+ * (which also returns the first `nextSyncToken`). Cancelled/deleted events come
+ * back with status='cancelled'. A 410 means the token expired → caller should
+ * re-run a full sync (`fullResyncNeeded`).
+ */
+export async function syncEvents(
+  syncToken?: string | null,
+): Promise<{ events: SyncedEvent[]; nextSyncToken: string | null; fullResyncNeeded: boolean }> {
+  const base = `/calendars/${encodeURIComponent(calendarId())}/events`;
+  const events: SyncedEvent[] = [];
+  let pageToken: string | undefined;
+  let nextSyncToken: string | null = null;
+
+  do {
+    const qs = new URLSearchParams({
+      singleEvents: 'true',
+      showDeleted: 'true',
+      maxResults: '250',
+    });
+    if (syncToken) qs.set('syncToken', syncToken);
+    // First sync only (syncToken + timeMin are mutually exclusive): bound the
+    // window so we don't import ancient history.
+    else qs.set('timeMin', new Date(Date.now() - 86_400_000).toISOString());
+    if (pageToken) qs.set('pageToken', pageToken);
+
+    let body: { items?: RawSyncEvent[]; nextPageToken?: string; nextSyncToken?: string };
+    try {
+      body = (await call(`${base}?${qs}`)) as typeof body;
+    } catch (err) {
+      if (err instanceof GoogleCalendarError && err.status === 410) {
+        return { events: [], nextSyncToken: null, fullResyncNeeded: true };
+      }
+      throw err;
+    }
+
+    for (const raw of body.items ?? []) {
+      events.push({
+        id: raw.id ?? '',
+        status: raw.status ?? 'confirmed',
+        summary: raw.summary ?? null,
+        description: raw.description ?? null,
+        startIso: raw.start?.dateTime ?? null,
+        endIso: raw.end?.dateTime ?? null,
+        created: raw.created ?? null,
+      });
+    }
+    pageToken = body.nextPageToken;
+    if (body.nextSyncToken) nextSyncToken = body.nextSyncToken;
+  } while (pageToken);
+
+  return { events, nextSyncToken, fullResyncNeeded: false };
+}
