@@ -31,7 +31,6 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { authPin } from '@warehouse14/api-client';
 import { ErrorBoundary, ToastContainer } from '@warehouse14/ui-kit';
 
-import { UpdateBanner } from '../../components/UpdateBanner.js';
 import { useAlertSubscription } from '../../hooks/useAlertSubscription.js';
 import { useApiClient } from '../../lib/api-context.js';
 import { releaseCart } from '../../lib/release-cart.js';
@@ -275,10 +274,9 @@ export function AppShell(): JSX.Element {
       <Spotlight open={spotlightOpen} onClose={() => setSpotlightOpen(false)} />
       <StepUpModal />
       <ToastContainer toasts={toasts} onDismiss={dismissToast} onActivate={onToastActivate} />
-      {/* Auto-update banner (Day-15 release automation). Polls the
-          configured GitHub Releases endpoint hourly; renders only when
-          an update is available. Safe inside Tauri only. */}
-      <UpdateBanner />
+      {/* The auto-update surface is now the single <UpdateCenter/> modal,
+          opened from the header ↻ (UpdateButton) and driven by the
+          useAppUpdate singleton — the old floating UpdateBanner is gone. */}
     </div>
   );
 }

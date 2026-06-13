@@ -21,9 +21,12 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   fullWidth?: boolean;
 }
 
+/* Min tap heights honour the accessibility floor (WCAG 2.5.5) — never below
+   40px, and md (where primary money-path actions land) meets the canonical
+   44px --w14-touch-min. lg stays the generous ~52px. */
 const SIZE_STYLE: Record<NonNullable<ButtonProps['size']>, CSSProperties> = {
-  sm: { padding: '4px 12px', fontSize: '0.85rem', minHeight: 32 },
-  md: { padding: '8px 18px', fontSize: '0.95rem', minHeight: 40 },
+  sm: { padding: '4px 12px', fontSize: '0.85rem', minHeight: 40 },
+  md: { padding: '8px 18px', fontSize: '0.95rem', minHeight: 'var(--w14-touch-min)' },
   lg: { padding: '12px 24px', fontSize: '1.05rem', minHeight: 52 },
 };
 

@@ -1457,8 +1457,13 @@ fn proxy_allowed(role: Role, method: &Method, lower_path: &str) -> bool {
         }
         // Cashier: catalog/customer reads + recent transactions + appointment
         // READS (the Zweitkasse sees the Termine list, never writes it); POST
-        // limited to cart-create + finalize. NEVER ankauf / storno / return /
-        // void / refund (blocked positively here AND by `hard_denied`).
+        // limited to cart-create + finalize + the reversible, non-fiscal
+        // inventory reserve/release that the real Zweitkasse till needs to put
+        // a unique item under a cart hold and let it go again. NEVER ankauf /
+        // storno / return / void / refund (blocked positively here AND by
+        // `hard_denied`). Both reserve and release are reversible and move no
+        // money (the cloud routes gate step-up at finalize only), so granting
+        // them here does not widen the money surface.
         Role::Cashier => {
             (is_get
                 && (get_under("products")
@@ -1469,7 +1474,11 @@ fn proxy_allowed(role: Role, method: &Method, lower_path: &str) -> bool {
                     || get_under("appointments")
                     || p == "transactions"
                     || p == "transactions/recent"))
-                || (is_post && (p == "transactions" || p == "transactions/finalize"))
+                || (is_post
+                    && (p == "transactions"
+                        || p == "transactions/finalize"
+                        || p == "inventory/reserve"
+                        || p == "inventory/release"))
         }
         // Warehouse: the stock-room's full inventory job, least-privilege.
         //
@@ -1485,10 +1494,14 @@ fn proxy_allowed(role: Role, method: &Method, lower_path: &str) -> bool {
         //          (`PUT products/<id>`: rename / re-price / re-shelve /
         //          DRAFT→AVAILABLE), the stock-adjust POST
         //          (`products/<id>/inventory-adjustment` + `inventory/adjust`),
-        //          request a photo-upload URL (`POST products/<id>/photos`),
-        //          upload a photo through the api (`POST photos/upload`),
-        //          register an uploaded photo (`POST photos`), and set the
-        //          product's primary photo (`PATCH photos/<id>/primary`).
+        //          the LOCATION-ONLY re-shelve POST
+        //          (`products/<id>/relocate` — the no-step-up route so a phone
+        //          re-shelve actually succeeds; quantity/status stay on the
+        //          step-up-gated inventory-adjustment), request a photo-upload
+        //          URL (`POST products/<id>/photos`), upload a photo through the
+        //          api (`POST photos/upload`), register an uploaded photo
+        //          (`POST photos`), and set the product's primary photo
+        //          (`PATCH photos/<id>/primary`).
         //
         // TERMINE (phone Termine tab) — appointments reads (`appointments`,
         //          `appointments/<id>`, `?from/to` rides the stripped query),
@@ -1524,6 +1537,7 @@ fn proxy_allowed(role: Role, method: &Method, lower_path: &str) -> bool {
                         || p == "inventory/adjust"
                         || p == "appointments"
                         || is_product_item_action(p, "inventory-adjustment")
+                        || is_product_item_action(p, "relocate")
                         || is_product_item_action(p, "photos")))
                 || (is_put && is_product_item())
                 || (is_patch
@@ -2023,6 +2037,48 @@ mod tests {
         assert!(proxy_allowed(r, &Method::GET, "appointments/0d9f3a1e"));
         assert!(!proxy_allowed(r, &Method::POST, "appointments"));
         assert!(!proxy_allowed(r, &Method::PATCH, "appointments/0d9f3a1e"));
+    }
+
+    // ── Proxy allow-list: ZWEITKASSE may reserve/release (cart holds) ───────
+
+    #[test]
+    fn cashier_can_reserve_and_release_inventory() {
+        let r = Role::Cashier;
+        // The real till needs to hold a unique item under its cart and let it go.
+        assert!(proxy_allowed(r, &Method::POST, "inventory/reserve"));
+        assert!(proxy_allowed(r, &Method::POST, "inventory/release"));
+        // But NOT the step-up-gated stock mutation, nor any other inventory verb.
+        assert!(!proxy_allowed(r, &Method::POST, "inventory/adjust"));
+        assert!(!proxy_allowed(r, &Method::GET, "inventory/reserve"));
+        assert!(!proxy_allowed(r, &Method::PATCH, "inventory/reserve"));
+        // The warehouse role does NOT gain the cart reserve/release verbs.
+        assert!(!proxy_allowed(Role::Warehouse, &Method::POST, "inventory/reserve"));
+        assert!(!proxy_allowed(Role::Warehouse, &Method::POST, "inventory/release"));
+        // Display gets nothing here.
+        assert!(!proxy_allowed(Role::Display, &Method::POST, "inventory/reserve"));
+    }
+
+    // ── Proxy allow-list: WAREHOUSE may re-shelve via the no-step-up route ──
+
+    #[test]
+    fn warehouse_can_relocate_a_product_but_not_other_actions() {
+        let r = Role::Warehouse;
+        // The dedicated LOCATION-ONLY move (no step-up) — exactly three segments.
+        assert!(proxy_allowed(r, &Method::POST, "products/0d9f3a1e/relocate"));
+        // The existing stock-adjust + photo POSTs still pass (regression guard).
+        assert!(proxy_allowed(r, &Method::POST, "products/0d9f3a1e/inventory-adjustment"));
+        assert!(proxy_allowed(r, &Method::POST, "products/0d9f3a1e/photos"));
+        // The POST grant is tight: NOT a relocate on the collection, NOT an
+        // empty-id shape, NOT a deeper sub-path. (A GET on this path rides the
+        // broad product-read prefix and is harmless — the cloud route is
+        // POST-only — so it is intentionally NOT asserted here.)
+        assert!(!proxy_allowed(r, &Method::POST, "products/relocate"));
+        assert!(!proxy_allowed(r, &Method::POST, "products//relocate"));
+        assert!(!proxy_allowed(r, &Method::POST, "products/0d9f3a1e/relocate/now"));
+        assert!(!proxy_allowed(r, &Method::PUT, "products/0d9f3a1e/relocate"));
+        // Other roles never gain product relocate.
+        assert!(!proxy_allowed(Role::Cashier, &Method::POST, "products/0d9f3a1e/relocate"));
+        assert!(!proxy_allowed(Role::Display, &Method::POST, "products/0d9f3a1e/relocate"));
     }
 
     // ── Proxy allow-list: KUNDENANZEIGE gets nothing new ─────────────────────

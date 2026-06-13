@@ -216,8 +216,10 @@ export function CatalogGrid({
                 letterSpacing: '0.04em',
                 borderRadius: 999,
                 cursor: 'pointer',
-                border: `1px solid ${active ? 'var(--w14-gold)' : 'var(--w14-rule)'}`,
-                background: active ? 'var(--w14-gold)' : 'var(--w14-parchment-2)',
+                border: `1px solid ${active ? 'var(--w14-accent)' : 'var(--w14-rule)'}`,
+                /* AA-safe brass (--w14-accent) for the white-text active fill;
+                   decorative --w14-gold here was ~2.0:1 and failed WCAG AA. */
+                background: active ? 'var(--w14-accent)' : 'var(--w14-parchment-2)',
                 color: active ? '#fff' : 'var(--w14-ink-faded)',
                 fontWeight: active ? 600 : 500,
                 transition: 'background 140ms ease',

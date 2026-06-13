@@ -27,11 +27,13 @@ import { useApiClient } from '../../lib/api-context.js';
 import { openChatwoot } from '../../lib/chatwoot.js';
 import { requestSignOut } from '../../lib/session-actions.js';
 import { useIntegrationSettings } from '../../state/integration-settings-store.js';
+import { useSessionStore } from '../../state/session-store.js';
 import { useToastStore } from '../../state/toast-store.js';
 import { Belegdesigner } from './Belegdesigner.js';
 import { GeraeteKoppeln } from './GeraeteKoppeln.js';
 import { GeraeteManager } from './GeraeteManager.js';
 import { IntegrationenSection } from './IntegrationenSection.js';
+import { SteuerComplianceSection } from './SteuerComplianceSection.js';
 
 type SectionId =
   | 'hardware'
@@ -41,9 +43,18 @@ type SectionId =
   | 'server'
   | 'social'
   | 'chatwoot'
-  | 'beleg';
+  | 'beleg'
+  | 'steuer';
 
-const SECTIONS: Array<{ id: SectionId; label: string; icon: ReactNode; desc: string }> = [
+type SectionDef = {
+  id: SectionId;
+  label: string;
+  icon: ReactNode;
+  desc: string;
+  adminOnly?: boolean;
+};
+
+const SECTIONS: SectionDef[] = [
   {
     id: 'hardware',
     label: 'Geräte & Kasse',
@@ -87,10 +98,27 @@ const SECTIONS: Array<{ id: SectionId; label: string; icon: ReactNode; desc: str
     desc: 'Chatwoot Live-Chat',
   },
   { id: 'beleg', label: 'Beleg & Shop', icon: <IconReceipt size={18} />, desc: 'Geschäftsdaten' },
+  {
+    id: 'steuer',
+    label: 'Steuer-Export & Compliance',
+    icon: <IconReceipt size={18} />,
+    desc: 'DATEV · DSFinV-K · TSE · GoBD',
+    adminOnly: true,
+  },
 ];
 
 export function Einstellungen(): JSX.Element {
   const [section, setSection] = useState<SectionId>('hardware');
+  const role = useSessionStore((s) => s.actor?.role);
+  const isAdmin = role === 'ADMIN';
+
+  // Admin-only sections are hidden from non-ADMIN operators in the rail AND
+  // gated on render (defence in depth — the steuer section also self-locks
+  // behind a manager-PIN step-up).
+  const visibleSections = SECTIONS.filter((s) => !s.adminOnly || isAdmin);
+  const activeSection: SectionId = visibleSections.some((s) => s.id === section)
+    ? section
+    : 'hardware';
 
   return (
     <section
@@ -121,8 +149,8 @@ export function Einstellungen(): JSX.Element {
           Einstellungen
         </h1>
         <div style={{ display: 'grid', gap: 4 }}>
-          {SECTIONS.map((s) => {
-            const active = s.id === section;
+          {visibleSections.map((s) => {
+            const active = s.id === activeSection;
             return (
               <button
                 key={s.id}
@@ -158,18 +186,20 @@ export function Einstellungen(): JSX.Element {
           })}
         </div>
 
+        <TextScaleControl />
         <SignOutFooter />
       </nav>
 
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-        {section === 'hardware' && <GeraeteManager />}
-        {section === 'pairing' && <GeraeteKoppeln />}
-        {section === 'ai' && <AiSection />}
-        {section === 'integrationen' && <IntegrationenSection />}
-        {section === 'server' && <ServerSection />}
-        {section === 'social' && <SocialSection />}
-        {section === 'chatwoot' && <ChatwootSection />}
-        {section === 'beleg' && <BelegSection />}
+        {activeSection === 'hardware' && <GeraeteManager />}
+        {activeSection === 'pairing' && <GeraeteKoppeln />}
+        {activeSection === 'ai' && <AiSection />}
+        {activeSection === 'integrationen' && <IntegrationenSection />}
+        {activeSection === 'server' && <ServerSection />}
+        {activeSection === 'social' && <SocialSection />}
+        {activeSection === 'chatwoot' && <ChatwootSection />}
+        {activeSection === 'beleg' && <BelegSection />}
+        {activeSection === 'steuer' && isAdmin && <SteuerComplianceSection />}
       </div>
     </section>
   );
@@ -368,6 +398,89 @@ function SignOutFooter(): JSX.Element {
         Abmelden
       </button>
     </div>
+  );
+}
+
+/**
+ * TextScaleControl — Schriftgröße-Wahl (Normal / Groß / Sehr groß), die den
+ * Wurzel-Zoomhebel `<html data-text-scale>` setzt. Die zugehörigen
+ * CSS-Regeln ([data-text-scale='lg'|'xl']) liegen in tokens.css und skalieren
+ * jede rem-basierte Größe app-weit. Persistiert unter 'w14-text-scale' und wird
+ * beim Laden wiederhergestellt.
+ */
+const TEXT_SCALE_KEY = 'w14-text-scale';
+type TextScale = '' | 'lg' | 'xl';
+
+function applyTextScale(scale: TextScale): void {
+  if (scale === '') delete document.documentElement.dataset.textScale;
+  else document.documentElement.dataset.textScale = scale;
+}
+
+function TextScaleControl(): JSX.Element {
+  const [scale, setScale] = useState<TextScale>('');
+
+  // Beim Mount aus localStorage wiederherstellen.
+  useEffect(() => {
+    const stored = localStorage.getItem(TEXT_SCALE_KEY);
+    const next: TextScale = stored === 'lg' || stored === 'xl' ? stored : '';
+    setScale(next);
+    applyTextScale(next);
+  }, []);
+
+  const choose = (next: TextScale): void => {
+    setScale(next);
+    applyTextScale(next);
+    if (next === '') localStorage.removeItem(TEXT_SCALE_KEY);
+    else localStorage.setItem(TEXT_SCALE_KEY, next);
+  };
+
+  const options: Array<{ value: TextScale; label: string }> = [
+    { value: '', label: 'Normal' },
+    { value: 'lg', label: 'Groß' },
+    { value: 'xl', label: 'Sehr groß' },
+  ];
+
+  return (
+    <fieldset style={{ marginTop: 14, padding: '4px 8px', border: 'none' }}>
+      <legend style={{ ...labelStyle, display: 'block', marginBottom: 6, padding: 0 }}>
+        Schriftgröße
+      </legend>
+      <div
+        style={{
+          display: 'flex',
+          gap: 4,
+          padding: 3,
+          border: '1px solid var(--w14-rule)',
+          borderRadius: 'var(--w14-radius-button)',
+          background: 'var(--w14-parchment)',
+        }}
+      >
+        {options.map((o) => {
+          const active = o.value === scale;
+          return (
+            <button
+              key={o.value || 'normal'}
+              type="button"
+              aria-pressed={active}
+              onClick={() => choose(o.value)}
+              style={{
+                flex: 1,
+                padding: '7px 6px',
+                border: 'none',
+                borderRadius: 'var(--w14-radius-button)',
+                cursor: 'pointer',
+                fontSize: '0.78rem',
+                fontWeight: active ? 600 : 500,
+                background: active ? 'var(--w14-parchment-3)' : 'transparent',
+                color: active ? 'var(--w14-ink)' : 'var(--w14-ink-faded)',
+              }}
+            >
+              {o.label}
+            </button>
+          );
+        })}
+      </div>
+    </fieldset>
   );
 }
 

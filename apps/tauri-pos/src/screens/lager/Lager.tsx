@@ -325,7 +325,10 @@ export function Lager(): JSX.Element {
               style={{
                 background: 'transparent',
                 border: '1px solid var(--w14-gold)',
-                color: 'var(--w14-gold)',
+                /* AA-safe brass for the text; decorative --w14-gold as a
+                   text colour failed WCAG AA on parchment. Hairline border
+                   stays gold (1.4.11 exempt). */
+                color: 'var(--w14-accent)',
                 fontSize: '0.72rem',
                 letterSpacing: '0.08em',
                 padding: 'var(--space-1) var(--space-2)',

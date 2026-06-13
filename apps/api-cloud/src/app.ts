@@ -80,6 +80,8 @@ import photoUploadUrlRoute from './routes/photo-upload-url.js';
 // Phase 2 Day 2 — closes the Day-24 route gap + dashboard aggregator
 import photosRoutes from './routes/photos.js';
 import productCategoriesRoute from './routes/product-categories.js';
+import complianceRoute from './routes/compliance.js';
+import productRelocateRoute from './routes/product-relocate.js';
 import productsDetailRoute from './routes/products-detail.js';
 import productsEbayPublishRoute from './routes/products-ebay-publish.js';
 import productsEbayRoutes from './routes/products-ebay.js';
@@ -209,6 +211,8 @@ export async function buildApp(opts: BuildAppOpts): Promise<FastifyInstance> {
   await app.register(productsListRoute);
   await app.register(productsDetailRoute);
   await app.register(inventoryAdjustmentRoute);
+  await app.register(productRelocateRoute);
+  await app.register(complianceRoute);
   // ── Day 13 / Phase 2.B kick-off: commerce taxonomy ────────────────
   await app.register(categoriesRoutes);
   await app.register(productCategoriesRoute);

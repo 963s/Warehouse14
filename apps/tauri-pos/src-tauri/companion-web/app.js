@@ -97,6 +97,7 @@
   var snackTimer = null; // active undo-snackbar timer.
   var zkTab = "kasse"; // active Zweitkasse tab (kasse | termine).
   var zkCart = []; // Zweitkasse cart — module scope so a tab switch keeps it.
+  var zkPagehideHandler = null; // single live pagehide-release listener.
   var apptDayKey = ""; // selected Termine day (YYYY-MM-DD local), set lazily.
   var apptTimer = null; // 60s Termine refresh interval (visible-tab only).
   var apptVisHandler = null; // visibilitychange hook for the Termine poll.
@@ -721,6 +722,102 @@
     return sign + whole + "." + (frac < 10 ? "0" + frac : String(frac));
   }
 
+  // ── Cart VAT math (PORT of apps/tauri-pos/src/lib/cart-math.ts) ─────
+  // The cloud's finalize route RE-VALIDATES every number with Decimal.js
+  // (transaction-math.ts), so a wrong client total returns 400 — never wrong
+  // money. We mirror the exact bigint-cents rules here so the body we send
+  // matches: HALF_EVEN rounding, VAT decomposed out of the gross line total.
+  //
+  // JS Number is safe for these magnitudes (cents stay well below 2^53 for any
+  // realistic shop total), but we use only integer arithmetic + an explicit
+  // banker's-rounding helper so the result is bit-identical to the server.
+  //
+  //   STANDARD_19          vat = round(total*19/119)        subtotal = total-vat
+  //   REDUCED_7            vat = round(total*7/107)         subtotal = total-vat
+  //   MARGIN_25A           margin = max(0, total-cost); vat = round(margin*19/119)
+  //   INVESTMENT_GOLD_25C  vat = 0                          subtotal = total
+  //   REVERSE_CHARGE_13B   subtotal = round(total*100/119); vat = 0; total := subtotal
+  function roundHalfEvenInt(num, den) {
+    // num, den are non-negative integers here (line totals/costs are ≥ 0).
+    var q = Math.floor(num / den);
+    var r = num - q * den;
+    var twice = r * 2;
+    if (twice < den) return q;
+    if (twice > den) return q + 1;
+    return q % 2 === 0 ? q : q + 1; // tie → even
+  }
+  // Compute the per-line tax breakdown in integer cents from a gross line total.
+  // Returns the exact field set the finalize line item needs.
+  function computeLineMathCents(taxCode, lineTotalCents, acqCostCents) {
+    var total = lineTotalCents;
+    var cost = acqCostCents || 0;
+    switch (taxCode) {
+      case "STANDARD_19": {
+        var vat19 = roundHalfEvenInt(total * 19, 119);
+        return { totalC: total, vatC: vat19, subtotalC: total - vat19,
+          marginC: null, appliedVatRate: "0.1900", acqSnapshotC: null };
+      }
+      case "REDUCED_7": {
+        var vat7 = roundHalfEvenInt(total * 7, 107);
+        return { totalC: total, vatC: vat7, subtotalC: total - vat7,
+          marginC: null, appliedVatRate: "0.0700", acqSnapshotC: null };
+      }
+      case "MARGIN_25A": {
+        var rawMargin = total - cost;
+        var margin = rawMargin < 0 ? 0 : rawMargin;
+        var vatM = roundHalfEvenInt(margin * 19, 119);
+        return { totalC: total, vatC: vatM, subtotalC: total - vatM,
+          marginC: margin, appliedVatRate: null, acqSnapshotC: cost };
+      }
+      case "INVESTMENT_GOLD_25C":
+        return { totalC: total, vatC: 0, subtotalC: total,
+          marginC: null, appliedVatRate: null, acqSnapshotC: null };
+      case "REVERSE_CHARGE_13B": {
+        var sub13 = roundHalfEvenInt(total * 100, 119);
+        return { totalC: sub13, vatC: 0, subtotalC: sub13,
+          marginC: null, appliedVatRate: "0.0000", acqSnapshotC: null };
+      }
+      default:
+        return { totalC: total, vatC: 0, subtotalC: total,
+          marginC: null, appliedVatRate: null, acqSnapshotC: null };
+    }
+  }
+  // Mirror cart-math.classifyCartProductTax — pick the treatment code from the
+  // product row when the cloud did not already hand us one. Kept deliberately
+  // conservative: anything we cannot positively classify falls to STANDARD_19,
+  // which the server then re-validates against the item's own snapshot.
+  var TAX_CODE_VALUES = {
+    MARGIN_25A: true, INVESTMENT_GOLD_25C: true, STANDARD_19: true,
+    REDUCED_7: true, MIXED: true, REVERSE_CHARGE_13B: true
+  };
+  function classifyCartProductTaxJs(p) {
+    var itemType = String(p.itemType || "");
+    var purity = p.finenessDecimal != null ? parseFloat(String(p.finenessDecimal)) : 0;
+    if (!isFinite(purity)) purity = 0;
+    var yearMinted = (typeof p.yearMintedFrom === "number") ? p.yearMintedFrom
+      : (p.yearMintedFrom != null ? parseInt(p.yearMintedFrom, 10) : null);
+
+    if (itemType === "gold_bar" && purity >= 0.995) return "INVESTMENT_GOLD_25C";
+    if (itemType === "gold_coin" && purity >= 0.9 &&
+        typeof yearMinted === "number" && yearMinted >= 1800) {
+      return "INVESTMENT_GOLD_25C";
+    }
+    var isSecondHand = (p.acquiredFromCustomerId != null) || p.isCommission === true;
+    var secondHandTypes = {
+      gold_jewelry: 1, gold_coin: 1, silver_jewelry: 1, silver_coin: 1,
+      platinum_jewelry: 1, platinum_coin: 1, antique: 1, watch: 1
+    };
+    if (isSecondHand && secondHandTypes[itemType]) return "MARGIN_25A";
+    return "STANDARD_19";
+  }
+  // Resolve the treatment code for a fetched product row: prefer an explicit
+  // cloud-provided code (taxTreatmentCode), else classify locally.
+  function resolveTaxCode(p) {
+    var raw = p.taxTreatmentCode || p.taxTreatmentCodeApplied || null;
+    if (raw && TAX_CODE_VALUES[raw]) return raw;
+    return classifyCartProductTaxJs(p);
+  }
+
   // ── Cashier (Zweitkasse) ───────────────────────────────────────────
   // A REAL client-side ring-up: tap catalog rows to build a cart (line list +
   // running total in integer cents), adjust quantities, remove lines. The cart
@@ -773,55 +870,147 @@
   }
 
   // The Zweitkasse ring-up pane. The cart lives in module scope (zkCart) so a
-  // Termine peek never wipes a half-built sale.
+  // Termine peek never wipes a half-built sale. This is a REAL till: each add
+  // takes an inventory reservation (so the same unique item can't be double-
+  // sold), each line carries the cloud's own taxTreatmentCode +
+  // acquisitionCostEur (fetched from products/<id>), and Bezahlen posts a
+  // genuine CASH-only finalize. The server re-validates ALL VAT math, so a
+  // wrong client total returns 400 — never wrong money.
   function zkKassePane() {
     var statusMsg = el("div", { class: "state-msg" }, "Katalog wird geladen…");
     var listBox = el("div", { class: "list" });
     var all = [];
+    var stopCam = null; // active live-scan teardown (if any).
+    var addingKey = null; // product id currently being reserved (guards taps).
 
-    var cart = zkCart; // { key, id, sku, name, unitCents, qty } — mutated in place.
+    // Each cart line is a UNIQUE item → qty is always 1.
+    //   { key, id, sku, name, unitCents, taxCode, acqCostCents,
+    //     reservationSessionId }
+    var cart = zkCart;
     var cartBox = el("div", {});
     var bottomBar = el("div", {}); // thumb-zone Bezahlen bar (fixed).
 
     var search = el("input", {
-      class: "search", type: "search", placeholder: "Artikel suchen…",
+      class: "search", type: "search", placeholder: "Artikel suchen oder Barcode scannen…",
       "aria-label": "Artikel suchen",
       oninput: function (e) { paint(e.target.value.trim().toLowerCase()); }
     });
 
+    // Release every held line back to AVAILABLE — best-effort (used on tab
+    // teardown / page hide; the server auto-releases stale holds anyway).
+    function releaseAll(reason) {
+      cart.forEach(function (l) {
+        if (l.id && l.reservationSessionId) {
+          proxyJson("inventory/release", "POST", {
+            productId: l.id, sessionId: l.reservationSessionId,
+            reason: reason || "pos_cart_cleared"
+          }).catch(function () { /* best-effort */ });
+        }
+      });
+    }
+    // Arm a one-shot pagehide release so a closed tab never strands a hold.
+    // A prior pane's handler (Termine→Kasse re-mount) is cleared first so only
+    // one is ever live — module-scoped so re-entry can find it.
+    if (zkPagehideHandler) {
+      try { window.removeEventListener("pagehide", zkPagehideHandler); } catch (e) {}
+    }
+    var pagehideHandler = function () { releaseAll("pos_cart_cleared"); };
+    zkPagehideHandler = pagehideHandler;
+    window.addEventListener("pagehide", pagehideHandler);
+
+    // Reserve a product, then fetch its full record (taxTreatmentCode +
+    // acquisitionCostEur live ONLY on products/<id>, not the list) so the
+    // finalize line carries the exact fields the server expects.
     function addToCart(p) {
-      var unit = priceToCents(p.priceEur != null ? p.priceEur : p.price);
-      if (unit == null) {
-        scanFeedback(false, "Kein gültiger Preis", "Artikel kann nicht hinzugefügt werden.");
+      if (!p.id) {
+        scanFeedback(false, "Artikel ohne ID", "Kann nicht reserviert werden.");
         return;
       }
-      var key = p.id || p.sku || p.name;
-      var existing = cart.filter(function (l) { return l.key === key; })[0];
-      if (existing) { existing.qty += 1; }
-      else { cart.push({ key: key, id: p.id || null, sku: p.sku || "", name: p.name || "Artikel", unitCents: unit, qty: 1 }); }
-      paintCart();
+      // Unique stock → a duplicate tap is a no-op toast.
+      if (cart.filter(function (l) { return l.key === p.id; })[0]) {
+        scanFeedback(true, "Schon im Warenkorb", String(p.name || ""));
+        return;
+      }
+      if (addingKey) return; // a reservation is already in flight.
+      addingKey = p.id;
+      var sessionId = (window.crypto && crypto.randomUUID)
+        ? crypto.randomUUID() : fallbackUuid();
+      proxyJson("inventory/reserve", "POST", {
+        productId: p.id, channel: "POS", sessionId: sessionId
+      }).then(function () {
+        // Reserved — now pull the full record for the fiscal fields.
+        return proxy("products/" + encodeURIComponent(p.id))
+          .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); });
+      }).then(function (full) {
+        addingKey = null;
+        var listEur = full.listPriceEur != null ? full.listPriceEur
+          : (p.priceEur != null ? p.priceEur : p.price);
+        var unit = priceToCents(listEur);
+        if (unit == null || unit <= 0) {
+          // Bad price — undo the hold so nothing is stranded.
+          proxyJson("inventory/release", "POST", {
+            productId: p.id, sessionId: sessionId, reason: "pos_cart_cleared"
+          }).catch(function () {});
+          scanFeedback(false, "Kein gültiger Preis", "Artikel kann nicht hinzugefügt werden.");
+          return;
+        }
+        var acqCents = priceToCents(full.acquisitionCostEur != null ? full.acquisitionCostEur : "0") || 0;
+        var taxCode = (full.taxTreatmentCode && TAX_CODE_VALUES[full.taxTreatmentCode])
+          ? full.taxTreatmentCode : resolveTaxCode(full);
+        cart.push({
+          key: p.id, id: p.id, sku: full.sku || p.sku || "",
+          name: full.name || p.name || "Artikel",
+          unitCents: unit, taxCode: taxCode, acqCostCents: acqCents,
+          reservationSessionId: sessionId
+        });
+        scanFeedback(true, full.name || p.name || "Hinzugefügt", "Reserviert");
+        paintCart();
+      }).catch(function (err) {
+        addingKey = null;
+        var msg = err && err.message ? err.message : "";
+        // 409 / not reservable → another till/channel already has it.
+        if (/nicht mehr verfügbar|not.*available|reserv|409|PRODUCT_NOT_RESERVABLE/i.test(msg)) {
+          scanFeedback(false, "Nicht mehr verfügbar",
+            "Dieser Artikel ist bereits reserviert oder verkauft.");
+        } else {
+          scanFeedback(false, "Hinzufügen fehlgeschlagen", msg);
+        }
+      });
     }
 
-    function setQty(line, qty) {
-      if (qty <= 0) { removeLine(line); return; }
-      line.qty = qty;
-      paintCart();
-    }
     function removeLine(line) {
       var idx = cart.indexOf(line);
       if (idx < 0) return;
       var removed = cart[idx];
       cart.splice(idx, 1);
       paintCart();
+      // Release the hold immediately (re-reserve on undo).
+      if (removed.id && removed.reservationSessionId) {
+        proxyJson("inventory/release", "POST", {
+          productId: removed.id, sessionId: removed.reservationSessionId,
+          reason: "pos_cart_cleared"
+        }).catch(function () {});
+      }
       snackbar("Position entfernt: " + removed.name, "Rückgängig", function () {
-        cart.splice(Math.min(idx, cart.length), 0, removed);
-        paintCart();
+        // Re-reserve with a FRESH session id (the old hold is gone).
+        var sid = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : fallbackUuid();
+        proxyJson("inventory/reserve", "POST", {
+          productId: removed.id, channel: "POS", sessionId: sid
+        }).then(function () {
+          removed.reservationSessionId = sid;
+          cart.splice(Math.min(idx, cart.length), 0, removed);
+          paintCart();
+        }).catch(function () {
+          scanFeedback(false, "Wiederherstellen fehlgeschlagen",
+            "Der Artikel ist nicht mehr verfügbar.");
+        });
       });
     }
 
     function cartTotalCents() {
-      return cart.reduce(function (sum, l) { return sum + l.unitCents * l.qty; }, 0);
+      return cart.reduce(function (sum, l) { return sum + l.unitCents; }, 0);
     }
+    function cartCount() { return cart.length; }
 
     function paintCart() {
       clear(cartBox);
@@ -833,14 +1022,9 @@
           lines.appendChild(el("div", { class: "cart-row" }, [
             el("div", { class: "meta" }, [
               el("div", { class: "nm" }, String(l.name)),
-              el("div", { class: "sub" }, (l.sku ? "SKU " + l.sku + " · " : "") + fmtEur(centsToDecimal(l.unitCents)) + " / Stück")
+              el("div", { class: "sub" }, (l.sku ? "SKU " + l.sku + " · " : "") + taxLabelShort(l.taxCode))
             ]),
-            el("div", { class: "qty-ctrl" }, [
-              el("button", { type: "button", "aria-label": "Weniger", onclick: function () { setQty(l, l.qty - 1); } }, "−"),
-              el("span", { class: "q" }, String(l.qty)),
-              el("button", { type: "button", "aria-label": "Mehr", onclick: function () { setQty(l, l.qty + 1); } }, "+")
-            ]),
-            el("span", { class: "ln" }, fmtEur(centsToDecimal(l.unitCents * l.qty))),
+            el("span", { class: "ln" }, fmtEur(centsToDecimal(l.unitCents))),
             el("button", { class: "rm", type: "button", "aria-label": "Entfernen",
               onclick: function () { removeLine(l); } }, "×")
           ]));
@@ -854,53 +1038,199 @@
         ]),
         lines,
         el("div", { class: "scan-help" },
-          "Der Abschluss erfolgt an der Hauptkasse: Reservierung, Steueraufteilung und " +
-          "TSE-Signatur (KassenSichV) werden dort fiskalisch erzeugt. So entsteht nie ein " +
-          "unvollständiger Kassenbeleg auf diesem Gerät.")
+          "Jeder Artikel ist ein Einzelstück und wird beim Hinzufügen reserviert. " +
+          "Mit „Bezahlen“ wird der Barverkauf fiskalisch abgeschlossen (Steuer & TSE " +
+          "werden serverseitig erzeugt und geprüft).")
       ]));
 
       paintBottomBar();
     }
 
-    function cartCount() { return cart.reduce(function (n, l) { return n + l.qty; }, 0); }
-
-    // Fixed thumb-zone bar: running total + Bezahlen (full-amount cash hand-off).
+    // Fixed thumb-zone bar: running total + Bezahlen (full-amount cash sale).
     function paintBottomBar() {
       clear(bottomBar);
       var empty = !cart.length;
       var payBtn = el("button", { class: "bb-action", type: "button",
-        onclick: handoffToMother }, "Bezahlen");
+        onclick: function () { openBezahlenSheet(); } }, "Bezahlen");
       payBtn.disabled = empty;
       bottomBar.appendChild(el("div", { class: "bottombar" }, [
         el("div", { class: "bb-info" }, [
           el("div", { class: "t" }, fmtEur(centsToDecimal(cartTotalCents()))),
-          el("div", { class: "s" }, empty ? "Warenkorb leer" : (cartCount() + " Artikel · an Hauptkasse"))
+          el("div", { class: "s" }, empty ? "Warenkorb leer" : (cartCount() + " Artikel · Barzahlung"))
         ]),
         payBtn
       ]));
     }
 
-    function handoffToMother() {
+    // Build the finalize body from the cart, mirroring cart-math exactly. The
+    // header treatmentCode is the single line's code, or MIXED when lines differ.
+    function buildFinalizeBody(idempotencyKey) {
+      var items = [];
+      var subC = 0, vatC = 0, totC = 0;
+      var codes = {};
+      cart.forEach(function (l) {
+        var m = computeLineMathCents(l.taxCode, l.unitCents, l.acqCostCents);
+        codes[l.taxCode] = true;
+        subC += m.subtotalC; vatC += m.vatC; totC += m.totalC;
+        items.push({
+          productId: l.id,
+          reservationSessionId: l.reservationSessionId,
+          lineSubtotalEur: centsToDecimal(m.subtotalC),
+          lineVatEur: centsToDecimal(m.vatC),
+          lineTotalEur: centsToDecimal(m.totalC),
+          appliedTaxTreatmentCode: l.taxCode,
+          appliedVatRate: m.appliedVatRate,
+          acquisitionCostEurSnapshot: m.acqSnapshotC != null ? centsToDecimal(m.acqSnapshotC) : null,
+          marginEur: m.marginC != null ? centsToDecimal(m.marginC) : null
+        });
+      });
+      var codeList = Object.keys(codes);
+      var headerCode = codeList.length === 1 ? codeList[0] : "MIXED";
+      return {
+        direction: "VERKAUF",
+        customerId: null,
+        subtotalEur: centsToDecimal(subC),
+        vatEur: centsToDecimal(vatC),
+        totalEur: centsToDecimal(totC),
+        taxTreatmentCode: headerCode,
+        items: items,
+        payments: [{ paymentMethod: "CASH", amountEur: centsToDecimal(totC) }],
+        idempotencyKey: idempotencyKey
+      };
+    }
+
+    // The Bezahlen sheet: CASH ONLY for v1. ONE idempotencyKey per attempt,
+    // REUSED on retry. Clear, German gate messages for the known refusals.
+    function openBezahlenSheet() {
       if (!cart.length) return;
-      var count = cartCount();
-      var total = fmtEur(centsToDecimal(cartTotalCents()));
-      alert(
-        "Warenkorb bereit für die Hauptkasse.\n\n" +
-        count + " Artikel · Gesamt " + total + "\n\n" +
-        "Bitte den Abschluss (bar oder Karte) an der Hauptkasse durchführen — " +
-        "Reservierung, Steuer und TSE-Signatur werden dort fiskalisch erzeugt. " +
-        "Die automatische Übergabe an die Hauptkasse folgt in einer späteren Phase."
-      );
+      var totalC = cartTotalCents();
+      var idempotencyKey = (window.crypto && crypto.randomUUID)
+        ? crypto.randomUUID() : fallbackUuid();
+      var busy = false;
+      var msg = el("div", {});
+      function setMsg(kind, text) {
+        clear(msg);
+        if (text) msg.appendChild(el("div", { class: "notice " + kind }, text));
+      }
+
+      var payBtn = el("button", { class: "btn-primary inline", type: "button", onclick: doPay },
+        "Barzahlung abschließen");
+      var closeBtn = el("button", { class: "btn-ghost", type: "button", onclick: close }, "Abbrechen");
+
+      function doPay() {
+        if (busy) return;
+        busy = true; payBtn.disabled = true; closeBtn.disabled = true;
+        setMsg("info", "Verkauf wird abgeschlossen…");
+        // SAME idempotencyKey on every retry of this logical sale.
+        proxyJson("transactions/finalize", "POST", buildFinalizeBody(idempotencyKey))
+          .then(function (res) {
+            busy = false;
+            window.removeEventListener("pagehide", pagehideHandler);
+            scanFeedback(true, "Verkauf abgeschlossen",
+              res && res.receiptLocator ? ("Beleg " + res.receiptLocator) : null);
+            setMsg("ok", "Verkauf abgeschlossen" +
+              (res && res.receiptLocator ? (" — Beleg " + res.receiptLocator + ".") : ".") +
+              " Bitte den Bon an der Hauptkasse ausdrucken.");
+            // Cart is now SOLD — empty it (no release; the items are gone).
+            zkCart.length = 0;
+            paintCart();
+            // Re-arm pagehide for the next sale.
+            window.addEventListener("pagehide", pagehideHandler);
+            payBtn.style.display = "none";
+            closeBtn.textContent = "Fertig";
+            closeBtn.disabled = false;
+          })
+          .catch(function (err) {
+            busy = false; payBtn.disabled = false; closeBtn.disabled = false;
+            handleFinalizeError(err);
+          });
+      }
+
+      // Map the cloud's gate responses to clear German guidance.
+      function handleFinalizeError(err) {
+        var m = err && err.message ? String(err.message) : "";
+        if (/STEP_UP|Step-up|Freigabe an der Hauptkasse/i.test(m)) {
+          setMsg("bad", "Hohe Summe — bitte an der Hauptkasse abschließen.");
+          scanFeedback(false, "Freigabe nötig", "An der Hauptkasse abschließen.");
+          return;
+        }
+        if (/Identifizierung|§ ?10 GwG|§ ?259|KYC/i.test(m)) {
+          setMsg("bad", "Käufer an der Hauptkasse zuordnen (Ausweis-Identifikation erforderlich).");
+          scanFeedback(false, "Käufer zuordnen", "An der Hauptkasse identifizieren.");
+          return;
+        }
+        // 409 / not reservable → a line was taken; drop it + refetch the catalog.
+        if (/nicht mehr verfügbar|not.*available|reserv|409|PRODUCT_NOT_RESERVABLE/i.test(m)) {
+          setMsg("bad", "Ein Artikel ist nicht mehr verfügbar und wurde entfernt. Bitte erneut versuchen.");
+          // Drop any line whose hold the server rejected, then refresh stock.
+          zkCart.length = 0;
+          paintCart();
+          reloadCatalog();
+          scanFeedback(false, "Artikel entfernt", "Warenkorb geleert.");
+          setTimeout(close, 1800);
+          return;
+        }
+        if (/Terminal nicht konfiguriert|Karte/i.test(m)) {
+          setMsg("bad", "Kartenzahlung ist hier nicht verfügbar — bitte bar oder an der Hauptkasse.");
+          return;
+        }
+        // Device gate: the proxied finalize carries the mother's Bearer but no
+        // device identity, so the cloud may refuse with DEVICE_NOT_AUTHORIZED /
+        // a plain 403 until the proxy forwards a paired-device fingerprint
+        // (see openItems). Surface a clean, honest block — never a wrong sale.
+        if (/auf diesem Gerät nicht erlaubt|DEVICE_NOT_AUTHORIZED|paired.*device|mTLS/i.test(m)) {
+          setMsg("bad", "Abschluss auf diesem Gerät nicht möglich — bitte an der Hauptkasse abschließen.");
+          scanFeedback(false, "An der Hauptkasse abschließen", "Gerät nicht freigegeben.");
+          return;
+        }
+        // Anything else: surface a clean block (the server re-validated the body).
+        setMsg("bad", m || "Abschluss fehlgeschlagen. Bitte an der Hauptkasse abschließen.");
+      }
+
+      var sheet = el("div", { class: "sheet", role: "dialog", "aria-label": "Bezahlen" }, [
+        el("div", { class: "sheet-head" }, [
+          el("span", { class: "t" }, "Bezahlen"),
+          el("button", { class: "x", type: "button", "aria-label": "Schließen", onclick: close }, "×")
+        ]),
+        el("div", { class: "sheet-body" }, [
+          el("div", { class: "form" }, [
+            el("div", { class: "pay-total" }, [
+              el("span", { class: "pt-l" }, "Zu zahlen (bar)"),
+              el("span", { class: "pt-v" }, fmtEur(centsToDecimal(totalC)))
+            ]),
+            el("div", { class: "pay-count" }, cartCount() + " Artikel"),
+            msg,
+            el("div", { class: "btn-row" }, [ closeBtn, payBtn ]),
+            el("div", { class: "scan-help" },
+              "Nur Barzahlung. Steuer und TSE-Signatur (KassenSichV) werden serverseitig " +
+              "erzeugt und geprüft. Bei hoher Summe oder Ausweispflicht bitte an der Hauptkasse abschließen.")
+          ])
+        ])
+      ]);
+
+      function close() { try { sheet.remove(); } catch (e) {} }
+      document.body.appendChild(sheet);
+    }
+
+    function reloadCatalog() {
+      proxy("products?status=AVAILABLE&limit=200")
+        .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(function (data) { all = normalizeProducts(data); paint(search.value.trim().toLowerCase()); })
+        .catch(function () { /* keep last list */ });
     }
 
     function paint(q) {
       clear(listBox);
+      var inCart = {};
+      cart.forEach(function (l) { inCart[l.id] = true; });
       var rows = all.filter(function (p) {
+        if (inCart[p.id]) return false; // unique stock already held → hide it.
         if (!q) return true;
-        return (String(p.name || "") + " " + String(p.sku || "")).toLowerCase().indexOf(q) >= 0;
+        return (String(p.name || "") + " " + String(p.sku || "") + " " + String(p.barcode || ""))
+          .toLowerCase().indexOf(q) >= 0;
       }).slice(0, 100);
       if (!rows.length) {
-        listBox.appendChild(el("div", { class: "state-msg" }, "Keine Treffer."));
+        listBox.appendChild(el("div", { class: "state-msg" }, q ? "Keine Treffer." : "Kein verfügbarer Artikel."));
         return;
       }
       rows.forEach(function (p) {
@@ -917,10 +1247,82 @@
       });
     }
 
+    // Barcode/scan add — reuse the BarcodeDetector live-scan path from whScan.
+    // A detected code is looked up against the catalog (exact barcode/sku, then
+    // free text) and the first AVAILABLE match is added straight to the cart.
+    var camStage = el("div", { class: "cam-stage", style: "display:none; height:38vh; margin-bottom:1rem" });
+    function lookupAndAdd(code) {
+      var c = String(code || "").trim();
+      if (!c) return;
+      var lc = c.toLowerCase();
+      var hit = all.filter(function (p) {
+        return String(p.barcode || "").toLowerCase() === lc ||
+               String(p.sku || "").toLowerCase() === lc;
+      })[0] || all.filter(function (p) {
+        return (String(p.name || "") + " " + String(p.sku || "")).toLowerCase().indexOf(lc) >= 0;
+      })[0];
+      if (!hit) {
+        scanFeedback(false, "Unbekannter Code", "Kein verfügbarer Artikel zu „" + c + "“.");
+        return;
+      }
+      if (cart.filter(function (l) { return l.key === hit.id; })[0]) {
+        scanFeedback(true, "Schon im Warenkorb", String(hit.name || ""));
+        return;
+      }
+      addToCart(hit);
+    }
+    function startCamScan() {
+      if (!("BarcodeDetector" in window) || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        scanFeedback(false, "Kamera-Scan nicht verfügbar",
+          "Bitte den Artikel über die Suche hinzufügen.");
+        return;
+      }
+      var video = el("video", { autoplay: "", muted: "", playsinline: "" });
+      camStage.style.display = "";
+      clear(camStage); camStage.appendChild(video);
+      var detector = new window.BarcodeDetector();
+      var raf = null, streamRef = null, done = false;
+      var teardown = function () {
+        done = true;
+        if (raf) cancelAnimationFrame(raf);
+        try { if (streamRef) streamRef.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
+        camStage.style.display = "none"; clear(camStage);
+        stopCam = null;
+      };
+      var scanFrame = function () {
+        if (done) return;
+        detector.detect(video).then(function (codes) {
+          if (done) return;
+          if (codes && codes.length && codes[0].rawValue) {
+            var val = String(codes[0].rawValue).trim();
+            teardown();
+            lookupAndAdd(val);
+            return;
+          }
+          raf = requestAnimationFrame(scanFrame);
+        }).catch(function () { if (!done) raf = requestAnimationFrame(scanFrame); });
+      };
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+        .then(function (stream) {
+          streamRef = stream; video.srcObject = stream;
+          stopCam = teardown;
+          raf = requestAnimationFrame(scanFrame);
+        })
+        .catch(function () {
+          camStage.style.display = "none";
+          scanFeedback(false, "Kamera nicht freigegeben",
+            "Bitte Kamerazugriff erlauben oder über die Suche hinzufügen.");
+        });
+    }
+    var camBtn = ("BarcodeDetector" in window)
+      ? el("button", { class: "btn-ghost", type: "button", onclick: startCamScan }, "📷 Scannen")
+      : null;
+
     var pane = el("div", {}, [
       el("div", { class: "pad has-bottombar" }, [
-        search,
-        el("div", { class: "hint" }, "Auf „+“ tippen, um einen Artikel in den Warenkorb zu legen."),
+        el("div", { class: "zk-searchrow" }, [ search ].concat(camBtn ? [camBtn] : [])),
+        el("div", { class: "hint" }, "Artikel suchen oder scannen, dann auf „+“ tippen. Jeder Treffer wird beim Hinzufügen reserviert."),
+        camStage,
         statusMsg,
         listBox,
         cartBox
@@ -929,8 +1331,8 @@
     ]);
 
     paintCart();
-
-    proxy("products")
+    // status=AVAILABLE + a generous limit so the till sees the live floor stock.
+    proxy("products?status=AVAILABLE&limit=200")
       .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
       .then(function (data) {
         all = normalizeProducts(data);
@@ -942,6 +1344,26 @@
       });
 
     return pane;
+  }
+
+  // Short German label for a tax treatment code (cart line subtitle).
+  function taxLabelShort(code) {
+    switch (code) {
+      case "MARGIN_25A": return "Differenz §25a";
+      case "INVESTMENT_GOLD_25C": return "Anlagegold §25c";
+      case "REDUCED_7": return "7 % USt";
+      case "REVERSE_CHARGE_13B": return "§13b";
+      case "STANDARD_19": return "19 % USt";
+      default: return code || "—";
+    }
+  }
+  // RFC4122-ish v4 fallback for the (rare) browser without crypto.randomUUID.
+  function fallbackUuid() {
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
+      var r = (Math.random() * 16) | 0;
+      var v = c === "x" ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
   }
 
   // ── Warehouse (Lager) — tabbed tools ───────────────────────────────
@@ -1197,14 +1619,18 @@
     return pad;
   }
 
-  // Warehouse · Neu — quick add-a-product form with EAS repeat-entry: after a
-  // save we KEEP the form open and carry sticky context (type/condition/tax/bin)
-  // forward, clearing only item-unique fields, plus a live batch count+subtotal.
+  // Warehouse · Neu — CAPTURE-FIRST add: the hot path is just Bezeichnung +
+  // Verkaufspreis + Foto + Speichern. Everything else (SKU/Barcode/Art/Zustand/
+  // Steuer/Ankauf/Gewicht/Lagerort/Webshop) lives under a collapsed "Mehr"
+  // disclosure. Sticky context (type/condition/tax/bin) still carries forward
+  // and the per-session batch counter is kept. On a successful create we upload
+  // any photo taken inline (isPrimary), or offer "Foto aufnehmen" straightaway.
   function whAdd() {
     var msg = el("div", {});
     var busy = false;
     var batchCount = 0;
     var batchCents = 0;
+    var pendingPhoto = null; // a JPEG Blob captured BEFORE the product exists.
 
     function field(labelTxt, node, required) {
       return el("div", { class: "fl" }, [
@@ -1228,7 +1654,7 @@
     var typeS  = selectOf(ITEM_TYPES);
     var condS  = selectOf(CONDITIONS);
     var taxS   = selectOf(TAX_CODES);
-    var acqI   = el("input", { class: "inp", type: "text", inputmode: "decimal", placeholder: "0,00" });
+    var acqI   = el("input", { class: "inp", type: "text", inputmode: "decimal", placeholder: "Optional — 0,00" });
     var listI  = el("input", { class: "inp", type: "text", inputmode: "decimal", placeholder: "0,00" });
     var wgtI   = el("input", { class: "inp", type: "text", inputmode: "decimal", placeholder: "Optional — Gramm" });
     var unitI  = el("input", { class: "inp", type: "text", placeholder: "z. B. Tresor 1" });
@@ -1254,18 +1680,29 @@
         batchCount + " Artikel · " + fmtEur(centsToDecimal(batchCents))));
     }
 
+    // Foto button: capture an image NOW (held in pendingPhoto) so the operator
+    // shoots first and types later; the photo uploads after the product exists.
+    var photoStatus = el("div", { class: "scan-help" }, "Noch kein Foto.");
+    var photoBtn = el("button", { class: "btn-ghost", type: "button",
+      onclick: function () {
+        openCameraSheet(function (blob /*, isPrimary */) {
+          pendingPhoto = blob;
+          photoStatus.textContent = "Foto bereit — wird beim Anlegen hochgeladen.";
+        });
+      } }, "📷 Foto aufnehmen");
+
     var saveBtn = el("button", { class: "btn-primary inline", type: "button",
-      onclick: function () { submit(false); } }, "Anlegen & weiter");
+      onclick: function () { submit(false); } }, "Speichern & weiter");
     var saveOnceBtn = el("button", { class: "btn-ghost", type: "button",
-      onclick: function () { submit(true); } }, "Anlegen & fertig");
+      onclick: function () { submit(true); } }, "Speichern & fertig");
 
     function setMsg(kind, text) {
       clear(msg);
       msg.appendChild(el("div", { class: "notice " + kind }, text));
     }
 
-    // SKU is now OPTIONAL on the form (brief §3 EAS: auto-derive). If blank we
-    // mint a readable client-side SKU so the operator never has to think one up.
+    // SKU is OPTIONAL (brief §3 EAS: auto-derive). If blank we mint a readable
+    // client-side SKU so the operator never has to think one up.
     function autoSku() {
       var d = new Date();
       function p(n) { return (n < 10 ? "0" : "") + n; }
@@ -1279,7 +1716,10 @@
       var sku = skuI.value.trim() || autoSku();
       var name = nameI.value.trim();
       if (!name) { setMsg("bad", "Bitte eine Bezeichnung eingeben."); return; }
-      if (!isMoney(acqI.value))  { setMsg("bad", "Ankaufspreis ist keine gültige Zahl."); return; }
+      // Ankaufspreis is required by the cloud but optional on the form — default
+      // to 0 when the operator skipped the "Mehr" panel (a fast floor-add).
+      var acqStr = acqI.value.trim();
+      if (acqStr && !isMoney(acqStr)) { setMsg("bad", "Ankaufspreis ist keine gültige Zahl."); return; }
       if (!isMoney(listI.value)) { setMsg("bad", "Verkaufspreis ist keine gültige Zahl."); return; }
       if (wgtI.value.trim() && !isMoney(wgtI.value)) { setMsg("bad", "Gewicht ist keine gültige Zahl."); return; }
 
@@ -1288,7 +1728,7 @@
         itemType: typeS.value,
         condition: condS.value,
         taxTreatmentCode: taxS.value,
-        acquisitionCostEur: normalizeDecimal(acqI.value),
+        acquisitionCostEur: acqStr ? normalizeDecimal(acqStr) : "0",
         listPriceEur: normalizeDecimal(listI.value),
         name: name
       };
@@ -1303,6 +1743,7 @@
       setMsg("info", "Wird angelegt…");
       proxyJson("products", "POST", payload).then(function (res) {
         busy = false; saveBtn.disabled = false; saveOnceBtn.disabled = false;
+        var newId = res.id || res.productId || null;
         scanFeedback(true, "Angelegt: " + name, "SKU " + (res.sku || sku));
         batchCount += 1; batchCents += (priceToCents(listI.value) || 0); paintBatch();
 
@@ -1313,18 +1754,43 @@
           locationPosition: posI.value.trim()
         });
 
+        // Photo: upload the one taken inline (primary), else offer to take one.
+        if (pendingPhoto && newId) {
+          var blob = pendingPhoto;
+          pendingPhoto = null;
+          setMsg("info", "Angelegt: " + (res.sku || sku) + " — Foto wird hochgeladen…");
+          uploadPhoto(newId, blob, true, function (ok, message) {
+            if (ok) setMsg("ok", "Angelegt: " + (res.sku || sku) + " · Foto hochgeladen.");
+            else setMsg("bad", "Angelegt, aber Foto fehlgeschlagen: " + (message || ""));
+          });
+        } else if (newId) {
+          // Offer a one-tap photo right after creation (capture-first habit).
+          clear(msg);
+          msg.appendChild(el("div", { class: "notice ok" }, "Angelegt: " + (res.sku || sku) +
+            " (Status " + (res.status || "DRAFT") + ")."));
+          msg.appendChild(el("div", { class: "btn-row" }, [
+            el("button", { class: "btn-ghost", type: "button", onclick: function () {
+              openCameraSheet(function (blob2) {
+                uploadPhoto(newId, blob2, true, function (ok, message) {
+                  if (ok) setMsg("ok", "Foto hochgeladen für " + (res.sku || sku) + ".");
+                  else setMsg("bad", "Foto fehlgeschlagen: " + (message || ""));
+                });
+              });
+            } }, "📷 Foto aufnehmen")
+          ]));
+        } else {
+          setMsg("ok", "Angelegt: " + (res.sku || sku) + " (Status " + (res.status || "DRAFT") + ").");
+        }
+
         if (finish) {
-          setMsg("ok", "Angelegt: " + (res.sku || sku) + ". Sitzung beendet (" + batchCount + " Artikel).");
           // Reset everything including sticky for a clean finish.
           typeS.selectedIndex = 0; condS.selectedIndex = 0; taxS.selectedIndex = 0;
           unitI.value = ""; drwI.value = ""; posI.value = "";
-        } else {
-          setMsg("ok", "Angelegt: " + (res.sku || sku) + " (Status " + (res.status || "DRAFT") + "). " +
-            "Bin/Art/Steuer bleiben für den nächsten Artikel erhalten.");
         }
         // Clear only item-unique fields (brief §3 EAS: N-field → 3-field for 2…n).
         skuI.value = ""; barI.value = ""; nameI.value = "";
         acqI.value = ""; listI.value = ""; wgtI.value = ""; pubChk.checked = false;
+        photoStatus.textContent = "Noch kein Foto.";
         try { nameI.focus(); } catch (e) {}
       }).catch(function (err) {
         busy = false; saveBtn.disabled = false; saveOnceBtn.disabled = false;
@@ -1343,55 +1809,76 @@
       if (s.locationStorageUnit) unitI.value = s.locationStorageUnit;
       if (s.locationDrawer) drwI.value = s.locationDrawer;
       if (s.locationPosition) posI.value = s.locationPosition;
-      setMsg("info", "Kontext übernommen — Bezeichnung und Preise anpassen, dann anlegen.");
+      setMsg("info", "Kontext übernommen — Bezeichnung und Preis anpassen, dann speichern.");
       try { nameI.focus(); } catch (e) {}
     }
+
+    // Collapsed "Mehr" disclosure: everything beyond the hot path. Closed by
+    // default — one tap reveals the full detail set; sticky carry-forward keeps
+    // it usable even while collapsed.
+    var moreBody = el("div", { class: "more-body", style: "display:none" }, [
+      el("div", { class: "sectionhead" }, "Identität"),
+      el("div", { class: "form-row two" }, [
+        field("SKU (optional)", skuI, false),
+        field("Barcode", barI, false)
+      ]),
+      el("div", { class: "sectionhead" }, "Klassifizierung"),
+      el("div", { class: "form-row two" }, [
+        field("Art", typeS, true),
+        field("Zustand", condS, true)
+      ]),
+      el("div", { class: "sectionhead" }, "Ankauf & Steuer"),
+      el("div", { class: "form-row two" }, [
+        field("Ankaufspreis (€)", acqI, false),
+        field("Steuerart", taxS, true)
+      ]),
+      el("div", { class: "form-row two" }, [
+        field("Gewicht (g)", wgtI, false),
+        el("div", {})
+      ]),
+      el("div", { class: "sectionhead" }, "Lagerort"),
+      el("div", { class: "form-row three" }, [
+        field("Einheit", unitI, false),
+        field("Fach", drwI, false),
+        field("Position", posI, false)
+      ]),
+      el("label", { class: "toggle", for: "wh-pub" }, [
+        pubChk,
+        el("span", { class: "track" }),
+        el("span", { class: "tlab" }, "Im Webshop anbieten (nach Freigabe)")
+      ]),
+      el("div", { class: "btn-row" }, [
+        el("button", { class: "btn-ghost", type: "button", onclick: duplicate }, "Letzten duplizieren")
+      ])
+    ]);
+    var moreBtn = el("button", { class: "more-toggle", type: "button",
+      "aria-expanded": "false",
+      onclick: function () {
+        var open = moreBody.style.display === "none";
+        moreBody.style.display = open ? "" : "none";
+        moreBtn.setAttribute("aria-expanded", open ? "true" : "false");
+        moreBtn.textContent = open ? "Weniger ▲" : "Mehr ▾";
+      } }, "Mehr ▾");
 
     paintBatch();
 
     return el("div", { class: "pad" }, [
       batchStrip,
       el("div", { class: "form" }, [
-        el("div", { class: "sectionhead" }, "Identität"),
-        el("div", { class: "form-row two" }, [
-          field("SKU (optional)", skuI, false),
-          field("Barcode", barI, false)
-        ]),
         field("Bezeichnung", nameI, true),
-        el("div", { class: "sectionhead" }, "Klassifizierung"),
-        el("div", { class: "form-row two" }, [
-          field("Art", typeS, true),
-          field("Zustand", condS, true)
-        ]),
-        el("div", { class: "sectionhead" }, "Preise & Steuer"),
-        el("div", { class: "form-row two" }, [
-          field("Ankaufspreis (€)", acqI, true),
-          field("Verkaufspreis (€)", listI, true)
-        ]),
-        el("div", { class: "form-row two" }, [
-          field("Steuerart", taxS, true),
-          field("Gewicht (g)", wgtI, false)
-        ]),
-        el("div", { class: "sectionhead" }, "Lagerort"),
-        el("div", { class: "form-row three" }, [
-          field("Einheit", unitI, false),
-          field("Fach", drwI, false),
-          field("Position", posI, false)
-        ]),
-        el("label", { class: "toggle", for: "wh-pub" }, [
-          pubChk,
-          el("span", { class: "track" }),
-          el("span", { class: "tlab" }, "Im Webshop anbieten (nach Freigabe)")
+        field("Verkaufspreis (€)", listI, true),
+        el("div", { class: "fl" }, [
+          el("span", { class: "lab" }, "Foto"),
+          photoBtn,
+          photoStatus
         ]),
         el("div", { class: "btn-row" }, [ saveBtn, saveOnceBtn ]),
-        el("div", { class: "btn-row" }, [
-          el("button", { class: "btn-ghost", type: "button", onclick: duplicate }, "Letzten duplizieren")
-        ]),
+        moreBtn,
+        moreBody,
         msg,
         el("div", { class: "scan-help" },
-          "Pflichtfelder sind mit * markiert. Art, Zustand, Steuerart und Lagerort werden " +
-          "für den nächsten Artikel übernommen. Foto und Etikett für einen angelegten Artikel " +
-          "im Tab „Bestand“ → Artikel öffnen.")
+          "Schnell-Erfassung: Bezeichnung, Preis, Foto, speichern. Art, Zustand, Steuerart und " +
+          "Lagerort werden für den nächsten Artikel übernommen. Weitere Felder unter „Mehr“.")
       ])
     ]);
   }
@@ -2110,12 +2597,12 @@
     var unitI = el("input", { class: "inp", type: "text", value: p.locationStorageUnit || "", placeholder: "Einheit" });
     var drwI  = el("input", { class: "inp", type: "text", value: p.locationDrawer || "", placeholder: "Fach" });
     var posI  = el("input", { class: "inp", type: "text", value: p.locationPosition || "", placeholder: "Position" });
-    var binNoteI = el("input", { class: "inp", type: "text", placeholder: "Grund (min. 8 Zeichen)" });
+    var binNoteI = el("input", { class: "inp", type: "text", placeholder: "Optional — Notiz" });
 
     function setMsg(kind, text) { clear(msg); msg.appendChild(el("div", { class: "notice " + kind }, text)); }
 
     var saveBtn = el("button", { class: "btn-primary inline", type: "button", onclick: saveProduct }, "Änderungen speichern");
-    var binBtn = el("button", { class: "btn-ghost", type: "button", onclick: saveBin }, "Lagerort übernehmen");
+    var binBtn = el("button", { class: "btn-ghost", type: "button", onclick: saveBin }, "Umlagern");
 
     function saveProduct() {
       if (busy) return;
@@ -2143,22 +2630,33 @@
       });
     }
 
+    // Re-shelve via the dedicated LOCATION-ONLY route (no step-up), so a phone
+    // re-shelve actually succeeds — the old inventory-adjustment path is
+    // step-up-gated and walled a mobile worker behind the Hauptkasse. The
+    // relocate route needs ALL THREE coordinates, so the fields are pre-filled
+    // with the current location and a partial edit still sends a complete set.
     function saveBin() {
       if (busy) return;
-      var note = binNoteI.value.trim();
-      if (note.length < 8) { setMsg("bad", "Bitte einen Grund mit mindestens 8 Zeichen angeben."); return; }
-      var body = { reason: "LOCATION_CHANGE", notes: note };
-      if (unitI.value.trim()) body.locationStorageUnit = unitI.value.trim();
-      if (drwI.value.trim())  body.locationDrawer = drwI.value.trim();
-      if (posI.value.trim())  body.locationPosition = posI.value.trim();
-      if (!body.locationStorageUnit && !body.locationDrawer && !body.locationPosition) {
-        setMsg("bad", "Bitte mindestens ein Lagerort-Feld ausfüllen."); return;
+      var unit = unitI.value.trim(), drw = drwI.value.trim(), pos = posI.value.trim();
+      if (!unit || !drw || !pos) {
+        setMsg("bad", "Bitte Einheit, Fach und Position angeben.");
+        return;
       }
+      var body = {
+        locationStorageUnit: unit,
+        locationDrawer: drw,
+        locationPosition: pos
+      };
+      var note = binNoteI.value.trim();
+      if (note) body.notes = note;
       busy = true; binBtn.disabled = true; setMsg("info", "Lagerort wird übernommen…");
-      proxyJson("products/" + encodeURIComponent(p.id) + "/inventory-adjustment", "POST", body)
+      proxyJson("products/" + encodeURIComponent(p.id) + "/relocate", "POST", body)
         .then(function () {
           busy = false; binBtn.disabled = false;
-          setMsg("ok", "Lagerort aktualisiert.");
+          setMsg("ok", "Lagerort aktualisiert: " + unit + " · " + drw + " · " + pos + ".");
+          scanFeedback(true, "Umgelagert", unit + " · " + drw + " · " + pos);
+          // Reflect the new location locally so a later edit starts from it.
+          p.locationStorageUnit = unit; p.locationDrawer = drw; p.locationPosition = pos;
           if (onSaved) setTimeout(onSaved, 800);
         }).catch(function (err) {
           busy = false; binBtn.disabled = false;
@@ -2251,17 +2749,18 @@
         photoBox,
         el("div", { class: "btn-row" }, [ photoBtn, labelBtn ]),
 
-        el("div", { class: "sectionhead" }, "Lagerort ändern"),
+        el("div", { class: "sectionhead" }, "Umlagern"),
         el("div", { class: "form-row three" }, [
           el("div", { class: "fl" }, [ el("span", { class: "lab" }, "Einheit"), unitI ]),
           el("div", { class: "fl" }, [ el("span", { class: "lab" }, "Fach"), drwI ]),
           el("div", { class: "fl" }, [ el("span", { class: "lab" }, "Position"), posI ])
         ]),
-        el("div", { class: "fl" }, [ el("span", { class: "lab" }, "Grund (Pflicht)"), binNoteI ]),
+        el("div", { class: "fl" }, [ el("span", { class: "lab" }, "Notiz (optional)"), binNoteI ]),
         el("div", { class: "btn-row" }, [ binBtn ]),
         msg,
         el("div", { class: "scan-help" },
-          "Lagerort-Änderungen werden protokolliert und können eine Freigabe an der Hauptkasse erfordern.")
+          "Umlagern ändert nur den Lagerort und wird protokolliert — keine Freigabe an der " +
+          "Hauptkasse nötig. Menge oder Status ändern bleibt der Hauptkasse vorbehalten.")
       ])
     ]);
   }
@@ -2278,7 +2777,7 @@
   // optional "als Hauptbild" toggle. On Use, hands the blob to `onCapture`.
   function openCameraSheet(onCapture) {
     var streamRef = null;
-    var captured = null; // Blob once shot.
+    var captured = null; // Blob once shot/picked (already downscaled).
     var primaryChk = el("input", { type: "checkbox", id: "cam-primary", checked: "" });
 
     var video = el("video", { autoplay: "", muted: "", playsinline: "" });
@@ -2294,6 +2793,13 @@
 
     var controls = el("div", { class: "cam-controls" }, [ shutter ]);
 
+    // The hub serves http:// (no TLS on the LAN origin), so on iOS/Android
+    // getUserMedia is BLOCKED (insecure context). In that case — or wherever the
+    // live camera API is missing — we render a native file-input fallback
+    // (capture=environment opens the rear camera) so photo capture works TODAY.
+    var liveCameraUsable = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia) &&
+      (window.isSecureContext !== false);
+
     var sheet = el("div", { class: "sheet", role: "dialog", "aria-label": "Foto aufnehmen" }, [
       el("div", { class: "sheet-head" }, [
         el("span", { class: "t" }, "Foto aufnehmen"),
@@ -2308,41 +2814,80 @@
     ]);
     document.body.appendChild(sheet);
 
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      clear(stage);
-      stage.appendChild(el("div", { class: "ph" }, "Kamera auf diesem Gerät nicht verfügbar."));
-      shutter.disabled = true;
-    } else {
+    if (liveCameraUsable) {
       navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1920 } } })
         .then(function (stream) { streamRef = stream; video.srcObject = stream; })
-        .catch(function () {
-          clear(stage);
-          stage.appendChild(el("div", { class: "ph" }, "Kamerazugriff nicht erlaubt. Bitte in den Einstellungen freigeben."));
-          shutter.disabled = true;
+        .catch(function () { showFileFallback("Kamerazugriff nicht erlaubt — Foto aus der Galerie/Kamera wählen."); });
+    } else {
+      // Insecure context or no getUserMedia → straight to the file fallback.
+      showFileFallback(window.isSecureContext === false
+        ? "Live-Kamera ist über die LAN-Verbindung gesperrt — Foto mit der Telefonkamera aufnehmen."
+        : "Live-Kamera auf diesem Gerät nicht verfügbar — Foto wählen.");
+    }
+
+    // The native picker (rear camera on phones). Selecting a file downscales it
+    // and jumps straight to the review state with the chosen image.
+    var fileInput = el("input", {
+      type: "file", accept: "image/*", capture: "environment",
+      class: "sr-only", id: "cam-file",
+      onchange: function (e) {
+        var f = e.target.files && e.target.files[0];
+        if (!f) return;
+        downscaleToJpeg(f).then(function (blob) {
+          captured = blob;
+          showReview(blob);
+        }).catch(function () {
+          // If canvas decode fails, fall back to the raw file as-is.
+          captured = f;
+          showReview(f);
         });
+      }
+    });
+    function showFileFallback(reason) {
+      clear(stage);
+      stage.appendChild(el("div", { class: "ph" }, [
+        el("div", {}, reason),
+        el("label", { class: "btn-primary inline file-pick", for: "cam-file",
+          style: "margin-top:1rem; display:inline-flex; align-items:center; justify-content:center" },
+          "📷 Foto aufnehmen / wählen"),
+        fileInput
+      ]));
+      shutter.style.display = "none";
+    }
+    function showReview(blob) {
+      var img = el("img", { alt: "Aufnahme" });
+      img.src = URL.createObjectURL(blob);
+      clear(stage); stage.appendChild(img);
+      shutter.style.display = "none";
+      retakeBtn.style.display = ""; useBtn.style.display = "";
+      primaryRow.style.display = "";
     }
 
     function shoot() {
+      // Live path: grab the frame, then downscale to the same target as files.
       var w = video.videoWidth || 1280;
       var h = video.videoHeight || 1280;
-      canvas.width = w; canvas.height = h;
+      var fit = fitWithin(w, h, 1280);
+      canvas.width = fit.w; canvas.height = fit.h;
       var ctx = canvas.getContext("2d");
-      ctx.drawImage(video, 0, 0, w, h);
+      ctx.drawImage(video, 0, 0, fit.w, fit.h);
       canvas.toBlob(function (blob) {
         if (!blob) return;
         captured = blob;
-        var img = el("img", { alt: "Aufnahme" });
-        img.src = URL.createObjectURL(blob);
-        clear(stage); stage.appendChild(img);
-        shutter.style.display = "none";
-        retakeBtn.style.display = ""; useBtn.style.display = "";
-        primaryRow.style.display = "";
-      }, "image/jpeg", 0.9);
+        showReview(blob);
+      }, "image/jpeg", 0.75);
     }
     function retake() {
       captured = null;
-      clear(stage); stage.appendChild(video);
-      shutter.style.display = ""; retakeBtn.style.display = "none";
+      try { fileInput.value = ""; } catch (e) {}
+      clear(stage);
+      if (liveCameraUsable && streamRef) {
+        stage.appendChild(video);
+        shutter.style.display = "";
+      } else {
+        showFileFallback("Neues Foto wählen.");
+      }
+      retakeBtn.style.display = "none";
       useBtn.style.display = "none"; primaryRow.style.display = "none";
     }
     function useShot() {
@@ -2358,19 +2903,71 @@
     }
   }
 
+  // Fit (w,h) within a `max` longest-edge box, preserving aspect ratio.
+  function fitWithin(w, h, max) {
+    w = w || max; h = h || max;
+    var longest = Math.max(w, h);
+    if (longest <= max) return { w: Math.round(w), h: Math.round(h) };
+    var scale = max / longest;
+    return { w: Math.max(1, Math.round(w * scale)), h: Math.max(1, Math.round(h * scale)) };
+  }
+  // Decode an image File/Blob, downscale to ≤1280px longest edge, re-encode JPEG
+  // q0.75 — keeps the upload well under the hub's 1 MiB body cap (base64 adds
+  // ~33%). Resolves to the JPEG Blob; rejects if the image can't be decoded.
+  function downscaleToJpeg(file) {
+    return new Promise(function (resolve, reject) {
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function () {
+        try {
+          var fit = fitWithin(img.naturalWidth || img.width, img.naturalHeight || img.height, 1280);
+          var c = document.createElement("canvas");
+          c.width = fit.w; c.height = fit.h;
+          var ctx = c.getContext("2d");
+          ctx.drawImage(img, 0, 0, fit.w, fit.h);
+          c.toBlob(function (blob) {
+            try { URL.revokeObjectURL(url); } catch (e) {}
+            if (blob) resolve(blob); else reject(new Error("toBlob failed"));
+          }, "image/jpeg", 0.75);
+        } catch (e) { try { URL.revokeObjectURL(url); } catch (x) {} reject(e); }
+      };
+      img.onerror = function () { try { URL.revokeObjectURL(url); } catch (e) {} reject(new Error("decode failed")); };
+      img.src = url;
+    });
+  }
+
   // Upload a captured JPEG via the proxy → POST /api/photos/upload (bytes
-  // through the API, no R2 CORS dependency — the durable POS path).
+  // through the API, no R2 CORS dependency — the durable POS path). On failure
+  // we surface the REAL HTTP status text (code + statusText + any cloud message)
+  // instead of a generic line, so a 413 body-cap or 415 type is diagnosable on
+  // the shop floor. The image was already downscaled (≤1280px JPEG q0.75) so it
+  // stays under the hub's 1 MiB body cap even after base64 inflation.
   function uploadPhoto(productId, blob, isPrimary, done) {
     blobToBase64(blob).then(function (b64) {
       var payload = { dataBase64: b64, contentType: "image/jpeg", productId: productId, intent: "product" };
       if (isPrimary) payload.isPrimary = true;
-      return proxyJson("photos/upload", "POST", payload);
+      return proxy("photos/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+    }).then(function (r) {
+      return r.text().then(function (txt) {
+        if (r.ok) return;
+        var data = null;
+        try { data = txt ? JSON.parse(txt) : null; } catch (e) { /* non-JSON */ }
+        var cloudMsg = data && data.error && data.error.message;
+        // Real status text first (e.g. "413 Payload Too Large"), then any cloud detail.
+        var statusText = r.status + (r.statusText ? " " + r.statusText : "");
+        throw new Error("HTTP " + statusText + (cloudMsg ? " — " + cloudMsg : ""));
+      });
     }).then(function () {
       scanFeedback(true, "Foto hochgeladen", null);
       done(true);
     }).catch(function (err) {
-      scanFeedback(false, "Foto-Upload fehlgeschlagen", err.message || "");
-      done(false, err.message);
+      var m = (err && err.message) ? err.message : "Unbekannter Fehler";
+      scanFeedback(false, "Foto-Upload fehlgeschlagen", m);
+      done(false, m);
     });
   }
   function blobToBase64(blob) {

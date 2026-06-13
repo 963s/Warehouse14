@@ -331,6 +331,37 @@
   }
   .cart-empty { color: var(--fg-faint); text-align: center; padding: 1.25rem 1rem; }
 
+  /* Zweitkasse search row: search field + inline Scannen button. */
+  .zk-searchrow { display: flex; gap: .6rem; align-items: stretch; margin-bottom: 1rem; }
+  .zk-searchrow .search { margin-bottom: 0; flex: 1; }
+  .zk-searchrow .btn-ghost { flex: none; width: auto; min-width: 7rem; padding: 0 1rem; }
+
+  /* ── Bezahlen sheet (Zweitkasse cash finalize) ────────────────────────── */
+  .pay-total {
+    display: flex; align-items: baseline; justify-content: space-between;
+    padding: 1rem 1.1rem; border-radius: var(--radius-sm);
+    border: 1px solid var(--line); background: var(--bg-elev-2);
+  }
+  .pay-total .pt-l { font-size: 1.05rem; color: var(--fg-dim); }
+  .pay-total .pt-v {
+    font-size: 1.8rem; font-weight: 800; color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+  .pay-count { color: var(--fg-dim); font-size: .9rem; text-align: center; }
+
+  /* ── "Mehr" disclosure (capture-first add form) ───────────────────────── */
+  .more-toggle {
+    appearance: none; cursor: pointer; align-self: flex-start;
+    background: transparent; color: var(--accent); border: 1px solid var(--line);
+    font-weight: 700; font-size: .92rem; border-radius: 999px;
+    padding: .55rem 1rem; min-height: 44px;
+  }
+  .more-toggle:active { background: #221a08; }
+  .more-body { display: flex; flex-direction: column; gap: 1rem; }
+
+  /* ── File-input fallback (camera capture where getUserMedia is blocked) ── */
+  .cam-stage .file-pick { cursor: pointer; }
+
   /* ── Thumb-zone bottom bar (sticky primary action, ~56px reachable arc) ── */
   /* The screen content gets bottom padding so the fixed bar never covers it. */
   .has-bottombar { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 5.5rem); }

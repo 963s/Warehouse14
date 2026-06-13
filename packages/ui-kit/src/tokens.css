@@ -82,23 +82,39 @@
   --space-11: 80px;
   --space-12: 96px;
 
-  /* ─── Type scale — the canonical 3 sizes (brief §5c) ────────────────
-     Collapse stray inline font-sizes onto these. Three is the whole scale:
-       • --w14-text-body   15px  body / labels / list rows / inputs
-       • --w14-text-sub    20px  sub-headings / section titles / tile prices
-       • --w14-text-head   30px  screen titles / the money totals on payment
-     Two intentional aliases sit OUTSIDE the body↔head run, each load-bearing:
-       • --w14-text-caption 13px the smallest legible meta (uses ink-aged, not
-                                 faded, so 13px still clears AA) — captions, hints
-       • --w14-text-anchor  40px the single dominant element: the amount-/change-
-                                 due total on the payment screen (brief: "single
-                                 largest type", 80cm read). Use once per screen.
+  /* ─── Accessibility — touch targets + colour-role contract ──────────
+     Minimum tap target (WCAG 2.5.5 / elderly + child fingers): never let an
+     interactive control fall below --w14-touch-min. Use --w14-touch-comfortable
+     for primary money-path actions where a generous target matters most. */
+  --w14-touch-min: 44px;
+  --w14-touch-comfortable: 48px;
+
+  /* COLOUR-ROLE CONTRACT (accessibility):
+     • --w14-gold / --w14-gold-soft are DECORATIVE ONLY — hairlines, contour
+       traces, swashes. NEVER use them as a text colour or as a text-bearing
+       fill (white-on-gold is ~2.0:1 and FAILS WCAG AA).
+     • --w14-accent (#9a751f) is the AA-safe brass for any gold-toned control
+       that carries text (active chips, primary fills, gold-coloured labels). */
+
+  /* ─── Type scale — canonical sizes, now REAL and in rem ─────────────
+     Expressed in rem so all sizes ride the root font-size (17px base, and the
+     data-text-scale lg/xl levers below). The legacy 15px base mapped these to
+     ~13/15/20/30/40px; in rem on the new 17px base they grow with the user:
+       • --w14-text-meta    ≈12.75px (0.75rem floor — smallest legible meta)
+       • --w14-text-caption ≈13.8px  captions / hints (uses ink-aged for AA)
+       • --w14-text-body    17px     body / labels / list rows / inputs
+       • --w14-text-sub     ≈21.25px sub-headings / section titles / tile prices
+       • --w14-text-head    ≈29.75px screen titles / money totals on payment
+       • --w14-text-anchor  42.5px   the single dominant element (amount-/change-
+                                     due total; brief "single largest type",
+                                     80cm read). Use once per screen.
      Line-heights tuned for an 8/4 vertical rhythm. */
-  --w14-text-caption: 13px;
-  --w14-text-body: 15px;
-  --w14-text-sub: 20px;
-  --w14-text-head: 30px;
-  --w14-text-anchor: 40px;
+  --w14-text-meta: 0.75rem;
+  --w14-text-caption: 0.8125rem;
+  --w14-text-body: 1rem;
+  --w14-text-sub: 1.25rem;
+  --w14-text-head: 1.75rem;
+  --w14-text-anchor: 2.5rem;
   --w14-leading-tight: 1.2; /* heads / anchors */
   --w14-leading-snug: 1.35; /* sub-heads */
   --w14-leading-body: 1.55; /* body (matches the base reset) */
@@ -149,6 +165,21 @@
 }
 
 /* ────────────────────────────────────────────────────────────────────
+ * User text-scale lever — bumps the root font-size so EVERY rem-based size
+ * (type scale, paddings expressed in rem, etc.) grows together. Set
+ * data-text-scale on <html> from a Settings toggle. Theme-independent.
+ *   (default)      17px  comfortable base for elderly readability
+ *   data-text-scale='lg'  18px
+ *   data-text-scale='xl'  20px
+ * ──────────────────────────────────────────────────────────────────── */
+:root[data-text-scale="lg"] {
+  font-size: 18px;
+}
+:root[data-text-scale="xl"] {
+  font-size: 20px;
+}
+
+/* ────────────────────────────────────────────────────────────────────
  * Base reset — parchment background everywhere, ink text, font defaults
  * ──────────────────────────────────────────────────────────────────── */
 html,
@@ -156,7 +187,10 @@ body {
   background-color: var(--w14-parchment);
   color: var(--w14-ink);
   font-family: var(--w14-font-body);
-  font-size: 15px;
+  /* Base font-size raised 15px → 17px (≈+13%) for elderly readability —
+     every rem value across the app rides this root. The data-text-scale
+     levers below let the user push it further. */
+  font-size: 17px;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
