@@ -53,11 +53,16 @@
     ["ANTIQUE_RESTORED", "Antik – restauriert"],
     ["ANTIQUE_AS_FOUND", "Antik – im Fundzustand"]
   ];
-  // Tax treatment codes accepted by the cloud (kept minimal + labelled).
+  // Tax treatment codes — MUST match the cloud's TaxTreatmentCode union exactly
+  // (MARGIN_25A / STANDARD_19 / REDUCED_7 / INVESTMENT_GOLD_25C / REVERSE_CHARGE_13B);
+  // any other value makes POST /products 400. Differenzbesteuerung §25a is the
+  // default (the common case for a used-goods/gold/antiques dealer).
   var TAX_CODES = [
-    ["DIFF_25A",  "Differenzbesteuerung §25a"],
-    ["REGULAR",   "Regelbesteuerung 19 %"],
-    ["EXEMPT_25C","Steuerbefreit §25c (Anlagegold)"]
+    ["MARGIN_25A",          "Differenzbesteuerung §25a"],
+    ["STANDARD_19",         "Regelbesteuerung 19 %"],
+    ["REDUCED_7",           "Ermäßigt 7 %"],
+    ["INVESTMENT_GOLD_25C", "Anlagegold §25c (steuerfrei)"],
+    ["REVERSE_CHARGE_13B",  "Reverse-Charge §13b"]
   ];
 
   // Appointment types (cloud enum → German label + tile icon). Mirrors
@@ -1794,7 +1799,7 @@
     var busy = false;
     var batchCount = 0;
     var batchCents = 0;
-    var pendingPhoto = null; // a JPEG Blob captured BEFORE the product exists.
+    var pendingPhotos = []; // JPEG Blobs captured BEFORE the product exists (first = Hauptbild).
 
     function field(labelTxt, node, required) {
       return el("div", { class: "fl" }, [
@@ -1829,7 +1834,11 @@
     // Restore sticky carry-forward context (NOT the item-unique fields).
     if (sticky.itemType) typeS.value = sticky.itemType;
     if (sticky.condition) condS.value = sticky.condition;
-    if (sticky.taxTreatmentCode) taxS.value = sticky.taxTreatmentCode;
+    // Only restore a tax code the cloud still accepts — drop a legacy value so
+    // the select never lands on an empty/invalid option.
+    if (sticky.taxTreatmentCode && TAX_CODE_VALUES[sticky.taxTreatmentCode]) {
+      taxS.value = sticky.taxTreatmentCode;
+    }
     if (sticky.locationStorageUnit) unitI.value = sticky.locationStorageUnit;
     if (sticky.locationDrawer) drwI.value = sticky.locationDrawer;
     if (sticky.locationPosition) posI.value = sticky.locationPosition;
@@ -1847,13 +1856,21 @@
     // Foto button: capture an image NOW (held in pendingPhoto) so the operator
     // shoots first and types later; the photo uploads after the product exists.
     var photoStatus = el("div", { class: "scan-help" }, "Noch kein Foto.");
+    function paintPhotoStatus() {
+      var n = pendingPhotos.length;
+      photoStatus.textContent = n === 0 ? "Noch kein Foto."
+        : (n === 1 ? "1 Foto bereit — wird beim Anlegen hochgeladen (Hauptbild)."
+                   : n + " Fotos bereit — werden beim Anlegen hochgeladen (1. = Hauptbild).");
+    }
     var photoBtn = el("button", { class: "btn-ghost", type: "button",
       onclick: function () {
-        openCameraSheet(function (blob /*, isPrimary */) {
-          pendingPhoto = blob;
-          photoStatus.textContent = "Foto bereit — wird beim Anlegen hochgeladen.";
-        });
-      } }, "📷 Foto aufnehmen");
+        // Multi-capture: shoot several angles in one sitting; the first is the
+        // Hauptbild. All upload after the product is created.
+        openCameraSheet(function (blob) {
+          pendingPhotos.push(blob);
+          paintPhotoStatus();
+        }, { multi: true });
+      } }, "📷 Fotos aufnehmen");
 
     var saveBtn = el("button", { class: "btn-primary inline", type: "button",
       onclick: function () { submit(false); } }, "Speichern & weiter");
@@ -1887,11 +1904,14 @@
       if (!isMoney(listI.value)) { setMsg("bad", "Verkaufspreis ist keine gültige Zahl."); return; }
       if (wgtI.value.trim() && !isMoney(wgtI.value)) { setMsg("bad", "Gewicht ist keine gültige Zahl."); return; }
 
+      // Guard the tax code: a stale localStorage value (or an empty select) must
+      // never reach the cloud as an invalid enum → falls back to §25a.
+      var taxCode = TAX_CODE_VALUES[taxS.value] ? taxS.value : "MARGIN_25A";
       var payload = {
         sku: sku,
         itemType: typeS.value,
         condition: condS.value,
-        taxTreatmentCode: taxS.value,
+        taxTreatmentCode: taxCode,
         acquisitionCostEur: acqStr ? normalizeDecimal(acqStr) : "0",
         listPriceEur: normalizeDecimal(listI.value),
         name: name
@@ -1913,34 +1933,34 @@
 
         // Persist sticky carry-forward for the next item.
         saveSticky({
-          itemType: typeS.value, condition: condS.value, taxTreatmentCode: taxS.value,
+          itemType: typeS.value, condition: condS.value, taxTreatmentCode: taxCode,
           locationStorageUnit: unitI.value.trim(), locationDrawer: drwI.value.trim(),
           locationPosition: posI.value.trim()
         });
 
-        // Photo: upload the one taken inline (primary), else offer to take one.
-        if (pendingPhoto && newId) {
-          var blob = pendingPhoto;
-          pendingPhoto = null;
-          setMsg("info", "Angelegt: " + (res.sku || sku) + " — Foto wird hochgeladen…");
-          uploadPhoto(newId, blob, true, function (ok, message) {
-            if (ok) setMsg("ok", "Angelegt: " + (res.sku || sku) + " · Foto hochgeladen.");
-            else setMsg("bad", "Angelegt, aber Foto fehlgeschlagen: " + (message || ""));
+        // Photos: upload every one taken inline (first = Hauptbild), else offer
+        // a one-tap multi-capture right after creation.
+        if (pendingPhotos.length && newId) {
+          var blobs = pendingPhotos; pendingPhotos = [];
+          setMsg("info", "Angelegt: " + (res.sku || sku) + " — " + blobs.length + " Foto(s) werden hochgeladen…");
+          uploadPhotos(newId, blobs, function (okCount, failCount) {
+            if (!failCount) setMsg("ok", "Angelegt: " + (res.sku || sku) + " · " + okCount + " Foto(s) hochgeladen.");
+            else setMsg("bad", "Angelegt: " + (res.sku || sku) + " · " + okCount + " Foto(s) ok, " + failCount + " fehlgeschlagen.");
           });
         } else if (newId) {
-          // Offer a one-tap photo right after creation (capture-first habit).
           clear(msg);
           msg.appendChild(el("div", { class: "notice ok" }, "Angelegt: " + (res.sku || sku) +
             " (Status " + (res.status || "DRAFT") + ")."));
           msg.appendChild(el("div", { class: "btn-row" }, [
             el("button", { class: "btn-ghost", type: "button", onclick: function () {
+              var taken = 0;
               openCameraSheet(function (blob2) {
-                uploadPhoto(newId, blob2, true, function (ok, message) {
-                  if (ok) setMsg("ok", "Foto hochgeladen für " + (res.sku || sku) + ".");
+                uploadPhoto(newId, blob2, taken === 0, function (ok, message) {
+                  if (ok) { taken++; setMsg("ok", taken + " Foto(s) hochgeladen für " + (res.sku || sku) + "."); }
                   else setMsg("bad", "Foto fehlgeschlagen: " + (message || ""));
                 });
-              });
-            } }, "📷 Foto aufnehmen")
+              }, { multi: true });
+            } }, "📷 Fotos aufnehmen")
           ]));
         } else {
           setMsg("ok", "Angelegt: " + (res.sku || sku) + " (Status " + (res.status || "DRAFT") + ").");
@@ -1954,7 +1974,7 @@
         // Clear only item-unique fields (brief §3 EAS: N-field → 3-field for 2…n).
         skuI.value = ""; barI.value = ""; nameI.value = "";
         acqI.value = ""; listI.value = ""; wgtI.value = ""; pubChk.checked = false;
-        photoStatus.textContent = "Noch kein Foto.";
+        pendingPhotos = []; paintPhotoStatus();
         try { nameI.focus(); } catch (e) {}
       }).catch(function (err) {
         busy = false; saveBtn.disabled = false; saveOnceBtn.disabled = false;
@@ -2891,13 +2911,16 @@
 
     var photoBtn = el("button", { class: "btn-ghost", type: "button",
       onclick: function () {
-        openCameraSheet(function (blob, isPrimary) {
-          uploadPhoto(p.id, blob, isPrimary, function (ok, message) {
+        // Multi-capture: each shot uploads to this product immediately. The
+        // server keeps the first-ever photo as Hauptbild; the operator can pick a
+        // different one from the grid below.
+        openCameraSheet(function (blob) {
+          uploadPhoto(p.id, blob, false, function (ok, message) {
             if (ok) { setMsg("ok", "Foto hochgeladen."); refreshPhotos(); }
             else setMsg("bad", message || "Foto-Upload fehlgeschlagen.");
           });
-        });
-      } }, "📷 Foto aufnehmen");
+        }, { multi: true });
+      } }, "📷 Fotos aufnehmen");
 
     var labelBtn = el("button", { class: "btn-ghost", type: "button",
       onclick: function () {
@@ -2959,7 +2982,13 @@
   // ── Camera capture sheet (phone camera → JPEG blob) ────────────────
   // A full-screen sheet: live preview → shutter → review → "Verwenden" with an
   // optional "als Hauptbild" toggle. On Use, hands the blob to `onCapture`.
-  function openCameraSheet(onCapture) {
+  // opts.multi === true keeps the sheet open after each "Verwenden" so the
+  // operator can shoot SEVERAL angles in one sitting; each fires onCapture and a
+  // "Fertig (N)" button closes when done (the caller decides the Hauptbild).
+  function openCameraSheet(onCapture, opts) {
+    opts = opts || {};
+    var multi = !!opts.multi;
+    var captureCount = 0;
     var streamRef = null;
     var captured = null; // Blob once shot/picked (already downscaled).
     var primaryChk = el("input", { type: "checkbox", id: "cam-primary", checked: "" });
@@ -2970,7 +2999,7 @@
 
     var shutter = el("button", { class: "shutter", type: "button", "aria-label": "Foto aufnehmen", onclick: shoot });
     var retakeBtn = el("button", { class: "btn-ghost", type: "button", style: "display:none", onclick: retake }, "Neu aufnehmen");
-    var useBtn = el("button", { class: "btn-primary inline", type: "button", style: "display:none", onclick: useShot }, "Verwenden");
+    var useBtn = el("button", { class: "btn-primary inline", type: "button", style: "display:none", onclick: useShot }, multi ? "Hinzufügen" : "Verwenden");
     var primaryRow = el("label", { class: "toggle", for: "cam-primary", style: "display:none; justify-content:center" }, [
       primaryChk, el("span", { class: "track" }), el("span", { class: "tlab" }, "Als Hauptbild")
     ]);
@@ -2989,7 +3018,10 @@
       } }, "✂ Zuschneiden");
     var editRow = el("div", { class: "btn-row", style: "display:none" }, [ rotateBtn, squareBtn ]);
 
-    var controls = el("div", { class: "cam-controls" }, [ shutter ]);
+    // In multi mode a "Fertig" button (with a running count) closes the sheet.
+    var doneBtn = el("button", { class: "btn-primary inline", type: "button",
+      style: multi ? "" : "display:none", onclick: function () { close(); } }, "Fertig");
+    var controls = el("div", { class: "cam-controls" }, multi ? [ shutter, doneBtn ] : [ shutter ]);
 
     // The hub serves http:// (no TLS on the LAN origin), so on iOS/Android
     // getUserMedia is BLOCKED (insecure context). In that case — or wherever the
@@ -3070,7 +3102,7 @@
       paintReviewImage();
       shutter.style.display = "none";
       retakeBtn.style.display = ""; useBtn.style.display = "";
-      primaryRow.style.display = ""; editRow.style.display = "";
+      primaryRow.style.display = multi ? "none" : ""; editRow.style.display = "";
     }
 
     function shoot() {
@@ -3103,9 +3135,15 @@
     function useShot() {
       if (!captured) return;
       var blob = captured;
-      var isPrimary = primaryChk.checked;
-      close();
-      onCapture(blob, isPrimary);
+      if (multi) {
+        captureCount += 1;
+        onCapture(blob, captureCount === 1);
+        doneBtn.textContent = "Fertig (" + captureCount + ")";
+        retake(); // back to the capture state, ready for the next angle
+      } else {
+        close();
+        onCapture(blob, primaryChk.checked);
+      }
     }
     function close() {
       try { if (streamRef) streamRef.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
@@ -3178,12 +3216,26 @@
     });
   }
 
+  // Upload several photos to one product IN SEQUENCE (the first becomes the
+  // Hauptbild). Sequential keeps each base64 body small and gives the server a
+  // deterministic primary. Reports (okCount, failCount) when all are done.
+  function uploadPhotos(productId, blobs, onDone) {
+    var ok = 0, fail = 0, i = 0;
+    (function next() {
+      if (i >= blobs.length) { if (onDone) onDone(ok, fail); return; }
+      uploadPhoto(productId, blobs[i], i === 0, function (good) {
+        if (good) ok++; else fail++;
+        i += 1; next();
+      });
+    })();
+  }
+
   // Upload a captured JPEG via the proxy → POST /api/photos/upload (bytes
   // through the API, no R2 CORS dependency — the durable POS path). On failure
   // we surface the REAL HTTP status text (code + statusText + any cloud message)
   // instead of a generic line, so a 413 body-cap or 415 type is diagnosable on
   // the shop floor. The image was already downscaled (≤1280px JPEG q0.75) so it
-  // stays under the hub's 1 MiB body cap even after base64 inflation.
+  // stays under the hub's 4 MiB body cap even after base64 inflation.
   function uploadPhoto(productId, blob, isPrimary, done) {
     blobToBase64(blob).then(function (b64) {
       var payload = { dataBase64: b64, contentType: "image/jpeg", productId: productId, intent: "product" };
