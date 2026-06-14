@@ -47,9 +47,10 @@ export async function reserve(db: AnyDb, input: ReserveInput): Promise<ReserveRe
            reserved_by_user_id    = ${userId}::uuid,
            reserved_at            = now(),
            reservation_expires_at = CASE ${channel}::reservation_channel
-             WHEN 'POS'        THEN NULL
-             WHEN 'STOREFRONT' THEN now() + INTERVAL '15 minutes'
-             WHEN 'EBAY'       THEN now() + INTERVAL '10 minutes'
+             WHEN 'POS'             THEN NULL
+             WHEN 'STOREFRONT'      THEN now() + INTERVAL '15 minutes'
+             WHEN 'EBAY'            THEN now() + INTERVAL '10 minutes'
+             WHEN 'WEB_RESERVATION' THEN now() + INTERVAL '3 days'
            END
      WHERE id     = ${productId}::uuid
        AND status = 'AVAILABLE'

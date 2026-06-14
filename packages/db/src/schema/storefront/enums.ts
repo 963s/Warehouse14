@@ -4,7 +4,13 @@
 
 import { pgEnum } from 'drizzle-orm/pg-core';
 
-export const cartStatus = pgEnum('cart_status', ['ACTIVE', 'CHECKOUT', 'ABANDONED', 'CONVERTED']);
+export const cartStatus = pgEnum('cart_status', [
+  'ACTIVE',
+  'CHECKOUT',
+  'ABANDONED',
+  'CONVERTED',
+  'RESERVED',
+]);
 
 export const paymentProvider = pgEnum('payment_provider', ['STRIPE', 'PAYPAL', 'MOLLIE']);
 

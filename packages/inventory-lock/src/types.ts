@@ -5,7 +5,7 @@
  * thing every caller must understand. Only widen when a real consumer needs it.
  */
 
-export type Channel = 'POS' | 'STOREFRONT' | 'EBAY';
+export type Channel = 'POS' | 'STOREFRONT' | 'EBAY' | 'WEB_RESERVATION';
 
 /** Snapshot of a successful reservation, returned by `reserve()`. */
 export interface Reservation {

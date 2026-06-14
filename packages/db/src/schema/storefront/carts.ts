@@ -33,6 +33,8 @@ export const carts = pgTable(
     reservationSessionId: uuid('reservation_session_id').unique(),
     checkoutStartedAt: timestamp('checkout_started_at', { withTimezone: true }),
     checkoutExpiresAt: timestamp('checkout_expires_at', { withTimezone: true }),
+    /** When a reserve-and-pickup request was submitted (cart status RESERVED). */
+    reservedAt: timestamp('reserved_at', { withTimezone: true }),
     convertedToTransactionId: uuid('converted_to_transaction_id')
       .unique()
       .references(() => transactions.id),
