@@ -368,13 +368,55 @@
     document.body.appendChild(sheet);
   }
 
+  // ── Transport (timeouts + honest connection state) ─────────────────
+  // EVERY companion→mother fetch goes through fetchT so a hung request — an
+  // asleep mother, a Wi-Fi roam, a half-open socket — ABORTS after a bounded
+  // wait instead of freezing the screen forever. connState drives the topbar
+  // connection dot so staff always see the live link state.
+  var connState = "ok"; // "ok" | "down"
+  function fetchT(url, opts, timeoutMs) {
+    opts = opts || {};
+    var ms = timeoutMs || 12000;
+    var ctl = ("AbortController" in window) ? new AbortController() : null;
+    if (ctl) opts.signal = ctl.signal;
+    var timer = setTimeout(function () { try { if (ctl) ctl.abort(); } catch (e) {} }, ms);
+    function done() { try { clearTimeout(timer); } catch (e) {} }
+    return fetch(url, opts).then(function (r) { done(); return r; },
+      function (err) { done(); throw err; });
+  }
+  function setConn(state) {
+    if (state === connState) return;
+    connState = state;
+    var dots = document.querySelectorAll(".conndot");
+    Array.prototype.forEach.call(dots, function (d) {
+      d.className = "conndot " + state;
+      var t = state === "ok" ? "Verbunden mit der Hauptkasse" : "Keine Verbindung zur Hauptkasse";
+      d.setAttribute("title", t); d.setAttribute("aria-label", t);
+    });
+  }
+  // Cheap connectivity re-probe — re-run after the phone wakes / rejoins Wi-Fi so
+  // the link self-heals without the operator touching anything.
+  function probeConn() {
+    if (!token) return;
+    getCart().then(function () { setConn("ok"); }).catch(function () { /* error path set the dot */ });
+  }
+  var resumeWired = false;
+  function wireResume() {
+    if (resumeWired) return; resumeWired = true;
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState === "visible") probeConn();
+    });
+    window.addEventListener("online", probeConn);
+    window.addEventListener("pageshow", probeConn);
+  }
+
   // ── API (companion -> mother) ──────────────────────────────────────
   function pair(code, chosenRole) {
-    return fetch("/pair", {
+    return fetchT("/pair", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ code: code, role: chosenRole })
-    }).then(function (r) {
+    }, 10000).then(function (r) {
       if (r.status === 429) throw new Error("Zu viele Versuche. Bitte kurz warten.");
       if (r.status === 403) throw new Error("Code oder Rolle ungültig.");
       if (!r.ok) throw new Error("Kopplung fehlgeschlagen (" + r.status + ").");
@@ -382,25 +424,30 @@
     });
   }
   function getCart() {
-    return fetch("/cart", { headers: { "X-Companion-Token": token } })
+    return fetchT("/cart", { headers: { "X-Companion-Token": token } }, 8000)
       .then(function (r) {
+        setConn("ok"); // we reached the mother — the link is up regardless of status.
         if (r.status === 401 || r.status === 403) { logout(); throw new Error("Sitzung abgelaufen."); }
         if (!r.ok) throw new Error("Warenkorb nicht verfügbar.");
         return r.json();
-      });
+      }, function (err) { setConn("down"); throw err; });
   }
   function proxy(path, opts) {
     opts = opts || {};
     var headers = opts.headers || {};
     headers["X-Companion-Token"] = token;
-    return fetch("/api/proxy/" + path, {
+    return fetchT("/api/proxy/" + path, {
       method: opts.method || "GET",
       headers: headers,
       body: opts.body
-    }).then(function (r) {
+    }, opts.timeoutMs).then(function (r) {
+      setConn("ok");
+      // 401 = the companion token itself was rejected → genuine re-pair. A stale
+      // MOTHER cloud session is mapped by the hub to 503 (handled by callers as
+      // "Hauptkasse neu anmelden"), so it never logs THIS device out.
       if (r.status === 401) { logout(); throw new Error("Sitzung abgelaufen."); }
       return r;
-    });
+    }, function (err) { setConn("down"); throw err; });
   }
   // POST/PUT/PATCH JSON through the proxy. Resolves to the parsed body on 2xx;
   // rejects with a German message (with the cloud's STEP_UP hint surfaced)
@@ -421,6 +468,11 @@
         }
         if (r.status === 403) {
           throw new Error("Diese Aktion ist auf diesem Gerät nicht erlaubt.");
+        }
+        // The hub maps a stale/rejected MOTHER cloud session to 503 — the phone is
+        // fine, the Hauptkasse just needs a fresh sign-in. Say so plainly.
+        if (r.status === 502 || r.status === 503) {
+          throw new Error("Keine Verbindung zur Hauptkasse. Bitte prüfen, ob die Hauptkasse an und angemeldet ist.");
         }
         var msg = (data && data.error && data.error.message) ||
                   "Vorgang fehlgeschlagen (" + r.status + ").";
@@ -527,8 +579,12 @@
       "Warehouse14 ",
       el("b", {}, "Begleiter")
     ]);
+    var connTxt = connState === "ok" ? "Verbunden mit der Hauptkasse" : "Keine Verbindung zur Hauptkasse";
+    var dot = el("span", { class: "conndot " + connState, role: "img", title: connTxt, "aria-label": connTxt,
+      onclick: function () { probeConn(); } });
     return el("header", { class: "topbar" }, [
       brand,
+      dot,
       meta ? el("span", { class: "role-pill" }, meta.label) : null,
       el("button", { class: "btn-switch", type: "button",
         "aria-label": "Rolle wechseln und abmelden",
@@ -2991,6 +3047,7 @@
     var captureCount = 0;
     var streamRef = null;
     var captured = null; // Blob once shot/picked (already downscaled).
+    var reviewUrl = null; // object URL currently shown in the review <img>.
     var primaryChk = el("input", { type: "checkbox", id: "cam-primary", checked: "" });
 
     var video = el("video", { autoplay: "", muted: "", playsinline: "" });
@@ -3047,7 +3104,14 @@
 
     if (liveCameraUsable) {
       navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1920 } } })
-        .then(function (stream) { streamRef = stream; video.srcObject = stream; })
+        .then(function (stream) {
+          streamRef = stream;
+          video.srcObject = stream;
+          video.muted = true;             // IDL property — the attribute alone is ignored by the autoplay policy.
+          var pr = video.play();          // iOS needs an explicit play() or the preview stays black.
+          if (pr && pr.catch) pr.catch(function () {});
+          activeCamTeardown = close;       // a role/tab switch must stop this stream too.
+        })
         .catch(function () { showFileFallback("Kamerazugriff nicht erlaubt — Foto aus der Galerie/Kamera wählen."); });
     } else {
       // Insecure context or no getUserMedia → straight to the file fallback.
@@ -3064,11 +3128,13 @@
       onchange: function (e) {
         var f = e.target.files && e.target.files[0];
         if (!f) return;
+        showProcessing(); // never leave the stage a bare black box during decode.
         downscaleToJpeg(f).then(function (blob) {
           captured = blob;
           showReview(blob);
         }).catch(function () {
-          // If canvas decode fails, fall back to the raw file as-is.
+          // Black-frame guard tripped or decode failed → keep the raw file as-is
+          // (a browser <img> still shows it fine; only canvas draws can fail).
           captured = f;
           showReview(f);
         });
@@ -3085,10 +3151,29 @@
       ]));
       shutter.style.display = "none";
     }
+    // A centred spinner + label — shown while a frame is being processed or the
+    // review image is still decoding, so the black stage never reads as "broken".
+    function busyStage(label) {
+      clear(stage);
+      stage.appendChild(el("div", { class: "ph" }, [
+        el("div", { class: "spinner", "aria-hidden": "true" }),
+        el("div", { style: "margin-top:.85rem" }, label)
+      ]));
+    }
+    function showProcessing() { busyStage("Foto wird verarbeitet…"); shutter.style.display = "none"; }
+    // Paint the captured blob, but only SWAP it in once the <img> has decoded —
+    // otherwise iOS shows the #000 stage (a black flash) until the image paints.
     function paintReviewImage() {
+      busyStage("Bild wird geladen…");
+      var url = URL.createObjectURL(captured);
       var img = el("img", { alt: "Aufnahme" });
-      img.src = URL.createObjectURL(captured);
-      clear(stage); stage.appendChild(img);
+      img.onload = function () {
+        try { clear(stage); stage.appendChild(img); } catch (e) {}
+        if (reviewUrl && reviewUrl !== url) { try { URL.revokeObjectURL(reviewUrl); } catch (x) {} }
+        reviewUrl = url;
+      };
+      img.onerror = function () { try { URL.revokeObjectURL(url); } catch (e) {} };
+      img.src = url;
     }
     function reEdit() {
       if (!origBlob) return;
@@ -3107,6 +3192,12 @@
 
     function shoot() {
       // Live path: grab the frame, then downscale to the same target as files.
+      // Guard: videoWidth is 0 until loadedmetadata — drawing then yields a black
+      // frame, so wait for the camera to be ready.
+      if (!video.videoWidth || !video.videoHeight) {
+        scanFeedback(false, "Kamera lädt noch", "Bitte einen Moment warten und erneut tippen.");
+        return;
+      }
       var w = video.videoWidth || 1280;
       var h = video.videoHeight || 1280;
       var fit = fitWithin(w, h, 1280);
@@ -3121,6 +3212,7 @@
     }
     function retake() {
       captured = null;
+      if (reviewUrl) { try { URL.revokeObjectURL(reviewUrl); } catch (e) {} reviewUrl = null; }
       try { fileInput.value = ""; } catch (e) {}
       clear(stage);
       if (liveCameraUsable && streamRef) {
@@ -3147,6 +3239,8 @@
     }
     function close() {
       try { if (streamRef) streamRef.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
+      if (reviewUrl) { try { URL.revokeObjectURL(reviewUrl); } catch (e) {} reviewUrl = null; }
+      if (activeCamTeardown === close) activeCamTeardown = null;
       try { sheet.remove(); } catch (e) {}
     }
   }
@@ -3159,61 +3253,118 @@
     var scale = max / longest;
     return { w: Math.max(1, Math.round(w * scale)), h: Math.max(1, Math.round(h * scale)) };
   }
-  // Apply review-state edits to an already-downscaled JPEG: rotate in 90° steps
-  // and/or crop to the centre square, then re-encode. Derives from the ORIGINAL
-  // frame each call (no compounding loss). Result stays ≤1280px so the upload
-  // remains small. Resolves to a JPEG Blob; rejects on decode failure.
-  function transformImage(blob, rotateDeg, square) {
+  // ── Image processing core (iOS-safe) ───────────────────────────────
+  // iOS WebKit silently draws a BLACK frame when a single drawImage samples a
+  // source larger than ~16.7M px — i.e. any 12–48MP iPhone photo. So we (1) await
+  // img.decode() (onload can fire before WebKit has decoded the bitmap → a black
+  // draw), (2) downscale by TILING the source into horizontal bands so no single
+  // drawImage samples more than ~4M px, and (3) probe the result and reject an
+  // all-black frame so a silent failure never saves or shows a black photo.
+  var IMG_MAX_EDGE = 1280;        // upload target, longest edge.
+  var IMG_STEP_AREA = 4000000;    // ~4M px per drawImage draws reliably on iOS.
+
+  // Decode a File/Blob to a fully-decoded image. Resolves { img, url, w, h }; the
+  // caller's renderJpeg revokes `url`. Awaits decode() so the bitmap is canvas-ready.
+  function decodeImage(blob) {
     return new Promise(function (resolve, reject) {
       var url = URL.createObjectURL(blob);
       var img = new Image();
-      img.onload = function () {
-        try {
-          var iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
-          var sx = 0, sy = 0, sw = iw, sh = ih;
-          if (square) { var s = Math.min(iw, ih); sx = (iw - s) / 2; sy = (ih - s) / 2; sw = s; sh = s; }
-          var rot = ((rotateDeg % 360) + 360) % 360;
-          var swapped = (rot === 90 || rot === 270);
-          var c = document.createElement("canvas");
-          c.width = swapped ? sh : sw;
-          c.height = swapped ? sw : sh;
-          var ctx = c.getContext("2d");
-          ctx.translate(c.width / 2, c.height / 2);
-          ctx.rotate(rot * Math.PI / 180);
-          ctx.drawImage(img, sx, sy, sw, sh, -sw / 2, -sh / 2, sw, sh);
-          c.toBlob(function (out) {
-            try { URL.revokeObjectURL(url); } catch (e) {}
-            if (out) resolve(out); else reject(new Error("toBlob failed"));
-          }, "image/jpeg", 0.8);
-        } catch (e) { try { URL.revokeObjectURL(url); } catch (x) {} reject(e); }
+      var settled = false;
+      function ok() {
+        if (settled) return; settled = true;
+        resolve({ img: img, url: url, w: img.naturalWidth || img.width, h: img.naturalHeight || img.height });
+      }
+      img.onload = function () { if (img.decode) { img.decode().then(ok, ok); } else ok(); };
+      img.onerror = function () {
+        if (settled) return; settled = true;
+        try { URL.revokeObjectURL(url); } catch (e) {}
+        reject(new Error("decode failed"));
       };
-      img.onerror = function () { try { URL.revokeObjectURL(url); } catch (e) {} reject(new Error("decode failed")); };
       img.src = url;
     });
   }
-  // Decode an image File/Blob, downscale to ≤1280px longest edge, re-encode JPEG
-  // q0.75 — keeps the upload well under the hub's 1 MiB body cap (base64 adds
-  // ~33%). Resolves to the JPEG Blob; rejects if the image can't be decoded.
-  function downscaleToJpeg(file) {
-    return new Promise(function (resolve, reject) {
-      var url = URL.createObjectURL(file);
-      var img = new Image();
-      img.onload = function () {
-        try {
-          var fit = fitWithin(img.naturalWidth || img.width, img.naturalHeight || img.height, 1280);
-          var c = document.createElement("canvas");
-          c.width = fit.w; c.height = fit.h;
-          var ctx = c.getContext("2d");
-          ctx.drawImage(img, 0, 0, fit.w, fit.h);
-          c.toBlob(function (blob) {
-            try { URL.revokeObjectURL(url); } catch (e) {}
-            if (blob) resolve(blob); else reject(new Error("toBlob failed"));
-          }, "image/jpeg", 0.75);
-        } catch (e) { try { URL.revokeObjectURL(url); } catch (x) {} reject(e); }
-      };
-      img.onerror = function () { try { URL.revokeObjectURL(url); } catch (e) {} reject(new Error("decode failed")); };
-      img.src = url;
+  // Draw a (possibly huge) decoded source into a dW×dH context in horizontal
+  // bands, so no single drawImage samples more than ~IMG_STEP_AREA px (the iOS
+  // black-frame guard). `sx,sy,sw,sh` is the source rectangle (for centre-crop).
+  function drawTiled(ctx, img, sx, sy, sw, sh, dW, dH) {
+    var bandSrcH = Math.max(1, Math.floor(IMG_STEP_AREA / Math.max(1, sw)));
+    var scaleY = dH / sh;
+    var y = 0;
+    while (y < sh) {
+      var bh = Math.min(bandSrcH, sh - y);
+      var dy = Math.round(y * scaleY);
+      var dh = Math.max(1, Math.round(bh * scaleY));
+      ctx.drawImage(img, sx, sy + y, sw, bh, 0, dy, dW, dh);
+      y += bh;
+    }
+  }
+  // True iff a sparse grid of the canvas is essentially black (a failed draw). A
+  // real photo always carries sensor noise/highlights, so this only fires on the
+  // genuine all-black iOS failure — never on a dark-but-real shot.
+  function canvasLooksBlack(canvas) {
+    try {
+      var ctx = canvas.getContext("2d"), w = canvas.width, h = canvas.height;
+      var pts = [[.5, .5], [.25, .25], [.75, .25], [.25, .75], [.75, .75], [.5, .12], [.5, .88]];
+      var lit = 0, i;
+      for (i = 0; i < pts.length; i++) {
+        var x = Math.min(w - 1, Math.max(0, Math.floor(pts[i][0] * w)));
+        var yy = Math.min(h - 1, Math.max(0, Math.floor(pts[i][1] * h)));
+        var d = ctx.getImageData(x, yy, 1, 1).data;
+        if (d[0] + d[1] + d[2] > 24) lit++;
+      }
+      return lit === 0;
+    } catch (e) { return false; } // can't probe → assume the frame is fine.
+  }
+  // Decode → downscale (tiled) → optional 90°-step rotate + centre-square crop →
+  // JPEG. Rejects on a black/failed frame so the caller keeps the raw file.
+  function renderJpeg(blob, opts) {
+    opts = opts || {};
+    var maxEdge = opts.maxEdge || IMG_MAX_EDGE;
+    var rot = (((opts.rotate || 0) % 360) + 360) % 360;
+    var square = !!opts.square;
+    var quality = opts.quality != null ? opts.quality : 0.8;
+    return decodeImage(blob).then(function (d) {
+      function cleanup() { try { URL.revokeObjectURL(d.url); } catch (e) {} }
+      try {
+        var iw = d.w, ih = d.h;
+        var sx = 0, sy = 0, sw = iw, sh = ih;
+        if (square) { var s = Math.min(iw, ih); sx = (iw - s) / 2; sy = (ih - s) / 2; sw = s; sh = s; }
+        var fit = fitWithin(sw, sh, maxEdge);
+        var base = document.createElement("canvas");
+        base.width = fit.w; base.height = fit.h;
+        drawTiled(base.getContext("2d"), d.img, sx, sy, sw, sh, fit.w, fit.h);
+        var out = base;
+        if (rot === 90 || rot === 180 || rot === 270) {
+          var swapped = (rot === 90 || rot === 270);
+          var rc = document.createElement("canvas");
+          rc.width = swapped ? base.height : base.width;
+          rc.height = swapped ? base.width : base.height;
+          var rctx = rc.getContext("2d");
+          rctx.translate(rc.width / 2, rc.height / 2);
+          rctx.rotate(rot * Math.PI / 180);
+          rctx.drawImage(base, -base.width / 2, -base.height / 2);
+          out = rc;
+        }
+        if (canvasLooksBlack(out)) { cleanup(); return Promise.reject(new Error("black frame")); }
+        return new Promise(function (resolve, reject) {
+          out.toBlob(function (b) {
+            cleanup();
+            if (b && b.size > 1200) resolve(b); else reject(new Error("encode failed"));
+          }, "image/jpeg", quality);
+        });
+      } catch (e) { cleanup(); return Promise.reject(e); }
     });
+  }
+  // Re-derive the review image from the ORIGINAL frame with rotate/crop applied
+  // (the original is already ≤1280px, so this stays cheap and safe).
+  function transformImage(blob, rotateDeg, square) {
+    return renderJpeg(blob, { rotate: rotateDeg, square: square, quality: 0.8 });
+  }
+  // Decode + downscale a captured/picked File to an upload-ready JPEG (≤1280px,
+  // q0.75 — base64 of this stays well under the hub's 4 MiB body cap). Rejects so
+  // the caller can keep the raw file rather than save a black frame.
+  function downscaleToJpeg(file) {
+    return renderJpeg(file, { quality: 0.75 });
   }
 
   // Upload several photos to one product IN SEQUENCE (the first becomes the
@@ -3242,6 +3393,7 @@
       if (isPrimary) payload.isPrimary = true;
       return proxy("photos/upload", {
         method: "POST",
+        timeoutMs: 30000, // a photo over slow shop Wi-Fi needs more than the default.
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
@@ -3474,5 +3626,6 @@
     renderPairing();
   }
 
+  wireResume(); // self-heal the link after the phone wakes / rejoins Wi-Fi.
   render();
 })();

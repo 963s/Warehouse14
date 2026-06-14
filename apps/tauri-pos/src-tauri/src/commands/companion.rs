@@ -452,6 +452,47 @@ impl CompanionState {
     }
 }
 
+/// Keep the mother awake while the companion hub is serving, so a display-sleep /
+/// idle-sleep / App Nap never silently kills the LAN server and drops every phone
+/// mid-shift. macOS uses a `caffeinate` child with `-w <our pid>`, so the hold
+/// auto-releases the instant the POS exits or crashes — it can never strand the
+/// machine awake. Windows (`ES_SYSTEM_REQUIRED`) is a guarded follow-up that
+/// needs testing on the shop till, so it is a no-op here and the build is
+/// unaffected on every platform.
+#[cfg(target_os = "macos")]
+mod power_hold {
+    use std::process::Child;
+    use std::sync::Mutex;
+    static HOLD: Mutex<Option<Child>> = Mutex::new(None);
+    pub fn acquire() {
+        let mut g = HOLD.lock().unwrap_or_else(|p| p.into_inner());
+        if g.is_some() {
+            return;
+        }
+        let pid = std::process::id().to_string();
+        // -i no idle sleep, -s no system sleep (on AC), -w wait on our PID.
+        match std::process::Command::new("/usr/bin/caffeinate")
+            .args(["-i", "-s", "-w", &pid])
+            .spawn()
+        {
+            Ok(child) => *g = Some(child),
+            Err(e) => eprintln!("warehouse14-pos: caffeinate power hold failed: {e}"),
+        }
+    }
+    pub fn release() {
+        let mut g = HOLD.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(mut child) = g.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+#[cfg(not(target_os = "macos"))]
+mod power_hold {
+    pub fn acquire() {}
+    pub fn release() {}
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1611,6 +1652,26 @@ fn query_token(query: Option<&str>) -> Option<String> {
     None
 }
 
+/// One pooled, timeout-bounded HTTP client shared across ALL proxy requests.
+/// Previously the handler built a fresh `reqwest::Client::new()` per call, which
+/// forced a new TLS handshake (and connection) on every phone tap — slow and a
+/// real source of "the connection feels laggy/unstable". A pooled client reuses
+/// keep-alive connections; the timeouts ensure a slow/asleep cloud aborts in a
+/// bounded time instead of hanging the phone for the full router wall-clock.
+fn proxy_client() -> &'static reqwest::Client {
+    static PROXY_CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    PROXY_CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .connect_timeout(std::time::Duration::from_secs(6))
+            .timeout(std::time::Duration::from_secs(15))
+            .pool_idle_timeout(std::time::Duration::from_secs(90))
+            .pool_max_idle_per_host(8)
+            .tcp_keepalive(std::time::Duration::from_secs(30))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new())
+    })
+}
+
 /// `ANY /api/proxy/*path` — role-scoped reverse proxy to the cloud, injecting
 /// the mother's `Authorization: Bearer`. Companions never see the credential.
 async fn proxy_handler(
@@ -1696,7 +1757,7 @@ async fn proxy_handler(
     // 6) Build + send the upstream request from the VALIDATED path only — never
     //    the raw capture. `fwd_path` is decode-safe and traversal-free.
     let url = format!("{CLOUD_BASE}/api/{fwd_path}");
-    let client = reqwest::Client::new();
+    let client = proxy_client();
     let mut upstream = client.request(method.clone(), &url);
 
     // Forward a safe subset of headers (content-type, accept). Never forward the
@@ -1720,6 +1781,19 @@ async fn proxy_handler(
     match upstream.send().await {
         Ok(resp) => {
             let status = resp.status();
+            // A cloud 401 means the MOTHER's session was rejected (stale/rotated
+            // bearer) — NOT this phone's companion token. Forwarding the bare 401
+            // would make the SPA log the phone out and demand a needless re-pair.
+            // Remap to 503 so the phone instead shows "Hauptkasse nicht angemeldet"
+            // and stays paired. (403 is left intact: it carries real per-action
+            // denials — step-up, role, KYC — that the SPA surfaces verbatim.)
+            if status.as_u16() == 401 {
+                return (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Hauptkasse nicht angemeldet",
+                )
+                    .into_response();
+            }
             let ct = resp
                 .headers()
                 .get(reqwest::header::CONTENT_TYPE)
@@ -1732,7 +1806,13 @@ async fn proxy_handler(
             (code, [(axum::http::header::CONTENT_TYPE, ct)], bytes).into_response()
         }
         Err(err) => {
-            eprintln!("warehouse14-pos: companion proxy upstream error: {err}");
+            // Timeout vs other transport error — both surface to the phone as
+            // "Keine Verbindung", but the distinct log helps diagnose a slow cloud.
+            if err.is_timeout() {
+                eprintln!("warehouse14-pos: companion proxy upstream TIMEOUT: {err}");
+            } else {
+                eprintln!("warehouse14-pos: companion proxy upstream error: {err}");
+            }
             (StatusCode::BAD_GATEWAY, "upstream error").into_response()
         }
     }
@@ -2212,6 +2292,8 @@ async fn start_hub(state: &CompanionState, issue_code: bool) -> CompanionInfo {
             task,
         });
     }
+    // The hub is bound and serving — keep the mother awake so phones stay linked.
+    power_hold::acquire();
 
     snapshot
 }
@@ -2271,6 +2353,8 @@ pub async fn companion_stop(state: State<'_, CompanionState>) -> Result<(), ()> 
     if let Some(running) = running {
         let _ = running.shutdown.send(());
         let _ = running.task.await;
+        // Hub stopped → drop the keep-awake hold so the mother can sleep normally.
+        power_hold::release();
     }
     // Reset the pairing window + per-session counters. Paired tokens are
     // deliberately KEPT (and flushed if dirty): pairing is persistent — a

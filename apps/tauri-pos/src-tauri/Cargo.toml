@@ -1,6 +1,6 @@
 [package]
 name = "warehouse14-tauri-pos"
-version = "0.4.24"
+version = "0.4.25"
 description = "Warehouse14 cashier-floor POS (Tauri 2 shell)"
 edition = "2021"
 publish = false

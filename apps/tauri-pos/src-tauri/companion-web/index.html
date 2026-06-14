@@ -49,6 +49,17 @@
   }
   .topbar .brand { font-weight: 700; letter-spacing: .2px; font-size: 1.05rem; }
   .topbar .brand b { color: var(--accent); }
+  /* Live link state: green = reachable, pulsing red = no connection. Tap re-probes. */
+  .topbar .conndot {
+    width: 13px; height: 13px; border-radius: 999px; flex: none; cursor: pointer;
+    background: var(--ok); box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 16%, transparent);
+  }
+  .topbar .conndot.down {
+    background: var(--danger); box-shadow: 0 0 0 4px color-mix(in srgb, var(--danger) 22%, transparent);
+    animation: connpulse 1.1s ease-in-out infinite;
+  }
+  @keyframes connpulse { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .topbar .conndot.down { animation: none; } }
   .topbar .role-pill {
     margin-left: auto; font-size: .8rem; color: var(--fg-dim);
     border: 1px solid var(--line); border-radius: 999px;
@@ -540,7 +551,16 @@
   .cam-stage video, .cam-stage img, .cam-stage canvas {
     width: 100%; height: 100%; object-fit: contain; display: block;
   }
-  .cam-stage .ph { color: var(--fg-faint); font-size: .9rem; padding: 2rem; text-align: center; }
+  .cam-stage .ph { color: var(--fg-dim); font-size: .95rem; padding: 2rem; text-align: center; }
+  /* Spinner shown while a frame is processed / the review image decodes, so the
+     black camera stage never reads as a frozen or broken screen. */
+  .spinner {
+    width: 34px; height: 34px; border-radius: 999px; margin: 0 auto;
+    border: 3px solid var(--line); border-top-color: var(--accent);
+    animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
   .cam-controls { display: flex; gap: .75rem; align-items: center; justify-content: center; }
   .shutter {
     appearance: none; cursor: pointer; flex: none;
