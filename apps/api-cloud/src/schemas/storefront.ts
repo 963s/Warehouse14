@@ -90,6 +90,7 @@ export const CartView = Type.Object({
     Type.Literal('CHECKOUT'),
     Type.Literal('ABANDONED'),
     Type.Literal('CONVERTED'),
+    Type.Literal('RESERVED'),
   ]),
   items: Type.Array(CartItemSnapshot),
   totalEur: DecimalString,
