@@ -41,7 +41,10 @@ export const shoppers = pgTable(
 
     emailEncrypted: bytea('email_encrypted').notNull(),
     emailBlindIndex: bytea('email_blind_index').notNull(),
-    passwordHash: text('password_hash').notNull(),
+    /** Nullable since 0066 — a Google-linked account has no password. */
+    passwordHash: text('password_hash'),
+    /** Google's stable subject id (`sub`); NULL for password-only accounts. */
+    googleSub: text('google_sub'),
 
     emailVerifiedAt: timestamp('email_verified_at', { withTimezone: true }),
     emailVerificationToken: text('email_verification_token'),
@@ -80,6 +83,9 @@ export const shoppers = pgTable(
     emailBlindActiveUq: uniqueIndex('shoppers_email_blind_active_uq')
       .on(table.emailBlindIndex)
       .where(sql`${table.softDeletedAt} IS NULL`),
+    googleSubActiveUq: uniqueIndex('shoppers_google_sub_active_uq')
+      .on(table.googleSub)
+      .where(sql`${table.googleSub} IS NOT NULL AND ${table.softDeletedAt} IS NULL`),
     customerIdx: index('shoppers_customer_idx').on(table.customerId),
     lockedIdx: index('shoppers_locked_idx')
       .on(table.lockedUntil)
@@ -108,6 +114,10 @@ export const shoppers = pgTable(
     failedAttemptsNonNeg: check(
       'shoppers_failed_attempts_nonneg',
       sql`${table.failedLoginAttempts} >= 0`,
+    ),
+    hasCredential: check(
+      'shoppers_has_credential',
+      sql`${table.passwordHash} IS NOT NULL OR ${table.googleSub} IS NOT NULL`,
     ),
   }),
 );

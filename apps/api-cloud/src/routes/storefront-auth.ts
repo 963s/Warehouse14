@@ -66,10 +66,10 @@ const ErrorResponse = Type.Object({
   }),
 });
 
-const SHOPPER_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days rolling
+export const SHOPPER_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days rolling
 
 /** Generate a 32-byte random session token, hex-encoded. */
-function newSessionToken(): string {
+export function newSessionToken(): string {
   return randomBytes(32).toString('hex');
 }
 
@@ -86,7 +86,7 @@ function newSessionToken(): string {
  * Secure + correctly scoped in production while staying non-Secure in dev/test
  * so local HTTP and the integration harness keep working.
  */
-function setShopperCookie(reply: FastifyReply, token: string, expiresAt: Date): void {
+export function setShopperCookie(reply: FastifyReply, token: string, expiresAt: Date): void {
   const isProduction = process.env.NODE_ENV === 'production';
   reply.setCookie(STOREFRONT_COOKIE_NAME, token, {
     path: '/',

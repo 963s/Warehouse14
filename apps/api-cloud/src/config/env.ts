@@ -90,11 +90,29 @@ const EnvSchema = Type.Object({
   }),
   R2_ACCESS_KEY_ID: Type.String({ default: '', description: 'R2 API token access key id.' }),
   R2_SECRET_ACCESS_KEY: Type.String({ default: '', description: 'R2 API token secret.' }),
-  GOOGLE_SERVICE_ACCOUNT_B64: Type.String({ default: '', description: 'Base64 of the Google service-account JSON (Calendar).' }),
-  GOOGLE_CALENDAR_ID: Type.String({ default: '', description: 'Target Google Calendar id for the shop calendar.' }),
-  GOOGLE_CALENDAR_IMPERSONATE: Type.String({ default: '', description: 'Workspace user to impersonate via DWD (e.g. admin@warehouse14.de) so GOOGLE_CALENDAR_ID can be their primary calendar.' }),
-  CALENDAR_WEBHOOK_URL: Type.String({ default: '', description: 'Public HTTPS callback for Google Calendar events.watch (e.g. https://api.warehouse14.de/api/calendar/notifications). Domain must be GCP-verified.' }),
-  CALENDAR_WEBHOOK_TOKEN: Type.String({ default: '', description: 'Shared secret echoed by Google as X-Goog-Channel-Token; empty disables push (poll only).' }),
+  GOOGLE_SERVICE_ACCOUNT_B64: Type.String({
+    default: '',
+    description: 'Base64 of the Google service-account JSON (Calendar).',
+  }),
+  GOOGLE_CALENDAR_ID: Type.String({
+    default: '',
+    description: 'Target Google Calendar id for the shop calendar.',
+  }),
+  GOOGLE_CALENDAR_IMPERSONATE: Type.String({
+    default: '',
+    description:
+      'Workspace user to impersonate via DWD (e.g. admin@warehouse14.de) so GOOGLE_CALENDAR_ID can be their primary calendar.',
+  }),
+  CALENDAR_WEBHOOK_URL: Type.String({
+    default: '',
+    description:
+      'Public HTTPS callback for Google Calendar events.watch (e.g. https://api.warehouse14.de/api/calendar/notifications). Domain must be GCP-verified.',
+  }),
+  CALENDAR_WEBHOOK_TOKEN: Type.String({
+    default: '',
+    description:
+      'Shared secret echoed by Google as X-Goog-Channel-Token; empty disables push (poll only).',
+  }),
   R2_PUBLIC_URL_BASE: Type.String({
     default: '',
     description:
@@ -153,6 +171,28 @@ const EnvSchema = Type.Object({
     default: '2024-12-18.acacia',
     description:
       'Pinned Stripe API version to avoid surprise schema changes (Stripe documents version-on-write).',
+  }),
+  // ── Storefront Google Sign-In (customer OAuth) ───────────────────────
+  // A SEPARATE OAuth client from the Calendar service account: customer login
+  // needs a "Web application" OAuth 2.0 Client ID (consent screen External,
+  // scopes openid+email+profile). Empty defaults → the Google button is hidden
+  // and the route answers 503, so the app boots fine without it wired.
+  GOOGLE_STOREFRONT_CLIENT_ID: Type.String({
+    default: '',
+    description:
+      'OAuth 2.0 Web-application Client ID for storefront customer Sign-in-with-Google. Empty → Google login disabled.',
+  }),
+  GOOGLE_STOREFRONT_CLIENT_SECRET: Type.String({
+    default: '',
+    description:
+      'OAuth client secret for the storefront Google login. Server-side only — never sent to the browser.',
+  }),
+  STOREFRONT_PUBLIC_URL: Type.String({
+    default: '',
+    description:
+      'Public origin of the storefront (e.g. https://www.warehouse14.de). Used to build the Google ' +
+      'redirect URI <origin>/api/storefront/auth/google/callback and the post-login redirect. ' +
+      'Google rejects a bare-IP redirect, so a real domain is required for Google login.',
   }),
   // ── WhatsApp Cloud API (Day 21) ──────────────────────────────────────
   // Empty defaults are OK in dev/test; the webhook route refuses if invoked.

@@ -27,6 +27,7 @@ export const STOREFRONT_COOKIE_NAME = 'warehouse14.shopper_session';
 const STOREFRONT_PUBLIC_PREFIXES = [
   '/api/storefront/auth/sign-up',
   '/api/storefront/auth/sign-in',
+  '/api/storefront/auth/google', // OAuth start + callback — no shopper cookie yet.
   '/api/storefront/catalog',
 ] as const;
 
