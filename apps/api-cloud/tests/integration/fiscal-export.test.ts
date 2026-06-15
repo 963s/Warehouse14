@@ -1033,4 +1033,124 @@ describe('GET /api/closings/:id/export/{datev,dsfinvk} — fiscal-export E2E', (
       expect(lines[0]!.startsWith('EXTF;700;21;Buchungsstapel;')).toBe(true);
     });
   });
+
+  // ── POST /api/closings/finalize — the Z-Bon WRITER (the missing keystone) ──
+  describe('POST /api/closings/finalize — Z-Bon writer', () => {
+    const freshDay = '2026-05-07';
+    const tsFresh = (h: number) => `${freshDay}T${String(h).padStart(2, '0')}:00:00+02:00`;
+
+    async function seedFreshDay(): Promise<void> {
+      // One VERKAUF (119,00 brutto cash, TSE-signed) on a clean day.
+      const p = await seedProduct();
+      await seedTransaction({
+        direction: 'VERKAUF',
+        treatment: 'STANDARD_19',
+        subtotal: '100.00',
+        vat: '19.00',
+        total: '119.00',
+        customerId: null,
+        finalizedAt: tsFresh(9),
+        items: [
+          {
+            productId: p,
+            treatment: 'STANDARD_19',
+            vatRate: '0.1900',
+            lineSubtotal: '100.00',
+            lineVat: '19.00',
+            lineTotal: '119.00',
+            displayOrder: 0,
+          },
+        ],
+        payment: { method: 'CASH', amount: '119.00' },
+        tse: true,
+      });
+      // A CLOSED shift for the day: float 100 + 119 cash sale = 219 expected,
+      // counted 219 → variance 0.
+      await migratorSql`
+        INSERT INTO shifts (device_id, opened_by_user_id, opening_float_eur, status,
+                            blind_count_eur, system_expected_eur, closed_by_user_id,
+                            opened_at, closed_at)
+        VALUES (${deviceId}, ${adminUserId}, '100.00', 'CLOSED'::shift_status,
+                '219.00', '219.00', ${adminUserId},
+                ${`${freshDay}T08:00:00+02:00`}::timestamptz,
+                ${`${freshDay}T18:00:00+02:00`}::timestamptz)`;
+    }
+
+    function finalize(token: string, businessDay?: string) {
+      return app.inject({
+        method: 'POST',
+        url: '/api/closings/finalize',
+        headers: { cookie: `warehouse14.session=${token}`, 'content-type': 'application/json' },
+        payload: businessDay ? { businessDay } : {},
+      });
+    }
+
+    it('writes a correct FINALIZED Z-Bon, then the export chain reads it', async () => {
+      await seedFreshDay();
+      const res = await finalize(adminStepUpToken, freshDay);
+      expect(res.statusCode).toBe(200);
+      const body = res.json();
+      expect(body.state).toBe('FINALIZED');
+      expect(body.businessDay).toBe(freshDay);
+      expect(body.verkaufCount).toBe(1);
+      expect(body.grossVerkaufEur).toBe('119.00');
+      expect(body.netVerkaufEur).toBe('100.00');
+      expect(body.cashExpectedEur).toBe('219.00');
+      expect(body.cashCountedEur).toBe('219.00');
+      expect(body.cashVarianceEur).toBe('0.00');
+
+      // The row really landed + the Kassenbericht reads it (the whole point).
+      const kb = await get(`/api/closings/${body.id}/export/kassenbericht`);
+      expect(kb.statusCode).toBe(200);
+      expect(kb.payload).toContain('119,00 EUR'); // Verkauf brutto
+      expect(kb.payload).toContain('STANDARD_19'); // USt block
+
+      // VAT + payments jsonb aggregated correctly.
+      const [row] = await migratorSql<
+        { vat_by_treatment: Record<string, string>; payments_by_method: Record<string, string> }[]
+      >`SELECT vat_by_treatment, payments_by_method FROM daily_closings WHERE id = ${body.id}`;
+      expect(row!.vat_by_treatment.STANDARD_19).toBe('19.00');
+      expect(row!.payments_by_method.CASH).toBe('119.00');
+    });
+
+    it('refuses to re-finalize the same day (409)', async () => {
+      await seedFreshDay();
+      expect((await finalize(adminStepUpToken, freshDay)).statusCode).toBe(200);
+      const again = await finalize(adminStepUpToken, freshDay);
+      expect(again.statusCode).toBe(409);
+    });
+
+    it('requires a fresh PIN step-up (403 without)', async () => {
+      const res = await finalize(adminNoStepUpToken, freshDay);
+      expect(res.statusCode).toBe(403);
+    });
+
+    it('refuses a day with sales but no closed shift (409)', async () => {
+      const p = await seedProduct();
+      await seedTransaction({
+        direction: 'VERKAUF',
+        treatment: 'STANDARD_19',
+        subtotal: '100.00',
+        vat: '19.00',
+        total: '119.00',
+        customerId: null,
+        finalizedAt: tsFresh(10),
+        items: [
+          {
+            productId: p,
+            treatment: 'STANDARD_19',
+            vatRate: '0.1900',
+            lineSubtotal: '100.00',
+            lineVat: '19.00',
+            lineTotal: '119.00',
+            displayOrder: 0,
+          },
+        ],
+        payment: { method: 'CASH', amount: '119.00' },
+        tse: true,
+      });
+      const res = await finalize(adminStepUpToken, freshDay);
+      expect(res.statusCode).toBe(409); // no Kassensturz
+    });
+  });
 });

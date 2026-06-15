@@ -294,6 +294,16 @@ const transactionsFinalize: FastifyPluginAsync<TransactionsFinalizeOpts> = async
             }
           }
 
+          // Attribute the sale to the device's OPEN shift so the end-of-day cash
+          // drawer reconciliation (Blindsturz) and the Z-Bon can see this sale's
+          // cash leg. Without shift_id the shift-close expected balance was always
+          // wrong (it joined on t.shift_id = the shift). Best-effort: a sale on a
+          // device with no open shift still records (shift_id NULL).
+          const shiftRows = await tx.execute<{ id: string }>(drizzleSql`
+            SELECT id::text AS id FROM shifts
+             WHERE device_id = ${deviceId}::uuid AND status = 'OPEN' LIMIT 1`);
+          const resolvedShiftId = shiftRows[0]?.id ?? null;
+
           // 3b. INSERT the transaction header. Triggers fire here:
           //   sanctions / closing-day / storno-validation / ankauf-customer / sign-discipline.
           //   The AFTER-INSERT trigger then runs cumulative spend + ledger emit.
@@ -304,6 +314,7 @@ const transactionsFinalize: FastifyPluginAsync<TransactionsFinalizeOpts> = async
                 direction: body.direction,
                 customerId: body.customerId,
                 deviceId,
+                shiftId: resolvedShiftId,
                 cashierUserId: req.actor.id,
                 subtotalEur: body.subtotalEur,
                 vatEur: body.vatEur,

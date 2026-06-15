@@ -52,8 +52,11 @@ import authPinRoutes from './routes/auth-pin.js';
 import authSessionRoutes from './routes/auth-session.js';
 import belegtextRoutes from './routes/belegtext.js';
 import bridgeRoutes from './routes/bridge.js';
+import calendarRoute from './routes/calendar.js';
 import categoriesRoutes from './routes/categories.js';
 import closingExportRoute from './routes/closing-export.js';
+import closingsFinalizeRoute from './routes/closings-finalize.js';
+import complianceRoute from './routes/compliance.js';
 import customerKycDocumentsRoute from './routes/customer-kyc-documents.js';
 // Day 26 — Backend Finale: Customer Trust + Belegtext
 import customerTrustRoutes from './routes/customer-trust.js';
@@ -67,7 +70,6 @@ import documentsRoutes from './routes/documents.js';
 import healthRoute from './routes/health.js';
 import intakeDraftsRoutes from './routes/intake-drafts.js';
 import integrationsRoute from './routes/integrations.js';
-import calendarRoute from './routes/calendar.js';
 import inventoryAdjustmentRoute from './routes/inventory-adjustment.js';
 import inventoryRelease from './routes/inventory-release.js';
 import inventoryReserve from './routes/inventory-reserve.js';
@@ -80,7 +82,6 @@ import photoUploadUrlRoute from './routes/photo-upload-url.js';
 // Phase 2 Day 2 — closes the Day-24 route gap + dashboard aggregator
 import photosRoutes from './routes/photos.js';
 import productCategoriesRoute from './routes/product-categories.js';
-import complianceRoute from './routes/compliance.js';
 import productRelocateRoute from './routes/product-relocate.js';
 import productsDetailRoute from './routes/products-detail.js';
 import productsEbayPublishRoute from './routes/products-ebay-publish.js';
@@ -94,13 +95,13 @@ import shippingRoutes from './routes/shipping.js';
 import shopInfoRoute from './routes/shop-info.js';
 import sseLedger from './routes/sse-ledger.js';
 import storefrontAppointmentsRoutes from './routes/storefront-appointments.js';
-import storefrontAuthRoutes from './routes/storefront-auth.js';
 import storefrontGoogleAuthRoutes from './routes/storefront-auth-google.js';
-import storefrontOrdersRoutes from './routes/storefront-orders.js';
-import storefrontReserveRoutes from './routes/storefront-reserve.js';
+import storefrontAuthRoutes from './routes/storefront-auth.js';
 import storefrontCartRoutes from './routes/storefront-cart.js';
 // Phase 2.A — Storefront catalog (public read-only) + MCP server
 import storefrontCatalogRoutes from './routes/storefront-catalog.js';
+import storefrontOrdersRoutes from './routes/storefront-orders.js';
+import storefrontReserveRoutes from './routes/storefront-reserve.js';
 import storefrontWebhookRoutes from './routes/storefront-webhook.js';
 // Day 25 — Single-Operator Assistance
 import tasksRoutes from './routes/tasks.js';
@@ -278,6 +279,7 @@ export async function buildApp(opts: BuildAppOpts): Promise<FastifyInstance> {
   await app.register(ledgerRoutes);
   // ── Epic K: DSFinV-K / DATEV fiscal exports ──────────────────────
   await app.register(closingExportRoute);
+  await app.register(closingsFinalizeRoute);
   // ── Phase 2.A: storefront catalog + MCP (memory.md §20) ──────────
   // Public read-only catalog endpoints. The path prefix
   // `/api/storefront/` is in PUBLIC_PREFIXES (lib/public-routes.ts),

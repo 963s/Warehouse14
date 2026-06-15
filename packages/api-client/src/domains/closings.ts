@@ -28,10 +28,36 @@ export interface ClosingListResponse {
   items: ClosingListItem[];
 }
 
+export interface ClosingFinalizeResult {
+  id: string;
+  businessDay: string;
+  state: 'FINALIZED';
+  verkaufCount: number;
+  ankaufCount: number;
+  stornoCount: number;
+  grossVerkaufEur: string;
+  netVerkaufEur: string;
+  cashExpectedEur: string;
+  cashCountedEur: string;
+  cashVarianceEur: string;
+  finalizedAt: string;
+}
+
 export const closingsApi = {
   /** GET /api/closings — recent daily closings (ADMIN | READONLY). */
   list(client: ApiClient): Promise<ClosingListResponse> {
     return client.request<ClosingListResponse>('GET', '/api/closings');
+  },
+  /**
+   * POST /api/closings/finalize — write the legal Z-Bon (Tagesabschluss) for a
+   * business day (ADMIN + step-up). Omit `businessDay` for the current day.
+   */
+  finalize(client: ApiClient, businessDay?: string): Promise<ClosingFinalizeResult> {
+    return client.request<ClosingFinalizeResult>(
+      'POST',
+      '/api/closings/finalize',
+      businessDay ? { businessDay } : {},
+    );
   },
   /** GET /api/closings/:id/export/datev — DATEV EXTF CSV (ADMIN|READONLY + step-up). */
   datevCsv(client: ApiClient, id: string): Promise<string> {

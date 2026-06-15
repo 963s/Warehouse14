@@ -88,6 +88,7 @@ export function ClosingsPanel(): JSX.Element {
   const { baseUrl, client } = useApiClient();
   const [toasts, setToasts] = useState<ToastShape[]>([]);
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [finalizing, setFinalizing] = useState<boolean>(false);
 
   const pushToast = (tone: ToastShape['tone'], title: string, body?: string): void => {
     setToasts((prev) => [
@@ -201,14 +202,95 @@ export function ClosingsPanel(): JSX.Element {
     }
   }
 
+  /**
+   * Finalize the legal Z-Bon (Tagesabschluss) for the current business day — the
+   * act that aggregates the day's sales into the row every fiscal export reads.
+   * Raw fetch so the 403 → PIN step-up flow works; a 409 carries a German reason
+   * (open shift / already finalized) which we surface verbatim.
+   */
+  async function runTagesabschluss(): Promise<void> {
+    setFinalizing(true);
+    try {
+      const res = await fetch(`${baseUrl}/api/closings/finalize`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      if (!res.ok) {
+        if (res.status === 403) {
+          pushToast(
+            'alert',
+            'PIN-Bestätigung nötig',
+            'Der Tagesabschluss verlangt eine frische PIN-Freigabe.',
+          );
+          return;
+        }
+        let msg = `HTTP ${res.status}`;
+        try {
+          const j = (await res.json()) as { error?: { message?: string } };
+          if (j?.error?.message) msg = j.error.message;
+        } catch {
+          /* non-JSON body */
+        }
+        pushToast('alert', 'Tagesabschluss nicht möglich', msg);
+        return;
+      }
+      const data = (await res.json()) as {
+        businessDay: string;
+        verkaufCount: number;
+        cashVarianceEur: string;
+      };
+      pushToast(
+        'success',
+        'Tagesabschluss erstellt',
+        `Z-Bon für ${formatDay(data.businessDay)} — ${data.verkaufCount} Verkäufe, Kassendiff. ${data.cashVarianceEur} EUR.`,
+      );
+      await query.refetch();
+    } catch (err) {
+      pushToast(
+        'alert',
+        'Tagesabschluss fehlgeschlagen',
+        err instanceof Error ? err.message : 'Netzwerkfehler',
+      );
+    } finally {
+      setFinalizing(false);
+    }
+  }
+
   const items = query.data?.items ?? [];
 
   return (
     <>
       <DiamondRule tone="gold" label="Kassenabschluss" />
-      <p style={{ ...captionStyle, marginTop: 8, marginBottom: 20 }}>
-        Jeder Tagesabschluss (Z-Bon) im Überblick — und der DATEV-Export für den Steuerberater.
-      </p>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 16,
+          marginTop: 8,
+          marginBottom: 20,
+        }}
+      >
+        <p style={{ ...captionStyle, margin: 0, maxWidth: 620 }}>
+          Jeder Tagesabschluss (Z-Bon) im Überblick — und der DATEV-Export für den Steuerberater.
+          Der Tagesabschluss bündelt die Verkäufe des Tages zum gesetzlichen Z-Bon, den jede Prüfung
+          verlangt.
+        </p>
+        <Button
+          className="w14cd-focusable"
+          variant="primary"
+          size="md"
+          disabled={finalizing}
+          onClick={() => {
+            void runTagesabschluss();
+          }}
+          style={{ flex: 'none', whiteSpace: 'nowrap' }}
+        >
+          {finalizing ? 'Wird abgeschlossen …' : 'Tagesabschluss durchführen'}
+        </Button>
+      </div>
 
       {query.isLoading ? (
         <ParchmentCard tone="parchment" padding="lg" style={{ maxWidth: 920 }}>

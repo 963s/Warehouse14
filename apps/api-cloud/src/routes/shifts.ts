@@ -278,16 +278,26 @@ const shiftsRoutes: FastifyPluginAsync = async (app) => {
         // − Σ(SAFE_TRANSITs)
         const [agg] = await tx.execute<{
           cash_sales: string | null;
+          cash_payouts: string | null;
           injections: string | null;
           bank_drops: string | null;
           safe_transits: string | null;
         }>(drizzleSql`
         SELECT
+          -- VERKAUF cash RECEIVED (drawer +)
           (SELECT COALESCE(SUM(tp.amount_eur), 0)::text
              FROM transaction_payments tp
              JOIN transactions t ON t.id = tp.transaction_id
             WHERE t.shift_id = ${s.id}
+              AND t.direction = 'VERKAUF'
               AND tp.payment_method = 'CASH'::payment_method) AS cash_sales,
+          -- ANKAUF cash PAID OUT to the seller (drawer −)
+          (SELECT COALESCE(SUM(tp.amount_eur), 0)::text
+             FROM transaction_payments tp
+             JOIN transactions t ON t.id = tp.transaction_id
+            WHERE t.shift_id = ${s.id}
+              AND t.direction = 'ANKAUF'
+              AND tp.payment_method = 'CASH'::payment_method) AS cash_payouts,
           (SELECT COALESCE(SUM(amount_eur), 0)::text
              FROM cash_movements
             WHERE shift_id = ${s.id} AND direction = 'INJECTION'::cash_movement_direction) AS injections,
@@ -306,7 +316,8 @@ const shiftsRoutes: FastifyPluginAsync = async (app) => {
         };
         const expectedCents =
           cents(s.openingFloatEur) +
-          cents(agg!.cash_sales) +
+          cents(agg!.cash_sales) -
+          cents(agg!.cash_payouts) +
           cents(agg!.injections) -
           cents(agg!.bank_drops) -
           cents(agg!.safe_transits);

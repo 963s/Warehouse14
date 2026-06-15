@@ -236,160 +236,168 @@ const transactionsAnkaufRoute: FastifyPluginAsync<TransactionsAnkaufOpts> = asyn
         }>;
       }> =>
         app.db.transaction(async (tx) => {
-        // 1. Insert all products. Each returns its uuid which we link to
-        //    the transaction_items rows below.
-        const createdProducts: Array<{
-          id: string;
-          sku: string;
-          status: 'DRAFT' | 'AVAILABLE';
-          clientReferenceId: string | null;
-        }> = [];
+          // 1. Insert all products. Each returns its uuid which we link to
+          //    the transaction_items rows below.
+          const createdProducts: Array<{
+            id: string;
+            sku: string;
+            status: 'DRAFT' | 'AVAILABLE';
+            clientReferenceId: string | null;
+          }> = [];
 
-        for (const item of body.items) {
-          const [row] = await tx
-            .insert(products)
+          for (const item of body.items) {
+            const [row] = await tx
+              .insert(products)
+              .values({
+                sku: item.sku,
+                barcode: item.barcode ?? null,
+                itemType: item.itemType,
+                metal: item.metal ?? null,
+                karatCode: item.karatCode ?? null,
+                finenessDecimal: item.finenessDecimal ?? null,
+                weightGrams: item.weightGrams ?? null,
+                hallmarkStamps: item.hallmarkStamps,
+                // Acquisition cost is INTAKE-LOCKED at the value negotiated here.
+                acquisitionCostEur: item.negotiatedPriceEur,
+                listPriceEur: item.listPriceEur,
+                taxTreatmentCode: item.taxTreatmentCode,
+                condition: item.condition,
+                isCommission: false,
+                acquiredFromCustomerId: body.customerId,
+                name: item.name,
+                descriptionDe: item.descriptionDe ?? null,
+                marketingAttributes: [],
+                listedOnStorefront: false,
+                listedOnEbay: false,
+                status: item.publishImmediately ? 'AVAILABLE' : 'DRAFT',
+                ...(item.publishImmediately ? { publishedAt: new Date() } : {}),
+              })
+              .returning({
+                id: products.id,
+                sku: products.sku,
+                status: products.status,
+              });
+            if (!row) throw new Error('Ankauf: product INSERT returned no row');
+            createdProducts.push({
+              id: row.id,
+              sku: row.sku,
+              status: row.status as 'DRAFT' | 'AVAILABLE',
+              clientReferenceId: item.clientReferenceId ?? null,
+            });
+          }
+
+          // Attribute the buy to the device's OPEN shift so the cash drawer
+          // reconciliation can SUBTRACT this cash payout (an Ankauf is cash OUT).
+          const shiftRows = await tx.execute<{ id: string }>(drizzleSql`
+          SELECT id::text AS id FROM shifts
+           WHERE device_id = ${deviceId}::uuid AND status = 'OPEN' LIMIT 1`);
+          const resolvedShiftId = shiftRows[0]?.id ?? null;
+
+          // 2. Insert the transaction header. AFTER trigger emits ledger event.
+          //    Sanctions BEFORE trigger fires here — banned customers throw.
+          //    Closing-day BEFORE trigger fires here — FINALIZED days throw.
+          const [txRow] = await tx
+            .insert(transactions)
             .values({
-              sku: item.sku,
-              barcode: item.barcode ?? null,
-              itemType: item.itemType,
-              metal: item.metal ?? null,
-              karatCode: item.karatCode ?? null,
-              finenessDecimal: item.finenessDecimal ?? null,
-              weightGrams: item.weightGrams ?? null,
-              hallmarkStamps: item.hallmarkStamps,
-              // Acquisition cost is INTAKE-LOCKED at the value negotiated here.
-              acquisitionCostEur: item.negotiatedPriceEur,
-              listPriceEur: item.listPriceEur,
-              taxTreatmentCode: item.taxTreatmentCode,
-              condition: item.condition,
-              isCommission: false,
-              acquiredFromCustomerId: body.customerId,
-              name: item.name,
-              descriptionDe: item.descriptionDe ?? null,
-              marketingAttributes: [],
-              listedOnStorefront: false,
-              listedOnEbay: false,
-              status: item.publishImmediately ? 'AVAILABLE' : 'DRAFT',
-              ...(item.publishImmediately ? { publishedAt: new Date() } : {}),
+              direction: 'ANKAUF',
+              customerId: body.customerId,
+              deviceId,
+              shiftId: resolvedShiftId,
+              cashierUserId: actorId,
+              // Ankauf math: subtotal = total, vat = 0. The §25a margin only
+              // materialises on the FUTURE sale of these items.
+              subtotalEur: body.totalEur,
+              vatEur: '0.00',
+              totalEur: body.totalEur,
+              // The transaction's classification — for Ankauf this is the
+              // intent ("we're buying second-hand goods under §25a"). The
+              // PRODUCTS each carry their own treatment for the future sale.
+              taxTreatmentCode: 'MARGIN_25A',
+              // §19.2 C-4 — persist the client's idempotency key. The partial
+              // UNIQUE INDEX (migration 0028) raises 23505 on a concurrent
+              // duplicate; we catch it below and fall back to a SELECT-by-key.
+              ...(body.idempotencyKey ? { idempotencyKey: body.idempotencyKey } : {}),
+              ...(body.notesInternal ? { notesInternal: body.notesInternal } : {}),
             })
             .returning({
-              id: products.id,
-              sku: products.sku,
-              status: products.status,
+              id: transactions.id,
+              receiptLocator: transactions.receiptLocator,
+              finalizedAt: transactions.finalizedAt,
             });
-          if (!row) throw new Error('Ankauf: product INSERT returned no row');
-          createdProducts.push({
-            id: row.id,
-            sku: row.sku,
-            status: row.status as 'DRAFT' | 'AVAILABLE',
-            clientReferenceId: item.clientReferenceId ?? null,
-          });
-        }
+          if (!txRow) throw new Error('Ankauf: transaction INSERT returned no row');
 
-        // 2. Insert the transaction header. AFTER trigger emits ledger event.
-        //    Sanctions BEFORE trigger fires here — banned customers throw.
-        //    Closing-day BEFORE trigger fires here — FINALIZED days throw.
-        const [txRow] = await tx
-          .insert(transactions)
-          .values({
-            direction: 'ANKAUF',
-            customerId: body.customerId,
-            deviceId,
-            cashierUserId: actorId,
-            // Ankauf math: subtotal = total, vat = 0. The §25a margin only
-            // materialises on the FUTURE sale of these items.
-            subtotalEur: body.totalEur,
-            vatEur: '0.00',
-            totalEur: body.totalEur,
-            // The transaction's classification — for Ankauf this is the
-            // intent ("we're buying second-hand goods under §25a"). The
-            // PRODUCTS each carry their own treatment for the future sale.
-            taxTreatmentCode: 'MARGIN_25A',
-            // §19.2 C-4 — persist the client's idempotency key. The partial
-            // UNIQUE INDEX (migration 0028) raises 23505 on a concurrent
-            // duplicate; we catch it below and fall back to a SELECT-by-key.
-            ...(body.idempotencyKey ? { idempotencyKey: body.idempotencyKey } : {}),
-            ...(body.notesInternal ? { notesInternal: body.notesInternal } : {}),
-          })
-          .returning({
-            id: transactions.id,
-            receiptLocator: transactions.receiptLocator,
-            finalizedAt: transactions.finalizedAt,
-          });
-        if (!txRow) throw new Error('Ankauf: transaction INSERT returned no row');
+          // 3. Insert transaction_items — one per product. Line totals are the
+          //    negotiated cash prices. For Ankauf, line_subtotal = line_total
+          //    and line_vat = 0 (§25a math only on resale).
+          await tx.insert(transactionItems).values(
+            body.items.map((item, idx) => {
+              const product = createdProducts[idx];
+              if (!product) throw new Error('Ankauf: product/item index mismatch');
+              return {
+                transactionId: txRow.id,
+                productId: product.id,
+                lineSubtotalEur: item.negotiatedPriceEur,
+                lineVatEur: '0.00',
+                lineTotalEur: item.negotiatedPriceEur,
+                appliedTaxTreatmentCode: item.taxTreatmentCode,
+                appliedVatRate: null,
+                // Snapshot the freshly-set cost (it equals the line total here).
+                acquisitionCostEurSnapshot: item.negotiatedPriceEur,
+                // No margin on Ankauf — that lives on the future sale.
+                marginEur: null,
+                displayOrder: idx,
+              };
+            }),
+          );
 
-        // 3. Insert transaction_items — one per product. Line totals are the
-        //    negotiated cash prices. For Ankauf, line_subtotal = line_total
-        //    and line_vat = 0 (§25a math only on resale).
-        await tx.insert(transactionItems).values(
-          body.items.map((item, idx) => {
-            const product = createdProducts[idx];
-            if (!product) throw new Error('Ankauf: product/item index mismatch');
-            return {
-              transactionId: txRow.id,
-              productId: product.id,
-              lineSubtotalEur: item.negotiatedPriceEur,
-              lineVatEur: '0.00',
-              lineTotalEur: item.negotiatedPriceEur,
-              appliedTaxTreatmentCode: item.taxTreatmentCode,
-              appliedVatRate: null,
-              // Snapshot the freshly-set cost (it equals the line total here).
-              acquisitionCostEurSnapshot: item.negotiatedPriceEur,
-              // No margin on Ankauf — that lives on the future sale.
-              marginEur: null,
-              displayOrder: idx,
-            };
-          }),
-        );
-
-        // 4. Insert the single payment leg — cash leaves the drawer (or a
-        //    bank-transfer outflow is recorded). Either way, amount = total.
-        await tx.insert(transactionPayments).values({
-          transactionId: txRow.id,
-          paymentMethod: body.payoutMethod,
-          amountEur: body.totalEur,
-          externalRef: body.payoutExternalRef ?? null,
-        });
-
-        // 5. Audit log — redacted payload, never plaintext PII.
-        await tx.insert(auditLog).values({
-          eventType: 'ankauf.completed',
-          actorUserId: actorId,
-          deviceId,
-          ipAddress: req.ip ?? null,
-          userAgent: req.headers['user-agent'] ?? null,
-          payload: {
+          // 4. Insert the single payment leg — cash leaves the drawer (or a
+          //    bank-transfer outflow is recorded). Either way, amount = total.
+          await tx.insert(transactionPayments).values({
             transactionId: txRow.id,
-            customerId: body.customerId,
-            totalEur: body.totalEur,
-            payoutMethod: body.payoutMethod,
-            itemCount: createdProducts.length,
-            productIds: createdProducts.map((p) => p.id),
-            publishedCount: createdProducts.filter((p) => p.status === 'AVAILABLE').length,
-            draftCount: createdProducts.filter((p) => p.status === 'DRAFT').length,
-          },
+            paymentMethod: body.payoutMethod,
+            amountEur: body.totalEur,
+            externalRef: body.payoutExternalRef ?? null,
+          });
+
+          // 5. Audit log — redacted payload, never plaintext PII.
+          await tx.insert(auditLog).values({
+            eventType: 'ankauf.completed',
+            actorUserId: actorId,
+            deviceId,
+            ipAddress: req.ip ?? null,
+            userAgent: req.headers['user-agent'] ?? null,
+            payload: {
+              transactionId: txRow.id,
+              customerId: body.customerId,
+              totalEur: body.totalEur,
+              payoutMethod: body.payoutMethod,
+              itemCount: createdProducts.length,
+              productIds: createdProducts.map((p) => p.id),
+              publishedCount: createdProducts.filter((p) => p.status === 'AVAILABLE').length,
+              draftCount: createdProducts.filter((p) => p.status === 'DRAFT').length,
+            },
+          });
+
+          // 6. Read the ledger event the trigger just emitted, so we can return
+          //    its id (SSE consumers anchor against this).
+          const ledgerRow = (
+            await tx
+              .select({ id: ledgerEvents.id })
+              .from(ledgerEvents)
+              .where(
+                drizzleSql`${ledgerEvents.entityTable} = 'transactions' AND ${ledgerEvents.entityId} = ${txRow.id}`,
+              )
+              .limit(1)
+          )[0];
+
+          return {
+            transactionId: txRow.id,
+            receiptLocator: txRow.receiptLocator,
+            finalizedAt: txRow.finalizedAt,
+            ledgerEventId: ledgerRow ? Number(ledgerRow.id) : 0,
+            createdProducts,
+          };
         });
-
-        // 6. Read the ledger event the trigger just emitted, so we can return
-        //    its id (SSE consumers anchor against this).
-        const ledgerRow = (
-          await tx
-            .select({ id: ledgerEvents.id })
-            .from(ledgerEvents)
-            .where(
-              drizzleSql`${ledgerEvents.entityTable} = 'transactions' AND ${ledgerEvents.entityId} = ${txRow.id}`,
-            )
-            .limit(1)
-        )[0];
-
-        return {
-          transactionId: txRow.id,
-          receiptLocator: txRow.receiptLocator,
-          finalizedAt: txRow.finalizedAt,
-          ledgerEventId: ledgerRow ? Number(ledgerRow.id) : 0,
-          createdProducts,
-        };
-      });
 
       // §19.2 C-4 race fallback: two concurrent retries with the same key.
       // One INSERT wins, the other gets 23505 — we swap the error for the
