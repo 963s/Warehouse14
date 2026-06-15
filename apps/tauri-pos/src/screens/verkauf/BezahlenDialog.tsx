@@ -1296,6 +1296,56 @@ export function BezahlenDialog({
     void submitCard();
   }, [needsBuyer, submitCard]);
 
+  // ── Keyboard-first cash finalize (Wave 1) ──────────────────────────────
+  // With NO text field focused (Kundensuche / USt-IdNr / Gutschein keep their own
+  // Enter), Enter drives the most-repeated sale of the day — exact cash — with no
+  // aiming: an empty cash entry → prefill "Passend" (exact due); once cash covers
+  // → finalize. So a plain cash sale is Enter, Enter. This is a pure focus/keydown
+  // layer on top of the existing, untouched tender + fiscal math (computeTender /
+  // dispatchSubmit are byte-identical). Placed after dispatchSubmit so the deps
+  // array is out of its temporal dead zone.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (ev: KeyboardEvent): void => {
+      if (ev.key !== 'Enter') return;
+      if (submitting || finalized !== null) return;
+      // Card + split run their own deliberate flow (terminal round-trip).
+      if (paymentChoice !== 'CASH' || splitCard) return;
+      if (lines.length === 0) return;
+      const el = document.activeElement as HTMLElement | null;
+      const tag = (el?.tagName ?? '').toLowerCase();
+      if (
+        tag === 'input' ||
+        tag === 'textarea' ||
+        tag === 'select' ||
+        (el?.isContentEditable ?? false)
+      ) {
+        return; // a real text field is focused — let it keep its own Enter.
+      }
+      ev.preventDefault();
+      if (canSubmit) {
+        dispatchSubmit();
+      } else if (dueCents > 0n && cashCents < dueCents && b2bValid && !needsBuyer) {
+        setCashReceivedEur(fromCents(dueCents)); // prefill Passend; a second Enter finalizes.
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [
+    open,
+    submitting,
+    finalized,
+    paymentChoice,
+    splitCard,
+    lines.length,
+    canSubmit,
+    dueCents,
+    cashCents,
+    b2bValid,
+    needsBuyer,
+    dispatchSubmit,
+  ]);
+
   if (!open) return null;
 
   return (
@@ -2045,6 +2095,18 @@ function PaymentInput({
                     dueEur={dueEur}
                   />
                 </div>
+                {!splitCard && (
+                  <p
+                    style={{
+                      margin: '0.45rem 0 0',
+                      fontSize: '0.78rem',
+                      textAlign: 'center',
+                      color: 'var(--w14-ink-faded)',
+                    }}
+                  >
+                    Tipp: <strong>Enter</strong> füllt „Passend“ und schließt ab
+                  </p>
+                )}
               </div>
             )}
 
