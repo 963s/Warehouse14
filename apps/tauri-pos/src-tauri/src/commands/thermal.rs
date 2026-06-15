@@ -22,6 +22,12 @@ use crate::mock::printer_mock;
 pub struct ThermalEndpoint {
     pub ip: String,
     pub port: u16,
+    /// USB / local mode. When set (non-empty), the receipt is printed as raw
+    /// ESC/POS to this OS print queue (CUPS `lpr -o raw`) instead of opening a
+    /// TCP socket — so a USB receipt printer needs no IP, just plug it in.
+    /// Optional + defaulted so existing network-mode callers keep working.
+    #[serde(default)]
+    pub printer_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -80,7 +86,69 @@ pub async fn thermal_check_connection(endpoint: ThermalEndpoint) -> HwResult<boo
     if config::is_mock_mode() {
         return printer_mock::check_connection(&endpoint.ip, endpoint.port).await;
     }
+    // USB / local mode: "reachable" means the OS print queue still exists.
+    if let Some(name) = endpoint.printer_name.as_deref().filter(|n| !n.is_empty()) {
+        return Ok(system_queue_exists(name).await);
+    }
     Ok(probe_tcp(&endpoint.ip, endpoint.port).await)
+}
+
+/// True iff a CUPS queue with this exact name is currently listed by
+/// `lpstat -p`. Lets the USB-mode reachability badge confirm the printer is
+/// installed WITHOUT dispatching a job (never feeds paper).
+async fn system_queue_exists(printer_name: &str) -> bool {
+    let Ok(output) = tokio::process::Command::new("lpstat").arg("-p").output().await else {
+        return false;
+    };
+    String::from_utf8_lossy(&output.stdout).lines().any(|line| {
+        line.strip_prefix("printer ")
+            .and_then(|rest| rest.split_whitespace().next())
+            .map(|name| name == printer_name)
+            .unwrap_or(false)
+    })
+}
+
+/// Auto-detect the most likely USB receipt printer among the OS queues so the
+/// operator just plugs it in — no IP, no manual pick. Reads each queue's
+/// device-uri (`lpstat -v`), prefers a USB queue whose name/uri looks like a
+/// receipt printer, else the only USB queue, else `None`. Returns the CUPS
+/// queue name to store as `printerName`.
+#[tauri::command]
+pub async fn detect_receipt_printer() -> HwResult<Option<String>> {
+    if config::is_mock_mode() {
+        return Ok(Some("Mock-Bondrucker".to_string()));
+    }
+    let Ok(output) = tokio::process::Command::new("lpstat").arg("-v").output().await else {
+        return Ok(None);
+    };
+    let text = String::from_utf8_lossy(&output.stdout);
+    // Lines look like: "device for Warehouse14-Bon: usb://SAMSUNG/SRP-350?..."
+    let mut usb_queues: Vec<String> = Vec::new();
+    for line in text.lines() {
+        if let Some(rest) = line.strip_prefix("device for ") {
+            if let Some((name, uri)) = rest.split_once(": ") {
+                if uri.trim().to_lowercase().starts_with("usb:") {
+                    usb_queues.push(name.trim().to_string());
+                }
+            }
+        }
+    }
+    // A USB queue whose name reads like a receipt printer wins.
+    const HINTS: [&str; 12] = [
+        "bon", "receipt", "beleg", "srp", "thermal", "pos", "tm-", "tm_", "star", "bixolon",
+        "epson", "kasse",
+    ];
+    if let Some(name) = usb_queues
+        .iter()
+        .find(|n| HINTS.iter().any(|h| n.to_lowercase().contains(h)))
+    {
+        return Ok(Some(name.clone()));
+    }
+    // Otherwise, if exactly one USB printer is present, it must be the one.
+    if usb_queues.len() == 1 {
+        return Ok(Some(usb_queues.remove(0)));
+    }
+    Ok(None)
 }
 
 /// Shared TCP reachability probe — connect, then drop. `true` iff the socket
@@ -109,6 +177,14 @@ pub async fn print_thermal_receipt(
         return printer_mock::print_thermal(endpoint, data).await;
     }
 
+    let bytes = build_escpos(&data);
+
+    // USB / local mode — raw ESC/POS to the OS print queue (no network).
+    if let Some(name) = endpoint.printer_name.as_deref().filter(|n| !n.is_empty()) {
+        return send_to_system_printer(name, &bytes).await;
+    }
+
+    // Network mode — AppSocket / JetDirect on TCP 9100.
     let addr = format!("{}:{}", endpoint.ip, endpoint.port);
     let mut stream = timeout(
         Duration::from_millis(DEFAULT_TCP_TIMEOUT_MS),
@@ -117,7 +193,6 @@ pub async fn print_thermal_receipt(
     .await
     .map_err(HardwareError::from)??;
 
-    let bytes = build_escpos(&data);
     let write_fut = async {
         stream.write_all(&bytes).await?;
         stream.flush().await?;
@@ -130,6 +205,36 @@ pub async fn print_thermal_receipt(
     .await
     .map_err(HardwareError::from)??;
 
+    Ok(())
+}
+
+/// Send raw ESC/POS bytes to an OS print queue via CUPS. `-o raw` stops CUPS
+/// from re-rendering our control codes (without it the driver would treat the
+/// bytes as text and mangle the receipt). Mirrors the label printer's system
+/// path, so a USB receipt printer works the same way: write the bytes to a temp
+/// file, hand it to `lpr`, delete it. The OS owns the USB transport.
+async fn send_to_system_printer(printer_name: &str, bytes: &[u8]) -> HwResult<()> {
+    let tmp = std::env::temp_dir().join(format!("warehouse14-bon-{}.bin", uuid::Uuid::new_v4()));
+    std::fs::write(&tmp, bytes).map_err(HardwareError::from)?;
+
+    let status = tokio::process::Command::new("lpr")
+        .arg("-P")
+        .arg(printer_name)
+        .arg("-o")
+        .arg("raw")
+        .arg(&tmp)
+        .status()
+        .await
+        .map_err(HardwareError::from)?;
+
+    let _ = std::fs::remove_file(&tmp);
+
+    if !status.success() {
+        return Err(HardwareError::Device(format!(
+            "lpr exited with {:?} (Drucker '{printer_name}')",
+            status.code()
+        )));
+    }
     Ok(())
 }
 

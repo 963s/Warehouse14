@@ -111,6 +111,7 @@ pub fn run() {
             // Mandate 3-A — ESC/POS thermal
             commands::thermal::print_thermal_receipt,
             commands::thermal::thermal_check_connection,
+            commands::thermal::detect_receipt_printer,
             // Epic B — product sticker labels (ZPL / ESC-POS)
             commands::label::print_label,
             commands::label::label_check_connection,

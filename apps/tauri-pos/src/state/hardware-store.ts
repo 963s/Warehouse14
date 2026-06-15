@@ -19,8 +19,12 @@ import { create } from 'zustand';
 const LOCAL_KEY = 'warehouse14.hardware-config.v1';
 
 export interface ThermalConfig {
+  /** 'network' = TCP 9100 socket; 'usb' = OS print queue via CUPS raw (no IP). */
+  mode: 'network' | 'usb';
   ip: string;
   port: number; // typical 9100
+  /** USB mode: the OS print-queue name (e.g. 'Warehouse14-Bon'). */
+  printerName: string;
   /** Last-known status from `zvtClient.check` / printer probe. */
   lastReachable: boolean | null;
   lastCheckedAt: string | null;
@@ -76,7 +80,14 @@ export interface HardwareConfig {
 }
 
 const DEFAULT: HardwareConfig = {
-  thermal: { ip: '', port: 9100, lastReachable: null, lastCheckedAt: null },
+  thermal: {
+    mode: 'network',
+    ip: '',
+    port: 9100,
+    printerName: '',
+    lastReachable: null,
+    lastCheckedAt: null,
+  },
   a4: { printerName: '' },
   label: {
     mode: 'system',

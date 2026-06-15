@@ -287,6 +287,12 @@ export const labelClient = {
 export interface ThermalEndpoint {
   ip: string;
   port: number;
+  /**
+   * USB / local mode. When set, the receipt prints as raw ESC/POS to this OS
+   * print queue (CUPS) instead of over TCP — a USB receipt printer needs no IP.
+   * Omit (or empty) for the classic network (9100) mode.
+   */
+  printerName?: string;
 }
 
 export interface ThermalLineItem {
@@ -331,6 +337,14 @@ export const thermalClient = {
    */
   check(endpoint: ThermalEndpoint): Promise<boolean> {
     return invoke<boolean>('thermal_check_connection', { endpoint });
+  },
+  /**
+   * Auto-detect the most likely USB receipt printer among the OS print queues
+   * and return its queue name (or null if none). Lets the operator just plug in
+   * the printer — no IP, no manual pick.
+   */
+  detectReceiptPrinter(): Promise<string | null> {
+    return invoke<string | null>('detect_receipt_printer');
   },
 };
 

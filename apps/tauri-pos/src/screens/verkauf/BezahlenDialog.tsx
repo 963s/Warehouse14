@@ -732,8 +732,13 @@ export function BezahlenDialog({
     ],
   );
 
-  /** Whether a thermal print can actually be attempted right now. */
-  const canPrint = isRunningInTauri() && hardwareCfg.thermal.ip.length > 0;
+  /** Whether a thermal print can actually be attempted right now. USB mode is
+   *  ready once a printer queue is picked; network mode needs an IP. */
+  const canPrint =
+    isRunningInTauri() &&
+    (hardwareCfg.thermal.mode === 'usb'
+      ? hardwareCfg.thermal.printerName.length > 0
+      : hardwareCfg.thermal.ip.length > 0);
 
   /**
    * Send an already-built receipt to the thermal printer. Called from the
@@ -752,10 +757,12 @@ export function BezahlenDialog({
       }
       setPrinting(true);
       try {
-        await thermalClient.print(
-          { ip: hardwareCfg.thermal.ip, port: hardwareCfg.thermal.port },
-          data,
-        );
+        // USB mode → raw ESC/POS to the OS queue (no IP); network → ip:port.
+        const endpoint =
+          hardwareCfg.thermal.mode === 'usb'
+            ? { ip: '', port: 9100, printerName: hardwareCfg.thermal.printerName }
+            : { ip: hardwareCfg.thermal.ip, port: hardwareCfg.thermal.port };
+        await thermalClient.print(endpoint, data);
         setPreviewData(null);
       } catch (err) {
         addToast({
@@ -769,7 +776,14 @@ export function BezahlenDialog({
         setPrinting(false);
       }
     },
-    [addToast, canPrint, hardwareCfg.thermal.ip, hardwareCfg.thermal.port],
+    [
+      addToast,
+      canPrint,
+      hardwareCfg.thermal.mode,
+      hardwareCfg.thermal.printerName,
+      hardwareCfg.thermal.ip,
+      hardwareCfg.thermal.port,
+    ],
   );
 
   /** Helper for the print path — change is cash minus the post-voucher due. */

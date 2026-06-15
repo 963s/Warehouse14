@@ -51,10 +51,33 @@ async function probeDevice(kind: HardwareDeviceKind): Promise<boolean> {
 
   try {
     if (kind === 'thermal') {
-      if (!cfg.thermal.ip) return false;
-      const ok = await thermalClient.check({ ip: cfg.thermal.ip, port: cfg.thermal.port });
-      store.setThermal({ lastReachable: ok, lastCheckedAt: now });
-      return ok;
+      const t = cfg.thermal;
+      // Configured USB queue → probe that the queue still exists.
+      if (t.mode === 'usb' && t.printerName) {
+        const ok = await thermalClient.check({ ip: '', port: 9100, printerName: t.printerName });
+        store.setThermal({ lastReachable: ok, lastCheckedAt: now });
+        return ok;
+      }
+      // Configured network printer → probe ip:port.
+      if (t.ip) {
+        const ok = await thermalClient.check({ ip: t.ip, port: t.port });
+        store.setThermal({ lastReachable: ok, lastCheckedAt: now });
+        return ok;
+      }
+      // Nothing configured yet → auto-detect a USB receipt printer and adopt it,
+      // so the operator just plugs the printer in and the POS is print-ready
+      // (Basel's "works automatically on USB connect"). No-op if none found.
+      const detected = await thermalClient.detectReceiptPrinter();
+      if (detected) {
+        store.setThermal({
+          mode: 'usb',
+          printerName: detected,
+          lastReachable: true,
+          lastCheckedAt: now,
+        });
+        return true;
+      }
+      return false;
     }
     if (kind === 'zvt') {
       if (!cfg.zvt.ip) return false;

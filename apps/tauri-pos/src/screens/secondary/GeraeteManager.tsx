@@ -158,9 +158,10 @@ function ThermalSection(): JSX.Element {
   const cfg = useHardwareStore((s) => s.config.thermal);
   const setThermal = useHardwareStore((s) => s.setThermal);
   const addToast = useToastStore((s) => s.addToast);
-  const [busy, setBusy] = useState<'test' | 'print' | null>(null);
+  const [busy, setBusy] = useState<'test' | 'print' | 'detect' | null>(null);
   const [ipDraft, setIpDraft] = useState(cfg.ip);
   const [portDraft, setPortDraft] = useState(String(cfg.port));
+  const [printers, setPrinters] = useState<SystemPrinter[]>([]);
 
   // Re-hydrate the drafts if the store changes externally.
   useEffect(() => {
@@ -168,26 +169,73 @@ function ThermalSection(): JSX.Element {
     setPortDraft(String(cfg.port));
   }, [cfg.ip, cfg.port]);
 
-  const save = useCallback(
-    (patch: Partial<ThermalConfig>) => {
-      setThermal(patch);
-    },
-    [setThermal],
-  );
+  const save = useCallback((patch: Partial<ThermalConfig>) => setThermal(patch), [setThermal]);
+
+  // The endpoint handed to the Rust layer: USB mode carries the queue name (no
+  // IP); network mode carries ip:port. The Rust side picks the transport.
+  const endpoint =
+    cfg.mode === 'usb'
+      ? { ip: '', port: 9100, printerName: cfg.printerName }
+      : { ip: cfg.ip, port: cfg.port };
+  const ready = cfg.mode === 'usb' ? cfg.printerName.length > 0 : cfg.ip.length > 0;
+
+  // Refresh the OS print-queue list (for the USB dropdown).
+  const refreshPrinters = useCallback(async () => {
+    if (!isRunningInTauri()) return;
+    try {
+      setPrinters(await systemClient.listPrinters());
+    } catch {
+      /* listing is best-effort; the auto-detect button is the happy path */
+    }
+  }, []);
+  useEffect(() => {
+    if (cfg.mode === 'usb') void refreshPrinters();
+  }, [cfg.mode, refreshPrinters]);
+
+  // One-tap "just plug it in": auto-detect the USB receipt printer.
+  const autoDetect = useCallback(async () => {
+    setBusy('detect');
+    try {
+      const name = await thermalClient.detectReceiptPrinter();
+      if (name) {
+        save({
+          mode: 'usb',
+          printerName: name,
+          lastReachable: true,
+          lastCheckedAt: new Date().toISOString(),
+        });
+        void refreshPrinters();
+        addToast({ tone: 'success', title: 'USB-Drucker erkannt', body: name });
+      } else {
+        addToast({
+          tone: 'alert',
+          title: 'Kein USB-Drucker gefunden',
+          body: 'Drucker einschalten und per USB anschließen, dann erneut „Erkennen".',
+        });
+      }
+    } catch (err) {
+      addToast({
+        tone: 'alert',
+        title: 'Erkennung fehlgeschlagen',
+        body: isHardwareError(err) ? describeHardwareError(err) : String(err),
+      });
+    } finally {
+      setBusy(null);
+    }
+  }, [addToast, save, refreshPrinters]);
 
   const testConnection = useCallback(async () => {
     setBusy('test');
     try {
-      // Dedicated receipt-printer probe — opens the socket, sends NO bytes
-      // (never wakes the cutter or feeds paper), then marks the badge.
-      const ok = await thermalClient.check({ ip: cfg.ip, port: cfg.port });
+      // Probe only — opens the socket / checks the queue, sends NO bytes (never
+      // wakes the cutter or feeds paper), then marks the badge.
+      const ok = await thermalClient.check(endpoint);
       save({ lastReachable: ok, lastCheckedAt: new Date().toISOString() });
+      const where = cfg.mode === 'usb' ? cfg.printerName : `${cfg.ip}:${cfg.port}`;
       addToast({
         tone: ok ? 'success' : 'alert',
         title: ok ? 'Drucker verbunden' : 'Drucker nicht erreichbar',
-        body: ok
-          ? `${cfg.ip}:${cfg.port}`
-          : `Keine Antwort von ${cfg.ip}:${cfg.port}. Bitte Strom und Netzwerk prüfen.`,
+        body: ok ? where : `Keine Antwort von ${where}. Bitte Strom/Anschluss prüfen.`,
       });
     } catch (err) {
       addToast({
@@ -198,12 +246,12 @@ function ThermalSection(): JSX.Element {
     } finally {
       setBusy(null);
     }
-  }, [addToast, cfg.ip, cfg.port, save]);
+  }, [addToast, endpoint, cfg.mode, cfg.printerName, cfg.ip, cfg.port, save]);
 
   const printTestReceipt = useCallback(async () => {
     setBusy('print');
     try {
-      await thermalClient.print({ ip: cfg.ip, port: cfg.port }, buildTestReceipt());
+      await thermalClient.print(endpoint, buildTestReceipt());
       addToast({
         tone: 'success',
         title: 'Testbeleg gesendet',
@@ -218,39 +266,109 @@ function ThermalSection(): JSX.Element {
     } finally {
       setBusy(null);
     }
-  }, [addToast, cfg.ip, cfg.port]);
+  }, [addToast, endpoint]);
 
   return (
     <Card title="Bondrucker (ESC/POS)">
+      {/* Anschluss-Art: USB (einfach anstecken) oder Netzwerk (IP). */}
       <Row>
-        <LabelledInput
-          label="IP-Adresse"
-          value={ipDraft}
-          onChange={setIpDraft}
-          onBlur={() => save({ ip: ipDraft.trim() })}
-          placeholder="192.168.1.50"
-        />
-        <LabelledInput
-          label="Port"
-          value={portDraft}
-          onChange={setPortDraft}
-          onBlur={() => save({ port: Number(portDraft) || 9100 })}
-          placeholder="9100"
-          width={90}
-        />
+        <span
+          className="w14-smallcaps"
+          style={{ letterSpacing: '0.08em', fontSize: '0.78rem', minWidth: 110 }}
+        >
+          Anschluss
+        </span>
+        <Button
+          variant={cfg.mode === 'usb' ? 'primary' : 'ghost'}
+          onClick={() => save({ mode: 'usb' })}
+        >
+          USB
+        </Button>
+        <Button
+          variant={cfg.mode === 'network' ? 'primary' : 'ghost'}
+          onClick={() => save({ mode: 'network' })}
+        >
+          Netzwerk (LAN)
+        </Button>
       </Row>
+
+      {cfg.mode === 'usb' ? (
+        <>
+          <Row>
+            <Button variant="primary" onClick={() => void autoDetect()} disabled={busy !== null}>
+              {busy === 'detect' ? 'Sucht…' : 'USB-Drucker automatisch erkennen'}
+            </Button>
+            <Button variant="ghost" onClick={() => void refreshPrinters()} disabled={busy !== null}>
+              Liste aktualisieren
+            </Button>
+          </Row>
+          <Row>
+            <label
+              htmlFor="thermal-usb-printer"
+              className="w14-smallcaps"
+              style={{ letterSpacing: '0.08em', fontSize: '0.78rem', minWidth: 110 }}
+            >
+              Drucker
+            </label>
+            <select
+              id="thermal-usb-printer"
+              value={cfg.printerName}
+              onChange={(e) =>
+                save({ printerName: e.target.value, lastReachable: null, lastCheckedAt: null })
+              }
+              style={{
+                flex: 1,
+                padding: '6px 10px',
+                fontFamily: 'var(--w14-font-display)',
+                backgroundColor: 'var(--w14-parchment-1)',
+                border: '1px solid var(--w14-rule)',
+                borderRadius: 4,
+              }}
+            >
+              <option value="">— automatisch erkennen oder wählen —</option>
+              {printers.map((p) => (
+                <option key={p.name} value={p.name}>
+                  {p.name} ({p.status})
+                </option>
+              ))}
+              {cfg.printerName && !printers.some((p) => p.name === cfg.printerName) ? (
+                <option value={cfg.printerName}>{cfg.printerName}</option>
+              ) : null}
+            </select>
+          </Row>
+        </>
+      ) : (
+        <Row>
+          <LabelledInput
+            label="IP-Adresse"
+            value={ipDraft}
+            onChange={setIpDraft}
+            onBlur={() => save({ ip: ipDraft.trim() })}
+            placeholder="192.168.1.50"
+          />
+          <LabelledInput
+            label="Port"
+            value={portDraft}
+            onChange={setPortDraft}
+            onBlur={() => save({ port: Number(portDraft) || 9100 })}
+            placeholder="9100"
+            width={90}
+          />
+        </Row>
+      )}
+
       <Row>
         <Button
           variant="ghost"
           onClick={() => void testConnection()}
-          disabled={busy !== null || !cfg.ip}
+          disabled={busy !== null || !ready}
         >
-          {busy === 'test' ? 'Verbindet…' : 'Automatisch verbinden'}
+          {busy === 'test' ? 'Prüft…' : 'Verbindung prüfen'}
         </Button>
         <Button
           variant="primary"
           onClick={() => void printTestReceipt()}
-          disabled={busy !== null || !cfg.ip}
+          disabled={busy !== null || !ready}
         >
           {busy === 'print' ? 'Druckt…' : 'Testbeleg drucken'}
         </Button>
