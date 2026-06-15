@@ -99,6 +99,23 @@ const productsListRoute: FastifyPluginAsync = async (app) => {
       ];
       const whereClause = preds.some((p) => p !== undefined) ? and(...preds) : undefined;
 
+      // Relevance ranking for the keyboard ring-up (Wave 1.2): exact SKU/barcode
+      // first, then prefix matches on SKU/name, then the rest — so the cashier's
+      // "type a few letters + Enter" rings the BEST match, not merely the newest.
+      // Only applied when a free-text q is present; otherwise the date order stands.
+      const term = q.q !== undefined && q.q.length > 0 ? q.q : null;
+      const rankExpr = term
+        ? sql`CASE
+            WHEN lower(${products.sku}) = lower(${term}) THEN 0
+            WHEN ${products.barcode} IS NOT NULL AND lower(${products.barcode}) = lower(${term}) THEN 0
+            WHEN lower(${products.sku}) LIKE lower(${`${term}%`}) THEN 1
+            WHEN lower(${products.name}) LIKE lower(${`${term}%`}) THEN 2
+            ELSE 3 END`
+        : null;
+      const pageOrder = rankExpr
+        ? [rankExpr, desc(products.createdAt), asc(products.id)]
+        : [desc(products.createdAt), asc(products.id)];
+
       // Two queries: one for the page, one for the total. They are issued in
       // parallel for latency. For a single-shop catalog this is fine; storefront
       // ISR cache absorbs the count cost.
@@ -136,7 +153,7 @@ const productsListRoute: FastifyPluginAsync = async (app) => {
           })
           .from(products)
           .where(whereClause as SQL | undefined)
-          .orderBy(desc(products.createdAt), asc(products.id))
+          .orderBy(...pageOrder)
           .limit(limit)
           .offset(offset),
         app.db

@@ -91,6 +91,8 @@ export function CatalogGrid({
   const [searchInput, setSearchInput] = useState<string>('');
   const [debouncedQ, setDebouncedQ] = useState<string>('');
   const [metalFilter, setMetalFilter] = useState<string>('ALL');
+  // Keyboard ring-up (Wave 1.2): the highlighted result index. Enter rings it.
+  const [highlight, setHighlight] = useState<number>(0);
 
   // P2: when the parent bumps `focusToken` (after a successful finalize closes
   // the Bezahlen dialog), refocus + select the search so the next USB-scanner
@@ -143,6 +145,16 @@ export function CatalogGrid({
     return allItems.filter((i) => i.metal === metalFilter);
   }, [allItems, metalFilter]);
 
+  // A new query / filter parks the keyboard highlight on the top (best) result,
+  // so typing a few characters and pressing Enter rings up the first match.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset on a new result set
+  useEffect(() => {
+    setHighlight(0);
+  }, [debouncedQ, metalFilter]);
+  // The highlight clamped to the current result set (items can shrink on refetch).
+  const activeHighlight =
+    items.length === 0 ? -1 : Math.min(Math.max(0, highlight), items.length - 1);
+
   return (
     <section
       aria-label="Kataloge"
@@ -173,6 +185,24 @@ export function CatalogGrid({
           type="text"
           value={searchInput}
           onChange={(ev) => setSearchInput(ev.target.value)}
+          onKeyDown={(ev) => {
+            if (ev.key === 'Escape') {
+              setSearchInput('');
+              return;
+            }
+            if (items.length === 0) return;
+            if (ev.key === 'ArrowDown') {
+              ev.preventDefault();
+              setHighlight((h) => Math.min(items.length - 1, h + 1));
+            } else if (ev.key === 'ArrowUp') {
+              ev.preventDefault();
+              setHighlight((h) => Math.max(0, h - 1));
+            } else if (ev.key === 'Enter') {
+              ev.preventDefault();
+              const it = items[activeHighlight];
+              if (it && !reservingProductIds.has(it.id) && !inCart.has(it.id)) onSelect(it);
+            }
+          }}
           placeholder="SKU · Name · Beschreibung"
           spellCheck={false}
           autoFocus
@@ -247,7 +277,7 @@ export function CatalogGrid({
               gap: 14,
             }}
           >
-            {items.map((it) => {
+            {items.map((it, idx) => {
               const busy = reservingProductIds.has(it.id);
               const isInCart = inCart.has(it.id);
               return (
@@ -258,6 +288,7 @@ export function CatalogGrid({
                   disabled={busy || isInCart}
                   busy={busy}
                   inCart={isInCart}
+                  highlighted={idx === activeHighlight}
                   onSelect={onSelect}
                 />
               );
@@ -276,6 +307,8 @@ interface ProductTileProps {
   disabled: boolean;
   busy: boolean;
   inCart: boolean;
+  /** Keyboard-selected tile (Enter rings it) — shows an accent ring + scrolls into view. */
+  highlighted: boolean;
   onSelect: (p: ProductListRow) => void;
 }
 
@@ -289,12 +322,19 @@ const ProductTile = memo(function ProductTile({
   disabled,
   busy,
   inCart,
+  highlighted,
   onSelect,
 }: ProductTileProps): JSX.Element {
   const metalLabel = product.metal ? METAL_LABEL[product.metal] : null;
+  const tileRef = useRef<HTMLButtonElement>(null);
+  // Keep the keyboard-highlighted tile visible as the operator arrows through.
+  useEffect(() => {
+    if (highlighted) tileRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [highlighted]);
 
   return (
     <button
+      ref={tileRef}
       type="button"
       onClick={() => onSelect(product)}
       disabled={disabled || inCart}
@@ -305,10 +345,12 @@ const ProductTile = memo(function ProductTile({
         flexDirection: 'column',
         padding: 0,
         overflow: 'hidden',
-        border: '1px solid var(--w14-rule)',
+        border: `1px solid ${highlighted ? 'var(--w14-accent)' : 'var(--w14-rule)'}`,
         borderRadius: 'var(--w14-radius-card)',
         backgroundColor: inCart ? 'var(--w14-parchment-3)' : 'var(--w14-parchment-2)',
-        boxShadow: 'var(--w14-shadow-card)',
+        boxShadow: highlighted
+          ? '0 0 0 2px var(--w14-accent), var(--w14-shadow-card)'
+          : 'var(--w14-shadow-card)',
         color: 'var(--w14-ink)',
         cursor: disabled || inCart ? 'default' : 'pointer',
         opacity: disabled && !busy ? 0.6 : 1,
@@ -325,7 +367,7 @@ const ProductTile = memo(function ProductTile({
       }}
       onMouseLeave={(ev) => {
         const el = ev.currentTarget as HTMLButtonElement;
-        el.style.borderColor = 'var(--w14-rule)';
+        el.style.borderColor = highlighted ? 'var(--w14-accent)' : 'var(--w14-rule)';
         el.style.transform = 'translateY(0)';
       }}
     >
