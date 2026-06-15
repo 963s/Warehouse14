@@ -160,6 +160,15 @@ describe('POST /api/transactions/finalize — Day 13 vital artery', () => {
   // ────────────────────────────────────────────────────────────────────
 
   beforeEach(async () => {
+    // Reset fiscal + actor tables between tests. TRUNCATE (not DELETE) is
+    // required: transactions/tse_signatures are append-only with BEFORE DELETE
+    // triggers that refuse row deletion. CASCADE follows the FK graph (sessions
+    // + devices → users), which is why a bare `DELETE FROM users` failed on the
+    // sessions_user_id_fkey. ledger_events is append-only evidence, left intact.
+    await migratorSql.unsafe(
+      'TRUNCATE tse_signatures, transaction_payments, transaction_items, ' +
+        'transactions, daily_closings, shifts, sessions, devices, customers, products CASCADE',
+    );
     // Cashier + Owner users (the Owner gets the partial-UNIQUE bit reset).
     await migratorSql`DELETE FROM users WHERE is_owner = TRUE`;
 
@@ -234,7 +243,7 @@ describe('POST /api/transactions/finalize — Day 13 vital artery', () => {
          SET status = 'RESERVED'::product_status,
              reserved_at = now(),
              reserved_by_session_id = ${sessionId},
-             reserved_channel = 'POS'::reservation_channel,
+             reserved_by_channel = 'POS'::reservation_channel,
              reserved_by_user_id = ${asUserId}
        WHERE id = ${productId}`;
     return sessionId;
@@ -281,6 +290,10 @@ describe('POST /api/transactions/finalize — Day 13 vital artery', () => {
           amountEur: totalNum.toFixed(2),
         },
       ],
+      // §19.2 C-4 — required since migration 0028. One key per logical sale;
+      // a test that posts the same built body twice reuses this key (the
+      // idempotent-retry path), separate buildBody() calls get distinct keys.
+      idempotencyKey: randomUUID(),
     };
   }
 
@@ -429,16 +442,18 @@ describe('POST /api/transactions/finalize — Day 13 vital artery', () => {
 
     const res = await postFinalize(body);
     expect(res.statusCode).toBe(400);
-    const err = res.json() as { error: { code: string; details: { field: string } } };
+    const err = res.json() as { error: { code: string; message: string } };
     expect(err.error.code).toBe('VALIDATION_ERROR');
-    expect(err.error.details.field).toBe('payments');
+    // The error-handler envelope surfaces the offending field in the message
+    // (structured `details` is reserved for the PIN-lock countdown only).
+    expect(err.error.message).toContain('payments');
   });
 
   // ────────────────────────────────────────────────────────────────────
   // 4. ANKAUF requires customer (DB CHECK from migration 0013 C-1)
   // ────────────────────────────────────────────────────────────────────
 
-  it('ANKAUF without customerId is rejected (mig 0013 C-1)', async () => {
+  it('ANKAUF without a seller is rejected — GwG KYC hard-block (§259 StGB)', async () => {
     const sessionId = await reserveProduct(cashierUserId);
     const body = buildBody({
       reservationSessionId: sessionId,
@@ -447,10 +462,13 @@ describe('POST /api/transactions/finalize — Day 13 vital artery', () => {
     });
 
     const res = await postFinalize(body);
-    // The DB CHECK fires inside the transaction; the error-handler maps the
-    // PG message to VALIDATION_ERROR.
-    expect(res.statusCode).toBe(400);
-    expect(res.json()).toMatchObject({ error: { code: 'VALIDATION_ERROR' } });
+    // Defense in depth: the authoritative `transactions_validate_kyc` trigger
+    // hard-blocks a seller-less Ankauf from €0,01 BEFORE the requires-customer
+    // CHECK (mig 0013 C-1) is reached — every Ankauf needs an ID-verified
+    // seller. The rejection still holds; only the layer (and code) is the
+    // outer KYC gate rather than the inner NOT NULL CHECK.
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toMatchObject({ error: { code: 'KYC_REQUIRED' } });
 
     // Product stayed RESERVED.
     const [p] = await migratorSql<{ status: string }[]>`
@@ -527,7 +545,10 @@ describe('POST /api/transactions/finalize — Day 13 vital artery', () => {
     await migratorSql`
       UPDATE customers SET kyc_verified_at = now(), kyc_verified_by_user_id = ${ownerUserId}
        WHERE id = ${customerId}`;
-    const sessionId = await reserveProduct(cashierUserId);
+    // Reserve as the Owner: this sale finalizes on the Owner session (fresh
+    // step-up), and the §19.2 C-1 guard requires the reservation owner to match
+    // the finalizing actor.
+    const sessionId = await reserveProduct(ownerUserId);
     const body = buildBody({ reservationSessionId: sessionId, totalEur: '2000.00' });
     const res = await postFinalize(body, { sessionToken: ownerSessionToken });
     expect(res.statusCode).toBe(200);
@@ -554,7 +575,9 @@ describe('POST /api/transactions/finalize — Day 13 vital artery', () => {
   });
 
   it('high-value WITH fresh step-up (Owner session) → 200 OK', async () => {
-    const sessionId = await reserveProduct(cashierUserId);
+    // Reserve as the Owner so the §19.2 C-1 reservation-ownership guard passes
+    // when the Owner session finalizes (it carries the fresh step-up).
+    const sessionId = await reserveProduct(ownerUserId);
     const body = buildBody({ reservationSessionId: sessionId, totalEur: '1500.00' });
 
     const res = await postFinalize(body, { sessionToken: ownerSessionToken });
