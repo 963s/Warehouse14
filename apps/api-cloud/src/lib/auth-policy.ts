@@ -17,6 +17,18 @@ import type { Actor, ActorRole, ActorWithSession } from './actor.js';
 /** Default step-up freshness window for sensitive actions (ADR-0022 §4c + Basel directive). */
 export const STEP_UP_WINDOW_MINUTES = 10;
 
+/**
+ * Tolerated negative skew between the API process clock and the clock that
+ * stamped `last_pin_step_up_at`. That timestamp is written by the DB (`now()`
+ * on PIN step-up) and is NEVER client-supplied, so a value a few seconds in the
+ * "future" relative to the API host can only mean clock drift between the two
+ * machines — not tampering. Without this, a fresh step-up is falsely rejected
+ * whenever the auth DB runs marginally ahead of the API. Standard leeway, the
+ * same idea as JWT `nbf`/`iat` validators. The upper bound (real freshness) is
+ * unchanged, so a genuinely stale step-up is still rejected.
+ */
+export const STEP_UP_CLOCK_SKEW_MS = 60_000;
+
 // ────────────────────────────────────────────────────────────────────────
 // Typed errors — picked up by plugins/error-handler.ts.
 // ────────────────────────────────────────────────────────────────────────
@@ -120,7 +132,7 @@ export function requireStepUp(
     throw new StepUpRequiredError(window);
   }
   const ageMs = now.getTime() - last.getTime();
-  if (ageMs < 0 || ageMs > window * 60_000) {
+  if (ageMs < -STEP_UP_CLOCK_SKEW_MS || ageMs > window * 60_000) {
     throw new StepUpRequiredError(window);
   }
 }
