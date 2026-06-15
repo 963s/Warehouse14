@@ -19,6 +19,28 @@ pub struct SystemPrinter {
 
 #[tauri::command]
 pub async fn list_system_printers() -> HwResult<Vec<SystemPrinter>> {
+    list_system_printers_impl().await
+}
+
+/// Windows: enumerate spooler queues via `EnumPrinters` (status best-effort
+/// "unknown" — the Gerätemanager dropdown only needs the names).
+#[cfg(target_os = "windows")]
+async fn list_system_printers_impl() -> HwResult<Vec<SystemPrinter>> {
+    let names = tokio::task::spawn_blocking(crate::commands::win_print::list_printer_names)
+        .await
+        .unwrap_or_default();
+    Ok(names
+        .into_iter()
+        .map(|name| SystemPrinter {
+            name,
+            status: "unknown".to_string(),
+        })
+        .collect())
+}
+
+/// macOS / Linux: `lpstat -p`.
+#[cfg(not(target_os = "windows"))]
+async fn list_system_printers_impl() -> HwResult<Vec<SystemPrinter>> {
     // No mock branch — `lpstat -p` exits with code 1 when no printers are
     // configured, which is a perfectly valid state to surface to the UI
     // (the dropdown then says "Keine Drucker konfiguriert").

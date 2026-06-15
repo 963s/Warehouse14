@@ -118,3 +118,17 @@ subtle = "2"
 axum-server = { version = "0.7", default-features = false, features = ["tls-rustls-no-provider"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "logging", "std", "tls12"] }
 rcgen = "0.13"
+
+# ── Windows raw receipt printing (USB thermal printer) ───────────────
+# The macOS/Linux path uses CUPS (`lpr -o raw`); Windows has no `lpr`, so
+# `commands/win_print.rs` drives the Win32 print spooler directly (OpenPrinter /
+# StartDocPrinter RAW / WritePrinter, + EnumPrinters for the auto-detect).
+# `windows` 0.61 is ALREADY in the lock graph (via Tauri/tao/wry) — this adds no
+# new download, only the printing API surface for this crate.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61", features = [
+    "Win32_Graphics_Printing",
+    "Win32_Graphics_Gdi",
+    "Win32_Foundation",
+    "Win32_Security",
+] }

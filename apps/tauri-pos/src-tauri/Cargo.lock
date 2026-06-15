@@ -7332,7 +7332,7 @@ dependencies = [
 
 [[package]]
 name = "warehouse14-tauri-pos"
-version = "0.4.25"
+version = "0.4.27"
 dependencies = [
  "aes-gcm",
  "axum",
@@ -7373,6 +7373,7 @@ dependencies = [
  "typst-pdf",
  "uuid",
  "webp",
+ "windows",
  "zeroize",
 ]
 

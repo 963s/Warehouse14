@@ -24,4 +24,6 @@ pub mod scale;
 pub mod system;
 pub mod thermal;
 pub mod tse;
+#[cfg(target_os = "windows")]
+pub mod win_print;
 pub mod zvt;

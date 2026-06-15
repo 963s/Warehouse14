@@ -93,11 +93,16 @@ pub async fn thermal_check_connection(endpoint: ThermalEndpoint) -> HwResult<boo
     Ok(probe_tcp(&endpoint.ip, endpoint.port).await)
 }
 
-/// True iff a CUPS queue with this exact name is currently listed by
-/// `lpstat -p`. Lets the USB-mode reachability badge confirm the printer is
-/// installed WITHOUT dispatching a job (never feeds paper).
+/// True iff a print queue with this exact name is installed. Lets the USB-mode
+/// reachability badge confirm the printer is present WITHOUT dispatching a job
+/// (never feeds paper). macOS/Linux: `lpstat -p`. Windows: the spooler list.
+#[cfg(not(target_os = "windows"))]
 async fn system_queue_exists(printer_name: &str) -> bool {
-    let Ok(output) = tokio::process::Command::new("lpstat").arg("-p").output().await else {
+    let Ok(output) = tokio::process::Command::new("lpstat")
+        .arg("-p")
+        .output()
+        .await
+    else {
         return false;
     };
     String::from_utf8_lossy(&output.stdout).lines().any(|line| {
@@ -106,6 +111,14 @@ async fn system_queue_exists(printer_name: &str) -> bool {
             .map(|name| name == printer_name)
             .unwrap_or(false)
     })
+}
+
+#[cfg(target_os = "windows")]
+async fn system_queue_exists(printer_name: &str) -> bool {
+    let name = printer_name.to_string();
+    tokio::task::spawn_blocking(move || crate::commands::win_print::queue_exists(&name))
+        .await
+        .unwrap_or(false)
 }
 
 /// Auto-detect the most likely USB receipt printer among the OS queues so the
@@ -118,7 +131,18 @@ pub async fn detect_receipt_printer() -> HwResult<Option<String>> {
     if config::is_mock_mode() {
         return Ok(Some("Mock-Bondrucker".to_string()));
     }
-    let Ok(output) = tokio::process::Command::new("lpstat").arg("-v").output().await else {
+    detect_receipt_printer_impl().await
+}
+
+/// macOS/Linux: parse each CUPS queue's device-uri (`lpstat -v`), prefer a USB
+/// queue whose name reads like a receipt printer, else the only USB queue.
+#[cfg(not(target_os = "windows"))]
+async fn detect_receipt_printer_impl() -> HwResult<Option<String>> {
+    let Ok(output) = tokio::process::Command::new("lpstat")
+        .arg("-v")
+        .output()
+        .await
+    else {
         return Ok(None);
     };
     let text = String::from_utf8_lossy(&output.stdout);
@@ -149,6 +173,17 @@ pub async fn detect_receipt_printer() -> HwResult<Option<String>> {
         return Ok(Some(usb_queues.remove(0)));
     }
     Ok(None)
+}
+
+/// Windows: enumerate spooler queues + auto-pick the USB receipt printer by
+/// port + name keyword (same heuristic as macOS). Blocking spooler call → off-thread.
+#[cfg(target_os = "windows")]
+async fn detect_receipt_printer_impl() -> HwResult<Option<String>> {
+    Ok(
+        tokio::task::spawn_blocking(crate::commands::win_print::detect_receipt)
+            .await
+            .unwrap_or(None),
+    )
 }
 
 /// Shared TCP reachability probe — connect, then drop. `true` iff the socket
@@ -198,21 +233,21 @@ pub async fn print_thermal_receipt(
         stream.flush().await?;
         Ok::<(), std::io::Error>(())
     };
-    timeout(
-        Duration::from_millis(DEFAULT_TCP_TIMEOUT_MS),
-        write_fut,
-    )
-    .await
-    .map_err(HardwareError::from)??;
+    timeout(Duration::from_millis(DEFAULT_TCP_TIMEOUT_MS), write_fut)
+        .await
+        .map_err(HardwareError::from)??;
 
     Ok(())
 }
 
-/// Send raw ESC/POS bytes to an OS print queue via CUPS. `-o raw` stops CUPS
-/// from re-rendering our control codes (without it the driver would treat the
-/// bytes as text and mangle the receipt). Mirrors the label printer's system
-/// path, so a USB receipt printer works the same way: write the bytes to a temp
-/// file, hand it to `lpr`, delete it. The OS owns the USB transport.
+/// Send raw ESC/POS bytes to an OS print queue. The USB receipt printer is owned
+/// by the OS spooler; we hand it the bytes with raw passthrough so the driver
+/// does NOT re-render our control codes.
+///
+/// macOS/Linux: `lpr -P <name> -o raw <tmpfile>` (mirrors the label printer's
+/// proven system path). Windows has no `lpr`, so we drive the Win32 spooler
+/// directly (`win_print::print_raw`, "RAW" datatype) on a blocking thread.
+#[cfg(not(target_os = "windows"))]
 async fn send_to_system_printer(printer_name: &str, bytes: &[u8]) -> HwResult<()> {
     let tmp = std::env::temp_dir().join(format!("warehouse14-bon-{}.bin", uuid::Uuid::new_v4()));
     std::fs::write(&tmp, bytes).map_err(HardwareError::from)?;
@@ -236,6 +271,16 @@ async fn send_to_system_printer(printer_name: &str, bytes: &[u8]) -> HwResult<()
         )));
     }
     Ok(())
+}
+
+#[cfg(target_os = "windows")]
+async fn send_to_system_printer(printer_name: &str, bytes: &[u8]) -> HwResult<()> {
+    let name = printer_name.to_string();
+    let data = bytes.to_vec();
+    tokio::task::spawn_blocking(move || crate::commands::win_print::print_raw(&name, &data))
+        .await
+        .map_err(|e| HardwareError::Device(format!("Druckauftrag-Thread fehlgeschlagen: {e}")))?
+        .map_err(HardwareError::Device)
 }
 
 // ────────────────────────────────────────────────────────────────────────
@@ -293,10 +338,7 @@ fn build_escpos(data: &ThermalReceiptData) -> Vec<u8> {
     for item in &data.items {
         text_line(
             &mut b,
-            &truncate(
-                &format!("{} x  {}", item.quantity, item.name),
-                32,
-            ),
+            &truncate(&format!("{} x  {}", item.quantity, item.name), 32),
         );
         text_line(
             &mut b,
@@ -309,10 +351,16 @@ fn build_escpos(data: &ThermalReceiptData) -> Vec<u8> {
     rule(&mut b);
 
     // Totals — right-aligned via padding, easier than ESC/POS column splits.
-    text_line(&mut b, &kv_row("Zwischensumme:", &format!("{} EUR", data.subtotal_eur)));
-    text_line(&mut b, &kv_row("MwSt.:",         &format!("{} EUR", data.vat_eur)));
+    text_line(
+        &mut b,
+        &kv_row("Zwischensumme:", &format!("{} EUR", data.subtotal_eur)),
+    );
+    text_line(&mut b, &kv_row("MwSt.:", &format!("{} EUR", data.vat_eur)));
     bold_on(&mut b);
-    text_line(&mut b, &kv_row("SUMME:",         &format!("{} EUR", data.total_eur)));
+    text_line(
+        &mut b,
+        &kv_row("SUMME:", &format!("{} EUR", data.total_eur)),
+    );
     bold_off(&mut b);
     feed(&mut b, 1);
 
@@ -328,8 +376,14 @@ fn build_escpos(data: &ThermalReceiptData) -> Vec<u8> {
     // TSE block (mandatory).
     text_line(&mut b, "TSE-Signatur:");
     text_line(&mut b, &truncate(&data.tse_signature_value, 32));
-    text_line(&mut b, &format!("Signatur-Zähler: {}", data.tse_signature_counter));
-    text_line(&mut b, &format!("Trans-Nr.: {}", data.tse_transaction_number));
+    text_line(
+        &mut b,
+        &format!("Signatur-Zähler: {}", data.tse_signature_counter),
+    );
+    text_line(
+        &mut b,
+        &format!("Trans-Nr.: {}", data.tse_transaction_number),
+    );
 
     // QR with the TSE payload.
     align_center(&mut b);
@@ -358,14 +412,26 @@ fn feed(out: &mut Vec<u8>, lines: u8) {
     out.extend_from_slice(&[ESC, b'd', lines]);
 }
 
-fn align_left(out: &mut Vec<u8>)   { out.extend_from_slice(&[ESC, b'a', 0]); }
-fn align_center(out: &mut Vec<u8>) { out.extend_from_slice(&[ESC, b'a', 1]); }
+fn align_left(out: &mut Vec<u8>) {
+    out.extend_from_slice(&[ESC, b'a', 0]);
+}
+fn align_center(out: &mut Vec<u8>) {
+    out.extend_from_slice(&[ESC, b'a', 1]);
+}
 
-fn bold_on(out: &mut Vec<u8>)  { out.extend_from_slice(&[ESC, b'E', 1]); }
-fn bold_off(out: &mut Vec<u8>) { out.extend_from_slice(&[ESC, b'E', 0]); }
+fn bold_on(out: &mut Vec<u8>) {
+    out.extend_from_slice(&[ESC, b'E', 1]);
+}
+fn bold_off(out: &mut Vec<u8>) {
+    out.extend_from_slice(&[ESC, b'E', 0]);
+}
 
-fn double_size(out: &mut Vec<u8>) { out.extend_from_slice(&[GS, b'!', 0x11]); }
-fn double_off(out: &mut Vec<u8>)  { out.extend_from_slice(&[GS, b'!', 0x00]); }
+fn double_size(out: &mut Vec<u8>) {
+    out.extend_from_slice(&[GS, b'!', 0x11]);
+}
+fn double_off(out: &mut Vec<u8>) {
+    out.extend_from_slice(&[GS, b'!', 0x00]);
+}
 
 fn rule(out: &mut Vec<u8>) {
     // 32 dashes — fits the typical 80 mm paper width at default font.
@@ -387,7 +453,10 @@ fn truncate(s: &str, max: usize) -> String {
     if s.chars().count() <= max {
         s.to_string()
     } else {
-        s.chars().take(max - 1).chain(std::iter::once('…')).collect()
+        s.chars()
+            .take(max - 1)
+            .chain(std::iter::once('…'))
+            .collect()
     }
 }
 
@@ -405,7 +474,16 @@ fn qr_code(out: &mut Vec<u8>, payload: &str) {
     out.extend_from_slice(&[GS, b'(', b'k', 0x03, 0x00, 0x31, 0x45, 0x31]);
     // Store data: GS ( k (len + 3) 0 49 80 48 <payload>
     let plen = p.len() + 3;
-    out.extend_from_slice(&[GS, b'(', b'k', (plen & 0xFF) as u8, ((plen >> 8) & 0xFF) as u8, 0x31, 0x50, 0x30]);
+    out.extend_from_slice(&[
+        GS,
+        b'(',
+        b'k',
+        (plen & 0xFF) as u8,
+        ((plen >> 8) & 0xFF) as u8,
+        0x31,
+        0x50,
+        0x30,
+    ]);
     out.extend_from_slice(p);
     // Print: GS ( k 3 0 49 81 48
     out.extend_from_slice(&[GS, b'(', b'k', 0x03, 0x00, 0x31, 0x51, 0x30]);
