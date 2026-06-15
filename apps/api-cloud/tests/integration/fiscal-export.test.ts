@@ -1153,4 +1153,106 @@ describe('GET /api/closings/:id/export/{datev,dsfinvk} — fiscal-export E2E', (
       expect(res.statusCode).toBe(409); // no Kassensturz
     });
   });
+
+  // ── GET /api/registers/an-verkaufsbuch — GwG §10 / §38 GewO purchase register ──
+  describe('GET /api/registers/an-verkaufsbuch', () => {
+    const regDay = '2026-05-09';
+
+    async function seedAnkaufWithSeller(): Promise<void> {
+      // A seller with full encrypted identity + KYC stamp + an inspected ID.
+      const [c] = await migratorSql<{ id: string }[]>`
+        WITH s AS (SELECT set_config('warehouse14.pii_key', ${PII_KEY}, true))
+        INSERT INTO customers (full_name_encrypted, date_of_birth_encrypted, address_encrypted,
+                               retention_until, kyc_verified_at, kyc_verified_by_user_id)
+        SELECT encrypt_pii('Goldverkäufer Schmidt'), encrypt_pii('1971-03-04'),
+               encrypt_pii('Hauptstr. 1, 73614 Schorndorf'),
+               (now() + interval '5 years')::date, now(), ${adminUserId} FROM s
+        RETURNING id`;
+      const customerId = c!.id;
+      await migratorSql`
+        WITH s AS (SELECT set_config('warehouse14.pii_key', ${PII_KEY}, true))
+        INSERT INTO kyc_documents (customer_id, document_type, issuing_country_iso2,
+                                   document_number_encrypted, document_photo_sha256,
+                                   document_photo_r2_key, issued_on, expires_on,
+                                   captured_by_user_id, retention_until)
+        SELECT ${customerId}, 'PERSONALAUSWEIS'::id_document_type, 'DE',
+               encrypt_pii('L01X00T471'), sha256('idphoto'::bytea), 'kyc/test.jpg',
+               '2019-01-01'::date, '2029-01-01'::date,
+               ${adminUserId}, (now() + interval '5 years')::date FROM s`;
+      // A 750 gold ring, 4.2 g.
+      const productId = await seedProduct();
+      await migratorSql`
+        UPDATE products SET metal = 'gold', weight_grams = '4.2000',
+               name = '750 Gold Ring' WHERE id = ${productId}`;
+      // The Ankauf: 500,00 € paid out in cash (§25a margin item).
+      await seedTransaction({
+        direction: 'ANKAUF',
+        treatment: 'MARGIN_25A',
+        subtotal: '500.00',
+        vat: '0.00',
+        total: '500.00',
+        customerId,
+        finalizedAt: `${regDay}T11:00:00+02:00`,
+        items: [
+          {
+            productId,
+            treatment: 'MARGIN_25A',
+            vatRate: null,
+            lineSubtotal: '500.00',
+            lineVat: '0.00',
+            lineTotal: '500.00',
+            acquisition: null,
+            margin: null,
+            displayOrder: 0,
+          },
+        ],
+        payment: { method: 'CASH', amount: '500.00' },
+        tse: true,
+      });
+    }
+
+    it('lists the Ankauf with decrypted seller identity, ID document, item + payout', async () => {
+      await seedAnkaufWithSeller();
+      const res = await get(
+        `/api/registers/an-verkaufsbuch?direction=ANKAUF&from=${regDay}&to=${regDay}`,
+      );
+      expect(res.statusCode).toBe(200);
+      const body = res.json();
+      expect(body.direction).toBe('ANKAUF');
+      expect(body.count).toBe(1);
+      const e = body.entries[0];
+      expect(e.seller.fullName).toBe('Goldverkäufer Schmidt');
+      expect(e.seller.dateOfBirth).toBe('1971-03-04');
+      expect(e.seller.address).toContain('Schorndorf');
+      expect(e.seller.kycVerifiedAt).not.toBeNull();
+      expect(e.seller.document.type).toBe('PERSONALAUSWEIS');
+      expect(e.seller.document.number).toBe('L01X00T471');
+      expect(e.totalEur).toBe('500.00');
+      expect(e.items[0].description).toBe('750 Gold Ring');
+      expect(e.items[0].metal).toBe('gold');
+      expect(e.items[0].weightGrams).toBe('4.2000');
+      expect(e.payments[0].method).toBe('CASH');
+      expect(e.payments[0].amountEur).toBe('500.00');
+    });
+
+    it('exports the register as CSV (?format=csv)', async () => {
+      await seedAnkaufWithSeller();
+      const res = await get(
+        `/api/registers/an-verkaufsbuch?direction=ANKAUF&from=${regDay}&to=${regDay}&format=csv`,
+      );
+      expect(res.statusCode).toBe(200);
+      expect(res.headers['content-type']).toContain('text/plain');
+      expect(res.payload).toContain('Goldverkäufer Schmidt');
+      expect(res.payload).toContain('PERSONALAUSWEIS');
+      expect(res.payload).toContain('750 Gold Ring');
+    });
+
+    it('requires a fresh PIN step-up (403 without)', async () => {
+      const res = await get(
+        `/api/registers/an-verkaufsbuch?direction=ANKAUF&from=${regDay}&to=${regDay}`,
+        { token: adminNoStepUpToken },
+      );
+      expect(res.statusCode).toBe(403);
+    });
+  });
 });

@@ -88,6 +88,7 @@ import productsEbayPublishRoute from './routes/products-ebay-publish.js';
 import productsEbayRoutes from './routes/products-ebay.js';
 import productsListRoute from './routes/products-list.js';
 import productsRoutes from './routes/products.js';
+import registersRoute from './routes/registers.js';
 // Day 21 — Retail Core
 import settingsRoute from './routes/settings.js';
 import shiftsRoutes from './routes/shifts.js';
@@ -280,6 +281,7 @@ export async function buildApp(opts: BuildAppOpts): Promise<FastifyInstance> {
   // ── Epic K: DSFinV-K / DATEV fiscal exports ──────────────────────
   await app.register(closingExportRoute);
   await app.register(closingsFinalizeRoute);
+  await app.register(registersRoute);
   // ── Phase 2.A: storefront catalog + MCP (memory.md §20) ──────────
   // Public read-only catalog endpoints. The path prefix
   // `/api/storefront/` is in PUBLIC_PREFIXES (lib/public-routes.ts),
