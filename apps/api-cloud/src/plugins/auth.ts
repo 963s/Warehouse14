@@ -142,6 +142,16 @@ const authPlugin: FastifyPluginAsync<AuthPluginOpts> = async (app, opts) => {
       const at = q?.access_token;
       if (typeof at === 'string' && at.length > 0) sessionToken = at;
     }
+    // (4) The teardown batch-release beacon (P1.4): navigator.sendBeacon cannot
+    // set an Authorization header, so the token rides in the JSON body for THIS
+    // route only. Body in the request body (not the query string) so it never
+    // leaks into access/proxy logs. The body is already parsed by preHandler.
+    if (!sessionToken && req.url === '/api/inventory/release/batch') {
+      const body = req.body as { accessToken?: unknown } | undefined;
+      if (typeof body?.accessToken === 'string' && body.accessToken.length > 0) {
+        sessionToken = body.accessToken;
+      }
+    }
     if (!sessionToken) return; // unauthenticated; route helpers throw.
 
     // The cookie carries the session token. Look up the session by token,

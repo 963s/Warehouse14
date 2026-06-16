@@ -315,6 +315,23 @@ export interface ReleaseResponse {
   reason: ReleaseReason;
 }
 
+export interface ReleaseBatchItem {
+  productId: string;
+  sessionId: string;
+}
+
+export interface ReleaseBatchBody {
+  items: ReleaseBatchItem[];
+  reason: ReleaseReason;
+  /** Session token for navigator.sendBeacon (no Authorization header possible). */
+  accessToken?: string;
+}
+
+export interface ReleaseBatchResponse {
+  releasedProductIds: string[];
+  failedProductIds: string[];
+}
+
 // ────────────────────────────────────────────────────────────────────────
 // Methods
 // ────────────────────────────────────────────────────────────────────────
@@ -357,6 +374,10 @@ export const productsApi = {
   },
   release(client: ApiClient, body: ReleaseBody): Promise<ReleaseResponse> {
     return client.request<ReleaseResponse>('POST', '/api/inventory/release', body);
+  },
+  /** Release many reservations in one request (also the awaited path's coalesce). */
+  releaseBatch(client: ApiClient, body: ReleaseBatchBody): Promise<ReleaseBatchResponse> {
+    return client.request<ReleaseBatchResponse>('POST', '/api/inventory/release/batch', body);
   },
   adjustInventory(
     client: ApiClient,

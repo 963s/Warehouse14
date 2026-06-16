@@ -11,6 +11,7 @@
  *   release()              RESERVED  → AVAILABLE (session-id-guarded)
  *   finalize()             RESERVED  → SOLD (session-id-guarded)
  *   autoReleaseExpired()   sweeps expired STOREFRONT/EBAY reservations
+ *   autoReleaseStalePos()  reclaims abandoned TTL-less POS holds (P1.4 backstop)
  *
  * CI must lint for direct UPDATEs on products.status outside this package
  * (Phase 1.5 task). Until then, code review is the gate.
@@ -20,6 +21,10 @@ export { reserve } from './reserve.js';
 export { release } from './release.js';
 export { finalize } from './finalize.js';
 export { autoReleaseExpired } from './autoReleaseExpired.js';
+export {
+  autoReleaseStalePos,
+  type AutoReleaseStalePosOptions,
+} from './autoReleaseStalePos.js';
 
 export {
   InventoryLockError,

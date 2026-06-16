@@ -48,3 +48,64 @@ export async function releaseCart(input: ReleaseCartInput): Promise<number> {
 
   return lines.length;
 }
+
+export interface BeaconReleaseCartInput {
+  /** Raw API base URL — sendBeacon bypasses the api-client, so we build the URL by hand. */
+  baseUrl: string;
+  lines: readonly CartLine[];
+  reason: ReleaseReason;
+  /** Session token — sendBeacon can't set an Authorization header, so it rides in the body. */
+  sessionToken: string | null;
+}
+
+/**
+ * Teardown-survivable release for the `beforeunload` path (P1.4).
+ *
+ * The previous handler looped `productsApi.release` (a normal async fetch that
+ * the browser CANCELS on page teardown), despite a comment claiming keepalive —
+ * so POS holds leaked on window close. This sends ONE `navigator.sendBeacon` to
+ * the batch route, which the browser flushes even as the page unloads. Falls
+ * back to `fetch(..., { keepalive: true })` when sendBeacon is unavailable or
+ * refuses (its only header-capable sibling; well under its 64KB body cap given
+ * the maxItems:64 server cap). Both carry the token in the body, since neither
+ * can attach the session header here.
+ *
+ * Best-effort: returns true if the beacon was queued. The server-side
+ * `pos_reservation_sweeper` is the durable backstop for the case it never
+ * arrives (SIGKILL / power loss).
+ */
+export function beaconReleaseCart(input: BeaconReleaseCartInput): boolean {
+  const { baseUrl, lines, reason, sessionToken } = input;
+  if (lines.length === 0) return false;
+
+  const url = `${baseUrl.replace(/\/+$/, '')}/api/inventory/release/batch`;
+  const payload = JSON.stringify({
+    items: lines.map((line) => ({
+      productId: line.productId,
+      sessionId: line.reservationSessionId,
+    })),
+    reason,
+    ...(sessionToken ? { accessToken: sessionToken } : {}),
+  });
+
+  try {
+    if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+      const ok = navigator.sendBeacon(url, new Blob([payload], { type: 'application/json' }));
+      if (ok) return true;
+    }
+  } catch {
+    /* fall through to keepalive fetch */
+  }
+
+  try {
+    void fetch(url, {
+      method: 'POST',
+      keepalive: true,
+      headers: { 'Content-Type': 'application/json' },
+      body: payload,
+    }).catch(() => undefined);
+    return true;
+  } catch {
+    return false;
+  }
+}

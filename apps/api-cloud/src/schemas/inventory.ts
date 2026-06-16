@@ -77,3 +77,32 @@ export const ReleaseResponse = Type.Object({
   reason: ReleaseReasonEnum,
 });
 export type ReleaseResponse = Static<typeof ReleaseResponse>;
+
+// ────────────────────────────────────────────────────────────────────────
+// POST /api/inventory/release/batch — teardown-survivable batch release.
+//
+// Fired from the POS `beforeunload` via navigator.sendBeacon, which cannot set
+// headers, so the session token rides in the body as `accessToken` (P1.4). One
+// transaction releases every item; a per-item ownership mismatch is reported in
+// `failedProductIds`, never aborting the rest. `maxItems` caps abuse + keeps the
+// fetch-keepalive fallback under its 64KB body limit.
+// ────────────────────────────────────────────────────────────────────────
+
+const ReleaseBatchItem = Type.Object({
+  productId: Type.String({ format: 'uuid' }),
+  sessionId: Type.String({ format: 'uuid' }),
+});
+
+export const ReleaseBatchBody = Type.Object({
+  items: Type.Array(ReleaseBatchItem, { minItems: 1, maxItems: 64 }),
+  reason: ReleaseReasonEnum,
+  /** Session token for sendBeacon (no Authorization header possible). */
+  accessToken: Type.Optional(Type.String({ minLength: 1 })),
+});
+export type ReleaseBatchBody = Static<typeof ReleaseBatchBody>;
+
+export const ReleaseBatchResponse = Type.Object({
+  releasedProductIds: Type.Array(Type.String({ format: 'uuid' })),
+  failedProductIds: Type.Array(Type.String({ format: 'uuid' })),
+});
+export type ReleaseBatchResponse = Static<typeof ReleaseBatchResponse>;

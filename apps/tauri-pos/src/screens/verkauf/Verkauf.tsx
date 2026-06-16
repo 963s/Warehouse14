@@ -41,13 +41,15 @@
  * sessionId. "Karte leeren" parallel-releases every line via the shared
  * `releaseCart` helper. The AppShell sign-out cascade also calls
  * `releaseCart` BEFORE clearing the store (see AppShell.tsx). On graceful
- * Tauri window close we fire one last best-effort release via the
- * `beforeunload` handler — `sendBeacon` keeps it non-blocking.
+ * Tauri window close we fire ONE `navigator.sendBeacon` to the batch-release
+ * route via `beaconReleaseCart` — a beacon survives page teardown (a normal
+ * fetch is cancelled).
  *
- * IMPORTANT: POS reservations have no server-side TTL. If the OS kills
- * the process abruptly (no beforeunload fires), the persisted cart will
- * survive on next launch and the operator can release manually OR
- * finalize against the same sessionIds.
+ * IMPORTANT: POS reservations have no explicit server-side TTL. If the OS kills
+ * the process abruptly (no beforeunload fires), the persisted cart survives on
+ * next launch (operator can release/finalize against the same sessionIds), and
+ * the worker job `pos_reservation_sweeper` reclaims a hold abandoned past a
+ * conservative window (12h) as the durable backstop (P1.4).
  */
 
 import { useQueryClient } from '@tanstack/react-query';
@@ -65,8 +67,9 @@ import { useBarcodeScanner } from '../../hooks/useBarcodeScanner.js';
 import { useCurrentShift } from '../../hooks/useCurrentShift.js';
 import { useApiClient } from '../../lib/api-context.js';
 import { classifyCartProductTax } from '../../lib/cart-math.js';
-import { releaseCart } from '../../lib/release-cart.js';
+import { beaconReleaseCart, releaseCart } from '../../lib/release-cart.js';
 import { classifyScanMatch, normalizeScan } from '../../lib/scan-resolve.js';
+import { getSessionToken } from '../../lib/session-token.js';
 import { type CartLine, selectCartLines, useCartStore } from '../../state/cart-store.js';
 import { useToastStore } from '../../state/toast-store.js';
 
@@ -419,36 +422,30 @@ function VerkaufFloor(): JSX.Element {
   }, [api, clearingCart, lines.length, qc, snapshotAndClear]);
 
   // ────────────────────────────────────────────────────────────────────
-  // Graceful window-close release (best-effort)
+  // Graceful window-close release (P1.4)
   // ────────────────────────────────────────────────────────────────────
-  // POS reservations don't expire server-side, so a closed Tauri window
-  // would leak. We attempt a sync release on `beforeunload`. The browser
-  // gives us ~1 s of synchronous work before tearing the page down; that
-  // is enough for a fetch with `keepalive: true` to flush each release.
-  // If the OS kills the process (SIGKILL, power loss) this WON'T fire —
-  // the persisted cart survives, and the next launch lets the operator
-  // resume + finalize OR explicitly release.
+  // POS reservations are TTL-less server-side, so a closed Tauri window would
+  // leak the holds. We fire ONE `navigator.sendBeacon` to the batch-release
+  // route — the browser flushes a beacon even as the page unloads (a normal
+  // fetch is CANCELLED on teardown, which is what the old per-line loop did
+  // despite its keepalive claim). The beacon can't set an Authorization header,
+  // so the session token rides in the body; the auth plugin honours it for that
+  // route only. `fetch(..., { keepalive: true })` is the fallback.
+  //
+  // If the OS kills the process (SIGKILL / power loss) the beacon never fires —
+  // the server-side `pos_reservation_sweeper` reclaims the abandoned hold, and
+  // the persisted cart lets the operator resume + finalize OR release on relaunch.
 
   useEffect(() => {
     const onBeforeUnload = (): void => {
       const snapshot = useCartStore.getState().lines;
       if (snapshot.length === 0) return;
-      for (const line of snapshot) {
-        try {
-          // Tauri webview + Chromium honour `keepalive: true` on synchronous
-          // fetch from beforeunload. We send via the same api client so the
-          // session cookie + interceptor wrapper apply normally.
-          void productsApi
-            .release(api, {
-              productId: line.productId,
-              sessionId: line.reservationSessionId,
-              reason: 'pos_cart_cleared',
-            })
-            .catch(() => undefined);
-        } catch {
-          /* Swallow — best-effort. */
-        }
-      }
+      beaconReleaseCart({
+        baseUrl: api.baseUrl,
+        lines: snapshot,
+        reason: 'pos_cart_cleared',
+        sessionToken: getSessionToken(),
+      });
     };
     window.addEventListener('beforeunload', onBeforeUnload);
     return () => window.removeEventListener('beforeunload', onBeforeUnload);

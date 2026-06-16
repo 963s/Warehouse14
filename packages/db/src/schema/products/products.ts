@@ -197,6 +197,12 @@ export const products = pgTable(
       .on(table.reservationExpiresAt)
       .where(sql`${table.status} = 'RESERVED' AND ${table.reservationExpiresAt} IS NOT NULL`),
 
+    // Migration 0072: backs the stale-POS-hold reclaim sweep (autoReleaseStalePos)
+    // — POS holds are TTL-less, so they are reclaimed by `reserved_at` age.
+    posReservedAtIdx: index('products_pos_reserved_at_idx')
+      .on(table.reservedAt)
+      .where(sql`${table.status} = 'RESERVED' AND ${table.reservedByChannel} = 'POS'`),
+
     taxTreatmentIdx: index('products_tax_treatment_idx').on(table.taxTreatmentCode),
 
     listedOnEbayIdx: index('products_listed_on_ebay_idx')

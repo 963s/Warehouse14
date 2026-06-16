@@ -24,8 +24,11 @@ import { ReservationOwnershipError, release } from '@warehouse14/inventory-lock'
 import { requireAuth, requireRole } from '../lib/auth-policy.js';
 import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 import {
+  ReleaseBatchBody,
+  ReleaseBatchResponse,
   ReleaseBody,
   ReleaseResponse,
+  type ReleaseBatchBody as TReleaseBatchBody,
   type ReleaseBody as TReleaseBody,
 } from '../schemas/inventory.js';
 
@@ -99,6 +102,72 @@ const inventoryRelease: FastifyPluginAsync = async (app) => {
         releasedAt: new Date().toISOString(),
         reason,
       });
+    },
+  );
+
+  // ──────────────────────────────────────────────────────────────────────
+  // POST /api/inventory/release/batch — teardown-survivable batch release.
+  //
+  // Fired from the POS `beforeunload` via navigator.sendBeacon (P1.4). The
+  // session token rides in the body (`accessToken`) because a beacon cannot set
+  // an Authorization header; the auth plugin honours it for THIS route only.
+  //
+  // A beacon also cannot send the mTLS device fingerprint, so — unlike the
+  // single release route — the CASHIER device gate is NOT enforced here: release
+  // is reversible (reserve again) and non-fiscal, and the alternative is the
+  // hold leaking forever. The server-side stale-POS-hold sweep (worker job
+  // pos_reservation_sweeper) is the durable backstop for a beacon that never
+  // arrives (SIGKILL / power loss).
+  // ──────────────────────────────────────────────────────────────────────
+  app.post<{ Body: TReleaseBatchBody }>(
+    '/api/inventory/release/batch',
+    {
+      schema: {
+        tags: ['inventory'],
+        summary: 'Release many reservations in one teardown-survivable request.',
+        body: ReleaseBatchBody,
+        response: {
+          200: ReleaseBatchResponse,
+          401: ErrorResponse,
+          403: ErrorResponse,
+        },
+      },
+    },
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'CASHIER', 'ADMIN');
+
+      const { items, reason } = req.body;
+      const userId = req.actor.id;
+
+      // ONE transaction: every release() is itself a single ownership-guarded
+      // UPDATE. A per-item ownership mismatch (already released / stale session)
+      // is recorded in failedProductIds and does NOT abort the rest; any other
+      // DB error rolls the whole batch back.
+      const releasedProductIds: string[] = [];
+      const failedProductIds: string[] = [];
+      await app.db.transaction(async (txAny) => {
+        const tx = txAny as unknown as typeof app.db;
+        for (const item of items) {
+          try {
+            await release(tx, {
+              productId: item.productId,
+              sessionId: item.sessionId,
+              userId,
+              reason,
+            });
+            releasedProductIds.push(item.productId);
+          } catch (err) {
+            if (err instanceof ReservationOwnershipError) {
+              failedProductIds.push(item.productId);
+            } else {
+              throw err;
+            }
+          }
+        }
+      });
+
+      return reply.status(200).send({ releasedProductIds, failedProductIds });
     },
   );
 };

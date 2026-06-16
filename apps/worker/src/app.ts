@@ -31,6 +31,7 @@ import {
   gdprCleanupJob,
   intakeSweepJob,
   lbmaPricesJob,
+  posReservationSweeperJob,
   productPhotoPurgeJob,
   reservationSweeperJob,
   sessionsCleanupJob,
@@ -112,6 +113,7 @@ export async function buildWorker(opts: BuildWorkerOpts): Promise<WorkerHandle> 
 
   // Register V1 jobs. Order doesn't affect runtime — cron handles scheduling.
   runner.register(reservationSweeperJob);
+  runner.register(posReservationSweeperJob);
   runner.register(chainVerifierJob);
   runner.register(sessionsCleanupJob);
   runner.register(anomalyWatchdogJob);
