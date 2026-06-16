@@ -944,6 +944,83 @@ async fn serve_app_js() -> Response {
         .into_response()
 }
 
+/// `GET /trust/warehouse14-ca.mobileconfig` — the iOS profile that installs the
+/// companion root CA + a Web Clip. Served with the Apple aspen-config MIME so
+/// Safari offers to install it. The CA cert is read from the same app-data dir
+/// the pairing registry lives in.
+async fn trust_mobileconfig_handler(AxumState(hub): AxumState<HubShared>) -> Response {
+    let dir = {
+        let inner = hub.inner.read().await;
+        inner
+            .store_path
+            .as_ref()
+            .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+    };
+    let Some(dir) = dir else {
+        return (StatusCode::SERVICE_UNAVAILABLE, "Hub not ready").into_response();
+    };
+    let Ok(ca_pem) = read_ca_cert_pem(&dir) else {
+        return (StatusCode::SERVICE_UNAVAILABLE, "CA not ready").into_response();
+    };
+    let url = format!("https://{TLS_SAN_MDNS}:{COMPANION_PORT}");
+    let mc = build_mobileconfig(&ca_pem, &url);
+    (
+        StatusCode::OK,
+        [
+            (
+                header::CONTENT_TYPE,
+                HeaderValue::from_static("application/x-apple-aspen-config"),
+            ),
+            (
+                header::CONTENT_DISPOSITION,
+                HeaderValue::from_static("attachment; filename=\"warehouse14.mobileconfig\""),
+            ),
+        ],
+        mc,
+    )
+        .into_response()
+}
+
+/// `GET /trust` — the one-page German onboarding that walks the operator through
+/// installing the profile + flipping the Certificate-Trust toggle on iOS.
+async fn trust_page_handler() -> Response {
+    (
+        StatusCode::OK,
+        [(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("text/html; charset=utf-8"),
+        )],
+        TRUST_HTML,
+    )
+        .into_response()
+}
+
+/// Onboarding page served at `/trust`. Self-contained (no external assets).
+const TRUST_HTML: &str = r#"<!doctype html><html lang="de"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Warehouse 14 — iPhone einrichten</title>
+<style>
+ body{font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;margin:0;background:#f4f2ee;color:#1a1a1a}
+ .wrap{max-width:560px;margin:0 auto;padding:24px}
+ h1{font-size:20px;margin:8px 0 4px}.sub{color:#777;margin:0 0 20px;font-size:14px}
+ .btn{display:block;text-align:center;background:#1a1a1a;color:#fff;text-decoration:none;padding:16px;border-radius:12px;font-size:17px;font-weight:600;margin:18px 0}
+ ol{padding-left:20px;line-height:1.6}li{margin:10px 0}
+ .step{background:#fff;border:1px solid #e3ddd2;border-radius:12px;padding:16px 18px;margin:14px 0}
+ .k{font-weight:600}.warn{background:#fff7e6;border:1px solid #f0d9a8;border-radius:10px;padding:12px;font-size:14px}
+ code{background:#efece3;padding:2px 6px;border-radius:4px}
+</style></head><body><div class="wrap">
+ <h1>Warehouse 14 — iPhone einrichten</h1>
+ <p class="sub">Einmalig: Zertifikat installieren, dann ist die Kamera-/Scanner-Verbindung sicher.</p>
+ <a class="btn" href="/trust/warehouse14-ca.mobileconfig">1 · Profil laden</a>
+ <div class="step"><span class="k">2 · Installieren</span><br>
+   Einstellungen → Allgemein → VPN &amp; Geräteverwaltung → <span class="k">Geladenes Profil</span> → Installieren.</div>
+ <div class="step warn"><span class="k">3 · Vertrauen aktivieren (wichtig!)</span><br>
+   Einstellungen → Allgemein → Info → <span class="k">Zertifikatsvertrauenseinstellungen</span> → „Warehouse14 Local CA“ <span class="k">einschalten</span>. Ohne diesen Schritt bleibt die Kamera gesperrt.</div>
+ <div class="step"><span class="k">4 · Öffnen</span><br>
+   <code>https://warehouse14.local:8714</code> öffnen (oder das neue Symbol auf dem Home-Bildschirm) und Kamera erlauben.</div>
+ <p class="sub">Hinweis: Beim ersten Laden zeigt das iPhone „Nicht signiert“ — das ist im eigenen WLAN normal.</p>
+</div></body></html>"#;
+
 /// `GET /health` — liveness probe for companions / diagnostics.
 async fn health() -> &'static str {
     "ok"
@@ -1856,6 +1933,11 @@ fn build_router(hub: HubShared) -> Router {
         .route("/app", get(serve_spa))
         .route("/app.html", get(serve_spa))
         .route("/app.js", get(serve_app_js))
+        .route("/trust", get(trust_page_handler))
+        .route(
+            "/trust/warehouse14-ca.mobileconfig",
+            get(trust_mobileconfig_handler),
+        )
         .route("/health", get(health))
         .route("/pair", post(pair_handler))
         .route("/cart", get(cart_handler))
@@ -2131,10 +2213,84 @@ fn leaf_needs_renewal(dir: &FsPath) -> bool {
 }
 
 /// The root-CA cert PEM the phone must install (used by the `.mobileconfig`
-/// route, wired in the next step). Errors if the CA has not been created yet.
-#[allow(dead_code)] // consumed by the /trust .mobileconfig route (P1)
+/// route). Errors if the CA has not been created yet.
 fn read_ca_cert_pem(dir: &FsPath) -> std::io::Result<String> {
     std::fs::read_to_string(dir.join(TLS_CA_CERT_FILE))
+}
+
+// Fixed payload UUIDs so re-downloading the profile cleanly REPLACES the same
+// payloads on iOS (deduped by PayloadIdentifier; stable UUIDs keep it tidy).
+const MC_PROFILE_UUID: &str = "7a3e1b40-1c2d-4e5f-8a9b-0c1d2e3f4a50";
+const MC_CA_UUID: &str = "7a3e1b40-1c2d-4e5f-8a9b-0c1d2e3f4a51";
+const MC_WEBCLIP_UUID: &str = "7a3e1b40-1c2d-4e5f-8a9b-0c1d2e3f4a52";
+
+/// Strip the PEM armor + newlines, leaving the base64(DER) body a plist `<data>`
+/// wants (a PEM body IS already base64 of the DER).
+fn pem_to_der_b64(pem: &str) -> String {
+    pem.lines()
+        .filter(|l| !l.starts_with("-----"))
+        .collect::<String>()
+}
+
+/// XML-escape the chars that matter inside a plist `<string>`.
+fn xml_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+/// Build the iOS `.mobileconfig` that (1) installs the companion root CA — so the
+/// hub's HTTPS becomes a TRUSTED secure context and the live camera/barcode work
+/// — and (2) adds a full-screen Web Clip launching the SPA. `https_url` is the
+/// stable mDNS URL the leaf is issued for (`https://warehouse14.local:8714`).
+/// Unsigned (shows an "Unsigned" banner on install — harmless for the one shop
+/// phone; the install + the one-time Certificate-Trust toggle still apply).
+fn build_mobileconfig(ca_cert_pem: &str, https_url: &str) -> String {
+    let der_b64 = pem_to_der_b64(ca_cert_pem);
+    let url = xml_escape(https_url);
+    format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>PayloadContent</key>
+  <array>
+    <dict>
+      <key>PayloadType</key><string>com.apple.security.root</string>
+      <key>PayloadVersion</key><integer>1</integer>
+      <key>PayloadIdentifier</key><string>de.warehouse14.ca</string>
+      <key>PayloadUUID</key><string>{ca_uuid}</string>
+      <key>PayloadDisplayName</key><string>Warehouse 14 Local CA</string>
+      <key>PayloadCertificateFileName</key><string>warehouse14-ca.cer</string>
+      <key>PayloadContent</key>
+      <data>{der_b64}</data>
+    </dict>
+    <dict>
+      <key>PayloadType</key><string>com.apple.webClip.managed</string>
+      <key>PayloadVersion</key><integer>1</integer>
+      <key>PayloadIdentifier</key><string>de.warehouse14.webclip</string>
+      <key>PayloadUUID</key><string>{wc_uuid}</string>
+      <key>PayloadDisplayName</key><string>Warehouse 14</string>
+      <key>Label</key><string>Warehouse 14</string>
+      <key>URL</key><string>{url}</string>
+      <key>IsRemovable</key><true/>
+      <key>FullScreen</key><true/>
+    </dict>
+  </array>
+  <key>PayloadDisplayName</key><string>Warehouse 14 — iPhone Einrichtung</string>
+  <key>PayloadDescription</key><string>Installiert das Warehouse-14-Zertifikat und legt das App-Symbol an.</string>
+  <key>PayloadIdentifier</key><string>de.warehouse14.profile</string>
+  <key>PayloadOrganization</key><string>Warehouse 14</string>
+  <key>PayloadType</key><string>Configuration</string>
+  <key>PayloadUUID</key><string>{prof_uuid}</string>
+  <key>PayloadVersion</key><integer>1</integer>
+</dict>
+</plist>
+"#,
+        ca_uuid = MC_CA_UUID,
+        wc_uuid = MC_WEBCLIP_UUID,
+        prof_uuid = MC_PROFILE_UUID,
+    )
 }
 
 /// Process-wide install of the **ring** rustls crypto provider as the default,
@@ -2981,6 +3137,34 @@ mod tests {
             }
             Err(_) => eprintln!("openssl not on PATH — skipping leaf↔CA crypto verify"),
         }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn mobileconfig_embeds_ca_and_webclip() {
+        let dir = fresh_tls_dir("mc");
+        let lan: Ipv4Addr = "192.168.1.42".parse().unwrap();
+        let _ = load_or_create_tls_identity(&dir, lan).expect("identity");
+        let ca = read_ca_cert_pem(&dir).expect("ca pem");
+        let mc = build_mobileconfig(&ca, "https://warehouse14.local:8714");
+
+        assert!(mc.starts_with("<?xml"), "is a plist");
+        assert!(mc.contains("</plist>"));
+        assert!(mc.contains("com.apple.security.root"), "installs the CA");
+        assert!(
+            mc.contains("com.apple.webClip.managed"),
+            "adds the web clip"
+        );
+        assert!(
+            mc.contains("https://warehouse14.local:8714"),
+            "web clip URL"
+        );
+
+        // The embedded <data> is clean base64(DER) — no PEM armor, no newlines.
+        let der_b64 = pem_to_der_b64(&ca);
+        assert!(!der_b64.is_empty());
+        assert!(!der_b64.contains("-----") && !der_b64.contains('\n'));
+        assert!(mc.contains(&der_b64), "embeds the CA DER");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
