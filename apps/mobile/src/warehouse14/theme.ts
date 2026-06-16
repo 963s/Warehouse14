@@ -62,7 +62,7 @@ export const darkPalette: Palette = {
   foreground: "#e9ebee",
   mutedForeground: "#939aa3",
   primary: "#d8b14e",
-  primaryForeground: "#16191d",
+  primaryForeground: "#1a1407",
   verdigris: "#2fb277",
   destructive: "#e15862",
   border: "#2c313a",
