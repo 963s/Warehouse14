@@ -3802,22 +3802,35 @@
     try {
       var insecure = window.isSecureContext === false || location.protocol === "http:";
       if (!insecure || document.getElementById("w14-trust-banner")) return;
-      var bar = el(
-        "div",
-        {
-          id: "w14-trust-banner",
-          style:
-            "position:fixed;top:0;left:0;right:0;z-index:9999;background:#7f1d1d;color:#fff;" +
-            "font-size:13px;line-height:1.35;padding:8px 12px;display:flex;gap:10px;" +
-            "align-items:center;justify-content:center;flex-wrap:wrap;text-align:center"
-        },
-        [
-          el("span", {}, "Unsichere Verbindung — Kamera/Scanner gesperrt, bis das Zertifikat installiert ist."),
-          el("a", { href: "/trust", style: "color:#fff;font-weight:700;text-decoration:underline" }, "Jetzt einrichten")
-        ]
-      );
+      // role=alert → an assertive live region. This is the most safety-critical
+      // state on the page (camera/scanner locked) and must NOT be silent to
+      // screen readers, as the sibling toasts already are (role=status).
+      // TWO-PHASE insert: append the EMPTY container first so the AT registers
+      // the live region, THEN populate its text on the next frame. A single
+      // insert of a pre-filled alert subtree is frequently NOT announced
+      // (notably VoiceOver + WebKit — this SPA's main iPad/iPhone target), which
+      // would render the banner visually yet leave it silent. Splitting
+      // create-from-populate makes the announcement reliable.
+      var bar = el("div", {
+        id: "w14-trust-banner",
+        role: "alert",
+        style:
+          "position:fixed;top:0;left:0;right:0;z-index:9999;background:#7f1d1d;color:#fff;" +
+          "font-size:13px;line-height:1.35;padding:8px 12px;display:flex;gap:10px;" +
+          "align-items:center;justify-content:center;flex-wrap:wrap;text-align:center"
+      });
       document.body.appendChild(bar);
       document.body.style.paddingTop = "46px";
+      var fillBanner = function () {
+        bar.appendChild(
+          el("span", {}, "Unsichere Verbindung — Kamera/Scanner gesperrt, bis das Zertifikat installiert ist.")
+        );
+        bar.appendChild(
+          el("a", { href: "/trust", style: "color:#fff;font-weight:700;text-decoration:underline" }, "Jetzt einrichten")
+        );
+      };
+      if (typeof requestAnimationFrame === "function") requestAnimationFrame(fillBanner);
+      else setTimeout(fillBanner, 50);
     } catch (e) {}
   }
 
