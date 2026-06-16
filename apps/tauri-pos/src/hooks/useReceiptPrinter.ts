@@ -28,7 +28,14 @@ export function useReceiptPrinter(): ReceiptPrinter {
   const addToast = useToastStore((s) => s.addToast);
   const [printing, setPrinting] = useState(false);
 
-  const canPrint = isRunningInTauri() && cfg.thermal.ip.length > 0;
+  // Mirror the sale-receipt path (BezahlenDialog): a USB printer is ready once a
+  // queue is picked (no IP), a network printer needs an IP. The old check only
+  // looked at the IP, so the Belegdesigner "Testdruck" could never reach a USB
+  // receipt printer — exactly the "I edit the design but can't print" report.
+  const usbMode = cfg.thermal.mode === 'usb';
+  const canPrint =
+    isRunningInTauri() &&
+    (usbMode ? cfg.thermal.printerName.length > 0 : cfg.thermal.ip.length > 0);
 
   const print = useCallback(
     async (data: ThermalReceiptData): Promise<boolean> => {
@@ -42,7 +49,11 @@ export function useReceiptPrinter(): ReceiptPrinter {
       }
       setPrinting(true);
       try {
-        await thermalClient.print({ ip: cfg.thermal.ip, port: cfg.thermal.port }, data);
+        // USB mode → raw ESC/POS to the OS queue (no IP); network → ip:port.
+        const endpoint = usbMode
+          ? { ip: '', port: 9100, printerName: cfg.thermal.printerName }
+          : { ip: cfg.thermal.ip, port: cfg.thermal.port };
+        await thermalClient.print(endpoint, data);
         return true;
       } catch (err) {
         addToast({
@@ -55,7 +66,7 @@ export function useReceiptPrinter(): ReceiptPrinter {
         setPrinting(false);
       }
     },
-    [canPrint, cfg.thermal.ip, cfg.thermal.port, addToast],
+    [canPrint, usbMode, cfg.thermal.ip, cfg.thermal.port, cfg.thermal.printerName, addToast],
   );
 
   return { canPrint, printing, print };

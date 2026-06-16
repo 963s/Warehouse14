@@ -304,17 +304,17 @@ fn build_escpos(data: &ThermalReceiptData) -> Vec<u8> {
     b.extend_from_slice(&[ESC, b'@']);
     b.extend_from_slice(&[ESC, b't', 19]); // PC858
 
-    // Engraved shop logo (GS v 0 raster from the brand asset), centred.
+    // Engraved shop logo (GS v 0 raster from the brand asset), centred. The
+    // logo already carries the shop NAME + tagline, so we do NOT reprint a
+    // double-size "WAREHOUSE 14" under it (that redundant text header was the
+    // "patchwork name below the logo" the owner asked to remove). The address +
+    // USt-IdNr below are the legal Pflichtangaben the logo doesn't show.
     align_center(&mut b);
     b.extend_from_slice(LOGO_ESCPOS);
     feed(&mut b, 1);
 
-    // Shop name (kept as a text fallback for printers that skip the raster).
-    bold_on(&mut b);
-    double_size(&mut b);
-    text_line(&mut b, &data.shop_name);
-    double_off(&mut b);
-    bold_off(&mut b);
+    // Tagline + address (centred, normal size) — the human-readable contact +
+    // legal block under the brand mark.
     for line in &data.shop_address {
         text_line(&mut b, line);
     }
@@ -373,22 +373,37 @@ fn build_escpos(data: &ThermalReceiptData) -> Vec<u8> {
     }
     rule(&mut b);
 
-    // TSE block (mandatory).
-    text_line(&mut b, "TSE-Signatur:");
-    text_line(&mut b, &truncate(&data.tse_signature_value, 32));
-    text_line(
-        &mut b,
-        &format!("Signatur-Zähler: {}", data.tse_signature_counter),
-    );
-    text_line(
-        &mut b,
-        &format!("Trans-Nr.: {}", data.tse_transaction_number),
-    );
-
-    // QR with the TSE payload.
-    align_center(&mut b);
-    qr_code(&mut b, &data.tse_qr_payload);
-    align_left(&mut b);
+    // TSE block (KassenSichV-mandatory). When the TSE is in Ausfall / not yet
+    // configured (test mode), the app sends the "TSE Ausfall" sentinel for every
+    // field. Print ONE clean, legally-required Ausfall note then — NOT the same
+    // "TSE Ausfall" four times plus a meaningless QR of that text (the messy
+    // block the owner flagged). Only a real signature gets the full block + QR.
+    let tse_down = is_tse_down(&data.tse_signature_value)
+        || is_tse_down(&data.tse_qr_payload)
+        || data.tse_qr_payload.trim().is_empty();
+    if tse_down {
+        align_center(&mut b);
+        bold_on(&mut b);
+        text_line(&mut b, "TSE-Ausfall");
+        bold_off(&mut b);
+        text_line(&mut b, "Sicherheitseinrichtung nicht verfügbar");
+        align_left(&mut b);
+    } else {
+        text_line(&mut b, "TSE-Signatur:");
+        text_line(&mut b, &truncate(&data.tse_signature_value, 32));
+        text_line(
+            &mut b,
+            &format!("Signatur-Zähler: {}", data.tse_signature_counter),
+        );
+        text_line(
+            &mut b,
+            &format!("Trans-Nr.: {}", data.tse_transaction_number),
+        );
+        // QR with the TSE payload (centred under the signature).
+        align_center(&mut b);
+        qr_code(&mut b, &data.tse_qr_payload);
+        align_left(&mut b);
+    }
     feed(&mut b, 1);
 
     // Footer (Danke / Rückgabe / etc.)
@@ -403,9 +418,78 @@ fn build_escpos(data: &ThermalReceiptData) -> Vec<u8> {
     b
 }
 
+/// Encode a UTF-8 string to PC858 (CP858) bytes — the code page the printer was
+/// put into (`ESC t 19`). Sending raw UTF-8 is what garbled the umlauts / middle
+/// dot / Euro on the receipt (`ä` = UTF-8 `C3 A4` rendered as two PC858 glyphs).
+/// ASCII passes through; the German + receipt glyphs map to their PC858 byte;
+/// typographic punctuation degrades to ASCII; anything else becomes `?` so a
+/// stray character can never desync the fixed-width column layout.
+fn encode_pc858(s: &str) -> Vec<u8> {
+    let mut out = Vec::with_capacity(s.len());
+    for ch in s.chars() {
+        match ch {
+            '\u{0}'..='\u{7F}' => out.push(ch as u8),
+            'Ç' => out.push(0x80),
+            'ü' => out.push(0x81),
+            'é' => out.push(0x82),
+            'â' => out.push(0x83),
+            'ä' => out.push(0x84),
+            'à' => out.push(0x85),
+            'å' => out.push(0x86),
+            'ç' => out.push(0x87),
+            'ê' => out.push(0x88),
+            'ë' => out.push(0x89),
+            'è' => out.push(0x8A),
+            'ï' => out.push(0x8B),
+            'î' => out.push(0x8C),
+            'ì' => out.push(0x8D),
+            'Ä' => out.push(0x8E),
+            'Å' => out.push(0x8F),
+            'É' => out.push(0x90),
+            'æ' => out.push(0x91),
+            'Æ' => out.push(0x92),
+            'ô' => out.push(0x93),
+            'ö' => out.push(0x94),
+            'ò' => out.push(0x95),
+            'û' => out.push(0x96),
+            'ù' => out.push(0x97),
+            'ÿ' => out.push(0x98),
+            'Ö' => out.push(0x99),
+            'Ü' => out.push(0x9A),
+            '£' => out.push(0x9C),
+            '€' => out.push(0xD5), // PC858's distinguishing code point
+            'á' => out.push(0xA0),
+            'í' => out.push(0xA1),
+            'ó' => out.push(0xA2),
+            'ú' => out.push(0xA3),
+            'ñ' => out.push(0xA4),
+            'Ñ' => out.push(0xA5),
+            'ß' => out.push(0xE1),
+            '°' => out.push(0xF8),
+            '·' => out.push(0xFA), // middle dot (the tagline separator)
+            // Typographic punctuation Word/macOS love to insert → ASCII.
+            '–' | '—' => out.push(b'-'),
+            '“' | '”' | '„' | '«' | '»' => out.push(b'"'),
+            '‘' | '’' | '‚' => out.push(b'\''),
+            '…' => out.extend_from_slice(b"..."),
+            '\u{00A0}' => out.push(b' '), // non-breaking space
+            _ => out.push(b'?'),
+        }
+    }
+    out
+}
+
 fn text_line(out: &mut Vec<u8>, s: &str) {
-    out.extend_from_slice(s.as_bytes());
+    out.extend_from_slice(&encode_pc858(s));
     out.push(b'\n');
+}
+
+/// True when a TSE field carries the "no TSE / Ausfall" sentinel the app sends in
+/// test mode (empty or "TSE Ausfall"). A real signature/QR payload is long opaque
+/// data and never matches, so this only fires when there is genuinely no TSE.
+fn is_tse_down(field: &str) -> bool {
+    let t = field.trim();
+    t.is_empty() || t.eq_ignore_ascii_case("tse ausfall") || t.eq_ignore_ascii_case("ausfall")
 }
 
 fn feed(out: &mut Vec<u8>, lines: u8) {
@@ -424,13 +508,6 @@ fn bold_on(out: &mut Vec<u8>) {
 }
 fn bold_off(out: &mut Vec<u8>) {
     out.extend_from_slice(&[ESC, b'E', 0]);
-}
-
-fn double_size(out: &mut Vec<u8>) {
-    out.extend_from_slice(&[GS, b'!', 0x11]);
-}
-fn double_off(out: &mut Vec<u8>) {
-    out.extend_from_slice(&[GS, b'!', 0x00]);
 }
 
 fn rule(out: &mut Vec<u8>) {
@@ -488,4 +565,41 @@ fn qr_code(out: &mut Vec<u8>, payload: &str) {
     // Print: GS ( k 3 0 49 81 48
     out.extend_from_slice(&[GS, b'(', b'k', 0x03, 0x00, 0x31, 0x51, 0x30]);
     out.push(b'\n');
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pc858_maps_german_glyphs_and_euro_not_raw_utf8() {
+        // The bug: raw UTF-8 sent to a PC858 printer garbled umlauts/·/€.
+        // ä=0x84, ü=0x81, ö=0x94, ß=0xE1, ·=0xFA, €=0xD5 in PC858.
+        assert_eq!(
+            encode_pc858("Antiquitäten · Münzen ß €"),
+            vec![
+                b'A', b'n', b't', b'i', b'q', b'u', b'i', b't', 0x84, b't', b'e', b'n', b' ',
+                0xFA, b' ', b'M', 0x81, b'n', b'z', b'e', b'n', b' ', 0xE1, b' ', 0xD5,
+            ],
+        );
+        // Pure ASCII is byte-identical.
+        assert_eq!(encode_pc858("Beleg-Nr.: RCP-1"), b"Beleg-Nr.: RCP-1".to_vec());
+        // Typographic junk degrades to ASCII, never multi-byte garbage.
+        assert_eq!(encode_pc858("„x“ — y…"), b"\"x\" - y...".to_vec());
+        // An unmappable char becomes a single '?', never desyncing columns.
+        assert_eq!(encode_pc858("☃"), vec![b'?']);
+    }
+
+    #[test]
+    fn tse_down_detects_the_ausfall_sentinel_not_a_real_signature() {
+        assert!(is_tse_down("TSE Ausfall"));
+        assert!(is_tse_down("tse ausfall"));
+        assert!(is_tse_down("Ausfall"));
+        assert!(is_tse_down("   "));
+        assert!(is_tse_down(""));
+        // A real (long, opaque) TSE signature/QR payload is NOT "down".
+        assert!(!is_tse_down(
+            "1.0,2026-06-16T18:11:24Z,ecdsa-plain-SHA256,Aj8kP9q...base64..."
+        ));
+    }
 }
