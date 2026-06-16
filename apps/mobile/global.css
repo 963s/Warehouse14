@@ -97,11 +97,13 @@
   --color-input: var(--w14-input);
   --color-ring: var(--w14-ring);
 
-  /* Radii: card 12 (lg), button 8 (md). */
-  --radius-sm: calc(var(--w14-radius) - 6px);
-  --radius-md: calc(var(--w14-radius) - 4px);
-  --radius-lg: var(--w14-radius);
-  --radius-xl: calc(var(--w14-radius) + 4px);
+  /* Radii — Warehouse14 allows only {0, button 8, card 12}. The RNR Card uses
+   * `rounded-xl` and the Button uses `rounded-md`, so pin those to 12 and 8. */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+  --radius-2xl: 12px;
 
   /* Fonts (already loaded by expo-font in the root layout). */
   --font-sans: "Inter_400Regular";
