@@ -21,8 +21,13 @@ import { fromCents, roundHalfEven, toCents } from './money-core.js';
 export { fromCents, toCents };
 
 function parseScaled(s: string, decimals: number): bigint {
-  if (!/^\d+(\.\d+)?$/.test(s)) throw new Error(`invalid decimal "${s}"`);
-  const [whole = '0', frac = ''] = s.split('.');
+  // Tolerate the German comma decimal the operator types ("7,965"). A lone dot
+  // stays the decimal point (weight/fineness/price-per-gram are small, never
+  // thousands); when a comma is present, dots are thousands ("1.234,5"→"1234.5").
+  const t = s.trim();
+  const v = t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t;
+  if (!/^\d+(\.\d+)?$/.test(v)) throw new Error(`invalid decimal "${s}"`);
+  const [whole = '0', frac = ''] = v.split('.');
   const fracPadded = frac.padEnd(decimals, '0').slice(0, decimals);
   return BigInt(whole) * BigInt(10 ** decimals) + BigInt(fracPadded || '0');
 }

@@ -26,7 +26,7 @@ import { Button, DiamondRule, MoneyAmount, ParchmentCard } from '@warehouse14/ui
 
 import { currentShiftQueryKey } from '../../hooks/useCurrentShift.js';
 import { dashboardQueryKey } from '../../hooks/useDashboardSummary.js';
-import { GWG_IDENTITY_THRESHOLD_EUR } from '../../lib/ankauf-thresholds.js';
+import { evaluateKycGate } from '../../lib/ankauf-kyc-gate.js';
 import { useApiClient } from '../../lib/api-context.js';
 import { toCents } from '../../lib/bewertung-math.js';
 import type { LabelData } from '../../lib/hardware-client.js';
@@ -99,14 +99,15 @@ export function AcceptanceDialog({
 
   const totalOfferedEur = appraisal.totalOfferedEur ?? appraisal.totalAppraisedEur;
   const totalCents = toCents(totalOfferedEur);
-  const gwgCents = toCents(GWG_IDENTITY_THRESHOLD_EUR);
-  const gwgThresholdReached = totalCents >= gwgCents;
+  // Accepting a Konvolut IS an Ankauf, so it falls under the SAME identity rule
+  // as the single-item buy: ID required from €0,01 (§259 StGB Hehlerei), NOT the
+  // €2.000 §10 threshold. Use the shared gate, identical to AnkaufBezahlenDialog.
+  const kycGate = evaluateKycGate({ direction: 'ANKAUF', totalCents, customer: customer ?? null });
 
   const sanctioned = customer?.sanctionsMatch === true;
   const banned = customer?.trustLevel === 'BANNED';
   const blocked = sanctioned || banned;
-  const kycVerified = customer?.kycVerifiedAt !== null && customer?.kycVerifiedAt !== undefined;
-  const kycMissingForGwg = gwgThresholdReached && !kycVerified;
+  const kycMissingForGwg = kycGate.required;
 
   const canAccept = customer !== undefined && !blocked && !kycMissingForGwg && !submitting;
 
@@ -298,7 +299,7 @@ export function AcceptanceDialog({
                 fontFamily: 'var(--w14-font-display)',
               }}
             >
-              Über {GWG_IDENTITY_THRESHOLD_EUR} € — § 10 GwG verlangt KYC-Bestätigung.
+              Ankauf — Identität ab 0,01 € erforderlich (§ 259 StGB / § 10 GwG).
             </p>
             <p
               style={{

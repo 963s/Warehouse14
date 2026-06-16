@@ -1,6 +1,19 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatEur, formatGrams, isWeightInput } from './decimal.js';
+import { formatEur, formatGrams, germanMoneyToDot, isWeightInput } from './decimal.js';
+
+describe('germanMoneyToDot — "." = thousands, "," = decimal (the appraisal bug)', () => {
+  it('keeps a thousands amount whole (was "1.500" → "1.50")', () => {
+    expect(germanMoneyToDot('1.500')).toBe('1500');
+    expect(germanMoneyToDot('1.500,50')).toBe('1500.50');
+    expect(germanMoneyToDot('12.345,67')).toBe('12345.67');
+  });
+  it('handles plain + comma-decimal', () => {
+    expect(germanMoneyToDot('1500')).toBe('1500');
+    expect(germanMoneyToDot('1500,50')).toBe('1500.50');
+    expect(germanMoneyToDot('7,95')).toBe('7.95');
+  });
+});
 
 describe('formatGrams', () => {
   it('strips trailing zeros (the bug: 300 g showed as 300,0000)', () => {

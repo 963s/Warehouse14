@@ -74,3 +74,15 @@ export function formatEur(raw: string | null | undefined): string {
     maximumFractionDigits: 2,
   }).format(n);
 }
+
+/**
+ * German MONEY text → canonical dot-decimal, treating "." as the THOUSANDS
+ * separator and "," as the decimal: "1.500" → "1500", "1.500,50" → "1500.50",
+ * "1500,50" → "1500.50", "1500" → "1500". Use this for currency value fields
+ * where an operator may type a thousands dot — unlike `normalizeDecimal`, which
+ * reads the FIRST dot as the decimal point and so turns "1.500" into "1.5".
+ * (Do NOT use for weight/fineness, where a lone dot is the decimal.)
+ */
+export function germanMoneyToDot(raw: string): string {
+  return (raw ?? '').trim().replace(/\./g, '').replace(',', '.');
+}

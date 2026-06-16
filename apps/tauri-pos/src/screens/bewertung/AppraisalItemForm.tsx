@@ -25,7 +25,7 @@ import { Button, DiamondRule, MoneyAmount, ParchmentCard } from '@warehouse14/ui
 
 import { useApiClient } from '../../lib/api-context.js';
 import { computeSchmelzwertEur } from '../../lib/bewertung-math.js';
-import { isMoneyInput, normalizeDecimal } from '../../lib/decimal.js';
+import { germanMoneyToDot } from '../../lib/decimal.js';
 import { CONDITION_OPTIONS, ITEM_TYPE_OPTIONS } from '../../lib/item-type-label.js';
 
 export interface AppraisalItemFormProps {
@@ -85,8 +85,8 @@ export function AppraisalItemForm({ appraisalId }: AppraisalItemFormProps): JSX.
 
   const canSubmit =
     name.trim().length > 0 &&
-    isMoneyInput(individualEur) &&
-    Number(normalizeDecimal(individualEur)) > 0 &&
+    /^\d+(\.\d{1,2})?$/.test(germanMoneyToDot(individualEur)) &&
+    Number(germanMoneyToDot(individualEur)) > 0 &&
     !submitting;
 
   const submit = useCallback(async (): Promise<void> => {
@@ -97,7 +97,7 @@ export function AppraisalItemForm({ appraisalId }: AppraisalItemFormProps): JSX.
     const body: AppraisalItemBody = {
       name: name.trim(),
       itemType,
-      individualAppraisedEur: normalizeDecimal(individualEur.trim()),
+      individualAppraisedEur: germanMoneyToDot(individualEur.trim()),
     };
     if (description.trim().length > 0) body.description = description.trim();
     if (metal !== '') body.metal = metal;
