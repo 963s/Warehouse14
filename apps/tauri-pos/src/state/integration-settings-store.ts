@@ -7,9 +7,45 @@
  * their status, it does not store them here.
  */
 
+import { Type } from '@sinclair/typebox';
 import { create } from 'zustand';
 
+import { parseResponse } from '@warehouse14/api-client';
+
 const KEY = 'warehouse14.integrations.v1';
+
+// Persisted-config validation (P2.6): a corrupt section (e.g. a non-boolean
+// `ai.visionEnabled`) falls back to its default rather than flipping a toggle to
+// a truthy string. Each section is merged over its default then validated.
+const ChatwootSchema = Type.Object({
+  enabled: Type.Boolean(),
+  baseUrl: Type.String(),
+  websiteToken: Type.String(),
+});
+const SocialSchema = Type.Object({
+  whatsappNumber: Type.String(),
+  instagramHandle: Type.String(),
+  facebookPage: Type.String(),
+});
+const AiSchema = Type.Object({
+  visionEnabled: Type.Boolean(),
+  priceEstimateEnabled: Type.Boolean(),
+});
+const GoogleCalendarSchema = Type.Object({
+  apiKey: Type.String(),
+  calendarId: Type.String(),
+});
+
+function validateSection<T extends object>(
+  schema: Parameters<typeof parseResponse>[0],
+  fallback: T,
+  raw: unknown,
+  label: string,
+): T {
+  const candidate =
+    raw !== null && typeof raw === 'object' ? { ...fallback, ...(raw as object) } : fallback;
+  return (parseResponse(schema, candidate, label) as T | null) ?? fallback;
+}
 
 export interface ChatwootConfig {
   enabled: boolean;
@@ -64,12 +100,17 @@ function load(): IntegrationSettings {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return DEFAULT;
-    const p = JSON.parse(raw) as Partial<IntegrationSettings>;
+    const p = JSON.parse(raw) as Record<string, unknown>;
     return {
-      chatwoot: { ...DEFAULT.chatwoot, ...(p.chatwoot ?? {}) },
-      social: { ...DEFAULT.social, ...(p.social ?? {}) },
-      ai: { ...DEFAULT.ai, ...(p.ai ?? {}) },
-      googleCalendar: { ...DEFAULT.googleCalendar, ...(p.googleCalendar ?? {}) },
+      chatwoot: validateSection(ChatwootSchema, DEFAULT.chatwoot, p.chatwoot, 'int.chatwoot'),
+      social: validateSection(SocialSchema, DEFAULT.social, p.social, 'int.social'),
+      ai: validateSection(AiSchema, DEFAULT.ai, p.ai, 'int.ai'),
+      googleCalendar: validateSection(
+        GoogleCalendarSchema,
+        DEFAULT.googleCalendar,
+        p.googleCalendar,
+        'int.googleCalendar',
+      ),
     };
   } catch {
     return DEFAULT;
