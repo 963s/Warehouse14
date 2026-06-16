@@ -428,7 +428,11 @@ export function BezahlenDialog({
   // have one attached. (`required` only flips true once a customer is selected
   // but unverified; the "no buyer at all" case is captured by thresholdReached.)
   const buyerVerified = selectedBuyer != null && selectedBuyer.kycVerifiedAt != null;
-  const needsBuyer = kycGate.thresholdReached && !buyerVerified;
+  // A B2B reverse-charge sale identifies the buyer via the company's VAT id +
+  // name + address (resolved/created at finalize) — that satisfies the §10
+  // identity requirement on its own, so we must NOT also force a private KYC
+  // buyer (which finalize would then discard anyway).
+  const needsBuyer = kycGate.thresholdReached && !buyerVerified && !b2bActive;
 
   const canSubmit =
     enoughCash && !submitting && finalized === null && lines.length > 0 && b2bValid && !needsBuyer;
