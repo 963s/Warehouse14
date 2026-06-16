@@ -1,6 +1,7 @@
 /* eslint-env node */
 // Learn more https://docs.expo.io/guides/customizing-metro
 const { getDefaultConfig } = require("expo/metro-config")
+const { withNativeWind } = require("nativewind/metro")
 const path = require("node:path")
 
 // ── Monorepo roots ────────────────────────────────────────────────────────
@@ -42,4 +43,9 @@ config.resolver.unstable_conditionNames = ["require", "default", "browser"]
 // Support libraries (e.g. Firebase) that ship `.cjs`.
 config.resolver.sourceExts.push("cjs")
 
-module.exports = config
+// ── NativeWind v5 ───────────────────────────────────────────────────────────
+// Wrap the FINAL config so all monorepo settings above are preserved (the
+// wrapper mutates + returns the same object). NativeWind v5's withNativeWind
+// takes NO second argument — the v4 `{ input: './global.css' }` option was
+// removed; the CSS entry is wired by `import "./global.css"` in the root layout.
+module.exports = withNativeWind(config)

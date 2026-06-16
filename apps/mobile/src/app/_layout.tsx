@@ -1,3 +1,8 @@
+// NativeWind v5: load the compiled Tailwind stylesheet once, at the top-most
+// component. NOT in index.js (that calls AppRegistry.registerComponent — would
+// break Fast Refresh).
+import "../../global.css"
+
 import { useEffect } from "react"
 import { useFonts } from "expo-font"
 import { Stack } from "expo-router"

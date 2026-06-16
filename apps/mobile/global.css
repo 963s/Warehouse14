@@ -1,0 +1,109 @@
+/* ──────────────────────────────────────────────────────────────────────────
+ * NativeWind v5 / Tailwind v4 entry.
+ *
+ * Split @import at-rules (NOT @tailwind base/components/utilities) — required
+ * for react-native-web (web export) compatibility. `nativewind/theme` provides
+ * the RN theme vars, elevation scale and platform fonts.
+ * ────────────────────────────────────────────────────────────────────────── */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/preflight.css" layer(base);
+@import "tailwindcss/utilities.css";
+@import "nativewind/theme";
+
+/* Tailwind v4 is CSS-first: declare which files to scan for classes. The
+ * monorepo's symlinked layout means auto-detection can miss src/**, so be
+ * explicit. */
+@source "./src/**/*.{ts,tsx}";
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Warehouse14 design tokens → shadcn/RNR CSS variables.
+ *
+ * Source of truth: apps/mobile/src/warehouse14/theme.ts (hex values mirrored
+ * 1:1 here — NOT reinvented). Tailwind v4 accepts full color values, so the
+ * hex is used directly. The raw `--w14-*` vars flip on prefers-color-scheme;
+ * `@theme inline` maps them to the `--color-*` utility tokens so dark mode
+ * switches at runtime (web: CSS media query, native: RN Appearance).
+ *
+ * RULES carried from the web tokens:
+ *   • gold #bf9430 is DECORATIVE ONLY — never a text/fill token here.
+ *   • brand-positive/success = verdigris (#157a4b / #2fb277) → `accent`.
+ *   • PRIMARY action = brass (#9a751f / #d8b14e), never gold.
+ * ────────────────────────────────────────────────────────────────────────── */
+:root {
+  --w14-background: #f5f6f8;
+  --w14-foreground: #16191d;
+  --w14-card: #ffffff;
+  --w14-card-foreground: #16191d;
+  --w14-popover: #ffffff;
+  --w14-popover-foreground: #16191d;
+  --w14-primary: #9a751f;
+  --w14-primary-foreground: #ffffff;
+  --w14-secondary: #eef0f3;
+  --w14-secondary-foreground: #16191d;
+  --w14-muted: #eef0f3;
+  --w14-muted-foreground: #646b76;
+  --w14-accent: #157a4b;
+  --w14-accent-foreground: #ffffff;
+  --w14-destructive: #d63d49;
+  --w14-destructive-foreground: #ffffff;
+  --w14-border: #e3e6eb;
+  --w14-input: #e3e6eb;
+  --w14-ring: #9a751f;
+  --w14-radius: 12px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --w14-background: #131519;
+    --w14-foreground: #e9ebee;
+    --w14-card: #1b1e24;
+    --w14-card-foreground: #e9ebee;
+    --w14-popover: #1b1e24;
+    --w14-popover-foreground: #e9ebee;
+    --w14-primary: #d8b14e;
+    --w14-primary-foreground: #1a1407;
+    --w14-secondary: #242831;
+    --w14-secondary-foreground: #e9ebee;
+    --w14-muted: #242831;
+    --w14-muted-foreground: #939aa3;
+    --w14-accent: #2fb277;
+    --w14-accent-foreground: #131519;
+    --w14-destructive: #e15862;
+    --w14-destructive-foreground: #131519;
+    --w14-border: #2c313a;
+    --w14-input: #2c313a;
+    --w14-ring: #d8b14e;
+  }
+}
+
+@theme inline {
+  --color-background: var(--w14-background);
+  --color-foreground: var(--w14-foreground);
+  --color-card: var(--w14-card);
+  --color-card-foreground: var(--w14-card-foreground);
+  --color-popover: var(--w14-popover);
+  --color-popover-foreground: var(--w14-popover-foreground);
+  --color-primary: var(--w14-primary);
+  --color-primary-foreground: var(--w14-primary-foreground);
+  --color-secondary: var(--w14-secondary);
+  --color-secondary-foreground: var(--w14-secondary-foreground);
+  --color-muted: var(--w14-muted);
+  --color-muted-foreground: var(--w14-muted-foreground);
+  --color-accent: var(--w14-accent);
+  --color-accent-foreground: var(--w14-accent-foreground);
+  --color-destructive: var(--w14-destructive);
+  --color-destructive-foreground: var(--w14-destructive-foreground);
+  --color-border: var(--w14-border);
+  --color-input: var(--w14-input);
+  --color-ring: var(--w14-ring);
+
+  /* Radii: card 12 (lg), button 8 (md). */
+  --radius-sm: calc(var(--w14-radius) - 6px);
+  --radius-md: calc(var(--w14-radius) - 4px);
+  --radius-lg: var(--w14-radius);
+  --radius-xl: calc(var(--w14-radius) + 4px);
+
+  /* Fonts (already loaded by expo-font in the root layout). */
+  --font-sans: "Inter_400Regular";
+  --font-mono: "JetBrainsMono_400Regular";
+}

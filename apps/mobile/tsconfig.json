@@ -3,10 +3,15 @@
   "compilerOptions": {
     /* ── React Native / Expo module resolution (mirrors expo/tsconfig.base) ── */
     "jsx": "react-jsx",
-    "lib": ["esnext", "dom"],
+    "lib": [
+      "esnext",
+      "dom"
+    ],
     "module": "esnext",
     "moduleResolution": "bundler",
-    "customConditions": ["react-native"],
+    "customConditions": [
+      "react-native"
+    ],
     "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true,
     "noEmit": true,
@@ -16,10 +21,17 @@
     "types": [],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"],
-      "@assets/*": ["./assets/*"]
+      "@/*": [
+        "./src/*"
+      ],
+      "@assets/*": [
+        "./assets/*"
+      ]
     },
-    "typeRoots": ["./node_modules/@types", "./types"],
+    "typeRoots": [
+      "./node_modules/@types",
+      "./types"
+    ],
     /* The shared base is authored for first-party library code. Expo's
        boilerplate (and React Native's own d.ts) does not satisfy these four
        flags, so relax them at the app boundary while keeping `strict: true`. */
@@ -29,7 +41,13 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false
   },
-  "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts"],
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    ".expo/types/**/*.ts",
+    "expo-env.d.ts",
+    "nativewind-env.d.ts"
+  ],
   "exclude": [
     "node_modules",
     "test/**/*",
