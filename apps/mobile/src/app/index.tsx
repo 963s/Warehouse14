@@ -1,19 +1,21 @@
 /**
- * Goal 1 — the api-client screen.
+ * Goal 1 — the api-client screen, now rendered through React Native Reusables.
  *
- * Pulls REAL catalog data from the dev api-cloud THROUGH the existing
- * @warehouse14/api-client package (storefrontApi.listProducts) and renders the
- * product name + price (formatted with the shared @warehouse14/domain Money
- * type). The reuse IS the proof: no fetch/parse logic lives here.
+ * The product rows and actions use RNR <Card>/<Button>/<Text> (NativeWind
+ * className-driven, styled by the Warehouse14 tokens in global.css). The DATA
+ * path is unchanged: storefrontApi.listProducts via @warehouse14/api-client,
+ * price via @warehouse14/domain Money. The reuse IS the proof.
  */
 import { useCallback, useEffect, useState } from "react"
 import { FlatList, RefreshControl, View } from "react-native"
-import { Link } from "expo-router"
+import { useRouter } from "expo-router"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import type { StorefrontProduct } from "@warehouse14/api-client"
 
+import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
+import { Text } from "@/components/ui/text"
 import { API_BASE_URL, formatPrice, listProducts } from "@/warehouse14/api"
-import { Badge, Button, Card, W14Text } from "@/warehouse14/components"
 import { useW14Theme } from "@/warehouse14/theme"
 
 type LoadState =
@@ -23,6 +25,7 @@ type LoadState =
 
 export default function ProductsScreen() {
   const t = useW14Theme()
+  const router = useRouter()
   const insets = useSafeAreaInsets()
   const [state, setState] = useState<LoadState>({ status: "loading" })
   const [refreshing, setRefreshing] = useState(false)
@@ -47,42 +50,39 @@ export default function ProductsScreen() {
   }, [load])
 
   return (
-    <View style={{ flex: 1, backgroundColor: t.colors.background }}>
+    <View className="flex-1 bg-background">
       <FlatList
         data={state.status === "ready" ? state.items : []}
         keyExtractor={(p) => p.id}
-        contentContainerStyle={{
-          padding: t.space.x4,
-          paddingBottom: insets.bottom + t.space.x6,
-          gap: t.space.x3,
-        }}
+        contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24, gap: 12 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.colors.primary} />
         }
         ListHeaderComponent={
-          <View style={{ gap: t.space.x2, marginBottom: t.space.x2 }}>
-            <W14Text variant="display">Katalog</W14Text>
-            <W14Text variant="caption">
+          <View className="mb-2 gap-2">
+            <Text variant="h2" className="border-b-0 pb-0">
+              Katalog
+            </Text>
+            <Text variant="muted" className="font-mono text-xs">
               Live über @warehouse14/api-client · {API_BASE_URL}
-            </W14Text>
-            <View style={{ height: t.space.x2 }} />
-            <Link href="/scan" asChild>
-              <Button title="Barcode scannen" money />
-            </Link>
+            </Text>
+            <Button size="lg" className="mt-2 h-12" onPress={() => router.push("/scan")}>
+              <Text>Barcode scannen</Text>
+            </Button>
           </View>
         }
         renderItem={({ item }) => (
-          <Card style={{ flexDirection: "row", alignItems: "center", gap: t.space.x3 }}>
-            <View style={{ flex: 1, gap: t.space.x1 }}>
-              <W14Text variant="title" numberOfLines={2}>
+          <Card className="flex-row items-center gap-3 rounded-xl border px-4 py-3">
+            <View className="flex-1 gap-1">
+              <Text className="text-base font-semibold" numberOfLines={2}>
                 {item.name}
-              </W14Text>
-              <W14Text variant="mono">{item.sku}</W14Text>
-              {item.primaryCategory ? <Badge label={item.primaryCategory.nameDe} /> : null}
+              </Text>
+              <Text className="font-mono text-xs text-muted-foreground">{item.sku}</Text>
+              {item.primaryCategory ? (
+                <Text className="text-xs font-medium text-accent">{item.primaryCategory.nameDe}</Text>
+              ) : null}
             </View>
-            <W14Text variant="title" color={t.colors.primary}>
-              {formatPrice(item)}
-            </W14Text>
+            <Text className="text-primary text-base font-bold">{formatPrice(item)}</Text>
           </Card>
         )}
         ListEmptyComponent={<EmptyOrStatus state={state} onRetry={load} />}
@@ -92,30 +92,30 @@ export default function ProductsScreen() {
 }
 
 function EmptyOrStatus({ state, onRetry }: { state: LoadState; onRetry: () => void }) {
-  const t = useW14Theme()
   if (state.status === "loading") {
-    return <W14Text variant="caption">Lade Katalog…</W14Text>
+    return <Text variant="muted">Lade Katalog…</Text>
   }
   if (state.status === "error") {
     return (
-      <Card style={{ gap: t.space.x3, borderColor: t.colors.destructive }}>
-        <W14Text variant="title" color={t.colors.destructive}>
-          Verbindung fehlgeschlagen
-        </W14Text>
-        <W14Text variant="caption">{state.message}</W14Text>
-        <W14Text variant="caption">
+      <Card className="gap-3 border-destructive px-4 py-4">
+        <Text className="text-destructive text-base font-semibold">Verbindung fehlgeschlagen</Text>
+        <Text variant="muted">{state.message}</Text>
+        <Text variant="muted" className="text-xs">
           Prüfe, dass api-cloud auf {API_BASE_URL} läuft und Telefon + Mac im selben WLAN sind.
-        </W14Text>
-        <Button title="Erneut versuchen" variant="outline" onPress={onRetry} />
+        </Text>
+        <Button variant="outline" onPress={onRetry}>
+          <Text>Erneut versuchen</Text>
+        </Button>
       </Card>
     )
   }
   return (
-    <Card style={{ gap: t.space.x2 }}>
-      <W14Text variant="title">Verbunden — Katalog ist leer</W14Text>
-      <W14Text variant="caption">
-        Die api-client-Verbindung steht (0 Artikel). Seed-Daten in api-cloud laden, um Produkte zu sehen.
-      </W14Text>
+    <Card className="gap-2 px-4 py-4">
+      <Text className="text-base font-semibold">Verbunden — Katalog ist leer</Text>
+      <Text variant="muted">
+        Die api-client-Verbindung steht (0 Artikel). Seed-Daten in api-cloud laden, um Produkte zu
+        sehen.
+      </Text>
     </Card>
   )
 }
