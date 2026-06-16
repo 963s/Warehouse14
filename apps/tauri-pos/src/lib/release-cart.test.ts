@@ -23,7 +23,7 @@ afterEach(() => {
 
 describe('beaconReleaseCart', () => {
   it('sends one sendBeacon to the batch route with items + reason + token', async () => {
-    const sendBeacon = vi.fn(() => true);
+    const sendBeacon = vi.fn((_url: string, _data?: BodyInit) => true);
     vi.stubGlobal('navigator', { sendBeacon });
 
     const ok = beaconReleaseCart({
@@ -35,7 +35,9 @@ describe('beaconReleaseCart', () => {
 
     expect(ok).toBe(true);
     expect(sendBeacon).toHaveBeenCalledTimes(1);
-    const [url, blob] = sendBeacon.mock.calls[0] as [string, Blob];
+    const call = sendBeacon.mock.calls[0];
+    if (!call) throw new Error('sendBeacon was not called');
+    const [url, blob] = call as [string, Blob];
     expect(url).toBe('http://localhost:3001/api/inventory/release/batch');
     const payload = JSON.parse(await blob.text()) as {
       items: { productId: string; sessionId: string }[];
@@ -65,8 +67,10 @@ describe('beaconReleaseCart', () => {
   });
 
   it('falls back to fetch(keepalive:true) when sendBeacon returns false', () => {
-    vi.stubGlobal('navigator', { sendBeacon: vi.fn(() => false) });
-    const fetchSpy = vi.fn(() => Promise.resolve(new Response(null, { status: 200 })));
+    vi.stubGlobal('navigator', { sendBeacon: vi.fn((_url: string, _data?: BodyInit) => false) });
+    const fetchSpy = vi.fn((_url: string, _init?: RequestInit) =>
+      Promise.resolve(new Response(null, { status: 200 })),
+    );
     vi.stubGlobal('fetch', fetchSpy);
 
     const ok = beaconReleaseCart({
@@ -78,7 +82,9 @@ describe('beaconReleaseCart', () => {
 
     expect(ok).toBe(true);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
-    const init = fetchSpy.mock.calls[0]?.[1] as RequestInit;
+    const fetchCall = fetchSpy.mock.calls[0];
+    if (!fetchCall) throw new Error('fetch was not called');
+    const init = fetchCall[1] as RequestInit;
     expect(init.keepalive).toBe(true);
     expect(init.method).toBe('POST');
   });

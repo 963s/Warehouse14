@@ -14,9 +14,68 @@
  * "Test Connection" calls into hardware-client.
  */
 
+import { Type } from '@sinclair/typebox';
 import { create } from 'zustand';
 
+import { parseResponse } from '@warehouse14/api-client';
+
 const LOCAL_KEY = 'warehouse14.hardware-config.v1';
+
+// ── Persisted-config validation (P2.6) ──────────────────────────────────────
+// localStorage is an UNTRUSTED boundary: a corrupt/tampered value flows straight
+// into `zvtClient.authorize` / the TSE client. A non-numeric `zvt.port` or a
+// garbage `zvt.ip` MUST fall back to the safe default, never reach the terminal.
+// Each sub-object is merged over DEFAULT (forward-compat: a newly-added field is
+// filled) THEN validated; a hard type violation (e.g. a string port) drops the
+// WHOLE sub-object to DEFAULT rather than trusting a partially-bad config.
+const Port = Type.Integer({ minimum: 1, maximum: 65535 });
+const NullableBool = Type.Union([Type.Boolean(), Type.Null()]);
+const NullableStr = Type.Union([Type.String(), Type.Null()]);
+
+const ThermalSchema = Type.Object({
+  mode: Type.Union([Type.Literal('network'), Type.Literal('usb')]),
+  ip: Type.String(),
+  port: Port,
+  printerName: Type.String(),
+  lastReachable: NullableBool,
+  lastCheckedAt: NullableStr,
+});
+const A4Schema = Type.Object({ printerName: Type.String() });
+const LabelSchema = Type.Object({
+  mode: Type.Union([Type.Literal('tcp'), Type.Literal('system')]),
+  ip: Type.String(),
+  port: Port,
+  printerName: Type.String(),
+  printerType: Type.Union([Type.Literal('ZPL'), Type.Literal('ESCPOS')]),
+  lastReachable: NullableBool,
+  lastCheckedAt: NullableStr,
+});
+const ZvtSchema = Type.Object({
+  ip: Type.String(),
+  port: Port,
+  lastReachable: NullableBool,
+  lastCheckedAt: NullableStr,
+});
+const TseSchema = Type.Object({
+  tssId: Type.String(),
+  clientId: Type.String(),
+  credentialsStored: Type.Boolean(),
+  lastReachable: NullableBool,
+  lastCheckedAt: NullableStr,
+  lastSyncAt: NullableStr,
+});
+
+/** Merge a persisted sub-object over its default, then validate; bad → default. */
+function validateSection<T extends object>(
+  schema: Parameters<typeof parseResponse>[0],
+  fallback: T,
+  raw: unknown,
+  label: string,
+): T {
+  const candidate =
+    raw !== null && typeof raw === 'object' ? { ...fallback, ...(raw as object) } : fallback;
+  return (parseResponse(schema, candidate, label) as T | null) ?? fallback;
+}
 
 export interface ThermalConfig {
   /** 'network' = TCP 9100 socket; 'usb' = OS print queue via CUPS raw (no IP). */
@@ -156,13 +215,15 @@ export const useHardwareStore = create<HardwareState>((set, get) => ({
     try {
       const raw = localStorage.getItem(LOCAL_KEY);
       if (raw) {
-        const parsed = JSON.parse(raw) as Partial<HardwareConfig>;
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        // Validate EACH section independently so one corrupt sub-object (e.g. a
+        // tampered zvt.port) falls back to its default without nuking the rest.
         const merged: HardwareConfig = {
-          thermal: { ...DEFAULT.thermal, ...(parsed.thermal ?? {}) },
-          a4: { ...DEFAULT.a4, ...(parsed.a4 ?? {}) },
-          label: { ...DEFAULT.label, ...(parsed.label ?? {}) },
-          zvt: { ...DEFAULT.zvt, ...(parsed.zvt ?? {}) },
-          tse: { ...DEFAULT.tse, ...(parsed.tse ?? {}) },
+          thermal: validateSection(ThermalSchema, DEFAULT.thermal, parsed.thermal, 'hw.thermal'),
+          a4: validateSection(A4Schema, DEFAULT.a4, parsed.a4, 'hw.a4'),
+          label: validateSection(LabelSchema, DEFAULT.label, parsed.label, 'hw.label'),
+          zvt: validateSection(ZvtSchema, DEFAULT.zvt, parsed.zvt, 'hw.zvt'),
+          tse: validateSection(TseSchema, DEFAULT.tse, parsed.tse, 'hw.tse'),
         };
         set({ config: merged, loaded: true });
         return;

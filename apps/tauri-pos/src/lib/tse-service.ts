@@ -11,6 +11,10 @@
  * future worker (Phase 1.5 #I-23) drains the queue back to the API.
  */
 
+import { Type } from '@sinclair/typebox';
+
+import { parseResponse } from '@warehouse14/api-client';
+
 import {
   type TseConfig,
   type TseFinishParams,
@@ -20,6 +24,18 @@ import {
   isRunningInTauri,
   tseClient,
 } from './hardware-client.js';
+
+// Persisted-input schema (P2.6): the offline TSE queue is replayed to the fiscal
+// API, so a corrupt entry (e.g. a string `amountCents`) must be DROPPED here, not
+// handed to the replay worker. `amountCents` is integer cents — never a string.
+const TseQueueEntrySchema = Type.Object({
+  intentionId: Type.String(),
+  receiptLocator: Type.Union([Type.String(), Type.Null()]),
+  amountCents: Type.Integer(),
+  paymentKind: Type.Union([Type.Literal('Bar'), Type.Literal('Unbar')]),
+  failedAt: Type.String(),
+  reason: Type.String(),
+});
 
 const QUEUE_STORAGE_KEY = 'warehouse14.tse-queue.v1';
 
@@ -115,7 +131,12 @@ export function readQueue(): TseQueueEntry[] {
     const raw = localStorage.getItem(QUEUE_STORAGE_KEY);
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as TseQueueEntry[]) : [];
+    if (!Array.isArray(parsed)) return [];
+    // Validate each entry; a corrupt one is dropped (not handed to the replay
+    // worker), the valid ones survive. `.filter(Boolean)` strips the nulls.
+    return parsed
+      .map((e) => parseResponse(TseQueueEntrySchema, e, 'tse-queue.entry'))
+      .filter((e): e is TseQueueEntry => e !== null);
   } catch {
     return [];
   }
