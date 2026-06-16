@@ -9,15 +9,17 @@
  * STATUS ONLY, no backdrop-blur, brand `--w14-*` tokens, no spinners.
  */
 
+import { type Static, Type } from '@sinclair/typebox';
 import { type CSSProperties, useCallback, useEffect, useState } from 'react';
 
+import { parseResponse } from '@warehouse14/api-client';
 import {
   Button,
-  centsToEur,
   DiamondRule,
   MoneyAmount,
   ParchmentCard,
   StatTile,
+  centsToEur,
 } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../api-context.js';
@@ -27,25 +29,30 @@ import { useLedgerStream } from '../../bridge/use-ledger-stream.js';
 
 type SystemStatus = 'ok' | 'watch' | 'alert';
 
-interface BridgeData {
-  todayRevenueCents: number;
-  todaySalesCount: number;
-  todayAnkaufCount: number;
-  todayAnkaufValueCents: number;
+// The hand-written interface was a compile-time fiction over `res.data as T`. It
+// is now a REAL TypeBox schema validated at the api-client seam — money fields
+// are integer cents (a non-integer would throw in `centsToEur` and blank the
+// desktop), counts are integers, the status is the closed union.
+const BridgeSummarySchema = Type.Object({
+  todayRevenueCents: Type.Integer(),
+  todaySalesCount: Type.Integer(),
+  todayAnkaufCount: Type.Integer(),
+  todayAnkaufValueCents: Type.Integer(),
 
-  intakeDraftsPending: number;
-  approvalsPending: number;
-  whatsappUnreadCount: number;
+  intakeDraftsPending: Type.Integer(),
+  approvalsPending: Type.Integer(),
+  whatsappUnreadCount: Type.Integer(),
 
-  nextAppointmentAt: string | null;
-  todayAppointmentCount: number;
+  nextAppointmentAt: Type.Union([Type.String(), Type.Null()]),
+  todayAppointmentCount: Type.Integer(),
 
-  tseCertDaysRemaining: number | null;
-  workerDlqUnacked: number;
+  tseCertDaysRemaining: Type.Union([Type.Integer(), Type.Null()]),
+  workerDlqUnacked: Type.Integer(),
 
-  systemStatus: SystemStatus;
-  computedAt: string;
-}
+  systemStatus: Type.Union([Type.Literal('ok'), Type.Literal('watch'), Type.Literal('alert')]),
+  computedAt: Type.String(),
+});
+type BridgeData = Static<typeof BridgeSummarySchema>;
 
 // ── Status atom (local — NOT in ui-kit) ─────────────────────────────────────
 
@@ -109,8 +116,16 @@ function useBridgeData(): UseBridgeData {
   const fetchData = useCallback(() => {
     setError(null);
     client
-      .request<BridgeData>('GET', '/api/bridge/summary')
-      .then((d) => {
+      .request<unknown>('GET', '/api/bridge/summary')
+      .then((raw) => {
+        // Validate at the boundary: a malformed payload (e.g. non-integer cents)
+        // degrades to an error here, never reaching centsToEur in render.
+        const d = parseResponse(BridgeSummarySchema, raw, '/api/bridge/summary');
+        if (!d) {
+          setError('Ungültige Daten vom Server erhalten.');
+          setLoading(false);
+          return;
+        }
         setData(d);
         setLoading(false);
       })

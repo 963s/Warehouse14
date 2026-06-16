@@ -22,6 +22,7 @@
 export * from './client.js';
 export * from './errors.js';
 export * from './types.js';
+export * from './validation.js';
 
 // ───────────────────────────────────────────────────────────────────────
 // Middleware engine + cross-cutting concerns (ADR-0042 / ADR-0043 / ADR-0044)
