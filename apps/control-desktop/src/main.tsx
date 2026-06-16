@@ -14,6 +14,7 @@ import { createApiClient, stepUpMiddleware } from '@warehouse14/api-client';
 import '@warehouse14/ui-kit/styles.css';
 
 import { App } from './App.js';
+import { ErrorBoundary } from './ErrorBoundary.js';
 import { ApiClientProvider } from './api-context.js';
 import { stepUpService } from './step-up-service.js';
 
@@ -41,10 +42,12 @@ if (!rootEl) {
 
 createRoot(rootEl).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <ApiClientProvider client={apiClient} baseUrl={apiBaseUrl}>
-        <App />
-      </ApiClientProvider>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={apiClient} baseUrl={apiBaseUrl}>
+          <App />
+        </ApiClientProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   </StrictMode>,
 );
