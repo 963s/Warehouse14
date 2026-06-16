@@ -28,6 +28,11 @@ const INITDB_SQL = `
   GRANT ALL ON SCHEMA public TO warehouse14_migrator;
 `;
 
+function must<T>(v: T | undefined): T {
+  if (v === undefined) throw new Error('expected a seeded row');
+  return v;
+}
+
 const noopLog = { info() {}, warn() {}, error() {}, debug() {} };
 
 describe('intake_sweep — stuck-PROCESSING reclaim (Phase-0 B)', () => {
@@ -74,9 +79,9 @@ describe('intake_sweep — stuck-PROCESSING reclaim (Phase-0 B)', () => {
       VALUES (${`u-${randomUUID()}@x.test`}, 'Intake', 'ADMIN'::user_role) RETURNING id::text AS id`;
     const [p] = await sql<{ id: string }[]>`
       INSERT INTO staff_phone_numbers (user_id, phone_e164, role, verified_at)
-      VALUES (${u!.id}::uuid, ${`+49${Math.floor(Math.random() * 1e9)}`}, 'BOTH', now())
+      VALUES (${must(u).id}::uuid, ${`+49${Math.floor(Math.random() * 1e9)}`}, 'BOTH', now())
       RETURNING id::text AS id`;
-    staffPhoneId = p!.id;
+    staffPhoneId = must(p).id;
   });
 
   function ctx(): JobContext {
@@ -96,7 +101,7 @@ describe('intake_sweep — stuck-PROCESSING reclaim (Phase-0 B)', () => {
       VALUES (${staffPhoneId}::uuid, now(), 'PROCESSING'::intake_status,
               now() - make_interval(mins => ${minutesAgo}))
       RETURNING id::text AS id`;
-    return s!.id;
+    return must(s).id;
   }
 
   it('reclaims a session stuck in PROCESSING past the 10-minute floor', async () => {
@@ -107,7 +112,7 @@ describe('intake_sweep — stuck-PROCESSING reclaim (Phase-0 B)', () => {
     // left stranded in PROCESSING.
     const [row] = await sql<{ status: string }[]>`
       SELECT status::text AS status FROM intake_sessions WHERE id = ${id}::uuid`;
-    expect(row!.status).not.toBe('PROCESSING');
+    expect(must(row).status).not.toBe('PROCESSING');
   });
 
   it('does NOT reclaim a recently-started PROCESSING session', async () => {
@@ -116,6 +121,6 @@ describe('intake_sweep — stuck-PROCESSING reclaim (Phase-0 B)', () => {
     expect(res.stuckReclaimed).toBe(0);
     const [row] = await sql<{ status: string }[]>`
       SELECT status::text AS status FROM intake_sessions WHERE id = ${id}::uuid`;
-    expect(row!.status).toBe('PROCESSING'); // untouched — still actively processing
+    expect(must(row).status).toBe('PROCESSING'); // untouched — still actively processing
   });
 });

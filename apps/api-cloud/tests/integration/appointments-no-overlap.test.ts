@@ -30,6 +30,12 @@ const INITDB_SQL = `
 const DAY = '2026-07-01';
 const at = (hhmm: string): string => `${DAY}T${hhmm}:00+02:00`;
 
+/** Guard a RETURNING row that the INSERT guarantees — no bare `!`. */
+function must<T>(v: T | undefined): T {
+  if (v === undefined) throw new Error('expected a seeded row');
+  return v;
+}
+
 describe('appointments no-overlap EXCLUDE (migration 0069)', () => {
   let container: StartedPostgreSqlContainer;
   let sqlA: Sql;
@@ -77,8 +83,8 @@ describe('appointments no-overlap EXCLUDE (migration 0069)', () => {
     const [b] = await sqlA<{ id: string }[]>`
       INSERT INTO users (email, name, role)
       VALUES (${`s2-${randomUUID()}@x.test`}, 'Staff 2', 'ADMIN'::user_role) RETURNING id::text AS id`;
-    staff1 = a!.id;
-    staff2 = b!.id;
+    staff1 = must(a).id;
+    staff2 = must(b).id;
   });
 
   function insert(sql: Sql, staffId: string, startHhmm: string, durationMin: number) {
@@ -107,7 +113,7 @@ describe('appointments no-overlap EXCLUDE (migration 0069)', () => {
   it('a CANCELLED appointment frees the slot', async () => {
     const [a] = (await insert(sqlA, staff1, '10:00', 30)) as unknown as Array<{ id: string }>;
     await sqlA`UPDATE appointments SET status='CANCELLED'::appointment_status, cancelled_at=now()
-              WHERE id = ${a!.id}::uuid`;
+              WHERE id = ${must(a).id}::uuid`;
     await expect(insert(sqlA, staff1, '10:00', 30)).resolves.toBeDefined();
   });
 
