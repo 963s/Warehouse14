@@ -165,28 +165,49 @@ export function createWhatsAppBotTools(ctx: BotToolsContext): BotTools {
       const endIso = new Date(start.getTime() + duration * 60_000).toISOString();
       const startIso = start.toISOString();
 
-      // Slot conflict check against that staff member's active appointments.
-      const clash = (await db.execute<{ n: string }>(sql`
-        SELECT count(*)::text AS n FROM appointments
-        WHERE staff_user_id = ${staffId}::uuid
-          AND status NOT IN ('CANCELLED', 'NO_SHOW', 'RESCHEDULED')
-          AND starts_at < ${endIso}::timestamptz
-          AND ends_at   > ${startIso}::timestamptz
-      `)) as unknown as Array<{ n: string }>;
-      if (Number(clash[0]?.n ?? '0') > 0) return { ok: false, reason: 'slot_unavailable' };
+      // Belt-and-suspenders: the whole check+insert is ONE transaction with a
+      // transaction-scoped advisory lock (mirrors the storefront booking path),
+      // and the DB-level no-overlap EXCLUDE (migration 0069) is the final guard.
+      // A losing concurrent insert raises 23P01 → reported as slot_unavailable.
+      try {
+        const row = await db.transaction(async (txAny) => {
+          const tx = txAny as unknown as typeof db;
+          await tx.execute(
+            sql`SELECT pg_advisory_xact_lock(${Math.floor(start.getTime() / 1000)}::bigint)`,
+          );
 
-      const inserted = (await db.execute<{ id: string; starts_at: string }>(sql`
-        INSERT INTO appointments
-          (appointment_type, starts_at, duration_minutes, customer_id,
-           staff_user_id, booked_via, customer_notes)
-        VALUES
-          (${appointmentType}::appointment_type, ${startIso}::timestamptz, ${duration},
-           ${ctx.customerId}::uuid, ${staffId}::uuid, 'whatsapp_bot', ${customerNotes ?? null})
-        RETURNING id::text AS id, starts_at::text AS starts_at
-      `)) as unknown as Array<{ id: string; starts_at: string }>;
-      const row = inserted[0];
-      if (!row) return { ok: false, reason: 'invalid_slot' };
-      return { ok: true, appointmentId: row.id, startsAt: row.starts_at };
+          const clash = (await tx.execute<{ n: string }>(sql`
+            SELECT count(*)::text AS n FROM appointments
+            WHERE staff_user_id = ${staffId}::uuid
+              AND status NOT IN ('CANCELLED', 'NO_SHOW', 'RESCHEDULED')
+              AND starts_at < ${endIso}::timestamptz
+              AND ends_at   > ${startIso}::timestamptz
+          `)) as unknown as Array<{ n: string }>;
+          if (Number(clash[0]?.n ?? '0') > 0) return null;
+
+          const inserted = (await tx.execute<{ id: string; starts_at: string }>(sql`
+            INSERT INTO appointments
+              (appointment_type, starts_at, duration_minutes, customer_id,
+               staff_user_id, booked_via, customer_notes)
+            VALUES
+              (${appointmentType}::appointment_type, ${startIso}::timestamptz, ${duration},
+               ${ctx.customerId}::uuid, ${staffId}::uuid, 'whatsapp_bot', ${customerNotes ?? null})
+            RETURNING id::text AS id, starts_at::text AS starts_at
+          `)) as unknown as Array<{ id: string; starts_at: string }>;
+          return inserted[0] ?? null;
+        });
+        if (!row) return { ok: false, reason: 'slot_unavailable' };
+        return { ok: true, appointmentId: row.id, startsAt: row.starts_at };
+      } catch (err) {
+        if (
+          typeof err === 'object' &&
+          err !== null &&
+          (err as { code?: unknown }).code === '23P01'
+        ) {
+          return { ok: false, reason: 'slot_unavailable' };
+        }
+        throw err;
+      }
     },
 
     async checkOrderStatus({ receiptLocator, phone }): Promise<OrderStatus> {

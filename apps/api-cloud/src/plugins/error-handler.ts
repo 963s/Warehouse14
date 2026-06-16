@@ -85,6 +85,7 @@ function pgErrorToCode(err: FastifyError & { code?: string }): ApiErrorCode | nu
   if (msg.includes('Cannot storno') && msg.includes('it is itself a storno'))
     return 'STORNO_OF_STORNO';
   if (err.code === '23505') return 'CONFLICT'; // unique_violation
+  if (err.code === '23P01') return 'CONFLICT'; // exclusion_violation (e.g. appointment slot overlap)
   if (err.code === '23503') return 'CONFLICT'; // foreign_key_violation
   if (err.code === '23514') return 'CONFLICT'; // check_violation (fallback)
   if (err.code === '23502') return 'VALIDATION_ERROR'; // not_null_violation

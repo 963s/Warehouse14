@@ -58,6 +58,11 @@ class AppointmentValidationError extends DomainError {
   public readonly code: ApiErrorCode = 'VALIDATION_ERROR';
 }
 
+/** True when `err` is a Postgres error carrying the given SQLSTATE `code`. */
+function isPgCode(err: unknown, code: string): boolean {
+  return typeof err === 'object' && err !== null && (err as { code?: unknown }).code === code;
+}
+
 const ErrorResponse = Type.Object({
   error: Type.Object({
     code: Type.String(),
@@ -385,12 +390,13 @@ const appointmentsRoutes: FastifyPluginAsync<AppointmentsOpts> = async (app) => 
       const dur = durationFor(b.type, b.durationMinutes);
       const startsAt = new Date(b.startsAt);
 
-      const id = await app.db.transaction(async (txAny) => {
-        const tx = txAny as unknown as typeof app.db;
+      const id = await app.db
+        .transaction(async (txAny) => {
+          const tx = txAny as unknown as typeof app.db;
 
-        // 1. Re-verify the slot inside the transaction (the list was advisory).
-        const toIso = new Date(startsAt.getTime() + dur * 60_000 + 60_000).toISOString();
-        const slot = (await tx.execute<{ ok: number }>(sql`
+          // 1. Re-verify the slot inside the transaction (the list was advisory).
+          const toIso = new Date(startsAt.getTime() + dur * 60_000 + 60_000).toISOString();
+          const slot = (await tx.execute<{ ok: number }>(sql`
           SELECT 1 AS ok FROM available_slots(
             ${b.type}::appointment_type, ${dur},
             ${startsAt.toISOString()}::timestamptz, ${toIso}::timestamptz,
@@ -400,11 +406,11 @@ const appointmentsRoutes: FastifyPluginAsync<AppointmentsOpts> = async (app) => 
             AND slot_starts_at = ${startsAt.toISOString()}::timestamptz
           LIMIT 1
         `)) as unknown as Array<{ ok: number }>;
-        if (slot.length === 0)
-          throw new SlotUnavailableError('Selected slot is no longer available.');
+          if (slot.length === 0)
+            throw new SlotUnavailableError('Selected slot is no longer available.');
 
-        // 2. Insert the appointment (ledger emitted by AFTER INSERT trigger).
-        const inserted = (await tx.execute<{ id: string }>(sql`
+          // 2. Insert the appointment (ledger emitted by AFTER INSERT trigger).
+          const inserted = (await tx.execute<{ id: string }>(sql`
           INSERT INTO appointments
             (appointment_type, starts_at, duration_minutes, customer_id, staff_user_id,
              booked_by_user_id, booked_via, customer_notes)
@@ -413,30 +419,39 @@ const appointmentsRoutes: FastifyPluginAsync<AppointmentsOpts> = async (app) => 
                   ${b.bookedVia}, ${b.customerNotes ?? null})
           RETURNING id::text AS id
         `)) as unknown as Array<{ id: string }>;
-        const apptId = inserted[0]?.id;
-        if (!apptId) throw new AppointmentValidationError('appointment insert returned no row');
+          const apptId = inserted[0]?.id;
+          if (!apptId) throw new AppointmentValidationError('appointment insert returned no row');
 
-        // 3. VIEWING: link products → soft holds via the DB trigger.
-        if (b.type === 'VIEWING' && b.linkedProductIds && b.linkedProductIds.length > 0) {
-          for (const pid of b.linkedProductIds) {
-            await tx.execute(sql`
+          // 3. VIEWING: link products → soft holds via the DB trigger.
+          if (b.type === 'VIEWING' && b.linkedProductIds && b.linkedProductIds.length > 0) {
+            for (const pid of b.linkedProductIds) {
+              await tx.execute(sql`
               INSERT INTO appointment_linked_products (appointment_id, product_id, added_by_user_id)
               VALUES (${apptId}::uuid, ${pid}::uuid, ${bookedBy}::uuid)
             `);
+            }
           }
-        }
 
-        // 4. Schedule the reminder cadence.
-        await scheduleReminders(
-          tx,
-          apptId,
-          startsAt,
-          b.customerEmail ?? null,
-          b.customerPhone ?? null,
-        );
+          // 4. Schedule the reminder cadence.
+          await scheduleReminders(
+            tx,
+            apptId,
+            startsAt,
+            b.customerEmail ?? null,
+            b.customerPhone ?? null,
+          );
 
-        return apptId;
-      });
+          return apptId;
+        })
+        .catch((err: unknown) => {
+          // The DB-level no-overlap EXCLUDE (migration 0069) is the real guard: a
+          // concurrent winner makes our INSERT raise 23P01 even after the in-txn
+          // re-check passed. Surface it as the same clean 409 slot-unavailable.
+          if (isPgCode(err, '23P01')) {
+            throw new SlotUnavailableError('Selected slot is no longer available.');
+          }
+          throw err;
+        });
 
       // Mirror into the shop's Google Calendar (best-effort; covers POS staff
       // bookings AND the future WhatsApp bot, which books via this same route
