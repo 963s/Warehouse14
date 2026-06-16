@@ -137,23 +137,36 @@ const IDLE_EVICT_SECS: u64 = 30 * 24 * 60 * 60;
 /// plaintext token.
 const PAIRING_STORE_FILE: &str = "companion-pairing.json";
 
-/// File names of the persisted self-signed TLS material inside the app data
-/// dir. The PEM cert + key are generated ONCE (SANs = the LAN IP + `localhost`
-/// + `warehouse14.local`, ~10 year validity) and reused across restarts so a
-/// phone only has to trust the cert a single time. The key is chmod 0600 on
-/// unix; the cert is public.
-const TLS_CERT_FILE: &str = "companion-tls.pem";
-const TLS_KEY_FILE: &str = "companion-tls.key";
+/// Persisted TLS material inside the app data dir. We run a tiny **private CA**:
+/// a long-lived root (`companion-ca.*`) that the phone installs ONCE (via the
+/// `.mobileconfig` profile), and a short-lived **leaf** (`companion-tls.*`,
+/// signed by the root) that the hub actually serves. The leaf auto-rotates under
+/// the root, so the phone never re-installs anything. `companion-tls.pem` holds
+/// the full chain (leaf + root) so iOS/Android can build it. Keys are chmod 0600
+/// on unix; certs are public.
+const TLS_CERT_FILE: &str = "companion-tls.pem"; // leaf + CA chain (served)
+const TLS_KEY_FILE: &str = "companion-tls.key"; // leaf private key
+const TLS_CA_CERT_FILE: &str = "companion-ca.pem"; // root CA cert (installed on phones)
+const TLS_CA_KEY_FILE: &str = "companion-ca.key"; // root CA private key (signs leaves)
+/// Sidecar holding the leaf's issue date (RFC3339) so we can renew it before the
+/// ~398-day Apple cap without parsing the DER back.
+const TLS_LEAF_ISSUED_FILE: &str = "companion-tls.issued";
 
 /// Subject-alt-name DNS hosts baked into the companion cert alongside the LAN
-/// IPv4. `localhost` covers the on-box webview; `warehouse14.local` is a stable
-/// name a phone can be pointed at if mDNS resolves it.
+/// IPv4. `localhost` covers the on-box webview; `warehouse14.local` is the
+/// stable mDNS name the phone connects to (and what the cert is issued for).
 const TLS_SAN_LOCALHOST: &str = "localhost";
 const TLS_SAN_MDNS: &str = "warehouse14.local";
 
-/// Validity window of the self-signed companion cert: roughly ten years, so a
-/// trusted phone keeps working for the life of the till without a re-trust.
-const TLS_CERT_VALID_YEARS: i32 = 10;
+/// Root CA validity: long (install once, lives for the till's lifetime).
+const TLS_CA_VALID_YEARS: i32 = 10;
+/// Leaf validity in DAYS. **Apple rejects TLS server certs valid > 398 days**
+/// (even self-signed / privately-trusted ones), so the served leaf MUST stay
+/// under that. It rotates under the long-lived CA, so the phone keeps trusting.
+const TLS_LEAF_VALID_DAYS: i64 = 397;
+/// Renew the leaf once it is within this many days of expiry (checked on each
+/// hub start — the POS restarts far more often than yearly).
+const TLS_LEAF_RENEW_WITHIN_DAYS: i64 = 30;
 
 /// Minimum interval between lazy disk flushes of `last_seen` refreshes. A new
 /// pairing or an eviction persists immediately; mere activity bookkeeping is
@@ -508,27 +521,44 @@ mod power_hold {
 /// `vnic*`/`docker*`/`veth*`/`vboxnet*`/`vmnet*`; Linux/Windows VPNs use
 /// `tun*`/`tap*`/`wg*`/`zt*`/`tailscale*`.
 const VIRTUAL_IFACE_PREFIXES: &[&str] = &[
-    "utun", "tun", "tap", "ppp", "ipsec", "wg", "zt", "tailscale", "proton",
-    "bridge", "vmenet", "vnic", "docker", "veth", "vboxnet", "vmnet", "vmwarevmnet",
-    "ap", "awdl", "llw", "gif", "stf", "anpi", "lo",
+    "utun",
+    "tun",
+    "tap",
+    "ppp",
+    "ipsec",
+    "wg",
+    "zt",
+    "tailscale",
+    "proton",
+    "bridge",
+    "vmenet",
+    "vnic",
+    "docker",
+    "veth",
+    "vboxnet",
+    "vmnet",
+    "vmwarevmnet",
+    "ap",
+    "awdl",
+    "llw",
+    "gif",
+    "stf",
+    "anpi",
+    "lo",
 ];
 
 /// True when an interface name looks like a virtual / VPN / container adapter
 /// (case-insensitive prefix match against [`VIRTUAL_IFACE_PREFIXES`]).
 fn is_virtual_iface(name: &str) -> bool {
     let lname = name.to_ascii_lowercase();
-    VIRTUAL_IFACE_PREFIXES
-        .iter()
-        .any(|p| lname.starts_with(p))
+    VIRTUAL_IFACE_PREFIXES.iter().any(|p| lname.starts_with(p))
 }
 
 /// True when `ip` is an RFC-1918 private LAN IPv4 (`10/8`, `172.16/12`,
 /// `192.168/16`). These are the only addresses we put in the pairing URL.
 fn is_private_lan_v4(ip: Ipv4Addr) -> bool {
     let o = ip.octets();
-    o[0] == 10
-        || (o[0] == 172 && (16..=31).contains(&o[1]))
-        || (o[0] == 192 && o[1] == 168)
+    o[0] == 10 || (o[0] == 172 && (16..=31).contains(&o[1])) || (o[0] == 192 && o[1] == 168)
 }
 
 /// Resolve the REAL Wi-Fi/LAN IPv4 for the pairing URL and the subnet guard.
@@ -575,9 +605,7 @@ fn lan_ip() -> Ipv4Addr {
             return ip;
         }
         if let Some(ip) = any_private {
-            eprintln!(
-                "warehouse14-pos: companion LAN IP (virtual-iface fallback) = {ip}"
-            );
+            eprintln!("warehouse14-pos: companion LAN IP (virtual-iface fallback) = {ip}");
             return ip;
         }
     }
@@ -678,9 +706,7 @@ fn subnet_decision(mother: Ipv4Addr, peer: IpAddr) -> (bool, &'static str) {
                 return (true, "same /24");
             }
             // Same RFC-1918 range (handles /23, /22, /16 LANs the /24 misses).
-            if is_private_lan_v4(mother)
-                && is_private_lan_v4(v4)
-                && same_private_range(mother, v4)
+            if is_private_lan_v4(mother) && is_private_lan_v4(v4) && same_private_range(mother, v4)
             {
                 return (true, "same private range");
             }
@@ -707,11 +733,7 @@ fn same_private_range(a: Ipv4Addr, b: Ipv4Addr) -> bool {
     if ao[0] == 10 && bo[0] == 10 {
         return true;
     }
-    if ao[0] == 172
-        && bo[0] == 172
-        && (16..=31).contains(&ao[1])
-        && (16..=31).contains(&bo[1])
-    {
+    if ao[0] == 172 && bo[0] == 172 && (16..=31).contains(&ao[1]) && (16..=31).contains(&bo[1]) {
         return true;
     }
     if ao[0] == 192 && ao[1] == 168 && bo[0] == 192 && bo[1] == 168 {
@@ -869,7 +891,9 @@ fn load_store(inner: &mut HubInner) {
     let store: PairingStore = match serde_json::from_slice(&raw) {
         Ok(s) => s,
         Err(err) => {
-            eprintln!("warehouse14-pos: companion pairing store unreadable ({err}); starting empty");
+            eprintln!(
+                "warehouse14-pos: companion pairing store unreadable ({err}); starting empty"
+            );
             return;
         }
     };
@@ -1262,11 +1286,7 @@ async fn ws_handler(
 /// Drive one customer-display WebSocket: send the initial snapshot, then fan out
 /// every broadcast cart update, keep the socket warm with periodic pings, and
 /// exit cleanly when the client closes or the socket errors.
-async fn display_ws_loop(
-    socket: WebSocket,
-    initial: String,
-    mut rx: broadcast::Receiver<String>,
-) {
+async fn display_ws_loop(socket: WebSocket, initial: String, mut rx: broadcast::Receiver<String>) {
     let (mut sink, mut stream) = socket.split();
 
     // Paint immediately with the current cart.
@@ -1411,9 +1431,23 @@ fn normalize_proxy_path(raw: &str) -> NormPath {
 /// these namespaces is reachable by any companion.
 fn hard_denied(lower_path: &str) -> bool {
     const FORBIDDEN_PREFIXES: &[&str] = &[
-        "auth", "session", "sessions", "login", "logout", "admin", "settings",
-        "system-settings", "users", "owner", "step-up", "stepup", "tse",
-        "fiskaly", "export", "gdpr", "kyc",
+        "auth",
+        "session",
+        "sessions",
+        "login",
+        "logout",
+        "admin",
+        "settings",
+        "system-settings",
+        "users",
+        "owner",
+        "step-up",
+        "stepup",
+        "tse",
+        "fiskaly",
+        "export",
+        "gdpr",
+        "kyc",
     ];
     // The first segment (before any `/`) — deny exact or prefix match.
     let seg0 = lower_path.split('/').next().unwrap_or("");
@@ -1422,8 +1456,9 @@ fn hard_denied(lower_path: &str) -> bool {
     }
     // Defence in depth: deny anything mentioning void / refund / storno /
     // ankauf / return anywhere in the path, regardless of role.
-    const FORBIDDEN_SUBSTR: &[&str] =
-        &["void", "refund", "storno", "ankauf", "return", "delete", "destroy"];
+    const FORBIDDEN_SUBSTR: &[&str] = &[
+        "void", "refund", "storno", "ankauf", "return", "delete", "destroy",
+    ];
     FORBIDDEN_SUBSTR.iter().any(|s| lower_path.contains(s))
 }
 
@@ -1515,9 +1550,7 @@ fn proxy_allowed(role: Role, method: &Method, lower_path: &str) -> bool {
 
     // A read is allowed against `base` if the path is exactly `base` or a
     // sub-resource `base/<id>` (one extra segment), but NOT a sibling action.
-    let get_under = |base: &str| -> bool {
-        p == base || p.starts_with(&format!("{base}/"))
-    };
+    let get_under = |base: &str| -> bool { p == base || p.starts_with(&format!("{base}/")) };
 
     // `products/<id>` is a single sub-resource edit (one extra segment, no
     // trailing action verb). Used by the warehouse PUT (rename / re-price /
@@ -1702,12 +1735,10 @@ async fn proxy_handler(
         || is_item_action(&lower_path, "photos", "raw");
     let role = match auth_role(&hub, &headers).await {
         Some(r) => Some(r),
-        None if method == Method::GET && is_photo_rendition => {
-            match query_token(uri.query()) {
-                Some(tok) => auth_role_token(&hub, &tok).await,
-                None => None,
-            }
-        }
+        None if method == Method::GET && is_photo_rendition => match query_token(uri.query()) {
+            Some(tok) => auth_role_token(&hub, &tok).await,
+            None => None,
+        },
         None => None,
     };
     let role = match role {
@@ -1732,11 +1763,7 @@ async fn proxy_handler(
         && is_single_item(&lower_path, "appointments")
         && !is_appointment_status_patch_body(&body)
     {
-        return (
-            StatusCode::FORBIDDEN,
-            "nur Status-Übergänge erlaubt",
-        )
-            .into_response();
+        return (StatusCode::FORBIDDEN, "nur Status-Übergänge erlaubt").into_response();
     }
 
     // 5) Resolve the mother's Bearer; without it, the proxy cannot speak. The
@@ -1801,8 +1828,7 @@ async fn proxy_handler(
                 .unwrap_or("application/json")
                 .to_string();
             let bytes = resp.bytes().await.unwrap_or_default();
-            let code = StatusCode::from_u16(status.as_u16())
-                .unwrap_or(StatusCode::BAD_GATEWAY);
+            let code = StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
             (code, [(axum::http::header::CONTENT_TYPE, ct)], bytes).into_response()
         }
         Err(err) => {
@@ -1897,22 +1923,109 @@ fn cert_fingerprint_hex(cert_der: &[u8]) -> String {
     s
 }
 
-/// Generate a fresh self-signed cert+key for the given LAN IP, persist BOTH to
-/// `<dir>/companion-tls.{pem,key}` (key chmod 0600 on unix), and return the PEM
-/// strings. SANs: the LAN IPv4 (only when it is a real private LAN address —
-/// loopback is skipped so the cert isn't pinned to `127.0.0.1`), `localhost`,
-/// and `warehouse14.local`. Any failure bubbles up so the caller can fall back
-/// to plain http.
+/// Root-CA material: the long-lived cert+key the hub uses to SIGN leaves, plus
+/// the cert PEM the phone installs (and that goes into the served chain + the
+/// `.mobileconfig`).
+struct CaMaterial {
+    cert: rcgen::Certificate,
+    key: rcgen::KeyPair,
+    cert_pem: String,
+}
+
+/// Write secret key material: `std::fs::write` then tighten to 0600 on unix.
+fn write_secret(path: &FsPath, bytes: &[u8]) -> std::io::Result<()> {
+    std::fs::write(path, bytes)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+    }
+    Ok(())
+}
+
+/// Load the persisted private root CA, or generate + persist a fresh one. The CA
+/// is long-lived and reused across restarts so a phone that installed it once
+/// keeps trusting every rotated leaf. It is regenerated only if the files are
+/// lost/corrupt (which forces phones to re-install the profile).
+fn load_or_create_ca(dir: &FsPath) -> Result<CaMaterial, Box<dyn std::error::Error>> {
+    use rcgen::KeyPair;
+
+    let ca_cert_path = dir.join(TLS_CA_CERT_FILE);
+    let ca_key_path = dir.join(TLS_CA_KEY_FILE);
+
+    // Reuse a persisted CA: reload the KEY and reconstruct the in-memory signing
+    // cert from the SAME deterministic params (`signed_by` only reads the
+    // issuer's DN + key-id method + key_usages + key, and an identical key yields
+    // an identical Subject-Key-Identifier — so leaves still chain to the ON-DISK
+    // CA cert). The on-disk PEM is what phones install + we serve in the chain.
+    if let (Ok(cert_pem), Ok(key_pem)) = (
+        std::fs::read_to_string(&ca_cert_path),
+        std::fs::read_to_string(&ca_key_path),
+    ) {
+        if let Ok(key) = KeyPair::from_pem(&key_pem) {
+            if let Ok(cert) = ca_params()?.self_signed(&key) {
+                return Ok(CaMaterial {
+                    cert,
+                    key,
+                    cert_pem,
+                });
+            }
+        }
+        eprintln!(
+            "warehouse14-pos: companion CA material unreadable; regenerating (phones must re-install)"
+        );
+    }
+
+    let key = KeyPair::generate()?;
+    let cert = ca_params()?.self_signed(&key)?;
+    let cert_pem = cert.pem();
+
+    std::fs::create_dir_all(dir)?;
+    std::fs::write(&ca_cert_path, cert_pem.as_bytes())?;
+    write_secret(&ca_key_path, key.serialize_pem().as_bytes())?;
+
+    Ok(CaMaterial {
+        cert,
+        key,
+        cert_pem,
+    })
+}
+
+/// Deterministic root-CA params (same DN + key-usages every call) so a reloaded
+/// CA signs leaves that still chain to the originally-persisted CA cert.
+fn ca_params() -> Result<rcgen::CertificateParams, rcgen::Error> {
+    use chrono::Datelike;
+    use rcgen::{
+        date_time_ymd, BasicConstraints, CertificateParams, DnType, IsCa, KeyUsagePurpose,
+    };
+    let mut params = CertificateParams::new(Vec::new())?;
+    params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
+    params.key_usages = vec![KeyUsagePurpose::KeyCertSign, KeyUsagePurpose::CrlSign];
+    params
+        .distinguished_name
+        .push(DnType::CommonName, "Warehouse14 Local CA");
+    params
+        .distinguished_name
+        .push(DnType::OrganizationName, "Warehouse 14");
+    let year = chrono::Utc::now().year();
+    params.not_before = date_time_ymd(year - 1, 1, 1);
+    params.not_after = date_time_ymd(year + TLS_CA_VALID_YEARS, 1, 1);
+    Ok(params)
+}
+
+/// Generate a fresh **leaf** cert+key signed by `ca` for the given LAN IP, write
+/// the full chain (leaf + CA) to `companion-tls.pem`, stamp the issue date, and
+/// return the chain + key PEM. SANs: `warehouse14.local` + `localhost` always,
+/// plus the LAN IPv4 when it is a real private address. `serverAuth` EKU +
+/// ≤397-day validity so iOS accepts it once the CA is trusted.
 fn generate_and_persist_cert(
     dir: &FsPath,
     lan: Ipv4Addr,
+    ca: &CaMaterial,
 ) -> Result<(String, String), Box<dyn std::error::Error>> {
     use chrono::Datelike;
-    use rcgen::{date_time_ymd, CertificateParams, DnType, KeyPair};
+    use rcgen::{date_time_ymd, CertificateParams, DnType, ExtendedKeyUsagePurpose, KeyPair};
 
-    // SANs: localhost + the mDNS name always; the LAN IP only when it is a real
-    // routable private address (skip loopback — a 127.0.0.1-only SAN is useless
-    // to a phone and would force a re-issue once the Wi-Fi comes up).
     let mut sans: Vec<String> = vec![TLS_SAN_LOCALHOST.to_string(), TLS_SAN_MDNS.to_string()];
     if is_private_lan_v4(lan) {
         sans.push(lan.to_string());
@@ -1921,34 +2034,28 @@ fn generate_and_persist_cert(
     let mut params = CertificateParams::new(sans)?;
     params
         .distinguished_name
-        .push(DnType::CommonName, "Warehouse14 Companion Hub");
-    // ~10 year validity. `not_before` starts the year before "now" to tolerate
-    // mild clock skew on the phone; "now" comes from chrono (already a direct
-    // dep) so we don't pull the `time` crate in directly. `date_time_ymd`
-    // returns rcgen's expected `OffsetDateTime` without that dependency.
-    let year = chrono::Utc::now().year();
-    params.not_before = date_time_ymd(year - 1, 1, 1);
-    params.not_after = date_time_ymd(year + TLS_CERT_VALID_YEARS, 1, 1);
+        .push(DnType::CommonName, TLS_SAN_MDNS);
+    params.extended_key_usages = vec![ExtendedKeyUsagePurpose::ServerAuth];
+
+    // Day-precise ≤397-day window; `not_before` yesterday tolerates phone skew.
+    let now = chrono::Utc::now();
+    let start = now - chrono::Duration::days(1);
+    let end = now + chrono::Duration::days(TLS_LEAF_VALID_DAYS);
+    params.not_before = date_time_ymd(start.year(), start.month() as u8, start.day() as u8);
+    params.not_after = date_time_ymd(end.year(), end.month() as u8, end.day() as u8);
 
     let key_pair = KeyPair::generate()?;
-    let cert = params.self_signed(&key_pair)?;
-    let cert_pem = cert.pem();
+    let leaf = params.signed_by(&key_pair, &ca.cert, &ca.key)?;
+    // Serve leaf THEN CA so the client builds the chain to the trusted root.
+    let chain_pem = format!("{}{}", leaf.pem(), ca.cert_pem);
     let key_pem = key_pair.serialize_pem();
 
     std::fs::create_dir_all(dir)?;
-    let cert_path = dir.join(TLS_CERT_FILE);
-    let key_path = dir.join(TLS_KEY_FILE);
-    // Cert is public; write it plainly.
-    std::fs::write(&cert_path, cert_pem.as_bytes())?;
-    // Key is secret: write then tighten perms to 0600 on unix.
-    std::fs::write(&key_path, key_pem.as_bytes())?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o600));
-    }
+    std::fs::write(dir.join(TLS_CERT_FILE), chain_pem.as_bytes())?;
+    write_secret(&dir.join(TLS_KEY_FILE), key_pem.as_bytes())?;
+    let _ = std::fs::write(dir.join(TLS_LEAF_ISSUED_FILE), now.to_rfc3339().as_bytes());
 
-    Ok((cert_pem, key_pem))
+    Ok((chain_pem, key_pem))
 }
 
 /// Parse PEM cert + key strings into a [`TlsIdentity`] (DER chain + key +
@@ -1983,27 +2090,51 @@ fn load_or_create_tls_identity(
     dir: &FsPath,
     lan: Ipv4Addr,
 ) -> Result<TlsIdentity, Box<dyn std::error::Error>> {
+    // The CA must exist first; the leaf is signed by it.
+    let ca = load_or_create_ca(dir)?;
     let cert_path = dir.join(TLS_CERT_FILE);
     let key_path = dir.join(TLS_KEY_FILE);
 
-    // Fast path: both files present + parse cleanly → reuse (stable trust).
-    if let (Ok(cert_pem), Ok(key_pem)) = (
-        std::fs::read_to_string(&cert_path),
-        std::fs::read_to_string(&key_path),
-    ) {
-        match parse_tls_identity(&cert_pem, &key_pem) {
-            Ok(id) => return Ok(id),
-            Err(err) => {
-                eprintln!(
-                    "warehouse14-pos: companion TLS material unreadable ({err}); regenerating"
-                );
+    // Reuse the persisted leaf only if it parses AND is not near its ≤397-day
+    // expiry. Otherwise re-issue under the same CA — the phone keeps trusting.
+    if !leaf_needs_renewal(dir) {
+        if let (Ok(cert_pem), Ok(key_pem)) = (
+            std::fs::read_to_string(&cert_path),
+            std::fs::read_to_string(&key_path),
+        ) {
+            match parse_tls_identity(&cert_pem, &key_pem) {
+                Ok(id) => return Ok(id),
+                Err(err) => {
+                    eprintln!(
+                        "warehouse14-pos: companion TLS leaf unreadable ({err}); regenerating"
+                    );
+                }
             }
         }
     }
 
-    // Generate + persist a fresh identity, then parse it.
-    let (cert_pem, key_pem) = generate_and_persist_cert(dir, lan)?;
+    let (cert_pem, key_pem) = generate_and_persist_cert(dir, lan, &ca)?;
     parse_tls_identity(&cert_pem, &key_pem)
+}
+
+/// True when the persisted leaf is missing, undated, or within the renewal
+/// window of its ≤397-day validity (so the hub re-issues it under the same CA).
+fn leaf_needs_renewal(dir: &FsPath) -> bool {
+    let Ok(issued) = std::fs::read_to_string(dir.join(TLS_LEAF_ISSUED_FILE)) else {
+        return true; // never issued / undated
+    };
+    let Ok(issued) = chrono::DateTime::parse_from_rfc3339(issued.trim()) else {
+        return true;
+    };
+    let age_days = (chrono::Utc::now() - issued.with_timezone(&chrono::Utc)).num_days();
+    age_days >= (TLS_LEAF_VALID_DAYS - TLS_LEAF_RENEW_WITHIN_DAYS)
+}
+
+/// The root-CA cert PEM the phone must install (used by the `.mobileconfig`
+/// route, wired in the next step). Errors if the CA has not been created yet.
+#[allow(dead_code)] // consumed by the /trust .mobileconfig route (P1)
+fn read_ca_cert_pem(dir: &FsPath) -> std::io::Result<String> {
+    std::fs::read_to_string(dir.join(TLS_CA_CERT_FILE))
 }
 
 /// Process-wide install of the **ring** rustls crypto provider as the default,
@@ -2249,8 +2380,8 @@ async fn start_hub(state: &CompanionState, issue_code: bool) -> CompanionInfo {
                         shutdown_handle.graceful_shutdown(None);
                     });
                     tokio::spawn(async move {
-                        let server = axum_server::from_tcp_rustls(std_listener, config)
-                            .handle(handle);
+                        let server =
+                            axum_server::from_tcp_rustls(std_listener, config).handle(handle);
                         if let Err(err) = server.serve(make).await {
                             eprintln!(
                                 "warehouse14-pos: companion HTTPS server exited with error: {err}"
@@ -2447,7 +2578,11 @@ mod tests {
         // Item-level status PATCH (shape pinned separately by the body gate).
         assert!(proxy_allowed(r, &Method::PATCH, "appointments/0d9f3a1e"));
         // NOT a deeper sub-action, NOT collection-level PATCH, NOT DELETE.
-        assert!(!proxy_allowed(r, &Method::PATCH, "appointments/0d9f3a1e/reschedule"));
+        assert!(!proxy_allowed(
+            r,
+            &Method::PATCH,
+            "appointments/0d9f3a1e/reschedule"
+        ));
         assert!(!proxy_allowed(r, &Method::PATCH, "appointments"));
         assert!(!proxy_allowed(r, &Method::DELETE, "appointments/0d9f3a1e"));
         assert!(!proxy_allowed(r, &Method::PUT, "appointments/0d9f3a1e"));
@@ -2487,10 +2622,22 @@ mod tests {
         assert!(!proxy_allowed(r, &Method::GET, "inventory/reserve"));
         assert!(!proxy_allowed(r, &Method::PATCH, "inventory/reserve"));
         // The warehouse role does NOT gain the cart reserve/release verbs.
-        assert!(!proxy_allowed(Role::Warehouse, &Method::POST, "inventory/reserve"));
-        assert!(!proxy_allowed(Role::Warehouse, &Method::POST, "inventory/release"));
+        assert!(!proxy_allowed(
+            Role::Warehouse,
+            &Method::POST,
+            "inventory/reserve"
+        ));
+        assert!(!proxy_allowed(
+            Role::Warehouse,
+            &Method::POST,
+            "inventory/release"
+        ));
         // Display gets nothing here.
-        assert!(!proxy_allowed(Role::Display, &Method::POST, "inventory/reserve"));
+        assert!(!proxy_allowed(
+            Role::Display,
+            &Method::POST,
+            "inventory/reserve"
+        ));
     }
 
     #[test]
@@ -2525,9 +2672,17 @@ mod tests {
     fn warehouse_can_relocate_a_product_but_not_other_actions() {
         let r = Role::Warehouse;
         // The dedicated LOCATION-ONLY move (no step-up) — exactly three segments.
-        assert!(proxy_allowed(r, &Method::POST, "products/0d9f3a1e/relocate"));
+        assert!(proxy_allowed(
+            r,
+            &Method::POST,
+            "products/0d9f3a1e/relocate"
+        ));
         // The existing stock-adjust + photo POSTs still pass (regression guard).
-        assert!(proxy_allowed(r, &Method::POST, "products/0d9f3a1e/inventory-adjustment"));
+        assert!(proxy_allowed(
+            r,
+            &Method::POST,
+            "products/0d9f3a1e/inventory-adjustment"
+        ));
         assert!(proxy_allowed(r, &Method::POST, "products/0d9f3a1e/photos"));
         // The POST grant is tight: NOT a relocate on the collection, NOT an
         // empty-id shape, NOT a deeper sub-path. (A GET on this path rides the
@@ -2535,11 +2690,27 @@ mod tests {
         // POST-only — so it is intentionally NOT asserted here.)
         assert!(!proxy_allowed(r, &Method::POST, "products/relocate"));
         assert!(!proxy_allowed(r, &Method::POST, "products//relocate"));
-        assert!(!proxy_allowed(r, &Method::POST, "products/0d9f3a1e/relocate/now"));
-        assert!(!proxy_allowed(r, &Method::PUT, "products/0d9f3a1e/relocate"));
+        assert!(!proxy_allowed(
+            r,
+            &Method::POST,
+            "products/0d9f3a1e/relocate/now"
+        ));
+        assert!(!proxy_allowed(
+            r,
+            &Method::PUT,
+            "products/0d9f3a1e/relocate"
+        ));
         // Other roles never gain product relocate.
-        assert!(!proxy_allowed(Role::Cashier, &Method::POST, "products/0d9f3a1e/relocate"));
-        assert!(!proxy_allowed(Role::Display, &Method::POST, "products/0d9f3a1e/relocate"));
+        assert!(!proxy_allowed(
+            Role::Cashier,
+            &Method::POST,
+            "products/0d9f3a1e/relocate"
+        ));
+        assert!(!proxy_allowed(
+            Role::Display,
+            &Method::POST,
+            "products/0d9f3a1e/relocate"
+        ));
     }
 
     // ── Proxy allow-list: KUNDENANZEIGE gets nothing new ─────────────────────
@@ -2577,7 +2748,9 @@ mod tests {
     #[test]
     fn appointment_patch_body_accepts_only_the_status_shape() {
         // The plain transition.
-        assert!(is_appointment_status_patch_body(br#"{"status":"CHECKED_IN"}"#));
+        assert!(is_appointment_status_patch_body(
+            br#"{"status":"CHECKED_IN"}"#
+        ));
         // With the two optional string fields from the live contract.
         assert!(is_appointment_status_patch_body(
             br#"{"status":"CANCELLED","cancellationReason":"Kunde abgesagt"}"#
@@ -2586,7 +2759,9 @@ mod tests {
             br#"{"status":"COMPLETED","staffNotes":"Goldring abgeholt"}"#
         ));
         // Unknown status value.
-        assert!(!is_appointment_status_patch_body(br#"{"status":"SCHEDULED"}"#));
+        assert!(!is_appointment_status_patch_body(
+            br#"{"status":"SCHEDULED"}"#
+        ));
         // Missing status.
         assert!(!is_appointment_status_patch_body(br#"{"staffNotes":"x"}"#));
         // Extra / unexpected keys (e.g. a smuggled reschedule).
@@ -2712,7 +2887,10 @@ mod tests {
         assert_eq!(sanitize_label("", Role::Warehouse), "Lager-Gerät");
         assert_eq!(sanitize_label("   ", Role::Cashier), "Zweitkasse");
         assert_eq!(sanitize_label("\u{0007}", Role::Display), "Kundenanzeige");
-        assert_eq!(sanitize_label(" iPhone Basel ", Role::Warehouse), "iPhone Basel");
+        assert_eq!(
+            sanitize_label(" iPhone Basel ", Role::Warehouse),
+            "iPhone Basel"
+        );
         // Capped at 40 chars.
         let long = "x".repeat(120);
         assert_eq!(sanitize_label(&long, Role::Warehouse).len(), 40);
@@ -2765,6 +2943,44 @@ mod tests {
             "fingerprint stable across reload"
         );
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn leaf_chains_to_the_ca() {
+        let dir = fresh_tls_dir("chain");
+        let lan: Ipv4Addr = "192.168.1.42".parse().unwrap();
+        let id = load_or_create_tls_identity(&dir, lan).expect("identity");
+
+        // The served material is the leaf PLUS the CA, so a client can build the
+        // chain to the installed root.
+        assert_eq!(id.cert_der.len(), 2, "serves leaf + CA chain");
+        assert!(dir.join(TLS_CA_CERT_FILE).exists(), "CA cert persisted");
+        assert!(dir.join(TLS_CA_KEY_FILE).exists(), "CA key persisted");
+
+        // Cryptographic proof: the leaf verifies against the persisted CA. Skip
+        // gracefully where openssl is not on PATH (e.g. a bare Windows runner).
+        let chain = std::fs::read_to_string(dir.join(TLS_CERT_FILE)).unwrap();
+        let leaf_pem = chain.split("-----END CERTIFICATE-----").next().unwrap();
+        let leaf_path = dir.join("leaf-only.pem");
+        std::fs::write(&leaf_path, format!("{leaf_pem}-----END CERTIFICATE-----\n")).unwrap();
+        match std::process::Command::new("openssl")
+            .arg("verify")
+            .arg("-CAfile")
+            .arg(dir.join(TLS_CA_CERT_FILE))
+            .arg(&leaf_path)
+            .output()
+        {
+            Ok(out) => {
+                let stdout = String::from_utf8_lossy(&out.stdout);
+                assert!(
+                    out.status.success() && stdout.contains("OK"),
+                    "openssl verify failed: {stdout} {}",
+                    String::from_utf8_lossy(&out.stderr)
+                );
+            }
+            Err(_) => eprintln!("openssl not on PATH — skipping leaf↔CA crypto verify"),
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 
