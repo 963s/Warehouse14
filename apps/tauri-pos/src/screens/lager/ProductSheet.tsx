@@ -58,7 +58,7 @@ import {
   isAdjustmentNoteValid,
 } from '../../lib/adjustment-notes.js';
 import { useApiClient } from '../../lib/api-context.js';
-import { isMoneyInput, normalizeDecimal } from '../../lib/decimal.js';
+import { formatEur, formatGrams, isMoneyInput, normalizeDecimal } from '../../lib/decimal.js';
 import {
   CONDITION_OPTIONS,
   type Condition,
@@ -849,9 +849,9 @@ function DetailsSection({ product }: { product: ProductDetail }): JSX.Element {
       'Steuerart',
       TAX_TREATMENT_LABEL[product.taxTreatmentCode as TaxTreatmentCode] ?? product.taxTreatmentCode,
     ],
-    ['Gewicht', product.weightGrams ? `${product.weightGrams} g` : '—'],
-    ['Einkaufswert', `${product.acquisitionCostEur} €`],
-    ['Verkaufspreis', `${product.listPriceEur} €`],
+    ['Gewicht', product.weightGrams ? `${formatGrams(product.weightGrams)} g` : '—'],
+    ['Einkaufswert', `${formatEur(product.acquisitionCostEur)} €`],
+    ['Verkaufspreis', `${formatEur(product.listPriceEur)} €`],
     [
       'Lagerort',
       [product.locationStorageUnit, product.locationDrawer, product.locationPosition]
@@ -1411,8 +1411,8 @@ function EtikettSection({ product }: { product: ProductDetail }): JSX.Element {
         <div className="w14-tabular">{product.sku}</div>
         <div style={{ fontFamily: 'var(--w14-font-display)', fontWeight: 600 }}>{product.name}</div>
         <div className="w14-tabular" style={{ color: 'var(--w14-ink-faded)' }}>
-          {product.weightGrams ? `${product.weightGrams} g · ` : ''}
-          {product.listPriceEur} €{loc ? ` · ${loc}` : ''}
+          {product.weightGrams ? `${formatGrams(product.weightGrams)} g · ` : ''}
+          {formatEur(product.listPriceEur)} €{loc ? ` · ${loc}` : ''}
         </div>
       </div>
       <div>

@@ -44,6 +44,7 @@ import {
 } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
+import { germanDateToIso } from '../../lib/german-date.js';
 import { useToastStore } from '../../state/toast-store.js';
 
 type Mode = 'SEARCH' | 'CREATE' | 'SELECTED';
@@ -672,9 +673,16 @@ function CreateBuyer({
     setSubmitting(true);
     setError(null);
     try {
+      const rawDob = dateOfBirth.trim();
+      const dobIso = rawDob ? germanDateToIso(rawDob) : null;
+      if (rawDob && !dobIso) {
+        setError('Geburtsdatum bitte als TT.MM.JJJJ eingeben (z. B. 15.06.1990).');
+        setSubmitting(false);
+        return;
+      }
       const body: CustomerCreateBody = {
         fullName: fullName.trim(),
-        ...(dateOfBirth.trim() ? { dateOfBirth: dateOfBirth.trim() } : {}),
+        ...(dobIso ? { dateOfBirth: dobIso } : {}),
         ...(email.trim() ? { email: email.trim() } : {}),
         ...(phone.trim() ? { phone: phone.trim() } : {}),
         ...(address.trim() ? { address: address.trim() } : {}),

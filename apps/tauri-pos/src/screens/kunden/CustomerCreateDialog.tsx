@@ -22,6 +22,7 @@ import {
 import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
+import { germanDateToIso } from '../../lib/german-date.js';
 import { useToastStore } from '../../state/toast-store.js';
 
 export interface CustomerCreateDialogProps {
@@ -97,7 +98,15 @@ export function CustomerCreateDialog({
       const ph = phone.trim();
       const ad = address.trim();
       const nt = notes.trim();
-      if (dob) body.dateOfBirth = dob;
+      if (dob) {
+        const iso = germanDateToIso(dob);
+        if (!iso) {
+          setError('Geburtsdatum bitte als TT.MM.JJJJ eingeben (z. B. 15.06.1990).');
+          setSubmitting(false);
+          return;
+        }
+        body.dateOfBirth = iso;
+      }
       if (em) body.email = em;
       if (ph) body.phone = ph;
       if (ad) body.address = ad;

@@ -24,6 +24,7 @@ import {
 import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
+import { germanDateToIso, isoToGermanDate } from '../../lib/german-date.js';
 import { useToastStore } from '../../state/toast-store.js';
 
 export interface CustomerEditDialogProps {
@@ -42,7 +43,7 @@ export function CustomerEditDialog({
   const addToast = useToastStore((s) => s.addToast);
 
   const [fullName, setFullName] = useState<string>(customer.fullName);
-  const [dateOfBirth, setDateOfBirth] = useState<string>(customer.dateOfBirth ?? '');
+  const [dateOfBirth, setDateOfBirth] = useState<string>(isoToGermanDate(customer.dateOfBirth));
   const [email, setEmail] = useState<string>(customer.email ?? '');
   const [phone, setPhone] = useState<string>(customer.phone ?? '');
   const [address, setAddress] = useState<string>(customer.address ?? '');
@@ -54,7 +55,7 @@ export function CustomerEditDialog({
   useEffect(() => {
     if (!open) return;
     setFullName(customer.fullName);
-    setDateOfBirth(customer.dateOfBirth ?? '');
+    setDateOfBirth(isoToGermanDate(customer.dateOfBirth));
     setEmail(customer.email ?? '');
     setPhone(customer.phone ?? '');
     setAddress(customer.address ?? '');
@@ -81,8 +82,11 @@ export function CustomerEditDialog({
     const trimOrNull = (v: string): string | null => (v.trim().length === 0 ? null : v.trim());
 
     if (fullName.trim() !== customer.fullName) body.fullName = fullName.trim();
-    if ((dateOfBirth.trim() || null) !== customer.dateOfBirth)
-      body.dateOfBirth = trimOrNull(dateOfBirth);
+    // Field holds German TT.MM.JJJJ; convert to ISO. A typo (non-empty but
+    // unparseable) is left untouched rather than silently wiping the stored DOB.
+    const dobIso = dateOfBirth.trim() ? germanDateToIso(dateOfBirth.trim()) : null;
+    if (!(dateOfBirth.trim() && dobIso === null) && dobIso !== customer.dateOfBirth)
+      body.dateOfBirth = dobIso;
     if ((email.trim() || null) !== customer.email) body.email = trimOrNull(email);
     if ((phone.trim() || null) !== customer.phone) body.phone = trimOrNull(phone);
     if ((address.trim() || null) !== customer.address) body.address = trimOrNull(address);

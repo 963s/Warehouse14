@@ -26,6 +26,7 @@ import { type CSSProperties, memo, useState } from 'react';
 import type { ProductListRow } from '@warehouse14/api-client';
 import { IconButton, MoneyAmount, ParchmentCard, Trash2 } from '@warehouse14/ui-kit';
 
+import { formatGrams } from '../../lib/decimal.js';
 import { itemTypeLabel } from '../../lib/item-type-label.js';
 import { PRODUCT_STATUS_COLOR, PRODUCT_STATUS_LABEL } from '../../lib/product-status-label.js';
 
@@ -240,7 +241,7 @@ const LagerRow = memo(
     const metalTag = row.metal ? (METAL_LABEL[row.metal] ?? row.metal) : null;
     const weightTag =
       row.weightGrams && row.weightGrams.trim().length > 0
-        ? `${row.weightGrams.replace('.', ',')} g`
+        ? `${formatGrams(row.weightGrams)} g`
         : null;
     const scanLine = [metalTag, weightTag].filter((s): s is string => s !== null).join(' · ');
 
