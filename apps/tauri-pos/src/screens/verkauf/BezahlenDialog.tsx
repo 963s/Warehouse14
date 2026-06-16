@@ -313,6 +313,13 @@ export function BezahlenDialog({
   const pendingAuthRef = useRef<ZvtResult | null>(null);
 
   /**
+   * P1.3 — the B2B company customer resolved ONCE per checkout (by VAT id), so
+   * a finalize-retry after a card charge never re-resolves / re-creates. Cleared
+   * on dialog open. `null` = not yet resolved this session.
+   */
+  const resolvedCustomerIdRef = useRef<string | null>(null);
+
+  /**
    * §19.3 W-7 — TSE signature captured from the FINISH call so the
    * thermal print step can include the KassenSichV-mandated signature
    * block + QR. `null` when TSE is offline or unconfigured (the print
@@ -344,6 +351,7 @@ export function BezahlenDialog({
       inFlightRef.current = false;
       idempotencyKeyRef.current = newIntentionId();
       pendingAuthRef.current = null;
+      resolvedCustomerIdRef.current = null;
 
       setIsB2b(false);
       setVatId('');
@@ -446,42 +454,47 @@ export function BezahlenDialog({
    * short outage window). Failed signatures land in the offline queue;
    * a future worker job (Phase 1.5 #I-23) drains them back.
    */
+  /**
+   * Resolve the customer id for the finalize body — the §10 GwG buyer for a
+   * high-value private sale, or the B2B company customer. P1.3: resolved with a
+   * SINGLE bounded `findByVatId` (was a customer LIST + a serial GET per row on
+   * the checkout path — an N+1 that also hit the ADMIN-only by-id route, so a
+   * cashier till would 403 mid-sale). The result is cached in a ref so a
+   * finalize-retry after a card charge never re-resolves or re-creates.
+   *
+   * MUST be called BEFORE the TSE intention / card charge — a throw here then
+   * aborts the sale with the card untouched.
+   */
+  const resolveB2bCustomerId = useCallback(async (): Promise<string | null> => {
+    if (!isB2b) return selectedBuyer?.id ?? null;
+    if (resolvedCustomerIdRef.current) return resolvedCustomerIdRef.current;
+
+    const existing = await customersApi.findByVatId(api, cleanVatId);
+    if (existing) {
+      resolvedCustomerIdRef.current = existing.id;
+      return existing.id;
+    }
+
+    const companyAddress = viesAddress && viesAddress !== '---' ? viesAddress : manualAddress;
+    const created = await customersApi.create(api, {
+      fullName: companyName,
+      vatId: cleanVatId,
+      notes: 'Automated B2B registration via checkout (VIES verified)',
+      ...(companyAddress?.trim() ? { address: companyAddress.trim() } : {}),
+    });
+    resolvedCustomerIdRef.current = created.id;
+    return created.id;
+  }, [api, isB2b, cleanVatId, companyName, viesAddress, manualAddress, selectedBuyer]);
+
   const finalizeWithTse = useCallback(
     async (
       payments: NonNullable<FinalizeBody['payments']>,
       paymentKind: 'Bar' | 'Unbar',
+      customerId: string | null,
     ): Promise<FinalizeResponse> => {
-      // § 10 GwG — a KYC-verified buyer attached for a high-value sale rides on
-      // the finalize body so the server trigger is satisfied. The B2B branch
-      // below overrides with the VIES-matched company customer when active.
-      let customerId: string | null = selectedBuyer?.id ?? null;
-      if (isB2b) {
-        const cleanVat = vatId.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-
-        // 1. Search existing customers by name
-        const searchRes = await customersApi.list(api, { q: companyName });
-        for (const item of searchRes.items) {
-          const detail = await customersApi.get(api, item.id);
-          if (detail.vatId === cleanVat) {
-            customerId = detail.id;
-            break;
-          }
-        }
-
-        // 2. If not found, create new customer
-        if (!customerId) {
-          const companyAddress = viesAddress && viesAddress !== '---' ? viesAddress : manualAddress;
-          const createBody = {
-            fullName: companyName,
-            vatId: cleanVat,
-            notes: 'Automated B2B registration via checkout (VIES verified)',
-            ...(companyAddress?.trim() ? { address: companyAddress.trim() } : {}),
-          };
-          const createRes = await customersApi.create(api, createBody);
-          customerId = createRes.id;
-        }
-      }
-
+      // `customerId` is resolved by the caller (resolveB2bCustomerId) BEFORE any
+      // charge — never inside this finalize sandwich, where a lookup throw would
+      // reject AFTER the card is debited.
       const headTreatment = b2bActive
         ? 'REVERSE_CHARGE_13B'
         : lines[0]?.taxTreatmentCode || 'STANDARD_19';
@@ -612,21 +625,7 @@ export function BezahlenDialog({
       }
       return result;
     },
-    [
-      addToast,
-      api,
-      hardwareCfg.tse,
-      lines,
-      adjustedTotals,
-      b2bActive,
-      isB2b,
-      vatId,
-      companyName,
-      viesAddress,
-      manualAddress,
-      adjustedPerLineMath,
-      selectedBuyer,
-    ],
+    [addToast, api, hardwareCfg.tse, lines, adjustedTotals, b2bActive, adjustedPerLineMath],
   );
 
   /**
@@ -815,6 +814,9 @@ export function BezahlenDialog({
     setSubmitting(true);
     setError(null);
     try {
+      // Resolve the B2B/§10 customer BEFORE the fiscal sandwich — a lookup throw
+      // here aborts cleanly (cash, no charge yet).
+      const resolvedCustomerId = await resolveB2bCustomerId();
       // Voucher leg (if any) first, then the cash remainder — Σ = total.
       const payments: FinalizeBody['payments'] = [];
       if (appliedVoucher && tender.appliedVoucherCents > 0n) {
@@ -827,7 +829,11 @@ export function BezahlenDialog({
       if (tender.dueCents > 0n) {
         payments.push({ paymentMethod: 'CASH', amountEur: fromCents(tender.dueCents) });
       }
-      const result = await finalizeWithTse(payments, tender.dueCents > 0n ? 'Bar' : 'Unbar');
+      const result = await finalizeWithTse(
+        payments,
+        tender.dueCents > 0n ? 'Bar' : 'Unbar',
+        resolvedCustomerId,
+      );
       setFinalized(result);
       addToast({
         tone: 'success',
@@ -918,6 +924,7 @@ export function BezahlenDialog({
     addToast,
     canSubmit,
     finalizeWithTse,
+    resolveB2bCustomerId,
     buildReceiptData,
     qc,
     api,
@@ -954,6 +961,19 @@ export function BezahlenDialog({
     inFlightRef.current = true;
     setSubmitting(true);
     setError(null);
+
+    // Resolve the B2B/§10 customer BEFORE touching the terminal — a lookup throw
+    // must NOT happen after the card is charged. Cached in a ref, so the
+    // finalize-retry branch below reuses it without re-resolving.
+    let resolvedCustomerId: string | null;
+    try {
+      resolvedCustomerId = await resolveB2bCustomerId();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Kunde konnte nicht ermittelt werden.');
+      setSubmitting(false);
+      inFlightRef.current = false;
+      return;
+    }
 
     // §19.3 C-3 — if a PRIOR authorization succeeded but its finalize failed,
     // REUSE that authorization. Re-authorizing here would debit the card a
@@ -1005,7 +1025,7 @@ export function BezahlenDialog({
           ...(zvt.cardPanMasked ? { zvtCardPanMasked: zvt.cardPanMasked } : {}),
         },
       ];
-      const result = await finalizeWithTse(payments, 'Unbar');
+      const result = await finalizeWithTse(payments, 'Unbar', resolvedCustomerId);
       // Finalize succeeded — the authorization is consumed; clear it so a fresh
       // sale can't accidentally replay this card charge.
       pendingAuthRef.current = null;
@@ -1081,6 +1101,7 @@ export function BezahlenDialog({
     addToast,
     finalized,
     finalizeWithTse,
+    resolveB2bCustomerId,
     hardwareCfg.zvt.ip,
     hardwareCfg.zvt.port,
     lines.length,
@@ -1117,6 +1138,18 @@ export function BezahlenDialog({
     inFlightRef.current = true;
     setSubmitting(true);
     setError(null);
+
+    // Resolve the B2B/§10 customer BEFORE touching the terminal — a lookup throw
+    // must NOT happen after the card is charged.
+    let resolvedCustomerId: string | null;
+    try {
+      resolvedCustomerId = await resolveB2bCustomerId();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Kunde konnte nicht ermittelt werden.');
+      setSubmitting(false);
+      inFlightRef.current = false;
+      return;
+    }
 
     // §19.3 C-3 — reuse a prior successful authorization; never re-authorize.
     let zvt: ZvtResult;
@@ -1173,7 +1206,7 @@ export function BezahlenDialog({
 
     try {
       const payments = buildSplitPayments();
-      const result = await finalizeWithTse(payments, 'Unbar');
+      const result = await finalizeWithTse(payments, 'Unbar', resolvedCustomerId);
       pendingAuthRef.current = null;
       setFinalized(result);
       addToast({
@@ -1261,6 +1294,7 @@ export function BezahlenDialog({
     split,
     finalized,
     finalizeWithTse,
+    resolveB2bCustomerId,
     hardwareCfg.zvt.ip,
     hardwareCfg.zvt.port,
     lines.length,

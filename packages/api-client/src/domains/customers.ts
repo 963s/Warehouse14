@@ -256,12 +256,32 @@ function buildQuery(query: CustomerListQuery): string {
 // Methods
 // ────────────────────────────────────────────────────────────────────────
 
+export interface CustomerVatLookupResult {
+  id: string;
+  customerNumber: string;
+  fullName: string;
+  vatId: string | null;
+}
+
 export const customersApi = {
   list(client: ApiClient, query: CustomerListQuery = {}): Promise<CustomerListResponse> {
     return client.request<CustomerListResponse>('GET', `/api/customers${buildQuery(query)}`);
   },
   get(client: ApiClient, id: string): Promise<CustomerDetail> {
     return client.request<CustomerDetail>('GET', `/api/customers/${encodeURIComponent(id)}`);
+  },
+  /**
+   * Resolve at most ONE customer by VAT id in a single bounded request (the POS
+   * B2B checkout). Returns null when no customer matches. CASHIER-allowed (the
+   * by-id `get` is ADMIN-only), so this is safe to call from a cashier till.
+   */
+  findByVatId(client: ApiClient, vatId: string): Promise<CustomerVatLookupResult | null> {
+    return client
+      .request<{ customer: CustomerVatLookupResult | null }>(
+        'GET',
+        `/api/customers/by-vat-id?vatId=${encodeURIComponent(vatId)}`,
+      )
+      .then((r) => r.customer);
   },
   create(client: ApiClient, body: CustomerCreateBody): Promise<CustomerCreateResponse> {
     return client.request<CustomerCreateResponse>('POST', '/api/customers', body);
