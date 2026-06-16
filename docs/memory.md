@@ -3314,3 +3314,31 @@ tools still stubs; Apple Developer ID signing.
   NOT the landmines). **Phase 2–3 prompted next:** bot semaphores, calendar idempotent-upsert, B2B N+1, reservation
   sendBeacon, the rest of the validation seam, the 13 cosmetic worker `as unknown as AppDb` casts, the LLM-output
   schema, error-handler typed error codes.
+
+### 30.4 Phase 2-3 complete — all 9 landmines closed (Decision #119)
+- **#119 — the remaining audit findings closed + independently re-verified.** Branch `claude/prod-hardening-phase2`
+  (off the phase0 tip), **8 commits, migrations 0070-0073, 39 new tests**, recon-fan-out-first then implement (policy #7
+  at scale). **Priority 1 (the 5 landmines):** bot orchestrators → a bounded in-process semaphore + EXPLICIT PII key
+  (no ALS across the detached hop) + guaranteed `.catch` — the worker can't host the bot (lacks 6 grants + EXECUTE on
+  `encrypt_pii`) — `6e1ea04`; calendar pull → idempotent + batched, migration `0070 UNIQUE(google_event_id)` makes
+  `ON CONFLICT` real — `58493de`; B2B finalize N+1 → ONE bounded **CASHIER-allowed** `GET /api/customers/by-vat-id`
+  resolved BEFORE the charge (the old loop hit an ADMIN-only route → a latent cashier 403, also fixed; migration 0071)
+  — `d5161c8`; reservation keepalive → teardown-survivable `release/batch` (token-in-body beacon auth) + `beaconReleaseCart`
+  + a durable `autoReleaseStalePos` 12h sweep (migration 0072) — `8f6e6d1`; five non-atomic two-statement writes → one
+  tx each (intake publish `FOR UPDATE`, WhatsApp record-intent→send→settle + migration 0073 grant, settings+audit,
+  integrations, sweeper release+ledger) — `84ef875`. **Priority 2 (in-tree validation seam):** safety-critical persisted
+  POS inputs validated at the boundary — a tampered `zvt.port`/`ip` now falls back to DEFAULT instead of reaching
+  `zvtClient`; tse-service drops corrupt queue entries; integration-settings store — `dd772d5` / `a9da229`. **Priority 3
+  (cosmetic):** 5 worker `as unknown as AppDb` casts removed, German-comma `parseGermanNumber`, typed `PG_MESSAGE_CODES`
+  error map (behaviour-identical), `withPiiKey` narrowed to `RootDb` — `8c16988`.
+- **Strategist re-verified independently:** the headline concurrency proofs green vs REAL Postgres — intake
+  double-publish race **1/1** (2 concurrent → exactly ONE product, no orphan), bot-dispatch **4/4**, calendar 0070 **3/3**,
+  reservation batch **4/4**; `pnpm -r typecheck` exit 0; net-zero biome (stash-compared). All money/fiscal/TSE/finalize
+  logic guarded or moved, never altered.
+- **DEFERRED (honest, not facade):** (1) the P2 api-client MONEY domains (closings/Tagesabschluss + product projections +
+  ClosingsPanel) — needs ONE live-prod `/api/closings` payload curl to get the cents-vs-`DecimalMoney` schema right
+  (Fastify strips un-schema'd fields; guessing risks rejecting valid payloads) + control-desktop has no test runner;
+  (2) the **storefront** surfaces — the executor reports they live in a SEPARATE repo `~/Desktop/warehouse14-onlineshop`
+  (distinct from the `adoring-lederberg` worktree audited in §-storefront) — **⚠️ confirm which storefront is authoritative.**
+  Pre-existing RED suites left untouched (not this work): `b2b-checkout.test.ts` (stale `reserved_channel` column rename),
+  `runner-resilience.test.ts` (pgcrypto-extension grant at setup).
