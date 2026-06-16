@@ -345,7 +345,15 @@ const LagerRow = memo(
                 height: 8,
                 flexShrink: 0,
                 borderRadius: '50%',
-                background: PRODUCT_STATUS_COLOR[row.status],
+                // For a sellable item, distinguish shop-only ("Im Laden", blue)
+                // from web-published ("Online", green) — what the owner wanted to
+                // see in the cashier, not only in the phone companion.
+                background:
+                  row.status === 'AVAILABLE'
+                    ? row.listedOnStorefront
+                      ? '#157a4b'
+                      : '#3b82f6'
+                    : PRODUCT_STATUS_COLOR[row.status],
               }}
             />
             <span
@@ -356,7 +364,11 @@ const LagerRow = memo(
                 letterSpacing: '0.08em',
               }}
             >
-              {PRODUCT_STATUS_LABEL[row.status]}
+              {row.status === 'AVAILABLE'
+                ? row.listedOnStorefront
+                  ? 'Online'
+                  : 'Im Laden'
+                : PRODUCT_STATUS_LABEL[row.status]}
             </span>
           </span>
           {row.archivedAt && (

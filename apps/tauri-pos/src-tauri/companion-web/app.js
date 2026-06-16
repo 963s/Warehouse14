@@ -2239,17 +2239,18 @@
           photoBtn,
           photoStatus
         ]),
+        // "Mehr" (Art, Zustand, Steuerart, Ankaufspreis, Gewicht, Webshop …)
+        // BEFORE the Lagerort + save, so the form flows: Name → Preis → Foto →
+        // (optional Mehr) → and the LAST thing is WHERE the item is stored, then
+        // save. The owner wanted Lagerort to be the final step.
+        moreBtn,
+        moreBody,
         el("div", { class: "sectionhead" }, "Lagerort — wo wird der Artikel abgelegt?"),
         el("div", { class: "form-row three" }, [
           field("Einheit", unitI, false),
           field("Fach", drwI, false),
           field("Position", posI, false)
         ]),
-        // "Mehr" (Art, Zustand, Steuerart, Ankaufspreis, Gewicht, Webshop …)
-        // BEFORE the save buttons, so the final Speichern is the LAST control,
-        // reached only after every field — not a mid-form shortcut.
-        moreBtn,
-        moreBody,
         el("div", { class: "btn-row" }, [ saveBtn, saveOnceBtn ]),
         msg,
         el("div", { class: "scan-help" },
