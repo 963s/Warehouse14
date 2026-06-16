@@ -33,6 +33,7 @@ import type { Env } from './config/env.js';
 import { initSentry } from './lib/sentry.js';
 import { mcpServer } from './mcp/index.js';
 import authPlugin from './plugins/auth.js';
+import botDispatchPlugin from './plugins/bot-dispatch.js';
 import dbPlugin from './plugins/db.js';
 import errorHandlerPlugin from './plugins/error-handler.js';
 import metricsPlugin from './plugins/metrics.js';
@@ -193,6 +194,9 @@ export async function buildApp(opts: BuildAppOpts): Promise<FastifyInstance> {
 
   // 9. PII helper — depends on db + request-context.
   await app.register(piiPlugin);
+
+  // 9.1 Bot dispatcher — bounded concurrency gate for detached bot turns.
+  await app.register(botDispatchPlugin, { env: opts.env });
 
   // 9.5 Storefront session — fills req.shopper for /api/storefront/* routes.
   //     Runs alongside (not instead of) the staff auth plugin; they read

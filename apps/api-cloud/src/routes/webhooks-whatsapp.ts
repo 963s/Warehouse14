@@ -22,6 +22,7 @@ import { whatsappInboundMessages } from '@warehouse14/db/schema';
 import type { Env } from '../config/env.js';
 import { detectBookingIntent, runBookingAutoReply } from '../lib/appointment-whatsapp.js';
 import { verifyMetaSignature } from '../lib/meta-signature.js';
+import { currentPiiKey } from '../lib/request-context.js';
 import { runWhatsAppBot } from '../lib/whatsapp-bot-runner.js';
 import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 
@@ -212,16 +213,22 @@ const whatsappWebhookRoutes: FastifyPluginAsync<WhatsAppWebhookOpts> = async (ap
         }
       }
 
-      // Fire the bot orchestrator per inbound text — detached so we ack Meta
-      // immediately. Started inside the request scope so the orchestrator's
-      // withPii() calls inherit the PII key via AsyncLocalStorage.
+      // Fire the bot orchestrator per inbound text — dispatched through the
+      // bounded gate so a Meta retry storm can't exhaust the pg pool, and with
+      // a guaranteed top-level catch. The PII key is captured HERE, while still
+      // synchronously inside the request scope, and passed EXPLICITLY into the
+      // detached runner (Phase-2 P1.1) — never read from AsyncLocalStorage on
+      // the detached path.
+      const piiKey = currentPiiKey();
       for (const trigger of botTriggers) {
-        void runWhatsAppBot(app, opts.env, trigger);
+        app.botDispatch.run(async () => {
+          await runWhatsAppBot(app, opts.env, trigger, piiKey);
+        });
       }
-      // Booking-intent auto-replies — detached for the same reason; the
-      // runner is token-gated (no WHATSAPP_* keys → recorded as 'queued').
+      // Booking-intent auto-replies — same dispatch; the runner is token-gated
+      // (no WHATSAPP_* keys → recorded as 'queued').
       for (const r of bookingReplies) {
-        void runBookingAutoReply(app, opts.env, r.fromPhone);
+        app.botDispatch.run(() => runBookingAutoReply(app, opts.env, r.fromPhone, piiKey));
       }
 
       return reply.status(200).send({ received: true, stored });

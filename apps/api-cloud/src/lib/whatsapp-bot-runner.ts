@@ -22,6 +22,7 @@ import { type AiCallRecord, type ConversationState, runBotTurn } from '@warehous
 import type { Env } from '../config/env.js';
 import { createAnthropicLlmClient } from './anthropic-llm-client.js';
 import { MetaApiError, sendToMeta } from './meta-whatsapp.js';
+import { withPiiKey } from './pii.js';
 import { createWhatsAppBotTools } from './whatsapp-bot-tools.js';
 
 export interface InboundForBot {
@@ -53,6 +54,7 @@ async function persistAiCalls(
 
 async function storeOutbound(
   app: FastifyInstance,
+  piiKey: string,
   toPhone: string,
   body: string,
   status: 'sent' | 'queued' | 'failed',
@@ -60,9 +62,10 @@ async function storeOutbound(
 ): Promise<void> {
   // The table CHECK requires provider_error NOT NULL exactly when failed.
   const providerErrorJson = status === 'failed' ? JSON.stringify({ source: 'bot_send' }) : null;
-  // body_encrypted at rest via encrypt_pii (Epic E) — needs the withPii scope.
-  await app.withPii(async (txAny) => {
-    const tx = txAny as unknown as typeof app.db;
+  // body_encrypted at rest via encrypt_pii (Epic E). The key is passed
+  // EXPLICITLY (Phase-2 P1.1) — this runs detached, after the request scope
+  // unwound, so it must NOT read the key from AsyncLocalStorage.
+  await withPiiKey(app.db, piiKey, async (tx) => {
     await tx.execute(sql`
       INSERT INTO whatsapp_outbound_messages
         (to_phone, body, body_encrypted, status, provider_message_id, provider_error)
@@ -76,6 +79,7 @@ export async function runWhatsAppBot(
   app: FastifyInstance,
   env: Env,
   inbound: InboundForBot,
+  piiKey: string,
 ): Promise<string | null> {
   try {
     const llm = createAnthropicLlmClient(env.ANTHROPIC_API_KEY);
@@ -144,7 +148,7 @@ export async function runWhatsAppBot(
     const liveSend =
       env.WHATSAPP_PHONE_NUMBER_ID.length > 0 && env.WHATSAPP_ACCESS_TOKEN.length > 0;
     if (!liveSend) {
-      await storeOutbound(app, inbound.fromPhone, result.reply, 'queued', null);
+      await storeOutbound(app, piiKey, inbound.fromPhone, result.reply, 'queued', null);
       return result.reply;
     }
 
@@ -155,14 +159,14 @@ export async function runWhatsAppBot(
         toPhone: inbound.fromPhone,
         messageBody: result.reply,
       });
-      await storeOutbound(app, inbound.fromPhone, result.reply, 'sent', sent.messageId);
+      await storeOutbound(app, piiKey, inbound.fromPhone, result.reply, 'sent', sent.messageId);
     } catch (err) {
       const providerCode = err instanceof MetaApiError ? err.providerCode : null;
       app.log.warn(
         { providerCode, phone: inbound.fromPhone },
         'whatsapp bot: reply send rejected by provider',
       );
-      await storeOutbound(app, inbound.fromPhone, result.reply, 'failed', null);
+      await storeOutbound(app, piiKey, inbound.fromPhone, result.reply, 'failed', null);
     }
     // Return the reply so non-WhatsApp transports (e.g. Chatwoot) can forward it.
     return result.reply;

@@ -24,6 +24,7 @@ import {
   postChatwootReply,
 } from '../lib/chatwoot.js';
 import { verifyMetaSignature } from '../lib/meta-signature.js';
+import { currentPiiKey } from '../lib/request-context.js';
 import { runWhatsAppBot } from '../lib/whatsapp-bot-runner.js';
 import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 
@@ -108,25 +109,30 @@ const chatwootWebhookRoutes: FastifyPluginAsync<ChatwootWebhookOpts> = async (ap
       const action = planChatwootEvent(parsed);
 
       if (action.kind === 'run_bot') {
-        // Detached: ack Chatwoot fast, then run the shared orchestrator and post
-        // the reply back into the conversation. Started inside the request scope
-        // so the bot's withPii() calls inherit the PII key.
-        void (async () => {
+        // Dispatch through the bounded gate (Phase-2 P1.1): ack Chatwoot fast,
+        // then run the shared orchestrator and post the reply back. The PII key
+        // is captured in-scope and passed explicitly — the bot runs detached,
+        // after the request scope unwound, so it must NOT read it from ALS.
+        const piiKey = currentPiiKey();
+        const runBotAction = action;
+        app.botDispatch.run(async () => {
           try {
-            const replyText = await runWhatsAppBot(app, opts.env, {
-              fromPhone: action.conversationKey,
-              body: action.text,
-            });
+            const replyText = await runWhatsAppBot(
+              app,
+              opts.env,
+              { fromPhone: runBotAction.conversationKey, body: runBotAction.text },
+              piiKey,
+            );
             if (replyText) {
-              await postChatwootReply(opts.env, action.conversationId, replyText);
+              await postChatwootReply(opts.env, runBotAction.conversationId, replyText);
             }
           } catch (err) {
             req.log.error(
-              { err, conversationId: action.conversationId },
+              { err, conversationId: runBotAction.conversationId },
               'chatwoot bot run failed',
             );
           }
-        })();
+        });
       } else if (action.kind === 'human_takeover') {
         await applyHumanTakeover(takeoverExec, action.conversationKey);
         req.log.info(

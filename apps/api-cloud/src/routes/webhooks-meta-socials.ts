@@ -16,6 +16,7 @@ import type { FastifyPluginAsync } from 'fastify';
 
 import type { Env } from '../config/env.js';
 import { verifyMetaSignature } from '../lib/meta-signature.js';
+import { currentPiiKey } from '../lib/request-context.js';
 import { extractSocialMessages } from '../lib/social-adapter.js';
 import { runSocialBot } from '../lib/social-bot-runner.js';
 import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
@@ -122,9 +123,13 @@ const metaSocialsRoutes: FastifyPluginAsync<MetaSocialsOpts> = async (app, opts)
       }
 
       const messages = extractSocialMessages(parsed);
-      // Fire the shared bot orchestrator per inbound; detached so we ack fast.
+      // Dispatch the shared bot orchestrator per inbound through the bounded
+      // gate (Phase-2 P1.1): concurrency-capped + a guaranteed top-level catch
+      // (this path had NONE before). The PII key is captured in-scope and
+      // passed explicitly into the detached runner.
+      const piiKey = currentPiiKey();
       for (const msg of messages) {
-        void runSocialBot(app, opts.env, msg);
+        app.botDispatch.run(() => runSocialBot(app, opts.env, msg, piiKey));
       }
 
       return reply.status(200).send({ received: true, accepted: messages.length });

@@ -79,7 +79,27 @@ export type PiiTx = AppDb extends PostgresJsDatabase<infer S>
  */
 export async function withPii<T>(db: AppDb, fn: (tx: PiiTx) => Promise<T>): Promise<T> {
   const key = currentPiiKey(); // throws if no scope — refuse-by-default
+  return await withPiiKey(db, key, fn);
+}
 
+/**
+ * Same as `withPii`, but the key is passed EXPLICITLY rather than read from the
+ * request-scoped AsyncLocalStorage.
+ *
+ * This exists for the detached bot orchestrators (Phase-2 P1.1): they run AFTER
+ * the webhook has acked and the ALS request scope has unwound, so they CANNOT
+ * rely on `currentPiiKey()`. The binding policy forbids carrying correctness-
+ * bearing data (the PII key) across a detached async hop via ALS. The webhook
+ * captures `currentPiiKey()` synchronously while still in scope and threads the
+ * resulting `key` into here.
+ *
+ * The LOCAL `set_config` teardown guarantee is identical to `withPii`.
+ */
+export async function withPiiKey<T>(
+  db: AppDb,
+  key: string,
+  fn: (tx: PiiTx) => Promise<T>,
+): Promise<T> {
   return await db.transaction(async (tx) => {
     // set_config(name, value, is_local) — the third arg `true` means LOCAL.
     // The setting is bound to THIS transaction; when it commits/rolls back,

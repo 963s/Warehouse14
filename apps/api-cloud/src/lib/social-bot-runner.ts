@@ -15,6 +15,7 @@ import { type AiCallRecord, type ConversationState, runBotTurn } from '@warehous
 
 import type { Env } from '../config/env.js';
 import { createAnthropicLlmClient } from './anthropic-llm-client.js';
+import { withPiiKey } from './pii.js';
 import {
   SocialSendError,
   type UnifiedInboundMessage,
@@ -46,6 +47,7 @@ async function persistAiCalls(
 
 async function storeOutbound(
   app: FastifyInstance,
+  piiKey: string,
   toKey: string,
   body: string,
   status: 'sent' | 'queued' | 'failed',
@@ -53,8 +55,9 @@ async function storeOutbound(
 ): Promise<void> {
   const providerErrorJson =
     status === 'failed' ? JSON.stringify({ source: 'social_bot_send' }) : null;
-  await app.withPii(async (txAny) => {
-    const tx = txAny as unknown as typeof app.db;
+  // Explicit PII key (Phase-2 P1.1) — runs detached, after the request scope
+  // unwound, so it must NOT read the key from AsyncLocalStorage.
+  await withPiiKey(app.db, piiKey, async (tx) => {
     await tx.execute(sql`
       INSERT INTO whatsapp_outbound_messages
         (to_phone, body, body_encrypted, status, provider_message_id, provider_error)
@@ -69,6 +72,7 @@ export async function runSocialBot(
   app: FastifyInstance,
   env: Env,
   inbound: UnifiedInboundMessage,
+  piiKey: string,
 ): Promise<void> {
   try {
     const llm = createAnthropicLlmClient(env.ANTHROPIC_API_KEY);
@@ -127,7 +131,7 @@ export async function runSocialBot(
     }
 
     if (env.META_PAGE_ACCESS_TOKEN.length === 0) {
-      await storeOutbound(app, convKey, result.reply, 'queued', null);
+      await storeOutbound(app, piiKey, convKey, result.reply, 'queued', null);
       return;
     }
 
@@ -137,14 +141,14 @@ export async function runSocialBot(
         recipientId: inbound.senderId,
         text: result.reply,
       });
-      await storeOutbound(app, convKey, result.reply, 'sent', sent.messageId || null);
+      await storeOutbound(app, piiKey, convKey, result.reply, 'sent', sent.messageId || null);
     } catch (err) {
       const providerCode = err instanceof SocialSendError ? err.providerCode : null;
       app.log.warn(
         { providerCode, channel: inbound.channel, sender: inbound.senderId },
         'social bot: reply send rejected by provider',
       );
-      await storeOutbound(app, convKey, result.reply, 'failed', null);
+      await storeOutbound(app, piiKey, convKey, result.reply, 'failed', null);
     }
   } catch (err) {
     app.log.error(

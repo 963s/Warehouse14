@@ -26,6 +26,7 @@ import type { FastifyInstance } from 'fastify';
 import { berlinLabel, berlinTimeHm } from '@warehouse14/appointments';
 
 import { MetaApiError, sendToMeta } from './meta-whatsapp.js';
+import { withPiiKey } from './pii.js';
 
 // ────────────────────────────────────────────────────────────────────────
 // Config gating (eBay pattern: empty env → typed NotConfigured error)
@@ -195,6 +196,7 @@ async function readSetting(app: FastifyInstance, key: string): Promise<unknown> 
 
 async function storeOutbound(
   app: FastifyInstance,
+  piiKey: string,
   toPhone: string,
   body: string,
   status: 'sent' | 'queued' | 'failed',
@@ -203,8 +205,9 @@ async function storeOutbound(
   // The table CHECK requires provider_error NOT NULL exactly when failed.
   const providerErrorJson =
     status === 'failed' ? JSON.stringify({ source: 'booking_auto_reply' }) : null;
-  await app.withPii(async (txAny) => {
-    const tx = txAny as unknown as typeof app.db;
+  // Explicit PII key (Phase-2 P1.1) — detached path, no request scope to read
+  // the key from.
+  await withPiiKey(app.db, piiKey, async (tx) => {
     await tx.execute(sql`
       INSERT INTO whatsapp_outbound_messages
         (to_phone, body, body_encrypted, status, provider_message_id, provider_error)
@@ -234,6 +237,7 @@ export async function runBookingAutoReply(
   app: FastifyInstance,
   env: BookingAutoReplyEnv,
   toPhone: string,
+  piiKey: string,
 ): Promise<void> {
   try {
     // Keep the 24h-window bookkeeping honest even though we skip the AI bot.
@@ -260,7 +264,7 @@ export async function runBookingAutoReply(
     if (!isWhatsAppConfigured(cfg)) {
       // Token-gated: fully wired but inert until the Meta keys are set.
       app.log.info({ toPhone }, 'booking auto-reply: whatsapp not configured — queued');
-      await storeOutbound(app, toPhone, reply, 'queued', null);
+      await storeOutbound(app, piiKey, toPhone, reply, 'queued', null);
       return;
     }
 
@@ -271,11 +275,11 @@ export async function runBookingAutoReply(
         toPhone,
         messageBody: reply,
       });
-      await storeOutbound(app, toPhone, reply, 'sent', sent.messageId);
+      await storeOutbound(app, piiKey, toPhone, reply, 'sent', sent.messageId);
     } catch (err) {
       const providerCode = err instanceof MetaApiError ? err.providerCode : null;
       app.log.warn({ providerCode, toPhone }, 'booking auto-reply: send rejected by provider');
-      await storeOutbound(app, toPhone, reply, 'failed', null);
+      await storeOutbound(app, piiKey, toPhone, reply, 'failed', null);
     }
   } catch (err) {
     app.log.error({ err, toPhone }, 'booking auto-reply failed');

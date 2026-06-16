@@ -41,6 +41,10 @@ const EnvSchema = Type.Object({
     description: 'postgres:// connection string for the warehouse14_app role',
   }),
   DB_POOL_MAX: Type.Integer({ minimum: 1, maximum: 200, default: 10 }),
+  // Bot orchestrator concurrency cap (Phase-2 P1.1). Each detached bot turn holds
+  // a pg connection for its lifetime, so keep this comfortably below DB_POOL_MAX
+  // to leave headroom for foreground requests.
+  BOT_MAX_CONCURRENT: Type.Integer({ minimum: 1, maximum: 50, default: 4 }),
   WAREHOUSE14_PII_KEY: Type.String({
     minLength: 16,
     description:
