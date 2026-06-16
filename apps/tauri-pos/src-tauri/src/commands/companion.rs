@@ -98,7 +98,7 @@ use axum::{
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 use tokio::sync::{broadcast, oneshot, RwLock};
 use tokio::task::JoinHandle;
 use tower::limit::ConcurrencyLimitLayer;
@@ -198,7 +198,14 @@ const MAX_CONCURRENT_REQUESTS: usize = 64;
 /// shows a stale cart. `WS_PING_INTERVAL` keeps the socket warm through NAT /
 /// Wi-Fi idle timeouts and lets the mother notice a vanished display promptly.
 const CART_CHANNEL_CAPACITY: usize = 32;
+/// Bounds the POS→phone command broadcast ring (Phase B). Commands are rare
+/// operator actions (start/stop scan, focus a field), so a small ring is ample.
+const CMD_CHANNEL_CAPACITY: usize = 32;
 const WS_PING_INTERVAL: Duration = Duration::from_secs(25);
+
+/// The Tauri event a phone scan is re-emitted on, so the mother React cart can
+/// ring it up exactly as if the cashier had scanned locally (Phase B).
+const COMPANION_SCAN_EVENT: &str = "companion://scan-result";
 
 /// The strict Content-Security-Policy applied to every companion response. No
 /// inline scripts (the SPA JS is a separate `/app.js`); no external origins.
@@ -433,14 +440,24 @@ struct HubShared {
     inner: Arc<RwLock<HubInner>>,
     /// Broadcast sender for the live cart feed → subscribed `/ws` displays.
     cart_tx: broadcast::Sender<String>,
+    /// Broadcast sender for POS→phone commands → subscribed `/ws` command
+    /// sockets (Warehouse/Cashier). Each payload is `{deviceId, action}`; a
+    /// phone forwards only commands addressed to its own device id (Phase B).
+    cmd_tx: broadcast::Sender<String>,
+    /// App handle used to re-emit an inbound phone scan to the mother React
+    /// layer. `None` until the setup wires it; emit is best-effort (Phase B).
+    app: Arc<Mutex<Option<AppHandle>>>,
 }
 
 impl Default for HubShared {
     fn default() -> Self {
         let (cart_tx, _) = broadcast::channel(CART_CHANNEL_CAPACITY);
+        let (cmd_tx, _) = broadcast::channel(CMD_CHANNEL_CAPACITY);
         Self {
             inner: Arc::new(RwLock::new(HubInner::default())),
             cart_tx,
+            cmd_tx,
+            app: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -474,6 +491,14 @@ pub struct CompanionState {
 impl CompanionState {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Wire the Tauri app handle so an inbound phone scan can be re-emitted to
+    /// the mother React layer (Phase B). Called once at setup. Idempotent.
+    pub fn set_app_handle(&self, app: AppHandle) {
+        if let Ok(mut guard) = self.hub.app.lock() {
+            *guard = Some(app);
+        }
     }
 }
 
@@ -1330,24 +1355,21 @@ fn ws_token_from_protocols(headers: &HeaderMap) -> Option<(String, String)> {
         })
 }
 
-/// `GET /ws` — the realtime customer-display feed (phase 3).
+/// `GET /ws` — the realtime companion socket. Two role-gated shapes share the
+/// endpoint:
+///   • **Display** → a strictly OUTBOUND, read-only cart feed: the latest cart
+///     JSON on connect and on every `companion_publish_cart`. Inbound frames are
+///     ignored; it can never mutate state or reach the proxy.
+///   • **Warehouse/Cashier** → a COMMAND socket (Phase B): receives POS→phone
+///     commands addressed to this device, and accepts ONLY `scan-result` inbound
+///     frames, which are re-emitted to the mother cart. No other inbound shape
+///     does anything — a phone cannot drive arbitrary POS actions here.
 ///
 /// Authenticates the companion token (carried in the `Sec-WebSocket-Protocol`
-/// handshake header, NOT the URL), enforces the SAME role model as every other
-/// endpoint — only a **Display** companion may subscribe, matching its read-only
-/// contract — then upgrades to a WebSocket that pushes the latest cart JSON on
-/// connect and on every subsequent `companion_publish_cart`. The display
-/// re-renders on each push and no longer needs the 1 s `GET /cart` poll (it
-/// keeps the poll only as a drop fallback).
-///
-/// The token + Display-role are validated BEFORE the upgrade; a missing/invalid
-/// token or a non-Display role is rejected with 401/403 and never upgrades. On
-/// success the accepted token subprotocol is echoed back via
-/// [`WebSocketUpgrade::protocols`] so the browser completes the handshake.
-///
-/// Security: this is a strictly outbound, read-only stream. Inbound frames from
-/// the display are ignored (other than the close/ping bookkeeping); the socket
-/// can never mutate state or reach the proxy.
+/// handshake header, NOT the URL) BEFORE the upgrade; a missing/invalid token is
+/// rejected 401 and never upgrades. On success the accepted token subprotocol is
+/// echoed back via [`WebSocketUpgrade::protocols`] so the browser completes the
+/// handshake.
 async fn ws_handler(
     AxumState(hub): AxumState<HubShared>,
     headers: HeaderMap,
@@ -1365,23 +1387,36 @@ async fn ws_handler(
     // Same role model as the proxy/cart: only the customer display rides the
     // realtime feed. A cashier/warehouse token is rejected here (they have no
     // need for the push stream and we keep the surface minimal).
-    if role != Role::Display {
-        return (StatusCode::FORBIDDEN, "forbidden for role").into_response();
+    // The socket's identity = SHA-256(token), the SAME id the pairing registry
+    // uses (so a command can address ONE phone). Echo the accepted token
+    // subprotocol back — REQUIRED for the browser to complete the handshake.
+    let device_id = token_hash_hex(&token);
+    match role {
+        Role::Display => {
+            // Read-only customer-display feed (unchanged): snapshot the cart now
+            // so a fresh connect paints immediately, then fan out every change.
+            let initial = {
+                let inner = hub.inner.read().await;
+                inner
+                    .cart_json
+                    .clone()
+                    .unwrap_or_else(|| default_cart().to_string())
+            };
+            let rx = hub.cart_tx.subscribe();
+            ws.protocols([proto])
+                .on_upgrade(move |socket| display_ws_loop(socket, initial, rx))
+        }
+        Role::Warehouse | Role::Cashier => {
+            // Phase B — a COMMAND socket: receive POS→phone commands addressed to
+            // this device, and accept inbound `scan-result` frames which we
+            // re-emit to the mother React cart. This is the ONLY inbound surface;
+            // it can never reach the proxy or mutate hub state directly.
+            let rx = hub.cmd_tx.subscribe();
+            let app = hub.app.lock().ok().and_then(|g| g.clone());
+            ws.protocols([proto])
+                .on_upgrade(move |socket| command_ws_loop(socket, device_id, rx, app))
+        }
     }
-    // Snapshot the latest cart NOW so the freshly-connected display paints
-    // immediately, and subscribe to the broadcast for every later change.
-    let initial = {
-        let inner = hub.inner.read().await;
-        inner
-            .cart_json
-            .clone()
-            .unwrap_or_else(|| default_cart().to_string())
-    };
-    let rx = hub.cart_tx.subscribe();
-    // Echo the accepted token subprotocol back — REQUIRED for the browser to
-    // complete the handshake once it offered a `Sec-WebSocket-Protocol`.
-    ws.protocols([proto])
-        .on_upgrade(move |socket| display_ws_loop(socket, initial, rx))
 }
 
 /// Drive one customer-display WebSocket: send the initial snapshot, then fan out
@@ -1433,6 +1468,99 @@ async fn display_ws_loop(socket: WebSocket, initial: String, mut rx: broadcast::
                     Some(Ok(Message::Close(_))) | None => break,
                     Some(Err(_)) => break,
                     Some(Ok(_)) => { /* ignore pongs / stray frames */ }
+                }
+            }
+        }
+    }
+}
+
+/// True when a broadcast command `{deviceId, ...}` is addressed to this device.
+/// A `"*"` deviceId fans out to every command socket; anything else must match
+/// this socket's id exactly (so the POS can target ONE phone). A malformed
+/// payload addresses no one.
+fn command_is_for_device(cmd_json: &str, device_id: &str) -> bool {
+    match serde_json::from_str::<serde_json::Value>(cmd_json) {
+        Ok(v) => match v.get("deviceId").and_then(|d| d.as_str()) {
+            Some("*") => true,
+            Some(target) => target == device_id,
+            None => false,
+        },
+        Err(_) => false,
+    }
+}
+
+/// Pure parse of an inbound command-socket frame: returns the scanned code IFF
+/// the frame is exactly `{type:"scan-result", code:"<non-empty string>"}`. Every
+/// other shape (other type, missing/non-string/empty code, malformed JSON)
+/// returns `None`. This is the ONLY inbound message a phone can act through — it
+/// can NEVER drive arbitrary POS actions.
+fn scan_code_from_frame(frame: &str) -> Option<String> {
+    let v = serde_json::from_str::<serde_json::Value>(frame).ok()?;
+    if v.get("type").and_then(|t| t.as_str()) != Some("scan-result") {
+        return None;
+    }
+    let code = v.get("code").and_then(|c| c.as_str())?;
+    if code.is_empty() {
+        return None;
+    }
+    Some(code.to_string())
+}
+
+/// Handle ONE inbound frame from a command socket: if it is a valid scan-result,
+/// re-emit it to the mother React layer (tagged with the authenticated device
+/// id) so the cart rings it up exactly as a local scan.
+fn handle_inbound_scan(frame: &str, device_id: &str, app: Option<&AppHandle>) {
+    let Some(code) = scan_code_from_frame(frame) else {
+        return;
+    };
+    if let Some(app) = app {
+        // Best-effort: a closed window must never panic the socket loop.
+        let _ = app.emit(
+            COMPANION_SCAN_EVENT,
+            serde_json::json!({ "deviceId": device_id, "code": code }),
+        );
+    }
+}
+
+/// Drive one Warehouse/Cashier COMMAND socket (Phase B): forward POS→phone
+/// commands addressed to this device, keep it warm with pings, and re-emit any
+/// inbound `scan-result` to the mother cart. Exits cleanly on close/error.
+async fn command_ws_loop(
+    socket: WebSocket,
+    device_id: String,
+    mut rx: broadcast::Receiver<String>,
+    app: Option<AppHandle>,
+) {
+    let (mut sink, mut stream) = socket.split();
+    let mut ping = tokio::time::interval(WS_PING_INTERVAL);
+    ping.tick().await; // skip the immediate first tick
+
+    loop {
+        tokio::select! {
+            recv = rx.recv() => {
+                match recv {
+                    Ok(cmd) => {
+                        if command_is_for_device(&cmd, &device_id)
+                            && sink.send(Message::Text(cmd)).await.is_err()
+                        {
+                            break;
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(broadcast::error::RecvError::Closed) => break,
+                }
+            }
+            _ = ping.tick() => {
+                if sink.send(Message::Ping(Vec::new())).await.is_err() {
+                    break;
+                }
+            }
+            msg = stream.next() => {
+                match msg {
+                    Some(Ok(Message::Text(t))) => handle_inbound_scan(&t, &device_id, app.as_ref()),
+                    Some(Ok(Message::Close(_))) | None => break,
+                    Some(Err(_)) => break,
+                    Some(Ok(_)) => { /* ignore pongs / binary / stray frames */ }
                 }
             }
         }
@@ -2744,6 +2872,24 @@ pub async fn companion_publish_cart(
     Ok(())
 }
 
+/// Send a POS→phone command to a paired companion (Phase B). `device_id` is the
+/// target phone's id (SHA-256 of its token, as shown in the registry) or `"*"`
+/// to broadcast to every command socket. `action` is the command payload, e.g.
+/// `{"type":"start-scan"}` or `{"type":"focus-field","field":"sku"}`.
+///
+/// Mirrors `companion_publish_cart`: best-effort broadcast (a `send` error just
+/// means no command sockets are connected — the normal idle case).
+#[tauri::command]
+pub async fn companion_send_command(
+    state: State<'_, CompanionState>,
+    device_id: String,
+    action: serde_json::Value,
+) -> Result<(), ()> {
+    let payload = serde_json::json!({ "deviceId": device_id, "action": action }).to_string();
+    let _ = state.hub.cmd_tx.send(payload);
+    Ok(())
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Tests
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2751,6 +2897,62 @@ pub async fn companion_publish_cart(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── Phase B: POS-controllable scanner command path ───────────────────────
+
+    #[test]
+    fn command_routes_to_the_addressed_device_only() {
+        let cmd = serde_json::json!({ "deviceId": "abc123", "action": { "type": "start-scan" } })
+            .to_string();
+        assert!(command_is_for_device(&cmd, "abc123"), "addressed device receives it");
+        assert!(!command_is_for_device(&cmd, "other"), "a different device is skipped");
+    }
+
+    #[test]
+    fn wildcard_command_fans_out_to_every_device() {
+        let cmd = serde_json::json!({ "deviceId": "*", "action": { "type": "stop-scan" } })
+            .to_string();
+        assert!(command_is_for_device(&cmd, "abc123"));
+        assert!(command_is_for_device(&cmd, "zzz"));
+    }
+
+    #[test]
+    fn malformed_or_unaddressed_command_reaches_no_device() {
+        assert!(!command_is_for_device("not json", "abc"));
+        assert!(!command_is_for_device(r#"{"action":{}}"#, "abc")); // no deviceId
+    }
+
+    #[test]
+    fn scan_result_frame_yields_the_code_others_yield_none() {
+        assert_eq!(
+            scan_code_from_frame(r#"{"type":"scan-result","code":"4001234"}"#).as_deref(),
+            Some("4001234"),
+        );
+        // Wrong type, missing/empty/non-string code, and garbage are all rejected —
+        // a phone can drive NOTHING but a scan through the command socket.
+        assert_eq!(scan_code_from_frame(r#"{"type":"start-scan","code":"x"}"#), None);
+        assert_eq!(scan_code_from_frame(r#"{"type":"scan-result"}"#), None);
+        assert_eq!(scan_code_from_frame(r#"{"type":"scan-result","code":""}"#), None);
+        assert_eq!(scan_code_from_frame(r#"{"type":"scan-result","code":123}"#), None);
+        assert_eq!(scan_code_from_frame("}{"), None);
+    }
+
+    #[tokio::test]
+    async fn send_command_broadcasts_to_a_subscribed_command_socket() {
+        // The IPC fans a command onto cmd_tx; a (would-be command-socket) subscriber
+        // receives the exact {deviceId, action} envelope the phone filters on.
+        let hub = HubShared::default();
+        let mut rx = hub.cmd_tx.subscribe();
+        let payload =
+            serde_json::json!({ "deviceId": "dev-1", "action": { "type": "focus-field", "field": "sku" } })
+                .to_string();
+        hub.cmd_tx.send(payload.clone()).expect("a live subscriber exists");
+        let got = rx.recv().await.expect("delivered");
+        assert!(command_is_for_device(&got, "dev-1"));
+        let v: serde_json::Value = serde_json::from_str(&got).unwrap();
+        assert_eq!(v["action"]["type"], "focus-field");
+        assert_eq!(v["action"]["field"], "sku");
+    }
 
     // ── Proxy allow-list: WAREHOUSE Termine grants ───────────────────────────
 

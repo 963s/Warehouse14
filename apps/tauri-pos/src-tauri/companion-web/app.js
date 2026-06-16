@@ -485,6 +485,8 @@
   function logout() {
     stopDisplayTimer();
     stopDisplaySocket();
+    stopCommandSocket();      // Phase B — drop the POS-command socket + scan overlay.
+    closeTillScanOverlay();
     stopApptPoll();
     stopActiveCamera();
     // Free held stock + drop the pagehide listener BEFORE the token is cleared,
@@ -847,6 +849,114 @@
         connectDisplaySocket(onCart, armPoll, disarmPoll);
       }
     }, 3000);
+  }
+
+  // ── Phase B: POS-controllable scanner (Warehouse/Cashier command socket) ──
+  // The SAME /ws endpoint, now allowed for Warehouse/Cashier as a COMMAND
+  // socket: it receives POS→phone commands (start/stop scan, focus, show) and
+  // sends `{type:"scan-result", code}` back so a phone scan rings up in the
+  // mother's cart. Fail-safe: any failure just means no remote scanning.
+  var commandSocket = null;
+  var commandReconnect = null;
+  function sendCompanionScan(code) {
+    try {
+      if (commandSocket && commandSocket.readyState === 1 && code) {
+        commandSocket.send(JSON.stringify({ type: "scan-result", code: String(code) }));
+        return true;
+      }
+    } catch (e) {}
+    return false;
+  }
+  function stopCommandSocket() {
+    if (commandReconnect) { clearTimeout(commandReconnect); commandReconnect = null; }
+    if (commandSocket) {
+      try { commandSocket.onclose = null; commandSocket.close(); } catch (e) {}
+      commandSocket = null;
+    }
+  }
+  function connectCommandSocket() {
+    if (!token || (role !== "warehouse" && role !== "cashier")) return;
+    if (commandSocket) return; // already connected / connecting
+    var ws;
+    try { ws = new WebSocket(wsUrl(), wsProtocols()); }
+    catch (e) { scheduleCommandReconnect(); return; }
+    commandSocket = ws;
+    ws.onmessage = function (ev) {
+      var msg = null;
+      try { msg = JSON.parse(ev.data); } catch (e) { return; }
+      var action = msg && msg.action;
+      if (!action || !action.type) return;
+      try { handleCompanionCommand(action); } catch (e) {}
+    };
+    ws.onerror = function () {};
+    ws.onclose = function (ev) {
+      if (commandSocket === ws) commandSocket = null;
+      if (ev && ev.code === 1008) { logout(); return; }
+      scheduleCommandReconnect();
+    };
+  }
+  function scheduleCommandReconnect() {
+    if (commandReconnect) return;
+    commandReconnect = setTimeout(function () {
+      commandReconnect = null;
+      connectCommandSocket();
+    }, 3000);
+  }
+  // Dispatch a POS→phone command. The minimal set: start/stop scan open/close a
+  // dedicated "scan for the till" overlay; focus-field/show-screen are surfaced
+  // as a window event so a view can react (advisory, no-op otherwise).
+  function handleCompanionCommand(action) {
+    if (action.type === "start-scan") { openTillScanOverlay(); return; }
+    if (action.type === "stop-scan") { closeTillScanOverlay(); return; }
+    try { window.dispatchEvent(new CustomEvent("w14:companion-command", { detail: action })); } catch (e) {}
+  }
+  // A self-contained scanner overlay that sends each detected code to the till
+  // (NOT the phone's own cart). Isolated from the Zweitkasse scanner.
+  var tillScanTeardown = null;
+  function closeTillScanOverlay() {
+    if (tillScanTeardown) { try { tillScanTeardown(); } catch (e) {} tillScanTeardown = null; }
+  }
+  function openTillScanOverlay() {
+    if (tillScanTeardown) return; // already open
+    if (!("BarcodeDetector" in window) || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+    var video = el("video", { autoplay: "", muted: "", playsinline: "" });
+    var hint = el("div", { style: "color:#fff;text-align:center;padding:10px;font-size:14px" }, "Scannen für die Kasse — Code vor die Kamera halten");
+    var closeBtn = el("button", { class: "btn", type: "button", style: "margin:10px auto;display:block" }, "Fertig");
+    var overlay = el("div", {
+      style: "position:fixed;inset:0;z-index:9998;background:#000;display:flex;flex-direction:column;justify-content:center"
+    }, [hint, video, closeBtn]);
+    document.body.appendChild(overlay);
+    var detector = new window.BarcodeDetector();
+    var raf = null, streamRef = null, done = false, lastVal = "", lastAt = 0;
+    var teardown = function () {
+      done = true;
+      if (raf) cancelAnimationFrame(raf);
+      try { if (streamRef) streamRef.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
+      try { overlay.remove(); } catch (e) {}
+      tillScanTeardown = null;
+    };
+    tillScanTeardown = teardown;
+    closeBtn.onclick = teardown;
+    var loop = function () {
+      if (done) return;
+      detector.detect(video).then(function (codes) {
+        if (done) return;
+        if (codes && codes.length && codes[0].rawValue) {
+          var val = String(codes[0].rawValue).trim();
+          var now = Date.now();
+          // Debounce the same code (the detector fires every frame).
+          if (val && (val !== lastVal || now - lastAt > 1500)) {
+            lastVal = val; lastAt = now;
+            sendCompanionScan(val);
+            if (navigator.vibrate) { try { navigator.vibrate(40); } catch (e) {} }
+          }
+        }
+        raf = requestAnimationFrame(loop);
+      }).catch(function () { if (!done) raf = requestAnimationFrame(loop); });
+    };
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+      .then(function (stream) { streamRef = stream; video.srcObject = stream; raf = requestAnimationFrame(loop); })
+      .catch(function () { teardown(); });
   }
 
   // ── Money in integer cents (mirrors lib/cart-math toCents/fromCents) ─
@@ -3652,6 +3762,10 @@
     // A restored (not freshly paired) token gets silently revalidated first —
     // straight to the role home on success, re-pair CTA only on real rejection.
     if (!sessionChecked) { renderReconnect(); return; }
+    // Phase B — keep the POS-command socket up exactly for Warehouse/Cashier;
+    // tear it (and any open till-scan overlay) down for every other role.
+    if (role === "warehouse" || role === "cashier") { connectCommandSocket(); }
+    else { stopCommandSocket(); closeTillScanOverlay(); }
     if (role === "display")   { renderDisplay();   return; }
     if (role === "cashier")   { renderCashier();   return; }
     if (role === "warehouse") { renderWarehouse(); return; }

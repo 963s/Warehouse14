@@ -63,6 +63,10 @@ pub fn run() {
             // The app data dir anchors the persisted pairing registry.
             use tauri::Manager as _;
             let companion_data_dir = app.path().app_data_dir().ok();
+            // Phase B — wire the app handle so an inbound phone scan can be
+            // re-emitted to the mother React cart. Set before the spawn moves the
+            // state; the hub Arc is shared with the Tauri-managed instance.
+            companion_autostart_state.set_app_handle(app.handle().clone());
             tauri::async_runtime::spawn(async move {
                 commands::companion::companion_autostart(
                     companion_autostart_state,
@@ -133,9 +137,10 @@ pub fn run() {
             commands::companion::companion_start,
             commands::companion::companion_stop,
             commands::companion::companion_status,
-            // Companion LAN hub — auth injection + live cart publish
+            // Companion LAN hub — auth injection + live cart publish + scanner command
             commands::companion::companion_set_auth,
             commands::companion::companion_publish_cart,
+            commands::companion::companion_send_command,
         ])
         .run(tauri::generate_context!())
         .expect("error while running warehouse14-tauri-pos");
