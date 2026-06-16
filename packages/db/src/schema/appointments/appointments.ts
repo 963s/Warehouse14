@@ -8,7 +8,16 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { check, index, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import {
+  check,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 
 import { primaryKey, timestamps } from '../_shared/columns.js';
 import { users } from '../auth/users.js';
@@ -85,6 +94,9 @@ export const appointments = pgTable(
     activeWindowIdx: index('appointments_active_window_idx')
       .on(table.startsAt, table.endsAt)
       .where(sql`${table.status} NOT IN ('CANCELLED', 'NO_SHOW', 'RESCHEDULED')`),
+    // Migration 0070: inbound calendar-pull idempotency — at most one appointment
+    // per Google event (NULLs are distinct, so unsynced rows are unaffected).
+    googleEventIdUq: uniqueIndex('appointments_google_event_id_uq').on(table.googleEventId),
 
     durationRange: check(
       'appointments_duration_range',

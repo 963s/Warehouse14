@@ -13,12 +13,16 @@
  * (source='GOOGLE'); a slot already holding an unlinked system booking is left
  * alone (race guard while the outbound mirror links it).
  *
- * Runs on a ~90s interval in the api process (see startCalendarPoller), using a
- * persisted Google syncToken for cheap incremental polling.
+ * Runs on a 15s interval in the api process (see startCalendarPoller), using a
+ * persisted Google syncToken for cheap incremental polling. Ticks never overlap
+ * (a module-level re-entrancy guard) and a Google event imports at most once (a
+ * UNIQUE(google_event_id) index, migration 0070).
  */
 
 import { sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
+
+import type { AppDb } from '@warehouse14/db/client';
 
 import { ensureWatchChannel } from './calendar-watch.js';
 import { calendarConfigured, syncEvents } from './google-calendar.js';
@@ -43,11 +47,26 @@ export interface MatchedAppointment {
   durationMinutes: number;
 }
 
+/** A matched row from the batched lookup — MatchedAppointment + its event id. */
+type MatchRow = {
+  googleEventId: string;
+  id: string;
+  status: string;
+  startsAt: string;
+  durationMinutes: number;
+};
+
 export type PullAction =
   | { kind: 'skip' }
   | { kind: 'cancel'; appointmentId: string }
   | { kind: 'reschedule'; appointmentId: string; startIso: string; durationMinutes: number }
-  | { kind: 'import'; startIso: string; durationMinutes: number; title: string; notes: string | null };
+  | {
+      kind: 'import';
+      startIso: string;
+      durationMinutes: number;
+      title: string;
+      notes: string | null;
+    };
 
 /** Pure decision: given a changed Google event + the local state, what to do. */
 export function decidePullAction(
@@ -72,11 +91,15 @@ export function decidePullAction(
 
   if (matched) {
     if (TERMINAL_STATUSES.has(matched.status)) return { kind: 'skip' };
-    const sameStart =
-      new Date(matched.startsAt).getTime() === new Date(event.startIso).getTime();
+    const sameStart = new Date(matched.startsAt).getTime() === new Date(event.startIso).getTime();
     const sameDuration = matched.durationMinutes === durationMinutes;
     if (sameStart && sameDuration) return { kind: 'skip' };
-    return { kind: 'reschedule', appointmentId: matched.id, startIso: event.startIso, durationMinutes };
+    return {
+      kind: 'reschedule',
+      appointmentId: matched.id,
+      startIso: event.startIso,
+      durationMinutes,
+    };
   }
 
   // No local appointment carries this event id.
@@ -113,88 +136,166 @@ async function saveSyncToken(db: DbLike, token: string): Promise<void> {
   `);
 }
 
+/** ISO instant string → true if it parses to a real instant. */
+function isValidInstant(iso: string): boolean {
+  return !Number.isNaN(new Date(iso).getTime());
+}
+
+/**
+ * Re-entrancy guard: the 15s `setInterval` does not await the prior tick. A slow
+ * full-resync tick must not overlap the next one and re-import. The UNIQUE index
+ * makes overlap SAFE regardless (0070), but this avoids wasted work + duplicate
+ * Google API calls.
+ */
+let pullRunning = false;
+
 /** One incremental sync pass: Google → appointments table. Best-effort. */
-export async function runCalendarPull(db: DbLike, log: LoggerLike): Promise<void> {
+export async function runCalendarPull(db: AppDb, log: LoggerLike): Promise<void> {
   if (!calendarConfigured()) return;
-
-  let token = await loadSyncToken(db);
-  let res = await syncEvents(token);
-  if (res.fullResyncNeeded) {
-    log.info({}, 'calendar pull: sync token expired — full resync');
-    token = null;
-    res = await syncEvents(null);
+  if (pullRunning) {
+    log.info({}, 'calendar pull: previous tick still running — skipping');
+    return;
   }
+  pullRunning = true;
+  try {
+    let token = await loadSyncToken(db);
+    let res = await syncEvents(token);
+    if (res.fullResyncNeeded) {
+      log.info({}, 'calendar pull: sync token expired — full resync');
+      token = null;
+      res = await syncEvents(null);
+    }
 
-  let imported = 0;
-  let rescheduled = 0;
-  let cancelled = 0;
+    // Resolve the fallback staff ONCE — every Google-only import shares it. This
+    // was an N+1 query (re-run inside the loop for every imported event).
+    const staffRows = (await db.execute<{ id: string }>(sql`
+      SELECT id::text AS id FROM users
+      WHERE role::text IN ('ADMIN', 'CASHIER')
+      ORDER BY is_owner DESC, created_at ASC LIMIT 1
+    `)) as unknown as Array<{ id: string }>;
+    const fallbackStaffId = staffRows[0]?.id ?? null;
 
-  for (const event of res.events) {
-    if (!event.id) continue;
+    // Batch the match lookup into ONE keyed query (was one query PER event).
+    // Bind the ids as a single text[] LITERAL param (NOT an array spread — the
+    // 42846/22P02 bug class guarded by tests/unit/no-array-spread.test.ts).
+    const eventIds = res.events
+      .map((e) => e.id)
+      .filter((id): id is string => typeof id === 'string' && /^[A-Za-z0-9_@.-]+$/.test(id));
+    const matchMap = new Map<string, MatchedAppointment>();
+    if (eventIds.length > 0) {
+      const idsLiteral = `{${eventIds.join(',')}}`;
+      const rows = (await db.execute<MatchRow>(sql`
+        SELECT google_event_id AS "googleEventId", id::text AS id, status::text AS status,
+               starts_at::text AS "startsAt", duration_minutes AS "durationMinutes"
+        FROM appointments WHERE google_event_id = ANY(${idsLiteral}::text[])
+      `)) as unknown as MatchRow[];
+      for (const r of rows) {
+        matchMap.set(r.googleEventId, {
+          id: r.id,
+          status: r.status,
+          startsAt: r.startsAt,
+          durationMinutes: r.durationMinutes,
+        });
+      }
+    }
 
-    const matchRows = (await db.execute(sql`
-      SELECT id::text AS id, status::text AS status, starts_at::text AS "startsAt", duration_minutes AS "durationMinutes"
-      FROM appointments WHERE google_event_id = ${event.id} LIMIT 1
-    `)) as unknown as MatchedAppointment[];
-    const matched = matchRows[0] ?? null;
-
-    let unlinkedAtStart = false;
-    if (!matched && event.status !== 'cancelled' && event.startIso) {
-      const u = (await db.execute(sql`
-        SELECT 1 AS hit FROM appointments
-        WHERE starts_at = ${event.startIso}::timestamptz
+    // Batch the unlinked-slot probe into ONE keyed query (was one query per
+    // unmatched active event). Compare by INSTANT — normalise both sides through
+    // `new Date(...).toISOString()` so a `+02:00` vs `Z` representation of the
+    // same instant does not falsely diverge.
+    const candidateStarts = res.events
+      .filter((e) => e.id && !matchMap.has(e.id) && e.status !== 'cancelled' && e.startIso)
+      .map((e) => e.startIso as string)
+      .filter(isValidInstant);
+    const unlinkedStarts = new Set<string>();
+    if (candidateStarts.length > 0) {
+      const startsLiteral = `{${candidateStarts.map((s) => `"${s}"`).join(',')}}`;
+      const rows = (await db.execute<{ startsAt: string }>(sql`
+        SELECT DISTINCT starts_at::text AS "startsAt" FROM appointments
+        WHERE starts_at = ANY(${startsLiteral}::timestamptz[])
           AND google_event_id IS NULL
           AND status NOT IN ('CANCELLED', 'NO_SHOW', 'RESCHEDULED')
-        LIMIT 1
-      `)) as unknown as Array<{ hit: number }>;
-      unlinkedAtStart = u.length > 0;
+      `)) as unknown as Array<{ startsAt: string }>;
+      for (const r of rows) unlinkedStarts.add(new Date(r.startsAt).toISOString());
     }
 
-    const action = decidePullAction(event, matched, unlinkedAtStart);
-    try {
-      if (action.kind === 'cancel') {
-        await db.execute(sql`
-          UPDATE appointments
-          SET status = 'CANCELLED', cancelled_at = now(),
-              cancellation_reason = 'Im Google Kalender gelöscht'
-          WHERE id = ${action.appointmentId}::uuid
-        `);
-        cancelled++;
-      } else if (action.kind === 'reschedule') {
-        await db.execute(sql`
-          UPDATE appointments
-          SET starts_at = ${action.startIso}::timestamptz, duration_minutes = ${action.durationMinutes}
-          WHERE id = ${action.appointmentId}::uuid
-        `);
-        rescheduled++;
-      } else if (action.kind === 'import') {
-        const staffRows = (await db.execute(sql`
-          SELECT id::text AS id FROM users
-          WHERE role::text IN ('ADMIN', 'CASHIER')
-          ORDER BY is_owner DESC, created_at ASC LIMIT 1
-        `)) as unknown as Array<{ id: string }>;
-        const staffId = staffRows[0]?.id;
-        if (staffId) {
+    let imported = 0;
+    let rescheduled = 0;
+    let cancelled = 0;
+    let skippedNoStaff = 0;
+
+    for (const event of res.events) {
+      if (!event.id) continue;
+      const matched = matchMap.get(event.id) ?? null;
+      const unlinkedAtStart =
+        !!event.startIso &&
+        isValidInstant(event.startIso) &&
+        unlinkedStarts.has(new Date(event.startIso).toISOString());
+
+      const action = decidePullAction(event, matched, unlinkedAtStart);
+      try {
+        if (action.kind === 'cancel') {
           await db.execute(sql`
-            INSERT INTO appointments
-              (appointment_type, starts_at, duration_minutes, staff_user_id, booked_via, source,
-               customer_notes, google_event_id)
-            VALUES ('CONSULTATION'::appointment_type, ${action.startIso}::timestamptz,
-                    ${action.durationMinutes}, ${staffId}::uuid, 'google_calendar', 'GOOGLE',
-                    ${action.title}, ${event.id})
-            ON CONFLICT DO NOTHING
+            UPDATE appointments
+            SET status = 'CANCELLED', cancelled_at = now(),
+                cancellation_reason = 'Im Google Kalender gelöscht'
+            WHERE id = ${action.appointmentId}::uuid
           `);
-          imported++;
+          cancelled++;
+        } else if (action.kind === 'reschedule') {
+          await db.execute(sql`
+            UPDATE appointments
+            SET starts_at = ${action.startIso}::timestamptz, duration_minutes = ${action.durationMinutes}
+            WHERE id = ${action.appointmentId}::uuid
+          `);
+          rescheduled++;
+        } else if (action.kind === 'import') {
+          if (!fallbackStaffId) {
+            skippedNoStaff++;
+            continue;
+          }
+          // Idempotent UPSERT in ONE transaction, keyed on the new UNIQUE index
+          // (0070). RETURNING is empty on conflict → `imported` only counts a
+          // genuine insert, so the cross-poller duplicate race is a clean no-op.
+          const inserted = await db.transaction(async (txAny) => {
+            const tx = txAny as unknown as typeof db;
+            const rows = (await tx.execute<{ id: string }>(sql`
+              INSERT INTO appointments
+                (appointment_type, starts_at, duration_minutes, staff_user_id, booked_via, source,
+                 customer_notes, google_event_id)
+              VALUES ('CONSULTATION'::appointment_type, ${action.startIso}::timestamptz,
+                      ${action.durationMinutes}, ${fallbackStaffId}::uuid, 'google_calendar', 'GOOGLE',
+                      ${action.title}, ${event.id})
+              ON CONFLICT (google_event_id) DO NOTHING
+              RETURNING id::text AS id
+            `)) as unknown as Array<{ id: string }>;
+            return rows[0] ?? null;
+          });
+          if (inserted) imported++;
+        }
+      } catch (err) {
+        // A Google import landing on a slot already held by ANOTHER staff
+        // appointment raises 23P01 (the no-overlap EXCLUDE, 0069) — skip cleanly.
+        if ((err as { code?: unknown })?.code === '23P01') {
+          log.info({ eventId: event.id }, 'calendar pull: import skipped (staff slot taken)');
+        } else {
+          log.error({ err, eventId: event.id, action: action.kind }, 'calendar pull: apply failed');
         }
       }
-    } catch (err) {
-      log.error({ err, eventId: event.id, action: action.kind }, 'calendar pull: apply failed');
     }
-  }
 
-  if (res.nextSyncToken) await saveSyncToken(db, res.nextSyncToken);
-  if (imported || rescheduled || cancelled) {
-    log.info({ imported, rescheduled, cancelled }, 'calendar pull: applied changes');
+    if (res.nextSyncToken) await saveSyncToken(db, res.nextSyncToken);
+    if (imported || rescheduled || cancelled) {
+      log.info({ imported, rescheduled, cancelled }, 'calendar pull: applied changes');
+    }
+    if (skippedNoStaff > 0) {
+      log.info(
+        { skippedNoStaff },
+        'calendar pull: no ADMIN/CASHIER staff to assign Google-only imports',
+      );
+    }
+  } finally {
+    pullRunning = false;
   }
 }
 
@@ -214,7 +315,7 @@ export function startCalendarPoller(app: FastifyInstance): NodeJS.Timeout | null
   }
   const webhookUrl = process.env.CALENDAR_WEBHOOK_URL ?? '';
   const webhookToken = process.env.CALENDAR_WEBHOOK_TOKEN ?? '';
-  const db = app.db as unknown as DbLike;
+  const db = app.db;
   const tick = () => {
     void runCalendarPull(db, app.log).catch((err: unknown) =>
       app.log.error({ err }, 'calendar pull tick failed'),
