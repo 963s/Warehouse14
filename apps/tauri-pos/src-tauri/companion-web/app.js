@@ -2245,9 +2245,12 @@
           field("Fach", drwI, false),
           field("Position", posI, false)
         ]),
-        el("div", { class: "btn-row" }, [ saveBtn, saveOnceBtn ]),
+        // "Mehr" (Art, Zustand, Steuerart, Ankaufspreis, Gewicht, Webshop …)
+        // BEFORE the save buttons, so the final Speichern is the LAST control,
+        // reached only after every field — not a mid-form shortcut.
         moreBtn,
         moreBody,
+        el("div", { class: "btn-row" }, [ saveBtn, saveOnceBtn ]),
         msg,
         el("div", { class: "scan-help" },
           "Schnell-Erfassung: Bezeichnung, Preis, Foto und Lagerort, dann speichern. Lagerort, Art, " +
@@ -2916,8 +2919,9 @@
   // ≥56px inventory row: photo (or glyph) + name + SKU + bin + price.
   function inventoryRow(p, onOpen) {
     var thumb = thumbNode(p);
+    var sb = stateBadge(p);
     return el("button", { class: "invrow", type: "button",
-      "aria-label": (p.name || "Artikel") + ", öffnen", onclick: onOpen }, [
+      "aria-label": (p.name || "Artikel") + ", " + sb[0] + ", öffnen", onclick: onOpen }, [
       thumb,
       el("div", { class: "meta" }, [
         el("div", { class: "nm" }, String(p.name || "Ohne Namen")),
@@ -2925,7 +2929,7 @@
       ]),
       el("div", { class: "right" }, [
         el("div", { class: "price" }, fmtEur(p.priceEur != null ? p.priceEur : p.price)),
-        el("div", { class: "bin" }, statusShort(p.status))
+        el("div", { class: "bin" }, el("span", { style: "color:" + sb[1] + ";font-weight:700" }, sb[0]))
       ])
     ]);
   }
@@ -2942,6 +2946,22 @@
     if (s === "RESERVED") return "Reserviert";
     if (s === "SOLD") return "Verkauft";
     return s || "—";
+  }
+  // Where is this article? Distinguishes a shop-only AVAILABLE item ("Im Laden")
+  // from one that is also published to the web shop ("Online"). The list
+  // endpoint returns `status` + `listedOnStorefront` (NOT isPublishedToWeb), so
+  // the storefront flag is the reliable web-published signal here. → [label, color].
+  function stateBadge(p) {
+    var s = String(p.status || "").toUpperCase();
+    if (s === "SOLD") return ["Verkauft", "#9ca3af"];
+    if (s === "RESERVED") return ["Reserviert", "#f0b429"];
+    if (s === "DRAFT") return ["Entwurf", "#9ca3af"];
+    if (s === "AVAILABLE") {
+      return (p.listedOnStorefront === true || p.isPublishedToWeb === true)
+        ? ["Online", "#157a4b"]
+        : ["Im Laden", "#3b82f6"];
+    }
+    return [s || "—", "#9ca3af"];
   }
 
   // Compact product result card with an "Öffnen" affordance (scan results).
@@ -3238,23 +3258,34 @@
     // The native picker (rear camera on phones). DEFINED FIRST so every fallback
     // path (secure-catch, insecure trust-repair, no-API) can attach it. Selecting
     // a file downscales it and jumps straight to the review state.
+    // Shared add-photo handler: downscale a CAPTURED or LIBRARY-picked file, then
+    // jump straight to the review state. Used by BOTH inputs below.
+    function handlePickedFile(e) {
+      var f = e.target.files && e.target.files[0];
+      if (!f) return;
+      showProcessing(); // never leave the stage a bare black box during decode.
+      downscaleToJpeg(f).then(function (blob) {
+        captured = blob;
+        showReview(blob);
+      }).catch(function () {
+        // Black-frame guard tripped or decode failed → keep the raw file as-is
+        // (a browser <img> still shows it fine; only canvas draws can fail).
+        captured = f;
+        showReview(f);
+      });
+    }
+    // (A) Rear-camera capture: `capture=environment` opens the camera directly.
     var fileInput = el("input", {
       type: "file", accept: "image/*", capture: "environment",
-      class: "sr-only", id: "cam-file",
-      onchange: function (e) {
-        var f = e.target.files && e.target.files[0];
-        if (!f) return;
-        showProcessing(); // never leave the stage a bare black box during decode.
-        downscaleToJpeg(f).then(function (blob) {
-          captured = blob;
-          showReview(blob);
-        }).catch(function () {
-          // Black-frame guard tripped or decode failed → keep the raw file as-is
-          // (a browser <img> still shows it fine; only canvas draws can fail).
-          captured = f;
-          showReview(f);
-        });
-      }
+      class: "sr-only", id: "cam-file", onchange: handlePickedFile
+    });
+    // (B) Photo-library picker: NO `capture` attribute, so iOS offers
+    // "Fotomediathek / Datei auswählen" — the operator can add an EXISTING photo,
+    // not only shoot a new one. A file input needs no secure context, so this also
+    // works while the companion cert is still untrusted.
+    var libInput = el("input", {
+      type: "file", accept: "image/*",
+      class: "sr-only", id: "cam-lib", onchange: handlePickedFile
     });
 
     if (liveCameraUsable) {
@@ -3284,8 +3315,12 @@
         el("div", {}, reason),
         el("label", { class: "btn-primary inline file-pick", for: "cam-file",
           style: "margin-top:1rem; display:inline-flex; align-items:center; justify-content:center" },
-          "📷 Foto aufnehmen / wählen"),
-        fileInput
+          "📷 Foto aufnehmen"),
+        el("label", { class: "btn inline file-pick", for: "cam-lib",
+          style: "margin-top:.6rem; display:inline-flex; align-items:center; justify-content:center" },
+          "🖼️ Aus Mediathek wählen"),
+        fileInput,
+        libInput
       ]));
       shutter.style.display = "none";
     }
@@ -3311,8 +3346,12 @@
           "Anleitung öffnen (/trust)"),
         el("label", { class: "btn inline file-pick", for: "cam-file",
           style: "margin-top:.6rem;display:inline-flex;align-items:center;justify-content:center" },
-          "📷 Trotzdem Foto wählen"),
-        fileInput
+          "📷 Trotzdem Foto aufnehmen"),
+        el("label", { class: "btn inline file-pick", for: "cam-lib",
+          style: "margin-top:.6rem;display:inline-flex;align-items:center;justify-content:center" },
+          "🖼️ Aus Mediathek wählen"),
+        fileInput,
+        libInput
       ]));
       shutter.style.display = "none";
     }
@@ -3332,10 +3371,18 @@
       busyStage("Bild wird geladen…");
       var url = URL.createObjectURL(captured);
       var img = el("img", { alt: "Aufnahme" });
-      img.onload = function () {
+      function show() {
         try { clear(stage); stage.appendChild(img); } catch (e) {}
         if (reviewUrl && reviewUrl !== url) { try { URL.revokeObjectURL(reviewUrl); } catch (x) {} }
         reviewUrl = url;
+      }
+      // CRITICAL on iOS WebKit: `onload` fires BEFORE the bitmap is decoded, so
+      // appending the <img> there paints the #000 stage (a black preview). Await
+      // `decode()` — it resolves only once the image is ready to paint. Settle on
+      // both resolve+reject so a browser that rejects decode() but still paints
+      // is unaffected.
+      img.onload = function () {
+        if (img.decode) { img.decode().then(show, show); } else { show(); }
       };
       img.onerror = function () { try { URL.revokeObjectURL(url); } catch (e) {} };
       img.src = url;
@@ -3379,6 +3426,7 @@
       captured = null;
       if (reviewUrl) { try { URL.revokeObjectURL(reviewUrl); } catch (e) {} reviewUrl = null; }
       try { fileInput.value = ""; } catch (e) {}
+      try { libInput.value = ""; } catch (e) {} // re-pick the same library image
       clear(stage);
       if (liveCameraUsable && streamRef) {
         stage.appendChild(video);

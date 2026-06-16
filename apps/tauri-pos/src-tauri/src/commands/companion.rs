@@ -1074,18 +1074,17 @@ async fn trust_mobileconfig_handler(AxumState(hub): AxumState<HubShared>) -> Res
     };
     let url = format!("https://{TLS_SAN_MDNS}:{COMPANION_PORT}");
     let mc = build_mobileconfig(&ca_pem, &url);
+    // Serve the profile INLINE (no `Content-Disposition: attachment`). Modern iOS
+    // Safari only shows the "Profil geladen → in Einstellungen installieren"
+    // prompt for an inline `application/x-apple-aspen-config` body; an
+    // `attachment` disposition routes it to Files/Downloads and the install
+    // prompt silently never fires (the operator's "profile didn't install").
     (
         StatusCode::OK,
-        [
-            (
-                header::CONTENT_TYPE,
-                HeaderValue::from_static("application/x-apple-aspen-config"),
-            ),
-            (
-                header::CONTENT_DISPOSITION,
-                HeaderValue::from_static("attachment; filename=\"warehouse14.mobileconfig\""),
-            ),
-        ],
+        [(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("application/x-apple-aspen-config"),
+        )],
         mc,
     )
         .into_response()
@@ -1844,6 +1843,38 @@ enum NormPath {
     Rejected,
 }
 
+/// Clean a raw URL query string for forwarding to the cloud:
+///   - decode-validate once and REJECT (`Err`) any backslash / ASCII control
+///     byte so a crafted `?…` can't smuggle anything past the upstream;
+///   - drop the companion-only auth params (`t` / `access_token`) — they exist
+///     solely for the `<img>` query-token fallback and must NEVER reach the cloud.
+///
+/// `Ok(Some(q))` = the forwardable (still-encoded) query; `Ok(None)` = nothing
+/// left to forward; `Err(())` = malformed, the proxy must answer 400. The
+/// captured wildcard path never carries the query (axum puts it in `uri.query()`
+/// only), so the proxy MUST call this on `uri.query()` to forward `?from`/`?to`/
+/// `?status`/`?q`/`?barcode` — without it every companion GET that needs a query
+/// param reaches the cloud bare and 400s on a required field.
+fn clean_forward_query(raw: &str) -> Result<Option<String>, ()> {
+    use percent_encoding::percent_decode_str;
+    let decoded = percent_decode_str(raw).decode_utf8().map_err(|_| ())?;
+    if decoded.contains('\\') || decoded.chars().any(|c| c.is_control()) {
+        return Err(());
+    }
+    let kept: Vec<&str> = raw
+        .split('&')
+        .filter(|pair| {
+            let key = pair.split_once('=').map(|(k, _)| k).unwrap_or(pair);
+            key != "t" && key != "access_token"
+        })
+        .collect();
+    if kept.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(kept.join("&")))
+    }
+}
+
 /// Percent-decode the captured proxy path ONCE, then reject anything that could
 /// escape the `/api/` namespace or smuggle control bytes (C2):
 ///
@@ -1885,33 +1916,15 @@ fn normalize_proxy_path(raw: &str) -> NormPath {
         }
     }
 
-    // Validate the query too: re-decode and reject control bytes / backslashes
-    // so a crafted `?...` cannot smuggle anything past the upstream.
+    // Validate + clean any inline query (single source of truth with the proxy's
+    // `uri.query()` handling). In practice the captured wildcard path carries no
+    // `?`, so this branch is only exercised by the unit tests; the live query is
+    // forwarded from `uri.query()` in `proxy_handler`.
     let query_clean = match query {
-        Some(q) => {
-            let dq = match percent_decode_str(q).decode_utf8() {
-                Ok(s) => s.into_owned(),
-                Err(_) => return NormPath::Rejected,
-            };
-            if dq.contains('\\') || dq.chars().any(|c| c.is_control()) {
-                return NormPath::Rejected;
-            }
-            // Forward the ORIGINAL (still-encoded) query, MINUS the companion
-            // auth-token params (`t` / `access_token`). Those exist only for the
-            // `<img>` query-token auth fallback and must never reach the cloud.
-            let kept: Vec<&str> = q
-                .split('&')
-                .filter(|pair| {
-                    let key = pair.split_once('=').map(|(k, _)| k).unwrap_or(pair);
-                    key != "t" && key != "access_token"
-                })
-                .collect();
-            if kept.is_empty() {
-                None
-            } else {
-                Some(kept.join("&"))
-            }
-        }
+        Some(q) => match clean_forward_query(q) {
+            Ok(v) => v,
+            Err(()) => return NormPath::Rejected,
+        },
         None => None,
     };
 
@@ -2279,8 +2292,19 @@ async fn proxy_handler(
     }
 
     // 6) Build + send the upstream request from the VALIDATED path only — never
-    //    the raw capture. `fwd_path` is decode-safe and traversal-free.
-    let url = format!("{CLOUD_BASE}/api/{fwd_path}");
+    //    the raw capture. `fwd_path` is decode-safe and traversal-free. The
+    //    query string lives ONLY in `uri.query()` (axum's `/*path` capture never
+    //    includes it), so forward it here — cleaned of the companion-only
+    //    `t`/`access_token` params — or every GET that needs `?from`/`?to`/
+    //    `?status`/`?q`/`?barcode` reaches the cloud bare and 400s.
+    let url = match uri.query() {
+        Some(raw_q) => match clean_forward_query(raw_q) {
+            Ok(Some(q)) => format!("{CLOUD_BASE}/api/{fwd_path}?{q}"),
+            Ok(None) => format!("{CLOUD_BASE}/api/{fwd_path}"),
+            Err(()) => return (StatusCode::BAD_REQUEST, "invalid query").into_response(),
+        },
+        None => format!("{CLOUD_BASE}/api/{fwd_path}"),
+    };
     let client = proxy_client();
     let mut upstream = client.request(method.clone(), &url);
 
@@ -3327,6 +3351,28 @@ mod tests {
             }
             NormPath::Rejected => panic!("a clean path must not be rejected"),
         }
+    }
+
+    #[test]
+    fn clean_forward_query_keeps_params_strips_auth_rejects_smuggling() {
+        // The companion GETs forward real params (from/to/status/q/barcode); this
+        // is what was being dropped — appointments 400'd on the missing `from`.
+        assert_eq!(
+            clean_forward_query("from=2026-06-15T22:00:00.000Z&to=2026-06-16T22:00:00.000Z"),
+            Ok(Some(
+                "from=2026-06-15T22:00:00.000Z&to=2026-06-16T22:00:00.000Z".to_string()
+            )),
+        );
+        // The companion-only auth params are stripped; everything else survives.
+        assert_eq!(
+            clean_forward_query("status=AVAILABLE&t=secret&access_token=x&limit=50"),
+            Ok(Some("status=AVAILABLE&limit=50".to_string())),
+        );
+        // A query of only auth params forwards nothing.
+        assert_eq!(clean_forward_query("t=secret"), Ok(None));
+        // Smuggling (control byte / backslash) is rejected → the proxy answers 400.
+        assert_eq!(clean_forward_query("a=%00b"), Err(()));
+        assert_eq!(clean_forward_query("a=\\b"), Err(()));
     }
 
     #[test]
