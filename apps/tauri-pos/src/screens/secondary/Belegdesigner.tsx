@@ -596,10 +596,14 @@ function buildSampleReceipt(identity: Identity, footerLines: string[]): ThermalR
     paymentMethodLabel: 'Bar',
     cashReceivedEur: SAMPLE_CASH,
     changeEur: SAMPLE_CHANGE,
-    tseSignatureValue: 'TESTDRUCK — kein Verkauf, keine TSE-Signatur',
-    tseSignatureCounter: '—',
-    tseTransactionNumber: '—',
-    tseQrPayload: 'TESTDRUCK',
+    // Send the SAME "no TSE" sentinel a real test-mode sale sends, so the
+    // Testdruck preview renders the clean one-line "TSE-Ausfall" note (no fake
+    // signature block, no meaningless QR) — i.e. exactly what a real receipt
+    // looks like today. The "— TESTDRUCK —" footer marks it as a sample.
+    tseSignatureValue: 'TSE Ausfall',
+    tseSignatureCounter: 'TSE Ausfall',
+    tseTransactionNumber: 'TSE Ausfall',
+    tseQrPayload: 'TSE Ausfall',
     footerLines: [...(footerLines.length > 0 ? footerLines : DEFAULT_FOOTER), '— TESTDRUCK —'],
   };
 }

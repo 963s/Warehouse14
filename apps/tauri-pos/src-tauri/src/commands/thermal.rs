@@ -530,8 +530,9 @@ fn truncate(s: &str, max: usize) -> String {
     if s.chars().count() <= max {
         s.to_string()
     } else {
+        // `saturating_sub` so a (today unreachable) `max == 0` can never panic.
         s.chars()
-            .take(max - 1)
+            .take(max.saturating_sub(1))
             .chain(std::iter::once('…'))
             .collect()
     }
@@ -601,5 +602,80 @@ mod tests {
         assert!(!is_tse_down(
             "1.0,2026-06-16T18:11:24Z,ecdsa-plain-SHA256,Aj8kP9q...base64..."
         ));
+    }
+
+    fn sample(tse_qr: &str, tse_sig: &str) -> ThermalReceiptData {
+        ThermalReceiptData {
+            shop_name: "WAREHOUSE 14".into(),
+            shop_address: vec![
+                "Antiquitäten · Briefmarken · Münzen".into(),
+                "Kirchgasse 14".into(),
+                "73614 Schorndorf".into(),
+            ],
+            shop_vat_id: "DE123456789".into(),
+            shop_phone: Some("+49 7181 0".into()),
+            receipt_locator: "RCP-1".into(),
+            printed_at: "16.06.2026 18:11".into(),
+            cashier_name: "Roman".into(),
+            shift_id: None,
+            items: vec![ThermalLineItem {
+                name: "Münze".into(),
+                quantity: 1,
+                unit_price_eur: "0,95".into(),
+                line_total_eur: "0,95".into(),
+                vat_label: "A".into(),
+            }],
+            subtotal_eur: "0,95".into(),
+            vat_eur: "0,00".into(),
+            total_eur: "0,95".into(),
+            payment_method_label: "Bar".into(),
+            cash_received_eur: Some("5,00".into()),
+            change_eur: Some("4,05".into()),
+            tse_signature_value: tse_sig.into(),
+            tse_signature_counter: "5".into(),
+            tse_transaction_number: "60".into(),
+            tse_qr_payload: tse_qr.into(),
+            footer_lines: vec!["Danke für Ihren Einkauf".into()],
+        }
+    }
+
+    #[test]
+    fn build_escpos_pc858_encodes_tagline_drops_name_and_cleans_ausfall() {
+        let out = build_escpos(&sample("TSE Ausfall", "TSE Ausfall"));
+        // The umlaut tagline is PC858-encoded into the byte stream …
+        let tagline = encode_pc858("Antiquitäten · Briefmarken · Münzen");
+        assert!(
+            out.windows(tagline.len()).any(|w| w == tagline.as_slice()),
+            "the tagline is PC858-encoded in the receipt bytes"
+        );
+        // … and NO raw UTF-8 ä (C3 A4) ever reaches the PC858 printer.
+        assert!(
+            !out.windows(2).any(|w| w == [0xC3, 0xA4]),
+            "no raw-UTF-8 umlaut leaked to the printer"
+        );
+        // The duplicate double-size text name is gone (logo carries it). The
+        // name only survives inside the logo raster, never as ASCII text.
+        let ascii = String::from_utf8_lossy(&out);
+        assert!(
+            !ascii.contains("WAREHOUSE 14"),
+            "the redundant text shop name was removed"
+        );
+        // Ausfall → ONE clean note, NOT the four-line signature block.
+        assert!(ascii.contains("Sicherheitseinrichtung nicht verf"));
+        assert!(!ascii.contains("TSE-Signatur:"));
+        assert!(!ascii.contains("Signatur-Z"));
+    }
+
+    #[test]
+    fn build_escpos_real_tse_prints_signature_block_and_qr() {
+        let payload = "1.0,2026-06-16T18:11:24Z,ecdsa-plain-SHA256,Aj8kP9qVeryLongOpaqueBase64";
+        let out = build_escpos(&sample(payload, "Aj8kP9qVeryLongOpaqueBase64Signature"));
+        let ascii = String::from_utf8_lossy(&out);
+        assert!(ascii.contains("TSE-Signatur:"), "a real TSE prints the block");
+        // The QR store-data command (GS ( k … 49 80 48) is emitted for a real payload.
+        assert!(
+            out.windows(3).any(|w| w == [0x31, 0x50, 0x30]),
+            "the QR data command is emitted for a real payload"
+        );
     }
 }
