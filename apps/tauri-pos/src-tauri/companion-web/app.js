@@ -3102,26 +3102,9 @@
     ]);
     document.body.appendChild(sheet);
 
-    if (liveCameraUsable) {
-      navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1920 } } })
-        .then(function (stream) {
-          streamRef = stream;
-          video.srcObject = stream;
-          video.muted = true;             // IDL property — the attribute alone is ignored by the autoplay policy.
-          var pr = video.play();          // iOS needs an explicit play() or the preview stays black.
-          if (pr && pr.catch) pr.catch(function () {});
-          activeCamTeardown = close;       // a role/tab switch must stop this stream too.
-        })
-        .catch(function () { showFileFallback("Kamerazugriff nicht erlaubt — Foto aus der Galerie/Kamera wählen."); });
-    } else {
-      // Insecure context or no getUserMedia → straight to the file fallback.
-      showFileFallback(window.isSecureContext === false
-        ? "Live-Kamera ist über die LAN-Verbindung gesperrt — Foto mit der Telefonkamera aufnehmen."
-        : "Live-Kamera auf diesem Gerät nicht verfügbar — Foto wählen.");
-    }
-
-    // The native picker (rear camera on phones). Selecting a file downscales it
-    // and jumps straight to the review state with the chosen image.
+    // The native picker (rear camera on phones). DEFINED FIRST so every fallback
+    // path (secure-catch, insecure trust-repair, no-API) can attach it. Selecting
+    // a file downscales it and jumps straight to the review state.
     var fileInput = el("input", {
       type: "file", accept: "image/*", capture: "environment",
       class: "sr-only", id: "cam-file",
@@ -3140,6 +3123,28 @@
         });
       }
     });
+
+    if (liveCameraUsable) {
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1920 } } })
+        .then(function (stream) {
+          streamRef = stream;
+          video.srcObject = stream;
+          video.muted = true;             // IDL property — the attribute alone is ignored by the autoplay policy.
+          var pr = video.play();          // iOS needs an explicit play() or the preview stays black.
+          if (pr && pr.catch) pr.catch(function () {});
+          activeCamTeardown = close;       // a role/tab switch must stop this stream too.
+        })
+        .catch(function () { showFileFallback("Kamerazugriff nicht erlaubt — Foto aus der Galerie/Kamera wählen."); });
+    } else if (window.isSecureContext === false) {
+      // A4 — the FIXABLE case: an insecure (http / untrusted-cert) origin blocks
+      // getUserMedia. Guide the operator to /trust instead of silently degrading;
+      // the file picker stays as a "works today" fallback below the steps.
+      showTrustRepairPanel();
+    } else {
+      // No getUserMedia on this device (not a trust problem) → file fallback.
+      showFileFallback("Live-Kamera auf diesem Gerät nicht verfügbar — Foto wählen.");
+    }
+
     function showFileFallback(reason) {
       clear(stage);
       stage.appendChild(el("div", { class: "ph" }, [
@@ -3147,6 +3152,33 @@
         el("label", { class: "btn-primary inline file-pick", for: "cam-file",
           style: "margin-top:1rem; display:inline-flex; align-items:center; justify-content:center" },
           "📷 Foto aufnehmen / wählen"),
+        fileInput
+      ]));
+      shutter.style.display = "none";
+    }
+
+    // A4 — guided certificate-trust repair (German). iOS blocks the camera until
+    // the companion CA is trusted; spell out the manual "Zertifikatsvertrauens-
+    // einstellungen" toggle + link to /trust, then still allow a photo today.
+    function showTrustRepairPanel() {
+      clear(stage);
+      stage.appendChild(el("div", { class: "ph", style: "text-align:left" }, [
+        el("div", { style: "font-weight:700;margin-bottom:.4rem;text-align:center" },
+          "Kamera gesperrt — Zertifikat noch nicht vertraut"),
+        el("div", { style: "font-size:.85rem;line-height:1.45;opacity:.85" },
+          "Damit das Telefon die Kamera öffnen darf, muss dem Begleit-Server einmalig vertraut werden:"),
+        el("ol", { style: "font-size:.85rem;line-height:1.5;margin:.6rem 0 0;padding-left:1.2rem" }, [
+          el("li", {}, "Einrichtungs-Profil installieren (Seite /trust öffnen)."),
+          el("li", {}, "Einstellungen → Allgemein → VPN & Geräteverwaltung → Profil installieren."),
+          el("li", {}, "Einstellungen → Allgemein → Info → Zertifikatsvertrauenseinstellungen → Warehouse14 aktivieren."),
+          el("li", {}, "Diese Seite über https://warehouse14.local:8714 neu öffnen.")
+        ]),
+        el("a", { class: "btn-primary inline", href: "/trust",
+          style: "margin-top:.8rem;display:inline-flex;align-items:center;justify-content:center" },
+          "Anleitung öffnen (/trust)"),
+        el("label", { class: "btn inline file-pick", for: "cam-file",
+          style: "margin-top:.6rem;display:inline-flex;align-items:center;justify-content:center" },
+          "📷 Trotzdem Foto wählen"),
         fileInput
       ]));
       shutter.style.display = "none";
@@ -3626,6 +3658,33 @@
     renderPairing();
   }
 
+  // A2 — when the origin is insecure (http / untrusted cert), the camera +
+  // scanner are blocked. Surface a persistent banner linking to the /trust
+  // onboarding so the operator is never silently stuck.
+  function maybeShowInsecureBanner() {
+    try {
+      var insecure = window.isSecureContext === false || location.protocol === "http:";
+      if (!insecure || document.getElementById("w14-trust-banner")) return;
+      var bar = el(
+        "div",
+        {
+          id: "w14-trust-banner",
+          style:
+            "position:fixed;top:0;left:0;right:0;z-index:9999;background:#7f1d1d;color:#fff;" +
+            "font-size:13px;line-height:1.35;padding:8px 12px;display:flex;gap:10px;" +
+            "align-items:center;justify-content:center;flex-wrap:wrap;text-align:center"
+        },
+        [
+          el("span", {}, "Unsichere Verbindung — Kamera/Scanner gesperrt, bis das Zertifikat installiert ist."),
+          el("a", { href: "/trust", style: "color:#fff;font-weight:700;text-decoration:underline" }, "Jetzt einrichten")
+        ]
+      );
+      document.body.appendChild(bar);
+      document.body.style.paddingTop = "46px";
+    } catch (e) {}
+  }
+
+  maybeShowInsecureBanner();
   wireResume(); // self-heal the link after the phone wakes / rejoins Wi-Fi.
   render();
 })();

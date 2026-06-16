@@ -33,6 +33,15 @@ interface CompanionInfo {
   pairedCount?: number;
   /** German labels of the paired devices, e.g. "Lager", "Zweitkasse". */
   pairedDevices?: string[];
+  /** True when the hub serves HTTPS (phones need a secure context for the
+   *  camera/scanner). The Rust struct always serializes it (A3). */
+  secure?: boolean;
+  /** SHA-256 fingerprint of the TLS leaf — shown for a one-time trust check. */
+  tlsFingerprint?: string | null;
+  /** `{url}/trust` — the iOS/Android onboarding page (A2). */
+  trustUrl?: string;
+  /** Native QR SVG encoding `trustUrl`, for the phone to scan (A2). */
+  trustQrSvg?: string;
 }
 
 const EMPTY: CompanionInfo = { running: false, url: '', port: 0, pairingCode: '', qrSvg: '' };
@@ -168,6 +177,60 @@ export function GeraeteKoppeln(): JSX.Element {
               </span>
             </div>
 
+            {/* A3 — explicit transport badge: a phone's camera/scanner needs a
+                secure (HTTPS) origin, so a silent http fallback must be visible. */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              {info.secure ? (
+                <span
+                  style={{
+                    fontSize: '0.74rem',
+                    fontWeight: 700,
+                    letterSpacing: '0.04em',
+                    color: 'var(--w14-verdigris)',
+                    border: '1px solid var(--w14-verdigris)',
+                    borderRadius: 999,
+                    padding: '2px 10px',
+                  }}
+                >
+                  HTTPS · sicher
+                </span>
+              ) : (
+                <span
+                  style={{
+                    fontSize: '0.74rem',
+                    fontWeight: 700,
+                    letterSpacing: '0.04em',
+                    color: 'var(--w14-status-alert, #dc2626)',
+                    border: '1px solid var(--w14-status-alert, #dc2626)',
+                    borderRadius: 999,
+                    padding: '2px 10px',
+                  }}
+                >
+                  HTTP · unsicher
+                </span>
+              )}
+              {info.tlsFingerprint ? (
+                <span
+                  title={info.tlsFingerprint}
+                  style={{
+                    fontFamily: 'var(--w14-font-mono)',
+                    fontSize: '0.72rem',
+                    color: 'var(--w14-ink-faded)',
+                  }}
+                >
+                  Zertifikat {info.tlsFingerprint.slice(0, 16)}…
+                </span>
+              ) : null}
+            </div>
+            {!info.secure ? (
+              <p
+                style={{ margin: 0, fontSize: '0.8rem', color: 'var(--w14-status-alert, #dc2626)' }}
+              >
+                Ohne HTTPS kann das Telefon die Kamera nicht öffnen. Bitte die Kasse neu starten,
+                damit der sichere Server (TLS) wieder läuft.
+              </p>
+            ) : null}
+
             <div style={{ display: 'grid', gap: 6 }}>
               <span style={sectionLabel}>Gekoppelte Geräte</span>
               {groupedDevices && groupedDevices.length > 0 ? (
@@ -287,6 +350,70 @@ export function GeraeteKoppeln(): JSX.Element {
               </Button>
             </div>
           </div>
+
+          {/* A2 — iOS/Android secure onboarding. The phone scans THIS QR first to
+              install the certificate (so the camera works over HTTPS), THEN uses
+              the pairing QR above. Without this step iPhones land on an untrusted
+              page and the camera stays black. */}
+          {info.trustUrl ? (
+            <div style={card}>
+              <span style={sectionLabel}>iPhone &amp; Android einrichten — einmalig pro Gerät</span>
+              <p style={{ margin: 0, fontSize: '0.84rem', color: 'var(--w14-ink-faded)' }}>
+                Beim ersten Mal muss das Telefon dem Begleit-Server vertrauen, damit die Kamera
+                erlaubt wird. Diesen Code mit dem Telefon scannen und der deutschen Anleitung folgen
+                (Profil/Zertifikat installieren), danach erst koppeln.
+              </p>
+              <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'center' }}>
+                <div
+                  aria-label="QR-Code zum Einrichten (Zertifikat installieren)"
+                  style={{
+                    width: 160,
+                    height: 160,
+                    flex: '0 0 auto',
+                    background: '#fff',
+                    border: '1px solid var(--w14-rule)',
+                    borderRadius: 'var(--w14-radius-button)',
+                    padding: 10,
+                    display: 'grid',
+                    placeItems: 'center',
+                  }}
+                  // Native qr_svg_for() output (trusted, server-rendered) — same
+                  // pattern as the pairing QR above.
+                  // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered trusted SVG
+                  dangerouslySetInnerHTML={{ __html: info.trustQrSvg ?? '' }}
+                />
+                <div style={{ display: 'grid', gap: 10, minWidth: 220 }}>
+                  <div style={{ display: 'grid', gap: 4 }}>
+                    <span style={sectionLabel}>Einrichtungs-Seite</span>
+                    <span
+                      style={{
+                        fontFamily: 'var(--w14-font-mono)',
+                        fontSize: '0.9rem',
+                        color: 'var(--w14-ink)',
+                        wordBreak: 'break-all',
+                      }}
+                    >
+                      {info.trustUrl}
+                    </span>
+                  </div>
+                  <div style={{ display: 'grid', gap: 4 }}>
+                    <span style={sectionLabel}>iPhone: Profil direkt laden</span>
+                    <a
+                      href={`${info.url}/trust/warehouse14-ca.mobileconfig`}
+                      style={{
+                        fontFamily: 'var(--w14-font-mono)',
+                        fontSize: '0.82rem',
+                        color: 'var(--w14-verdigris)',
+                        wordBreak: 'break-all',
+                      }}
+                    >
+                      .mobileconfig laden
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </>
       ) : (
         <div style={card}>

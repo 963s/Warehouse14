@@ -108,7 +108,10 @@ use tower_http::timeout::TimeoutLayer;
 /// Fixed LAN port for the companion hub. Picked from the IANA dynamic range so
 /// it is unlikely to collide; falls back to an OS-assigned ephemeral port if
 /// 8714 is already bound.
-const COMPANION_PORT: u16 = 8714;
+///
+/// `pub(crate)` so the mDNS daemon advertises `warehouse14.local` on the same
+/// fixed port the `.mobileconfig` Web Clip + the TLS leaf target (A1).
+pub(crate) const COMPANION_PORT: u16 = 8714;
 
 /// Base URL of the cloud API. The proxy appends `/api/<path>` to this.
 const CLOUD_BASE: &str = "https://api.warehouse14.de";
@@ -297,6 +300,13 @@ pub struct CompanionInfo {
     /// certificate, so the pairing screen can show it for a one-time trust.
     /// `None` when serving plain http.
     pub tls_fingerprint: Option<String>,
+    /// `{url}/trust` — the German iOS/Android onboarding page (install CA + Web
+    /// Clip). The pairing panel surfaces it as an "iPhone einrichten" QR/link
+    /// (A2). `""` when the hub is down.
+    pub trust_url: String,
+    /// SVG QR encoding `trust_url`, rendered natively via `qr_svg_for` so the
+    /// phone can open /trust by scanning. `""` when down.
+    pub trust_qr_svg: String,
 }
 
 impl CompanionInfo {
@@ -312,6 +322,8 @@ impl CompanionInfo {
             paired_devices: Vec::new(),
             secure: false,
             tls_fingerprint: None,
+            trust_url: String::new(),
+            trust_qr_svg: String::new(),
         }
     }
 }
@@ -575,7 +587,10 @@ fn is_private_lan_v4(ip: Ipv4Addr) -> bool {
 ///   2. any private LAN IPv4 (even on a flagged interface) — better than nothing
 ///   3. `local_ip_address::local_ip()` if it yields a private LAN v4
 ///   4. loopback (offline / link-down)
-fn lan_ip() -> Ipv4Addr {
+///
+/// `pub(crate)` so the mDNS daemon (commands::mdns) can pin the
+/// `warehouse14.local` A-record to the same Wi-Fi NIC (A1).
+pub(crate) fn lan_ip() -> Ipv4Addr {
     // 1+2) Enumerate all AF_INET interfaces and partition by physical vs virtual.
     if let Ok(ifaces) = local_ip_address::list_afinet_netifas() {
         let mut physical_private: Option<Ipv4Addr> = None;
@@ -996,30 +1011,39 @@ async fn trust_page_handler() -> Response {
 }
 
 /// Onboarding page served at `/trust`. Self-contained (no external assets).
-const TRUST_HTML: &str = r#"<!doctype html><html lang="de"><head>
+const TRUST_HTML: &str = r##"<!doctype html><html lang="de"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#f4f2ee">
 <title>Warehouse 14 — iPhone einrichten</title>
 <style>
+ html{touch-action:manipulation}
  body{font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;margin:0;background:#f4f2ee;color:#1a1a1a}
  .wrap{max-width:560px;margin:0 auto;padding:24px}
- h1{font-size:20px;margin:8px 0 4px}.sub{color:#777;margin:0 0 20px;font-size:14px}
+ h1{font-size:22px;margin:8px 0 4px;text-wrap:balance}
+ /* #5a5a5a on #f4f2ee ≈ 6:1 — clears WCAG AA for this 14px text (was #777 ≈ 4.1). */
+ .sub{color:#5a5a5a;margin:0 0 20px;font-size:14px}
  .btn{display:block;text-align:center;background:#1a1a1a;color:#fff;text-decoration:none;padding:16px;border-radius:12px;font-size:17px;font-weight:600;margin:18px 0}
+ .btn:hover{background:#333}.btn:active{background:#000}
+ .btn:focus-visible{outline:3px solid #1f6f5c;outline-offset:2px}
  ol{padding-left:20px;line-height:1.6}li{margin:10px 0}
  .step{background:#fff;border:1px solid #e3ddd2;border-radius:12px;padding:16px 18px;margin:14px 0}
- .k{font-weight:600}.warn{background:#fff7e6;border:1px solid #f0d9a8;border-radius:10px;padding:12px;font-size:14px}
+ .k{font-weight:600}
+ /* Step 3 is the one operators skip — louder than a generic note. */
+ .warn{background:#fff7e6;border:2px solid #e0a955;border-radius:10px;padding:14px;font-size:14px}
+ .warn .k{color:#8a5300}
  code{background:#efece3;padding:2px 6px;border-radius:4px}
-</style></head><body><div class="wrap">
+</style></head><body><main class="wrap">
  <h1>Warehouse 14 — iPhone einrichten</h1>
  <p class="sub">Einmalig: Zertifikat installieren, dann ist die Kamera-/Scanner-Verbindung sicher.</p>
  <a class="btn" href="/trust/warehouse14-ca.mobileconfig">1 · Profil laden</a>
  <div class="step"><span class="k">2 · Installieren</span><br>
    Einstellungen → Allgemein → VPN &amp; Geräteverwaltung → <span class="k">Geladenes Profil</span> → Installieren.</div>
- <div class="step warn"><span class="k">3 · Vertrauen aktivieren (wichtig!)</span><br>
+ <div class="step warn" role="note" aria-label="Wichtiger Schritt"><span class="k">3 · Vertrauen aktivieren (wichtig!)</span><br>
    Einstellungen → Allgemein → Info → <span class="k">Zertifikatsvertrauenseinstellungen</span> → „Warehouse14 Local CA“ <span class="k">einschalten</span>. Ohne diesen Schritt bleibt die Kamera gesperrt.</div>
  <div class="step"><span class="k">4 · Öffnen</span><br>
    <code>https://warehouse14.local:8714</code> öffnen (oder das neue Symbol auf dem Home-Bildschirm) und Kamera erlauben.</div>
  <p class="sub">Hinweis: Beim ersten Laden zeigt das iPhone „Nicht signiert“ — das ist im eigenen WLAN normal.</p>
-</div></body></html>"#;
+</main></body></html>"##;
 
 /// `GET /health` — liveness probe for companions / diagnostics.
 async fn health() -> &'static str {
@@ -2468,6 +2492,11 @@ async fn start_hub(state: &CompanionState, issue_code: bool) -> CompanionInfo {
         String::new()
     };
     let qr_svg = qr_svg_for(&url);
+    // A2 — the iOS/Android onboarding entry point. IP-based (not the mDNS name)
+    // so the FIRST contact works before the CA is trusted; the leaf carries the
+    // IP SAN too. After the profile installs, the Web Clip uses warehouse14.local.
+    let trust_url = format!("{url}/trust");
+    let trust_qr_svg = qr_svg_for(&trust_url);
 
     // Arm shared hub state: pairing code (when issued), LAN IP (subnet guard),
     // reset rate buckets + the global failed-attempt lock. PERSISTENT PAIRING:
@@ -2497,6 +2526,8 @@ async fn start_hub(state: &CompanionState, issue_code: bool) -> CompanionInfo {
         paired_devices: Vec::new(),
         secure,
         tls_fingerprint,
+        trust_url,
+        trust_qr_svg,
     };
 
     let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
