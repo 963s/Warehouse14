@@ -31,6 +31,7 @@ import { sql } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 
 import { requireAuth, requireRole, requireStepUp } from '../lib/auth-policy.js';
+import { fromCents, toCents } from '../lib/money-cents.js';
 import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 
 class ClosingConflictError extends DomainError {
@@ -66,20 +67,6 @@ const FinalizeResponse = Type.Object({
   cashVarianceEur: Type.String(),
   finalizedAt: Type.String({ format: 'date-time' }),
 });
-
-/** "1234.5" → cents. Tolerates null. */
-function toCents(x: string | null | undefined): bigint {
-  const v = (x ?? '0').trim() || '0';
-  const neg = v.startsWith('-');
-  const [whole, frac = '00'] = v.replace('-', '').split('.') as [string, string?];
-  const c = BigInt(whole || '0') * 100n + BigInt((frac ?? '00').padEnd(2, '0').slice(0, 2));
-  return neg ? -c : c;
-}
-function fromCents(c: bigint): string {
-  const neg = c < 0n;
-  const a = neg ? -c : c;
-  return `${neg ? '-' : ''}${a / 100n}.${String(a % 100n).padStart(2, '0')}`;
-}
 
 const closingsFinalizeRoute: FastifyPluginAsync = async (app) => {
   app.post<{ Body: { businessDay?: string } }>(

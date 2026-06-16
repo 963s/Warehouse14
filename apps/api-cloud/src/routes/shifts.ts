@@ -19,6 +19,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { cashMovements, shifts } from '@warehouse14/db/schema';
 
 import { requireAuth, requireRole, requireStepUp } from '../lib/auth-policy.js';
+import { fromCents } from '../lib/money-cents.js';
 import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 import { DecimalString } from '../schemas/money.js';
 
@@ -321,7 +322,9 @@ const shiftsRoutes: FastifyPluginAsync = async (app) => {
           cents(agg!.injections) -
           cents(agg!.bank_drops) -
           cents(agg!.safe_transits);
-        const expectedEur = `${expectedCents / 100n}.${String(expectedCents % 100n).padStart(2, '0')}`;
+        // Sign-correct: a negative expected drawer (Ankauf-heavy shift) must NOT
+        // produce "-1.-50". Shared helper handles the sign on the whole value.
+        const expectedEur = fromCents(expectedCents);
 
         const [updated] = await tx
           .update(shifts)
