@@ -3,7 +3,10 @@
  *
  * Mounted once (from `App.tsx`) while the operator is authenticated. It:
  *   • pushes the current session Bearer into the hub on mount (covers the
- *     "already authenticated on cold start" path — login pushes its own), and
+ *     "already authenticated on cold start" path — login pushes its own),
+ *   • keeps that Bearer in lockstep for the session's whole life — including a
+ *     mid-shift cloud-token RENEWAL, which used to leave the hub stale and 503
+ *     every phone — by subscribing to the token store, and
  *   • starts the debounced live-cart feed so a Customer-Display companion
  *     mirrors what the cashier is ringing up.
  *
@@ -13,13 +16,21 @@
 
 import { useEffect } from 'react';
 
-import { pushCompanionAuth, startCompanionCartBridge } from '../lib/companion-bridge.js';
+import {
+  pushCompanionAuth,
+  startCompanionCartBridge,
+  syncCompanionAuthWithSession,
+} from '../lib/companion-bridge.js';
 
 export function useCompanionBridge(active: boolean): void {
   useEffect(() => {
     if (!active) return;
     void pushCompanionAuth();
+    const unsyncAuth = syncCompanionAuthWithSession();
     const stop = startCompanionCartBridge();
-    return stop;
+    return () => {
+      unsyncAuth();
+      stop();
+    };
   }, [active]);
 }

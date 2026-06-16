@@ -98,6 +98,7 @@
   var displayTimer = null;     // GET /cart poll fallback interval.
   var displaySocket = null;    // live customer-display WebSocket (/ws).
   var displayReconnect = null; // pending socket-reconnect timer.
+  var displayReconnectAttempts = 0; // consecutive socket drops → backoff step.
   var whTab = "scan"; // active warehouse tool tab.
   var snackTimer = null; // active undo-snackbar timer.
   var zkTab = "kasse"; // active Zweitkasse tab (kasse | termine).
@@ -384,6 +385,16 @@
     return fetch(url, opts).then(function (r) { done(); return r; },
       function (err) { done(); throw err; });
   }
+  // Exponential backoff with jitter for every reconnect loop. "Equal jitter":
+  // half the exponential step is fixed, half is random — so a fast first retry
+  // (~0.75–1.5s) still happens, the tail is capped (~10–20s), and N phones that
+  // all dropped at the same instant (mother slept / a Wi-Fi blip) do NOT
+  // reconnect in a thundering herd against the embedded hub.
+  function backoffDelay(attempt) {
+    var base = 1500, cap = 20000;
+    var exp = Math.min(cap, base * Math.pow(2, Math.max(0, attempt | 0)));
+    return exp / 2 + Math.random() * (exp / 2);
+  }
   function setConn(state) {
     if (state === connState) return;
     connState = state;
@@ -554,12 +565,16 @@
           "Stellen Sie sicher, dass die Hauptkasse eingeschaltet ist und dieses Gerät " +
           "im selben WLAN bleibt. Die Verbindung wird automatisch wiederhergestellt."));
       }
-      setTimeout(attempt, 3000);
+      // Backoff+jitter (not a fixed 3s): a long outage no longer hammers the
+      // mother every 3s, and many phones retrying together spread out.
+      setTimeout(attempt, backoffDelay(attempts));
     }
 
     function attempt() {
       if (!alive || !token) return;
-      fetch("/cart", { headers: { "X-Companion-Token": token } })
+      // Bounded probe: a black-hole network (Wi-Fi associated but no route to the
+      // mother) must not leave this fetch hanging forever — fetchT aborts it.
+      fetchT("/cart", { headers: { "X-Companion-Token": token } }, 8000)
         .then(function (r) {
           if (!alive) return;
           if (r.ok) { alive = false; sessionChecked = true; render(); return; }
@@ -813,6 +828,7 @@
 
   function stopDisplaySocket() {
     if (displayReconnect) { clearTimeout(displayReconnect); displayReconnect = null; }
+    displayReconnectAttempts = 0; // intentional teardown → next cycle retries fast.
     if (displaySocket) {
       try { displaySocket.onclose = null; displaySocket.close(); } catch (e) {}
       displaySocket = null;
@@ -826,7 +842,7 @@
     catch (e) { armPoll(); scheduleReconnect(onCart, armPoll, disarmPoll); return; }
     displaySocket = ws;
 
-    ws.onopen = function () { disarmPoll(); };
+    ws.onopen = function () { displayReconnectAttempts = 0; disarmPoll(); };
     ws.onmessage = function (ev) {
       var cart = null;
       try { cart = JSON.parse(ev.data); } catch (e) { return; }
@@ -843,12 +859,14 @@
 
   function scheduleReconnect(onCart, armPoll, disarmPoll) {
     if (displayReconnect) return;
+    var delay = backoffDelay(displayReconnectAttempts);
+    displayReconnectAttempts += 1;
     displayReconnect = setTimeout(function () {
       displayReconnect = null;
       if (role === "display" && token) {
         connectDisplaySocket(onCart, armPoll, disarmPoll);
       }
-    }, 3000);
+    }, delay);
   }
 
   // ── Phase B: POS-controllable scanner (Warehouse/Cashier command socket) ──
@@ -858,6 +876,7 @@
   // mother's cart. Fail-safe: any failure just means no remote scanning.
   var commandSocket = null;
   var commandReconnect = null;
+  var commandReconnectAttempts = 0; // consecutive command-socket drops → backoff step.
   function sendCompanionScan(code) {
     try {
       if (commandSocket && commandSocket.readyState === 1 && code) {
@@ -869,6 +888,7 @@
   }
   function stopCommandSocket() {
     if (commandReconnect) { clearTimeout(commandReconnect); commandReconnect = null; }
+    commandReconnectAttempts = 0; // intentional teardown → next cycle retries fast.
     if (commandSocket) {
       try { commandSocket.onclose = null; commandSocket.close(); } catch (e) {}
       commandSocket = null;
@@ -881,6 +901,7 @@
     try { ws = new WebSocket(wsUrl(), wsProtocols()); }
     catch (e) { scheduleCommandReconnect(); return; }
     commandSocket = ws;
+    ws.onopen = function () { commandReconnectAttempts = 0; };
     ws.onmessage = function (ev) {
       var msg = null;
       try { msg = JSON.parse(ev.data); } catch (e) { return; }
@@ -897,10 +918,12 @@
   }
   function scheduleCommandReconnect() {
     if (commandReconnect) return;
+    var delay = backoffDelay(commandReconnectAttempts);
+    commandReconnectAttempts += 1;
     commandReconnect = setTimeout(function () {
       commandReconnect = null;
       connectCommandSocket();
-    }, 3000);
+    }, delay);
   }
   // Dispatch a POS→phone command. The minimal set: start/stop scan open/close a
   // dedicated "scan for the till" overlay; focus-field/show-screen are surfaced

@@ -22,7 +22,7 @@ import { invoke } from '@tauri-apps/api/core';
 
 import { type CartLine, selectCartLines, useCartStore } from '../state/cart-store.js';
 import { computeLineMath, fromCents } from './cart-math.js';
-import { getSessionToken } from './session-token.js';
+import { getSessionToken, onSessionTokenChange } from './session-token.js';
 
 // ────────────────────────────────────────────────────────────────────────
 // 1. Auth token push
@@ -57,13 +57,35 @@ export async function clearCompanionAuth(): Promise<void> {
   }
 }
 
+/**
+ * Keep the hub's mother Bearer in lockstep with the session token for its whole
+ * lifetime — login, mid-shift cloud-token RENEWAL, and sign-out. Before this,
+ * the hub only learned of a new token at login: a renewal left it holding a
+ * stale Bearer and every phone proxy call 503'd until the mother re-logged in.
+ * Subscribing at the single token choke point covers any present or future
+ * renewal path. Returns an unsubscribe; mounted once by `useCompanionBridge`.
+ */
+export function syncCompanionAuthWithSession(): () => void {
+  return onSessionTokenChange((token) => {
+    if (token) void pushCompanionAuth();
+    else void clearCompanionAuth();
+  });
+}
+
 // ────────────────────────────────────────────────────────────────────────
 // 2. Live cart publish
 // ────────────────────────────────────────────────────────────────────────
 
 interface PublishedCartItem {
   name: string;
-  /** Quantity or weight for the row. Cart lines are one product each → "1". */
+  /**
+   * Quantity for the display row. This is serialized inventory — every gold,
+   * coin, or antique item is a unique catalogued product and `addLine` rejects
+   * a second add (`ALREADY_IN_CART`), so a line is ALWAYS exactly one piece.
+   * "1" is therefore faithful to the model, not a placeholder; there is no
+   * per-line quantity or weight multiplier to read (weight is priced into the
+   * catalogued `listPriceEur` upstream, not carried on the cart line).
+   */
   qtyOrWeight: string;
   /** Line total as a Decimal string ("12.50"). */
   lineTotalEur: string;
@@ -88,7 +110,7 @@ function toPublishedCart(lines: readonly CartLine[]): PublishedCart {
     totalCents += math.lineTotalCents;
     return {
       name: line.name,
-      qtyOrWeight: '1',
+      qtyOrWeight: '1', // serialized inventory: one unique item per line (see type doc)
       lineTotalEur: fromCents(math.lineTotalCents),
     };
   });

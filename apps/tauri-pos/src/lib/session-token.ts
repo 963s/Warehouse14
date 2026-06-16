@@ -23,6 +23,23 @@ const KEY = 'w14.session-token';
 
 let cached: string | null | undefined;
 
+/** A change listener: receives the NEW token value (null on sign-out). */
+type TokenListener = (token: string | null) => void;
+const listeners = new Set<TokenListener>();
+
+/**
+ * Subscribe to token changes — login, mid-shift RENEWAL, and sign-out all flow
+ * through here. Returns an unsubscribe. The companion bridge uses this to keep
+ * the LAN hub's mother Bearer in lockstep (a stale hub token 503s every phone).
+ * A listener that throws can never break the token write or sibling listeners.
+ */
+export function onSessionTokenChange(fn: TokenListener): () => void {
+  listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
+  };
+}
+
 /** The current session token, or null when signed out. */
 export function getSessionToken(): string | null {
   if (cached !== undefined) return cached;
@@ -34,15 +51,27 @@ export function getSessionToken(): string | null {
   return cached;
 }
 
-/** Persist (or clear, when null) the session token. */
+/** Persist (or clear, when null) the session token. Notifies listeners on change. */
 export function setSessionToken(token: string | null): void {
+  // Normalise the prior value (undefined = never read) so the first set fires.
+  const prev = cached === undefined ? null : cached;
   cached = token;
   try {
-    if (typeof localStorage === 'undefined') return;
-    if (token) localStorage.setItem(KEY, token);
-    else localStorage.removeItem(KEY);
+    if (typeof localStorage !== 'undefined') {
+      if (token) localStorage.setItem(KEY, token);
+      else localStorage.removeItem(KEY);
+    }
   } catch {
     /* localStorage unavailable — the in-memory cache still serves this run */
+  }
+  if (prev !== token) {
+    for (const fn of listeners) {
+      try {
+        fn(token);
+      } catch {
+        /* a listener must NEVER break the token write or the other listeners */
+      }
+    }
   }
 }
 

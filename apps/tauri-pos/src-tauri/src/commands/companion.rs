@@ -524,9 +524,9 @@ impl CompanionState {
 /// idle-sleep / App Nap never silently kills the LAN server and drops every phone
 /// mid-shift. macOS uses a `caffeinate` child with `-w <our pid>`, so the hold
 /// auto-releases the instant the POS exits or crashes — it can never strand the
-/// machine awake. Windows (`ES_SYSTEM_REQUIRED`) is a guarded follow-up that
-/// needs testing on the shop till, so it is a no-op here and the build is
-/// unaffected on every platform.
+/// machine awake. Windows uses `SetThreadExecutionState`, whose request the OS
+/// clears automatically when the process exits, so it is just as un-strandable.
+/// Linux (and any other target) stays a no-op so the build is unaffected.
 #[cfg(target_os = "macos")]
 mod power_hold {
     use std::process::Child;
@@ -555,7 +555,40 @@ mod power_hold {
         }
     }
 }
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
+mod power_hold {
+    // Win32 `SetThreadExecutionState`: tell the OS we need the system (and the
+    // display, so the customer screen stays lit) to stay on while the hub serves.
+    // `ES_CONTINUOUS` makes the request persist until we clear it — same intent
+    // as macOS `caffeinate -i -s` on the mains-powered till. The request is
+    // process-scoped: Windows drops it the moment the POS exits, so a crash can
+    // never leave the machine permanently awake.
+    type ExecutionState = u32;
+    const ES_CONTINUOUS: ExecutionState = 0x8000_0000;
+    const ES_SYSTEM_REQUIRED: ExecutionState = 0x0000_0001;
+    const ES_DISPLAY_REQUIRED: ExecutionState = 0x0000_0002;
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn SetThreadExecutionState(es_flags: ExecutionState) -> ExecutionState;
+    }
+
+    pub fn acquire() {
+        // SAFETY: one call to a documented Win32 API; the argument is a plain
+        // bit-flag and there are no pointers or buffers involved.
+        unsafe {
+            SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED);
+        }
+    }
+    pub fn release() {
+        // SAFETY: as above — clearing back to ES_CONTINUOUS alone (no
+        // requirements) lets normal idle-sleep resume.
+        unsafe {
+            SetThreadExecutionState(ES_CONTINUOUS);
+        }
+    }
+}
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 mod power_hold {
     pub fn acquire() {}
     pub fn release() {}
