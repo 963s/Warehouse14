@@ -3018,16 +3018,10 @@ tools still stubs; Apple Developer ID signing.
 > Continues §27. The strategist closed §27.6's pending UX items, then walked the compliance go-live
 > path — and discovered the central memory was **stale three times over**: every item §26 flagged
 > "unbuilt/absent" was in fact already shipped. The executor (Claude Code) correctly *reconciled and
-<<<<<<< Updated upstream
 > extended* prior art rather than duplicating; the strategist **re-ran every gate independently** —
 > and this section was **itself corrected** after a strategist claim (the "live" Morning Briefing)
 > proved wrong on a closer read (§28.5 / §28.8). Source-of-truth discipline: this corrects §26's
 > "Next priorities" + §27.6, and corrects an over-eager mid-session review note.
-=======
-> extended* prior art rather than duplicating; the strategist **re-ran every gate independently and
-> even rejected an over-enthusiastic audit that mislabeled working code as a gap** (the Morning
-> Briefing). Source-of-truth discipline: this section corrects §26's "Next priorities" + §27.6.
->>>>>>> Stashed changes
 
 ### 28.1 Memory was stale 3× — search prior art FIRST (Decision #100)
 - **#100 — The three "unbuilt" go-live items were all already BUILT.** §26's "Next priorities"
@@ -3069,7 +3063,6 @@ tools still stubs; Apple Developer ID signing.
 - **#104 — `apps/control-desktop` exists, is real, and typechecks clean.** Corrects §26/§27 + Decisions
   **#30/#41** "entirely unbuilt". It is a **self-contained Tauri 2 + React 18 + Vite app** — there is
   **NO `apps/admin-web`, and none is needed** (corrects #41's "Tauri wrapper around admin-web
-<<<<<<< Updated upstream
   (Next.js)"). Independent receipt: `pnpm --filter @warehouse14/control-desktop typecheck` → **exit 0**.
   **Eight Karteikasten surfaces**, all on real `/api/*` routes: Übersicht/**Bridge**, Genehmigungen
   (`/api/approvals/*`), Kassenabschluss (`/api/closings` + DATEV), Kunden (trust + KYC PATCH), Lager
@@ -3091,27 +3084,6 @@ tools still stubs; Apple Developer ID signing.
 - **Genuine remaining (NONE block go-live):** ✅ dead duplicate removed (#107); ⚠️ the briefing product
   decision above; post-MVP: mTLS device pairing, WebAuthn unlock, offline SQLite mirror + action
   outbox, anomaly watchdog (z-score).
-=======
-  (Next.js)"; the offline fallback is the seed, not a bundled Next export). Independent receipt:
-  `pnpm --filter @warehouse14/control-desktop typecheck` → **exit 0**. **Eight Karteikasten surfaces**,
-  all on real `/api/*` routes: Übersicht/**Bridge** (`/api/bridge/overview`), Genehmigungen
-  (`/api/approvals/*`), Kassenabschluss (`/api/closings` + DATEV), Kunden (trust + KYC PATCH), Lager
-  (price/status), Termine (read-only), Konformität (`/api/ledger`), Einstellungen (settings + device
-  fleet). Auth: cookie session + global `StepUpModal` (403 STEP_UP_REQUIRED → PIN → replay).
-- **The Morning Briefing is ALREADY REAL — and deliberately deterministic, NOT an LLM.** `bridge.ts`
-  builds `briefing.lines[]` from a German/Arabic **template filled with today's live numbers** (drafts,
-  unread, approvals, appointments, sales/Ankauf, TSE-expiring) every request; `MOCK_BRIDGE` is only
-  the instant-paint `initialData`. The "Claude-generated" wording (ADR-0019 §5 / `types.ts`) is an
-  *aspiration*, not the implementation — and the template is the **correct** choice: no hallucinated
-  fiscal numbers, no ai-gateway cost/latency, deterministic. **Do NOT replace it with an LLM.** (An
-  over-eager audit called this a "gap"; review rejected it.)
-- **Genuine remaining (NONE block go-live):** ⚠️ dedupe the dead `src/bridge/BridgeDashboard.tsx` (the
-  live one is `src/screens/übersicht/BridgeDashboard.tsx`; the bridge/ copy has **zero importers**);
-  ⚠️ optional SSE consumer of `/api/sse/ledger` (`event: ledger`) to push-invalidate the
-  `['bridge','overview',baseUrl]` query — purely an enhancement over the working **30s poll**;
-  post-MVP: mTLS device pairing, WebAuthn unlock, offline SQLite mirror + action outbox, anomaly
-  watchdog (z-score). Branch for the first two: `control-desktop-polish` (pending).
->>>>>>> Stashed changes
 
 ### 28.6 §27.6 UX blockers — closed (Decision #105)
 - **#105 — the live-test blockers are fixed.** Cash-confirm (#96): pinned "Zahlung abschließen" footer
@@ -3133,16 +3105,11 @@ tools still stubs; Apple Developer ID signing.
      scanner (#98), Fiskaly TSE in prod, camera. Physical round-trip validation.
   3. **Deploy to prod** — PR #2 (reserve fix) + migrations **0045–0049** are NOT on prod yet
      (Basel's operational trigger; every dev POS click must stay off the prod GoBD ledger).
-<<<<<<< Updated upstream
 - **Branches pushed for backup:** all `ux-*` (incl. `ux-productsheet-inplace`, `ux-metal-margin`,
-=======
-- **Branches now pushed for backup:** all `ux-*` (incl. `ux-productsheet-inplace`, `ux-metal-margin`,
->>>>>>> Stashed changes
   `ux-steuer-export`), plus `aml-smurfing-framework`, `tse-compliance-tables`, `fix-reserve-sell-bug`
   (= PR #2). Reviewer doctrine held: nothing here was rubber-stamped; the audit that overclaimed
   "production-ready / blockers: NONE" was tempered to "structurally real + typecheck-clean; runtime
   contracts + auth flow await the running stack / HIL".
-<<<<<<< Updated upstream
 
 ### 28.8 Control-Desktop polish — done, with a strategist lesson (Decision #107)
 - **#107 — dedupe + live SSE, and a no-facade catch on the strategist's own brief.** Branch
@@ -3299,5 +3266,51 @@ tools still stubs; Apple Developer ID signing.
 - **Truly remaining (NOT buildable):** the api-cloud integration-harness boot fix (pgcrypto/hmac — test-infra),
   the accountant's per-treatment account numbers, and Basel's operational/physical triggers (prod deploy,
   `v1.0.0` OTA tag, HIL hardware session).
-=======
->>>>>>> Stashed changes
+
+---
+
+## 30. [PHASE 1.8 — PRODUCTION-HARDENING AUDIT + STRUCTURAL FIXES] (2026-06-08)
+
+> Basel pushed for "the real work" — a deep type-safety + structural-fragility audit (his worry: AI-fast-patched
+> code, `any` everywhere, collapse under production load). A **31-agent Ultracode workflow** audited 7 areas →
+> adversarial verify → synthesis. **Lineage note:** this work is on `claude/deep-overhaul` (the active integrated
+> line — carries the compliance #0050 + the storefront backend + the runbook), a RE-ROOTED history with NO common
+> git ancestor to the old `gwg-kyc-enforcement` RC. **Memory-corruption note:** `docs/memory.md` had COMMITTED git
+> conflict markers (4 regions) from a `stash pop` of the stale §28 draft (the one §28's tail warned NOT to pop) —
+> resolved here to the committed/correct version (kept "Updated upstream", dropped "Stashed changes").
+
+### 30.1 Honest verdict — NOT type-lie-ridden (Decision #116)
+- **#116 — the owner's `any` fear was largely UNFOUNDED; the real risk is a narrow set of concurrency/atomicity holes.**
+  Literal `any` ≈ 0 across all 7 areas; the ~94–126 `as unknown as` are dominated by ONE documented legit idiom
+  (pnpm cross-realm drizzle `db.execute<T>(...) as unknown as T[]` at the bound-param SQL boundary — no injection).
+  The money cores are genuinely well-engineered (bigint-cents + banker's rounding + largest-remainder allocation;
+  atomic single-UPDATE inventory-lock; idempotent HMAC webhooks; advisory-lock/DLQ runner). Adversarial verify
+  filtered **23 dangerous → 9 CONFIRMED** real production risks ("good happy path, unguarded edges"). Fixable in
+  days, not a rewrite. **Lesson:** a rigorous audit + adversarial verification tells the TRUTH (fear partly right,
+  mostly wrong) — far more useful than validating the worry or a generic any-hunt.
+
+### 30.2 The confirmed landmines + the binding engineering policy (Decision #117)
+- **#117 — the 9 confirmed risks + the policy now enforced on all changes.** Risks: (1) double-booking TOCTOU race
+  on both appointment paths (no EXCLUDE/gist, no advisory lock); (2) worker intake stuck in PROCESSING (sweep only
+  reclaims GROUPED) + half-written drafts; (3) unvalidated `res.data as T` boundary white-screens the Owner desktop
+  on one bad cents field (no error boundary); (4) unbounded fire-and-forget bot orchestrators exhaust the pg pool +
+  ALS PII-key brittleness; (5) POS B2B finalize N+1 on the sync checkout path; (6) POS reservation release no
+  keepalive → holds leak; (7) calendar-pull N+1 + duplicate race; + non-atomic two-statement writes.
+  **Binding policy:** DB-level guard/advisory-lock for any shared-resource book/reserve/finalize (NO SELECT-then-INSERT
+  under READ COMMITTED); multi-step DB writes in ONE transaction; validate every external/persisted input via a
+  TypeBox/Zod schema (no `res.data as T`); no status nothing reclaims; no `!` without a guard; every detached promise
+  gets `.catch` + a concurrency cap + explicit context (no ALS for correctness); a React error boundary at every root;
+  comments must not assert safety the code lacks; understand the data model + mirror the proven sibling.
+
+### 30.3 Phase 0 + D — closed and independently verified (Decision #118)
+- **#118 — the 4 ship-blockers fixed + re-verified.** Branch `claude/prod-hardening-phase0` (off the active line),
+  5 commits: **A** — migration `0069` `EXCLUDE USING gist (staff_user_id WITH =, tstzrange(starts_at,ends_at,'[)') WITH &&)`
+  kills the double-booking at the DB for all 3 paths + `23P01→409` — PROVEN by a real concurrency test (2 overlapping
+  inserts → 1 wins, **5/5**); **B** — intake-sweep reclaims stuck `PROCESSING` + the draft/flip is atomic + `ctx.signal`
+  check (**2/2**); **C** — control-desktop top-level React error boundary (no more white-screen); **D** (Phase-1 start) —
+  a `parseResponse(schema, raw, label)` TypeBox boundary in `api-client` applied to `/api/bridge/summary` (**6/6**).
+  Strategist re-verified independently (A 5/5, B 2/2, D 6/6 vs real Postgres; `pnpm -r typecheck` exit 0; biome
+  net-zero-new). Honest: the "1121" lint baseline is stale — the deep-overhaul line is ~2049 (cosmetic style debt,
+  NOT the landmines). **Phase 2–3 prompted next:** bot semaphores, calendar idempotent-upsert, B2B N+1, reservation
+  sendBeacon, the rest of the validation seam, the 13 cosmetic worker `as unknown as AppDb` casts, the LLM-output
+  schema, error-handler typed error codes.
