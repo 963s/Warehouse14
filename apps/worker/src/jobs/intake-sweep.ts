@@ -35,6 +35,19 @@ export function intakeSweepJob(deps: IntakeSweepDeps = {}): JobDefinition {
     schedule: '* * * * *', // every minute
     timeoutMs: 120_000,
     run: async (ctx) => {
+      // 0. Reclaim sessions stuck in PROCESSING. A worker crash/abort between
+      //    the PROCESSING flip and the terminal flip would otherwise strand a
+      //    session forever (the batch below only picks GROUPED). Back to GROUPED
+      //    for a retry; the 10-minute floor is well above the 120 s tick timeout
+      //    so a session actively being processed is never reclaimed. Mirrors the
+      //    cart-/reservation-sweeper expiry pattern.
+      const reclaimed = (await ctx.db.execute<{ id: string }>(drizzleSql`
+        UPDATE intake_sessions
+        SET status = 'GROUPED', processing_started_at = NULL
+        WHERE status = 'PROCESSING' AND processing_started_at < now() - interval '10 minutes'
+        RETURNING id::text AS id
+      `)) as unknown as Array<{ id: string }>;
+
       // 1. Close expired grouping windows.
       const closed = (await ctx.db.execute<{ id: string }>(drizzleSql`
         UPDATE intake_sessions
@@ -53,10 +66,14 @@ export function intakeSweepJob(deps: IntakeSweepDeps = {}): JobDefinition {
 
       for (const s of grouped) {
         if (ctx.signal.aborted) break;
-        await processIntakeSession(ctx.db, vision, s.id, ctx.log);
+        await processIntakeSession(ctx.db, vision, s.id, ctx.log, ctx.signal);
       }
 
-      return { windowsClosed: closed.length, sessionsProcessed: grouped.length };
+      return {
+        stuckReclaimed: reclaimed.length,
+        windowsClosed: closed.length,
+        sessionsProcessed: grouped.length,
+      };
     },
   };
 }

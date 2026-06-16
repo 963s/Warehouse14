@@ -84,6 +84,7 @@ export async function processIntakeSession(
   vision: VisionClient,
   sessionId: string,
   log: ProcLog,
+  signal: AbortSignal,
 ): Promise<void> {
   try {
     await db.execute(drizzleSql`
@@ -125,25 +126,30 @@ export async function processIntakeSession(
     if (attrsResult.status === 'rejected') {
       // Main classification failed → reviewer fills in manually (ADR §9).
       pipelineErrors.extractItemAttributes = String(attrsResult.reason);
-      await upsertDraft(db, sessionId, {
-        bgKeys,
-        visionClassification: null,
-        hallmark: hallmarkResult.status === 'fulfilled' ? hallmarkResult.value : null,
-        scale: scaleResult.status === 'fulfilled' ? scaleResult.value : null,
-        taxCode: null,
-        taxExplanation: null,
-        germanDescription: null,
-        marketingAngles: null,
-        embedding: null,
-        lbmaGold: null,
-        suggestedAcquisitionEur: null,
-        suggestedSaleEur: null,
-        pipelineErrors,
+      // Atomic: the draft + the NEEDS_MORE_INFO flip commit together or not at
+      // all (were two statements — a crash between left a half-written draft in
+      // PROCESSING).
+      await db.transaction(async (tx) => {
+        await upsertDraft(tx, sessionId, {
+          bgKeys,
+          visionClassification: null,
+          hallmark: hallmarkResult.status === 'fulfilled' ? hallmarkResult.value : null,
+          scale: scaleResult.status === 'fulfilled' ? scaleResult.value : null,
+          taxCode: null,
+          taxExplanation: null,
+          germanDescription: null,
+          marketingAngles: null,
+          embedding: null,
+          lbmaGold: null,
+          suggestedAcquisitionEur: null,
+          suggestedSaleEur: null,
+          pipelineErrors,
+        });
+        await tx.execute(drizzleSql`
+          UPDATE intake_sessions SET status = 'NEEDS_MORE_INFO', processing_completed_at = now()
+          WHERE id = ${sessionId}::uuid
+        `);
       });
-      await db.execute(drizzleSql`
-        UPDATE intake_sessions SET status = 'NEEDS_MORE_INFO', processing_completed_at = now()
-        WHERE id = ${sessionId}::uuid
-      `);
       log.warn('intake: attribute extraction failed → NEEDS_MORE_INFO', { sessionId });
       return;
     }
@@ -154,6 +160,10 @@ export async function processIntakeSession(
     // ── Deterministic enrichment (NO AI) ───────────────────────────────────
     const lbma = await loadLbmaSnapshot(db);
     const tax = classifyTaxTreatment(visionClassification, lbma);
+
+    // Abort fast between AI phases: a tick being torn down throws here so the
+    // catch records FAILED, instead of leaving the session stuck in PROCESSING.
+    if (signal.aborted) throw new Error('intake aborted before description phase');
 
     // ── Sequential AI: description, then embedding ─────────────────────────
     const description = await vision.composeGermanDescription({
@@ -171,26 +181,31 @@ export async function processIntakeSession(
       silverEurPerGram: lbma.silverEurPerGram,
     });
 
-    await upsertDraft(db, sessionId, {
-      bgKeys,
-      visionClassification,
-      hallmark: hallmarkResult.status === 'fulfilled' ? hallmarkResult.value : null,
-      scale: scaleResult.status === 'fulfilled' ? scaleResult.value : null,
-      taxCode: tax.code,
-      taxExplanation: tax.explanation,
-      germanDescription: description.description,
-      marketingAngles: description.marketingAngles,
-      embedding: embedding.vector,
-      lbmaGold: lbma.goldEurPerGram,
-      suggestedAcquisitionEur: prices.suggestedAcquisitionEur,
-      suggestedSaleEur: prices.suggestedSaleEur,
-      pipelineErrors,
-    });
+    if (signal.aborted) throw new Error('intake aborted before draft write');
 
-    await db.execute(drizzleSql`
-      UPDATE intake_sessions SET status = 'READY_FOR_REVIEW', processing_completed_at = now()
-      WHERE id = ${sessionId}::uuid
-    `);
+    // Atomic: the enriched draft + the READY_FOR_REVIEW flip commit together or
+    // not at all.
+    await db.transaction(async (tx) => {
+      await upsertDraft(tx, sessionId, {
+        bgKeys,
+        visionClassification,
+        hallmark: hallmarkResult.status === 'fulfilled' ? hallmarkResult.value : null,
+        scale: scaleResult.status === 'fulfilled' ? scaleResult.value : null,
+        taxCode: tax.code,
+        taxExplanation: tax.explanation,
+        germanDescription: description.description,
+        marketingAngles: description.marketingAngles,
+        embedding: embedding.vector,
+        lbmaGold: lbma.goldEurPerGram,
+        suggestedAcquisitionEur: prices.suggestedAcquisitionEur,
+        suggestedSaleEur: prices.suggestedSaleEur,
+        pipelineErrors,
+      });
+      await tx.execute(drizzleSql`
+        UPDATE intake_sessions SET status = 'READY_FOR_REVIEW', processing_completed_at = now()
+        WHERE id = ${sessionId}::uuid
+      `);
+    });
     log.info('intake: session ready for review', { sessionId, taxCode: tax.code });
   } catch (err) {
     log.error('intake: processing failed', { sessionId, err: String(err) });
@@ -220,7 +235,11 @@ interface DraftFields {
   pipelineErrors: Record<string, string>;
 }
 
-async function upsertDraft(db: WorkerDb, sessionId: string, f: DraftFields): Promise<void> {
+async function upsertDraft(
+  db: Pick<WorkerDb, 'execute'>,
+  sessionId: string,
+  f: DraftFields,
+): Promise<void> {
   const visionJson = f.visionClassification ? JSON.stringify(f.visionClassification) : null;
   const hallmarkJson = f.hallmark ? JSON.stringify(f.hallmark) : null;
   const scaleJson = f.scale ? JSON.stringify(f.scale) : null;
