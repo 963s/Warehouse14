@@ -355,8 +355,13 @@ const integrationsRoute: FastifyPluginAsync<IntegrationsOpts> = async (app, opts
    * or UPDATE value/updated_by/updated_at (the narrow column grant on
    * system_settings). The value is bound through to_jsonb — never concatenated.
    */
-  async function upsertString(key: string, value: string, actorId: string): Promise<void> {
-    await app.db.execute(sql`
+  async function upsertString(
+    key: string,
+    value: string,
+    actorId: string,
+    exec: typeof app.db = app.db,
+  ): Promise<void> {
+    await exec.execute(sql`
       INSERT INTO system_settings (key, value, updated_by_user_id)
       VALUES (${key}, to_jsonb(${value}::text), ${actorId}::uuid)
       ON CONFLICT (key) DO UPDATE
@@ -448,22 +453,34 @@ const integrationsRoute: FastifyPluginAsync<IntegrationsOpts> = async (app, opts
       }
 
       const actorId = req.actor.id;
-      await upsertString(apiKeyKeyOf(id), apiKey, actorId);
 
-      // Store only the related fields THIS integration declares; ignore the rest.
-      const bodyAny = req.body as unknown as Record<string, unknown>;
-      for (const field of spec.related) {
-        const raw = bodyAny[field.bodyKey];
-        if (typeof raw === 'string') {
-          const trimmed = raw.trim();
-          if (trimmed.length > field.maxLen) {
-            throw new IntegrationKeyError(`„${field.bodyKey}": höchstens ${field.maxLen} Zeichen.`);
-          }
-          if (trimmed.length > 0) {
-            await upsertString(relatedKeyOf(id, field.settingsSuffix), trimmed, actorId);
+      // P1.5 — the secret key + all related fields are written in ONE transaction.
+      // Previously the api_key upsert committed, then each related field ran as a
+      // separate statement; a maxLen throw mid-loop (or a crash) left the secret
+      // stored but `phone_number_id`/`base_url`/… missing → a half-configured
+      // integration that "looks configured" but fails every probe. Now a failure
+      // rolls the key write back too — all-or-nothing.
+      await app.db.transaction(async (txAny) => {
+        const tx = txAny as unknown as typeof app.db;
+        await upsertString(apiKeyKeyOf(id), apiKey, actorId, tx);
+
+        // Store only the related fields THIS integration declares; ignore the rest.
+        const bodyAny = req.body as unknown as Record<string, unknown>;
+        for (const field of spec.related) {
+          const raw = bodyAny[field.bodyKey];
+          if (typeof raw === 'string') {
+            const trimmed = raw.trim();
+            if (trimmed.length > field.maxLen) {
+              throw new IntegrationKeyError(
+                `„${field.bodyKey}": höchstens ${field.maxLen} Zeichen.`,
+              );
+            }
+            if (trimmed.length > 0) {
+              await upsertString(relatedKeyOf(id, field.settingsSuffix), trimmed, actorId, tx);
+            }
           }
         }
-      }
+      });
 
       return reply.status(200).send({ configured: true });
     },

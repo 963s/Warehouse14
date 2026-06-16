@@ -246,17 +246,25 @@ const intakeDraftsRoutes: FastifyPluginAsync<IntakeDraftsOpts> = async (app) => 
         printSticker: false,
       };
 
-      const sessionRows = (await app.db.execute<{ status: string }>(sql`
-        SELECT status::text AS status FROM intake_sessions WHERE id = ${req.params.id}::uuid LIMIT 1
-      `)) as unknown as Array<{ status: string }>;
-      const session = sessionRows[0];
-      if (!session) throw new DraftNotFoundError(`Intake session ${req.params.id} not found`);
-      if (session.status !== 'READY_FOR_REVIEW') {
-        throw new DraftPublishError(`Session is ${session.status}, not READY_FOR_REVIEW`);
-      }
-
       const productId = await app.db.transaction(async (txAny) => {
         const tx = txAny as unknown as typeof app.db;
+
+        // Guard INSIDE the transaction with FOR UPDATE (P1.5): the status check
+        // was previously a separate statement that committed before the insert,
+        // so two concurrent publishes of the same session BOTH passed it and
+        // BOTH created a product (the second overwrote `product_id`, orphaning
+        // the first). FOR UPDATE serialises publishers on the session row; the
+        // loser blocks, re-reads 'PUBLISHED', and is rejected.
+        const guard = (await tx.execute<{ status: string }>(sql`
+          SELECT status::text AS status FROM intake_sessions
+          WHERE id = ${req.params.id}::uuid FOR UPDATE
+        `)) as unknown as Array<{ status: string }>;
+        const cur = guard[0];
+        if (!cur) throw new DraftNotFoundError(`Intake session ${req.params.id} not found`);
+        if (cur.status !== 'READY_FOR_REVIEW') {
+          throw new DraftPublishError(`Session is ${cur.status}, not READY_FOR_REVIEW`);
+        }
+
         const inserted = (await tx.execute<{ id: string }>(sql`
           INSERT INTO products
             (sku, name, item_type, tax_treatment_code, acquisition_cost_eur, list_price_eur,

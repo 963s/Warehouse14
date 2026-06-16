@@ -506,6 +506,55 @@ const whatsappInboxRoutes: FastifyPluginAsync<WhatsAppInboxOpts> = async (app, o
       let providerError: unknown = null;
       let providerErrorCode: string | null = null;
 
+      // P1.5 — record-intent → send → settle. Previously the Meta call ran FIRST
+      // and the row was inserted only AFTER it returned; a crash between the two
+      // left a REAL outbound message with NO `whatsapp_outbound_messages` row —
+      // invisible in the thread, no provider_message_id to correlate a delivery
+      // webhook. You cannot roll back a delivered message, so we do NOT wrap the
+      // send in a tx; instead each step is its own atomic write.
+      //
+      // Step A — durably record the INTENT as 'queued' (provider fields NULL),
+      // before any external call. encrypt_pii stamps body_encrypted (Epic E).
+      const templateParamsJson: string | null = body.templateParams
+        ? JSON.stringify(body.templateParams)
+        : null;
+
+      const insertedRows = await app.withPii(async (txAny) => {
+        const tx = txAny as unknown as typeof app.db;
+        return (await tx.execute<{
+          id: string;
+          to_phone: string;
+          body: string;
+          status: WhatsAppOutboundStatus;
+          provider_message_id: string | null;
+          sent_at: string;
+        }>(sql`
+      INSERT INTO whatsapp_outbound_messages
+        (to_phone, body, body_encrypted, template_name, template_params, status, sent_by_user_id)
+      VALUES
+        (${body.toPhone},
+         ${body.body},
+         encrypt_pii(${body.body}),
+         ${body.templateName ?? null},
+         ${templateParamsJson}::jsonb,
+         'queued',
+         ${actorId}::uuid)
+      RETURNING id::text AS id, to_phone, body, status::text AS status,
+                provider_message_id, sent_at::text AS sent_at
+    `)) as unknown as Array<{
+          id: string;
+          to_phone: string;
+          body: string;
+          status: WhatsAppOutboundStatus;
+          provider_message_id: string | null;
+          sent_at: string;
+        }>;
+      });
+
+      const row = insertedRows[0];
+      if (!row) throw new Error('whatsapp_outbound_messages INSERT returned no row');
+
+      // Step B — the external send (outside any DB transaction).
       if (liveSendEnabled) {
         try {
           const sendArgs: MetaSendArgs = {
@@ -530,56 +579,22 @@ const whatsappInboxRoutes: FastifyPluginAsync<WhatsAppInboxOpts> = async (app, o
             'whatsapp send: provider rejected',
           );
         }
+
+        // Step C — settle the row by id (status + provider fields). A crash
+        // between B and C leaves the row as 'queued' — a known, reconcilable
+        // state, never a phantom sent-but-unrecorded message.
+        const providerErrorJson: string | null =
+          status === 'failed' ? JSON.stringify(providerError) : null;
+        await app.db.execute(sql`
+          UPDATE whatsapp_outbound_messages
+             SET status = ${status},
+                 provider_message_id = ${providerMessageId},
+                 provider_error = ${providerErrorJson}::jsonb
+           WHERE id = ${row.id}::uuid
+        `);
+        row.status = status;
+        row.provider_message_id = providerMessageId;
       }
-
-      // Stringify the JSONB columns up-front so the SQL has plain string
-      // params (no nested drizzleSql conditionals → no realm trouble).
-      const templateParamsJson: string | null = body.templateParams
-        ? JSON.stringify(body.templateParams)
-        : null;
-      const providerErrorJson: string | null =
-        status === 'failed' ? JSON.stringify(providerError) : null;
-
-      // Wrapped in withPii so encrypt_pii() can stamp body_encrypted at rest
-      // (Epic E). The plaintext `body` column survives until a post-backfill
-      // migration drops it; reads prefer decrypt_pii(body_encrypted).
-      const insertedRows = await app.withPii(async (txAny) => {
-        const tx = txAny as unknown as typeof app.db;
-        return (await tx.execute<{
-          id: string;
-          to_phone: string;
-          body: string;
-          status: WhatsAppOutboundStatus;
-          provider_message_id: string | null;
-          sent_at: string;
-        }>(sql`
-      INSERT INTO whatsapp_outbound_messages
-        (to_phone, body, body_encrypted, template_name, template_params, status,
-         provider_message_id, provider_error, sent_by_user_id)
-      VALUES
-        (${body.toPhone},
-         ${body.body},
-         encrypt_pii(${body.body}),
-         ${body.templateName ?? null},
-         ${templateParamsJson}::jsonb,
-         ${status},
-         ${providerMessageId},
-         ${providerErrorJson}::jsonb,
-         ${actorId}::uuid)
-      RETURNING id::text AS id, to_phone, body, status::text AS status,
-                provider_message_id, sent_at::text AS sent_at
-    `)) as unknown as Array<{
-          id: string;
-          to_phone: string;
-          body: string;
-          status: WhatsAppOutboundStatus;
-          provider_message_id: string | null;
-          sent_at: string;
-        }>;
-      });
-
-      const row = insertedRows[0];
-      if (!row) throw new Error('whatsapp_outbound_messages INSERT returned no row');
 
       // Human takeover (Epic E): a manual cashier reply silences the bot for
       // 12h. Best-effort — a cooldown write failure must not fail the send.

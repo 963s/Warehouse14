@@ -276,32 +276,41 @@ const settingsRoute: FastifyPluginAsync = async (app) => {
             : sql`to_jsonb(${value}::numeric)`;
       }
 
-      // Capture the prior value in the SAME statement as the write (a CTE over
-      // the pre-UPDATE row) so the audit delta is atomic — no read-then-write
-      // race where a concurrent change slips between. `old_value` is the jsonb
-      // text BEFORE this UPDATE applied.
-      const updated = (await app.db.execute<SettingRow & { old_value: string | null }>(sql`
-        WITH prev AS (
-          SELECT key, value::text AS old_value FROM system_settings WHERE key = ${key}
-        )
-        UPDATE system_settings AS s
-           SET value = ${jsonbValue}, updated_at = now()
-          FROM prev
-         WHERE s.key = prev.key
-        RETURNING s.key, s.value::text AS value, prev.old_value, s.description, s.updated_at
-      `)) as unknown as (SettingRow & { old_value: string | null })[];
+      // P1.5 — the value change + the rich-context audit row commit together in
+      // ONE transaction. Previously the UPDATE committed, then the audit insert
+      // ran as a separate statement; a crash or transient pool error between
+      // them left the tunable changed with NO device/IP/user-agent audit row.
+      // (The DB trigger's minimal audit row already commits with the UPDATE; this
+      // makes the route's richer row equally atomic.)
+      const row = await app.db.transaction(async (txAny) => {
+        const tx = txAny as unknown as typeof app.db;
+        // Capture the prior value in the SAME statement as the write (a CTE over
+        // the pre-UPDATE row) so the audit delta is atomic — no read-then-write
+        // race. `old_value` is the jsonb text BEFORE this UPDATE applied.
+        const updated = (await tx.execute<SettingRow & { old_value: string | null }>(sql`
+          WITH prev AS (
+            SELECT key, value::text AS old_value FROM system_settings WHERE key = ${key}
+          )
+          UPDATE system_settings AS s
+             SET value = ${jsonbValue}, updated_at = now()
+            FROM prev
+           WHERE s.key = prev.key
+          RETURNING s.key, s.value::text AS value, prev.old_value, s.description, s.updated_at
+        `)) as unknown as (SettingRow & { old_value: string | null })[];
 
-      const row = updated[0];
-      if (!row) throw new SettingNotFoundError(`Setting "${key}" not found.`);
+        const r = updated[0];
+        if (!r) throw new SettingNotFoundError(`Setting "${key}" not found.`);
 
-      await app.db.insert(auditLog).values({
-        eventType: 'system_setting.changed',
-        actorUserId: req.actor.id,
-        deviceId: req.deviceId ?? null,
-        ipAddress: req.ip ?? null,
-        userAgent: req.headers['user-agent'] ?? null,
-        // Record the full delta so a GwG/GoBD auditor sees what changed.
-        payload: { key, oldValue: row.old_value, newValue: row.value },
+        await tx.insert(auditLog).values({
+          eventType: 'system_setting.changed',
+          actorUserId: req.actor.id,
+          deviceId: req.deviceId ?? null,
+          ipAddress: req.ip ?? null,
+          userAgent: req.headers['user-agent'] ?? null,
+          // Record the full delta so a GwG/GoBD auditor sees what changed.
+          payload: { key, oldValue: r.old_value, newValue: r.value },
+        });
+        return r;
       });
 
       return reply.status(200).send({
