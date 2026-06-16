@@ -99,7 +99,7 @@ use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
 use tauri::{AppHandle, Emitter, State};
-use tokio::sync::{broadcast, oneshot, RwLock};
+use tokio::sync::{broadcast, oneshot, Notify, OwnedSemaphorePermit, RwLock, Semaphore};
 use tokio::task::JoinHandle;
 use tower::limit::ConcurrencyLimitLayer;
 use tower_http::limit::RequestBodyLimitLayer;
@@ -202,6 +202,14 @@ const CART_CHANNEL_CAPACITY: usize = 32;
 /// operator actions (start/stop scan, focus a field), so a small ring is ample.
 const CMD_CHANNEL_CAPACITY: usize = 32;
 const WS_PING_INTERVAL: Duration = Duration::from_secs(25);
+/// Global cap on concurrently-open `/ws` sockets. A socket detaches via
+/// `on_upgrade` and so escapes the request-level `ConcurrencyLimitLayer`; this
+/// semaphore re-establishes a hard ceiling. A shop runs ≤ a handful of phones,
+/// so 24 is generous headroom while bounding a runaway/flood. Exhaustion → 503.
+const MAX_WS_SOCKETS: usize = 24;
+/// Max length (bytes) of an accepted inbound scan code. Real barcodes/QR-encoded
+/// SKUs are short; anything longer is junk or an attempt to pump the cart.
+const MAX_SCAN_CODE_LEN: usize = 64;
 
 /// The Tauri event a phone scan is re-emitted on, so the mother React cart can
 /// ring it up exactly as if the cashier had scanned locally (Phase B).
@@ -465,6 +473,15 @@ struct HubShared {
     /// App handle used to re-emit an inbound phone scan to the mother React
     /// layer. `None` until the setup wires it; emit is best-effort (Phase B).
     app: Arc<Mutex<Option<AppHandle>>>,
+    /// Global cap on concurrently-open `/ws` sockets ([`MAX_WS_SOCKETS`]). A
+    /// permit is acquired in `ws_handler` before `on_upgrade` and held by the
+    /// socket task, re-establishing a ceiling the request-layer limiter loses
+    /// once the socket detaches.
+    ws_permits: Arc<Semaphore>,
+    /// device_id → the live command socket's evict signal. Enforces ONE command
+    /// socket per device: a reconnect fires the previous signal so the old socket
+    /// closes. The socket removes its own entry on exit (only if still current).
+    cmd_evict: Arc<Mutex<HashMap<String, Arc<Notify>>>>,
 }
 
 impl Default for HubShared {
@@ -476,6 +493,8 @@ impl Default for HubShared {
             cart_tx,
             cmd_tx,
             app: Arc::new(Mutex::new(None)),
+            ws_permits: Arc::new(Semaphore::new(MAX_WS_SOCKETS)),
+            cmd_evict: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 }
@@ -1463,6 +1482,27 @@ fn ws_token_from_protocols(headers: &HeaderMap) -> Option<(String, String)> {
         })
 }
 
+/// Which `/ws` loop a role runs. Pinning the role→loop mapping in ONE typed
+/// function (used by `ws_handler` AND asserted by a test) means the security
+/// boundary "a Display socket has NO inbound scan path" is guarded by a check
+/// that flips if anyone folds Display into the command arm — not just by prose.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WsKind {
+    /// Strictly outbound, read-only cart feed (`display_ws_loop`).
+    DisplayFeed,
+    /// Bidirectional command socket with the inbound scan path (`command_ws_loop`).
+    Command,
+}
+
+/// The sole authority on which loop a role's socket runs. The Display feed is
+/// read-only (no inbound scan); only Warehouse/Cashier get the command socket.
+fn ws_loop_kind(role: Role) -> WsKind {
+    match role {
+        Role::Display => WsKind::DisplayFeed,
+        Role::Warehouse | Role::Cashier => WsKind::Command,
+    }
+}
+
 /// `GET /ws` — the realtime companion socket. Two role-gated shapes share the
 /// endpoint:
 ///   • **Display** → a strictly OUTBOUND, read-only cart feed: the latest cart
@@ -1492,6 +1532,15 @@ async fn ws_handler(
         Some(r) => r,
         None => return (StatusCode::UNAUTHORIZED, "unauthorized").into_response(),
     };
+    // A detached socket escapes the request `ConcurrencyLimitLayer`, so acquire a
+    // global permit HERE (before `on_upgrade`) to cap concurrent sockets. The
+    // permit is moved into the socket task and released when it exits. Exhaustion
+    // → 503 (a phone retries with backoff); a paired same-subnet phone is never
+    // realistically blocked (a shop runs a handful).
+    let permit = match hub.ws_permits.clone().try_acquire_owned() {
+        Ok(p) => p,
+        Err(_) => return (StatusCode::SERVICE_UNAVAILABLE, "too many companion sockets").into_response(),
+    };
     // Same role model as the proxy/cart: only the customer display rides the
     // realtime feed. A cashier/warehouse token is rejected here (they have no
     // need for the push stream and we keep the surface minimal).
@@ -1499,8 +1548,8 @@ async fn ws_handler(
     // uses (so a command can address ONE phone). Echo the accepted token
     // subprotocol back — REQUIRED for the browser to complete the handshake.
     let device_id = token_hash_hex(&token);
-    match role {
-        Role::Display => {
+    match ws_loop_kind(role) {
+        WsKind::DisplayFeed => {
             // Read-only customer-display feed (unchanged): snapshot the cart now
             // so a fresh connect paints immediately, then fan out every change.
             let initial = {
@@ -1512,25 +1561,51 @@ async fn ws_handler(
             };
             let rx = hub.cart_tx.subscribe();
             ws.protocols([proto])
-                .on_upgrade(move |socket| display_ws_loop(socket, initial, rx))
+                .on_upgrade(move |socket| display_ws_loop(socket, initial, rx, permit))
         }
-        Role::Warehouse | Role::Cashier => {
+        WsKind::Command => {
             // Phase B — a COMMAND socket: receive POS→phone commands addressed to
             // this device, and accept inbound `scan-result` frames which we
             // re-emit to the mother React cart. This is the ONLY inbound surface;
             // it can never reach the proxy or mutate hub state directly.
             let rx = hub.cmd_tx.subscribe();
+            // Build the scan sink (the production emit path) from the app handle,
+            // captured ONCE so the socket task doesn't relock per scan.
             let app = hub.app.lock().ok().and_then(|g| g.clone());
-            ws.protocols([proto])
-                .on_upgrade(move |socket| command_ws_loop(socket, device_id, rx, app))
+            let sink: ScanSink = Arc::new(move |dev: &str, code: &str| {
+                if let Some(app) = &app {
+                    // Best-effort: a closed window must never panic the socket loop.
+                    let _ = app.emit(
+                        COMPANION_SCAN_EVENT,
+                        serde_json::json!({ "deviceId": dev, "code": code }),
+                    );
+                }
+            });
+            // One live command socket per device: register this socket's evict
+            // signal and fire the previous one (a reconnect supersedes the old).
+            let my_evict = Arc::new(Notify::new());
+            if let Some(old) = register_command_socket(&hub.cmd_evict, &device_id, my_evict.clone())
+            {
+                old.notify_one();
+            }
+            let evict_map = hub.cmd_evict.clone();
+            ws.protocols([proto]).on_upgrade(move |socket| {
+                command_ws_loop(socket, device_id, rx, sink, permit, my_evict, evict_map)
+            })
         }
     }
 }
 
 /// Drive one customer-display WebSocket: send the initial snapshot, then fan out
 /// every broadcast cart update, keep the socket warm with periodic pings, and
-/// exit cleanly when the client closes or the socket errors.
-async fn display_ws_loop(socket: WebSocket, initial: String, mut rx: broadcast::Receiver<String>) {
+/// exit cleanly when the client closes or the socket errors. Holds the global
+/// socket `_permit` for its lifetime (released on return).
+async fn display_ws_loop(
+    socket: WebSocket,
+    initial: String,
+    mut rx: broadcast::Receiver<String>,
+    _permit: OwnedSemaphorePermit,
+) {
     let (mut sink, mut stream) = socket.split();
 
     // Paint immediately with the current cart.
@@ -1608,40 +1683,119 @@ fn scan_code_from_frame(frame: &str) -> Option<String> {
         return None;
     }
     let code = v.get("code").and_then(|c| c.as_str())?;
-    if code.is_empty() {
+    if code.is_empty() || code.len() > MAX_SCAN_CODE_LEN {
         return None;
     }
     Some(code.to_string())
 }
 
-/// Handle ONE inbound frame from a command socket: if it is a valid scan-result,
-/// re-emit it to the mother React layer (tagged with the authenticated device
-/// id) so the cart rings it up exactly as a local scan.
-fn handle_inbound_scan(frame: &str, device_id: &str, app: Option<&AppHandle>) {
+/// Per-socket token bucket bounding ACCEPTED inbound scan-results, so a
+/// misbehaving (or compromised-but-paired) phone can't pump the mother cart.
+/// Capacity 8, refill 4 tokens/sec — far above any human or hardware-scanner
+/// cadence, so a legitimate scan is never dropped; only a flood is shed. Pure +
+/// clock-injected (the caller passes `Instant`) so it is deterministically
+/// unit-testable. Behind valid-pairing + same-subnet, so this is churn-control.
+struct ScanRateLimiter {
+    tokens: f64,
+    last: Instant,
+}
+
+impl ScanRateLimiter {
+    const CAPACITY: f64 = 8.0;
+    const REFILL_PER_SEC: f64 = 4.0;
+
+    fn new(now: Instant) -> Self {
+        Self { tokens: Self::CAPACITY, last: now }
+    }
+
+    /// Refill by elapsed time, then spend one token. `true` ⇒ accept the scan.
+    fn try_accept(&mut self, now: Instant) -> bool {
+        let elapsed = now.saturating_duration_since(self.last).as_secs_f64();
+        self.last = now;
+        self.tokens = (self.tokens + elapsed * Self::REFILL_PER_SEC).min(Self::CAPACITY);
+        if self.tokens >= 1.0 {
+            self.tokens -= 1.0;
+            true
+        } else {
+            false
+        }
+    }
+}
+
+/// Sink for a validated, rate-allowed inbound scan: `(device_id, code)`.
+/// Production wires this to `AppHandle::emit(COMPANION_SCAN_EVENT, …)`; a test
+/// substitutes a recorder. Injecting it keeps the scan path observable without a
+/// live Tauri app.
+type ScanSink = Arc<dyn Fn(&str, &str) + Send + Sync>;
+
+/// Process ONE inbound command-socket text frame: if it is a valid, rate-allowed
+/// `scan-result`, push it to the sink (device-tagged) and return `true`. Every
+/// other frame (non-scan, over-length, or flood-shed) returns `false` and does
+/// nothing. This is the ONLY inbound surface a phone can act through.
+fn process_inbound_scan(
+    frame: &str,
+    device_id: &str,
+    limiter: &mut ScanRateLimiter,
+    now: Instant,
+    sink: &ScanSink,
+) -> bool {
     let Some(code) = scan_code_from_frame(frame) else {
-        return;
+        return false;
     };
-    if let Some(app) = app {
-        // Best-effort: a closed window must never panic the socket loop.
-        let _ = app.emit(
-            COMPANION_SCAN_EVENT,
-            serde_json::json!({ "deviceId": device_id, "code": code }),
-        );
+    if !limiter.try_accept(now) {
+        return false; // flood shed
+    }
+    sink(device_id, &code);
+    true
+}
+
+/// Register `evict` as the live command-socket signal for `device_id`, returning
+/// the PREVIOUS signal (if any) so the caller can fire it to close the older
+/// socket. Enforces ONE live command socket per device — a reconnect supersedes.
+fn register_command_socket(
+    map: &Mutex<HashMap<String, Arc<Notify>>>,
+    device_id: &str,
+    evict: Arc<Notify>,
+) -> Option<Arc<Notify>> {
+    let mut g = map.lock().unwrap_or_else(|e| e.into_inner());
+    g.insert(device_id.to_string(), evict)
+}
+
+/// Deregister a command socket on exit — but ONLY if it is still the current one.
+/// A newer socket that already superseded it must keep its registry entry.
+fn deregister_command_socket(
+    map: &Mutex<HashMap<String, Arc<Notify>>>,
+    device_id: &str,
+    evict: &Arc<Notify>,
+) {
+    let mut g = map.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(cur) = g.get(device_id) {
+        if Arc::ptr_eq(cur, evict) {
+            g.remove(device_id);
+        }
     }
 }
 
 /// Drive one Warehouse/Cashier COMMAND socket (Phase B): forward POS→phone
 /// commands addressed to this device, keep it warm with pings, and re-emit any
-/// inbound `scan-result` to the mother cart. Exits cleanly on close/error.
+/// rate-allowed inbound `scan-result` to the mother cart (via `sink`). Exits
+/// cleanly on close/error, when a NEWER socket for this device supersedes it
+/// (`my_evict`), and releases its global socket `_permit` + registry slot on the
+/// way out.
+#[allow(clippy::too_many_arguments)]
 async fn command_ws_loop(
     socket: WebSocket,
     device_id: String,
     mut rx: broadcast::Receiver<String>,
-    app: Option<AppHandle>,
+    sink: ScanSink,
+    _permit: OwnedSemaphorePermit,
+    my_evict: Arc<Notify>,
+    evict_map: Arc<Mutex<HashMap<String, Arc<Notify>>>>,
 ) {
-    let (mut sink, mut stream) = socket.split();
+    let (mut ws_tx, mut stream) = socket.split();
     let mut ping = tokio::time::interval(WS_PING_INTERVAL);
     ping.tick().await; // skip the immediate first tick
+    let mut limiter = ScanRateLimiter::new(Instant::now());
 
     loop {
         tokio::select! {
@@ -1649,7 +1803,7 @@ async fn command_ws_loop(
                 match recv {
                     Ok(cmd) => {
                         if command_is_for_device(&cmd, &device_id)
-                            && sink.send(Message::Text(cmd)).await.is_err()
+                            && ws_tx.send(Message::Text(cmd)).await.is_err()
                         {
                             break;
                         }
@@ -1659,13 +1813,18 @@ async fn command_ws_loop(
                 }
             }
             _ = ping.tick() => {
-                if sink.send(Message::Ping(Vec::new())).await.is_err() {
+                if ws_tx.send(Message::Ping(Vec::new())).await.is_err() {
                     break;
                 }
             }
+            // A newer command socket for THIS device took over — close this one
+            // so a single phone never holds more than one command socket.
+            _ = my_evict.notified() => break,
             msg = stream.next() => {
                 match msg {
-                    Some(Ok(Message::Text(t))) => handle_inbound_scan(&t, &device_id, app.as_ref()),
+                    Some(Ok(Message::Text(t))) => {
+                        process_inbound_scan(&t, &device_id, &mut limiter, Instant::now(), &sink);
+                    }
                     Some(Ok(Message::Close(_))) | None => break,
                     Some(Err(_)) => break,
                     Some(Ok(_)) => { /* ignore pongs / binary / stray frames */ }
@@ -1673,6 +1832,7 @@ async fn command_ws_loop(
             }
         }
     }
+    deregister_command_socket(&evict_map, &device_id, &my_evict);
 }
 
 /// The outcome of normalising the proxy's captured path (C2).
@@ -3076,6 +3236,205 @@ mod tests {
         assert_eq!(v["display"], "standalone", "standalone => app-like launcher");
         assert_eq!(v["start_url"], "/", "the SPA root is the launch target");
         assert!(v["name"].is_string() && !v["name"].as_str().unwrap().is_empty());
+    }
+
+    // ── Pilot-hardening: scan rate-limit + length, subnet guard, proxy path ──
+
+    #[test]
+    fn scan_rate_limiter_allows_a_burst_then_sheds_until_refill() {
+        let t0 = Instant::now();
+        let mut rl = ScanRateLimiter::new(t0);
+        // Capacity 8: the first 8 back-to-back scans (no time elapses) are accepted.
+        for i in 0..8 {
+            assert!(rl.try_accept(t0), "burst scan {i} within capacity is accepted");
+        }
+        // The 9th in the same instant is shed.
+        assert!(!rl.try_accept(t0), "a flood past capacity is shed");
+        // Refill is 4/sec → one second later ~4 tokens are back.
+        let t1 = t0 + Duration::from_secs(1);
+        let mut accepted = 0;
+        for _ in 0..10 {
+            if rl.try_accept(t1) {
+                accepted += 1;
+            }
+        }
+        assert_eq!(accepted, 4, "≈4 tokens refilled after one second");
+    }
+
+    #[test]
+    fn over_length_scan_code_is_rejected() {
+        let at_limit = format!(
+            r#"{{"type":"scan-result","code":"{}"}}"#,
+            "4".repeat(MAX_SCAN_CODE_LEN)
+        );
+        assert!(
+            scan_code_from_frame(&at_limit).is_some(),
+            "a code at the length limit is accepted"
+        );
+        let too_long = format!(
+            r#"{{"type":"scan-result","code":"{}"}}"#,
+            "4".repeat(MAX_SCAN_CODE_LEN + 1)
+        );
+        assert_eq!(
+            scan_code_from_frame(&too_long),
+            None,
+            "an over-length code is rejected"
+        );
+    }
+
+    #[test]
+    fn subnet_decision_allows_lan_rejects_public_and_ipv6() {
+        use std::net::Ipv6Addr;
+        let mother = Ipv4Addr::new(192, 168, 1, 10);
+        // Loopback (v4 + v6) is always allowed.
+        assert!(subnet_decision(mother, IpAddr::V4(Ipv4Addr::LOCALHOST)).0);
+        assert!(subnet_decision(mother, IpAddr::V6(Ipv6Addr::LOCALHOST)).0);
+        // Same /24 allowed.
+        assert!(subnet_decision(mother, IpAddr::V4(Ipv4Addr::new(192, 168, 1, 200))).0);
+        // A clearly-public peer is rejected.
+        assert!(!subnet_decision(mother, IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8))).0);
+        // A non-loopback IPv6 peer can't be on the IPv4 LAN → rejected.
+        assert!(!subnet_decision(mother, IpAddr::V6(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1))).0);
+        // Mother IP unknown (loopback) → allow a private peer, reject a public one.
+        let unknown = Ipv4Addr::LOCALHOST;
+        assert!(subnet_decision(unknown, IpAddr::V4(Ipv4Addr::new(10, 0, 0, 5))).0);
+        assert!(!subnet_decision(unknown, IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1))).0);
+    }
+
+    #[test]
+    fn normalize_proxy_path_rejects_traversal_and_smuggling() {
+        let rejected = |raw: &str| matches!(normalize_proxy_path(raw), NormPath::Rejected);
+        assert!(rejected("../etc/passwd"), "..");
+        assert!(rejected("%2e%2e/secret"), "%2e%2e decodes to ..");
+        assert!(rejected("a//b"), "// empty segment");
+        assert!(rejected("a\\b"), "backslash");
+        assert!(rejected("a\u{0001}b"), "control byte");
+        assert!(rejected("/leading"), "leading slash after decode");
+    }
+
+    #[test]
+    fn normalize_proxy_path_strips_auth_token_params_keeps_others() {
+        match normalize_proxy_path("products?t=secret&color=gold") {
+            NormPath::Ok { path, .. } => {
+                assert!(!path.contains("t=secret"), "the t= auth token is stripped");
+                assert!(path.contains("color=gold"), "an ordinary param survives");
+            }
+            NormPath::Rejected => panic!("a clean path must not be rejected"),
+        }
+        match normalize_proxy_path("products?access_token=x") {
+            NormPath::Ok { path, .. } => {
+                assert_eq!(path, "products", "a sole access_token leaves no query");
+            }
+            NormPath::Rejected => panic!("a clean path must not be rejected"),
+        }
+    }
+
+    #[test]
+    fn command_socket_registry_enforces_one_live_socket_per_device() {
+        let map: Mutex<HashMap<String, Arc<Notify>>> = Mutex::new(HashMap::new());
+        let first = Arc::new(Notify::new());
+        let second = Arc::new(Notify::new());
+        // First registration has no predecessor.
+        assert!(register_command_socket(&map, "dev-1", first.clone()).is_none());
+        // A reconnect returns the previous signal (the caller fires it to evict).
+        let prev = register_command_socket(&map, "dev-1", second.clone());
+        assert!(
+            prev.as_ref().is_some_and(|p| Arc::ptr_eq(p, &first)),
+            "reconnect supersedes and returns the old signal"
+        );
+        // The OLD socket's exit must NOT remove the NEW entry.
+        deregister_command_socket(&map, "dev-1", &first);
+        assert!(
+            map.lock().unwrap().contains_key("dev-1"),
+            "a superseded socket's exit keeps the current entry"
+        );
+        // The CURRENT socket's exit clears the slot.
+        deregister_command_socket(&map, "dev-1", &second);
+        assert!(
+            !map.lock().unwrap().contains_key("dev-1"),
+            "the current socket's exit clears the slot"
+        );
+    }
+
+    // ── Phase B role boundary (integration): real router + real pairing ──────
+
+    #[tokio::test]
+    async fn role_routing_separates_display_from_the_cashier_scan_path() {
+        // Build the REAL router (smoke: the new semaphore + routes wire up cleanly).
+        let hub = HubShared::default();
+        let _router = build_router(hub.clone());
+
+        // Pair a Display token and a Cashier token in the REAL registry.
+        let now = now_unix();
+        {
+            let mut inner = hub.inner.write().await;
+            for (tok, role) in [("disp-tok", Role::Display), ("cash-tok", Role::Cashier)] {
+                inner.tokens.insert(
+                    token_hash_hex(tok),
+                    CompanionEntry {
+                        role,
+                        label: "t".into(),
+                        created_unix: now,
+                        last_seen_unix: now,
+                    },
+                );
+            }
+        }
+        // `auth_role_token` resolves a token to its role; an unknown token 401s.
+        assert_eq!(auth_role_token(&hub, "disp-tok").await, Some(Role::Display));
+        assert_eq!(auth_role_token(&hub, "cash-tok").await, Some(Role::Cashier));
+        assert_eq!(
+            auth_role_token(&hub, "bogus").await,
+            None,
+            "an unknown token is rejected (401)"
+        );
+
+        // The ACTUAL routing boundary `ws_handler` matches on: Display → the
+        // read-only feed (NO inbound scan path); Warehouse/Cashier → the command
+        // socket. These assertions FLIP if anyone folds Display into the command
+        // arm — i.e. they guard the "a Display socket can drive no scan" property
+        // structurally, not just in prose.
+        assert_eq!(
+            ws_loop_kind(Role::Display),
+            WsKind::DisplayFeed,
+            "a Display socket must NOT run the inbound-scan command loop"
+        );
+        assert_ne!(ws_loop_kind(Role::Display), WsKind::Command);
+        assert_eq!(ws_loop_kind(Role::Cashier), WsKind::Command);
+        assert_eq!(ws_loop_kind(Role::Warehouse), WsKind::Command);
+
+        // The Cashier inbound path emits exactly one device-tagged scan for a
+        // valid frame and nothing for a non-scan frame. The Display loop never
+        // calls this path, so a Display socket can drive no emission at all.
+        let seen = Arc::new(Mutex::new(Vec::<(String, String)>::new()));
+        let sink: ScanSink = {
+            let seen = seen.clone();
+            Arc::new(move |dev: &str, code: &str| {
+                seen.lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .push((dev.to_string(), code.to_string()));
+            })
+        };
+        let dev = token_hash_hex("cash-tok");
+        let t0 = Instant::now();
+        let mut rl = ScanRateLimiter::new(t0);
+        assert!(process_inbound_scan(
+            r#"{"type":"scan-result","code":"4001"}"#,
+            &dev,
+            &mut rl,
+            t0,
+            &sink
+        ));
+        assert!(
+            !process_inbound_scan(r#"{"type":"start-scan"}"#, &dev, &mut rl, t0, &sink),
+            "a non-scan frame emits nothing"
+        );
+        let got = seen.lock().unwrap_or_else(|e| e.into_inner());
+        assert_eq!(
+            got.as_slice(),
+            &[(dev.clone(), "4001".to_string())],
+            "exactly one device-tagged scan reaches the sink"
+        );
     }
 
     // ── Proxy allow-list: WAREHOUSE Termine grants ───────────────────────────

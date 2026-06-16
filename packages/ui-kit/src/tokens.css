@@ -37,7 +37,7 @@
   --w14-gold-soft: #ddc486;
   --w14-wax-red: #d63d49; /* destructive / price-down */
   --w14-wax-red-soft: #ef8a92;
-  --w14-verdigris: #1f9d62; /* positive / price-up */
+  --w14-verdigris: #157a4b; /* positive / price-up — darkened for WCAG AA as text on white (was #1f9d62 = 3.47:1; now ~5.4:1). Dark-theme token (line ~150) is untouched. Every verdigris background in the app is a decorative aria-hidden dot, so this only improves contrast. */
 
   /* ─── Primary action accent ────────────────────────────────────────
      The confident brand fill for the single most important action on a
