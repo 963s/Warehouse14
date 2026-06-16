@@ -12,7 +12,6 @@
 import { sql } from 'drizzle-orm';
 
 import { emit } from '@warehouse14/audit';
-import type { AppDb } from '@warehouse14/db/client';
 import type { JobDefinition } from '../lib/job-runner.js';
 
 export const anomalyWatchdogJob: JobDefinition = {
@@ -66,7 +65,7 @@ export const anomalyWatchdogJob: JobDefinition = {
       return { alert: false, todayCount, mean, stddev, zScore };
     }
 
-    await emit(db as unknown as AppDb, {
+    await emit(db, {
       eventType: 'alert.anomaly_detected',
       entityTable: 'system_settings',
       entityId: '00000000-0000-0000-0000-000000000000',

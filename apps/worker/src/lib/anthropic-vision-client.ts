@@ -107,9 +107,26 @@ function firstText(r: AnthropicResponse): string {
 function asStr(v: unknown): string | null {
   return typeof v === 'string' && v.trim().length > 0 ? v : null;
 }
-function asNum(v: unknown): number | null {
-  const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : Number.NaN;
+
+/**
+ * Parse a model-returned number that may be a German decimal string. The model
+ * can answer "12,5" or "1.234,56", which plain `Number(...)` mis-reads
+ * (`Number("1.234,56")` → NaN, `Number("1.234")` → 1.234, treating the thousands
+ * dot as a decimal point). Applies the canonical German rule, mirroring
+ * `intake-math.ts` `commaToDot`: a string with a comma is German → strip dots,
+ * comma → dot; a string without a comma is already a dot-decimal (e.g. the
+ * "62.4500" plain rates) → left untouched. Returns null on non-finite.
+ */
+export function parseGermanNumber(v: unknown): number | null {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  if (typeof v !== 'string') return null;
+  const normalized = v.includes(',') ? v.replace(/\./g, '').replace(',', '.') : v;
+  const n = Number(normalized);
   return Number.isFinite(n) ? n : null;
+}
+
+function asNum(v: unknown): number | null {
+  return parseGermanNumber(v);
 }
 function asStrArray(v: unknown): string[] {
   return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];

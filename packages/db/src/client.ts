@@ -174,3 +174,11 @@ export type DrizzleTransaction = Parameters<Parameters<AppDb['transaction']>[0]>
  * memory.md #73.
  */
 export type AnyDb = AppDb | WorkerDb | MigratorDb | DrizzleTransaction;
+
+/**
+ * A root connection client that owns a real BEGIN/COMMIT — never a
+ * `DrizzleTransaction`. Use where a helper must open its own top-level
+ * transaction (e.g. `withPiiKey`): a tx passed in would nest as a SAVEPOINT
+ * and mis-scope `SET LOCAL`, so it is excluded at the type level.
+ */
+export type RootDb = Exclude<AnyDb, DrizzleTransaction>;

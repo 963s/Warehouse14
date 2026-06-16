@@ -15,7 +15,6 @@
  */
 
 import { emit } from '@warehouse14/audit';
-import type { AppDb } from '@warehouse14/db/client';
 import { sql } from 'drizzle-orm';
 import type { JobDefinition } from '../lib/job-runner.js';
 
@@ -39,7 +38,7 @@ export const chainVerifierJob: JobDefinition = {
     const first = breaks[0]!;
     log.error('CHAIN BREAK DETECTED', { breakAtId: first.break_at_id, reason: first.reason });
 
-    await emit(db as unknown as AppDb, {
+    await emit(db, {
       eventType: 'alert.hash_chain_verification_failed',
       entityTable: 'ledger_events',
       entityId: '00000000-0000-0000-0000-000000000000',

@@ -31,7 +31,6 @@
 
 import { sql as drizzleSql } from 'drizzle-orm';
 
-import type { AppDb } from '@warehouse14/db/client';
 import {
   ReservationOwnershipError,
   release as inventoryRelease,
@@ -96,7 +95,7 @@ export const storefrontCartSweeperJob: JobDefinition = {
 
           for (const item of items) {
             try {
-              await inventoryRelease(tx as unknown as AppDb, {
+              await inventoryRelease(tx, {
                 productId: item.product_id,
                 sessionId: cart.reservation_session_id,
                 // Worker has no actor; storefront guests reserved with

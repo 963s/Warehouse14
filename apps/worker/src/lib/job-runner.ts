@@ -41,7 +41,7 @@ import { sql } from 'drizzle-orm';
 import postgres, { type Sql } from 'postgres';
 
 import { emit } from '@warehouse14/audit';
-import type { AppDb, WorkerDb } from '@warehouse14/db/client';
+import type { WorkerDb } from '@warehouse14/db/client';
 import { workerJobDlq, workerJobRuns } from '@warehouse14/db/schema';
 
 import type { WorkerMetrics } from './metrics.js';
@@ -365,7 +365,7 @@ export class JobRunner {
     // Emit ledger event so the Bridge UX alert system + critical-events router
     // (memory.md #45) lights up.
     try {
-      await emit(this.opts.db as unknown as AppDb, {
+      await emit(this.opts.db, {
         eventType: 'alert.worker_job_dead_letter',
         entityTable: 'worker_job_dlq',
         entityId: '00000000-0000-0000-0000-000000000000',

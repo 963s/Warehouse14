@@ -67,6 +67,26 @@ export class KycRequiredError extends DomainError {
 }
 
 /**
+ * Single source of truth for the PG-message → `ApiErrorCode` contract.
+ *
+ * Each entry maps one stable substring `token` (raised verbatim by a DB
+ * trigger / constraint) to the code we surface. `pgErrorToCode` iterates this
+ * in order — first matching token wins — so precedence is the array order.
+ * Adding or rewording a trigger? Add/adjust the token here, nowhere else.
+ *
+ * NOTE: the `STORNO_OF_STORNO` case needs *two* substrings to co-occur, which
+ * a single-token entry can't express, so it stays an explicit check below.
+ */
+const PG_MESSAGE_CODES: ReadonlyArray<{ token: string; code: ApiErrorCode }> = [
+  { token: 'Sanctions hard-block', code: 'SANCTIONS_BLOCK' },
+  { token: 'KYC hard-block', code: 'KYC_REQUIRED' },
+  { token: 'Closing-day guard', code: 'CLOSING_DAY_FINALIZED' },
+  { token: 'transactions_ankauf_requires_customer', code: 'VALIDATION_ERROR' },
+  { token: 'transactions_one_storno_per_original_uq', code: 'CONFLICT' },
+  { token: 'appointments_one_transaction_link_uq', code: 'CONFLICT' },
+];
+
+/**
  * Translate a known PG error message into a stable `ApiErrorCode`.
  *
  * Postgres surfaces the trigger's RAISE message verbatim via the
@@ -76,12 +96,9 @@ export class KycRequiredError extends DomainError {
  */
 function pgErrorToCode(err: FastifyError & { code?: string }): ApiErrorCode | null {
   const msg = err.message ?? '';
-  if (msg.includes('Sanctions hard-block')) return 'SANCTIONS_BLOCK';
-  if (msg.includes('KYC hard-block')) return 'KYC_REQUIRED';
-  if (msg.includes('Closing-day guard')) return 'CLOSING_DAY_FINALIZED';
-  if (msg.includes('transactions_ankauf_requires_customer')) return 'VALIDATION_ERROR';
-  if (msg.includes('transactions_one_storno_per_original_uq')) return 'CONFLICT';
-  if (msg.includes('appointments_one_transaction_link_uq')) return 'CONFLICT';
+  for (const { token, code } of PG_MESSAGE_CODES) {
+    if (msg.includes(token)) return code;
+  }
   if (msg.includes('Cannot storno') && msg.includes('it is itself a storno'))
     return 'STORNO_OF_STORNO';
   if (err.code === '23505') return 'CONFLICT'; // unique_violation
