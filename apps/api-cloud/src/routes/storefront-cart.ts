@@ -177,7 +177,7 @@ const storefrontCartRoutes: FastifyPluginAsync<StorefrontCartOpts> = async (app,
         summary: 'Add a product to my active cart.',
         description:
           'No reservation is taken here — the soft-lock happens at /checkout. ' +
-          'Refuses if the product is not AVAILABLE or not listed_on_storefront, ' +
+          'Refuses if the product is not AVAILABLE or not is_published_to_web, ' +
           'or if the product is already in the cart.',
         body: AddCartItemBody,
         response: { 200: CartView, 401: ErrorResponse, 404: ErrorResponse, 409: ErrorResponse },
@@ -187,15 +187,17 @@ const storefrontCartRoutes: FastifyPluginAsync<StorefrontCartOpts> = async (app,
       requireShopper(req);
       const cartId = await ensureActiveCart(app, req.shopper.id);
 
-      // Snapshot the product's current list_price_eur. The DB enforces
-      // listed_on_storefront semantics at the application layer; here we
-      // just refuse if not visible to shoppers.
+      // Snapshot the product's current list_price_eur, and gate on the SAME flag
+      // the public catalog + the POS publish toggle use — `is_published_to_web`.
+      // (The catalog showed `is_published_to_web` items but the cart used to gate
+      // on the separate `listed_on_storefront`, which the publish flow never set
+      // → every "published" product was silently un-buyable.)
       const [product] = await app.db
         .select({
           id: products.id,
           status: products.status,
           listPriceEur: products.listPriceEur,
-          listedOnStorefront: products.listedOnStorefront,
+          isPublishedToWeb: products.isPublishedToWeb,
           archivedAt: products.archivedAt,
         })
         .from(products)
@@ -206,7 +208,7 @@ const storefrontCartRoutes: FastifyPluginAsync<StorefrontCartOpts> = async (app,
       }
       if (
         product.status !== 'AVAILABLE' ||
-        !product.listedOnStorefront ||
+        !product.isPublishedToWeb ||
         product.archivedAt !== null
       ) {
         throw new ProductNotReservableError(

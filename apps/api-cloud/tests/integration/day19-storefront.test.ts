@@ -315,13 +315,17 @@ describe('Day 19 — storefront commerce', () => {
     }
 
     async function makeProduct(opts: { listedOnStorefront?: boolean } = {}): Promise<string> {
+      // `is_published_to_web` is the single flag that drives BOTH catalog
+      // visibility and add-to-cart (the old split-brain `listed_on_storefront`
+      // was retired as a buyability gate — audit H1). Seed both from one option.
+      const buyable = opts.listedOnStorefront ?? true;
       const [p] = await migratorSql<{ id: string }[]>`
         INSERT INTO products (sku, status, tax_treatment_code, item_type,
                               acquisition_cost_eur, list_price_eur, name, published_at,
-                              listed_on_storefront)
+                              listed_on_storefront, is_published_to_web)
         VALUES (${`SKU-${randomUUID()}`}, 'AVAILABLE'::product_status, 'STANDARD_19',
                 'gold_jewelry'::item_type, '50.00', '119.00', 'Day-19 storefront ring', now(),
-                ${opts.listedOnStorefront ?? true})
+                ${buyable}, ${buyable})
         RETURNING id`;
       return p!.id;
     }
