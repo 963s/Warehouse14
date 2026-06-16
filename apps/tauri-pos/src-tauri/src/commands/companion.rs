@@ -217,6 +217,24 @@ const COMPANION_CSP: &str = "default-src 'self'; script-src 'self'; \
 style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:; \
 img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
 
+/// The PWA manifest served at `/manifest.webmanifest` (Phase C). `display:
+/// standalone` + `start_url: /` make Android's "Zum Startbildschirm hinzufügen"
+/// (and iOS "Add to Home Screen") produce an app-like launcher instead of a
+/// browser tab. Colours match the SPA `--bg`. Kept module-level so a unit test
+/// can assert it stays valid JSON with the launcher-critical fields.
+// `r##"…"##` (not `r#"…"#`): the colour values contain the sequence `"#`
+// (`"#0b0d12"`), which would close a single-hash raw string early.
+const COMPANION_MANIFEST: &str = r##"{
+  "name": "Warehouse 14 Begleiter",
+  "short_name": "Warehouse 14",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b0d12",
+  "theme_color": "#0b0d12"
+}"##;
+
 /// The companion SPA logic, embedded at build time and served from `/app.js`
 /// so the CSP can require `script-src 'self'` (no inline script).
 const COMPANION_APP_JS: &str = include_str!("../../companion-web/app.js");
@@ -1021,8 +1039,59 @@ async fn trust_mobileconfig_handler(AxumState(hub): AxumState<HubShared>) -> Res
         .into_response()
 }
 
+/// `GET /trust/warehouse14-ca.crt` — the raw root CA, for Android (Phase C).
+/// Android has no `.mobileconfig`; the user installs this `.crt` via Settings →
+/// Sicherheit → Verschlüsselung & Anmeldedaten → Zertifikat installieren → CA.
+/// Served with the classic CA MIME + a `.crt` filename so the file manager
+/// recognises it as a certificate.
+async fn trust_ca_crt_handler(AxumState(hub): AxumState<HubShared>) -> Response {
+    let dir = {
+        let inner = hub.inner.read().await;
+        inner
+            .store_path
+            .as_ref()
+            .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+    };
+    let Some(dir) = dir else {
+        return (StatusCode::SERVICE_UNAVAILABLE, "Hub not ready").into_response();
+    };
+    let Ok(ca_pem) = read_ca_cert_pem(&dir) else {
+        return (StatusCode::SERVICE_UNAVAILABLE, "CA not ready").into_response();
+    };
+    (
+        StatusCode::OK,
+        [
+            (
+                header::CONTENT_TYPE,
+                HeaderValue::from_static("application/x-x509-ca-cert"),
+            ),
+            (
+                header::CONTENT_DISPOSITION,
+                HeaderValue::from_static("attachment; filename=\"warehouse14-ca.crt\""),
+            ),
+        ],
+        ca_pem,
+    )
+        .into_response()
+}
+
+/// `GET /manifest.webmanifest` — a minimal PWA manifest so Android's "Zum
+/// Startbildschirm hinzufügen" yields a standalone, app-like launcher (Phase C).
+async fn manifest_handler() -> Response {
+    (
+        StatusCode::OK,
+        [(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("application/manifest+json; charset=utf-8"),
+        )],
+        COMPANION_MANIFEST,
+    )
+        .into_response()
+}
+
 /// `GET /trust` — the one-page German onboarding that walks the operator through
-/// installing the profile + flipping the Certificate-Trust toggle on iOS.
+/// installing the profile + flipping the Certificate-Trust toggle on iOS, and
+/// installing the CA on Android (Phase C).
 async fn trust_page_handler() -> Response {
     (
         StatusCode::OK,
@@ -1068,6 +1137,12 @@ const TRUST_HTML: &str = r##"<!doctype html><html lang="de"><head>
  <div class="step"><span class="k">4 · Öffnen</span><br>
    <code>https://warehouse14.local:8714</code> öffnen (oder das neue Symbol auf dem Home-Bildschirm) und Kamera erlauben.</div>
  <p class="sub">Hinweis: Beim ersten Laden zeigt das iPhone „Nicht signiert“ — das ist im eigenen WLAN normal.</p>
+ <h1 style="margin-top:28px">Android einrichten</h1>
+ <a class="btn" href="/trust/warehouse14-ca.crt">A · Zertifikat laden (Android)</a>
+ <div class="step warn" role="note" aria-label="Wichtiger Schritt"><span class="k">B · Installieren (wichtig!)</span><br>
+   Einstellungen → Sicherheit → <span class="k">Verschlüsselung &amp; Anmeldedaten</span> → <span class="k">Zertifikat installieren</span> → <span class="k">CA-Zertifikat</span> → die geladene Datei „warehouse14-ca“ wählen. Ohne diesen Schritt bleibt die Kamera gesperrt.</div>
+ <div class="step"><span class="k">C · Öffnen</span><br>
+   <code>https://warehouse14.local:8714</code> öffnen, dann über das Browser-Menü „<span class="k">Zum Startbildschirm hinzufügen</span>“ — das ergibt ein App-Symbol.</div>
 </main></body></html>"##;
 
 /// `GET /health` — liveness probe for companions / diagnostics.
@@ -2090,6 +2165,8 @@ fn build_router(hub: HubShared) -> Router {
             "/trust/warehouse14-ca.mobileconfig",
             get(trust_mobileconfig_handler),
         )
+        .route("/trust/warehouse14-ca.crt", get(trust_ca_crt_handler))
+        .route("/manifest.webmanifest", get(manifest_handler))
         .route("/health", get(health))
         .route("/pair", post(pair_handler))
         .route("/cart", get(cart_handler))
@@ -2952,6 +3029,20 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&got).unwrap();
         assert_eq!(v["action"]["type"], "focus-field");
         assert_eq!(v["action"]["field"], "sku");
+    }
+
+    // ── Phase C: Android onboarding (PWA manifest) ───────────────────────────
+
+    #[test]
+    fn manifest_is_valid_json_with_the_launcher_critical_fields() {
+        // A typo here silently breaks "Add to Home Screen" on Android/iOS, so the
+        // launcher-critical fields are pinned: it must parse, and `display` +
+        // `start_url` are what promote it from a browser tab to an app icon.
+        let v: serde_json::Value =
+            serde_json::from_str(COMPANION_MANIFEST).expect("manifest must be valid JSON");
+        assert_eq!(v["display"], "standalone", "standalone => app-like launcher");
+        assert_eq!(v["start_url"], "/", "the SPA root is the launch target");
+        assert!(v["name"].is_string() && !v["name"].as_str().unwrap().is_empty());
     }
 
     // ── Proxy allow-list: WAREHOUSE Termine grants ───────────────────────────
