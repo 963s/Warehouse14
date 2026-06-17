@@ -3,13 +3,13 @@
 import "../../global.css"
 
 import { useEffect } from "react"
+import { useColorScheme } from "react-native"
 import { useFonts } from "expo-font"
 import { Stack, useRouter, useSegments } from "expo-router"
 import * as SplashScreen from "expo-splash-screen"
-import { useColorScheme } from "react-native"
+import { PortalHost } from "@rn-primitives/portal"
 import { GestureHandlerRootView } from "react-native-gesture-handler"
 import { initialWindowMetrics, SafeAreaProvider } from "react-native-safe-area-context"
-import { PortalHost } from "@rn-primitives/portal"
 
 import { warehouse14Fonts } from "@/warehouse14/fonts"
 import { useSession } from "@/warehouse14/session"
@@ -56,13 +56,15 @@ export default function RootLayout() {
         >
           <Stack.Screen name="login" options={{ headerShown: false }} />
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen
-            name="product/[id]"
-            options={{ presentation: "modal", title: "Artikel" }}
-          />
+          <Stack.Screen name="product/[id]" options={{ presentation: "modal", title: "Artikel" }} />
+          <Stack.Screen name="customer/[id]" options={{ presentation: "modal", title: "Kunde" }} />
           <Stack.Screen
             name="capture"
             options={{ presentation: "fullScreenModal", headerShown: false }}
+          />
+          <Stack.Screen
+            name="kyc-capture"
+            options={{ presentation: "fullScreenModal", title: "Ausweis erfassen" }}
           />
         </Stack>
         <StepUpDialogHost />

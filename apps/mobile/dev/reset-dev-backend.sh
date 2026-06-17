@@ -58,19 +58,27 @@ psql_mig -tAc "SELECT cert_serial FROM devices LIMIT 1;"
 
 cat <<'EOF'
 
-[reset] DONE. Start the server (AUTH_SECRET is required and intentionally NOT in .env):
-  mkdir -p /tmp/w14-photos
+[reset] DONE. Start the server (AUTH_SECRET + KYC_IMAGE_ENCRYPTION_KEY are
+required and intentionally NOT in .env):
+  mkdir -p /tmp/w14-photos /tmp/w14-kyc
   cd apps/api-cloud
   AUTH_SECRET="dev-local-poc-secret-please-change-0123456789abcdef" \
   TRUSTED_ORIGINS="http://localhost:8081,http://192.168.179.93:8081" \
   PHOTOS_DIR="/tmp/w14-photos" \
   PHOTOS_PUBLIC_BASE_URL="http://192.168.179.93:3001" \
+  KYC_IMAGE_ENCRYPTION_KEY="$(node -e 'console.log(require("crypto").randomBytes(32).toString("base64"))')" \
+  KYC_PHOTOS_DIR="/tmp/w14-kyc" \
   pnpm exec tsx watch --env-file-if-exists=../../.env src/server.ts
 
   # PHOTOS_DIR overrides the non-writable /data default (the LOCAL photo store);
   # PHOTOS_PUBLIC_BASE_URL overrides the PRODUCTION default so served photo URLs
   # are dev-local (the LAN IP, so a phone can load <Image> too). R2 is unset on
   # purpose — uploadDirect uses the server-side LOCAL store, no R2 creds needed.
+  # KYC_IMAGE_ENCRYPTION_KEY is the dedicated 32-byte AES key for the SERVER KYC
+  # store (migration 0074, REQUIRED — the server won't boot without it); a fresh
+  # random dev key is generated inline. KYC_PHOTOS_DIR holds the encrypted .enc
+  # files. Use a STABLE key if you want stored Ausweis images to survive a
+  # restart (a fresh key can't decrypt files written under the old one).
 
 Login:  Owner basel@warehouse14.local · PIN 0000 · role ADMIN (is_owner)
 EOF
