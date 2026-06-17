@@ -59,10 +59,18 @@ psql_mig -tAc "SELECT cert_serial FROM devices LIMIT 1;"
 cat <<'EOF'
 
 [reset] DONE. Start the server (AUTH_SECRET is required and intentionally NOT in .env):
+  mkdir -p /tmp/w14-photos
   cd apps/api-cloud
   AUTH_SECRET="dev-local-poc-secret-please-change-0123456789abcdef" \
   TRUSTED_ORIGINS="http://localhost:8081,http://192.168.179.93:8081" \
+  PHOTOS_DIR="/tmp/w14-photos" \
+  PHOTOS_PUBLIC_BASE_URL="http://192.168.179.93:3001" \
   pnpm exec tsx watch --env-file-if-exists=../../.env src/server.ts
+
+  # PHOTOS_DIR overrides the non-writable /data default (the LOCAL photo store);
+  # PHOTOS_PUBLIC_BASE_URL overrides the PRODUCTION default so served photo URLs
+  # are dev-local (the LAN IP, so a phone can load <Image> too). R2 is unset on
+  # purpose — uploadDirect uses the server-side LOCAL store, no R2 creds needed.
 
 Login:  Owner basel@warehouse14.local · PIN 0000 · role ADMIN (is_owner)
 EOF

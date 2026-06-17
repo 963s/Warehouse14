@@ -6,10 +6,10 @@
  * transparently and the api-client middleware retries on success.
  */
 import { useCallback, useEffect, useState } from "react"
-import { ScrollView, View } from "react-native"
-import { useLocalSearchParams } from "expo-router"
+import { Image, Pressable, ScrollView, View } from "react-native"
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
-import type { CurrentMetalPrice, ProductDetail } from "@warehouse14/api-client"
+import type { CurrentMetalPrice, PhotoRow, ProductDetail } from "@warehouse14/api-client"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -17,12 +17,15 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Text } from "@/components/ui/text"
 import {
+  absoluteUrl,
   currentMetalPrices,
   describeError,
   formatEur,
   getProduct,
+  listProductPhotos,
   relocateProduct,
   schmelzwertEur,
+  setPhotoPrimary,
 } from "@/warehouse14/api"
 import { formatLocation, STATUS_LABEL, STATUS_VARIANT } from "@/warehouse14/product-ui"
 
@@ -37,10 +40,12 @@ function Row({ label, value }: { label: string; value: string }) {
 
 export default function ProductDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
+  const router = useRouter()
   const insets = useSafeAreaInsets()
 
   const [product, setProduct] = useState<ProductDetail | null>(null)
   const [prices, setPrices] = useState<readonly CurrentMetalPrice[]>([])
+  const [photos, setPhotos] = useState<PhotoRow[]>([])
   const [error, setError] = useState<string | null>(null)
 
   // Relocate form state
@@ -52,6 +57,21 @@ export default function ProductDetailScreen() {
   const [busy, setBusy] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
   const [okMsg, setOkMsg] = useState<string | null>(null)
+
+  const loadPhotos = useCallback(async () => {
+    if (!id) return
+    try {
+      const res = await listProductPhotos(id)
+      // Primary first, then by display order.
+      setPhotos(
+        [...res.items].sort((a, b) =>
+          a.isPrimary === b.isPrimary ? a.displayOrder - b.displayOrder : a.isPrimary ? -1 : 1,
+        ),
+      )
+    } catch {
+      // non-fatal — the detail still renders without photos.
+    }
+  }, [id])
 
   const load = useCallback(async () => {
     if (!id) return
@@ -66,11 +86,29 @@ export default function ProductDetailScreen() {
     } catch (e) {
       setError(describeError(e))
     }
-  }, [id])
+    await loadPhotos()
+  }, [id, loadPhotos])
 
   useEffect(() => {
     void load()
   }, [load])
+
+  // Refetch photos whenever the screen regains focus (e.g. after the capture
+  // modal closes), so a freshly-added photo shows up immediately.
+  useFocusEffect(
+    useCallback(() => {
+      void loadPhotos()
+    }, [loadPhotos]),
+  )
+
+  async function onSetPrimary(photoId: string) {
+    try {
+      await setPhotoPrimary(photoId)
+      await loadPhotos()
+    } catch (e) {
+      setError(describeError(e))
+    }
+  }
 
   async function submitRelocate() {
     if (!id) return
@@ -162,6 +200,51 @@ export default function ProductDetailScreen() {
         {product.feingewichtGrams ? (
           <Row label="Feingewicht" value={`${product.feingewichtGrams} g ${product.metal ?? ""}`} />
         ) : null}
+      </Card>
+
+      <Card className="gap-3 px-4 py-4">
+        <View className="flex-row items-center justify-between">
+          <Text className="text-base font-semibold">Fotos ({photos.length})</Text>
+          <Button
+            variant="outline"
+            onPress={() => router.push({ pathname: "/capture", params: { productId: id } })}
+          >
+            <Text>Foto hinzufügen</Text>
+          </Button>
+        </View>
+        {photos.length === 0 ? (
+          <Text className="text-muted-foreground text-sm">Noch keine Fotos.</Text>
+        ) : (
+          <View className="flex-row flex-wrap gap-2">
+            {photos.map((ph) => (
+              <Pressable
+                key={ph.id}
+                onPress={() => {
+                  if (!ph.isPrimary) void onSetPrimary(ph.id)
+                }}
+              >
+                <View
+                  className={
+                    ph.isPrimary
+                      ? "rounded-lg border-2 border-primary p-0.5"
+                      : "rounded-lg border border-border p-0.5"
+                  }
+                >
+                  <Image
+                    source={{ uri: absoluteUrl(ph.thumbUrl ?? `/api/photos/${ph.id}/thumb`) }}
+                    style={{ width: 84, height: 84, borderRadius: 8, backgroundColor: "#0001" }}
+                  />
+                </View>
+                <Text
+                  className={ph.isPrimary ? "mt-0.5 text-center text-primary" : "mt-0.5 text-center text-muted-foreground"}
+                  style={{ fontSize: 10 }}
+                >
+                  {ph.isPrimary ? "Hauptbild" : "Als Hauptbild"}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
       </Card>
 
       {okMsg ? (
