@@ -132,6 +132,17 @@ const EnvSchema = Type.Object({
     description:
       'Local filesystem root for product photos (<id>.webp + <id>_thumb.webp). Empty → product_photo_purge is a no-op.',
   }),
+  // ── KYC image local store (migration 0074) — the gdpr_cleanup retention ──
+  // purge deletes the AES-256-GCM-encrypted .enc file before flipping the row
+  // to a shell. The worker MUST mount the SAME KYC_PHOTOS_DIR volume as the API
+  // (separate from PHOTOS_DIR). The worker only DELETES files — it never needs
+  // the encryption key. Empty → KYC file deletion is skipped (the row is still
+  // flipped; a doc-store-only deployment).
+  KYC_PHOTOS_DIR: Type.String({
+    default: '',
+    description:
+      'Local filesystem root for KYC encrypted image (.enc) files. Same volume as the API KYC_PHOTOS_DIR. Empty → the gdpr_cleanup KYC file delete is skipped.',
+  }),
   PHOTO_PURGE_SCHEDULE: Type.String({
     default: '0 3 * * *', // daily 03:00
     description: 'node-cron schedule for the product_photo_purge job.',

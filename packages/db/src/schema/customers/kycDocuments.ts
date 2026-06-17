@@ -3,8 +3,10 @@
  *
  * Each row is a piece of *legal evidence* that we did good-faith due diligence
  * before an Ankauf. The encrypted document number + the SHA-256-hashed photo
- * stored in R2 together prove "this customer presented this ID at this terminal
- * at this time, captured by this user."
+ * (an AES-256-GCM-encrypted local file referenced by document_photo_storage_key;
+ * migration 0074 moved it off the never-configured R2) together prove "this
+ * customer presented this ID at this terminal at this time, captured by this
+ * user."
  *
  * Discipline:
  *   • NEVER deleted by app role.
@@ -20,6 +22,7 @@ import {
   customType,
   date,
   index,
+  integer,
   numeric,
   pgTable,
   text,
@@ -59,8 +62,16 @@ export const kycDocuments = pgTable(
     issuedOn: date('issued_on'),
     expiresOn: date('expires_on').notNull(),
 
-    documentPhotoR2Key: text('document_photo_r2_key'),
+    // Storage key for the LOCAL AES-256-GCM-encrypted image file under
+    // KYC_PHOTOS_DIR (migration 0074; was document_photo_r2_key). NEVER public —
+    // served only via the ADMIN + step-up view route. Nulled on purge.
+    documentPhotoStorageKey: text('document_photo_storage_key'),
+    // sha256 of the COMPRESSED plaintext image (server-computed). Integrity
+    // record verified on decrypt. NOT NULL octet_length=32 CHECK below.
     documentPhotoSha256: bytea('document_photo_sha256'),
+    // Encrypted-file byte size for the separate KYC store cap. Not PII, not in
+    // the all-or-nothing CHECK; nulled on purge so the SUM stays accurate.
+    documentPhotoSizeBytes: integer('document_photo_size_bytes'),
 
     capturedByUserId: uuid('captured_by_user_id')
       .notNull()
@@ -118,13 +129,13 @@ export const kycDocuments = pgTable(
         ${table.purgedAt} IS NULL
           AND ${table.documentNumberEncrypted} IS NOT NULL
           AND ${table.documentPhotoSha256} IS NOT NULL
-          AND ${table.documentPhotoR2Key} IS NOT NULL
+          AND ${table.documentPhotoStorageKey} IS NOT NULL
           AND ${table.purgedByUserId} IS NULL
       ) OR (
         ${table.purgedAt} IS NOT NULL
           AND ${table.documentNumberEncrypted} IS NULL
           AND ${table.documentPhotoSha256} IS NULL
-          AND ${table.documentPhotoR2Key} IS NULL
+          AND ${table.documentPhotoStorageKey} IS NULL
           AND ${table.purgedByUserId} IS NOT NULL
       )`,
     ),

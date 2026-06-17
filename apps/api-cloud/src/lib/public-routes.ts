@@ -43,7 +43,9 @@ export const PUBLIC_PREFIXES = [
  * request always arrives unauthenticated. The id (an unguessable UUID) is the
  * capability. The handler still 404s anything that isn't a `storage_kind='local'`
  * product photo. KYC/Ausweis evidence lives in the separate `kyc_documents`
- * table (R2-backed, never served here), so these routes cannot leak PII.
+ * table + a separate KYC_PHOTOS_DIR (AES-256-GCM-encrypted at rest, served ONLY
+ * via the private ADMIN + step-up route GET /api/customers/:id/kyc-documents/
+ * :docId/image — NEVER public, never here), so these routes cannot leak PII.
  *
  * Matched against the path (querystring already stripped) by `isPublicRoute`.
  */

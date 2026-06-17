@@ -232,7 +232,7 @@ export async function buildApp(opts: BuildAppOpts): Promise<FastifyInstance> {
   await app.register(customerUpdateRoute);
   await app.register(customersVerifyVatRoute);
   await app.register(customersCheckSanctionsRoute, { env: opts.env });
-  await app.register(customerKycDocumentsRoute);
+  await app.register(customerKycDocumentsRoute, { env: opts.env });
   await app.register(photoUploadUrlRoute, { env: opts.env });
   await app.register(photoDirectUploadRoute, { env: opts.env });
   await app.register(transactionsFinalize, { env: opts.env });

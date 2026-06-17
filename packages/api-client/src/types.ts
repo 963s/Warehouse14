@@ -48,11 +48,12 @@ export interface RequestOptions {
   /**
    * Response handling for the SUCCESS (2xx) case. `'json'` (default) parses the
    * body as JSON; `'text'` returns the raw response text unparsed — used for
-   * file downloads (CSV exports) whose body isn't JSON. Error (non-2xx)
-   * responses are ALWAYS parsed as the JSON error envelope, so middlewares
-   * (e.g. the step-up interceptor) still fire on a 403.
+   * file downloads (CSV exports) whose body isn't JSON; `'arraybuffer'` returns
+   * the raw bytes (used for binary downloads like the private KYC image).
+   * Error (non-2xx) responses are ALWAYS parsed as the JSON error envelope, so
+   * middlewares (e.g. the step-up interceptor) still fire on a 403.
    */
-  responseType?: 'json' | 'text';
+  responseType?: 'json' | 'text' | 'arraybuffer';
 }
 
 export interface ApiClientConfig {

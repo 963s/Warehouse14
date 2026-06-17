@@ -1173,10 +1173,10 @@ describe('GET /api/closings/:id/export/{datev,dsfinvk} — fiscal-export E2E', (
         WITH s AS (SELECT set_config('warehouse14.pii_key', ${PII_KEY}, true))
         INSERT INTO kyc_documents (customer_id, document_type, issuing_country_iso2,
                                    document_number_encrypted, document_photo_sha256,
-                                   document_photo_r2_key, issued_on, expires_on,
+                                   document_photo_storage_key, issued_on, expires_on,
                                    captured_by_user_id, retention_until)
         SELECT ${customerId}, 'PERSONALAUSWEIS'::id_document_type, 'DE',
-               encrypt_pii('L01X00T471'), sha256('idphoto'::bytea), 'kyc/test.jpg',
+               encrypt_pii('L01X00T471'), sha256('idphoto'::bytea), gen_random_uuid()::text,
                '2019-01-01'::date, '2029-01-01'::date,
                ${adminUserId}, (now() + interval '5 years')::date FROM s`;
       // A 750 gold ring, 4.2 g.

@@ -166,15 +166,11 @@ export async function buildWorker(opts: BuildWorkerOpts): Promise<WorkerHandle> 
     }),
   );
   // Phase 1.5 #I-4 + #I-5: daily GDPR sweep — audit_log IP minimization +
-  // expired-KYC purge (R2 photo delete + PII null, row kept as an audit shell).
+  // expired-KYC purge (local encrypted .enc delete + PII null, row kept as an
+  // audit shell). Worker MUST mount the SAME KYC_PHOTOS_DIR volume as the API.
   runner.register(
     gdprCleanupJob({
-      r2Config: {
-        accountId: opts.env.R2_ACCOUNT_ID,
-        bucket: opts.env.R2_BUCKET,
-        accessKeyId: opts.env.R2_ACCESS_KEY_ID,
-        secretAccessKey: opts.env.R2_SECRET_ACCESS_KEY,
-      },
+      kycPhotosDir: opts.env.KYC_PHOTOS_DIR,
     }),
   );
   // Day 20: B2C cart expiry — releases 15-min STOREFRONT soft locks.

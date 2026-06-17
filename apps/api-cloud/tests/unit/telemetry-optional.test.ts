@@ -15,6 +15,9 @@ describe('telemetry is optional + fail-safe', () => {
       WAREHOUSE14_PII_KEY: 'test-pii-key-do-not-use-in-production-32b',
       // AUTH_SECRET is mandatory since the 2026-06-09 hardening (no default).
       AUTH_SECRET: 'test-auth-secret-not-for-production-0000',
+      // KYC_IMAGE_ENCRYPTION_KEY is mandatory since #I-47 moved Ausweis images
+      // to a local AES-256-GCM store (no default — a managed 32-byte secret).
+      KYC_IMAGE_ENCRYPTION_KEY: 'BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=',
     });
     // Absent DSN → empty/undefined, never a thrown validation error.
     expect(env.SENTRY_DSN ?? '').toBe('');

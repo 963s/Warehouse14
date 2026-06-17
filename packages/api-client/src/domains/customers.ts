@@ -182,9 +182,13 @@ export interface CustomerKycDocumentBody {
   documentNumber: string;
   issuedOn?: string;
   expiresOn: string;
-  r2Key: string;
-  /** 64-hex-char SHA-256 of the uploaded photo bytes (lowercase). */
-  sha256Hex: string;
+  /**
+   * Image payload, base64-encoded (no `data:` prefix). The server compresses,
+   * EXIF-strips, AES-256-GCM-encrypts to a LOCAL file (migration 0074) and
+   * computes the sha256 — the client no longer supplies an r2Key or hash.
+   */
+  dataBase64: string;
+  contentType: 'image/jpeg' | 'image/png' | 'image/webp';
   retentionYears?: number;
 }
 
@@ -313,6 +317,22 @@ export const customersApi = {
       'POST',
       `/api/customers/${encodeURIComponent(customerId)}/kyc-documents`,
       body,
+    );
+  },
+  /**
+   * Fetch the private KYC ID-document image bytes (WebP). The route is ADMIN +
+   * step-up + `Cache-Control: no-store` and is NEVER public, so this goes
+   * through the authenticated client (a 403 STEP_UP_REQUIRED triggers the
+   * step-up middleware). The cashier/mobile render is a FOLLOW-UP and MUST show
+   * the bytes WITHOUT persisting them (e.g. an in-memory data URI, then drop) —
+   * inheriting the no-persist contract.
+   */
+  getKycDocumentImage(client: ApiClient, customerId: string, docId: string): Promise<ArrayBuffer> {
+    return client.request<ArrayBuffer>(
+      'GET',
+      `/api/customers/${encodeURIComponent(customerId)}/kyc-documents/${encodeURIComponent(docId)}/image`,
+      undefined,
+      { responseType: 'arraybuffer' },
     );
   },
   setTrust(
