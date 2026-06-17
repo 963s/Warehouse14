@@ -17,8 +17,14 @@
  * the device; the only durable copy is the EXIF-stripped WebP the server keeps.
  * KYC reuse MUST keep this contract (Ausweis bytes must not linger on a phone).
  */
-import { photosApi, type PhotoDirectUploadResponse } from "@warehouse14/api-client"
 import { File } from "expo-file-system"
+import {
+  customersApi,
+  photosApi,
+  type CustomerKycDocumentResponse,
+  type KycDocumentType,
+  type PhotoDirectUploadResponse,
+} from "@warehouse14/api-client"
 
 import { apiClient } from "./api"
 
@@ -31,13 +37,26 @@ export interface CapturedPhoto {
 }
 
 /**
- * Binding target. Extend with `kyc`/`appraisal` later; the upload mechanism
- * stays identical (uploadDirect) — only the bound entity changes.
+ * Binding target. The CAPTURE + base64 read + no-persist discard are identical
+ * across kinds — only the bind CALL differs (the keystone promise). `product`
+ * uploads to the local photo store (uploadDirect); `kyc` POSTs the raw bytes to
+ * the server KYC store (addKycDocument), which compresses, hashes, and
+ * AES-256-GCM-encrypts at rest.
  */
 export type PhotoBinding =
   | { kind: "product"; productId: string; isPrimary?: boolean }
+  | {
+      kind: "kyc"
+      customerId: string
+      documentType: KycDocumentType
+      /** ISO 3166-1 alpha-2, uppercase. */
+      issuingCountryIso2: string
+      documentNumber: string
+      issuedOn?: string
+      expiresOn: string
+      retentionYears?: number
+    }
 // future:
-//   | { kind: "kyc"; customerId: string; documentType: KycDocumentType }
 //   | { kind: "appraisal"; appraisalId: string }
 
 function toFileUri(uri: string): string {
@@ -55,13 +74,22 @@ export function discardCapture(photo: CapturedPhoto): void {
 
 /**
  * Upload a captured photo and bind it to the target in ONE server call. The
- * temp device file is always discarded afterwards (no-persist contract).
- * Returns the bound photo (id + public raw/thumb URLs).
+ * temp device file is ALWAYS discarded afterwards (no-persist contract) — this
+ * matters most for a KYC Ausweis, whose bytes must never linger on a phone. The
+ * base64 is a transient local, never logged. Only the bind call differs per kind.
  */
 export async function uploadCapturedPhoto(
   photo: CapturedPhoto,
+  binding: Extract<PhotoBinding, { kind: "product" }>,
+): Promise<PhotoDirectUploadResponse>
+export async function uploadCapturedPhoto(
+  photo: CapturedPhoto,
+  binding: Extract<PhotoBinding, { kind: "kyc" }>,
+): Promise<CustomerKycDocumentResponse>
+export async function uploadCapturedPhoto(
+  photo: CapturedPhoto,
   binding: PhotoBinding,
-): Promise<PhotoDirectUploadResponse> {
+): Promise<PhotoDirectUploadResponse | CustomerKycDocumentResponse> {
   try {
     const dataBase64 = await new File(toFileUri(photo.uri)).base64()
     switch (binding.kind) {
@@ -72,6 +100,22 @@ export async function uploadCapturedPhoto(
           productId: binding.productId,
           intent: "product",
           isPrimary: binding.isPrimary ?? false,
+        })
+      case "kyc":
+        // SERVER KYC store: the raw bytes go up; the server compresses,
+        // computes the sha256, and AES-256-GCM-encrypts at rest (#I-47). ADMIN +
+        // step-up gated — a 403 STEP_UP_REQUIRED drives the PIN dialog + retry.
+        return await customersApi.addKycDocument(apiClient, binding.customerId, {
+          dataBase64,
+          contentType: photo.mime,
+          documentType: binding.documentType,
+          issuingCountryIso2: binding.issuingCountryIso2,
+          documentNumber: binding.documentNumber,
+          ...(binding.issuedOn ? { issuedOn: binding.issuedOn } : {}),
+          expiresOn: binding.expiresOn,
+          ...(binding.retentionYears !== undefined
+            ? { retentionYears: binding.retentionYears }
+            : {}),
         })
       default:
         // Exhaustive today; future binding kinds add their own bind call here.

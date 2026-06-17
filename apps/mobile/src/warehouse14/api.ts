@@ -18,12 +18,20 @@ import {
   ApiError,
   authPin,
   createApiClient,
+  customersApi,
   metalPricesApi,
   photosApi,
   productsApi,
   stepUpMiddleware,
   type ApiClient,
   type CurrentMetalPrice,
+  type CustomerDetail,
+  type CustomerKycStampBody,
+  type CustomerKycStampResponse,
+  type CustomerListQuery,
+  type CustomerListResponse,
+  type CustomerTrustChangeBody,
+  type CustomerTrustChangeResponse,
   type InventoryAdjustmentBody,
   type PhotoRow,
   type PinLoginResponse,
@@ -33,16 +41,15 @@ import {
 } from "@warehouse14/api-client"
 import { Money } from "@warehouse14/domain/money"
 
-import { getSessionToken } from "./session"
 import { classifyScanMatch, type ScanMatch } from "./scan-resolve"
+import { getSessionToken } from "./session"
 import { stepUpService } from "./step-up"
 
 /**
  * LOCAL dev api-cloud only — the Mac LAN IP. NEVER production
  * (https://api.warehouse14.de). Override via EXPO_PUBLIC_API_BASE_URL.
  */
-export const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://192.168.179.93:3001"
+export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://192.168.179.93:3001"
 
 /**
  * DEV device fingerprint = SHA-256 of the dev cert seeded by api-cloud's
@@ -95,6 +102,34 @@ export function listProductPhotos(productId: string): Promise<{ items: PhotoRow[
 
 export function setPhotoPrimary(photoId: string): ReturnType<typeof photosApi.setPrimary> {
   return photosApi.setPrimary(apiClient, photoId)
+}
+
+// ── Customers (Kunden + KYC + Vertrauen) ─────────────────────────────────────
+// The SERVER KYC store is the system of record. stampKyc / setTrust / the KYC
+// document POST are ADMIN + step-up; a 403 STEP_UP_REQUIRED is handled
+// transparently by stepUpMiddleware (the native PIN Dialog) and retried.
+export function listCustomers(query: CustomerListQuery = {}): Promise<CustomerListResponse> {
+  return customersApi.list(apiClient, query)
+}
+
+export function getCustomer(id: string): Promise<CustomerDetail> {
+  return customersApi.get(apiClient, id)
+}
+
+/** Stamp the operator's KYC (GwG) verification — step-up required (auto). */
+export function stampCustomerKyc(
+  id: string,
+  body: CustomerKycStampBody = {},
+): Promise<CustomerKycStampResponse> {
+  return customersApi.stampKyc(apiClient, id, body)
+}
+
+/** Change the customer's trust level — step-up required (auto). */
+export function setCustomerTrust(
+  id: string,
+  body: CustomerTrustChangeBody,
+): Promise<CustomerTrustChangeResponse> {
+  return customersApi.setTrust(apiClient, id, body)
 }
 
 // ── Scan → product (the real cashier flow) ───────────────────────────────────
