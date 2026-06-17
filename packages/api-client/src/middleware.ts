@@ -40,8 +40,12 @@ export interface RequestMeta {
    *   gobdRelevant      — Phase 3: classify into 10y vs 30d retention
    */
   custom?: Record<string, unknown>;
-  /** Success-body handling: `'text'` returns the raw body unparsed (CSV downloads). */
-  responseType?: 'json' | 'text';
+  /**
+   * Success-body handling: `'text'` returns the raw body unparsed (CSV
+   * downloads); `'arraybuffer'` returns raw bytes (binary downloads, e.g. the
+   * private KYC image).
+   */
+  responseType?: 'json' | 'text' | 'arraybuffer';
 }
 
 export interface MiddlewareRequest {

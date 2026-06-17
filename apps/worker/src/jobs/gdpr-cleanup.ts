@@ -16,7 +16,9 @@
  * testable without a database or S3.
  */
 
-import { DeleteObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { rm } from 'node:fs/promises';
+import { join } from 'node:path';
+
 import { sql as drizzleSql } from 'drizzle-orm';
 
 import { emitAudit } from '@warehouse14/audit';
@@ -101,27 +103,28 @@ export function anonymizeIp(ip: string): string {
 }
 
 // ────────────────────────────────────────────────────────────────────────
-// Injected R2 deleter
+// Injected KYC image deleter — the SINGLE chokepoint for removing the local
+// AES-256-GCM-encrypted `.enc` file (migration 0074 moved KYC images off the
+// never-configured R2 to local encrypted storage). Any future on-demand
+// right-to-erasure endpoint MUST go through a deleter like this so it can't
+// forget the file. The path sharding MIRRORS apps/api-cloud/src/lib/kyc-store.ts
+// (copied, not imported across the app boundary).
 // ────────────────────────────────────────────────────────────────────────
 
-export type R2Deleter = (key: string) => Promise<void>;
+export type KycImageDeleter = (storageKey: string) => Promise<void>;
 
-export interface R2Config {
-  accountId: string;
-  bucket: string;
-  accessKeyId: string;
-  secretAccessKey: string;
-}
-
-/** Default R2 (S3-compatible) object deleter. */
-export function createR2Deleter(config: R2Config): R2Deleter {
-  const client = new S3Client({
-    region: 'auto',
-    endpoint: `https://${config.accountId}.r2.cloudflarestorage.com`,
-    credentials: { accessKeyId: config.accessKeyId, secretAccessKey: config.secretAccessKey },
-  });
-  return async (key: string) => {
-    await client.send(new DeleteObjectCommand({ Bucket: config.bucket, Key: key }));
+/**
+ * Delete the encrypted KYC file for a storage key. `force: true` makes a missing
+ * file a SUCCESS (idempotent), but EACCES/EIO/etc. RETHROW so the purge fails +
+ * retries — never strand a LIVE expired ID by flipping the row to a shell while
+ * the encrypted bytes survive on disk. Layout MUST match kyc-store.ts:
+ *   <KYC_PHOTOS_DIR>/<first-2-hex>/<storageKey>.enc
+ */
+export function createLocalKycDeleter(kycPhotosDir: string): KycImageDeleter {
+  return async (storageKey: string) => {
+    if (!kycPhotosDir) return; // doc-store-only deployment — nothing on disk
+    const shard = (storageKey.slice(0, 2) || 'xx').toLowerCase();
+    await rm(join(kycPhotosDir, shard, `${storageKey}.enc`), { force: true });
   };
 }
 
@@ -132,7 +135,7 @@ export function createR2Deleter(config: R2Config): R2Deleter {
 export interface GdprCleanupDeps {
   db: AnyDb;
   log: JobContext['log'];
-  r2Delete: R2Deleter;
+  kycDelete: KycImageDeleter;
   /** Age (days) past which audit_log IPs are minimized. Default 180. */
   ipRetentionDays?: number;
 }
@@ -149,7 +152,7 @@ export interface GdprCleanupSummary {
 type ExpiredKycRow = {
   id: string;
   customer_id: string;
-  document_photo_r2_key: string | null;
+  document_photo_storage_key: string | null;
 };
 
 const IP_MASK_CASE = drizzleSql`CASE
@@ -172,10 +175,10 @@ async function anonymizeOldAuditIps(db: AnyDb, retentionDays: number): Promise<n
 async function purgeExpiredKyc(
   db: AnyDb,
   log: JobContext['log'],
-  r2Delete: R2Deleter,
+  kycDelete: KycImageDeleter,
 ): Promise<{ purged: number; errors: number; reason?: 'none_expired' | 'no_owner' }> {
   const expired = await db.execute<ExpiredKycRow>(drizzleSql`
-    SELECT id, customer_id, document_photo_r2_key
+    SELECT id, customer_id, document_photo_storage_key
       FROM kyc_documents
      WHERE retention_until < now()::date
        AND purged_at IS NULL`);
@@ -198,19 +201,21 @@ async function purgeExpiredKyc(
   let errors = 0;
   for (const doc of expired) {
     try {
-      // 1. Remove the photo from R2 first — if this fails we leave the row LIVE
+      // 1. Delete the encrypted file FIRST — if this fails we leave the row LIVE
       //    so the next run retries (the bytes must be gone before we mark purged).
-      if (doc.document_photo_r2_key) {
-        await r2Delete(doc.document_photo_r2_key);
+      if (doc.document_photo_storage_key) {
+        await kycDelete(doc.document_photo_storage_key);
       }
-      // 2 + 3. Flip the row to a purged shell (PII nulled, purge stamped).
+      // 2 + 3. Flip the row to a purged shell (PII nulled, purge stamped). The
+      //    size_bytes is nulled too so the KYC store-usage SUM stays accurate.
       await db.execute(drizzleSql`
         UPDATE kyc_documents
            SET purged_at = now(),
                purged_by_user_id = ${ownerId}::uuid,
                document_number_encrypted = NULL,
-               document_photo_r2_key = NULL,
+               document_photo_storage_key = NULL,
                document_photo_sha256 = NULL,
+               document_photo_size_bytes = NULL,
                updated_at = now()
          WHERE id = ${doc.id}::uuid`);
       // 4. Redacted audit trail — NO PII (UUIDs + reason only).
@@ -236,7 +241,7 @@ async function purgeExpiredKyc(
 }
 
 export async function runGdprCleanup(deps: GdprCleanupDeps): Promise<GdprCleanupSummary> {
-  const { db, log, r2Delete } = deps;
+  const { db, log, kycDelete } = deps;
   const ipRetentionDays = deps.ipRetentionDays ?? 180;
 
   // Task A — audit_log IP minimization.
@@ -244,7 +249,7 @@ export async function runGdprCleanup(deps: GdprCleanupDeps): Promise<GdprCleanup
   log.info('gdpr: audit_log IPs minimized', { ipAnonymized, ipRetentionDays });
 
   // Task B — KYC document purge.
-  const kyc = await purgeExpiredKyc(db, log, r2Delete);
+  const kyc = await purgeExpiredKyc(db, log, kycDelete);
   log.info('gdpr: KYC purge complete', kyc);
 
   const summary: GdprCleanupSummary = {
@@ -261,14 +266,15 @@ export async function runGdprCleanup(deps: GdprCleanupDeps): Promise<GdprCleanup
 // ────────────────────────────────────────────────────────────────────────
 
 export interface GdprCleanupJobOptions {
-  r2Config: R2Config;
-  /** Injectable deleter (tests); defaults to the real S3/R2 client. */
-  r2Delete?: R2Deleter;
+  /** Local KYC store root (worker mounts the SAME volume as the API). */
+  kycPhotosDir: string;
+  /** Injectable deleter (tests); defaults to the local-file deleter. */
+  kycDelete?: KycImageDeleter;
   ipRetentionDays?: number;
 }
 
 export function gdprCleanupJob(opts: GdprCleanupJobOptions): JobDefinition {
-  const r2Delete = opts.r2Delete ?? createR2Deleter(opts.r2Config);
+  const kycDelete = opts.kycDelete ?? createLocalKycDeleter(opts.kycPhotosDir);
   return {
     name: 'gdpr_cleanup',
     schedule: '0 4 * * *', // daily 04:00
@@ -277,7 +283,7 @@ export function gdprCleanupJob(opts: GdprCleanupJobOptions): JobDefinition {
       const summary = await runGdprCleanup({
         db,
         log,
-        r2Delete,
+        kycDelete,
         ...(opts.ipRetentionDays !== undefined ? { ipRetentionDays: opts.ipRetentionDays } : {}),
       });
       return { ...summary };

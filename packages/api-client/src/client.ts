@@ -150,6 +150,15 @@ function createTerminal(config: ApiClientConfig): Next {
       return { data: undefined, status: res.status, headers: res.headers, requestId, traceId };
     }
 
+    // Binary download (e.g. the private KYC image): on success, return the raw
+    // bytes. Must read the body as an ArrayBuffer BEFORE any res.text() (the
+    // body can only be consumed once). Errors fall through to the text + JSON
+    // envelope path below, so the step-up interceptor still fires on a 403.
+    if (res.ok && req.meta.responseType === 'arraybuffer') {
+      const buffer = await res.arrayBuffer();
+      return { data: buffer, status: res.status, headers: res.headers, requestId, traceId };
+    }
+
     const text = await res.text();
 
     // File download (CSV exports): on success, return the body verbatim — it is

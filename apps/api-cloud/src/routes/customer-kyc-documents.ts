@@ -1,29 +1,45 @@
 /**
- * POST /api/customers/:id/kyc-documents — Day 12 additive.
+ * KYC ID-document routes.
  *
- * Closes Phase 1.5 #I-47. Creates a kyc_documents row binding a customer
- * to:
- *   • a document type + issuing country + optional authority
- *   • an encrypted document number (PII RED LINE — encrypt_pii inside withPii)
- *   • an R2-uploaded photo (key + SHA-256 integrity hash)
- *   • the capturing actor + terminal + timestamp
+ *   POST /api/customers/:id/kyc-documents               — capture an Ausweis
+ *   GET  /api/customers/:id/kyc-documents/:docId/image  — view the Ausweis
  *
- * Step-up REQUIRED — identity-recording write is owner-sensitive.
+ * Migration 0074 moved the image off the never-configured R2 to a LOCAL
+ * AES-256-GCM-encrypted file (see lib/kyc-store.ts). The POST takes the image
+ * BYTES (base64), compresses + EXIF-strips + encrypts server-side, computes the
+ * sha256, and binds a kyc_documents row. The document number stays
+ * `encrypt_pii` (the PII red line — untouched).
  *
- * The actual photo bytes live in R2; the row carries the key + 32-byte
- * SHA-256 so any tampering with the R2 object is detectable post-hoc.
- *
- * Audit_log carries a REDACTED payload (document type + country + r2 key
- * + sha256 + retention years) — never the plaintext document number.
+ * Both routes: requireAuth + requireRole('ADMIN') + requireStepUp — identity
+ * capture AND viewing an Ausweis are owner-sensitive. The image is NEVER public
+ * (not in PUBLIC_PATH_PATTERNS); the view serves with Cache-Control: no-store.
+ * Audit_log carries a REDACTED payload — never the plaintext document number.
  */
 
+import { randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
+
 import { Type } from '@sinclair/typebox';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 
 import { auditLog, customers, kycDocuments } from '@warehouse14/db/schema';
 
+import type { Env } from '../config/env.js';
 import { requireAuth, requireRole, requireStepUp } from '../lib/auth-policy.js';
+import {
+  KycCryptoError,
+  type KycKeyring,
+  buildKycKeyring,
+  checkKycCapacity,
+  compressKycImage,
+  decryptKycImage,
+  deleteKycImage,
+  encryptKycImage,
+  kycImageAad,
+  readKycImage,
+  writeKycImage,
+} from '../lib/kyc-store.js';
 import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 import {
   KycDocumentBody,
@@ -31,11 +47,13 @@ import {
   type KycDocumentBody as TBody,
 } from '../schemas/kyc-document.js';
 
+/** Hard cap on the DECODED upload (bytes) BEFORE compression. */
+const MAX_KYC_UPLOAD_BYTES = 25 * 1024 * 1024;
+
 class CustomerNotFoundError extends DomainError {
   public readonly httpStatus = 404;
   public readonly code: ApiErrorCode = 'NOT_FOUND';
 }
-
 class KycValidationError extends DomainError {
   public readonly httpStatus = 400;
   public readonly code: ApiErrorCode = 'VALIDATION_ERROR';
@@ -43,6 +61,28 @@ class KycValidationError extends DomainError {
   public constructor(field: string, reason: string) {
     super(`KYC document validation failed for "${field}": ${reason}`);
     this.details = { field, reason };
+  }
+}
+class KycCapacityError extends DomainError {
+  public readonly httpStatus = 409;
+  public readonly code: ApiErrorCode = 'CONFLICT';
+}
+class KycDocumentNotFoundError extends DomainError {
+  public readonly httpStatus = 404;
+  public readonly code: ApiErrorCode = 'NOT_FOUND';
+}
+/** Integrity failure (tamper / wrong key / missing file for a LIVE row). */
+class KycIntegrityError extends DomainError {
+  public readonly httpStatus = 409;
+  public readonly code: ApiErrorCode = 'CONFLICT';
+}
+/** No KYC encryption key configured — capture/view cannot operate. Unreachable
+ *  in a real boot (loadEnv enforces the key); a defensive 503 for keyless envs. */
+class KycStorageUnconfiguredError extends DomainError {
+  public readonly httpStatus = 503;
+  public readonly code: ApiErrorCode = 'INTERNAL_ERROR';
+  public constructor() {
+    super('KYC image storage is not configured (missing encryption key).');
   }
 }
 
@@ -55,17 +95,43 @@ const ErrorResponse = Type.Object({
   }),
 });
 
-const customerKycDocumentsRoute: FastifyPluginAsync = async (app) => {
+export interface CustomerKycDocumentsOpts {
+  env: Env;
+}
+
+const customerKycDocumentsRoute: FastifyPluginAsync<CustomerKycDocumentsOpts> = async (
+  app,
+  opts,
+) => {
+  const { env } = opts;
+  // Built once at boot. In a real boot loadEnv has already validated the key, so
+  // this always succeeds. We still guard: an app assembled WITHOUT a KYC key
+  // (e.g. an integration harness that never exercises KYC) must still register
+  // its other routes rather than crash buildApp — the KYC handlers then refuse
+  // to operate (503) until a key is configured. Auth runs first, so a non-ADMIN
+  // / no-step-up caller still gets 403, never a 503 that would leak config state.
+  let keyring: KycKeyring | null = null;
+  try {
+    keyring = buildKycKeyring(env);
+  } catch (err) {
+    app.log.warn(
+      { reason: err instanceof Error ? err.message : 'unknown' },
+      'KYC image encryption key absent/invalid — KYC document routes will return 503 until configured.',
+    );
+  }
+
+  // ── POST /api/customers/:id/kyc-documents ──────────────────────────────
   app.post<{ Params: { id: string }; Body: TBody }>(
     '/api/customers/:id/kyc-documents',
     {
+      bodyLimit: 34 * 1024 * 1024, // base64 of a full-res phone capture
       schema: {
         tags: ['customers'],
-        summary: 'Bind an R2-uploaded ID-document photo to a customer (Day 12, #I-47).',
+        summary: 'Capture an ID-document photo for a customer (local encrypted store, #I-47).',
         description:
-          'Creates a kyc_documents row with encrypted document number + R2 key + ' +
-          'SHA-256 integrity hash. ADMIN-only + step-up REQUIRED. The photo must ' +
-          'already be uploaded to R2 via POST /api/photos/upload-url.',
+          'Compresses + EXIF-strips the image, AES-256-GCM-encrypts it to a local file, ' +
+          'computes the SHA-256, and creates a kyc_documents row with the encrypted document ' +
+          'number. ADMIN-only + step-up REQUIRED. The image is NEVER public.',
         params: Type.Object({ id: Type.String({ format: 'uuid' }) }),
         body: KycDocumentBody,
         response: {
@@ -74,6 +140,7 @@ const customerKycDocumentsRoute: FastifyPluginAsync = async (app) => {
           401: ErrorResponse,
           403: ErrorResponse,
           404: ErrorResponse,
+          409: ErrorResponse,
         },
       },
     },
@@ -81,6 +148,7 @@ const customerKycDocumentsRoute: FastifyPluginAsync = async (app) => {
       requireAuth(req);
       requireRole(req, 'ADMIN');
       requireStepUp(req);
+      if (!keyring) throw new KycStorageUnconfiguredError();
 
       const { id: customerId } = req.params;
       const body = req.body;
@@ -88,111 +156,235 @@ const customerKycDocumentsRoute: FastifyPluginAsync = async (app) => {
       const deviceId = req.deviceId ?? null;
       const retentionYears = body.retentionYears ?? 5;
 
-      // Validity-range CHECK is duplicated by DB constraint; client-friendly
-      // error message lands here.
       if (body.issuedOn && body.issuedOn >= body.expiresOn) {
         throw new KycValidationError('expiresOn', 'expires_on must be strictly after issued_on');
       }
 
-      const outcome = await app.withPii(async (tx) => {
-        // 1. Customer must exist (FK would refuse anyway; explicit 404 is nicer).
-        const [exists] = await tx
-          .select({ id: customers.id })
-          .from(customers)
-          .where(eq(customers.id, customerId))
-          .limit(1);
-        if (!exists) {
-          throw new CustomerNotFoundError(`Customer ${customerId} not found.`);
-        }
+      // 1. Decode + size-cap the raw bytes BEFORE the (expensive) sharp decode.
+      const raw = Buffer.from(body.dataBase64, 'base64');
+      if (raw.length === 0) throw new KycValidationError('dataBase64', 'empty image payload');
+      if (raw.length > MAX_KYC_UPLOAD_BYTES) {
+        throw new KycValidationError(
+          'dataBase64',
+          `image exceeds ${Math.floor(MAX_KYC_UPLOAD_BYTES / 1024 / 1024)} MB`,
+        );
+      }
 
-        // 2. Convert 64-hex sha256 to BYTEA literal — Drizzle doesn't model
-        //    pgcrypto BYTEA from a hex string cleanly so we use raw SQL.
-        const inserted = await tx.execute<{
-          id: string;
-          captured_at: Date;
-          retention_until: string;
-        }>(sql`
-          INSERT INTO kyc_documents (
-            customer_id,
-            document_type,
-            issuing_country_iso2,
-            issuing_authority,
-            document_number_encrypted,
-            issued_on,
-            expires_on,
-            document_photo_r2_key,
-            document_photo_sha256,
-            captured_by_user_id,
-            captured_at_terminal_id,
-            retention_until
-          )
-          VALUES (
-            ${customerId},
-            ${body.documentType}::id_document_type,
-            ${body.issuingCountryIso2},
-            ${body.issuingAuthority ?? null},
-            encrypt_pii(${body.documentNumber}),
-            ${body.issuedOn ?? null}::date,
-            ${body.expiresOn}::date,
-            ${body.r2Key},
-            decode(${body.sha256Hex}, 'hex'),
-            ${actorId},
-            ${deviceId},
-            (now() + (${retentionYears} || ' years')::interval)::date
-          )
-          RETURNING id, captured_at, retention_until::text AS retention_until
-        `);
-        const row = inserted[0];
-        if (!row) throw new Error('kyc_documents INSERT returned no row');
+      // 2. Compress + EXIF-strip; the SERVER computes the sha256 (the client no
+      //    longer supplies it — the DB has a NOT-NULL octet_length=32 CHECK).
+      let compressed: Awaited<ReturnType<typeof compressKycImage>>;
+      try {
+        compressed = await compressKycImage(raw);
+      } catch {
+        throw new KycValidationError('dataBase64', 'not a decodable image');
+      }
 
-        // 3. Audit log — REDACTED. Never the plaintext document number.
-        await tx.insert(auditLog).values({
-          eventType: 'customer.kyc_document_added',
-          actorUserId: actorId,
-          deviceId,
-          ipAddress: req.ip ?? null,
-          userAgent: req.headers['user-agent'] ?? null,
-          payload: {
-            customerId,
-            kycDocumentId: row.id,
-            documentType: body.documentType,
-            issuingCountryIso2: body.issuingCountryIso2,
-            r2Key: body.r2Key,
-            sha256Hex: body.sha256Hex,
-            issuedOn: body.issuedOn ?? null,
-            expiresOn: body.expiresOn,
-            retentionYears,
-          },
+      // 3. Separate KYC store cap (never shares the product-photo quota).
+      const used = await app.db.execute<{ sum: string | null }>(sql`
+        SELECT COALESCE(SUM(document_photo_size_bytes), 0)::text AS sum
+          FROM kyc_documents WHERE purged_at IS NULL`);
+      const usedBytes = Number(used[0]?.sum ?? 0);
+
+      // 4. Generate the row id + storage key UP FRONT so the AAD (which binds the
+      //    ciphertext to its row) is known before encryption.
+      const docId = randomUUID();
+      const storageKey = randomUUID();
+      const aad = kycImageAad(customerId, docId, storageKey);
+      const encrypted = encryptKycImage(compressed.webp, aad, keyring);
+
+      const cap = checkKycCapacity(env, usedBytes, encrypted.length);
+      if (!cap.ok) {
+        throw new KycCapacityError(
+          `KYC image store is full (${cap.usedBytes} + ${encrypted.length} > ${cap.maxBytes} bytes).`,
+        );
+      }
+
+      // 5. Write the encrypted file, THEN insert the row. If the insert fails,
+      //    delete the orphan file (no dangling bytes without a row).
+      await writeKycImage(env, storageKey, encrypted);
+      try {
+        const outcome = await app.withPii(async (tx) => {
+          const [exists] = await tx
+            .select({ id: customers.id })
+            .from(customers)
+            .where(eq(customers.id, customerId))
+            .limit(1);
+          if (!exists) throw new CustomerNotFoundError(`Customer ${customerId} not found.`);
+
+          const inserted = await tx.execute<{
+            id: string;
+            // postgres-js returns raw `execute` timestamps as strings (column
+            // codecs only apply to typed .select()), so coerce on the way out.
+            captured_at: string;
+            retention_until: string;
+          }>(sql`
+            INSERT INTO kyc_documents (
+              id, customer_id, document_type, issuing_country_iso2, issuing_authority,
+              document_number_encrypted, issued_on, expires_on,
+              document_photo_storage_key, document_photo_sha256, document_photo_size_bytes,
+              captured_by_user_id, captured_at_terminal_id, retention_until
+            ) VALUES (
+              ${docId}, ${customerId}, ${body.documentType}::id_document_type,
+              ${body.issuingCountryIso2}, ${body.issuingAuthority ?? null},
+              encrypt_pii(${body.documentNumber}),
+              ${body.issuedOn ?? null}::date, ${body.expiresOn}::date,
+              ${storageKey}, decode(${compressed.sha256Hex}, 'hex'), ${encrypted.length},
+              ${actorId}, ${deviceId},
+              (now() + (${retentionYears} || ' years')::interval)::date
+            )
+            RETURNING id, captured_at, retention_until::text AS retention_until`);
+          const row = inserted[0];
+          if (!row) throw new Error('kyc_documents INSERT returned no row');
+
+          // Audit — REDACTED. Never the plaintext document number.
+          await tx.insert(auditLog).values({
+            eventType: 'customer.kyc_document_added',
+            actorUserId: actorId,
+            deviceId,
+            ipAddress: req.ip ?? null,
+            userAgent: req.headers['user-agent'] ?? null,
+            payload: {
+              customerId,
+              kycDocumentId: row.id,
+              documentType: body.documentType,
+              issuingCountryIso2: body.issuingCountryIso2,
+              storageKey,
+              sha256Hex: compressed.sha256Hex,
+              sizeBytes: encrypted.length,
+              issuedOn: body.issuedOn ?? null,
+              expiresOn: body.expiresOn,
+              retentionYears,
+            },
+          });
+
+          await tx
+            .update(customers)
+            .set({ kycCompletedAt: new Date() })
+            .where(eq(customers.id, customerId));
+
+          return { id: row.id, capturedAt: row.captured_at, retentionUntil: row.retention_until };
         });
 
-        // 4. Touch the customer's kyc_completed_at so the catalog list
-        //    surfaces the change. The Owner still has to explicitly stamp
-        //    kyc_verified_at via PATCH /kyc — that gate is operator-set
-        //    confirmation, not just "we have a photo".
-        await tx
-          .update(customers)
-          .set({ kycCompletedAt: new Date() })
-          .where(eq(customers.id, customerId));
+        return reply.status(200).send({
+          id: outcome.id,
+          customerId,
+          documentType: body.documentType,
+          capturedAt: new Date(outcome.capturedAt).toISOString(),
+          expiresOn: body.expiresOn,
+          retentionUntil: outcome.retentionUntil,
+        });
+      } catch (err) {
+        // The row was not committed — drop the orphan encrypted file.
+        await deleteKycImage(env.KYC_PHOTOS_DIR, storageKey).catch(() => {});
+        throw err;
+      }
+    },
+  );
 
-        return {
-          id: row.id,
-          capturedAt: row.captured_at,
-          retentionUntil: row.retention_until,
-        };
+  // ── GET /api/customers/:id/kyc-documents/:docId/image ──────────────────
+  // PRIVATE. ADMIN + step-up. Decrypt → verify sha256 → serve no-store.
+  app.get<{ Params: { id: string; docId: string } }>(
+    '/api/customers/:id/kyc-documents/:docId/image',
+    {
+      schema: {
+        tags: ['customers'],
+        summary: 'View a customer KYC ID-document image (ADMIN + step-up, never public).',
+        params: Type.Object({
+          id: Type.String({ format: 'uuid' }),
+          docId: Type.String({ format: 'uuid' }),
+        }),
+        response: {
+          401: ErrorResponse,
+          403: ErrorResponse,
+          404: ErrorResponse,
+          409: ErrorResponse,
+        },
+      },
+    },
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'ADMIN');
+      requireStepUp(req);
+      if (!keyring) throw new KycStorageUnconfiguredError();
+
+      const { id: customerId, docId } = req.params;
+
+      const [row] = await app.db
+        .select({
+          storageKey: kycDocuments.documentPhotoStorageKey,
+          sha256Hex: sql<string | null>`encode(${kycDocuments.documentPhotoSha256}, 'hex')`,
+          purgedAt: kycDocuments.purgedAt,
+        })
+        .from(kycDocuments)
+        .where(and(eq(kycDocuments.id, docId), eq(kycDocuments.customerId, customerId)))
+        .limit(1);
+
+      // 404 for absent or purged (a shell has storage_key NULL) — never reveal more.
+      if (!row || row.purgedAt !== null || !row.storageKey || !row.sha256Hex) {
+        throw new KycDocumentNotFoundError('KYC document image not found.');
+      }
+
+      const file = await readKycImage(env, row.storageKey);
+      if (!file) {
+        // LIVE row but the file is gone — an integrity problem, audited.
+        await app.db.insert(auditLog).values({
+          eventType: 'security.kyc_image_missing',
+          actorUserId: req.actor.id,
+          deviceId: req.deviceId ?? null,
+          ipAddress: req.ip ?? null,
+          payload: { customerId, kycDocumentId: docId },
+        });
+        throw new KycIntegrityError('KYC image file missing for a live row.');
+      }
+
+      const aad = kycImageAad(customerId, docId, row.storageKey);
+      let plaintext: Buffer;
+      try {
+        plaintext = decryptKycImage(file, aad, keyring);
+      } catch (err) {
+        // Tag failure = tamper / wrong key / wrong row. Serve NOTHING; audit it.
+        await app.db.insert(auditLog).values({
+          eventType: 'security.kyc_image_tamper',
+          actorUserId: req.actor.id,
+          deviceId: req.deviceId ?? null,
+          ipAddress: req.ip ?? null,
+          payload: {
+            customerId,
+            kycDocumentId: docId,
+            reason: err instanceof KycCryptoError ? err.message : 'decrypt failed',
+          },
+        });
+        throw new KycIntegrityError('KYC image authentication failed.');
+      }
+
+      // Independent integrity record (matches the existing posture).
+      const actualSha = createHash('sha256').update(plaintext).digest('hex');
+      if (actualSha !== row.sha256Hex) {
+        await app.db.insert(auditLog).values({
+          eventType: 'security.kyc_image_sha_mismatch',
+          actorUserId: req.actor.id,
+          deviceId: req.deviceId ?? null,
+          ipAddress: req.ip ?? null,
+          payload: { customerId, kycDocumentId: docId },
+        });
+        throw new KycIntegrityError('KYC image integrity check failed.');
+      }
+
+      // Access to an Ausweis is itself auditable.
+      await app.db.insert(auditLog).values({
+        eventType: 'customer.kyc_document_viewed',
+        actorUserId: req.actor.id,
+        deviceId: req.deviceId ?? null,
+        ipAddress: req.ip ?? null,
+        userAgent: req.headers['user-agent'] ?? null,
+        payload: { customerId, kycDocumentId: docId },
       });
 
-      // Silence the unused-import warning — kycDocuments helps reviewers find
-      // the table being modified by the raw SQL.
-      void kycDocuments;
-
-      return reply.status(200).send({
-        id: outcome.id,
-        customerId,
-        documentType: body.documentType,
-        capturedAt: outcome.capturedAt.toISOString(),
-        expiresOn: body.expiresOn,
-        retentionUntil: outcome.retentionUntil,
-      });
+      return reply
+        .header('Content-Type', 'image/webp')
+        .header('Cache-Control', 'no-store')
+        .header('Pragma', 'no-cache')
+        .send(plaintext);
     },
   );
 };

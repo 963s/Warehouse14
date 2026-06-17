@@ -146,6 +146,37 @@ const EnvSchema = Type.Object({
       'Public base URL the POS/storefront reads served photos from. publicUrl is built as ' +
       '<base>/api/photos/<id>/raw. The Tauri CSP already allows the api host for img/connect.',
   }),
+
+  // ── KYC ID-document local store (migration 0074; replaces the empty R2) ─
+  // GwG/DSGVO-sensitive Ausweis images. SEPARATE from PHOTOS_DIR — these bytes
+  // are AES-256-GCM encrypted at rest and NEVER public.
+  KYC_IMAGE_ENCRYPTION_KEY: Type.String({
+    // NO default ON PURPOSE — boot MUST fail if absent (mirrors AUTH_SECRET).
+    // A 256-bit key, base64-encoded (32 raw bytes → 44 base64 chars). Generate
+    // with `openssl rand -base64 32`. NOT the WAREHOUSE14_PII_KEY passphrase
+    // (that is a pgcrypto short-string key). The decoded length is asserted to
+    // be exactly 32 bytes at boot (assertKycImageKeyValid). NEVER logged.
+    minLength: 43,
+    description:
+      'Mandatory AES-256-GCM key for KYC image at-rest encryption — base64 of 32 bytes, no ' +
+      'default. Boot fails if unset or not 32 bytes. Distinct from WAREHOUSE14_PII_KEY.',
+  }),
+  KYC_PHOTOS_DIR: Type.String({
+    default: '/data/kyc',
+    description:
+      'Filesystem directory the API writes AES-256-GCM-encrypted KYC image (.enc) files to, ' +
+      'sharded by storage-key prefix. MUST be a persistent Docker volume, separate from ' +
+      'PHOTOS_DIR, and the worker mounts the SAME path for the retention purge.',
+  }),
+  KYC_STORE_MAX_BYTES: Type.Integer({
+    // 5 GiB — separate cap so KYC bytes never share the product-photo quota
+    // (PHOTO_STORE_MAX_BYTES only SUMs product_photos and would undercount).
+    default: 5 * 1024 * 1024 * 1024,
+    minimum: 1024 * 1024,
+    description:
+      'Hard cap (bytes) for the local KYC image store. Uploads that would exceed it are refused.',
+  }),
+
   // ── Stripe (Day 19) — primary online payment provider ─────────────────
   // V1 amendment to memory.md #31 (Mollie primary): Basel overrode 2026-05-25
   // and selected Stripe for the entire payment surface — supports SEPA Direct
@@ -406,7 +437,26 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   // every boot path because every entrypoint goes through loadEnv().
   assertNoTestDeviceFingerprintInProd(env, source);
 
+  // KYC image at-rest key must be a valid 32-byte AES-256 key. Fail the boot,
+  // never a runtime Ausweis encryption.
+  assertKycImageKeyValid(env);
+
   return env;
+}
+
+/**
+ * Boot guard — KYC_IMAGE_ENCRYPTION_KEY MUST decode (base64) to exactly 32 bytes
+ * (AES-256). A misconfigured key fails the boot, never a runtime Ausweis write.
+ * The key value is NEVER included in the error message or any log.
+ */
+export function assertKycImageKeyValid(env: Env): void {
+  const decoded = Buffer.from(env.KYC_IMAGE_ENCRYPTION_KEY, 'base64');
+  if (decoded.length !== 32) {
+    throw new Error(
+      `FATAL: KYC_IMAGE_ENCRYPTION_KEY must decode to exactly 32 bytes (AES-256); got ${decoded.length}. ` +
+        'Generate with `openssl rand -base64 32`. Refusing to start.',
+    );
+  }
 }
 
 /**

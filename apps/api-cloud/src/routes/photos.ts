@@ -441,9 +441,10 @@ const photosRoutes: FastifyPluginAsync<PhotosRoutesOpts> = async (app, opts) => 
       //
       // The `storageKind === 'local'` gate below is the in-handler defense: only
       // local product-photo bytes are streamed. KYC/Ausweis evidence lives in the
-      // separate `kyc_documents` table (R2-backed, never reachable here) — these
-      // routes can never serve sensitive PII. Anything not a local product photo
-      // 404s.
+      // separate `kyc_documents` table + KYC_PHOTOS_DIR (AES-256-GCM-encrypted,
+      // served only via the private ADMIN + step-up route — never reachable here)
+      // — these routes can never serve sensitive PII. Anything not a local
+      // product photo 404s.
       const [row] = await app.db
         .select({ id: productPhotos.id, storageKind: productPhotos.storageKind })
         .from(productPhotos)

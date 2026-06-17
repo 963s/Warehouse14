@@ -7,8 +7,9 @@
  *   • document number (plaintext on the wire — encrypted at rest via
  *     `encrypt_pii()` inside withPii)
  *   • validity window
- *   • R2 key + SHA-256 hex of the uploaded photo (client computed via
- *     `crypto.subtle.digest`)
+ *   • the image bytes (base64 + contentType). The SERVER compresses, strips
+ *     EXIF, AES-256-GCM-encrypts to a LOCAL file (migration 0074), and computes
+ *     the SHA-256 — R2 is gone; the client supplies neither a key nor a hash.
  *   • optional retention years (default 5 — GwG-aligned, see ADR-0007)
  */
 
@@ -35,10 +36,18 @@ export const KycDocumentBody = Type.Object({
   documentNumber: Type.String({ minLength: 1, maxLength: 64 }),
   issuedOn: Type.Optional(Type.String({ format: 'date' })),
   expiresOn: Type.String({ format: 'date' }),
-  /** R2 key returned by POST /api/photos/upload-url (intent='kyc'). */
-  r2Key: Type.String({ minLength: 1, maxLength: 1024 }),
-  /** 64-hex-char SHA-256 of the uploaded photo bytes (lowercase). */
-  sha256Hex: Type.String({ pattern: '^[0-9a-f]{64}$' }),
+  /**
+   * Image payload, base64-encoded (no data: URI prefix). The server compresses
+   * + EXIF-strips, AES-256-GCM-encrypts to a LOCAL file (migration 0074), and
+   * COMPUTES the sha256 over the compressed bytes — the client no longer
+   * supplies an r2Key or sha256.
+   */
+  dataBase64: Type.String({ minLength: 1 }),
+  contentType: Type.Union([
+    Type.Literal('image/jpeg'),
+    Type.Literal('image/png'),
+    Type.Literal('image/webp'),
+  ]),
   retentionYears: Type.Optional(Type.Integer({ minimum: 1, maximum: 30, default: 5 })),
 });
 export type KycDocumentBody = Static<typeof KycDocumentBody>;
