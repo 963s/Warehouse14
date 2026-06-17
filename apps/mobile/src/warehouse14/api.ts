@@ -1,93 +1,151 @@
 /**
- * The single api-cloud connection for the POC.
+ * The single authenticated api-cloud client for the staff app.
  *
- * This is the WHOLE point of goal 1: the data layer is the EXISTING
- * @warehouse14/api-client package — we only construct the client and call its
- * free functions. No fetch logic is reimplemented here.
+ * P0: switches the POC's anonymous client to a real session —
+ *   • defaultHeaders injects the DEV device fingerprint past the mTLS wall
+ *     (dev bypass; mtls.ts reads `x-dev-device-fingerprint` in NODE_ENV=dev).
+ *     THIS IS A DEV SEED — it must retire for real per-phone mTLS at go-live.
+ *   • getAuthToken carries the PIN-login session token as `Authorization:
+ *     Bearer` (RN has no cookie jar).
+ *   • stepUpMiddleware transparently re-auths + retries on 403 STEP_UP_REQUIRED
+ *     via the native PIN Dialog (see step-up.ts).
  *
- * Endpoint choice: `storefrontApi.listProducts` is the PUBLIC catalog route
- * (no login, no device cert), so it works as the zero-auth first screen and
- * also backs the barcode lookup (it accepts `{ q }`). The staff path
- * (`productsApi.list`) needs a better-auth email session + ADMIN/CASHIER role
- * — that is the production path and is intentionally out of scope here.
+ * The data layer is the EXISTING @warehouse14/api-client package — only the
+ * client is constructed here; the domain methods (authPin, productsApi) are
+ * free functions taking the client first.
  */
 import {
+  ApiError,
+  authPin,
   createApiClient,
-  storefrontApi,
+  metalPricesApi,
+  productsApi,
+  stepUpMiddleware,
   type ApiClient,
-  type StorefrontProduct,
-  type StorefrontProductsResponse,
+  type CurrentMetalPrice,
+  type InventoryAdjustmentBody,
+  type PinLoginResponse,
+  type ProductDetail,
+  type ProductListQuery,
+  type ProductListResponse,
 } from "@warehouse14/api-client"
 import { Money } from "@warehouse14/domain/money"
 
+import { getSessionToken } from "./session"
+import { classifyScanMatch, type ScanMatch } from "./scan-resolve"
+import { stepUpService } from "./step-up"
+
 /**
- * Dev api-cloud base URL.
- *
- * MUST be the Mac's LAN IP (or an Expo tunnel) — a physical phone cannot reach
- * `localhost`. NEVER point this at production (https://api.warehouse14.de).
- * Override without editing code via the `EXPO_PUBLIC_API_BASE_URL` env var.
+ * LOCAL dev api-cloud only — the Mac LAN IP. NEVER production
+ * (https://api.warehouse14.de). Override via EXPO_PUBLIC_API_BASE_URL.
  */
 export const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://192.168.179.93:3001"
 
 /**
- * The shared client. `getAuthToken` returns undefined for the POC — the
- * storefront routes are public. When the staff path is wired later, this is
- * where a Bearer token would be supplied (RN has no cookie jar).
+ * DEV device fingerprint = SHA-256 of the dev cert seeded by api-cloud's
+ * dev-bootstrap (devices.cert_serial). Override via
+ * EXPO_PUBLIC_DEV_DEVICE_FINGERPRINT. DEV ONLY — retires at go-live.
  */
+export const DEV_DEVICE_FINGERPRINT =
+  process.env.EXPO_PUBLIC_DEV_DEVICE_FINGERPRINT ??
+  "71defad08503fcfb00b0b57e7654b3ed48afb264d34c69c3edb90a65a6b8f698"
+
 export const apiClient: ApiClient = createApiClient({
   baseUrl: API_BASE_URL,
-  getAuthToken: () => undefined,
+  credentials: "include",
+  defaultHeaders: { "x-dev-device-fingerprint": DEV_DEVICE_FINGERPRINT },
+  getAuthToken: getSessionToken,
+  middlewares: [stepUpMiddleware(stepUpService)],
 })
 
-/** Prefix a relative api path (e.g. a photo URL) with the dev base URL. */
+// ── Auth ────────────────────────────────────────────────────────────────────
+export function pinLogin(pin: string): Promise<PinLoginResponse> {
+  return authPin.login(apiClient, { pin })
+}
+
+/** PIN step-up — refreshes the session's step-up window (used by the Dialog). */
+export function pinStepUp(pin: string): Promise<unknown> {
+  return authPin.stepUp(apiClient, { pin })
+}
+
+// ── Staff products (the authenticated path — not the public storefront) ──────
+export function listProducts(query: ProductListQuery = {}): Promise<ProductListResponse> {
+  return productsApi.list(apiClient, query)
+}
+
+export function getProduct(id: string): Promise<ProductDetail> {
+  return productsApi.get(apiClient, id)
+}
+
+/** Relocate (LOCATION_CHANGE) — writes audit_log + requires step-up (auto). */
+export function relocateProduct(
+  id: string,
+  body: InventoryAdjustmentBody,
+): ReturnType<typeof productsApi.adjustInventory> {
+  return productsApi.adjustInventory(apiClient, id, body)
+}
+
+// ── Scan → product (the real cashier flow) ───────────────────────────────────
+export async function resolveScannedCode(code: string): Promise<ScanMatch> {
+  const res = await productsApi.list(apiClient, { q: code, limit: 10 })
+  return classifyScanMatch(code, res.items)
+}
+
+// ── Schmelzwert (melt value) ─────────────────────────────────────────────────
+export function currentMetalPrices(): ReturnType<typeof metalPricesApi.current> {
+  return metalPricesApi.current(apiClient)
+}
+
+/** Schmelzwert = Feingewicht (g) × aktueller Kurs (€/g) for the product's metal. */
+export function schmelzwertEur(
+  feingewichtGrams: string | null,
+  metal: string | null,
+  prices: readonly CurrentMetalPrice[],
+): string | null {
+  if (!feingewichtGrams || !metal) return null
+  const row = prices.find((p) => String(p.metal) === String(metal))
+  if (!row?.pricePerGramEur) return null
+  const value = Number(feingewichtGrams) * Number(row.pricePerGramEur)
+  if (!Number.isFinite(value)) return null
+  return Money.of(value.toFixed(2), "EUR").format()
+}
+
+// ── Formatting / helpers ─────────────────────────────────────────────────────
+export function formatEur(eur: string): string {
+  return Money.of(eur, "EUR").format()
+}
+
+/** Prefix a relative api photo path with the base URL for <Image>. */
 export function absoluteUrl(pathOrUrl: string): string {
   if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl
   return `${API_BASE_URL}${pathOrUrl.startsWith("/") ? "" : "/"}${pathOrUrl}`
 }
 
-/** Goal 1: pull the real catalog through the existing package. */
-export function listProducts(limit = 20, offset = 0): Promise<StorefrontProductsResponse> {
-  return storefrontApi.listProducts(apiClient, { limit, offset })
-}
-
-/** Format a storefront product's price using the shared Money type (de-DE). */
-export function formatPrice(p: Pick<StorefrontProduct, "listPriceEur" | "currency">): string {
-  return Money.of(p.listPriceEur, p.currency).format()
-}
-
-// ── Barcode → product, mirroring tauri-pos/src/lib/scan-resolve.ts ──────────
-//
-// The cashier flow is `productsApi.list(api, { q: code })` then
-// `classifyScanMatch(code, res.items)`. That classifier is typed to
-// ProductListRow (it reads `status`/`barcode`, which the PUBLIC storefront
-// shape does not expose), so for the POC we run the SAME shape against the
-// public catalog: query by `q`, then match the scanned code to a returned row.
-
-export type StorefrontScanMatch =
-  | { kind: "found"; product: StorefrontProduct }
-  | { kind: "not-found" }
-
-/** Normalise a raw scanner buffer (mirrors normalizeScan in scan-resolve.ts). */
-export function normalizeScan(raw: string): string {
-  return raw.trim().toUpperCase()
-}
-
-/** Match a scanned code to a storefront row by SKU first, then name. */
-export function classifyStorefrontMatch(
-  code: string,
-  rows: readonly StorefrontProduct[],
-): StorefrontScanMatch {
-  const norm = normalizeScan(code)
-  if (norm === "") return { kind: "not-found" }
-  const product = rows.find(
-    (r) => normalizeScan(r.sku) === norm || normalizeScan(r.name) === norm,
-  )
-  return product ? { kind: "found", product } : { kind: "not-found" }
-}
-
-/** Goal 2 follow-up: look a scanned code up through the same public endpoint. */
-export async function lookupScannedCode(code: string): Promise<StorefrontScanMatch> {
-  const res = await storefrontApi.listProducts(apiClient, { q: code, limit: 10 })
-  return classifyStorefrontMatch(code, res.items)
+/** Map an ApiError to a themed German message (PIN lockout, device, etc.). */
+export function describeError(err: unknown): string {
+  if (err instanceof ApiError) {
+    switch (err.code) {
+      case "PIN_LOCKED": {
+        const ms = (err.details as { retryAfterMs?: number } | undefined)?.retryAfterMs
+        const mins = ms ? Math.ceil(ms / 60000) : null
+        return mins
+          ? `PIN gesperrt — in ${mins} Min. erneut versuchen.`
+          : "PIN gesperrt — bitte später erneut versuchen."
+      }
+      case "UNAUTHORIZED":
+        return err.message || "Falsche PIN."
+      case "DEVICE_NOT_AUTHORIZED":
+        return "Gerät nicht autorisiert (dev: Fingerprint prüfen)."
+      case "FORBIDDEN":
+        return "Keine Berechtigung für diese Aktion."
+      case "STEP_UP_REQUIRED":
+        return "PIN-Bestätigung erforderlich."
+      case "VALIDATION_ERROR":
+        return err.message || "Eingabe ungültig."
+      default:
+        return err.message || `Fehler (${err.code}).`
+    }
+  }
+  return err instanceof Error ? err.message : String(err)
 }
