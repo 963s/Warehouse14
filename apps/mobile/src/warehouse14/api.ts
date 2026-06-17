@@ -19,11 +19,13 @@ import {
   authPin,
   createApiClient,
   metalPricesApi,
+  photosApi,
   productsApi,
   stepUpMiddleware,
   type ApiClient,
   type CurrentMetalPrice,
   type InventoryAdjustmentBody,
+  type PhotoRow,
   type PinLoginResponse,
   type ProductDetail,
   type ProductListQuery,
@@ -84,6 +86,15 @@ export function relocateProduct(
   body: InventoryAdjustmentBody,
 ): ReturnType<typeof productsApi.adjustInventory> {
   return productsApi.adjustInventory(apiClient, id, body)
+}
+
+// ── Product photos (server-side LOCAL store; raw/thumb GET is public) ─────────
+export function listProductPhotos(productId: string): Promise<{ items: PhotoRow[] }> {
+  return photosApi.listForProduct(apiClient, productId)
+}
+
+export function setPhotoPrimary(photoId: string): ReturnType<typeof photosApi.setPrimary> {
+  return photosApi.setPrimary(apiClient, photoId)
 }
 
 // ── Scan → product (the real cashier flow) ───────────────────────────────────
