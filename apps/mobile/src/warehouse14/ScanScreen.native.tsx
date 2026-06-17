@@ -1,15 +1,14 @@
 /**
- * Goal 2 — native camera + barcode scan (iOS/Android only).
- *
- * Uses react-native-vision-camera's built-in `useCodeScanner` — a true native
- * code scanner (AVFoundation / CameraX), NOT a webview or getUserMedia. On a
- * hit it runs the goal-1 lookup (storefrontApi { q: code }) and shows the
- * matched product, mirroring the cashier scan→resolve shape.
- *
- * This file is `.native` only; Metro never bundles vision-camera for web.
+ * Scan (iOS/Android) — native vision-camera barcode scanner promoted to the
+ * REAL staff catalog. On a code it calls the authenticated productsApi.list
+ * ({ q: code }) and classifies it with the ported classifyScanMatch, giving the
+ * FULL verdict (found / sold / reserved / draft / not-found). A found row opens
+ * the Lager detail. This file is `.native` only — Metro never bundles
+ * vision-camera for web.
  */
 import { useCallback, useRef, useState } from "react"
 import { StyleSheet, View } from "react-native"
+import { useRouter } from "expo-router"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import {
   Camera,
@@ -19,27 +18,31 @@ import {
   type Code,
 } from "react-native-vision-camera"
 
-import { formatPrice, lookupScannedCode, type StorefrontScanMatch } from "./api"
-import { Badge, Button, Card, W14Text } from "./components"
-import { useW14Theme } from "./theme"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
+import { Text } from "@/components/ui/text"
+import { describeError, formatEur, resolveScannedCode } from "@/warehouse14/api"
+import { STATUS_LABEL, STATUS_VARIANT } from "@/warehouse14/product-ui"
+import type { ScanMatch } from "@/warehouse14/scan-resolve"
+import { useW14Theme } from "@/warehouse14/theme"
 
 type Lookup =
   | { status: "idle" }
   | { status: "looking"; code: string }
-  | { status: "done"; code: string; match: StorefrontScanMatch }
+  | { status: "done"; code: string; match: ScanMatch }
   | { status: "error"; code: string; message: string }
 
-const DEBOUNCE_MS = 2000
+const DEBOUNCE_MS = 1500
 
 export function ScanScreen() {
   const t = useW14Theme()
+  const router = useRouter()
   const insets = useSafeAreaInsets()
   const { hasPermission, requestPermission } = useCameraPermission()
   const device = useCameraDevice("back")
   const [lookup, setLookup] = useState<Lookup>({ status: "idle" })
 
-  // Debounce duplicate reads: ignore the same value within DEBOUNCE_MS and
-  // ignore any new scan while a lookup is in flight.
   const lastRef = useRef<{ value: string; at: number }>({ value: "", at: 0 })
   const busyRef = useRef(false)
 
@@ -51,10 +54,10 @@ export function ScanScreen() {
     busyRef.current = true
     setLookup({ status: "looking", code })
     try {
-      const match = await lookupScannedCode(code)
+      const match = await resolveScannedCode(code)
       setLookup({ status: "done", code, match })
-    } catch (err) {
-      setLookup({ status: "error", code, message: err instanceof Error ? err.message : String(err) })
+    } catch (e) {
+      setLookup({ status: "error", code, message: describeError(e) })
     } finally {
       busyRef.current = false
     }
@@ -71,12 +74,14 @@ export function ScanScreen() {
   if (!hasPermission) {
     return (
       <Centered>
-        <Card style={{ gap: t.space.x3 }}>
-          <W14Text variant="title">Kamerazugriff benötigt</W14Text>
-          <W14Text variant="caption">
+        <Card className="gap-3 px-4 py-5">
+          <Text className="text-lg font-semibold">Kamerazugriff benötigt</Text>
+          <Text className="text-muted-foreground text-sm">
             Zum Scannen von Barcodes braucht die App Zugriff auf die Kamera.
-          </W14Text>
-          <Button title="Zugriff erlauben" money onPress={() => void requestPermission()} />
+          </Text>
+          <Button onPress={() => void requestPermission()}>
+            <Text>Zugriff erlauben</Text>
+          </Button>
         </Card>
       </Centered>
     )
@@ -85,8 +90,8 @@ export function ScanScreen() {
   if (device == null) {
     return (
       <Centered>
-        <Card>
-          <W14Text variant="title">Keine Kamera gefunden</W14Text>
+        <Card className="px-4 py-5">
+          <Text className="text-lg font-semibold">Keine Kamera gefunden</Text>
         </Card>
       </Centered>
     )
@@ -103,61 +108,64 @@ export function ScanScreen() {
           bottom: insets.bottom + t.space.x4,
         }}
       >
-        <ResultCard lookup={lookup} />
+        <VerdictCard lookup={lookup} onOpen={(id) => router.push({ pathname: "/product/[id]", params: { id } })} />
       </View>
     </View>
   )
 }
 
-function ResultCard({ lookup }: { lookup: Lookup }) {
-  const t = useW14Theme()
+function VerdictCard({ lookup, onOpen }: { lookup: Lookup; onOpen: (id: string) => void }) {
   if (lookup.status === "idle") {
     return (
-      <Card>
-        <W14Text variant="caption">Barcode in den Rahmen halten…</W14Text>
+      <Card className="px-4 py-3">
+        <Text className="text-muted-foreground text-sm">Barcode in den Rahmen halten…</Text>
       </Card>
     )
   }
   if (lookup.status === "looking") {
     return (
-      <Card>
-        <W14Text variant="mono">{lookup.code}</W14Text>
-        <W14Text variant="caption">Suche im Katalog…</W14Text>
+      <Card className="gap-1 px-4 py-3">
+        <Text className="font-mono text-xs">{lookup.code}</Text>
+        <Text className="text-muted-foreground text-sm">Suche im Lager…</Text>
       </Card>
     )
   }
   if (lookup.status === "error") {
     return (
-      <Card style={{ borderColor: t.colors.destructive, gap: t.space.x1 }}>
-        <W14Text variant="mono">{lookup.code}</W14Text>
-        <W14Text variant="caption" color={t.colors.destructive}>
-          {lookup.message}
-        </W14Text>
+      <Card className="gap-1 border-destructive px-4 py-3">
+        <Text className="font-mono text-xs">{lookup.code}</Text>
+        <Text className="text-destructive text-sm">{lookup.message}</Text>
       </Card>
     )
   }
-  // done
   if (lookup.match.kind === "not-found") {
     return (
-      <Card style={{ gap: t.space.x1 }}>
-        <W14Text variant="mono">{lookup.code}</W14Text>
-        <Badge label="Nicht im Katalog" tone="danger" />
+      <Card className="gap-2 px-4 py-3">
+        <Text className="font-mono text-xs">{lookup.code}</Text>
+        <Badge variant="destructive">
+          <Text>Nicht im Lager</Text>
+        </Badge>
       </Card>
     )
   }
   const p = lookup.match.product
   return (
-    <Card style={{ flexDirection: "row", alignItems: "center", gap: t.space.x3 }}>
-      <View style={{ flex: 1, gap: t.space.x1 }}>
-        <W14Text variant="title" numberOfLines={2}>
-          {p.name}
-        </W14Text>
-        <W14Text variant="mono">{p.sku}</W14Text>
-        <Badge label="Gefunden" tone="positive" />
+    <Card className="gap-3 px-4 py-3">
+      <View className="flex-row items-center gap-3">
+        <View className="flex-1 gap-1">
+          <Text className="text-base font-semibold" numberOfLines={2}>
+            {p.name}
+          </Text>
+          <Text className="font-mono text-xs text-muted-foreground">{p.sku}</Text>
+          <Badge variant={STATUS_VARIANT[p.status]}>
+            <Text>{STATUS_LABEL[p.status]}</Text>
+          </Badge>
+        </View>
+        <Text className="text-primary text-base font-bold">{formatEur(p.listPriceEur)}</Text>
       </View>
-      <W14Text variant="title" color={t.colors.primary}>
-        {formatPrice(p)}
-      </W14Text>
+      <Button onPress={() => onOpen(p.id)}>
+        <Text>Im Lager öffnen</Text>
+      </Button>
     </Card>
   )
 }
@@ -165,7 +173,14 @@ function ResultCard({ lookup }: { lookup: Lookup }) {
 function Centered({ children }: { children: React.ReactNode }) {
   const t = useW14Theme()
   return (
-    <View style={{ flex: 1, backgroundColor: t.colors.background, justifyContent: "center", padding: t.space.x4 }}>
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: t.colors.background,
+        justifyContent: "center",
+        padding: t.space.x4,
+      }}
+    >
       {children}
     </View>
   )
