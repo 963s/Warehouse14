@@ -267,7 +267,10 @@ export default function CustomerDetailScreen() {
             <Button
               variant="outline"
               className="flex-1"
-              onPress={() => setEditingTrust(false)}
+              onPress={() => {
+                setEditingTrust(false)
+                setTrustNotes("")
+              }}
               disabled={busy}
             >
               <Text>Abbrechen</Text>

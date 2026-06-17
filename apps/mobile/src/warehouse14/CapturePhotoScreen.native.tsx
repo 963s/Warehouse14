@@ -5,9 +5,11 @@
  * — Metro never bundles vision-camera for web (the split keeps web export clean).
  *
  * No-persist: retake/cancel discard the temp capture file immediately; on
- * confirm, the pipeline discards it after upload (see photo-pipeline.ts).
+ * confirm, the pipeline discards it after upload (see photo-pipeline.ts); and an
+ * unmount / route-dismissal while previewing discards it too (the effect below)
+ * — an Ausweis must never linger on the device, on ANY path.
  */
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Image, Pressable, StyleSheet, View } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Camera, useCameraDevice, useCameraPermission } from "react-native-vision-camera"
@@ -40,6 +42,18 @@ export function CapturePhotoScreen({ onConfirm, onCancel, busy, error }: Capture
   const camera = useRef<Camera>(null)
   const [captured, setCaptured] = useState<CapturedPhoto | null>(null)
   const [capturing, setCapturing] = useState(false)
+
+  // No-persist (airtight): while a capture is held, discard its temp file when we
+  // stop holding it OR when the screen unmounts. This closes the one path the
+  // explicit retake/cancel/confirm handlers miss — a full route dismissal
+  // (Android back, swipe-to-dismiss, programmatic router.back) WHILE the preview
+  // is showing. discardCapture is best-effort, so the overlap with those handlers
+  // is a harmless no-op. An Ausweis must never linger on the device.
+  useEffect(() => {
+    return () => {
+      if (captured) discardCapture(captured)
+    }
+  }, [captured])
 
   async function shoot() {
     if (!camera.current || capturing) return
@@ -131,7 +145,12 @@ export function CapturePhotoScreen({ onConfirm, onCancel, busy, error }: Capture
   return (
     <View style={{ flex: 1, backgroundColor: "#000" }}>
       <Camera ref={camera} style={StyleSheet.absoluteFill} device={device} isActive photo />
-      <View style={[barStyle, { flexDirection: "row", alignItems: "center", justifyContent: "space-between" }]}>
+      <View
+        style={[
+          barStyle,
+          { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+        ]}
+      >
         <Button variant="outline" onPress={cancel}>
           <Text>Abbrechen</Text>
         </Button>
