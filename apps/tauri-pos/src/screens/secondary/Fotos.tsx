@@ -24,6 +24,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import {
   ApiError,
+  type CustomerKycDocumentBody,
   type KycDocumentType,
   type PhotoRow,
   type PhotoUploadIntent,
@@ -35,12 +36,7 @@ import { Button, DiamondRule, ParchmentCard, Seal } from '@warehouse14/ui-kit';
 import { CropStudio } from '../../components/hardware/CropStudio.js';
 import { useCamera } from '../../hooks/useCamera.js';
 import { useApiClient } from '../../lib/api-context.js';
-import { sha256HexOfBlob } from '../../lib/image-hash.js';
-import {
-  photoContentTypeOf,
-  uploadBlobToR2,
-  uploadProductPhotoViaApi,
-} from '../../lib/photo-upload.js';
+import { photoContentTypeOf, uploadProductPhotoViaApi } from '../../lib/photo-upload.js';
 import { useToastStore } from '../../state/toast-store.js';
 
 type Mode = 'produkt' | 'kyc' | 'allgemein';
@@ -52,11 +48,8 @@ interface Snapshot {
   previewUrl: string;
   status: SnapshotStatus;
   error?: string;
-  /** Set once R2 PUT succeeds — drives the register POST. */
-  r2Key?: string;
+  /** Product / orphan mode: the server-written public URL (set after upload). */
   publicUrl?: string;
-  /** Set for KYC mode — used by the form below. */
-  sha256Hex?: string;
 }
 
 const KYC_DOC_OPTIONS: Array<{ value: KycDocumentType; label: string }> = [
@@ -66,6 +59,30 @@ const KYC_DOC_OPTIONS: Array<{ value: KycDocumentType; label: string }> = [
   { value: 'PASSPORT_EU', label: 'EU-Reisepass' },
   { value: 'PASSPORT_NON_EU', label: 'Reisepass Nicht-EU' },
 ];
+
+/**
+ * Blob → raw base64 (NO `data:` prefix) via FileReader. The KYC capture sends
+ * the document bytes inline; the server compresses, hashes, and AES-256-GCM-
+ * encrypts them at rest (#I-47). The base64 is transient — never logged, never
+ * persisted beyond the in-flight request.
+ */
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error ?? new Error('Datei konnte nicht gelesen werden.'));
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result !== 'string') {
+        reject(new Error('Unerwartetes Leseergebnis.'));
+        return;
+      }
+      // `data:<mime>;base64,<DATA>` → keep only <DATA>.
+      const comma = result.indexOf(',');
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    reader.readAsDataURL(blob);
+  });
+}
 
 export function Fotos(): JSX.Element {
   const api = useApiClient();
@@ -131,34 +148,22 @@ export function Fotos(): JSX.Element {
 
   /**
    * Pipeline:
-   *   queued → uploading (R2 PUT) → registering (POST /api/photos) → done
-   *   OR failed at any step (operator can retry or discard)
-   *
-   * For KYC mode the registration step is deferred — the KYC form (below)
-   * collects the document fields and submits to /api/customers/:id/kyc-documents.
-   * Until then the snapshot stops at status='done' with r2Key+sha256 ready.
+   *   • product / orphan: queued → uploading (server writes the file + binds
+   *     the row via uploadProductPhotoViaApi) → done, OR failed (retry/discard).
+   *   • KYC: queued → done immediately — NO client upload. The captured blob is
+   *     RETAINED in memory on the snapshot; the KYC form (below) collects the
+   *     document fields and POSTs the raw bytes to
+   *     /api/customers/:id/kyc-documents, where the server compresses, hashes,
+   *     and AES-256-GCM-encrypts them at rest (#I-47). 'done' = ready to submit.
    */
   const processSnapshot = useCallback(
     async (snap: Snapshot): Promise<void> => {
       try {
-        // KYC mode keeps the presigned-PUT + separate-binding flow because the
-        // KYC documents route needs the sha256 of the *unaltered* document.
+        // KYC mode: no client upload (R2 is gone). The captured blob stays on
+        // the snapshot until the form submits the bytes; 'done' just means
+        // "captured, ready to fill the form + submit".
         if (mode === 'kyc') {
-          updateSnapshot(snap.id, { status: 'uploading' });
-          const uploaded = await uploadBlobToR2({
-            api,
-            blob: snap.blob,
-            intent,
-            // Honour the blob's real type (KYC docs are not WebP-compressed).
-            contentType: photoContentTypeOf(snap.blob),
-          });
-          const sha256Hex = await sha256HexOfBlob(snap.blob);
-          updateSnapshot(snap.id, {
-            r2Key: uploaded.r2Key,
-            publicUrl: uploaded.publicUrl,
-            sha256Hex,
-            status: 'done',
-          });
+          updateSnapshot(snap.id, { status: 'done' });
           return;
         }
 
@@ -172,7 +177,6 @@ export function Fotos(): JSX.Element {
           ...(mode === 'produkt' && productId ? { productId } : {}),
         });
         updateSnapshot(snap.id, {
-          r2Key: row.r2Key,
           publicUrl: row.publicUrl,
           status: 'done',
         });
@@ -466,10 +470,10 @@ export function Fotos(): JSX.Element {
           {mode === 'kyc' && customerId && (
             <KycDocumentForm
               customerId={customerId}
-              readySnapshot={
-                snapshots.find((s) => s.status === 'done' && s.r2Key && s.sha256Hex) ?? null
-              }
-              onBound={(snapId) => updateSnapshot(snapId, { status: 'done' })}
+              readySnapshot={snapshots.find((s) => s.status === 'done') ?? null}
+              // After a successful bind, DISCARD the local capture (revokes the
+              // object URL + drops the in-memory blob) — no plaintext lingers.
+              onBound={(snapId) => removeSnapshot(snapId)}
             />
           )}
         </aside>
@@ -1195,25 +1199,29 @@ function KycDocumentForm({
 
   const canSubmit =
     readySnapshot !== null &&
-    readySnapshot.r2Key !== undefined &&
-    readySnapshot.sha256Hex !== undefined &&
     documentNumber.trim().length > 0 &&
     /^[A-Z]{2}$/.test(issuingCountry) &&
     /^\d{4}-\d{2}-\d{2}$/.test(expiresOn) &&
     !submitting;
 
   const submit = useCallback(async (): Promise<void> => {
-    if (!canSubmit || !readySnapshot?.r2Key || !readySnapshot.sha256Hex) return;
+    if (!canSubmit || !readySnapshot) return;
     setSubmitting(true);
     setError(null);
     try {
-      const body = {
+      // Send the RAW bytes inline (base64, no `data:` prefix). The server
+      // compresses, computes the sha256, and AES-256-GCM-encrypts at rest —
+      // there is no client R2 upload, no client hash. contentType is normalised
+      // to a server-accepted type (jpeg / png / webp).
+      const dataBase64 = await blobToBase64(readySnapshot.blob);
+      const contentType = photoContentTypeOf(readySnapshot.blob);
+      const body: CustomerKycDocumentBody = {
         documentType,
         issuingCountryIso2: issuingCountry,
         documentNumber: documentNumber.trim(),
         expiresOn,
-        r2Key: readySnapshot.r2Key,
-        sha256Hex: readySnapshot.sha256Hex,
+        dataBase64,
+        contentType,
         ...(issuingAuthority.trim().length > 0
           ? { issuingAuthority: issuingAuthority.trim() }
           : {}),
