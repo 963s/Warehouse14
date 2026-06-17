@@ -60,6 +60,10 @@ export default function RootLayout() {
             name="product/[id]"
             options={{ presentation: "modal", title: "Artikel" }}
           />
+          <Stack.Screen
+            name="capture"
+            options={{ presentation: "fullScreenModal", headerShown: false }}
+          />
         </Stack>
         <StepUpDialogHost />
         <PortalHost />
