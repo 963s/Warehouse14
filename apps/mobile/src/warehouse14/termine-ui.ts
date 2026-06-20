@@ -84,6 +84,27 @@ export function isTerminal(status: AppointmentStatus): boolean {
   )
 }
 
+/** Whether the agenda still offers a forward action (advance / reschedule /
+ *  cancel) for this row — true for every non-terminal state. */
+export function isActionable(status: AppointmentStatus): boolean {
+  return !isTerminal(status)
+}
+
+/**
+ * The accessible verb for the one-tap advance, e.g. "Termin bestätigen" — used
+ * as the button's German accessibility label so it reads as a full intent.
+ */
+export function advanceAccessibilityLabel(next: AppointmentPatchStatus): string {
+  switch (next) {
+    case "CONFIRMED":
+      return "Termin bestätigen"
+    case "CHECKED_IN":
+      return "Kunde einchecken"
+    default:
+      return "Termin weiterführen"
+  }
+}
+
 // ── de-DE date / time formatting ──────────────────────────────────────────────
 const TIME_FMT = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit" })
 const DATE_FMT = new Intl.DateTimeFormat("de-DE", {
@@ -116,6 +137,32 @@ export function formatDateShort(d: Date): string {
 /** "Montag, 23. Juni" — the long header used inside the booking flow. */
 export function formatDayHeader(d: Date): string {
   return DAY_HEADER_FMT.format(d)
+}
+
+const WEEKDAY_FMT = new Intl.DateTimeFormat("de-DE", { weekday: "long" })
+const DAYMONTH_FMT = new Intl.DateTimeFormat("de-DE", { day: "numeric", month: "long" })
+
+/** "Dienstag" — the weekday name, the big line of the agenda's date stepper. */
+export function formatWeekday(d: Date): string {
+  return WEEKDAY_FMT.format(d)
+}
+
+/** "23. Juni" — the day + month, the quiet sub-line of the date stepper. */
+export function formatDayMonth(d: Date): string {
+  return DAYMONTH_FMT.format(d)
+}
+
+/**
+ * A relative label for the stepped-to day — „Heute" / „Morgen" / „Gestern", or
+ * null for any other day (the surface falls back to the weekday name). Whole-day
+ * difference in local time so DST never skews it.
+ */
+export function relativeDayLabel(d: Date): "Heute" | "Morgen" | "Gestern" | null {
+  const diff = Math.round((startOfDay(d).getTime() - startOfDay(new Date()).getTime()) / 86_400_000)
+  if (diff === 0) return "Heute"
+  if (diff === 1) return "Morgen"
+  if (diff === -1) return "Gestern"
+  return null
 }
 
 // ── Day-window math (local time) ──────────────────────────────────────────────
@@ -152,4 +199,23 @@ export function isToday(d: Date): boolean {
 /** Sort an appointment list by start time, ascending (the agenda order). */
 export function sortByStart(items: readonly AppointmentListItem[]): AppointmentListItem[] {
   return [...items].sort((a, b) => a.starts_at.localeCompare(b.starts_at))
+}
+
+// ── Agenda summary ────────────────────────────────────────────────────────────
+/** Real counts for the agenda's day summary — total and still-open (actionable)
+ *  rows. Honest: derived only from the fetched list, never inflated. */
+export function summarise(items: readonly AppointmentListItem[]): {
+  total: number
+  open: number
+} {
+  let open = 0
+  for (const a of items) if (isActionable(a.status)) open += 1
+  return { total: items.length, open }
+}
+
+/** "3 Termine · 2 offen" — the agenda's honest day summary line, pluralised. */
+export function summaryLine(items: readonly AppointmentListItem[]): string {
+  const { total, open } = summarise(items)
+  const totalLabel = total === 1 ? "1 Termin" : `${total} Termine`
+  return open > 0 ? `${totalLabel} · ${open} offen` : totalLabel
 }
