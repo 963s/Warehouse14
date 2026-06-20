@@ -5,9 +5,7 @@
  * for react-native-web (web export) compatibility. `nativewind/theme` provides
  * the RN theme vars, elevation scale and platform fonts.
  * ────────────────────────────────────────────────────────────────────────── */
-@import "tailwindcss/theme.css" layer(theme);
-@import "tailwindcss/preflight.css" layer(base);
-@import "tailwindcss/utilities.css";
+@import "tailwindcss";
 @import "nativewind/theme";
 
 /* Tailwind v4 is CSS-first: declare which files to scan for classes. The

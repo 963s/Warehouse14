@@ -83,6 +83,7 @@
     "@types/react": "~19.2.10",
     "@warehouse14/config": "workspace:*",
     "babel-jest": "^29.2.1",
+    "babel-preset-expo": "~55.0.22",
     "dependency-cruiser": "^17.0.2",
     "eslint": "^8.57.0",
     "eslint-config-expo": "~55.0.0",
