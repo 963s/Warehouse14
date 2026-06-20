@@ -21,6 +21,11 @@
  *   FormField     — labelled input with hint + per-field error.
  *   FormScreen    — form scaffold: error/success banners + sticky save (step-up
  *                   is transparent via the global StepUpDialogHost).
+ *   charts/       — the reports/insights kit: PeriodSwitcher (segmented window),
+ *                   TrendBars (vertical series), Sparkline (compact trend), and
+ *                   TopNList (ranked movers). SVG-free (RN Views only, no native
+ *                   chart dep); each has an honest empty / locked / loading
+ *                   state so a missing aggregate never reads as a real zero.
  *   motion/       — the reanimated-v4 motion system (durations, easings, the
  *                   press-scale, list stagger, CountUp, the break-even GoldFlood);
  *                   re-exported here so surfaces pull one barrel.
@@ -62,6 +67,10 @@ export { ConnectionBanner, ConnectionBannerHost } from "./ConnectionBanner"
 
 export { FormField, type FormFieldProps } from "./FormField"
 export { FormScreen, type FormScreenProps } from "./FormScreen"
+
+// Reports / insights — the SVG-free chart kit (trend bars · sparkline · top-N ·
+// period switcher), built on the spine + honest empty/locked states.
+export * from "./charts"
 
 // Motion system — the shared reanimated-v4 vocabulary every surface moves with.
 export * from "./motion"
