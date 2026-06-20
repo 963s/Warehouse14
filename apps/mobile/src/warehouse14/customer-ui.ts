@@ -9,6 +9,7 @@ import {
   CUSTOMER_KYC_STATUS_LABELS,
   CUSTOMER_TRUST_LEVEL_LABELS,
   type CustomerKycStatus,
+  type CustomerLanguage,
   type CustomerTrustLevel,
   type KycDocumentType,
 } from "@warehouse14/api-client"
@@ -40,6 +41,13 @@ export const TRUST_LEVEL_VARIANT: Record<CustomerTrustLevel, BadgeVariant> = {
   SUSPICIOUS: "secondary",
   BANNED: "destructive",
 }
+
+/** Bevorzugte Sprache des Kunden — chip options for the intake/edit form. */
+export const LANGUAGE_OPTIONS: ReadonlyArray<{ value: CustomerLanguage; label: string }> = [
+  { value: "de", label: "Deutsch" },
+  { value: "en", label: "Englisch" },
+  { value: "ar", label: "Arabisch" },
+]
 
 /** Document-type options for the Ausweis capture form (DE-biased, like the POS). */
 export const KYC_DOC_TYPE_OPTIONS: ReadonlyArray<{ value: KycDocumentType; label: string }> = [

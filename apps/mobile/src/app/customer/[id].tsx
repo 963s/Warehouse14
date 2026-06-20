@@ -186,6 +186,18 @@ export default function CustomerDetailScreen() {
       </View>
 
       <Card className="gap-2.5 px-4 py-4">
+        <View className="flex-row items-center justify-between">
+          <Text className="text-base font-semibold">Stammdaten</Text>
+          <Button
+            variant="ghost"
+            size="sm"
+            onPress={() =>
+              router.push({ pathname: "/customer/edit", params: { id: customer.id } })
+            }
+          >
+            <Text className="text-primary">Bearbeiten</Text>
+          </Button>
+        </View>
         <Row label="Geburtsdatum" value={customer.dateOfBirth ?? "—"} />
         <Row label="E-Mail" value={customer.email ?? "—"} />
         <Row label="Telefon" value={customer.phone ?? "—"} />

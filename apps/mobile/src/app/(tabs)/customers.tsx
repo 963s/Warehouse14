@@ -4,10 +4,11 @@
  * decrypted full name, customer number, a KYC-status Badge, and a sanctions
  * flag. Tapping a row opens the customer detail. Mirrors the Lager list.
  */
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { FlatList, Pressable, RefreshControl, View } from "react-native"
-import { useRouter } from "expo-router"
+import { useNavigation, useRouter } from "expo-router"
 import type { CustomerListRow } from "@warehouse14/api-client"
+import { UserPlus } from "lucide-react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 
 import { Badge } from "@/components/ui/badge"
@@ -20,8 +21,26 @@ import { useW14Theme } from "@/warehouse14/theme"
 
 export default function KundenScreen() {
   const router = useRouter()
+  const navigation = useNavigation()
   const t = useW14Theme()
   const insets = useSafeAreaInsets()
+
+  // Header add button → the „Neuer Kunde"-Formular.
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <Pressable
+          onPress={() => router.push("/customer/neu")}
+          accessibilityRole="button"
+          accessibilityLabel="Neuer Kunde"
+          hitSlop={12}
+          style={{ paddingHorizontal: 12 }}
+        >
+          <UserPlus color={t.colors.primary} size={22} />
+        </Pressable>
+      ),
+    })
+  }, [navigation, router, t.colors.primary])
   const [q, setQ] = useState("")
   const [kycOnly, setKycOnly] = useState(false)
   const [rows, setRows] = useState<CustomerListRow[]>([])

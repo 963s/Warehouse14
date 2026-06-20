@@ -25,6 +25,7 @@ import {
   Receipt,
   ScanLine,
   Settings,
+  UserPlus,
   Wallet,
 } from "lucide-react-native"
 
@@ -123,5 +124,15 @@ export const OWNER_SURFACES: readonly OwnerSurface[] = [
     icon: Settings,
     group: "system",
     available: false,
+  },
+  // Appended per the extensibility contract (never reorder existing entries).
+  {
+    id: "kunde-neu",
+    route: "/customer/neu",
+    label: "Neuer Kunde",
+    description: "Stammdaten anlegen, KYC folgt im Profil.",
+    icon: UserPlus,
+    group: "betrieb",
+    available: true,
   },
 ] as const
