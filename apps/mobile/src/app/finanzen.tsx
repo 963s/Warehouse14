@@ -57,11 +57,7 @@ import {
 } from "@/warehouse14/api"
 import { useBreakEvenCelebration } from "@/warehouse14/game"
 import { useDashboardTargets } from "@/warehouse14/preferences"
-import {
-  computeTreasureMap,
-  monthlyFixedCostCents,
-  monthStartDay,
-} from "@/warehouse14/schatzkammer"
+import { computeTreasureMap, monthStartDay } from "@/warehouse14/schatzkammer"
 import { useW14Theme } from "@/warehouse14/theme"
 import {
   CountUp,
@@ -431,13 +427,25 @@ export default function FinanzenScreen() {
 
   const now = useMemo(() => new Date(), [])
   const monthStart = monthStartDay(now)
-  const fixedCostCents = fixedRows ? monthlyFixedCostCents(fixedRows, monthStart) : 0
   const targetCents = Math.round(targets.monthlyProfitTargetEur * 100)
 
+  // The month's fixed-cost line — the SAME number the waterfall shows as
+  // „Fixkosten-Anteil". It is the backend's allocated fixed cost
+  // (financeApi.profit, period=month: overlap filter active_from ≤ Monatsende
+  // AND active_to ≥ Monatsanfang), so a cost that started mid-month is counted
+  // here exactly as it is in the waterfall and in netProfitCents above. We do NOT
+  // recompute it client-side: the old monthlyFixedCostCents(rows, monthStart)
+  // used an active_from ≤ Monatsanfang filter that dropped any cost added after
+  // the 1st, which made the break-even card disagree with the waterfall on the
+  // same screen and could arm the gold flood against contradicted data.
+  const fixedCostCents = profitMonth ? profitMonth.fixedCostsAllocatedCents : 0
+
   // Break-even celebration — fire the gold flood once on the real false→true
-  // crossing of the MONTH's cumulative profit over its fixed costs. Held inert
-  // until the month profit + fixed costs have both settled, so a transient
-  // first-load `false` is never mistaken for a "before" state (honesty).
+  // crossing of the MONTH's cumulative profit into the black. Held inert until
+  // the month profit AND the fixed-cost list have both settled, so a transient
+  // first-load `false` is never mistaken for a "before" state (honesty). The
+  // fixed-cost read still gates readiness so the card mirrors the waterfall only
+  // once the costs behind it are actually loaded.
   const breakEvenReady = profitMonth !== null && fixedRows !== null
   const brokeEven = breakEvenReady
     ? computeTreasureMap(profitMonth.netProfitCents, fixedCostCents, targetCents).brokeEven
