@@ -65,6 +65,7 @@ import {
   useBreakEvenCelebration,
   useGameState,
 } from "@/warehouse14/game"
+import { NotificationBell } from "@/warehouse14/notifications"
 import { useDashboardTargets } from "@/warehouse14/preferences"
 import {
   computeTreasureMap,
@@ -310,7 +311,10 @@ export default function SchatzkammerScreen() {
                 </Text>
               </View>
             </View>
-            <StreakFlame streak={game.streak} size="sm" />
+            <View className="flex-row items-center gap-1.5">
+              <StreakFlame streak={game.streak} size="sm" />
+              <NotificationBell />
+            </View>
           </View>
         </StaggerItem>
 

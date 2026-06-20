@@ -89,8 +89,10 @@ import {
   type FinalizeBody,
   type FinalizeResponse,
   type InventoryAdjustmentBody,
+  type LedgerEvent,
   type LedgerListQuery,
   type LedgerListResponse,
+  type LedgerListRow,
   type ListBelegtextQuery,
   type ListBelegtextResponse,
   type ListTasksQuery,
@@ -460,6 +462,44 @@ export function currentBelegtext(
 // ── Ledger (the GoBD audit feed — read-only history) ─────────────────────────
 export function listLedger(query: LedgerListQuery = {}): Promise<LedgerListResponse> {
   return ledgerQueryApi.list(apiClient, query)
+}
+
+/**
+ * Normalize a paged `LedgerListRow` (camelCase, the REST read shape) into the
+ * `LedgerEvent` wire shape (snake_case, what the live SSE stream emits). Doing
+ * this here means the notification classifier — and any future EventSource path
+ * — consume ONE shape, regardless of whether an event arrived by poll or push.
+ */
+function ledgerRowToEvent(r: LedgerListRow): LedgerEvent {
+  return {
+    id: r.id,
+    event_type: r.eventType,
+    entity_table: r.entityTable,
+    entity_id: r.entityId,
+    actor_user_id: r.actorUserId,
+    device_id: r.deviceId,
+    payload: r.payload,
+    created_at: r.createdAt,
+  }
+}
+
+/**
+ * The live-update read for the Notifications spine: the most recent ledger
+ * events, newest first, normalized to the `LedgerEvent` wire shape. The live
+ * store polls this with a cursor (drops anything it has already seen by id) — so
+ * it is the dependency-free, honest companion to the `/api/sse/ledger` push
+ * stream (RN ships no native EventSource; the SSE transport is a documented seam
+ * in `notifications/live-store.ts`). `sinceId` lets the store ask only for what
+ * is new; the server has no "since" filter, so we page from the top and the
+ * store de-dupes — `sinceId` is reserved for when the backend gains that filter.
+ */
+export async function listLedgerEvents(
+  opts: { limit?: number; sinceId?: number } = {},
+): Promise<LedgerEvent[]> {
+  const limit = Math.min(Math.max(opts.limit ?? 50, 1), 200)
+  const res = await ledgerQueryApi.list(apiClient, { limit, offset: 0 })
+  // The query returns newest-first already (id DESC); keep that order and map.
+  return res.items.map(ledgerRowToEvent)
 }
 
 // ── Scan → product (the real cashier flow) ───────────────────────────────────

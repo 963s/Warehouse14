@@ -19,6 +19,7 @@
  */
 import {
   Banknote,
+  Bell,
   CalendarClock,
   ListChecks,
   type LucideIcon,
@@ -133,6 +134,15 @@ export const OWNER_SURFACES: readonly OwnerSurface[] = [
     description: "Stammdaten anlegen, KYC folgt im Profil.",
     icon: UserPlus,
     group: "betrieb",
+    available: true,
+  },
+  {
+    id: "benachrichtigungen",
+    route: "/benachrichtigungen",
+    label: "Benachrichtigungen",
+    description: "Freigaben, Termine und Hinweise an einem Ort.",
+    icon: Bell,
+    group: "system",
     available: true,
   },
 ] as const
