@@ -113,7 +113,7 @@ export const OWNER_SURFACES: readonly OwnerSurface[] = [
     description: "Einzelkosten und laufende Fixkosten.",
     icon: Wallet,
     group: "finanzen",
-    available: false,
+    available: true,
   },
   // ── System ─────────────────────────────────────────────────────────────────
   {
