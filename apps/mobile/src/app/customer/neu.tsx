@@ -3,9 +3,15 @@
  *
  * Collects the personal data (Name, Geburtsdatum, Kontakt, Adresse, USt-IdNr.,
  * Sprache, Notiz) through the shared CustomerFields + the FormScreen scaffold.
- * On success the new customer detail opens, where KYC/Vertrauen are stamped.
+ * Validation is field-level: an invalid draft paints the offending inputs red,
+ * fires the Error haptic, and lands the first message in the FormScreen banner —
+ * the operator sees exactly which line to fix.
  *
- * Reached from the „Mehr"-Hub (/customer/neu) and the Kunden-Tab add button.
+ * A successful create is a real milestone (a new customer record exists), so it
+ * lands with the Success haptic and a single gold flood (DESIGN.md §6/§7) before
+ * the screen replaces itself with the fresh customer detail, where KYC/Vertrauen
+ * are stamped next. Reached from the „Mehr"-Hub (/customer/neu) and the Kunden-
+ * Tab add button.
  */
 import { useState } from "react"
 import { router } from "expo-router"
@@ -13,19 +19,39 @@ import type { CustomerCreateBody } from "@warehouse14/api-client"
 
 import { createCustomer } from "@/warehouse14/api"
 import {
+  type CustomerFieldKey,
   CustomerFields,
+  type CustomerFormErrors,
   EMPTY_CUSTOMER_FORM,
-  validateCustomerForm,
   type CustomerFormState,
+  firstCustomerError,
+  isCustomerFormValid,
+  validateCustomerForm,
 } from "@/warehouse14/customer-form"
+import { GoldFlood, haptics } from "@/warehouse14/ui"
 import { FormScreen } from "@/warehouse14/ui/FormScreen"
 
 export default function NeuerKundeScreen() {
   const [form, setForm] = useState<CustomerFormState>(EMPTY_CUSTOMER_FORM)
+  const [errors, setErrors] = useState<CustomerFormErrors>({})
+  const [celebrate, setCelebrate] = useState(false)
+
+  const clearError = (key: CustomerFieldKey) =>
+    setErrors((prev) => {
+      if (!(key in prev)) return prev
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
 
   async function submit() {
-    const problem = validateCustomerForm(form)
-    if (problem) throw new Error(problem)
+    const problems = validateCustomerForm(form)
+    setErrors(problems)
+    if (!isCustomerFormValid(problems)) {
+      // Pair the red inputs with the Error haptic; the banner shows the first.
+      haptics.error()
+      throw new Error(firstCustomerError(problems) ?? "Bitte Eingaben prüfen.")
+    }
 
     const body: CustomerCreateBody = {
       fullName: form.fullName.trim(),
@@ -39,20 +65,33 @@ export default function NeuerKundeScreen() {
     }
 
     const res = await createCustomer(body)
-    // Land on the fresh customer detail so KYC/Vertrauen can be stamped next.
-    router.replace({ pathname: "/customer/[id]", params: { id: res.id } })
+    // One haptic per action: the Success notification IS the confirm; the gold
+    // flood that follows is visual-only, never a second buzz (DESIGN.md §7).
+    haptics.success()
+    setCelebrate(true)
+    // Let the flood breathe, then land on the fresh detail so KYC/Vertrauen can
+    // be stamped next. The replace clears this screen from the back stack.
+    setTimeout(() => {
+      router.replace({ pathname: "/customer/[id]", params: { id: res.id } })
+    }, 620)
   }
 
   return (
-    <FormScreen
-      title="Neuer Kunde"
-      subtitle="Stammdaten erfassen. KYC und Vertrauen folgen im Kundenprofil."
-      submitLabel="Anlegen"
-      successMessage="Kunde angelegt."
-      submitDisabled={!form.fullName.trim()}
-      onSubmit={submit}
-    >
-      <CustomerFields value={form} onChange={setForm} />
-    </FormScreen>
+    <>
+      <FormScreen
+        title="Neuer Kunde"
+        subtitle="Stammdaten erfassen. KYC und Vertrauen folgen im Kundenprofil."
+        submitLabel="Anlegen"
+        successMessage="Kunde angelegt."
+        submitDisabled={!form.fullName.trim()}
+        onSubmit={submit}
+      >
+        <CustomerFields value={form} onChange={setForm} errors={errors} onClearError={clearError} />
+      </FormScreen>
+
+      {/* The new-customer milestone flood — visual only (the Success haptic
+          already fired); once per create, above content, never blocks a tap. */}
+      <GoldFlood visible={celebrate} onDone={() => setCelebrate(false)} />
+    </>
   )
 }

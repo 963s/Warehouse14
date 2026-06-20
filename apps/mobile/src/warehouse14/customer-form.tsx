@@ -3,19 +3,41 @@
  *
  * Both screens collect the same personal fields (Name, Geburtsdatum, Kontakt,
  * Adresse, USt-IdNr., Sprache, Notiz). This module owns the controlled-state
- * shape + a single `CustomerFields` renderer so the create and edit surfaces
- * stay pixel-identical and only differ in the api-client call they fire.
+ * shape, the per-field validation, and a single `CustomerFields` renderer so the
+ * create and edit surfaces stay pixel-identical and only differ in the
+ * api-client call they fire.
  *
- * Money is not involved here — a Kunde carries no price. The Field/ChipSelect
- * primitives are reused from product-form so every owner intake reads the same.
+ * Validation is field-level and German: `validateCustomerForm` returns an error
+ * MAP (keyed by field), so the screens can paint the offending input red via the
+ * shared `FormField` kit and the operator sees exactly which line to fix — never
+ * a single opaque banner for a typo two fields up. The first message is also
+ * returned by `firstCustomerError` for the FormScreen banner + the Error haptic.
+ *
+ * Keyboard handling is native-feel: the inputs chain with `returnKeyType="next"`
+ * and `onSubmitEditing` focus-forwarding (refs held here), `textContentType`
+ * hints feed the OS autofill, and the last field's „Fertig"-Taste submits the
+ * form. We compose the spine's `FormField` for the label/hint/error chrome and
+ * render a ref-bearing `Input` as its child (the kit's documented escape hatch),
+ * so we keep one visual contract without forking the shared component. Money is
+ * not involved here — a Kunde carries no price.
  */
-import { type Dispatch, type SetStateAction } from "react"
-import { View } from "react-native"
+import {
+  type ComponentRef,
+  type Dispatch,
+  type ReactNode,
+  type RefObject,
+  type SetStateAction,
+  useRef,
+} from "react"
+import { View, type TextInputProps } from "react-native"
 import type { CustomerLanguage } from "@warehouse14/api-client"
 
 import { Input } from "@/components/ui/input"
 import { LANGUAGE_OPTIONS } from "@/warehouse14/customer-ui"
-import { ChipSelect, Field } from "@/warehouse14/product-form"
+import { ChipSelect } from "@/warehouse14/product-form"
+import { useW14Theme } from "@/warehouse14/theme"
+import { FormField } from "@/warehouse14/ui"
+import * as haptics from "@/warehouse14/ui/native/haptics"
 
 /** The controlled draft shared by both forms — all strings for the inputs. */
 export interface CustomerFormState {
@@ -41,108 +63,279 @@ export const EMPTY_CUSTOMER_FORM: CustomerFormState = {
   preferredLanguage: "de",
 }
 
-/** Client-side guard → a German message, or null when the draft is valid. */
-export function validateCustomerForm(s: CustomerFormState): string | null {
-  if (!s.fullName.trim()) return "Name ist erforderlich."
-  if (s.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.email.trim()))
-    return "E-Mail-Adresse ungültig."
-  return null
+/** The text fields that can carry a per-field error message. */
+export type CustomerFieldKey = "fullName" | "dateOfBirth" | "email" | "phone" | "vatId"
+
+/** Per-field German error messages (only the fields with a problem appear). */
+export type CustomerFormErrors = Partial<Record<CustomerFieldKey, string>>
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+// JJJJ-MM-TT, the one date shape the rest of the app reads (de-DE rendering of
+// an ISO day). We accept it leniently — the field is optional — but reject an
+// obviously malformed entry early rather than letting the server 400.
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+// A German/EU VAT id is country code + digits; keep the guard permissive but
+// catch a value too short to be real so a fat-fingered entry fails here, not at
+// the till. Spaces are tolerated (operators paste them) and stripped on submit.
+const VAT_RE = /^[A-Za-z]{2}[A-Za-z0-9 ]{6,}$/
+
+/** True when the date is a real calendar day in the past, not just the shape. */
+function isRealIsoDate(value: string): boolean {
+  if (!ISO_DATE_RE.test(value)) return false
+  const d = new Date(value + "T00:00:00")
+  if (Number.isNaN(d.getTime())) return false
+  // Reject a future birth date — a Kunde cannot be born tomorrow.
+  return d.getTime() <= Date.now()
 }
 
 /**
- * Render the labelled personal-data inputs. The parent owns the state object and
- * a single setter; each input patches one key. Keeps both screens declarative.
+ * Field-level guard → a German message per offending field. An empty object
+ * means the draft is valid. Optional fields are only checked when filled in.
+ */
+export function validateCustomerForm(s: CustomerFormState): CustomerFormErrors {
+  const errors: CustomerFormErrors = {}
+
+  if (!s.fullName.trim()) {
+    errors.fullName = "Name ist erforderlich."
+  } else if (s.fullName.trim().length < 2) {
+    errors.fullName = "Name ist zu kurz."
+  }
+
+  if (s.dateOfBirth.trim() && !isRealIsoDate(s.dateOfBirth.trim())) {
+    errors.dateOfBirth = "Datum ungültig — Format JJJJ-MM-TT."
+  }
+
+  if (s.email.trim() && !EMAIL_RE.test(s.email.trim())) {
+    errors.email = "E-Mail-Adresse ungültig."
+  }
+
+  if (s.phone.trim() && s.phone.trim().replace(/[^\d]/g, "").length < 5) {
+    errors.phone = "Telefonnummer ungültig."
+  }
+
+  if (s.vatId.trim() && !VAT_RE.test(s.vatId.trim())) {
+    errors.vatId = "USt-IdNr. ungültig — z. B. DE123456789."
+  }
+
+  return errors
+}
+
+/** True when the error map has no entries (the draft passes). */
+export function isCustomerFormValid(errors: CustomerFormErrors): boolean {
+  return Object.keys(errors).length === 0
+}
+
+/** The first field error in reading order — for the FormScreen banner copy. */
+export function firstCustomerError(errors: CustomerFormErrors): string | null {
+  const order: CustomerFieldKey[] = ["fullName", "dateOfBirth", "email", "phone", "vatId"]
+  for (const key of order) {
+    const msg = errors[key]
+    if (msg) return msg
+  }
+  return null
+}
+
+/** The imperative handle of the spine's `Input` wrapper — a TextInput instance,
+ *  derived from the component so we never import the restricted RN symbol. */
+type InputRef = ComponentRef<typeof Input>
+
+/**
+ * A labelled text input that composes the spine's `FormField` chrome (label +
+ * required marker + per-field error/hint) with a ref-bearing `Input`, so the
+ * keyboard can forward focus while every field keeps the one visual contract.
+ * The invalid state paints the input's border destructive, mirroring the kit's
+ * own default-Input behaviour.
+ */
+function TextField({
+  label,
+  required,
+  hint,
+  error,
+  inputRef,
+  ...inputProps
+}: {
+  label: string
+  required?: boolean
+  hint?: string
+  error?: string
+  inputRef?: RefObject<InputRef | null>
+} & TextInputProps): ReactNode {
+  const t = useW14Theme()
+  const invalid = !!error
+  return (
+    <FormField label={label} required={required} hint={hint} error={error}>
+      <Input
+        ref={inputRef}
+        aria-invalid={invalid}
+        style={invalid ? { borderColor: t.colors.destructive } : undefined}
+        {...inputProps}
+      />
+    </FormField>
+  )
+}
+
+/**
+ * Render the labelled personal-data inputs. The parent owns the state object + a
+ * single setter; each input patches one key and clears its own error on edit (so
+ * a red line goes calm the moment the operator starts fixing it). `errors`
+ * paints the per-field messages; the inputs chain focus with the keyboard's
+ * „Weiter"-Taste and the last submits the form.
  */
 export function CustomerFields({
   value,
   onChange,
+  errors = {},
+  onClearError,
+  onSubmitForm,
 }: {
   value: CustomerFormState
   onChange: Dispatch<SetStateAction<CustomerFormState>>
+  /** Per-field error map — paints the offending inputs red. */
+  errors?: CustomerFormErrors
+  /** Clear one field's error as the operator edits it. */
+  onClearError?: (key: CustomerFieldKey) => void
+  /** Submit the form from the keyboard's „Fertig"-Taste on the last field. */
+  onSubmitForm?: () => void
 }) {
-  const patch = (key: keyof CustomerFormState) => (text: string) =>
+  // Refs for keyboard focus-forwarding: each „Weiter" jumps to the next field.
+  const dobRef = useRef<InputRef>(null)
+  const emailRef = useRef<InputRef>(null)
+  const phoneRef = useRef<InputRef>(null)
+  const addressRef = useRef<InputRef>(null)
+  const vatRef = useRef<InputRef>(null)
+  const notesRef = useRef<InputRef>(null)
+
+  const patch = (key: keyof CustomerFormState) => (text: string) => {
     onChange((prev) => ({ ...prev, [key]: text }))
+    if ((key as CustomerFieldKey) in errors) onClearError?.(key as CustomerFieldKey)
+  }
+
+  const focusNext = (ref: RefObject<InputRef | null>) => () => ref.current?.focus()
 
   return (
     <View className="gap-3.5">
-      <Field label="Name">
-        <Input
-          value={value.fullName}
-          onChangeText={patch("fullName")}
-          placeholder="Vor- und Nachname"
-          autoCapitalize="words"
-        />
-      </Field>
+      <TextField
+        label="Name"
+        required
+        error={errors.fullName}
+        value={value.fullName}
+        onChangeText={patch("fullName")}
+        placeholder="Vor- und Nachname"
+        autoCapitalize="words"
+        textContentType="name"
+        returnKeyType="next"
+        submitBehavior="submit"
+        onSubmitEditing={focusNext(dobRef)}
+        accessibilityLabel="Name"
+      />
 
-      <Field label="Geburtsdatum" hint="Optional — z. B. 1985-04-23.">
-        <Input
-          value={value.dateOfBirth}
-          onChangeText={patch("dateOfBirth")}
-          placeholder="JJJJ-MM-TT"
-          autoCorrect={false}
-        />
-      </Field>
+      <TextField
+        label="Geburtsdatum"
+        hint="Optional — z. B. 1985-04-23."
+        error={errors.dateOfBirth}
+        inputRef={dobRef}
+        value={value.dateOfBirth}
+        onChangeText={patch("dateOfBirth")}
+        placeholder="JJJJ-MM-TT"
+        keyboardType="numbers-and-punctuation"
+        autoCorrect={false}
+        returnKeyType="next"
+        submitBehavior="submit"
+        onSubmitEditing={focusNext(emailRef)}
+        accessibilityLabel="Geburtsdatum"
+      />
 
       <View className="flex-row gap-3">
         <View className="flex-1">
-          <Field label="E-Mail">
-            <Input
-              value={value.email}
-              onChangeText={patch("email")}
-              placeholder="kunde@beispiel.de"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </Field>
+          <TextField
+            label="E-Mail"
+            error={errors.email}
+            inputRef={emailRef}
+            value={value.email}
+            onChangeText={patch("email")}
+            placeholder="kunde@beispiel.de"
+            keyboardType="email-address"
+            textContentType="emailAddress"
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="next"
+            submitBehavior="submit"
+            onSubmitEditing={focusNext(phoneRef)}
+            accessibilityLabel="E-Mail"
+          />
         </View>
         <View className="flex-1">
-          <Field label="Telefon">
-            <Input
-              value={value.phone}
-              onChangeText={patch("phone")}
-              placeholder="+49 …"
-              keyboardType="phone-pad"
-            />
-          </Field>
+          <TextField
+            label="Telefon"
+            error={errors.phone}
+            inputRef={phoneRef}
+            value={value.phone}
+            onChangeText={patch("phone")}
+            placeholder="+49 …"
+            keyboardType="phone-pad"
+            textContentType="telephoneNumber"
+            returnKeyType="next"
+            submitBehavior="submit"
+            onSubmitEditing={focusNext(addressRef)}
+            accessibilityLabel="Telefon"
+          />
         </View>
       </View>
 
-      <Field label="Adresse" hint="Optional — Straße, PLZ und Ort.">
-        <Input
-          value={value.address}
-          onChangeText={patch("address")}
-          placeholder="Musterstraße 1, 12345 Musterstadt"
-        />
-      </Field>
+      <TextField
+        label="Adresse"
+        hint="Optional — Straße, PLZ und Ort."
+        inputRef={addressRef}
+        value={value.address}
+        onChangeText={patch("address")}
+        placeholder="Musterstraße 1, 12345 Musterstadt"
+        textContentType="fullStreetAddress"
+        autoCapitalize="words"
+        returnKeyType="next"
+        submitBehavior="submit"
+        onSubmitEditing={focusNext(vatRef)}
+        accessibilityLabel="Adresse"
+      />
 
-      <Field label="USt-IdNr." hint="Optional — nur bei gewerblichen Kunden.">
-        <Input
-          value={value.vatId}
-          onChangeText={patch("vatId")}
-          placeholder="DE123456789"
-          autoCapitalize="characters"
-          autoCorrect={false}
-        />
-      </Field>
+      <TextField
+        label="USt-IdNr."
+        hint="Optional — nur bei gewerblichen Kunden."
+        error={errors.vatId}
+        inputRef={vatRef}
+        value={value.vatId}
+        onChangeText={patch("vatId")}
+        placeholder="DE123456789"
+        autoCapitalize="characters"
+        autoCorrect={false}
+        returnKeyType="next"
+        submitBehavior="submit"
+        onSubmitEditing={focusNext(notesRef)}
+        accessibilityLabel="USt-IdNr."
+      />
 
-      <Field label="Bevorzugte Sprache">
+      <FormField label="Bevorzugte Sprache">
         <ChipSelect
           options={LANGUAGE_OPTIONS}
           value={value.preferredLanguage}
-          onChange={(lang) =>
+          onChange={(lang) => {
+            haptics.selection()
             onChange((prev) => ({ ...prev, preferredLanguage: lang ?? "de" }))
-          }
+          }}
         />
-      </Field>
+      </FormField>
 
-      <Field label="Notiz" hint="Optional — interne Anmerkung.">
-        <Input
-          value={value.notes}
-          onChangeText={patch("notes")}
-          placeholder="z. B. Stammkunde, Sammler …"
-        />
-      </Field>
+      <TextField
+        label="Notiz"
+        hint="Optional — interne Anmerkung."
+        inputRef={notesRef}
+        value={value.notes}
+        onChangeText={patch("notes")}
+        placeholder="z. B. Stammkunde, Sammler …"
+        autoCapitalize="sentences"
+        returnKeyType="done"
+        onSubmitEditing={onSubmitForm}
+        accessibilityLabel="Notiz"
+      />
     </View>
   )
 }
