@@ -1,12 +1,21 @@
 /**
- * Bottom-tab shell, driven by the surface registry (src/warehouse14/surfaces.ts).
- * Adding a surface = one append there + one route file in this folder.
+ * Bottom-tab shell, driven by the primary surface registry
+ * (src/warehouse14/surfaces.ts). The Owner OS lands on the Schatzkammer.
+ *
+ * Adding a PRIMARY tab = one append in surfaces.ts + one route file here.
+ * Adding a SECONDARY surface = one append in owner-surfaces.ts (the Mehr hub) —
+ * the tab bar never changes.
  */
 import { Tabs } from "expo-router"
 import { useColorScheme } from "react-native"
 
 import { SURFACES } from "@/warehouse14/surfaces"
 import { darkPalette, lightPalette } from "@/warehouse14/theme"
+
+// Land on the Schatzkammer, not the (file-system default) index/Lager route.
+export const unstable_settings = {
+  initialRouteName: "dashboard",
+}
 
 export default function TabsLayout() {
   const scheme = useColorScheme()
@@ -32,6 +41,8 @@ export default function TabsLayout() {
             name={s.name}
             options={{
               title: s.label,
+              // Hidden surfaces stay mounted (deep-linkable) but show no tab button.
+              href: s.hidden ? null : undefined,
               tabBarIcon: ({ color, size }) => <TabIcon color={color} size={size} />,
             }}
           />

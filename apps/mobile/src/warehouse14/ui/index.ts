@@ -1,0 +1,21 @@
+/**
+ * Warehouse14 Owner OS UI kit — the shared, W14-themed surface primitives the
+ * owner screens are assembled from. All built on the RNR components
+ * (@/components/ui/*) + the typed theme (useW14Theme); no native deps added.
+ *
+ *   RingGauge   — progress gauge (bar fallback, no react-native-svg).
+ *   StatTile    — half-width KPI tile (label · value · gauge · hint).
+ *   SectionCard — titled panel with optional icon + action slot.
+ *   ListRow     — tappable/static row (icon · title/subtitle · value · chevron).
+ *   EmptyState  — centred placeholder (icon · title · description · CTA).
+ *   FormField   — labelled input with hint + per-field error.
+ *   FormScreen  — form scaffold: error/success banners + sticky save (step-up
+ *                 is transparent via the global StepUpDialogHost).
+ */
+export { RingGauge, type RingGaugeProps } from "./RingGauge"
+export { StatTile, type StatTileProps, type StatTileTone } from "./StatTile"
+export { SectionCard, type SectionCardProps } from "./SectionCard"
+export { ListRow, type ListRowProps } from "./ListRow"
+export { EmptyState, type EmptyStateProps } from "./EmptyState"
+export { FormField, type FormFieldProps } from "./FormField"
+export { FormScreen, type FormScreenProps } from "./FormScreen"
