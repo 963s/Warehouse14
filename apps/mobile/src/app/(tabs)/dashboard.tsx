@@ -65,6 +65,7 @@ import {
   useBreakEvenCelebration,
   useGameState,
 } from "@/warehouse14/game"
+import { useDashboardTargets } from "@/warehouse14/preferences"
 import {
   computeTreasureMap,
   GAUGE_TARGETS,
@@ -172,6 +173,10 @@ function SchatzkammerSkeleton() {
 export default function SchatzkammerScreen() {
   const t = useW14Theme()
   const insets = useScreenInsets()
+  // The owner's OWN goals (Einstellungen → preferences) — the same store Finanzen
+  // reads. These are the only denominators we may honestly label „Ziel"; the rest
+  // stay house references („Orientierung"/„Referenz").
+  const targets = useDashboardTargets()
 
   // One fan-out over every source. Each settles independently (allSettled inside
   // the hook), so a failed finance read leaves only that gauge locked. Polls every
@@ -206,14 +211,17 @@ export default function SchatzkammerScreen() {
   const biz = todayBusinessDay(now)
   const monthStart = monthStartDay(now)
 
-  // The monthly treasure map needs BOTH the month's profit AND fixed costs to be
-  // honest — without both it renders a locked card rather than a half-truth.
-  const hasMap = profitMonth !== null && fixedCosts !== null
+  // The monthly treasure map needs BOTH the month's profit AND configured fixed
+  // costs to be honest. fixedCostsApi.list returns an EMPTY ARRAY (not null) when a
+  // shop has no fixed costs configured — so an empty list means "not yet set up",
+  // NOT "0 € of fixed costs". Without a real break-even line the card renders the
+  // locked "bald" placeholder rather than a contradictory 0 % / "noch 0,00 €".
   const fixedCostCents = fixedCosts ? monthlyFixedCostCents(fixedCosts, monthStart) : 0
-  const targetCents = Math.round(GAUGE_TARGETS.monthlyProfitTargetEur * 100)
+  const hasMap = profitMonth !== null && fixedCosts !== null && fixedCostCents > 0
+  const profitTargetCents = Math.round(targets.monthlyProfitTargetEur * 100)
   const map =
     hasMap && profitMonth
-      ? computeTreasureMap(profitMonth.netProfitCents, fixedCostCents, targetCents)
+      ? computeTreasureMap(profitMonth.netProfitCents, fixedCostCents, profitTargetCents)
       : null
 
   // The shared «Spielwirtschaft» — streak · rank · seals · the day's quest — folded
@@ -345,21 +353,21 @@ export default function SchatzkammerScreen() {
               label="Tagesumsatz"
               value={bridge.todayRevenueCents}
               format={formatCents}
-              ratio={revenueEur / GAUGE_TARGETS.revenueEur}
-              hint={`Ziel ${GAUGE_TARGETS.revenueEur} €`}
+              ratio={revenueEur / targets.revenueEur}
+              hint={`Ziel ${targets.revenueEur} €`}
             />
             <CountTile
               label="Ankäufe heute"
               value={bridge.todayAnkaufCount}
               ratio={bridge.todayAnkaufCount / GAUGE_TARGETS.ankaufCount}
               tone="accent"
-              hint={`Ziel ${GAUGE_TARGETS.ankaufCount}`}
+              hint={`Orientierung ${GAUGE_TARGETS.ankaufCount}`}
             />
             <CountTile
               label="Verkäufe heute"
               value={bridge.todaySalesCount}
               ratio={bridge.todaySalesCount / GAUGE_TARGETS.soldCount}
-              hint={`Ziel ${GAUGE_TARGETS.soldCount}`}
+              hint={`Orientierung ${GAUGE_TARGETS.soldCount}`}
             />
             {dash ? (
               <CountTile
@@ -367,7 +375,7 @@ export default function SchatzkammerScreen() {
                 value={dash.pendingAppraisals}
                 ratio={dash.pendingAppraisals / GAUGE_TARGETS.appraisals}
                 tone="accent"
-                hint={`Ziel ${GAUGE_TARGETS.appraisals}`}
+                hint={`Orientierung ${GAUGE_TARGETS.appraisals}`}
               />
             ) : (
               <LockedTile label="Expertisen" />
@@ -384,9 +392,9 @@ export default function SchatzkammerScreen() {
                   label="Gewinn heute"
                   value={profitDay.netProfitCents}
                   format={formatCents}
-                  ratio={profitDayEur / GAUGE_TARGETS.netProfitDayEur}
+                  ratio={profitDayEur / targets.netProfitDayEur}
                   tone={profitDay.netProfitCents >= 0 ? "accent" : "muted"}
-                  hint={`Ziel ${GAUGE_TARGETS.netProfitDayEur} €`}
+                  hint={`Ziel ${targets.netProfitDayEur} €`}
                 />
               ) : (
                 <LockedTile label="Gewinn heute" />
@@ -396,8 +404,8 @@ export default function SchatzkammerScreen() {
                   label="Monatsumsatz"
                   value={monthRev.monthToDateRevenueCents}
                   format={formatCents}
-                  ratio={monthRevEur / GAUGE_TARGETS.monthRevenueEur}
-                  hint={`Ziel ${GAUGE_TARGETS.monthRevenueEur} €`}
+                  ratio={monthRevEur / targets.monthRevenueEur}
+                  hint={`Ziel ${targets.monthRevenueEur} €`}
                 />
               ) : (
                 <LockedTile label="Monatsumsatz" />
@@ -508,38 +516,36 @@ export default function SchatzkammerScreen() {
                     style={{ color: map.brokeEven ? t.colors.verdigris : t.colors.foreground }}
                     accessibilityLabel={`Monatsgewinn ${formatCents(map.netProfitCents)}`}
                   />
-                  <Text className="text-muted-foreground text-xs">Ziel {formatCents(targetCents)}</Text>
+                  <Text className="text-muted-foreground text-xs">
+                    {map.brokeEven
+                      ? `Ziel ${formatCents(profitTargetCents)}`
+                      : `Fixkosten ${formatCents(map.fixedCostCents)}`}
+                  </Text>
                 </View>
 
-                {/* Progress toward the profit target, with the break-even flag. */}
-                <View className="relative w-full py-1.5">
+                {/* Before break-even the bar fills with fixed-cost coverage (gross
+                    margin / fixed → 100 % exactly when netProfit hits 0); once in
+                    the black it tracks the owner's OWN profit goal. Both are real. */}
+                <View className="w-full py-1.5">
                   <RingGauge
-                    value={map.targetProgress}
+                    value={map.brokeEven ? map.targetProgress : map.coverage}
                     color={map.brokeEven ? t.colors.verdigris : t.colors.primary}
                   />
-                  {map.breakEvenMarker !== null ? (
-                    <View
-                      className="absolute"
-                      style={{
-                        left: `${Math.round(map.breakEvenMarker * 100)}%`,
-                        top: 6,
-                        bottom: 6,
-                        width: 2,
-                        backgroundColor: t.colors.foreground,
-                      }}
-                    />
-                  ) : null}
                 </View>
 
                 <View className="flex-row items-center justify-between">
                   <Text className="text-muted-foreground text-2xs">
-                    Fixkosten {formatCents(map.fixedCostCents)} (Break-even)
+                    {map.brokeEven
+                      ? "Fixkosten gedeckt — der Monat ist im Plus"
+                      : `Fixkosten zu ${Math.round(map.coverage * 100)} % gedeckt`}
                   </Text>
                   <Text
                     className="text-xs font-semibold"
                     style={{ color: map.brokeEven ? t.colors.verdigris : t.colors.primary }}
                   >
-                    {map.brokeEven ? "Kosten gedeckt" : `noch ${formatCents(map.toBreakEvenCents)}`}
+                    {map.brokeEven
+                      ? "Break-even erreicht"
+                      : `noch ${formatCents(map.toBreakEvenCents)}`}
                   </Text>
                 </View>
               </View>

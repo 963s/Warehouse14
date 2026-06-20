@@ -308,6 +308,11 @@ function BreakEvenCard({
     [netProfitCents, fixedCostCents, targetCents],
   )
 
+  // Before break-even the bar tracks fixed-cost coverage (gross margin / fixed);
+  // once in the black it tracks the owner's own profit goal. Both fills are real.
+  const barValue = map.brokeEven ? map.targetProgress : map.coverage
+  const showGoal = map.brokeEven && targetCents > 0
+
   return (
     <SectionCard
       title="Break-even des Monats"
@@ -335,39 +340,28 @@ function BreakEvenCard({
             style={{ color: map.brokeEven ? t.colors.verdigris : t.colors.foreground }}
             accessibilityLabel={`Monatsgewinn ${formatCents(map.netProfitCents)}`}
           />
-          <Text className="text-muted-foreground text-xs">Ziel {formatCents(targetCents)}</Text>
+          <Text className="text-muted-foreground text-xs">
+            {showGoal ? `Ziel ${formatCents(targetCents)}` : `Fixkosten ${formatCents(map.fixedCostCents)}`}
+          </Text>
         </View>
 
-        {/* Progress toward the profit target, with the break-even flag. */}
-        <View className="relative w-full py-1.5">
-          <RingGauge
-            value={map.targetProgress}
-            color={map.brokeEven ? t.colors.verdigris : t.colors.primary}
-          />
-          {map.breakEvenMarker !== null ? (
-            <View
-              className="absolute"
-              style={{
-                left: `${Math.round(map.breakEvenMarker * 100)}%`,
-                top: 6,
-                bottom: 6,
-                width: 2,
-                backgroundColor: t.colors.foreground,
-              }}
-            />
-          ) : null}
+        {/* Coverage of fixed costs until break-even, then progress to the owner goal. */}
+        <View className="w-full py-1.5">
+          <RingGauge value={barValue} color={map.brokeEven ? t.colors.verdigris : t.colors.primary} />
         </View>
 
         <View className="flex-row items-center justify-between">
           <Text className="text-muted-foreground text-2xs" numberOfLines={1}>
-            Fixkosten {formatCents(map.fixedCostCents)} (Break-even)
+            {map.brokeEven
+              ? "Fixkosten gedeckt — der Monat ist im Plus"
+              : `Fixkosten zu ${Math.round(map.coverage * 100)} % gedeckt`}
           </Text>
           <Text
             className="text-xs font-semibold"
             style={{ color: map.brokeEven ? t.colors.verdigris : t.colors.primary }}
             numberOfLines={1}
           >
-            {map.brokeEven ? "Kosten gedeckt" : `noch ${formatCents(map.toBreakEvenCents)}`}
+            {map.brokeEven ? "Break-even erreicht" : `noch ${formatCents(map.toBreakEvenCents)}`}
           </Text>
         </View>
       </View>

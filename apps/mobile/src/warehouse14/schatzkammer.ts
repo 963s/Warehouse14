@@ -11,21 +11,33 @@
 import type { ClosingListItem, FixedCostRow } from "@warehouse14/api-client"
 
 /**
- * v0 gauge targets (value/target rings). Sensible constant defaults.
- * TODO(phase-later): move to owner-editable settings.
+ * Default denominators for the value rings.
+ *
+ * Honesty rule (DESIGN.md §4): the displayed VALUES are always real numbers from
+ * real endpoints. These constants are the ring DENOMINATORS, and they split into
+ * two honest kinds:
+ *   • OWNER-EDITABLE GOALS — revenueEur, netProfitDayEur, monthRevenueEur,
+ *     monthlyProfitTargetEur. These seed `DEFAULT_DASHBOARD_TARGETS` in
+ *     preferences.ts; the owner overrides them in Einstellungen. A surface reads
+ *     them via `useDashboardTargets()` and may honestly label them „Ziel".
+ *   • HOUSE REFERENCES — ankaufCount, soldCount, appraisals, inventoryValueEur,
+ *     goldGrams, silverGrams. Not yet owner-editable, so a surface must present
+ *     them as a reference („Orientierung"/„Referenz"), never as an owner's „Ziel".
+ * TODO(phase-later): make the reference set owner-editable too, then they become
+ * real Ziele as well.
  */
 export const GAUGE_TARGETS = {
-  /** Tagesumsatz target in EUR. */
+  /** Tagesumsatz goal in EUR (owner-editable default). */
   revenueEur: 1000,
-  /** Ankäufe heute target (count). */
+  /** Ankäufe heute fill reference (count). */
   ankaufCount: 10,
-  /** Verkäufe heute target (count). */
+  /** Verkäufe heute fill reference (count). */
   soldCount: 20,
-  /** Expertisen (pending appraisals) target (count). */
+  /** Expertisen (pending appraisals) fill reference (count). */
   appraisals: 10,
-  /** Gewinn heute target in EUR (net profit, period=day). */
+  /** Gewinn heute goal in EUR (net profit, period=day; owner-editable default). */
   netProfitDayEur: 300,
-  /** Monatsumsatz target in EUR. */
+  /** Monatsumsatz goal in EUR (owner-editable default). */
   monthRevenueEur: 25000,
   /** Lagerwert (Listenwert) reference in EUR — "Füllstand der Schatzkammer". */
   inventoryValueEur: 50000,
@@ -33,7 +45,7 @@ export const GAUGE_TARGETS = {
   goldGrams: 500,
   /** Silberbestand reference in grams. */
   silverGrams: 2000,
-  /** Monthly net-profit goal in EUR (the chest at the end of the treasure map). */
+  /** Monatlicher Gewinn-Ziel in EUR (owner-editable default; the chest at the map's end). */
   monthlyProfitTargetEur: 5000,
 } as const
 
@@ -136,53 +148,72 @@ export interface TreasureMap {
   netProfitCents: number
   /** Total active monthly fixed cost in cents (the break-even line). */
   fixedCostCents: number
-  /** True once cumulative net profit covers the month's fixed costs. */
+  /**
+   * Gross margin this month = netProfit + fixedCost (revenue − Ankauf − variable
+   * expenses, BEFORE fixed costs). This is what is measured against the fixed
+   * costs for the "Fixkosten gedeckt" gauge.
+   */
+  grossMarginCents: number
+  /** True once the month is in the black — netProfit ≥ 0, i.e. fixed costs covered. */
   brokeEven: boolean
-  /** Cents still needed to reach break-even (0 once covered). */
+  /** Cents of net profit still needed to reach break-even (0 once in the black). */
   toBreakEvenCents: number
-  /** netProfit / fixedCost clamped to [0,1] — the bar fill toward break-even. */
+  /**
+   * grossMargin / fixedCost clamped to [0,1] — the share of the month's fixed
+   * costs already earned back. Reaches 1.0 exactly at break-even (netProfit = 0).
+   */
   coverage: number
   /**
-   * Where the break-even marker sits on a "profit" axis that runs to `targetCents`,
-   * as a 0..1 fraction (so the map can place the flag). null when no target/cost.
+   * netProfit / target clamped to [0,1] — progress toward the owner's monthly
+   * net-profit goal, past break-even. 0 when no positive target is supplied
+   * (so a surface without an owner goal simply doesn't draw this axis).
    */
-  breakEvenMarker: number | null
-  /** netProfit / targetCents clamped to [0,1] — progress toward the profit goal. */
   targetProgress: number
 }
 
 /**
- * Monthly treasure map: cumulative net profit vs the month's fixed costs (the
- * break-even line) and a net-profit target. `netProfitCents` is the month's
- * netProfit from financeApi.profit({ period: "month" }); `fixedCostCents` is
- * monthlyFixedCostCents(...). `targetCents` is the owner's monthly net-profit
- * goal (the chest at the end of the map). Pure + honest: a negative profit just
- * yields 0 coverage, never a fabricated win.
+ * Monthly treasure map: cumulative gross margin vs the month's fixed costs (the
+ * break-even line). `netProfitCents` is the month's netProfit from
+ * financeApi.profit({ period: "month" }) — which ALREADY has the full month's
+ * fixed costs subtracted (apps/api-cloud/src/routes/finance.ts, fixedScale=1.0).
+ * `fixedCostCents` is monthlyFixedCostCents(...). `targetProfitCents` is the
+ * owner's OWN monthly net-profit goal (from preferences) — pass 0 to omit it.
+ *
+ * Because fixed costs are already netted out, TRUE break-even is netProfit ≥ 0,
+ * NOT netProfit ≥ fixedCost (that would require earning ~2× fixed costs first).
+ * The "Fixkosten gedeckt" gauge measures gross margin (netProfit + fixedCost)
+ * against the fixed-cost line, so it fills to 100 % exactly when netProfit hits 0;
+ * `targetProgress` then tracks real net profit toward the owner's own goal.
+ *
+ * Pure + honest: a negative profit just yields partial coverage, never a fabricated
+ * win, and the target axis is the owner's real number (or absent).
  */
 export function computeTreasureMap(
   netProfitCents: number,
   fixedCostCents: number,
-  targetCents: number,
+  targetProfitCents = 0,
 ): TreasureMap {
   const safeProfit = Number.isFinite(netProfitCents) ? netProfitCents : 0
-  const brokeEven = fixedCostCents <= 0 ? safeProfit > 0 : safeProfit >= fixedCostCents
-  const toBreakEvenCents = brokeEven ? 0 : Math.max(0, fixedCostCents - safeProfit)
+  const safeFixed = Number.isFinite(fixedCostCents) ? Math.max(0, fixedCostCents) : 0
+  const safeTarget = Number.isFinite(targetProfitCents) ? Math.max(0, targetProfitCents) : 0
+  const grossMarginCents = safeProfit + safeFixed
+  const brokeEven = safeProfit >= 0
+  const toBreakEvenCents = brokeEven ? 0 : -safeProfit
   const coverage =
-    fixedCostCents <= 0
-      ? safeProfit > 0
+    safeFixed <= 0
+      ? brokeEven
         ? 1
         : 0
-      : Math.max(0, Math.min(1, safeProfit / fixedCostCents))
-  const breakEvenMarker =
-    targetCents > 0 && fixedCostCents > 0 ? Math.min(1, fixedCostCents / targetCents) : null
-  const targetProgress = targetCents > 0 ? Math.max(0, Math.min(1, safeProfit / targetCents)) : 0
+      : Math.max(0, Math.min(1, grossMarginCents / safeFixed))
+  const targetProgress =
+    safeTarget > 0 ? Math.max(0, Math.min(1, safeProfit / safeTarget)) : 0
   return {
     netProfitCents: safeProfit,
-    fixedCostCents,
+    fixedCostCents: safeFixed,
+    grossMarginCents,
     brokeEven,
     toBreakEvenCents,
     coverage,
-    breakEvenMarker,
     targetProgress,
   }
 }
