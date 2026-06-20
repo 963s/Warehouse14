@@ -509,6 +509,45 @@ export function absoluteUrl(pathOrUrl: string): string {
   return `${API_BASE_URL}${pathOrUrl.startsWith("/") ? "" : "/"}${pathOrUrl}`
 }
 
+/** One ajv error entry as Fastify forwards it in a 400's `details` array. We
+ *  only read the field path; the English keyword/message stays hidden. */
+interface AjvErrorDetail {
+  instancePath?: string
+}
+
+/** German labels for the customer fields the server can reject, keyed by the
+ *  top-level JSON path ajv reports in `instancePath` (e.g. "/dateOfBirth"). */
+const VALIDATION_FIELD_LABELS: Record<string, string> = {
+  fullName: "Name",
+  dateOfBirth: "Geburtsdatum",
+  email: "E-Mail-Adresse",
+  phone: "Telefonnummer",
+  address: "Adresse",
+  vatId: "USt-IdNr.",
+  notes: "Notiz",
+}
+
+/**
+ * Turn a VALIDATION_ERROR's ajv detail into a field-specific German line, so a
+ * server-side reject the client missed (a bad calendar date, a too-short phone)
+ * names the offending field in German instead of leaking the raw English ajv
+ * message. Returns null when no known field can be read — the caller then uses
+ * a generic German fallback. The English `err.message` is never surfaced.
+ */
+function describeValidationError(err: ApiError): string | null {
+  const details = err.details
+  if (!Array.isArray(details)) return null
+  for (const entry of details as AjvErrorDetail[]) {
+    const path = entry?.instancePath
+    if (typeof path !== "string" || path.length === 0) continue
+    // "/dateOfBirth" → "dateOfBirth"; "/address/city" → "address".
+    const field = path.split("/").filter(Boolean)[0]
+    const label = field ? VALIDATION_FIELD_LABELS[field] : undefined
+    if (label) return `${label} ungültig — bitte prüfen.`
+  }
+  return null
+}
+
 /** Map an ApiError to a themed German message (PIN lockout, device, etc.). */
 export function describeError(err: unknown): string {
   if (err instanceof ApiError) {
@@ -529,14 +568,29 @@ export function describeError(err: unknown): string {
       case "STEP_UP_REQUIRED":
         return "PIN-Bestätigung erforderlich."
       case "VALIDATION_ERROR":
-        // The backend message is the raw English ajv/validation string — never
-        // surface it to a German operator. A German line covers the field-level
-        // case; client-side validation should catch most of these before submit.
-        return "Eingabe ungültig — bitte die Angaben prüfen."
-      case "CONFLICT":
-        // e.g. promoting a customer to VERIFIED/VIP before the physical-ID stamp.
-        // The backend reason is English; give the operator the actionable step.
+        // The backend message is the raw English ajv string ("body/phone must
+        // NOT have fewer than 4 characters") — never surface it to a German
+        // operator. Client validation catches most of these, but the server's
+        // format/length rules are stricter, so map the offending field (read
+        // from the ajv detail) to a precise German line; fall back to a generic
+        // one when we cannot tell which field.
+        return describeValidationError(err) ?? "Eingabe ungültig — bitte die Angaben prüfen."
+      case "CONFLICT": {
+        // A unique-violation (HTTP 409, SQLSTATE 23505) carries the Postgres
+        // constraint name verbatim in the message — turn the two customer
+        // blind-index constraints into an actionable German line so a duplicate
+        // entry (a common real case) never shows a raw constraint string.
+        const msg = err.message ?? ""
+        if (msg.includes("customers_email_blind_index_active_uq")) {
+          return "Diese E-Mail-Adresse ist bereits einem Kunden zugeordnet."
+        }
+        if (msg.includes("customers_phone_blind_index_active_uq")) {
+          return "Diese Telefonnummer ist bereits einem Kunden zugeordnet."
+        }
+        // Otherwise it's a domain conflict — e.g. promoting a customer to
+        // VERIFIED/VIP before the physical-ID stamp. Give the actionable step.
         return "Aktion nicht möglich — zuerst die KYC-Prüfung (Ausweis) bestätigen."
+      }
       case "NOT_FOUND":
         return "Datensatz nicht gefunden."
       default:

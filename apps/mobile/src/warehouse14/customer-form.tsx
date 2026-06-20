@@ -79,13 +79,36 @@ const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 // the till. Spaces are tolerated (operators paste them) and stripped on submit.
 const VAT_RE = /^[A-Za-z]{2}[A-Za-z0-9 ]{6,}$/
 
-/** True when the date is a real calendar day in the past, not just the shape. */
+/** True when the date is a real calendar day in the past, not just the shape.
+ *
+ *  `new Date("1985-02-30T…")` does NOT return NaN — JS silently rolls the
+ *  overflow day forward (→ 2. März), so a non-existent day would pass the naïve
+ *  parse and then 400 at the server (`format: "date"` is strict). We build the
+ *  date from its parts and re-serialise it: a real day round-trips back to the
+ *  same yyyy-mm-dd; a rolled-over one does not, so we reject it here in German
+ *  instead of letting an English ajv error reach the operator. */
 function isRealIsoDate(value: string): boolean {
   if (!ISO_DATE_RE.test(value)) return false
-  const d = new Date(value + "T00:00:00")
+  const year = Number(value.slice(0, 4))
+  const month = Number(value.slice(5, 7))
+  const day = Number(value.slice(8, 10))
+  // UTC keeps the comparison free of the device timezone (no DST/offset slips).
+  const d = new Date(Date.UTC(year, month - 1, day))
   if (Number.isNaN(d.getTime())) return false
-  // Reject a future birth date — a Kunde cannot be born tomorrow.
-  return d.getTime() <= Date.now()
+  // The round-trip check: Date normalises overflow (Feb 30 → Mar 2), so an
+  // invalid calendar day no longer matches the digits the operator typed.
+  if (
+    d.getUTCFullYear() !== year ||
+    d.getUTCMonth() !== month - 1 ||
+    d.getUTCDate() !== day
+  ) {
+    return false
+  }
+  // Reject a future birth date — a Kunde cannot be born tomorrow. Compare day
+  // boundaries in UTC so "today" is never rejected by an hours-only offset.
+  const now = new Date()
+  const todayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+  return d.getTime() <= todayUtc
 }
 
 /**

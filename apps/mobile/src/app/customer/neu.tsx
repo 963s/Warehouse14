@@ -13,7 +13,7 @@
  * are stamped next. Reached from the „Mehr"-Hub (/customer/neu) and the Kunden-
  * Tab add button.
  */
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { router } from "expo-router"
 import type { CustomerCreateBody } from "@warehouse14/api-client"
 
@@ -35,6 +35,12 @@ export default function NeuerKundeScreen() {
   const [form, setForm] = useState<CustomerFormState>(EMPTY_CUSTOMER_FORM)
   const [errors, setErrors] = useState<CustomerFormErrors>({})
   const [celebrate, setCelebrate] = useState(false)
+  // Idempotency guard: once a create succeeds we navigate after a short flood,
+  // but FormScreen re-enables the button the instant submit() resolves. This ref
+  // latches the moment the POST lands so a second tap in that window can't fire a
+  // second POST → no duplicate customer. A ref (not state) so the guard is set
+  // synchronously, before React re-renders the button.
+  const submittedRef = useRef(false)
 
   const clearError = (key: CustomerFieldKey) =>
     setErrors((prev) => {
@@ -45,6 +51,11 @@ export default function NeuerKundeScreen() {
     })
 
   async function submit() {
+    // Already created + navigating away: swallow a second tap silently so we
+    // never POST twice. (The button is also disabled below, but a tap can race
+    // the re-enable; this is the hard stop.)
+    if (submittedRef.current) return
+
     const problems = validateCustomerForm(form)
     setErrors(problems)
     if (!isCustomerFormValid(problems)) {
@@ -65,6 +76,9 @@ export default function NeuerKundeScreen() {
     }
 
     const res = await createCustomer(body)
+    // Latch BEFORE the await-free tail returns: the record now exists, so any
+    // further tap must be a no-op until we navigate away.
+    submittedRef.current = true
     // One haptic per action: the Success notification IS the confirm; the gold
     // flood that follows is visual-only, never a second buzz (DESIGN.md §7).
     haptics.success()
@@ -83,7 +97,9 @@ export default function NeuerKundeScreen() {
         subtitle="Stammdaten erfassen. KYC und Vertrauen folgen im Kundenprofil."
         submitLabel="Anlegen"
         successMessage="Kunde angelegt."
-        submitDisabled={!form.fullName.trim()}
+        // Disabled until navigation: no name yet, or the create already landed
+        // and the gold flood is playing before we replace the screen.
+        submitDisabled={!form.fullName.trim() || celebrate}
         onSubmit={submit}
       >
         <CustomerFields value={form} onChange={setForm} errors={errors} onClearError={clearError} />
