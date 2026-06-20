@@ -57,6 +57,8 @@ export default function RootLayout() {
           <Stack.Screen name="login" options={{ headerShown: false }} />
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="product/[id]" options={{ presentation: "modal", title: "Artikel" }} />
+          <Stack.Screen name="product/neu" options={{ presentation: "modal", title: "Neuer Artikel" }} />
+          <Stack.Screen name="product/edit" options={{ presentation: "modal", title: "Bearbeiten" }} />
           <Stack.Screen name="customer/[id]" options={{ presentation: "modal", title: "Kunde" }} />
           <Stack.Screen
             name="capture"

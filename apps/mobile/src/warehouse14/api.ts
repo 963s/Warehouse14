@@ -20,6 +20,7 @@ import {
   authPin,
   belegtextApi,
   bridgeApi,
+  categoriesApi,
   closingsApi,
   createApiClient,
   customersApi,
@@ -43,9 +44,13 @@ import {
   type AvailableSlotsQuery,
   type BookAppointmentRequest,
   type BridgeSummary,
+  type CategoryTreeResponse,
   type ClosingListItem,
   type CreateProductBody,
   type CreateProductResponse,
+  type ProductDeleteResponse,
+  type ProductUpdateBody,
+  type ProductUpdateResponse,
   type CreateTaskBody,
   type CurrentBelegtextQuery,
   type CurrentBelegtextResponse,
@@ -96,6 +101,8 @@ import {
   type ProductListResponse,
   type RecentTransactionsResponse,
   type RescheduleRequest,
+  type SetProductCategoriesBody,
+  type SetProductCategoriesResponse,
   type AnkaufBody,
   type AnkaufResponse,
   type ShiftView,
@@ -158,12 +165,50 @@ export function createProduct(body: CreateProductBody): Promise<CreateProductRes
   return productsApi.create(apiClient, body)
 }
 
+/**
+ * PUT /api/products/:id — partial update of the PUT-allowed fields (name,
+ * Listenpreis, Zustand, Beschreibung, status DRAFT→AVAILABLE, primary
+ * category, …). Intake-locked fields (sku, Einkaufspreis, Metall, Gewicht)
+ * are refused by the backend. ADMIN + step-up (auto via stepUpMiddleware).
+ */
+export function updateProduct(id: string, body: ProductUpdateBody): Promise<ProductUpdateResponse> {
+  return productsApi.update(apiClient, id, body)
+}
+
+/**
+ * DELETE /api/products/:id — hard-delete an unsold DRAFT (lifecycle clean-up).
+ * The backend refuses AVAILABLE/RESERVED/SOLD, archived, or fiscally-referenced
+ * rows. ADMIN + step-up (auto). SOLD rows are archived server-side via the
+ * /archive route, which the api-client does not yet expose.
+ */
+export function removeProduct(id: string): Promise<ProductDeleteResponse> {
+  return productsApi.remove(apiClient, id)
+}
+
 /** Relocate (LOCATION_CHANGE) — writes audit_log + requires step-up (auto). */
 export function relocateProduct(
   id: string,
   body: InventoryAdjustmentBody,
 ): ReturnType<typeof productsApi.adjustInventory> {
   return productsApi.adjustInventory(apiClient, id, body)
+}
+
+// ── Kategorien (taxonomy tree — no step-up; operator-curated) ────────────────
+/** GET /api/categories — the 2-level taxonomy tree (roots + children). */
+export function categoryTree(): Promise<CategoryTreeResponse> {
+  return categoriesApi.tree(apiClient)
+}
+
+/**
+ * POST /api/products/:id/categories — REPLACE-ALL the product's category set.
+ * Used by the Edit flow to change the primary Kategorie (the products PUT does
+ * not accept categories). Pass `[]`/null to clear.
+ */
+export function setProductCategories(
+  productId: string,
+  body: SetProductCategoriesBody,
+): Promise<SetProductCategoriesResponse> {
+  return categoriesApi.setForProduct(apiClient, productId, body)
 }
 
 // ── Product photos (server-side LOCAL store; raw/thumb GET is public) ─────────

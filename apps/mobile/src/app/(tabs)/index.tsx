@@ -5,11 +5,13 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react"
 import { FlatList, Pressable, RefreshControl, View } from "react-native"
-import { useRouter } from "expo-router"
+import { useFocusEffect, useRouter } from "expo-router"
+import { Plus } from "lucide-react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import type { ProductListRow, ProductStatus } from "@warehouse14/api-client"
 
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Text } from "@/components/ui/text"
@@ -69,9 +71,28 @@ export default function LagerScreen() {
     setRefreshing(false)
   }, [q, filter, load])
 
+  // Reload when the tab regains focus (e.g. after creating an article), so the
+  // new Entwurf shows up without a manual pull-to-refresh.
+  useFocusEffect(
+    useCallback(() => {
+      void load(q, filter)
+    }, [q, filter, load]),
+  )
+
   return (
     <View className="flex-1 bg-background">
       <View className="gap-3 px-4 pt-3">
+        <View className="flex-row items-center justify-between">
+          <Text className="text-xl font-bold">Lager</Text>
+          <Button
+            size="sm"
+            onPress={() => router.push("/product/neu")}
+            accessibilityLabel="Neuen Artikel anlegen"
+          >
+            <Plus size={16} color={t.colors.primaryForeground} />
+            <Text>Neu</Text>
+          </Button>
+        </View>
         <Input
           value={q}
           onChangeText={setQ}

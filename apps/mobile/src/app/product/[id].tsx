@@ -6,7 +6,7 @@
  * transparently and the api-client middleware retries on success.
  */
 import { useCallback, useEffect, useState } from "react"
-import { Image, Pressable, ScrollView, View } from "react-native"
+import { Alert, Image, Pressable, ScrollView, View } from "react-native"
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import type { CurrentMetalPrice, PhotoRow, ProductDetail } from "@warehouse14/api-client"
@@ -24,6 +24,7 @@ import {
   getProduct,
   listProductPhotos,
   relocateProduct,
+  removeProduct,
   schmelzwertEur,
   setPhotoPrimary,
 } from "@/warehouse14/api"
@@ -57,6 +58,7 @@ export default function ProductDetailScreen() {
   const [busy, setBusy] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
   const [okMsg, setOkMsg] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const loadPhotos = useCallback(async () => {
     if (!id) return
@@ -107,6 +109,33 @@ export default function ProductDetailScreen() {
       await loadPhotos()
     } catch (e) {
       setError(describeError(e))
+    }
+  }
+
+  function confirmDelete() {
+    if (!id) return
+    Alert.alert(
+      "Artikel löschen?",
+      "Nur unverkaufte Entwürfe können gelöscht werden. Dies kann nicht rückgängig gemacht werden.",
+      [
+        { text: "Abbrechen", style: "cancel" },
+        { text: "Löschen", style: "destructive", onPress: () => void runDelete() },
+      ],
+    )
+  }
+
+  async function runDelete() {
+    if (!id) return
+    setDeleting(true)
+    setError(null)
+    try {
+      // DELETE 403s with STEP_UP_REQUIRED when the window is stale; the
+      // stepUpMiddleware opens the PIN Dialog and retries automatically.
+      await removeProduct(id)
+      router.back()
+    } catch (e) {
+      setError(describeError(e))
+      setDeleting(false)
     }
   }
 
@@ -184,6 +213,13 @@ export default function ProductDetailScreen() {
           </Badge>
         </View>
       </View>
+
+      <Button
+        variant="outline"
+        onPress={() => router.push({ pathname: "/product/edit", params: { id } })}
+      >
+        <Text>Bearbeiten</Text>
+      </Button>
 
       <Card className="gap-2.5 px-4 py-4">
         <Row
@@ -275,6 +311,18 @@ export default function ProductDetailScreen() {
           <Text>Umlagern</Text>
         </Button>
       )}
+
+      {product.status === "DRAFT" && !product.archivedAt ? (
+        <Button
+          variant="destructive"
+          size="lg"
+          className="h-12"
+          onPress={confirmDelete}
+          disabled={deleting}
+        >
+          <Text>{deleting ? "Löschen…" : "Entwurf löschen"}</Text>
+        </Button>
+      ) : null}
     </ScrollView>
   )
 }
