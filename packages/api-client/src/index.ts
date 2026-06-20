@@ -97,6 +97,10 @@ export {
   type SignOutResponse,
 } from './domains/auth-pin.js';
 export {
+  bridgeApi,
+  type BridgeSummary,
+} from './domains/bridge.js';
+export {
   dashboard,
   type DashboardSummary,
 } from './domains/dashboard.js';
