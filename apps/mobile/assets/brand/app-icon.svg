@@ -1,0 +1,66 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Warehouse14 — Owner OS app icon.
+       Brand canvas #131519, brass #d8b14e, gold (decorative) #bf9430,
+       verdigris accent #2fb277. A brass treasure-vault: concentric rings,
+       a spoked dial/handle, rivets on the rim, a verdigris accent notch,
+       and the "W14" wordmark engraved at the base. Flat, modern, legible
+       small. This SVG is the design source of truth; the shipped PNGs are
+       rendered by assets/brand/generate-icon.mjs (zero-dependency Node).
+       Basel can refine here, then re-run the generator. -->
+  <defs>
+    <linearGradient id="panel" x1="0" y1="0" x2="0" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1b1e24"/>
+      <stop offset="1" stop-color="#101216"/>
+    </linearGradient>
+    <linearGradient id="brass" x1="312" y1="300" x2="712" y2="724" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f0d27e"/>
+      <stop offset="0.5" stop-color="#d8b14e"/>
+      <stop offset="1" stop-color="#a47e2f"/>
+    </linearGradient>
+    <radialGradient id="vault" cx="512" cy="492" r="232" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#23262d"/>
+      <stop offset="1" stop-color="#15171c"/>
+    </radialGradient>
+  </defs>
+
+  <!-- App panel (full-bleed; iOS masks the corners, Android adaptive crops). -->
+  <rect width="1024" height="1024" rx="224" fill="url(#panel)"/>
+
+  <!-- Outer brass vault ring -->
+  <circle cx="512" cy="492" r="228" fill="none" stroke="url(#brass)" stroke-width="34"/>
+  <!-- Inner vault face -->
+  <circle cx="512" cy="492" r="196" fill="url(#vault)"/>
+  <!-- Thin gold inner bezel (decorative) -->
+  <circle cx="512" cy="492" r="178" fill="none" stroke="#bf9430" stroke-width="6" opacity="0.55"/>
+
+  <!-- Rivets around the rim (gold, decorative) -->
+  <g fill="#bf9430">
+    <circle cx="512" cy="288" r="13"/>
+    <circle cx="656" cy="348" r="13"/>
+    <circle cx="716" cy="492" r="13"/>
+    <circle cx="656" cy="636" r="13"/>
+    <circle cx="512" cy="696" r="13"/>
+    <circle cx="368" cy="636" r="13"/>
+    <circle cx="308" cy="492" r="13"/>
+    <circle cx="368" cy="348" r="13"/>
+  </g>
+
+  <!-- Vault dial / handle — spokes + hub (brass) -->
+  <g stroke="url(#brass)" stroke-width="30" stroke-linecap="round">
+    <line x1="512" y1="492" x2="512" y2="356"/>
+    <line x1="512" y1="492" x2="630" y2="560"/>
+    <line x1="512" y1="492" x2="394" y2="560"/>
+  </g>
+  <circle cx="512" cy="492" r="58" fill="url(#brass)"/>
+  <circle cx="512" cy="492" r="30" fill="#15171c"/>
+
+  <!-- Verdigris accent notch on the ring (the brand's green) -->
+  <path d="M512 252 a240 240 0 0 1 169.7 70.3 l-39.6 39.6 a184 184 0 0 0 -130.1 -53.9 z"
+        fill="#2fb277"/>
+
+  <!-- Wordmark engraved at the base -->
+  <text x="512" y="836" text-anchor="middle"
+        font-family="Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif"
+        font-size="118" font-weight="800" letter-spacing="2"
+        fill="#d8b14e">W14</text>
+</svg>
