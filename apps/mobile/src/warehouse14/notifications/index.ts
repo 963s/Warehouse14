@@ -71,3 +71,17 @@ export {
 
 // The header bell with the live unread badge (drop-in for any screen header).
 export { NotificationBell, type NotificationBellProps } from "./NotificationBell"
+
+// Live owner alerts — the bridge-snapshot „Jetzt"-Schicht (current STATE, not
+// history): approvals waiting, next Termin, worker DLQ, TSE-cert headroom. The
+// pure derivation + the drop-in section the Center mounts above its history feed.
+export {
+  deriveLiveAlerts,
+  peakSeverity,
+  formatNextAppointment,
+  TSE_CRITICAL_DAYS,
+  TSE_WATCH_DAYS,
+  type LiveAlert,
+  type LiveAlertKind,
+} from "./live-alerts"
+export { LiveAlertsSection, type LiveAlertsSectionProps } from "./LiveAlertsSection"

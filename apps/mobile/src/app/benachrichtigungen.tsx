@@ -54,6 +54,7 @@ import { Card } from "@/components/ui/card"
 import { Text } from "@/components/ui/text"
 import {
   CHANNEL_LABELS,
+  LiveAlertsSection,
   relativeTime,
   useNotifications,
   type NotificationChannel,
@@ -464,6 +465,18 @@ export default function BenachrichtigungenScreen() {
     [feed],
   )
 
+  // The scrolling top block: the live „Jetzt" status section (bridge-derived
+  // owner alerts — approvals waiting, next Termin, DLQ, TSE headroom) over the
+  // sticky filter header. The live section scrolls away; the filter row sticks.
+  const topBlock = useMemo(
+    () => (
+      <View className="gap-3 pb-3">
+        <LiveAlertsSection />
+      </View>
+    ),
+    [],
+  )
+
   // Sticky header — the live unread summary line + the filter chips.
   const header = useMemo(
     () => (
@@ -497,8 +510,12 @@ export default function BenachrichtigungenScreen() {
       <FlatList
         data={visible}
         keyExtractor={(it) => String(it.id)}
-        stickyHeaderIndices={[0]}
-        ListHeaderComponent={header}
+        ListHeaderComponent={
+          <View className="gap-1">
+            {topBlock}
+            {header}
+          </View>
+        }
         contentContainerStyle={{
           paddingHorizontal: 16,
           paddingTop: 12,
