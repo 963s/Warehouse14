@@ -183,6 +183,9 @@ export {
   type ProductUpdateBody,
   type ProductUpdateResponse,
   // ────────────────────────────────────────────────────────────────────
+  type ReleaseBatchBody,
+  type ReleaseBatchItem,
+  type ReleaseBatchResponse,
   type ReleaseBody,
   type ReleaseReason,
   type ReleaseResponse,

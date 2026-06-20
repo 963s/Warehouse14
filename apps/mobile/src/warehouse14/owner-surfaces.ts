@@ -26,6 +26,7 @@ import {
   Receipt,
   ScanLine,
   Settings,
+  ShoppingCart,
   UserPlus,
   Wallet,
 } from "lucide-react-native"
@@ -143,6 +144,15 @@ export const OWNER_SURFACES: readonly OwnerSurface[] = [
     description: "Freigaben, Termine und Hinweise an einem Ort.",
     icon: Bell,
     group: "system",
+    available: true,
+  },
+  {
+    id: "verkauf",
+    route: "/verkauf",
+    label: "Verkauf",
+    description: "Artikel kassieren und rechtsverbindlich abschließen.",
+    icon: ShoppingCart,
+    group: "betrieb",
     available: true,
   },
 ] as const

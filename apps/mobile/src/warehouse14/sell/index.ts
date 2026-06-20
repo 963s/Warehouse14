@@ -59,6 +59,14 @@ export {
 
 export { newIdempotencyKey } from "./idempotency"
 
+// Verkauf reservation lifecycle — the hook that backs the pure cart with real
+// RESERVED→SOLD server locks (reserve-on-add, release-on-back-out).
+export {
+  useVerkaufSession,
+  detailToCartLine,
+  type UseVerkaufSession,
+} from "./verkauf-flow"
+
 export {
   TAX_TREATMENT_SHORT,
   TAX_TREATMENT_LONG,

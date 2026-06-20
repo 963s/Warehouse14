@@ -103,6 +103,12 @@ import {
   type ProductListQuery,
   type ProductListResponse,
   type RecentTransactionsResponse,
+  type ReserveBody,
+  type ReserveResponse,
+  type ReleaseBody,
+  type ReleaseResponse,
+  type ReleaseBatchBody,
+  type ReleaseBatchResponse,
   type RescheduleRequest,
   type SetProductCategoriesBody,
   type SetProductCategoriesResponse,
@@ -445,6 +451,28 @@ export function finalizeTransaction(body: FinalizeBody): Promise<FinalizeRespons
 /** POST /api/transactions/ankauf — buy items in (creates products + fiscal row). */
 export function ankaufTransaction(body: AnkaufBody): Promise<AnkaufResponse> {
   return transactionsApi.ankauf(apiClient, body)
+}
+
+// ── Inventar-Reservierung (RESERVED↔AVAILABLE, der Verkauf-Vorlauf) ───────────
+// A Verkauf line cannot be finalized straight from AVAILABLE: the server's
+// finalize moves each line RESERVED → SOLD and refuses a product that is not
+// reserved by THIS cashier's session (transactions-finalize.ts §3a binds
+// `(sessionId, userId)`). So the sell screen reserves on add and releases on
+// remove/abandon. The session id is one client-generated UUID per cart; the
+// channel is POS. These are thin pass-throughs to the already-typed
+// productsApi.reserve/release — no new endpoint, no math.
+export function reserveProduct(body: ReserveBody): Promise<ReserveResponse> {
+  return productsApi.reserve(apiClient, body)
+}
+
+/** Release ONE reservation back to AVAILABLE (a single line removed from the cart). */
+export function releaseProduct(body: ReleaseBody): Promise<ReleaseResponse> {
+  return productsApi.release(apiClient, body)
+}
+
+/** Release MANY reservations in one call — the cart-cleared / screen-left coalesce. */
+export function releaseProductsBatch(body: ReleaseBatchBody): Promise<ReleaseBatchResponse> {
+  return productsApi.releaseBatch(apiClient, body)
 }
 
 // ── Belegtext (receipt legal text per Steuerschlüssel) ───────────────────────
