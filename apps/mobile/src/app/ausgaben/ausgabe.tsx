@@ -97,12 +97,18 @@ export default function AusgabeScreen() {
   const parsedAmount = parseEuroToCents(amount)
   const canSubmit = parsedAmount != null
 
-  async function submit() {
+  async function submit(): Promise<boolean> {
+    // Client-side field validation surfaces ONLY at the offending field (the
+    // precise, contextual place) and returns `false` — it must NOT also throw,
+    // or FormScreen's catch would echo the same problem in the top-of-form
+    // "Fehler" banner (the owner would see it reported twice). The `false`
+    // tells FormScreen to skip the success banner too. Only a real api-client
+    // rejection below is allowed to reach the error banner.
     const cents = parseEuroToCents(amount)
     if (cents == null) {
       haptics.error()
       setAmountError("Bitte einen gültigen Betrag größer als 0 eingeben.")
-      throw new Error("Betrag ungültig.")
+      return false
     }
     setAmountError(null)
 
@@ -110,7 +116,7 @@ export default function AusgabeScreen() {
     if (!parsedDate.ok || parsedDate.day == null) {
       haptics.error()
       setDateError("Bitte ein gültiges Datum im Format TT.MM.JJJJ eingeben.")
-      throw new Error("Datum ungültig.")
+      return false
     }
     setDateError(null)
 
@@ -139,6 +145,7 @@ export default function AusgabeScreen() {
     // pop back to the list, which refetches on focus and shows the row.
     haptics.success()
     setCelebrate(true)
+    return true
   }
 
   function categoryChip(opt: ExpenseCategory) {

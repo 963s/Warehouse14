@@ -61,6 +61,7 @@ export default function FixkostenScreen() {
   const [celebrate, setCelebrate] = useState(false)
 
   const [label, setLabel] = useState("")
+  const [labelError, setLabelError] = useState<string | null>(null)
   const [amount, setAmount] = useState("")
   const [amountError, setAmountError] = useState<string | null>(null)
   const [fromInput, setFromInput] = useState(businessDayInput(firstOfThisMonth()))
@@ -103,16 +104,25 @@ export default function FixkostenScreen() {
   const parsedAmount = parseEuroToCents(amount)
   const canSubmit = labelTrimmed.length > 0 && parsedAmount != null
 
-  async function submit() {
+  async function submit(): Promise<boolean> {
+    // Client-side field validation surfaces ONLY at the offending field (the
+    // precise, contextual place) and returns `false` — it must NOT also throw,
+    // or FormScreen's catch would echo the same problem in the top-of-form
+    // "Fehler" banner (the owner would see it reported twice). The `false`
+    // tells FormScreen to skip the success banner too. Only a real api-client
+    // rejection below is allowed to reach the error banner.
     if (labelTrimmed.length === 0) {
       haptics.error()
-      throw new Error("Bitte eine Bezeichnung eingeben.")
+      setLabelError("Bitte eine Bezeichnung eingeben.")
+      return false
     }
+    setLabelError(null)
+
     const cents = parseEuroToCents(amount)
     if (cents == null) {
       haptics.error()
       setAmountError("Bitte einen gültigen Betrag größer als 0 eingeben.")
-      throw new Error("Betrag ungültig.")
+      return false
     }
     setAmountError(null)
 
@@ -120,7 +130,7 @@ export default function FixkostenScreen() {
     if (!parsedFrom.ok || parsedFrom.day == null) {
       haptics.error()
       setFromError("Bitte ein gültiges Startdatum (TT.MM.JJJJ) eingeben.")
-      throw new Error("Startdatum ungültig.")
+      return false
     }
     setFromError(null)
 
@@ -128,13 +138,13 @@ export default function FixkostenScreen() {
     if (!parsedTo.ok) {
       haptics.error()
       setToError("Bitte ein gültiges Enddatum (TT.MM.JJJJ) eingeben oder leer lassen.")
-      throw new Error("Enddatum ungültig.")
+      return false
     }
     // The DB CHECK enforces active_to >= active_from — catch it before the round-trip.
     if (parsedTo.day != null && parsedTo.day < parsedFrom.day) {
       haptics.error()
       setToError("Das Enddatum darf nicht vor dem Startdatum liegen.")
-      throw new Error("Enddatum vor Startdatum.")
+      return false
     }
     setToError(null)
 
@@ -159,6 +169,7 @@ export default function FixkostenScreen() {
 
     haptics.success()
     setCelebrate(true)
+    return true
   }
 
   if (loading) {
@@ -198,9 +209,13 @@ export default function FixkostenScreen() {
         <FormField
           label="Bezeichnung"
           required
+          error={labelError}
           inputProps={{
             value: label,
-            onChangeText: setLabel,
+            onChangeText: (v: string) => {
+              setLabel(v)
+              if (labelError) setLabelError(null)
+            },
             placeholder: "z. B. Ladenmiete",
             autoCapitalize: "sentences",
             maxLength: 200,

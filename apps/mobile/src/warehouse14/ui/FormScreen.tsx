@@ -29,8 +29,14 @@ export interface FormScreenProps {
   title: string
   subtitle?: string
   children: ReactNode
-  /** The mutation. Resolve → success; throw → the message lands in the banner. */
-  onSubmit: () => Promise<void>
+  /**
+   * The mutation. Throw → the message lands in the error banner; resolve →
+   * success banner. Resolving `false` is the escape hatch for client-side field
+   * validation that already surfaced its message inline (at the offending
+   * FormField): it shows neither banner, so the owner never sees the same
+   * problem reported twice. Resolving `void`/`true` keeps the success banner.
+   */
+  onSubmit: () => Promise<void | boolean>
   /** Save-button label (default "Speichern"). */
   submitLabel?: string
   /** German success line under the banner (default "Gespeichert."). */
@@ -62,8 +68,11 @@ export function FormScreen({
     setOk(false)
     setBusy(true)
     try {
-      await onSubmit()
-      setOk(true)
+      // `false` = client-side field validation stopped us and already showed
+      // its message inline; show no success banner (and no error banner — the
+      // caller returned rather than threw). Any other resolution is a success.
+      const result = await onSubmit()
+      if (result !== false) setOk(true)
     } catch (e) {
       setError(describeError(e))
     } finally {
