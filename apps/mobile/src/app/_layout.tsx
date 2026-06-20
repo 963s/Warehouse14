@@ -15,6 +15,7 @@ import { warehouse14Fonts } from "@/warehouse14/fonts"
 import { useSession } from "@/warehouse14/session"
 import { StepUpDialogHost } from "@/warehouse14/StepUpDialog"
 import { darkPalette, lightPalette } from "@/warehouse14/theme"
+import { ConnectionBannerHost } from "@/warehouse14/ui"
 
 SplashScreen.preventAutoHideAsync()
 
@@ -87,6 +88,7 @@ export default function RootLayout() {
           />
         </Stack>
         <StepUpDialogHost />
+        <ConnectionBannerHost />
         <PortalHost />
       </SafeAreaProvider>
     </GestureHandlerRootView>

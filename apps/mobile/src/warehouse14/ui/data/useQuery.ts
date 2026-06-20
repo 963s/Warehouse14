@@ -22,6 +22,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useFocusEffect } from "expo-router"
 import { ApiOfflineQueuedError } from "@warehouse14/api-client"
 
+import { reportQueryOutcome } from "./connection"
 import { dedupe } from "./dedupe"
 import type { QueryOptions, QueryResult, QueryState } from "./types"
 import { describeError } from "../../api"
@@ -95,6 +96,9 @@ export function useQuery<T>(fetcher: () => Promise<T>, options: QueryOptions = {
       try {
         const exec = () => fetcherRef.current()
         const data = key ? await dedupe(key, exec) : await exec()
+        // A real response landed — the cloud is reachable. Report even if a
+        // newer run has superseded us; the wire being up is still true.
+        reportQueryOutcome(null)
         if (!mounted.current || id !== runId.current) return
         updatedAtRef.current = Date.now()
         setState({
@@ -109,6 +113,11 @@ export function useQuery<T>(fetcher: () => Promise<T>, options: QueryOptions = {
           updatedAt: updatedAtRef.current,
         })
       } catch (err) {
+        // Feed the connection store first, before the run-ownership guard, so a
+        // superseded run's network signal is never lost. A read that fell
+        // through to the offline queue (ApiOfflineQueuedError) is itself
+        // classified as a connection error → the banner shows.
+        reportQueryOutcome(err)
         if (!mounted.current || id !== runId.current) return
         // A read that got offline-queued is not a failure — keep last good
         // data and just stop the spinners. (Mutations handle this differently.)

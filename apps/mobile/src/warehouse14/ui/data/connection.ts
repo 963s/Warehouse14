@@ -1,0 +1,149 @@
+/**
+ * connection — the app's honest sense of "can we reach the cloud right now?".
+ *
+ * The mobile app ships no NetInfo native module, and the honesty rule forbids
+ * inventing a connectivity claim. So instead of probing the OS, we DERIVE
+ * connectivity from the real outcomes of the reads the surfaces already make:
+ * the live-data layer (`useQuery`) reports every settled attempt here.
+ *
+ *   • a transport-level failure (`ApiNetworkError`) or an open circuit
+ *     (`ApiCircuitOpenError`) → we are offline / the cloud is unreachable.
+ *   • any successful response, or a normal `ApiError` (the server answered,
+ *     it just said no) → we are online; the wire is fine.
+ *
+ * This is a tiny module-level store with a `useSyncExternalStore` hook, so the
+ * ConnectionBanner re-renders the instant the status flips and never tears.
+ * It holds NO data and fabricates nothing — it only mirrors what real requests
+ * just experienced.
+ */
+import { useSyncExternalStore } from "react"
+import {
+  ApiCircuitOpenError,
+  ApiNetworkError,
+  ApiOfflineQueuedError,
+} from "@warehouse14/api-client"
+
+/**
+ * The connection's lifecycle, derived from real request outcomes.
+ *
+ *   online   — the last transport attempt reached the cloud (2xx or a clean
+ *              ApiError from the server). The default before anything is known.
+ *   offline  — the last attempt failed at the transport level (DNS / refused /
+ *              timeout) or the circuit is open. The banner shows.
+ */
+export type ConnectionStatus = "online" | "offline"
+
+export interface ConnectionState {
+  status: ConnectionStatus
+  /** `Date.now()` when we last reached the cloud, or `null` if never this session. */
+  lastOnlineAt: number | null
+  /** `Date.now()` when we first noticed the current offline streak, or `null`. */
+  offlineSince: number | null
+}
+
+// Module-level singleton — there is one network, so one source of truth.
+let state: ConnectionState = {
+  status: "online",
+  lastOnlineAt: null,
+  offlineSince: null,
+}
+
+const listeners = new Set<() => void>()
+
+function emit(): void {
+  for (const l of listeners) l()
+}
+
+function setState(next: ConnectionState): void {
+  // Identity-stable: skip the notify (and the re-render) when nothing changed,
+  // so a steady stream of successful polls never churns subscribers.
+  if (
+    next.status === state.status &&
+    next.lastOnlineAt === state.lastOnlineAt &&
+    next.offlineSince === state.offlineSince
+  ) {
+    return
+  }
+  state = next
+  emit()
+}
+
+/** A real request reached the cloud. Clears any offline streak. */
+export function reportOnline(): void {
+  setState({ status: "online", lastOnlineAt: Date.now(), offlineSince: null })
+}
+
+/** A real request failed at the transport level. Opens / extends the streak. */
+export function reportOffline(): void {
+  setState({
+    status: "offline",
+    lastOnlineAt: state.lastOnlineAt,
+    // Keep the original streak start so "offline since" doesn't reset on retry.
+    offlineSince: state.offlineSince ?? Date.now(),
+  })
+}
+
+/**
+ * Feed a settled query outcome into the connection store. Called by the data
+ * layer on every settle. Only transport-level failures move us offline; a
+ * server `ApiError` means the wire is fine, so it counts as online.
+ *
+ *   reportQueryOutcome(null)  → success → online
+ *   reportQueryOutcome(err)   → classify the error
+ */
+export function reportQueryOutcome(error: unknown): void {
+  if (error == null) {
+    reportOnline()
+    return
+  }
+  if (isConnectionError(error)) {
+    reportOffline()
+    return
+  }
+  // The server answered (ApiError) or some other non-transport issue — the
+  // network itself is reachable.
+  reportOnline()
+}
+
+/**
+ * True when a thrown value means we could not reach the cloud (vs the server
+ * answering with a refusal). A transport failure, an open circuit, or a read
+ * that fell through to the offline queue all count.
+ */
+export function isConnectionError(error: unknown): boolean {
+  return (
+    error instanceof ApiNetworkError ||
+    error instanceof ApiCircuitOpenError ||
+    error instanceof ApiOfflineQueuedError
+  )
+}
+
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener)
+  return () => {
+    listeners.delete(listener)
+  }
+}
+
+function getSnapshot(): ConnectionState {
+  return state
+}
+
+/**
+ * Subscribe a component to the connection store. Re-renders only when the
+ * status (or its timestamps) actually changes.
+ */
+export function useConnection(): ConnectionState {
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
+}
+
+/** Convenience: just the boolean every banner-conditional wants. */
+export function useIsOffline(): boolean {
+  return useConnection().status === "offline"
+}
+
+/** Test/diagnostic seam — reset the store to its pristine online state. */
+export function __resetConnection(): void {
+  state = { status: "online", lastOnlineAt: null, offlineSince: null }
+  emit()
+}

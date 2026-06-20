@@ -13,12 +13,25 @@
  *   useMutation       — writes with optimistic update + rollback.
  *   useRefreshControl — themed <RefreshControl> props from a query.
  *   dedupe            — the in-flight de-dup primitive (advanced / tests).
+ *   connection        — the derived online/offline store (no NetInfo): the data
+ *                       layer reports every settled read's transport outcome
+ *                       here, and the ConnectionBanner mirrors it.
  */
 export { useQuery } from "./useQuery"
 export { useMultiQuery } from "./useMultiQuery"
 export { useMutation } from "./useMutation"
 export { useRefreshControl } from "./useRefreshControl"
 export { dedupe, isInFlight, clearInFlight } from "./dedupe"
+export {
+  useConnection,
+  useIsOffline,
+  isConnectionError,
+  reportOnline,
+  reportOffline,
+  reportQueryOutcome,
+  type ConnectionStatus,
+  type ConnectionState,
+} from "./connection"
 
 export type { QueryStatus, QueryState, QueryActions, QueryResult, QueryOptions } from "./types"
 export type { FetcherMap, SourceResult, MultiQueryResults, MultiQueryResult } from "./useMultiQuery"

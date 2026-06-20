@@ -11,6 +11,13 @@
  *   EmptyState    — centred placeholder (icon · title · description · CTA).
  *   Skeleton      — loading placeholder in a card/row's shape (pulse, RM-aware),
  *                   plus SkeletonText / SkeletonRow / SkeletonCard assemblies.
+ *   ErrorState    — centred "couldn't load" block + Retry (offline-aware copy).
+ *   InlineError   — the unified non-blocking destructive card (mutation/bg fail).
+ *   QueryBoundary — the helper that turns a useQuery result into the right
+ *                   state (skeleton · error+retry · empty · content); the one
+ *                   wrapper every list/detail screen uses so states are uniform.
+ *   ConnectionBanner / ConnectionBannerHost — the honest offline bar (mounted
+ *                   once at the root, mirrors the derived connection store).
  *   FormField     — labelled input with hint + per-field error.
  *   FormScreen    — form scaffold: error/success banners + sticky save (step-up
  *                   is transparent via the global StepUpDialogHost).
@@ -37,6 +44,18 @@ export {
   type SkeletonTextProps,
   type SkeletonCardProps,
 } from "./Skeleton"
+
+// State system — the unified loading / error / empty / offline vocabulary so
+// every list and detail screen renders its states the same way.
+export { ErrorState, type ErrorStateProps } from "./ErrorState"
+export { InlineError, type InlineErrorProps } from "./InlineError"
+export {
+  QueryBoundary,
+  type QueryBoundaryProps,
+  type QueryBoundaryEmpty,
+} from "./QueryBoundary"
+export { ConnectionBanner, ConnectionBannerHost } from "./ConnectionBanner"
+
 export { FormField, type FormFieldProps } from "./FormField"
 export { FormScreen, type FormScreenProps } from "./FormScreen"
 

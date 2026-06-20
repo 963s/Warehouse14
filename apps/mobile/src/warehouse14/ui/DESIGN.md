@@ -233,6 +233,20 @@ theme. Do not rebuild these; compose them.
 - `Skeleton` (+ `SkeletonText` / `SkeletonRow` / `SkeletonCard`) — the loading
   placeholder in the card/row's shape. A calm opacity pulse on the UI thread;
   static dim under reduce motion. Loading shows this, never a mid-screen spinner.
+- `QueryBoundary` — the state-system entry point: feed it a `useQuery` result
+  and it renders the right state — first-load `Skeleton`, `ErrorState` + Retry
+  when there's nothing to show, `EmptyState` for a real empty result, else the
+  content. Every list and detail screen wraps its body in one boundary so the
+  four states are uniform and `children` only ever runs with real data.
+- `ErrorState` — centred „konnte nicht geladen werden" disc · message · Retry.
+  Connection failures read as „Keine Verbindung" (offline copy); a server
+  refusal shows the themed `describeError` message.
+- `InlineError` — the unified non-blocking destructive card for a mutation or
+  background failure while data is still on screen (the one error card every
+  surface uses instead of hand-rolling its own). Optional Retry + dismiss.
+- `ConnectionBanner` / `ConnectionBannerHost` — the honest offline bar. No
+  NetInfo: the data layer reports each read's transport outcome into the
+  `connection` store and the bar mirrors it. Mounted once at the root.
 - `FormField` / `FormScreen` — labelled input with hint + per-field error; form
   scaffold with error/success banners and a sticky save bar (step-up is
   transparent via the global host).
