@@ -32,17 +32,19 @@ export function EmptyState({
   return (
     <View className="items-center justify-center gap-3 px-6 py-10">
       <View
-        className="h-14 w-14 items-center justify-center rounded-full"
-        style={{ backgroundColor: t.colors.card, borderColor: t.colors.border, borderWidth: 1 }}
+        className="h-16 w-16 items-center justify-center rounded-full"
+        style={{ backgroundColor: t.colors.primary + "14", borderColor: t.colors.border, borderWidth: 1 }}
       >
-        <Icon size={24} color={t.colors.mutedForeground} />
+        <Icon size={26} color={t.colors.primary} />
       </View>
       <Text className="text-center text-base font-semibold">{title}</Text>
       {description != null ? (
-        <Text className="text-muted-foreground max-w-xs text-center text-sm">{description}</Text>
+        <Text className="text-muted-foreground max-w-xs text-center text-sm leading-5">
+          {description}
+        </Text>
       ) : null}
       {actionLabel != null && onAction ? (
-        <Button variant="outline" onPress={onAction} className="mt-1">
+        <Button variant="outline" onPress={onAction} className="mt-2">
           <Text>{actionLabel}</Text>
         </Button>
       ) : null}

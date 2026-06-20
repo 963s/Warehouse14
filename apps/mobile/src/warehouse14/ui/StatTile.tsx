@@ -45,7 +45,11 @@ export function StatTile({
 
   return (
     <Card className="gap-2 px-3 py-3" style={{ width: "48%" }}>
-      <Text className="text-muted-foreground text-xs" numberOfLines={1}>
+      <Text
+        className="text-muted-foreground text-xs font-medium uppercase"
+        style={{ letterSpacing: 0.4 }}
+        numberOfLines={1}
+      >
         {label}
       </Text>
       {ratio != null ? (
@@ -53,8 +57,8 @@ export function StatTile({
       ) : (
         <>
           <Text
-            className="text-2xl font-bold"
-            style={muted ? { color: t.colors.mutedForeground } : undefined}
+            className="font-mono text-2xl font-bold"
+            style={{ color: muted ? t.colors.mutedForeground : toneColor }}
             numberOfLines={1}
           >
             {value}

@@ -34,7 +34,14 @@ export function SectionCard({
     <Card className="gap-3 px-4 py-4">
       <View className="flex-row items-center justify-between gap-3">
         <View className="flex-1 flex-row items-center gap-2.5">
-          {Icon ? <Icon size={18} color={t.colors.primary} /> : null}
+          {Icon ? (
+            <View
+              className="h-8 w-8 items-center justify-center rounded-md"
+              style={{ backgroundColor: t.colors.primary + "1f" }}
+            >
+              <Icon size={18} color={t.colors.primary} />
+            </View>
+          ) : null}
           <View className="flex-1">
             <Text className="text-base font-semibold" numberOfLines={1}>
               {title}

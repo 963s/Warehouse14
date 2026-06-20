@@ -121,7 +121,7 @@ export function FormScreen({
         <Button
           onPress={() => void handleSubmit()}
           disabled={submitDisabled || busy}
-          className={money ? "h-12" : undefined}
+          size={money ? "xl" : "default"}
         >
           <Text>{busy ? "Speichern…" : submitLabel}</Text>
         </Button>

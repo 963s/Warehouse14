@@ -225,12 +225,19 @@ theme. Do not rebuild these; compose them.
 - `SectionCard` — titled panel: optional brass icon · title · subtitle · right
   action slot, over its rows.
 - `ListRow` — tappable/static row (icon · title/subtitle · value · chevron).
+- `SectionHeader` — the un-carded group header (a Section title or a quiet
+  tracked "overline") for titling content that sits directly on the canvas,
+  where `SectionCard` would over-box it.
 - `EmptyState` — centred icon disc · title · description · optional CTA. The
   default for "nothing yet" and "not available".
+- `Skeleton` (+ `SkeletonText` / `SkeletonRow` / `SkeletonCard`) — the loading
+  placeholder in the card/row's shape. A calm opacity pulse on the UI thread;
+  static dim under reduce motion. Loading shows this, never a mid-screen spinner.
 - `FormField` / `FormScreen` — labelled input with hint + per-field error; form
   scaffold with error/success banners and a sticky save bar (step-up is
   transparent via the global host).
-- `RingGauge` — progress 0..1, SVG-free bar fallback.
+- `RingGauge` — progress 0..1, SVG-free bar fallback; the fill lands with the
+  emphasis spring and shows the gold milestone shimmer at 100%.
 
 Touch targets: minimum 44px (`touch.min`); any money-path action uses 48px
 (`touch.comfortable`). Every interactive element gets an accessibility label in
