@@ -22,7 +22,21 @@ import type { ApiClient } from '../client.js';
 // Common types
 // ────────────────────────────────────────────────────────────────────────
 
-export type CustomerKycStatus = 'NOT_REQUIRED' | 'PENDING' | 'COMPLETED' | 'EXPIRED' | 'FAILED';
+/**
+ * KYC (GwG) document status — mirrors the live `kyc_status` Postgres enum and the
+ * route response schemas (customer-list.ts, customer.ts). The earlier
+ * COMPLETED/FAILED pair never existed in the backend: the real lifecycle is
+ * PENDING → CAPTURED (Ausweis erfasst) → VERIFIED (geprüft), with EXPIRED/REJECTED
+ * as terminal states. Keeping this out of sync silently blanked the badge for
+ * VERIFIED/CAPTURED customers, so this MUST track the DB enum exactly.
+ */
+export type CustomerKycStatus =
+  | 'NOT_REQUIRED'
+  | 'PENDING'
+  | 'CAPTURED'
+  | 'VERIFIED'
+  | 'EXPIRED'
+  | 'REJECTED';
 export type CustomerTrustLevel = 'NEW' | 'VERIFIED' | 'VIP' | 'SUSPICIOUS' | 'BANNED';
 export type CustomerLanguage = 'de' | 'en' | 'ar';
 
@@ -31,9 +45,10 @@ export type CustomerLanguage = 'de' | 'en' | 'ar';
 export const CUSTOMER_KYC_STATUS_LABELS: Readonly<Record<CustomerKycStatus, string>> = {
   NOT_REQUIRED: 'Nicht erforderlich',
   PENDING: 'Ausstehend',
-  COMPLETED: 'Abgeschlossen',
+  CAPTURED: 'Ausweis erfasst',
+  VERIFIED: 'Geprüft',
   EXPIRED: 'Abgelaufen',
-  FAILED: 'Fehlgeschlagen',
+  REJECTED: 'Abgelehnt',
 };
 
 /** German display labels for the customer trust level. */

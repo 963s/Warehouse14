@@ -1,7 +1,9 @@
 /**
  * Kunden — the staff customer directory (authenticated `listCustomers`). A
- * debounced free-text search over name + Kundennummer, a quick „KYC bestätigt"
- * filter chip, and rows that read at a glance: an initials avatar, the decrypted
+ * debounced free-text search the route matches on name (ILIKE) or, for an
+ * e-mail / phone query, an exact blind-index lookup — Kundennummer is NOT a
+ * server match strategy, so the placeholder must not promise it. A quick
+ * „KYC bestätigt" filter chip, and rows that read at a glance: an initials avatar, the decrypted
  * full name, the customer number in mono, and the trust/KYC/sanctions flags that
  * matter to an operator. Tapping a row opens the customer detail.
  *
@@ -237,7 +239,7 @@ export default function KundenScreen() {
           <Input
             value={q}
             onChangeText={setQ}
-            placeholder="Suche: Name, Kundennummer…"
+            placeholder="Suche: Name, E-Mail, Telefon…"
             autoCorrect={false}
             autoCapitalize="none"
             returnKeyType="search"

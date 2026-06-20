@@ -272,7 +272,11 @@ export default function CustomerDetailScreen() {
     )
   }
 
-  const kycVerified = customer.kycStatus === "COMPLETED"
+  // The owner's eyeball-verification stamp (Day-26) is the honest "already
+  // confirmed" signal — it drives the re-confirm button + the date note below.
+  // (The old `kycStatus === "COMPLETED"` was dead-always-false: COMPLETED is not
+  // a real `kyc_status` enum value.)
+  const kycVerified = customer.kycVerifiedAt != null
   const ankauf = eurAmount(customer.cumulativeAnkaufEur)
   const spend = eurAmount(customer.cumulativeSpendEur)
   const rollingAnkauf = eurAmount(customer.gwgRollingAnkauf.priorAnkaufEur)

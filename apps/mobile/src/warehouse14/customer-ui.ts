@@ -25,9 +25,10 @@ export const KYC_STATUS_LABEL: Readonly<Record<CustomerKycStatus, string>> =
 export const KYC_STATUS_VARIANT: Record<CustomerKycStatus, BadgeVariant> = {
   NOT_REQUIRED: "outline",
   PENDING: "secondary",
-  COMPLETED: "success",
+  CAPTURED: "secondary",
+  VERIFIED: "success",
   EXPIRED: "destructive",
-  FAILED: "destructive",
+  REJECTED: "destructive",
 }
 
 /** German trust-level labels (re-exported from api-client). */
