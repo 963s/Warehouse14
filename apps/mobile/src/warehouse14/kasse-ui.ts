@@ -22,9 +22,7 @@ export const CLOSING_STATE_LABELS: Record<ClosingState, string> = {
 }
 
 /** Badge variant per closing state — FINALIZED is the legally-sealed Z-Bon. */
-export function closingStateBadgeVariant(
-  state: ClosingState,
-): "default" | "secondary" | "outline" {
+export function closingStateBadgeVariant(state: ClosingState): "default" | "secondary" | "outline" {
   return state === "FINALIZED" ? "default" : "outline"
 }
 
@@ -88,39 +86,60 @@ export function sortClosingsNewestFirst(items: readonly ClosingListItem[]): Clos
   return [...items].sort((a, b) => b.businessDay.localeCompare(a.businessDay))
 }
 
-/** The most recent closing still in COUNTING — the candidate for a Z-Bon. */
-export function latestCountingDay(items: readonly ClosingListItem[]): string | null {
-  const counting = sortClosingsNewestFirst(items).find((c) => c.state === "COUNTING")
-  return counting?.businessDay ?? null
+/**
+ * Is the current trading day still unsealed? TRUE when there is NO daily_closings
+ * row for `today` yet — the normal state of an active till before its Z-Bon.
+ *
+ * The backend only ever writes FINALIZED rows (no COUNTING state is ever
+ * produced), so "is today open?" cannot be read from a row's state — it must be
+ * read from the ABSENCE of today's row. This is the honest source of the
+ * "Offene Tage" / "Tagesabschluss ausstehend" signal.
+ */
+export function isTodayOpen(items: readonly ClosingListItem[], todayBusinessDay: string): boolean {
+  return !items.some((c) => c.businessDay === todayBusinessDay)
 }
 
 // ── Fiskalischer Überblick ────────────────────────────────────────────────────
 /**
  * The honest, real-number summary of the fiscal record — derived purely from the
- * fetched closings, never fabricated. Drives the trust header: how many days are
- * still open (await a Z-Bon), how many are legally sealed, and the total count of
- * TSE failures across the visible window (the one figure that, if non-zero, means
- * the audit trail needs attention).
+ * fetched closings (+ the current business day), never fabricated. Drives the
+ * trust header: whether the current day still awaits its Z-Bon, how many days are
+ * already legally sealed, and the count of TSE failures the record reports.
+ *
+ * HONESTY: "open days" is NOT "rows in COUNTING state" — the backend never
+ * produces a COUNTING row, so that would always read 0 and falsely claim "alles
+ * abgeschlossen" while an active till runs unsealed. Instead it is derived from
+ * the ABSENCE of today's closing row: a trading day with no daily_closings row is
+ * genuinely open and unsealed. `todayBusinessDay` may be omitted (empty string)
+ * when the current day cannot be determined — then we make no open-day claim.
  */
 export interface FiscalOverview {
-  /** Days still in COUNTING — each can be finalized with a Z-Bon. */
-  openDays: number
+  /** TRUE when the current trading day has no Z-Bon yet (genuinely unsealed). */
+  todayOpen: boolean
   /** Days already sealed with a finalized Z-Bon. */
   finalizedDays: number
-  /** Sum of TSE failures across all visible closings (0 = clean trail). */
+  /**
+   * Sum of TSE failures the record reports across visible closings. NOTE: the
+   * backend currently hardcodes tse_failed_count to 0 on every finalize (the
+   * Fiskaly failure source is not yet wired), so a 0 here means "no failure
+   * recorded", NOT a verified-complete TSE protocol — the UI must not present it
+   * as a positive "lückenlos" guarantee.
+   */
   tseFailures: number
 }
 
-export function fiscalOverview(items: readonly ClosingListItem[]): FiscalOverview {
-  let openDays = 0
+export function fiscalOverview(
+  items: readonly ClosingListItem[],
+  todayBusinessDay = "",
+): FiscalOverview {
   let finalizedDays = 0
   let tseFailures = 0
   for (const c of items) {
     if (c.state === "FINALIZED") finalizedDays += 1
-    else openDays += 1
     tseFailures += c.tseFailedCount
   }
-  return { openDays, finalizedDays, tseFailures }
+  const todayOpen = todayBusinessDay !== "" && isTodayOpen(items, todayBusinessDay)
+  return { todayOpen, finalizedDays, tseFailures }
 }
 
 // ── Export file naming ────────────────────────────────────────────────────────

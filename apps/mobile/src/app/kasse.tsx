@@ -17,6 +17,11 @@
  * money-path haptic on the commit press, NEVER auto-fires, and seals the day with
  * a single measured gold flourish. Reached from the „Mehr"-Hub (/kasse).
  *
+ * Two finalize entry points: an open-day card for the CURRENT trading day (when
+ * no daily_closings row exists for it yet — finalize() defaults to today
+ * server-side; this is the keystone path that writes a day's FIRST closing), and,
+ * defensively, an open closing row if one is ever returned in COUNTING state.
+ *
  * Built on the shared spine (DESIGN.md): live data through `useMultiQuery` (shift
  * is allowed to fail independently → null, closings is the primary payload;
  * refetch-on-focus + pull-to-refresh via `useRefreshControl`), the unified state
@@ -69,10 +74,12 @@ import {
   fiscalOverview,
   formatBusinessDay,
   formatTimestamp,
+  isTodayOpen,
   SHIFT_STATUS_LABELS,
   sortClosingsNewestFirst,
   varianceTone,
 } from "@/warehouse14/kasse-ui"
+import { todayBusinessDay } from "@/warehouse14/schatzkammer"
 import { useW14Theme } from "@/warehouse14/theme"
 import {
   CountUp,
@@ -146,15 +153,115 @@ function NoShiftPanel() {
   )
 }
 
-// ── Fiskalischer Überblick ────────────────────────────────────────────────────
-/** The honest trust header: real counts of open vs. sealed days, and the TSE
- *  failure trail — every figure derived from the fetched closings, animated only
- *  because it is real (CountUp animates magnitude, never a fabricated number). A
- *  non-zero TSE count surfaces as a calm-but-clear destructive line. */
-function FiscalOverviewPanel({ closings }: { closings: ClosingListItem[] }) {
+// ── Offener Geschäftstag (Heute) ──────────────────────────────────────────────
+/**
+ * The keystone affordance: finalize the CURRENT trading day's Z-Bon when no
+ * daily_closings row exists for it yet. The backend's finalize defaults to
+ * today's Berlin business day when called without a businessDay, so this is the
+ * ONLY path that can write the first closing of a day — the list can never carry
+ * an open-day card because the backend only ever returns FINALIZED rows.
+ *
+ * It is honest about its precondition: the day must be settled first (the
+ * Kassensturz / Schicht abgeschlossen at the POS). We do not assert the day is
+ * ready — if a shift is still open the backend refuses with a clear German 409,
+ * which surfaces inline. `shiftOpenHere` is a true signal only for THIS device's
+ * till; it lets us pre-warn when we can, without overclaiming.
+ */
+function OpenDayCard({
+  businessDay,
+  shiftOpenHere,
+  busy,
+  error,
+  onFinalize,
+  onDismissError,
+}: {
+  businessDay: string
+  shiftOpenHere: boolean
+  busy: boolean
+  error: string | null
+  onFinalize: () => void
+  onDismissError: () => void
+}) {
   const t = useW14Theme()
-  const o = fiscalOverview(closings)
-  const clean = o.tseFailures === 0
+
+  return (
+    <Card className="overflow-hidden p-0">
+      <View className="flex-row">
+        {/* Brass rail — an action still owed for the open trading day. */}
+        <View style={{ width: 4, backgroundColor: t.colors.primary }} />
+
+        <View className="flex-1 gap-3 px-4 py-4">
+          <View className="flex-row items-start justify-between gap-3">
+            <View className="flex-1 flex-row items-center gap-2.5">
+              <CalendarDays size={t.icon.md} color={t.colors.primary} />
+              <View className="flex-1">
+                <Text className="text-base font-semibold" numberOfLines={1}>
+                  {formatBusinessDay(businessDay)}
+                </Text>
+                <Text className="text-muted-foreground text-xs" numberOfLines={1}>
+                  Heute — noch nicht abgeschlossen
+                </Text>
+              </View>
+            </View>
+            <Badge variant="outline" dot>
+              <Text>Offen</Text>
+            </Badge>
+          </View>
+
+          <View className="border-border gap-2 border-t pt-3">
+            <View className="flex-row items-center gap-1.5">
+              <ShieldCheck size={t.icon.xs} color={t.colors.primary} />
+              <Text className="text-xs font-semibold" style={{ color: t.colors.primary }}>
+                Fiskalische Aktion
+              </Text>
+            </View>
+            <Text className="text-muted-foreground text-xs">
+              Der Z-Bon schließt den heutigen Geschäftstag rechtsverbindlich ab. Die Kasse muss
+              dafür zuerst per Kassensturz abgeschlossen sein.
+            </Text>
+
+            {shiftOpenHere ? (
+              <View className="flex-row items-start gap-1.5">
+                <AlertTriangle size={t.icon.xs} color={t.colors.primary} />
+                <Text className="flex-1 text-xs" style={{ color: t.colors.primary }}>
+                  Diese Kasse ist noch geöffnet. Schließe zuerst die Schicht am POS.
+                </Text>
+              </View>
+            ) : null}
+
+            {error != null ? <InlineError message={error} onDismiss={onDismissError} /> : null}
+
+            <Button
+              variant="default"
+              size="lg"
+              className="h-12"
+              onPress={onFinalize}
+              disabled={busy}
+              accessibilityLabel={`Z-Bon erstellen für ${formatBusinessDay(businessDay)}`}
+            >
+              <Receipt size={t.icon.sm} color={t.colors.primaryForeground} />
+              <Text>Z-Bon erstellen</Text>
+            </Button>
+          </View>
+        </View>
+      </View>
+    </Card>
+  )
+}
+
+// ── Fiskalischer Überblick ────────────────────────────────────────────────────
+/** The honest trust header. "Offener Tag" is read from the ABSENCE of today's
+ *  closing row (the backend never produces a COUNTING row, so it can't be read
+ *  from state), and "Abgeschlossen" counts the real sealed days. The TSE line is
+ *  deliberately conservative: tse_failed_count is a known backend stub (hardcoded
+ *  0), so we NEVER paint an unconditional green "lückenlos" guarantee — we only
+ *  raise a clear destructive line when the record actually reports failures, and
+ *  otherwise state plainly that no failures are recorded, without overclaiming a
+ *  verified-complete protocol. */
+function FiscalOverviewPanel({ closings, today }: { closings: ClosingListItem[]; today: string }) {
+  const t = useW14Theme()
+  const o = fiscalOverview(closings, today)
+  const hasFailures = o.tseFailures > 0
 
   return (
     <SectionCard
@@ -164,10 +271,10 @@ function FiscalOverviewPanel({ closings }: { closings: ClosingListItem[] }) {
     >
       <View className="flex-row flex-wrap justify-between" style={{ rowGap: 12 }}>
         <StatTile
-          label="Offene Tage"
-          value={String(o.openDays)}
-          tone={o.openDays > 0 ? "primary" : "muted"}
-          hint={o.openDays > 0 ? "Z-Bon ausstehend" : "Alles abgeschlossen"}
+          label="Heutiger Tag"
+          value={o.todayOpen ? "Offen" : "Fertig"}
+          tone={o.todayOpen ? "primary" : "accent"}
+          hint={o.todayOpen ? "Z-Bon ausstehend" : "Z-Bon gesiegelt"}
         />
         <Card className="gap-2 px-3 py-3" style={{ width: "48%" }}>
           <Text
@@ -188,27 +295,31 @@ function FiscalOverviewPanel({ closings }: { closings: ClosingListItem[] }) {
         </Card>
       </View>
 
-      {/* The fiscal trust line — the audit trail's health in one honest row. */}
+      {/* The fiscal trust line. We only assert the audit trail's health when there
+          is a real signal to assert: recorded TSE failures raise a destructive
+          line. With none recorded we state that plainly — NOT a green "lückenlos"
+          seal — because the underlying count is a backend stub, not a verified
+          completeness check. */}
       <View
         className="flex-row items-center gap-2 rounded-xl px-3 py-2.5"
         style={{
-          backgroundColor: (clean ? t.colors.verdigris : t.colors.destructive) + "12",
+          backgroundColor: (hasFailures ? t.colors.destructive : t.colors.border) + "12",
           borderWidth: 1,
-          borderColor: (clean ? t.colors.verdigris : t.colors.destructive) + "33",
+          borderColor: (hasFailures ? t.colors.destructive : t.colors.border) + "33",
         }}
       >
-        {clean ? (
-          <CheckCircle2 size={t.icon.sm} color={t.colors.verdigris} />
-        ) : (
+        {hasFailures ? (
           <AlertTriangle size={t.icon.sm} color={t.colors.destructive} />
+        ) : (
+          <CheckCircle2 size={t.icon.sm} color={t.colors.mutedForeground} />
         )}
         <Text
           className="flex-1 text-sm font-medium"
-          style={{ color: clean ? t.colors.verdigris : t.colors.destructive }}
+          style={{ color: hasFailures ? t.colors.destructive : t.colors.mutedForeground }}
         >
-          {clean
-            ? "TSE-Protokoll lückenlos"
-            : `${o.tseFailures} TSE-${o.tseFailures === 1 ? "Fehler" : "Fehler"} im Prüfprotokoll`}
+          {hasFailures
+            ? `${o.tseFailures} TSE-Fehler im Prüfprotokoll`
+            : "Keine TSE-Fehler im Prüfprotokoll vermerkt"}
         </Text>
       </View>
     </SectionCard>
@@ -380,16 +491,24 @@ function ClosingCard({
  *  framed Netto-Zusammenfassung, an explicit irreversibility note, the InlineError
  *  on a refusal, and comfortable 48px money-path actions off the home indicator.
  *  The commit press fires the §7 money-path Medium haptic; the write never fires
- *  on its own. */
+ *  on its own.
+ *
+ *  Two modes. With an existing `closing` it shows the real figures being sealed.
+ *  For the CURRENT open day no closing row exists yet (the backend computes the
+ *  aggregate at finalize), so `closing` is null and `businessDay` carries the day
+ *  — we show an HONEST note that the totals are computed at finalize rather than a
+ *  fabricated 0,00 summary. */
 function FinalizeSheet({
   closing,
+  businessDay,
   busy,
   error,
   onClose,
   onConfirm,
   onDismissError,
 }: {
-  closing: ClosingListItem
+  closing: ClosingListItem | null
+  businessDay: string
   busy: boolean
   error: string | null
   onClose: () => void
@@ -398,7 +517,7 @@ function FinalizeSheet({
 }) {
   const t = useW14Theme()
   const insets = useScreenInsets()
-  const hasTseFailures = closing.tseFailedCount > 0
+  const hasTseFailures = closing != null && closing.tseFailedCount > 0
 
   return (
     <Modal visible animationType="slide" transparent onRequestClose={onClose}>
@@ -429,7 +548,7 @@ function FinalizeSheet({
             <View className="flex-1">
               <Text className="text-base font-bold">Z-Bon erstellen</Text>
               <Text className="text-muted-foreground text-xs" numberOfLines={1}>
-                {formatBusinessDay(closing.businessDay)}
+                {formatBusinessDay(businessDay)}
               </Text>
             </View>
           </View>
@@ -439,29 +558,44 @@ function FinalizeSheet({
             im Prüfprotokoll vermerkt und kann danach nicht mehr geändert werden.
           </Text>
 
-          {/* Netto-Zusammenfassung — the real figures being sealed. */}
-          <View
-            className="gap-1.5 rounded-xl px-4 py-3"
-            style={{ borderWidth: 1, borderColor: t.colors.border }}
-          >
-            <View className="flex-row items-center justify-between">
-              <Text className="text-muted-foreground text-sm">Netto-Verkauf</Text>
-              <Text className="font-mono-medium text-sm">{formatEur(closing.netVerkaufEur)}</Text>
+          {/* Netto-Zusammenfassung — the real figures being sealed. For the open
+              current day no row exists yet, so we state honestly that the totals
+              are computed at finalize rather than show a fabricated summary. */}
+          {closing != null ? (
+            <View
+              className="gap-1.5 rounded-xl px-4 py-3"
+              style={{ borderWidth: 1, borderColor: t.colors.border }}
+            >
+              <View className="flex-row items-center justify-between">
+                <Text className="text-muted-foreground text-sm">Netto-Verkauf</Text>
+                <Text className="font-mono-medium text-sm">{formatEur(closing.netVerkaufEur)}</Text>
+              </View>
+              <View className="flex-row items-center justify-between">
+                <Text className="text-muted-foreground text-sm">Netto-Ankauf</Text>
+                <Text className="font-mono-medium text-sm">{formatEur(closing.netAnkaufEur)}</Text>
+              </View>
+              <View className="flex-row items-center justify-between">
+                <Text className="text-muted-foreground text-sm">Belege (V · A · Storno)</Text>
+                <Text className="font-mono-medium text-sm">
+                  {closing.verkaufCount} · {closing.ankaufCount} · {closing.stornoCount}
+                </Text>
+              </View>
             </View>
-            <View className="flex-row items-center justify-between">
-              <Text className="text-muted-foreground text-sm">Netto-Ankauf</Text>
-              <Text className="font-mono-medium text-sm">{formatEur(closing.netAnkaufEur)}</Text>
-            </View>
-            <View className="flex-row items-center justify-between">
-              <Text className="text-muted-foreground text-sm">Belege (V · A · Storno)</Text>
-              <Text className="font-mono-medium text-sm">
-                {closing.verkaufCount} · {closing.ankaufCount} · {closing.stornoCount}
+          ) : (
+            <View
+              className="flex-row items-start gap-2 rounded-xl px-4 py-3"
+              style={{ borderWidth: 1, borderColor: t.colors.border }}
+            >
+              <CalendarDays size={t.icon.sm} color={t.colors.mutedForeground} />
+              <Text className="text-muted-foreground flex-1 text-sm leading-5">
+                Die Tagessummen (Verkauf, Ankauf, Kassendifferenz) werden beim Abschluss aus den
+                Belegen des Tages berechnet und im Z-Bon festgeschrieben.
               </Text>
             </View>
-          </View>
+          )}
 
           {/* A day with TSE failures is sealed WITH that flaw on record — say so. */}
-          {hasTseFailures ? (
+          {hasTseFailures && closing != null ? (
             <View className="flex-row items-start gap-2">
               <AlertTriangle size={t.icon.sm} color={t.colors.destructive} />
               <Text className="flex-1 text-sm leading-5" style={{ color: t.colors.destructive }}>
@@ -550,6 +684,18 @@ function KasseSkeleton() {
   )
 }
 
+// A stable busy-id for the current open trading day, which has no closing row yet
+// (so it cannot key off a row id). Distinct from any UUID the list could return.
+const TODAY_BUSY_ID = "__today__"
+
+/**
+ * What the confirm sheet is sealing: either an existing closing row, or the
+ * current open trading day (no row yet — the backend computes it at finalize).
+ */
+type FinalizeTarget =
+  | { kind: "closing"; closing: ClosingListItem }
+  | { kind: "today"; businessDay: string }
+
 // ── Screen ────────────────────────────────────────────────────────────────────
 export default function KasseScreen() {
   const insets = useScreenInsets()
@@ -557,7 +703,7 @@ export default function KasseScreen() {
   // Per-card write/export state + the active confirm target + the seal flourish.
   const [busyId, setBusyId] = useState<string | null>(null)
   const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null)
-  const [confirming, setConfirming] = useState<ClosingListItem | null>(null)
+  const [confirming, setConfirming] = useState<FinalizeTarget | null>(null)
   const [finalizeError, setFinalizeError] = useState<string | null>(null)
   const [celebrate, setCelebrate] = useState(false)
 
@@ -579,6 +725,16 @@ export default function KasseScreen() {
   const closings = closingsData ? sortClosingsNewestFirst(closingsData.items) : null
   // The surface only hard-fails when its PRIMARY payload (closings) couldn't load.
   const closingsError = q.results.closings.error
+
+  // The current trading day is "open" (needs a Z-Bon) when it has no closing row
+  // yet — the only honest open-day signal, since the backend never writes a
+  // COUNTING row. We surface the finalize affordance only once the list has
+  // loaded (closings != null), so we never imply an open day before we know.
+  const today = todayBusinessDay(new Date())
+  const todayIsOpen = closings != null && isTodayOpen(closings, today)
+  // A true signal only for THIS device's till; lets us pre-warn that the
+  // Kassensturz is still pending without overclaiming about other devices.
+  const shiftOpenHere = shift != null && shift.status === "OPEN"
 
   // ── Export → temp cache CSV → OS share sheet ───────────────────────────────
   const onExport = useCallback(async (closing: ClosingListItem, kind: ExportKind) => {
@@ -621,16 +777,23 @@ export default function KasseScreen() {
   }, [])
 
   // ── Z-Bon finalize (step-up + confirm sheet, NEVER auto) ───────────────────
+  // Handles both an existing closing row and the current open day. For "today"
+  // we call finalizeClosing() with NO businessDay — the backend defaults to the
+  // current Berlin business day, which is the only path that writes a day's first
+  // closing (the list can never offer an open-day row to seal).
   const runFinalize = useCallback(
-    async (closing: ClosingListItem) => {
-      setBusyId(closing.id)
+    async (target: FinalizeTarget) => {
+      const busyKey = target.kind === "closing" ? target.closing.id : TODAY_BUSY_ID
+      setBusyId(busyKey)
       setFinalizeError(null)
       try {
         // 403 STEP_UP_REQUIRED → the global host opens the PIN + retries the POST.
-        await finalizeClosing(closing.businessDay)
+        // A still-open shift / unsettled day → backend 409 with a clear German
+        // message, surfaced inline by describeError (never a fabricated success).
+        await finalizeClosing(target.kind === "closing" ? target.closing.businessDay : undefined)
         // The legal day-seal landed — a real fiscal milestone. One Success haptic
         // (§7), close the sheet, arm the single gold flourish, then refetch so the
-        // card flips to FINALIZED and the overview recounts from server truth.
+        // freshly-sealed day appears and the overview recounts from server truth.
         haptics.success()
         setConfirming(null)
         setCelebrate(true)
@@ -677,7 +840,37 @@ export default function KasseScreen() {
             {shift != null ? <ShiftPanel shift={shift} /> : <NoShiftPanel />}
 
             {closings != null && closings.length > 0 ? (
-              <FiscalOverviewPanel closings={closings} />
+              <FiscalOverviewPanel closings={closings} today={today} />
+            ) : null}
+
+            {/* The current open trading day — the ONLY path to write its first
+                Z-Bon (no list row can exist for it yet). */}
+            {todayIsOpen ? (
+              <View className="gap-3">
+                <Text
+                  className="text-muted-foreground text-2xs font-semibold uppercase"
+                  style={{ letterSpacing: 0.5 }}
+                >
+                  Heutiger Geschäftstag
+                </Text>
+                <StaggerItem index={0} exit={false}>
+                  <OpenDayCard
+                    businessDay={today}
+                    shiftOpenHere={shiftOpenHere}
+                    busy={busyId === TODAY_BUSY_ID}
+                    // Finalize refusals surface inline in the confirm sheet (which
+                    // stays open on failure); the card itself carries no error.
+                    error={null}
+                    onFinalize={() => {
+                      // Light press confirm as the fiscal sheet opens (§7).
+                      haptics.impactLight()
+                      setFinalizeError(null)
+                      setConfirming({ kind: "today", businessDay: today })
+                    }}
+                    onDismissError={() => setFinalizeError(null)}
+                  />
+                </StaggerItem>
+              </View>
             ) : null}
 
             <View className="gap-3">
@@ -707,7 +900,7 @@ export default function KasseScreen() {
                           // Light press confirm as the fiscal sheet opens (§7).
                           haptics.impactLight()
                           setFinalizeError(null)
-                          setConfirming(closing)
+                          setConfirming({ kind: "closing", closing })
                         }}
                         onDismissError={() => setRowError(null)}
                       />
@@ -722,8 +915,11 @@ export default function KasseScreen() {
 
       {confirming != null ? (
         <FinalizeSheet
-          closing={confirming}
-          busy={busyId === confirming.id}
+          closing={confirming.kind === "closing" ? confirming.closing : null}
+          businessDay={
+            confirming.kind === "closing" ? confirming.closing.businessDay : confirming.businessDay
+          }
+          busy={busyId === (confirming.kind === "closing" ? confirming.closing.id : TODAY_BUSY_ID)}
           error={finalizeError}
           onClose={() => {
             setConfirming(null)
