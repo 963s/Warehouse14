@@ -9,11 +9,10 @@
  * via the global StepUpDialogHost. All labels German; no native deps added.
  */
 import { useEffect, useState } from "react"
-import { ActivityIndicator, Pressable, View } from "react-native"
+import { View } from "react-native"
 import { useLocalSearchParams, useRouter } from "expo-router"
 import type { TaskPriority, UpdateTaskBody } from "@warehouse14/api-client"
 
-import { Card } from "@/components/ui/card"
 import { Text } from "@/components/ui/text"
 import { describeError, getTask, updateTask } from "@/warehouse14/api"
 import {
@@ -23,7 +22,15 @@ import {
   TASK_PRIORITY_LABELS,
 } from "@/warehouse14/aufgaben-ui"
 import { useW14Theme } from "@/warehouse14/theme"
-import { FormField, FormScreen } from "@/warehouse14/ui"
+import {
+  ErrorState,
+  FormField,
+  FormScreen,
+  GoldFlood,
+  haptics,
+  PressableScale,
+  SkeletonCard,
+} from "@/warehouse14/ui"
 
 export default function AufgabeBearbeitenScreen() {
   const router = useRouter()
@@ -32,6 +39,8 @@ export default function AufgabeBearbeitenScreen() {
 
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
+  const [celebrate, setCelebrate] = useState(false)
 
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
@@ -46,6 +55,8 @@ export default function AufgabeBearbeitenScreen() {
       setLoading(false)
       return
     }
+    setLoading(true)
+    setLoadError(null)
     void (async () => {
       try {
         const task = await getTask(id)
@@ -63,7 +74,7 @@ export default function AufgabeBearbeitenScreen() {
     return () => {
       active = false
     }
-  }, [id])
+  }, [id, reloadKey])
 
   const titleTrimmed = title.trim()
   const canSubmit = titleTrimmed.length > 0
@@ -72,6 +83,7 @@ export default function AufgabeBearbeitenScreen() {
     if (!id) throw new Error("Keine Aufgabe ausgewählt.")
     const parsedDue = parseDueDateInput(dueInput)
     if (!parsedDue.ok) {
+      haptics.error()
       setDueError("Bitte im Format TT.MM.JJJJ eingeben.")
       throw new Error("Fälligkeitsdatum ungültig.")
     }
@@ -86,106 +98,122 @@ export default function AufgabeBearbeitenScreen() {
     }
     // 403 STEP_UP_REQUIRED → PIN Dialog opens + the call retries automatically.
     await updateTask(id, body)
-    router.back()
+    // Saved changes are a real write — one Success haptic (§7) + a brief flood,
+    // then pop back to the list, which refetches on focus.
+    haptics.success()
+    setCelebrate(true)
+  }
+
+  function priorityChip(opt: TaskPriority) {
+    const active = priority === opt
+    return (
+      <PressableScale
+        key={opt}
+        onPress={() => {
+          haptics.selection()
+          setPriority(opt)
+        }}
+        accessibilityRole="button"
+        accessibilityState={{ selected: active }}
+        accessibilityLabel={`Priorität ${TASK_PRIORITY_LABELS[opt]}`}
+      >
+        <View
+          className="rounded-md border px-3 py-2"
+          style={{
+            borderColor: active ? t.colors.primary : t.colors.border,
+            backgroundColor: active ? t.colors.primary : t.colors.card,
+          }}
+        >
+          <Text
+            className="text-sm font-medium"
+            style={{ color: active ? t.colors.primaryForeground : t.colors.foreground }}
+          >
+            {TASK_PRIORITY_LABELS[opt]}
+          </Text>
+        </View>
+      </PressableScale>
+    )
   }
 
   if (loading) {
+    // The form's own shape while the task loads — never a mid-screen spinner.
     return (
-      <View className="flex-1 items-center justify-center bg-background">
-        <ActivityIndicator color={t.colors.primary} />
-        <Text className="text-muted-foreground mt-3 text-sm">Lade Aufgabe…</Text>
+      <View className="flex-1 bg-background p-4">
+        <SkeletonCard rows={5} />
       </View>
     )
   }
 
   if (loadError != null) {
     return (
-      <View className="flex-1 bg-background p-4">
-        <Card className="gap-2 border-destructive px-4 py-4">
-          <Text className="text-destructive text-base font-semibold">Fehler</Text>
-          <Text className="text-muted-foreground text-sm">{loadError}</Text>
-        </Card>
+      <View className="flex-1 justify-center bg-background p-4">
+        <ErrorState
+          message={loadError}
+          onRetry={id ? () => setReloadKey((k) => k + 1) : undefined}
+        />
       </View>
     )
   }
 
   return (
-    <FormScreen
-      title="Aufgabe bearbeiten"
-      subtitle="Titel, Priorität und Fälligkeit anpassen."
-      submitLabel="Änderungen speichern"
-      successMessage="Aufgabe aktualisiert."
-      submitDisabled={!canSubmit}
-      onSubmit={submit}
-    >
-      <FormField
-        label="Titel"
-        required
-        inputProps={{
-          value: title,
-          onChangeText: setTitle,
-          placeholder: "Titel der Aufgabe",
-          autoCapitalize: "sentences",
-        }}
-      />
+    <View className="flex-1">
+      <FormScreen
+        title="Aufgabe bearbeiten"
+        subtitle="Titel, Priorität und Fälligkeit anpassen."
+        submitLabel="Änderungen speichern"
+        successMessage="Aufgabe aktualisiert."
+        submitDisabled={!canSubmit}
+        onSubmit={submit}
+      >
+        <FormField
+          label="Titel"
+          required
+          inputProps={{
+            value: title,
+            onChangeText: setTitle,
+            placeholder: "Titel der Aufgabe",
+            autoCapitalize: "sentences",
+          }}
+        />
 
-      <FormField
-        label="Beschreibung"
-        hint="Optional — Details oder nächste Schritte."
-        inputProps={{
-          value: description,
-          onChangeText: setDescription,
-          placeholder: "Optionaler Kontext",
-          autoCapitalize: "sentences",
-          multiline: true,
-          numberOfLines: 3,
-        }}
-      />
+        <FormField
+          label="Beschreibung"
+          hint="Optional — Details oder nächste Schritte."
+          inputProps={{
+            value: description,
+            onChangeText: setDescription,
+            placeholder: "Optionaler Kontext",
+            autoCapitalize: "sentences",
+            multiline: true,
+            numberOfLines: 3,
+          }}
+        />
 
-      <FormField label="Priorität">
-        <View className="flex-row flex-wrap gap-2">
-          {TASK_PRIORITIES.map((opt) => {
-            const active = priority === opt
-            return (
-              <Pressable
-                key={opt}
-                onPress={() => setPriority(opt)}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-                className="rounded-lg border px-3 py-2"
-                style={{
-                  borderColor: active ? t.colors.primary : t.colors.border,
-                  backgroundColor: active ? t.colors.primary : "transparent",
-                }}
-              >
-                <Text
-                  className="text-sm font-medium"
-                  style={{ color: active ? t.colors.primaryForeground : t.colors.foreground }}
-                >
-                  {TASK_PRIORITY_LABELS[opt]}
-                </Text>
-              </Pressable>
-            )
-          })}
-        </View>
-      </FormField>
+        <FormField label="Priorität">
+          <View className="flex-row flex-wrap gap-2">{TASK_PRIORITIES.map(priorityChip)}</View>
+        </FormField>
 
-      <FormField
-        label="Fällig am"
-        hint="Optional — Format TT.MM.JJJJ. Leer lassen entfernt das Datum."
-        error={dueError}
-        inputProps={{
-          value: dueInput,
-          onChangeText: (v: string) => {
-            setDueInput(v)
-            if (dueError) setDueError(null)
-          },
-          placeholder: "TT.MM.JJJJ",
-          autoCapitalize: "none",
-          autoCorrect: false,
-          keyboardType: "numbers-and-punctuation",
-        }}
-      />
-    </FormScreen>
+        <FormField
+          label="Fällig am"
+          hint="Optional — Format TT.MM.JJJJ. Leer lassen entfernt das Datum."
+          error={dueError}
+          inputProps={{
+            value: dueInput,
+            onChangeText: (v: string) => {
+              setDueInput(v)
+              if (dueError) setDueError(null)
+            },
+            placeholder: "TT.MM.JJJJ",
+            autoCapitalize: "none",
+            autoCorrect: false,
+            keyboardType: "numbers-and-punctuation",
+          }}
+        />
+      </FormScreen>
+
+      {/* The saved-changes flood — visual only (the Success haptic already fired).
+          When it fades, pop back to the list, which refetches on focus. */}
+      <GoldFlood visible={celebrate} onDone={() => router.back()} />
+    </View>
   )
 }

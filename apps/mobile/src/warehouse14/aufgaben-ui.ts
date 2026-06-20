@@ -145,6 +145,33 @@ export function transitionActionLabel(target: TaskStatus): string {
   }
 }
 
+/**
+ * A spoken accessibility label for a transition button — the verb plus the task
+ * title, so a screen reader announces what the tap actually does to which task.
+ */
+export function transitionAccessibilityLabel(target: TaskStatus, title: string): string {
+  return `${transitionActionLabel(target)}: ${title}`
+}
+
+/**
+ * Which transition is the PRIMARY (happy-path) move for a status — the one we
+ * raise to a filled brass button and offer as the swipe-to-act. OPEN/BLOCKED →
+ * the productive forward step (start / resume); IN_PROGRESS → finish. The rest
+ * (block, reopen, cancel) stay as quiet outline actions. Terminal rows have none.
+ */
+export function primaryTransition(status: TaskStatus): TaskStatus | null {
+  switch (status) {
+    case "OPEN":
+      return "IN_PROGRESS"
+    case "IN_PROGRESS":
+      return "DONE"
+    case "BLOCKED":
+      return "IN_PROGRESS"
+    default:
+      return null
+  }
+}
+
 // ── de-DE due-date formatting ─────────────────────────────────────────────────
 const DUE_DATE_FMT = new Intl.DateTimeFormat("de-DE", {
   weekday: "short",
@@ -173,6 +200,50 @@ export function isOverdue(task: TaskRow): boolean {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   return due.getTime() < today.getTime()
+}
+
+/** Whether a task's due date falls on today (local midnight window). */
+export function isDueToday(task: TaskRow): boolean {
+  if (!task.dueDate || isTerminal(task.status)) return false
+  const due = new Date(task.dueDate)
+  if (Number.isNaN(due.getTime())) return false
+  const today = new Date()
+  return (
+    due.getFullYear() === today.getFullYear() &&
+    due.getMonth() === today.getMonth() &&
+    due.getDate() === today.getDate()
+  )
+}
+
+// ── Honest list summary (derived only from the fetched rows) ───────────────────
+export interface TaskSummary {
+  total: number
+  open: number
+  overdue: number
+}
+
+/** Count the rows that matter for the header line — never a fabricated total. */
+export function summarise(tasks: readonly TaskRow[]): TaskSummary {
+  let open = 0
+  let overdue = 0
+  for (const task of tasks) {
+    if (!isTerminal(task.status)) open += 1
+    if (isOverdue(task)) overdue += 1
+  }
+  return { total: tasks.length, open, overdue }
+}
+
+/**
+ * A de-DE summary line for the header, built only from real counts, e.g.
+ * „8 Aufgaben · 5 offen · 2 überfällig". Drops the parts that are zero so the
+ * line stays honest and quiet.
+ */
+export function summaryLine(tasks: readonly TaskRow[]): string {
+  const s = summarise(tasks)
+  const parts: string[] = [`${s.total} ${s.total === 1 ? "Aufgabe" : "Aufgaben"}`]
+  if (s.open > 0) parts.push(`${s.open} offen`)
+  if (s.overdue > 0) parts.push(`${s.overdue} überfällig`)
+  return parts.join(" · ")
 }
 
 // ── de-DE date parsing for the create/edit form (no date-picker dep) ──────────
