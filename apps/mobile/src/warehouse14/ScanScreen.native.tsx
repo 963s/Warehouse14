@@ -16,8 +16,9 @@
  * This file is `.native` only — Metro never bundles vision-camera for web.
  */
 import { useCallback, useEffect, useRef, useState } from "react"
-import { StyleSheet, View } from "react-native"
+import { AppState, type AppStateStatus, StyleSheet, View } from "react-native"
 import { useRouter } from "expo-router"
+import { useIsFocused } from "@react-navigation/native"
 import {
   CameraOff,
   Lock,
@@ -84,17 +85,40 @@ export function ScanScreen() {
   const device = useCameraDevice("back")
   const [lookup, setLookup] = useState<Lookup>({ status: "idle" })
 
+  // The scan route is registered `hidden:true`, so React Navigation keeps it
+  // MOUNTED after the user opens it — without these guards the camera would keep
+  // streaming on every other tab (battery, privacy indicator, hardware lock).
+  // Hold the camera live only while this screen is focused AND the app is in the
+  // foreground.
+  const isFocused = useIsFocused()
+  const [appActive, setAppActive] = useState(() => AppState.currentState === "active")
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (s: AppStateStatus) =>
+      setAppActive(s === "active"),
+    )
+    return () => sub.remove()
+  }, [])
+
   const lastRef = useRef<{ value: string; at: number }>({ value: "", at: 0 })
   const busyRef = useRef(false)
+  // Mirrors whether the scanner is armed (idle/looking) so the codeScanner
+  // callback — which keeps firing while a verdict card is shown — can bail in a
+  // worklet-cheap ref read instead of stale closure state.
+  const armedRef = useRef(true)
 
   // One deliberate haptic per resolution, paired to its colour (DESIGN.md §7):
   // success on a real hit, warning on a miss, error on a lookup failure.
   const onScanned = useCallback(async (raw: string) => {
     const now = Date.now()
+    // Once a verdict is on screen we STOP scanning until "Erneut scannen": a
+    // different code must not yank the card the owner is reading away, and the
+    // same code held in frame must not re-resolve (and re-fire haptics) on a loop.
+    if (!armedRef.current) return
     if (busyRef.current) return
     if (raw === lastRef.current.value && now - lastRef.current.at < DEBOUNCE_MS) return
     lastRef.current = { value: raw, at: now }
     busyRef.current = true
+    armedRef.current = false
     setLookup({ status: "looking", code: raw })
     try {
       const match = await resolveScannedCode(raw)
@@ -114,6 +138,7 @@ export function ScanScreen() {
   const rescan = useCallback(() => {
     lastRef.current = { value: "", at: 0 }
     busyRef.current = false
+    armedRef.current = true
     haptics.selection()
     setLookup({ status: "idle" })
   }, [])
@@ -152,12 +177,20 @@ export function ScanScreen() {
   }
 
   const active = lookup.status === "idle" || lookup.status === "looking"
+  // Stream only while focused + foregrounded; keep the preview live even while a
+  // verdict is shown so the scene doesn't freeze (only resolution is paused).
+  const cameraActive = isFocused && appActive
 
   return (
     <View style={{ flex: 1, backgroundColor: "#000" }}>
-      <Camera style={StyleSheet.absoluteFill} device={device} isActive codeScanner={codeScanner} />
+      <Camera
+        style={StyleSheet.absoluteFill}
+        device={device}
+        isActive={cameraActive}
+        codeScanner={codeScanner}
+      />
 
-      <ScanOverlay scanning={active} insets={insets.screen.top} />
+      <ScanOverlay scanning={active && cameraActive} insets={insets.screen.top} />
 
       <View
         style={{
@@ -445,7 +478,7 @@ function VerdictBody({
   }
 
   if (lookup.status === "error") {
-    const offline = /verbindung|netzwerk|network|timeout/i.test(lookup.message)
+    const offline = /verbindung|netzwerk|network|timeout|zeitüberschreitung/i.test(lookup.message)
     return (
       <Card className="gap-3 px-4 py-4" style={{ borderColor: t.colors.destructive }}>
         <View className="flex-row items-start gap-3">

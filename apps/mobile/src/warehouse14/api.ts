@@ -16,6 +16,7 @@
  */
 import {
   ApiError,
+  ApiNetworkError,
   appointments,
   authPin,
   belegtextApi,
@@ -531,6 +532,16 @@ export function describeError(err: unknown): string {
       default:
         return err.message || `Fehler (${err.code}).`
     }
+  }
+  // Transport failures aren't ApiError subclasses, so their `.message` is the
+  // raw English string ("Network request failed" / a TimeoutError message) on
+  // React Native. Map them to a German line — distinguishing a timeout (the
+  // request reached the network but didn't answer in time) from a hard offline.
+  if (err instanceof ApiNetworkError) {
+    const timedOut = (err.cause as { name?: string } | undefined)?.name === "TimeoutError"
+    return timedOut
+      ? "Zeitüberschreitung — der Server antwortet nicht. Bitte erneut versuchen."
+      : "Keine Verbindung zum Server. Bitte Internetverbindung prüfen."
   }
   return err instanceof Error ? err.message : String(err)
 }
