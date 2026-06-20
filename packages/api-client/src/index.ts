@@ -339,6 +339,7 @@ export {
   type EbayHistoryResponse,
   type EbayHistoryRow,
   type EbayInventorySideEffect,
+  type EbayPublishResponse,
   type EbaySource,
   type EbayState,
   type EbayTransitionBody,

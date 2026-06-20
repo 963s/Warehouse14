@@ -29,6 +29,7 @@ import {
   Settings,
   ShoppingBag,
   ShoppingCart,
+  Store,
   UserPlus,
   Wallet,
 } from "lucide-react-native"
@@ -172,6 +173,15 @@ export const OWNER_SURFACES: readonly OwnerSurface[] = [
     label: "Drucken",
     description: "Beleg und Etikett als PDF teilen oder per AirPrint senden.",
     icon: Printer,
+    group: "betrieb",
+    available: true,
+  },
+  {
+    id: "ebay",
+    route: "/ebay",
+    label: "eBay-Kanal",
+    description: "Listungen steuern, veröffentlichen und Konflikte sehen.",
+    icon: Store,
     group: "betrieb",
     available: true,
   },

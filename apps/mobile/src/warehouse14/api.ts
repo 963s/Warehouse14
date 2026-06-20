@@ -27,6 +27,7 @@ import {
   createApiClient,
   customersApi,
   dashboard,
+  ebayApi,
   expensesApi,
   financeApi,
   fixedCostsApi,
@@ -69,6 +70,12 @@ import {
   type CustomerKycDocumentBody,
   type CustomerKycDocumentResponse,
   type DashboardSummary,
+  type EbayHistoryQuery,
+  type EbayHistoryResponse,
+  type EbayPublishResponse,
+  type EbayState,
+  type EbayTransitionBody,
+  type EbayTransitionResponse,
   type CustomerKycStampBody,
   type CustomerKycStampResponse,
   type CustomerListQuery,
@@ -521,6 +528,48 @@ export function currentBelegtext(
   query: CurrentBelegtextQuery,
 ): Promise<CurrentBelegtextResponse> {
   return belegtextApi.current(apiClient, query)
+}
+
+// ── eBay-Kanal (the 9-stage listing state machine + marketplace push) ─────────
+// The eBay surface is CLIENT-ONLY over the server state machine: the trigger
+// from migration 0022 owns the inventory side effect (auto-RESERVE on VERKAUFT,
+// the local-reservation/local-sold CONFLICT alert), the publish route owns the
+// real marketplace push (createOffer → publishOffer) and returns `configured=
+// false` when EBAY_OAUTH_TOKEN is unset — so the app shows an honest "Token
+// ausstehend" state instead of faking a live listing. We never reimplement the
+// state machine or the tax/fiscal weight; these are thin pass-throughs to the
+// already-typed `ebayApi`. transition + publish are Owner + step-up (transparent
+// via stepUpMiddleware); history is a read.
+
+/**
+ * PATCH /api/products/:id/ebay-state — move a product one legal step through the
+ * 9-stage lifecycle. The response echoes `inventorySideEffect` so the UI can
+ * surface an auto-reservation or a local-stock CONFLICT without a second read.
+ * An illegal step is a 409 CONFLICT (themed German). ADMIN + step-up (auto).
+ */
+export function transitionEbayState(
+  productId: string,
+  body: EbayTransitionBody,
+): Promise<EbayTransitionResponse> {
+  return ebayApi.transition(apiClient, productId, body)
+}
+
+/** GET /api/products/:id/ebay-history — the append-only listing event log. */
+export function ebayHistory(
+  productId: string,
+  query: EbayHistoryQuery = {},
+): Promise<EbayHistoryResponse> {
+  return ebayApi.history(apiClient, productId, query)
+}
+
+/**
+ * POST /api/products/:id/ebay-publish — push the product to the eBay
+ * marketplace. Resolves with `configured=false` (no HTTP, no live listing) when
+ * the eBay OAuth token is pending — the surface reads that and shows the honest
+ * "Token ausstehend" note rather than claiming a listing. ADMIN + step-up (auto).
+ */
+export function publishToEbay(productId: string): Promise<EbayPublishResponse> {
+  return ebayApi.publish(apiClient, productId)
 }
 
 // ── Ledger (the GoBD audit feed — read-only history) ─────────────────────────
