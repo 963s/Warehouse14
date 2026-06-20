@@ -123,7 +123,7 @@ export const OWNER_SURFACES: readonly OwnerSurface[] = [
     description: "Margen, Gerät und Abmeldung.",
     icon: Settings,
     group: "system",
-    available: false,
+    available: true,
   },
   // Appended per the extensibility contract (never reorder existing entries).
   {

@@ -71,6 +71,7 @@ export default function RootLayout() {
           <Stack.Screen name="aufgaben" options={{ title: "Aufgaben" }} />
           <Stack.Screen name="kasse" options={{ title: "Kasse" }} />
           <Stack.Screen name="ausgaben" options={{ title: "Ausgaben" }} />
+          <Stack.Screen name="einstellungen" options={{ title: "Einstellungen" }} />
           <Stack.Screen
             name="ausgaben/ausgabe"
             options={{ presentation: "modal", title: "Ausgabe" }}
