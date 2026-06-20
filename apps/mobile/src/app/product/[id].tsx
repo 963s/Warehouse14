@@ -31,6 +31,7 @@ import {
   Coins,
   MapPin,
   Pencil,
+  RefreshCw,
   ShieldAlert,
   Warehouse,
   Weight,
@@ -153,6 +154,13 @@ export default function ProductDetailScreen() {
 
   const prices: readonly CurrentMetalPrice[] = pricesQ.data?.prices ?? []
   const photos: PhotoRow[] = sortPhotos(photosQ.data?.items ?? [])
+  // Honesty: an empty `photos` array is only a real „keine Fotos" once the read
+  // has SUCCEEDED. While it is still loading, or if it failed, the section must
+  // not assert a confirmed-empty count — it shows a skeleton / a retry instead.
+  const photosErrored = photosQ.status === "error" && photosQ.data == null
+  const photosFirstLoad = photosQ.isLoading && photosQ.data == null
+  const photosConfirmed = !photosErrored && !photosFirstLoad
+  const photoCountLabel = photosConfirmed ? ` (${photos.length})` : ""
 
   // ── Mutations (step-up is transparent in the api layer) ─────────────────────
   const setPrimaryM = useMutation((photoId: string) => setPhotoPrimary(photoId), {
@@ -406,7 +414,7 @@ export default function ProductDetailScreen() {
         {/* Fotos — primary first; tap a non-primary thumb to promote it. */}
         <StaggerItem index={4}>
           <SectionCard
-            title={`Fotos (${photos.length})`}
+            title={`Fotos${photoCountLabel}`}
             icon={Camera}
             action={
               <Button
@@ -422,7 +430,41 @@ export default function ProductDetailScreen() {
               </Button>
             }
           >
-            {photos.length === 0 ? (
+            {photosErrored ? (
+              // A load FAILURE — never claim „keine Fotos" when the truth is
+              // „konnte nicht geladen werden". Offer an honest retry instead.
+              <View className="gap-2.5">
+                <Text className="text-muted-foreground text-sm">
+                  {photosQ.error ?? "Fotos konnten nicht geladen werden."}
+                </Text>
+                <PressableScale
+                  accessibilityRole="button"
+                  accessibilityLabel="Fotos erneut laden"
+                  onPress={() => {
+                    haptics.selection()
+                    void photosQ.refetch()
+                  }}
+                >
+                  <View
+                    className="flex-row items-center gap-1.5 self-start rounded-full border px-3.5 py-2"
+                    style={{ borderColor: t.colors.border }}
+                  >
+                    <RefreshCw size={t.icon.xs} color={t.colors.primary} />
+                    <Text className="text-primary text-sm font-medium">
+                      {photosQ.isFetching ? "Wird geladen…" : "Erneut laden"}
+                    </Text>
+                  </View>
+                </PressableScale>
+              </View>
+            ) : photosFirstLoad ? (
+              // First read still in flight — a shape-faithful placeholder, not a
+              // premature „keine Fotos".
+              <View className="flex-row gap-2" accessibilityElementsHidden>
+                {[0, 1, 2].map((i) => (
+                  <Skeleton key={i} width={84} height={84} radius="button" />
+                ))}
+              </View>
+            ) : photos.length === 0 ? (
               <Text className="text-muted-foreground text-sm">
                 Noch keine Fotos. „Hinzufügen", um das erste aufzunehmen — es wird zum Hauptbild.
               </Text>
