@@ -30,8 +30,8 @@
  *
  * de-DE dates; all labels German; no native deps added.
  */
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react"
-import { FlatList, Modal, Pressable, RefreshControl, View } from "react-native"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { ActivityIndicator, FlatList, Modal, Pressable, RefreshControl, View } from "react-native"
 import { useNavigation, useRouter } from "expo-router"
 import type { TaskRow, TaskStatus } from "@warehouse14/api-client"
 import {
@@ -568,6 +568,10 @@ type ListItem =
   | { kind: "header"; status: TaskStatus; label: string; count: number }
   | { kind: "task"; task: TaskRow }
 
+// The list pages by `offset`, since `internal_tasks` is never pruned (forensic +
+// GoBD-relevant) and can outgrow a single page. 200 is the endpoint's max limit.
+const TASKS_PAGE_SIZE = 200
+
 // ── Screen ────────────────────────────────────────────────────────────────────
 export default function AufgabenScreen() {
   const router = useRouter()
@@ -581,17 +585,78 @@ export default function AufgabenScreen() {
   const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null)
   const [cancelling, setCancelling] = useState<TaskRow | null>(null)
 
-  // One live read, re-keyed on the active filter. Refetch-on-focus brings a
-  // new/edited task (from the modals) into view on return; pull-to-refresh +
-  // in-flight de-dupe come free.
-  // `useQuery` already refetches on focus (so a new/edited task from the modals
-  // shows on return) and de-dupes in-flight reads; pull-to-refresh comes free.
-  const tasks = useQuery(() => listTasks({ ...(filter ? { status: filter } : {}), limit: 200 }), {
-    key: `tasks:${filter ?? "all"}`,
-  })
+  // The FIRST page is the live read, re-keyed on the active filter. `useQuery`
+  // already refetches on focus (so a new/edited task from the modals shows on
+  // return) and de-dupes in-flight reads; pull-to-refresh comes free.
+  const tasks = useQuery(
+    () => listTasks({ ...(filter ? { status: filter } : {}), limit: TASKS_PAGE_SIZE, offset: 0 }),
+    { key: `tasks:${filter ?? "all"}` },
+  )
   const rc = useRefreshControl(tasks)
 
-  const rows = useMemo(() => tasks.data?.items ?? null, [tasks.data])
+  // Pages BEYOND the first, fetched lazily on scroll. `internal_tasks` is never
+  // pruned (forensic + GoBD-relevant), so the table can outgrow one 200-row
+  // page; without this, rows past 200 would silently vanish from the list and
+  // the summary would under-count. The base query owns page 0; this owns 1..N.
+  const [extraRows, setExtraRows] = useState<TaskRow[]>([])
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [loadMoreError, setLoadMoreError] = useState(false)
+  // The base page's identity — bumps on every fresh page-0 response (filter
+  // change, focus refetch, pull-to-refresh). When it changes, the accumulated
+  // tail is stale and must be dropped so we never splice old pages onto new.
+  const basePage = tasks.data
+  useEffect(() => {
+    setExtraRows([])
+    setLoadMoreError(false)
+  }, [basePage])
+
+  const serverTotal = basePage?.total ?? null
+  const rows = useMemo<TaskRow[] | null>(() => {
+    if (!basePage) return null
+    return extraRows.length > 0 ? [...basePage.items, ...extraRows] : basePage.items
+  }, [basePage, extraRows])
+
+  // More rows exist on the server than we've loaded into `rows` so far.
+  const hasMore = serverTotal != null && rows != null && rows.length < serverTotal
+
+  // Fetch ONE more page at the current tail and append it. Shared by the
+  // scroll-driven `loadMore` and the footer's "Erneut versuchen". The offset is
+  // the count we already hold, so it always asks for the next unseen slice.
+  const fetchNextPage = useCallback(async () => {
+    if (rows == null) return
+    const offset = rows.length
+    setLoadingMore(true)
+    setLoadMoreError(false)
+    try {
+      const page = await listTasks({
+        ...(filter ? { status: filter } : {}),
+        limit: TASKS_PAGE_SIZE,
+        offset,
+      })
+      setExtraRows((prev) => [...prev, ...page.items])
+    } catch {
+      // A failed tail page is non-fatal — page 0 still shows. Surface a quiet
+      // retriable footer rather than blowing up the whole list.
+      setLoadMoreError(true)
+      haptics.error()
+    } finally {
+      setLoadingMore(false)
+    }
+  }, [rows, filter])
+
+  const loadMore = useCallback(() => {
+    // Guard: nothing more to load, already loading, or a prior page errored
+    // (don't hammer on scroll — the footer's retry button is the way back).
+    if (!hasMore || loadingMore || loadMoreError) return
+    void fetchNextPage()
+  }, [hasMore, loadingMore, loadMoreError, fetchNextPage])
+
+  const retryLoadMore = useCallback(() => {
+    if (loadingMore) return
+    haptics.selection()
+    void fetchNextPage()
+  }, [loadingMore, fetchNextPage])
+
   const groups = useMemo(() => (rows ? groupByStatus(rows) : []), [rows])
 
   // Flatten the groups into header + task items for the virtualised list.
@@ -689,13 +754,45 @@ export default function AufgabenScreen() {
             exiting={FadeOut.duration(160)}
             className="px-4"
           >
-            <Text className="text-muted-foreground text-xs">{summaryLine(rows)}</Text>
+            <Text className="text-muted-foreground text-xs">
+              {summaryLine(rows, serverTotal ?? undefined)}
+            </Text>
           </Animated.View>
         ) : null}
       </View>
     ),
-    [filter, rows, changeFilter],
+    [filter, rows, serverTotal, changeFilter],
   )
+
+  // The list footer: a quiet "loading the next page" spinner while a tail page
+  // is in flight, or a retriable line when one failed. Nothing while idle.
+  const footer = useMemo(() => {
+    if (loadMoreError) {
+      return (
+        <View className="items-center gap-2 px-4 py-5">
+          <Text className="text-muted-foreground text-center text-xs">
+            Weitere Aufgaben konnten nicht geladen werden.
+          </Text>
+          <Button
+            variant="outline"
+            size="sm"
+            onPress={retryLoadMore}
+            accessibilityLabel="Erneut versuchen"
+          >
+            <Text>Erneut versuchen</Text>
+          </Button>
+        </View>
+      )
+    }
+    if (loadingMore) {
+      return (
+        <View className="items-center py-5">
+          <ActivityIndicator color={t.colors.mutedForeground} />
+        </View>
+      )
+    }
+    return null
+  }, [loadMoreError, loadingMore, retryLoadMore, t.colors.mutedForeground])
 
   return (
     <View className="flex-1 bg-background">
@@ -704,6 +801,9 @@ export default function AufgabenScreen() {
         keyExtractor={(it) => (it.kind === "header" ? `h:${it.status}` : `t:${it.task.id}`)}
         stickyHeaderIndices={[0]}
         ListHeaderComponent={header}
+        ListFooterComponent={footer}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.5}
         contentContainerStyle={{
           paddingHorizontal: 16,
           paddingBottom: insets.contentBottom,

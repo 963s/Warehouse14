@@ -515,9 +515,13 @@ interface AjvErrorDetail {
   instancePath?: string
 }
 
-/** German labels for the customer fields the server can reject, keyed by the
- *  top-level JSON path ajv reports in `instancePath` (e.g. "/dateOfBirth"). */
+/** German labels for the body fields the server can reject, keyed by the
+ *  top-level JSON path ajv reports in `instancePath` (e.g. "/dateOfBirth").
+ *  Spans every surface's forms — field names are unique across domains, so a
+ *  bad-format 400 (e.g. a due date the server reads as the wrong format) names
+ *  the offending field in German instead of leaking the raw English ajv text. */
 const VALIDATION_FIELD_LABELS: Record<string, string> = {
+  // Kunden
   fullName: "Name",
   dateOfBirth: "Geburtsdatum",
   email: "E-Mail-Adresse",
@@ -525,6 +529,11 @@ const VALIDATION_FIELD_LABELS: Record<string, string> = {
   address: "Adresse",
   vatId: "USt-IdNr.",
   notes: "Notiz",
+  // Aufgaben
+  title: "Titel",
+  description: "Beschreibung",
+  dueDate: "Fälligkeitsdatum",
+  cancellationReason: "Abbruchgrund",
 }
 
 /**

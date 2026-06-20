@@ -94,7 +94,7 @@ export default function AufgabeBearbeitenScreen() {
       title: titleTrimmed,
       priority,
       description: description.trim() ? description.trim() : null,
-      dueDate: parsedDue.iso,
+      dueDate: parsedDue.date,
     }
     // 403 STEP_UP_REQUIRED → PIN Dialog opens + the call retries automatically.
     await updateTask(id, body)

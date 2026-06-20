@@ -180,11 +180,31 @@ const DUE_DATE_FMT = new Intl.DateTimeFormat("de-DE", {
   year: "numeric",
 })
 
-/** "Mi, 24.06.2026" for an ISO date string, or null when undated. */
+/**
+ * Parse a `due_date` value into a LOCAL calendar day, never round-tripped
+ * through UTC. `internal_tasks.due_date` is a Postgres DATE, so the wire value
+ * is a date-only "YYYY-MM-DD" string. `new Date("YYYY-MM-DD")` would read that
+ * as UTC midnight, which renders as the PREVIOUS day for any negative-offset
+ * operator — so a bare date is split and rebuilt at LOCAL midnight instead.
+ * Full date-time values (legacy rows) still flow through the native parser.
+ * Returns null on a malformed value.
+ */
+function parseDueDateLocal(value: string): Date | null {
+  const dateOnly = value.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (dateOnly) {
+    const [, yyyy, mm, dd] = dateOnly
+    const d = new Date(Number(yyyy), Number(mm) - 1, Number(dd), 0, 0, 0, 0)
+    return Number.isNaN(d.getTime()) ? null : d
+  }
+  const d = new Date(value)
+  return Number.isNaN(d.getTime()) ? null : d
+}
+
+/** "Mi, 24.06.2026" for a due-date string, or null when undated. */
 export function formatDueDate(iso: string | null): string | null {
   if (!iso) return null
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return null
+  const d = parseDueDateLocal(iso)
+  if (!d) return null
   return DUE_DATE_FMT.format(d)
 }
 
@@ -195,8 +215,9 @@ export function formatDueDate(iso: string | null): string | null {
  */
 export function isOverdue(task: TaskRow): boolean {
   if (!task.dueDate || isTerminal(task.status)) return false
-  const due = new Date(task.dueDate)
-  if (Number.isNaN(due.getTime())) return false
+  const due = parseDueDateLocal(task.dueDate)
+  if (!due) return false
+  due.setHours(0, 0, 0, 0)
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   return due.getTime() < today.getTime()
@@ -205,8 +226,8 @@ export function isOverdue(task: TaskRow): boolean {
 /** Whether a task's due date falls on today (local midnight window). */
 export function isDueToday(task: TaskRow): boolean {
   if (!task.dueDate || isTerminal(task.status)) return false
-  const due = new Date(task.dueDate)
-  if (Number.isNaN(due.getTime())) return false
+  const due = parseDueDateLocal(task.dueDate)
+  if (!due) return false
   const today = new Date()
   return (
     due.getFullYear() === today.getFullYear() &&
@@ -237,39 +258,64 @@ export function summarise(tasks: readonly TaskRow[]): TaskSummary {
  * A de-DE summary line for the header, built only from real counts, e.g.
  * „8 Aufgaben · 5 offen · 2 überfällig". Drops the parts that are zero so the
  * line stays honest and quiet.
+ *
+ * `serverTotal` is the endpoint's real row count for the active filter. When the
+ * list hasn't loaded every page yet (the table is never pruned — „forensic +
+ * GoBD-relevant" — so it can exceed one page), this keeps the leading count
+ * truthful: it shows the server's total, not just the rows currently in memory.
+ * The „offen"/„überfällig" parts stay derived from the loaded rows, since those
+ * are only knowable for what we've actually fetched.
  */
-export function summaryLine(tasks: readonly TaskRow[]): string {
+export function summaryLine(tasks: readonly TaskRow[], serverTotal?: number): string {
   const s = summarise(tasks)
-  const parts: string[] = [`${s.total} ${s.total === 1 ? "Aufgabe" : "Aufgaben"}`]
+  const total = serverTotal ?? s.total
+  const parts: string[] = [`${total} ${total === 1 ? "Aufgabe" : "Aufgaben"}`]
   if (s.open > 0) parts.push(`${s.open} offen`)
   if (s.overdue > 0) parts.push(`${s.overdue} überfällig`)
   return parts.join(" · ")
 }
 
 // ── de-DE date parsing for the create/edit form (no date-picker dep) ──────────
-/** Prefill an "TT.MM.JJJJ" field from an ISO date string (or "" when null). */
+/** Prefill an "TT.MM.JJJJ" field from a due-date string (or "" when null). */
 export function dueDateInput(iso: string | null): string {
   if (!iso) return ""
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return ""
+  const d = parseDueDateLocal(iso)
+  if (!d) return ""
   const pad = (n: number) => String(n).padStart(2, "0")
   return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`
 }
 
 /**
- * Parse a "TT.MM.JJJJ" date field → an ISO date (midnight local) for the
- * `dueDate` body field, or null if malformed. An empty/whitespace string is
- * treated as "no due date" and returns undefined so callers can clear it.
+ * Parse a "TT.MM.JJJJ" date field → a date-only "YYYY-MM-DD" string for the
+ * `dueDate` body field, or `{ ok: false }` if malformed. An empty/whitespace
+ * string is treated as "no due date" and yields `date: null` so callers can
+ * clear it.
+ *
+ * The wire value MUST be a bare calendar day, never an ISO timestamp: the
+ * backend column `internal_tasks.due_date` is a Postgres DATE and the TypeBox
+ * body schema enforces `format: "date"` (ajv-formats), so a full ISO string
+ * (`…T00:00:00.000Z`) is rejected with HTTP 400. It must also never be built by
+ * round-tripping a local Date through `toISOString()`, which shifts the day for
+ * any non-UTC operator (a Europe/Berlin Owner typing 24.06. would otherwise
+ * store the 23rd). We therefore assemble the day from the typed components
+ * directly and zero-pad it — no timezone ever enters the value.
  */
-export function parseDueDateInput(input: string): { ok: true; iso: string | null } | { ok: false } {
+export function parseDueDateInput(
+  input: string,
+): { ok: true; date: string | null } | { ok: false } {
   const trimmed = input.trim()
-  if (trimmed === "") return { ok: true, iso: null }
+  if (trimmed === "") return { ok: true, date: null }
   const m = trimmed.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/)
   if (!m) return { ok: false }
   const [, dd, mm, yyyy] = m
-  const d = new Date(Number(yyyy), Number(mm) - 1, Number(dd), 0, 0, 0, 0)
-  if (Number.isNaN(d.getTime())) return { ok: false }
-  // Guard against JS Date roll-over (e.g. 32.01 → 01.02).
-  if (d.getDate() !== Number(dd) || d.getMonth() !== Number(mm) - 1) return { ok: false }
-  return { ok: true, iso: d.toISOString() }
+  const day = Number(dd)
+  const month = Number(mm)
+  const year = Number(yyyy)
+  // Validate the calendar day via a local Date, then DISCARD it — we never read
+  // its UTC value, only confirm the typed day didn't roll over (e.g. 32.01).
+  const probe = new Date(year, month - 1, day, 0, 0, 0, 0)
+  if (Number.isNaN(probe.getTime())) return { ok: false }
+  if (probe.getDate() !== day || probe.getMonth() !== month - 1) return { ok: false }
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return { ok: true, date: `${year}-${pad(month)}-${pad(day)}` }
 }

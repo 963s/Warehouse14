@@ -54,7 +54,7 @@ export default function NeueAufgabeScreen() {
       title: titleTrimmed,
       priority,
       ...(description.trim() ? { description: description.trim() } : {}),
-      ...(parsedDue.iso ? { dueDate: parsedDue.iso } : {}),
+      ...(parsedDue.date ? { dueDate: parsedDue.date } : {}),
       ...(assignToMe && actor?.id ? { assignedToUserId: actor.id } : {}),
     }
     // 403 STEP_UP_REQUIRED → PIN Dialog opens + the call retries automatically.
