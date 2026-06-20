@@ -17,6 +17,10 @@
  *   motion/       — the reanimated-v4 motion system (durations, easings, the
  *                   press-scale, list stagger, CountUp, the break-even GoldFlood);
  *                   re-exported here so surfaces pull one barrel.
+ *   data/         — the live-data hook layer (useQuery / useMultiQuery /
+ *                   useMutation / useRefreshControl) wrapping ../api: refetch-
+ *                   on-focus, pull-to-refresh, polite polling, de-dupe,
+ *                   optimistic writes. Re-exported so surfaces pull one barrel.
  */
 export { RingGauge, type RingGaugeProps } from "./RingGauge"
 export { StatTile, type StatTileProps, type StatTileTone } from "./StatTile"
@@ -38,3 +42,6 @@ export { FormScreen, type FormScreenProps } from "./FormScreen"
 
 // Motion system — the shared reanimated-v4 vocabulary every surface moves with.
 export * from "./motion"
+
+// Live-data layer — the shared fetch/mutate vocabulary every surface uses.
+export * from "./data"
