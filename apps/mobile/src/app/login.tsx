@@ -17,7 +17,7 @@
  * connection hint — no fabricated state. A failure shows the themed
  * `describeError` message, never a guess.
  */
-import { useCallback, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { View } from "react-native"
 import Animated from "react-native-reanimated"
 
@@ -69,19 +69,28 @@ export default function LoginScreen(): ReactNode {
     }
   }, [])
 
-  const onDigit = useCallback(
-    (digit: string) => {
-      if (busy) return
-      setError(null)
-      setPin((prev) => {
-        if (prev.length >= PIN_LENGTH) return prev
-        const nextPin = prev + digit
-        if (nextPin.length === PIN_LENGTH) void submit(nextPin)
-        return nextPin
-      })
-    },
-    [busy, submit],
-  )
+  // Auto-submit *after* commit, not from inside the setState updater. React may
+  // call an updater more than once (StrictMode/concurrent) and updaters must be
+  // pure, so firing the pin-login POST there double-dispatches — halving the
+  // backend's 10/min budget and risking spurious RATE_LIMITED. Driving it from
+  // an effect keyed on a full, untried pin guarantees exactly one request per
+  // attempt. The ref guards against the effect re-running for the same value.
+  const submittedPin = useRef<string | null>(null)
+  useEffect(() => {
+    if (pin.length !== PIN_LENGTH) {
+      // Cleared/backspaced below full — arm for the next complete entry.
+      submittedPin.current = null
+      return
+    }
+    if (busy || submittedPin.current === pin) return
+    submittedPin.current = pin
+    void submit(pin)
+  }, [pin, busy, submit])
+
+  const onDigit = useCallback((digit: string) => {
+    setError(null)
+    setPin((prev) => (prev.length >= PIN_LENGTH ? prev : prev + digit))
+  }, [])
 
   const onBackspace = useCallback(() => {
     setError(null)

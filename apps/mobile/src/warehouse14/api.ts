@@ -123,7 +123,7 @@ import { stepUpService } from "./step-up"
  * LOCAL dev api-cloud only — the Mac LAN IP. NEVER production
  * (https://api.warehouse14.de). Override via EXPO_PUBLIC_API_BASE_URL.
  */
-export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://192.168.179.93:3001"
+export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://192.168.179.27:3001"
 
 /**
  * DEV device fingerprint = SHA-256 of the dev cert seeded by api-cloud's
@@ -562,12 +562,26 @@ export function describeError(err: unknown): string {
   if (err instanceof ApiError) {
     switch (err.code) {
       case "PIN_LOCKED": {
-        const ms = (err.details as { retryAfterMs?: number } | undefined)?.retryAfterMs
-        const mins = ms ? Math.ceil(ms / 60000) : null
+        // The api-cloud error-handler serializes the 423 lockout as
+        // `details.lockedUntil` (an ISO string) and sets NO Retry-After header
+        // (apps/api-cloud/src/plugins/error-handler.ts + lib/auth-policy.ts).
+        // Read that timestamp and derive the remaining minutes ourselves; only
+        // show the countdown when it's a future instant we can trust.
+        const lockedUntil = (err.details as { lockedUntil?: string } | undefined)?.lockedUntil
+        const untilMs = lockedUntil ? Date.parse(lockedUntil) : NaN
+        const remainingMs = Number.isFinite(untilMs) ? untilMs - Date.now() : NaN
+        const mins = Number.isFinite(remainingMs) && remainingMs > 0 ? Math.ceil(remainingMs / 60000) : null
         return mins
           ? `PIN gesperrt — in ${mins} Min. erneut versuchen.`
           : "PIN gesperrt — bitte später erneut versuchen."
       }
+      case "RATE_LIMITED":
+        // The 429 carries the raw English message ("Rate limit exceeded: 10 per
+        // 1 minute. Retry after 13977ms.") with no structured retry details, so
+        // surface a clean German throttle line instead of the wire text — and no
+        // fabricated countdown, since the ms in the message isn't a reliable
+        // structured field.
+        return "Zu viele Versuche — bitte einen Moment warten und erneut versuchen."
       case "UNAUTHORIZED":
         return err.message || "Falsche PIN."
       case "DEVICE_NOT_AUTHORIZED":
