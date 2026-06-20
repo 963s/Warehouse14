@@ -94,6 +94,35 @@ export function latestCountingDay(items: readonly ClosingListItem[]): string | n
   return counting?.businessDay ?? null
 }
 
+// ── Fiskalischer Überblick ────────────────────────────────────────────────────
+/**
+ * The honest, real-number summary of the fiscal record — derived purely from the
+ * fetched closings, never fabricated. Drives the trust header: how many days are
+ * still open (await a Z-Bon), how many are legally sealed, and the total count of
+ * TSE failures across the visible window (the one figure that, if non-zero, means
+ * the audit trail needs attention).
+ */
+export interface FiscalOverview {
+  /** Days still in COUNTING — each can be finalized with a Z-Bon. */
+  openDays: number
+  /** Days already sealed with a finalized Z-Bon. */
+  finalizedDays: number
+  /** Sum of TSE failures across all visible closings (0 = clean trail). */
+  tseFailures: number
+}
+
+export function fiscalOverview(items: readonly ClosingListItem[]): FiscalOverview {
+  let openDays = 0
+  let finalizedDays = 0
+  let tseFailures = 0
+  for (const c of items) {
+    if (c.state === "FINALIZED") finalizedDays += 1
+    else openDays += 1
+    tseFailures += c.tseFailedCount
+  }
+  return { openDays, finalizedDays, tseFailures }
+}
+
 // ── Export file naming ────────────────────────────────────────────────────────
 export type ExportKind = "datev" | "kassenbericht"
 
