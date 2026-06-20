@@ -1,83 +1,79 @@
 /**
  * Neuer Artikel — the phone intake flow (POST /api/products via productsApi.create).
  *
- * Step 1 (Stammdaten): name, Artikelart, Metall + Gewicht, Feinheit, Zustand,
- *   Steuerbehandlung, Einkaufs-/Listenpreis, Kategorie, Lagerort. The backend
- *   intake-locks sku, Einkaufspreis and the classification — settable HERE only.
- *   Money fields are decimal EUR strings (NOT cents), matching the products
- *   surface. Step-up fires automatically when the Einkaufspreis crosses the
+ * Step 1 (Stammdaten): Name, Artikelart, Metall + Gewicht/Feinheit, Zustand,
+ *   Steuerbehandlung, Einkaufs-/Listenpreis, Kategorie, Lagerort, SKU. The
+ *   backend intake-locks sku, Einkaufspreis and the classification — settable
+ *   HERE only. Money fields are decimal EUR STRINGS (NOT cents), matching the
+ *   products API. Step-up fires automatically when the Einkaufspreis crosses the
  *   threshold (StepUpDialogHost handles the 403 STEP_UP_REQUIRED transparently).
  *
- * Step 2 (Fotos): once the product exists, route into the existing capture
- *   pipeline (/capture?productId=…). The first photo becomes the primary.
+ * Step 2 (Fotos): once the product exists it is a real milestone — the create
+ *   lands with the Success haptic and a single gold flood (DESIGN.md §6/§7),
+ *   then a native success card routes into the existing capture pipeline
+ *   (/capture?productId=…) where the first photo becomes the primary, or straight
+ *   to the fresh Artikel.
+ *
+ * Built on the shared spine: FormScreen scaffold (sticky save + transparent
+ * step-up), SectionCard groups, the product-form controls (ChipSelect / MoneyField
+ * / MetalWeightField / CategoryPicker), field-level validation that paints the
+ * offending input red + fires the Error haptic, and the theme tokens throughout.
  */
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { ScrollView, View } from "react-native"
 import { router, useNavigation } from "expo-router"
-import type {
-  CreateProductBody,
-  Metal,
-  ProductConditionCode,
-  ProductItemType,
-  TaxTreatmentCode,
-} from "@warehouse14/api-client"
-import { useSafeAreaInsets } from "react-native-safe-area-context"
+import type { CreateProductBody } from "@warehouse14/api-client"
+import { Camera, CheckCircle2, PackagePlus } from "lucide-react-native"
 
 import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Text } from "@/components/ui/text"
-import { categoryTree, createProduct, describeError } from "@/warehouse14/api"
-import { ChipSelect, Field } from "@/warehouse14/product-form"
+import { categoryTree, createProduct } from "@/warehouse14/api"
+import {
+  CategoryPicker,
+  type CategoryChoice,
+  ChipSelect,
+  Field,
+  type InputRef,
+  MetalWeightField,
+  MoneyField,
+} from "@/warehouse14/product-form"
 import {
   CONDITION_OPTIONS,
-  ITEM_TYPE_OPTIONS,
-  METAL_OPTIONS,
-  TAX_TREATMENT_OPTIONS,
+  EMPTY_PRODUCT_INTAKE,
+  firstProductIntakeError,
   generateSku,
+  ITEM_TYPE_OPTIONS,
+  isProductIntakeValid,
+  METAL_OPTIONS,
+  type ProductIntakeErrors,
+  type ProductIntakeFieldKey,
+  type ProductIntakeForm,
+  TAX_TREATMENT_OPTIONS,
+  validateProductIntake,
 } from "@/warehouse14/product-ui"
-
-/** Flatten the 2-level taxonomy into a single selectable list (roots + leaves). */
-interface CategoryChoice {
-  value: string
-  label: string
-}
-
-/** Decimal money/weight validation: up to 16 integer + 2 fractional digits. */
-const DECIMAL_RE = /^\d{1,16}(\.\d{1,2})?$/
-/** Feinheit 0..1 with up to 4 fractional digits (mirrors FinenessString). */
-const FINENESS_RE = /^(0(\.\d{1,4})?|1(\.0{1,4})?)$/
+import { useW14Theme } from "@/warehouse14/theme"
+import { GoldFlood, haptics, SectionCard, useScreenInsets } from "@/warehouse14/ui"
+import { FormScreen } from "@/warehouse14/ui/FormScreen"
 
 export default function NeuerArtikelScreen() {
-  const insets = useSafeAreaInsets()
   const navigation = useNavigation()
+  const t = useW14Theme()
+  const insets = useScreenInsets()
 
-  // Stammdaten
-  const [name, setName] = useState("")
-  const [itemType, setItemType] = useState<ProductItemType | null>(null)
-  const [metal, setMetal] = useState<Metal | null>(null)
-  const [weightGrams, setWeightGrams] = useState("")
-  const [fineness, setFineness] = useState("")
-  const [condition, setCondition] = useState<ProductConditionCode | null>("USED_GOOD")
-  const [taxCode, setTaxCode] = useState<TaxTreatmentCode | null>("MARGIN_25A")
-  const [acquisition, setAcquisition] = useState("")
-  const [listPrice, setListPrice] = useState("")
-  const [sku, setSku] = useState("")
-  const [categoryId, setCategoryId] = useState<string | null>(null)
-
-  // Lagerort
-  const [unit, setUnit] = useState("")
-  const [drawer, setDrawer] = useState("")
-  const [position, setPosition] = useState("")
-
-  // Kategorien (loaded once)
+  const [form, setForm] = useState<ProductIntakeForm>(EMPTY_PRODUCT_INTAKE)
+  const [errors, setErrors] = useState<ProductIntakeErrors>({})
   const [categories, setCategories] = useState<CategoryChoice[]>([])
 
-  // Submit / result state
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [createdId, setCreatedId] = useState<string | null>(null)
-  const [createdSku, setCreatedSku] = useState<string | null>(null)
+  // Post-create state — the success step (Fotos / zum Artikel) + the flood.
+  const [created, setCreated] = useState<{ id: string; sku: string } | null>(null)
+  const [celebrate, setCelebrate] = useState(false)
+
+  // Keyboard focus chaining across the free-text inputs.
+  const weightRef = useRef<InputRef>(null)
+  const finenessRef = useRef<InputRef>(null)
+  const acquisitionRef = useRef<InputRef>(null)
+  const listPriceRef = useRef<InputRef>(null)
 
   useEffect(() => {
     navigation.setOptions({ title: "Neuer Artikel" })
@@ -106,226 +102,264 @@ export default function NeuerArtikelScreen() {
     }
   }, [])
 
-  function validate(): string | null {
-    if (!name.trim()) return "Name ist erforderlich."
-    if (!itemType) return "Artikelart auswählen."
-    if (!condition) return "Zustand auswählen."
-    if (!taxCode) return "Steuerbehandlung auswählen."
-    if (!DECIMAL_RE.test(acquisition.trim()))
-      return "Einkaufspreis als Betrag angeben (z. B. 199.90)."
-    if (!DECIMAL_RE.test(listPrice.trim())) return "Listenpreis als Betrag angeben (z. B. 349.00)."
-    if (weightGrams.trim() && !DECIMAL_RE.test(weightGrams.trim()))
-      return "Gewicht als Zahl in Gramm angeben."
-    if (fineness.trim() && !FINENESS_RE.test(fineness.trim()))
-      return "Feinheit als Dezimalzahl 0–1 angeben (z. B. 0.585)."
-    return null
+  const patch = <K extends keyof ProductIntakeForm>(key: K, value: ProductIntakeForm[K]) => {
+    setForm((prev) => ({ ...prev, [key]: value }))
+    if ((key as ProductIntakeFieldKey) in errors) clearError(key as ProductIntakeFieldKey)
   }
 
+  const clearError = (key: ProductIntakeFieldKey) =>
+    setErrors((prev) => {
+      if (!(key in prev)) return prev
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
+
   async function submit() {
-    setError(null)
-    const problem = validate()
-    if (problem) {
-      setError(problem)
-      return
+    const problems = validateProductIntake(form)
+    setErrors(problems)
+    if (!isProductIntakeValid(problems)) {
+      // Pair the red inputs with the Error haptic; the banner shows the first.
+      haptics.error()
+      throw new Error(firstProductIntakeError(problems) ?? "Bitte Eingaben prüfen.")
     }
-    setBusy(true)
-    try {
-      const finalSku = sku.trim() || generateSku()
-      const body: CreateProductBody = {
-        sku: finalSku,
-        itemType: itemType as ProductItemType,
-        condition: condition as ProductConditionCode,
-        taxTreatmentCode: taxCode as TaxTreatmentCode,
-        acquisitionCostEur: acquisition.trim(),
-        listPriceEur: listPrice.trim(),
-        name: name.trim(),
-        ...(metal ? { metal } : {}),
-        ...(weightGrams.trim() ? { weightGrams: weightGrams.trim() } : {}),
-        ...(fineness.trim() ? { finenessDecimal: fineness.trim() } : {}),
-        ...(categoryId ? { primaryCategoryId: categoryId } : {}),
-        ...(unit.trim() ? { locationStorageUnit: unit.trim() } : {}),
-        ...(drawer.trim() ? { locationDrawer: drawer.trim() } : {}),
-        ...(position.trim() ? { locationPosition: position.trim() } : {}),
-      }
-      // Step-up (403 STEP_UP_REQUIRED) on a high Einkaufspreis is handled
-      // transparently by stepUpMiddleware and retried.
-      const res = await createProduct(body)
-      setCreatedId(res.id)
-      setCreatedSku(res.sku)
-    } catch (e) {
-      setError(describeError(e))
-    } finally {
-      setBusy(false)
+
+    const finalSku = form.sku.trim() || generateSku()
+    const body: CreateProductBody = {
+      sku: finalSku,
+      itemType: form.itemType!,
+      condition: form.condition!,
+      taxTreatmentCode: form.taxCode!,
+      acquisitionCostEur: form.acquisition.trim(),
+      listPriceEur: form.listPrice.trim(),
+      name: form.name.trim(),
+      ...(form.metal ? { metal: form.metal } : {}),
+      ...(form.weightGrams.trim() ? { weightGrams: form.weightGrams.trim() } : {}),
+      ...(form.fineness.trim() ? { finenessDecimal: form.fineness.trim() } : {}),
+      ...(form.categoryId ? { primaryCategoryId: form.categoryId } : {}),
+      ...(form.unit.trim() ? { locationStorageUnit: form.unit.trim() } : {}),
+      ...(form.drawer.trim() ? { locationDrawer: form.drawer.trim() } : {}),
+      ...(form.position.trim() ? { locationPosition: form.position.trim() } : {}),
     }
+
+    // Step-up (403 STEP_UP_REQUIRED) on a high Einkaufspreis is handled
+    // transparently by stepUpMiddleware and retried.
+    const res = await createProduct(body)
+    // One haptic per action (DESIGN.md §7): the Success notification IS the
+    // confirm; the gold flood that follows is visual-only, never a second buzz.
+    haptics.success()
+    setCreated({ id: res.id, sku: res.sku })
+    setCelebrate(true)
   }
 
   // ── Erfolg: Fotos anhängen oder zum Artikel ─────────────────────────────────
-  if (createdId) {
+  if (created) {
     return (
-      <ScrollView
-        className="flex-1 bg-background"
-        contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24, gap: 14 }}
-      >
-        <Card className="gap-2 px-4 py-4" style={{ borderColor: "#157a4b" }}>
-          <Text className="text-accent text-base font-semibold">Artikel angelegt</Text>
-          <Text className="text-muted-foreground text-sm">
-            {name.trim()} · {createdSku}
-          </Text>
-          <Text className="text-muted-foreground text-xs">
-            Als Entwurf gespeichert. Fotos hinzufügen oder direkt zum Artikel.
-          </Text>
-        </Card>
+      <View className="flex-1 bg-background">
+        <ScrollView
+          className="flex-1"
+          contentContainerStyle={{ padding: 16, paddingBottom: insets.contentBottom, gap: 14 }}
+        >
+          <View className="items-center gap-3 pb-1 pt-6">
+            <View
+              className="h-16 w-16 items-center justify-center rounded-full"
+              style={{ backgroundColor: t.colors.verdigris + "1f" }}
+            >
+              <CheckCircle2 size={t.icon.xl} color={t.colors.verdigris} />
+            </View>
+            <View className="items-center gap-1">
+              <Text className="text-xl font-bold">Artikel angelegt</Text>
+              <Text className="text-muted-foreground text-center text-sm" numberOfLines={2}>
+                {form.name.trim()}
+              </Text>
+              <Text className="text-muted-foreground font-mono text-xs">{created.sku}</Text>
+            </View>
+          </View>
 
-        <Button
-          size="lg"
-          className="h-12"
-          onPress={() => router.replace({ pathname: "/capture", params: { productId: createdId } })}
-        >
-          <Text>Foto aufnehmen</Text>
-        </Button>
-        <Button
-          variant="outline"
-          size="lg"
-          className="h-12"
-          onPress={() => router.replace({ pathname: "/product/[id]", params: { id: createdId } })}
-        >
-          <Text>Zum Artikel</Text>
-        </Button>
-      </ScrollView>
+          <SectionCard
+            title="Fotos hinzufügen"
+            subtitle="Das erste Foto wird automatisch zum Hauptbild. Als Entwurf gespeichert."
+            icon={Camera}
+          >
+            <Button
+              size="xl"
+              className="h-12"
+              onPress={() => {
+                haptics.selection()
+                router.replace({ pathname: "/capture", params: { productId: created.id } })
+              }}
+              accessibilityLabel="Foto aufnehmen"
+            >
+              <Text>Foto aufnehmen</Text>
+            </Button>
+            <Button
+              variant="outline"
+              size="xl"
+              className="h-12"
+              onPress={() => {
+                haptics.selection()
+                router.replace({ pathname: "/product/[id]", params: { id: created.id } })
+              }}
+              accessibilityLabel="Zum Artikel"
+            >
+              <Text>Zum Artikel</Text>
+            </Button>
+          </SectionCard>
+        </ScrollView>
+
+        {/* The new-article milestone flood — visual only (the Success haptic
+            already fired); once per create, above content, never blocks a tap. */}
+        <GoldFlood visible={celebrate} onDone={() => setCelebrate(false)} />
+      </View>
     )
   }
 
   // ── Stammdaten-Formular ─────────────────────────────────────────────────────
   return (
-    <ScrollView
-      className="flex-1 bg-background"
-      contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24, gap: 14 }}
-      keyboardShouldPersistTaps="handled"
+    <FormScreen
+      title="Neuer Artikel"
+      subtitle="Stammdaten erfassen. SKU und Einkaufspreis werden bei Anlage festgelegt."
+      submitLabel="Anlegen"
+      successMessage="Artikel angelegt."
+      submitDisabled={!form.name.trim() || !form.acquisition.trim() || !form.listPrice.trim()}
+      onSubmit={submit}
     >
-      <Card className="gap-4 px-4 py-4">
-        <Field label="Name">
+      <SectionCard title="Stammdaten" icon={PackagePlus}>
+        <Field label="Name" required error={errors.name}>
           <Input
-            value={name}
-            onChangeText={setName}
+            value={form.name}
+            onChangeText={(v) => patch("name", v)}
             placeholder="z. B. Goldring 585 mit Brillant"
+            autoCapitalize="sentences"
+            aria-invalid={!!errors.name}
+            style={errors.name ? { borderColor: t.colors.destructive } : undefined}
+            accessibilityLabel="Name"
           />
         </Field>
 
-        <Field label="Artikelart">
-          <ChipSelect options={ITEM_TYPE_OPTIONS} value={itemType} onChange={setItemType} />
+        <Field label="Artikelart" required error={errors.itemType}>
+          <ChipSelect
+            options={ITEM_TYPE_OPTIONS}
+            value={form.itemType}
+            onChange={(v) => patch("itemType", v)}
+          />
         </Field>
 
         <Field label="Edelmetall" hint="Optional — nur bei Edelmetallware.">
-          <ChipSelect options={METAL_OPTIONS} value={metal} onChange={setMetal} allowClear />
-        </Field>
-
-        <View className="flex-row gap-3">
-          <View className="flex-1">
-            <Field label="Gewicht (g)">
-              <Input
-                value={weightGrams}
-                onChangeText={setWeightGrams}
-                placeholder="z. B. 4.20"
-                keyboardType="decimal-pad"
-              />
-            </Field>
-          </View>
-          <View className="flex-1">
-            <Field label="Feinheit" hint="z. B. 0.585">
-              <Input
-                value={fineness}
-                onChangeText={setFineness}
-                placeholder="0.585"
-                keyboardType="decimal-pad"
-              />
-            </Field>
-          </View>
-        </View>
-
-        <Field label="Zustand">
-          <ChipSelect options={CONDITION_OPTIONS} value={condition} onChange={setCondition} />
-        </Field>
-      </Card>
-
-      <Card className="gap-4 px-4 py-4">
-        <Field label="Steuerbehandlung">
-          <ChipSelect options={TAX_TREATMENT_OPTIONS} value={taxCode} onChange={setTaxCode} />
-        </Field>
-
-        <View className="flex-row gap-3">
-          <View className="flex-1">
-            <Field label="Einkaufspreis (EUR)">
-              <Input
-                value={acquisition}
-                onChangeText={setAcquisition}
-                placeholder="199.90"
-                keyboardType="decimal-pad"
-              />
-            </Field>
-          </View>
-          <View className="flex-1">
-            <Field label="Listenpreis (EUR)">
-              <Input
-                value={listPrice}
-                onChangeText={setListPrice}
-                placeholder="349.00"
-                keyboardType="decimal-pad"
-              />
-            </Field>
-          </View>
-        </View>
-      </Card>
-
-      {categories.length > 0 ? (
-        <Card className="gap-4 px-4 py-4">
-          <Field label="Kategorie" hint="Optional — bestimmt die Storefront-Einordnung.">
-            <ChipSelect
-              options={categories}
-              value={categoryId}
-              onChange={setCategoryId}
-              allowClear
-              clearLabel="Ohne"
-            />
-          </Field>
-        </Card>
-      ) : null}
-
-      <Card className="gap-4 px-4 py-4">
-        <Field label="Lagerort" hint="Optional — Tresor, Fach und Position.">
-          <View className="gap-2">
-            <Input value={unit} onChangeText={setUnit} placeholder="Tresor / Lagereinheit" />
-            <Input value={drawer} onChangeText={setDrawer} placeholder="Fach / Schublade" />
-            <Input value={position} onChangeText={setPosition} placeholder="Position" />
-          </View>
-        </Field>
-      </Card>
-
-      <Card className="gap-4 px-4 py-4">
-        <Field label="SKU" hint="Leer lassen für automatische Vergabe.">
-          <Input
-            value={sku}
-            onChangeText={setSku}
-            placeholder="Automatisch"
-            autoCapitalize="characters"
-            autoCorrect={false}
+          <ChipSelect
+            options={METAL_OPTIONS}
+            value={form.metal}
+            onChange={(v) => patch("metal", v)}
+            allowClear
           />
         </Field>
-      </Card>
 
-      {error ? (
-        <Card className="gap-1 border-destructive px-4 py-3">
-          <Text className="text-destructive text-sm font-medium">{error}</Text>
-        </Card>
+        <MetalWeightField
+          weight={form.weightGrams}
+          onWeightChange={(v) => patch("weightGrams", v)}
+          fineness={form.fineness}
+          onFinenessChange={(v) => patch("fineness", v)}
+          weightError={errors.weightGrams}
+          finenessError={errors.fineness}
+          weightRef={weightRef}
+          finenessRef={finenessRef}
+          onWeightSubmit={() => finenessRef.current?.focus()}
+          onFinenessSubmit={() => acquisitionRef.current?.focus()}
+        />
+
+        <Field label="Zustand" required error={errors.condition}>
+          <ChipSelect
+            options={CONDITION_OPTIONS}
+            value={form.condition}
+            onChange={(v) => patch("condition", v)}
+          />
+        </Field>
+      </SectionCard>
+
+      <SectionCard
+        title="Steuer + Preise"
+        subtitle="Einkaufspreis wird bei Anlage festgelegt (§25a-Integrität)."
+      >
+        <Field label="Steuerbehandlung" required error={errors.taxCode}>
+          <ChipSelect
+            options={TAX_TREATMENT_OPTIONS}
+            value={form.taxCode}
+            onChange={(v) => patch("taxCode", v)}
+          />
+        </Field>
+
+        <View className="flex-row gap-3">
+          <View className="flex-1">
+            <MoneyField
+              label="Einkaufspreis"
+              required
+              value={form.acquisition}
+              onChangeText={(v) => patch("acquisition", v)}
+              placeholder="199.90"
+              error={errors.acquisition}
+              inputRef={acquisitionRef}
+              returnKeyType="next"
+              submitBehavior="submit"
+              onSubmitEditing={() => listPriceRef.current?.focus()}
+            />
+          </View>
+          <View className="flex-1">
+            <MoneyField
+              label="Listenpreis"
+              required
+              value={form.listPrice}
+              onChangeText={(v) => patch("listPrice", v)}
+              placeholder="349.00"
+              error={errors.listPrice}
+              inputRef={listPriceRef}
+              returnKeyType="done"
+            />
+          </View>
+        </View>
+      </SectionCard>
+
+      {categories.length > 0 ? (
+        <SectionCard title="Kategorie" subtitle="Optional — bestimmt die Storefront-Einordnung.">
+          <CategoryPicker
+            options={categories}
+            value={form.categoryId}
+            onChange={(v) => patch("categoryId", v)}
+          />
+        </SectionCard>
       ) : null}
 
-      <View className="flex-row gap-2">
-        <Button variant="outline" className="flex-1" onPress={() => router.back()} disabled={busy}>
-          <Text>Abbrechen</Text>
-        </Button>
-        <Button className="flex-1" onPress={() => void submit()} disabled={busy}>
-          <Text>{busy ? "Speichern…" : "Anlegen"}</Text>
-        </Button>
-      </View>
-    </ScrollView>
+      <SectionCard title="Lagerort" subtitle="Optional — Tresor, Fach und Position.">
+        <Input
+          value={form.unit}
+          onChangeText={(v) => patch("unit", v)}
+          placeholder="Tresor / Lagereinheit"
+          accessibilityLabel="Lagereinheit"
+        />
+        <Input
+          value={form.drawer}
+          onChangeText={(v) => patch("drawer", v)}
+          placeholder="Fach / Schublade"
+          accessibilityLabel="Fach"
+        />
+        <Input
+          value={form.position}
+          onChangeText={(v) => patch("position", v)}
+          placeholder="Position"
+          accessibilityLabel="Position"
+        />
+      </SectionCard>
+
+      <SectionCard title="SKU" subtitle="Leer lassen für automatische Vergabe.">
+        <Input
+          value={form.sku}
+          onChangeText={(v) => patch("sku", v)}
+          placeholder="Automatisch"
+          autoCapitalize="characters"
+          autoCorrect={false}
+          className="font-mono"
+          accessibilityLabel="SKU"
+        />
+      </SectionCard>
+    </FormScreen>
   )
 }

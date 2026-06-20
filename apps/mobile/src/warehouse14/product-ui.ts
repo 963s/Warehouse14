@@ -113,3 +113,141 @@ export function generateSku(now: Date = new Date()): string {
   const rand = Math.random().toString(36).slice(2, 6).toUpperCase()
   return `W14-${yy}${mm}${dd}-${rand}`
 }
+
+// ── Field-level validation (mirrors the Kunden form: an error MAP, not a banner) ─
+//
+// Money is on the wire as a decimal EUR STRING for the products API („199.90"),
+// so these guards check the decimal shape, not cents. Each validator returns a
+// map keyed by field so a screen paints exactly the offending input red; the
+// `first…Error` helper gives the FormScreen banner copy + the Error haptic.
+
+/** Decimal money/weight: up to 16 integer + 2 fractional digits. */
+const DECIMAL_RE = /^\d{1,16}(\.\d{1,2})?$/
+/** Feinheit 0..1 with up to 4 fractional digits (mirrors the server FinenessString). */
+const FINENESS_RE = /^(0(\.\d{1,4})?|1(\.0{1,4})?)$/
+
+/** A decimal-string amount strictly greater than zero. */
+function isPositivePrice(value: string): boolean {
+  const v = value.trim()
+  return DECIMAL_RE.test(v) && Number(v) > 0
+}
+
+// ── Neuer Artikel (intake) ───────────────────────────────────────────────────
+
+/** The intake draft — all strings/enums the „Neu"-Formular collects. */
+export interface ProductIntakeForm {
+  name: string
+  itemType: ProductItemType | null
+  metal: Metal | null
+  weightGrams: string
+  fineness: string
+  condition: ProductConditionCode | null
+  taxCode: TaxTreatmentCode | null
+  acquisition: string
+  listPrice: string
+  sku: string
+  categoryId: string | null
+  unit: string
+  drawer: string
+  position: string
+}
+
+/** A blank intake draft (Differenzbesteuerung §25a + „Gut" are the defaults). */
+export const EMPTY_PRODUCT_INTAKE: ProductIntakeForm = {
+  name: "",
+  itemType: null,
+  metal: null,
+  weightGrams: "",
+  fineness: "",
+  condition: "USED_GOOD",
+  taxCode: "MARGIN_25A",
+  acquisition: "",
+  listPrice: "",
+  sku: "",
+  categoryId: null,
+  unit: "",
+  drawer: "",
+  position: "",
+}
+
+export type ProductIntakeFieldKey =
+  | "name"
+  | "itemType"
+  | "condition"
+  | "taxCode"
+  | "acquisition"
+  | "listPrice"
+  | "weightGrams"
+  | "fineness"
+
+export type ProductIntakeErrors = Partial<Record<ProductIntakeFieldKey, string>>
+
+/** Field-level guard for the intake draft → a German message per offending field. */
+export function validateProductIntake(s: ProductIntakeForm): ProductIntakeErrors {
+  const errors: ProductIntakeErrors = {}
+
+  if (!s.name.trim()) errors.name = "Name ist erforderlich."
+  else if (s.name.trim().length < 2) errors.name = "Name ist zu kurz."
+
+  if (!s.itemType) errors.itemType = "Artikelart auswählen."
+  if (!s.condition) errors.condition = "Zustand auswählen."
+  if (!s.taxCode) errors.taxCode = "Steuerbehandlung auswählen."
+
+  if (!isPositivePrice(s.acquisition))
+    errors.acquisition = "Einkaufspreis als Betrag angeben (z. B. 199.90)."
+  if (!isPositivePrice(s.listPrice))
+    errors.listPrice = "Listenpreis als Betrag angeben (z. B. 349.00)."
+
+  if (s.weightGrams.trim() && !DECIMAL_RE.test(s.weightGrams.trim()))
+    errors.weightGrams = "Gewicht als Zahl in Gramm angeben."
+  if (s.fineness.trim() && !FINENESS_RE.test(s.fineness.trim()))
+    errors.fineness = "Feinheit als Dezimalzahl 0–1 angeben (z. B. 0.585)."
+
+  return errors
+}
+
+export function isProductIntakeValid(errors: ProductIntakeErrors): boolean {
+  return Object.keys(errors).length === 0
+}
+
+const INTAKE_ORDER: ProductIntakeFieldKey[] = [
+  "name",
+  "itemType",
+  "condition",
+  "taxCode",
+  "acquisition",
+  "listPrice",
+  "weightGrams",
+  "fineness",
+]
+
+/** The first intake error in reading order — for the banner copy. */
+export function firstProductIntakeError(errors: ProductIntakeErrors): string | null {
+  for (const key of INTAKE_ORDER) {
+    if (errors[key]) return errors[key]!
+  }
+  return null
+}
+
+// ── Artikel bearbeiten (edit — only the PUT-allowed fields) ──────────────────
+
+export type ProductEditFieldKey = "name" | "listPrice"
+export type ProductEditErrors = Partial<Record<ProductEditFieldKey, string>>
+
+/** Field-level guard for the edit draft (Name + Listenpreis are validated). */
+export function validateProductEdit(name: string, listPrice: string): ProductEditErrors {
+  const errors: ProductEditErrors = {}
+  if (!name.trim()) errors.name = "Name ist erforderlich."
+  else if (name.trim().length < 2) errors.name = "Name ist zu kurz."
+  if (!isPositivePrice(listPrice))
+    errors.listPrice = "Listenpreis als Betrag angeben (z. B. 349.00)."
+  return errors
+}
+
+export function isProductEditValid(errors: ProductEditErrors): boolean {
+  return Object.keys(errors).length === 0
+}
+
+export function firstProductEditError(errors: ProductEditErrors): string | null {
+  return errors.name ?? errors.listPrice ?? null
+}

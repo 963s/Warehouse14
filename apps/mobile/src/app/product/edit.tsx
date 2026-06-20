@@ -3,21 +3,29 @@
  *
  * Only the PUT-allowed fields are editable: Name, Listenpreis, Zustand,
  * Beschreibung, primäre Kategorie und der Status DRAFT→AVAILABLE
- * ("veröffentlichen"). Intake-locked fields (sku, Einkaufspreis, Metall,
- * Gewicht) are read-only here — the backend refuses them. ADMIN + step-up; the
- * 403 STEP_UP_REQUIRED is handled transparently by stepUpMiddleware.
+ * („veröffentlichen"). Intake-locked fields (sku, Einkaufspreis, Metall,
+ * Gewicht) are read-only here — the backend refuses them, so we surface them in
+ * a quiet „Festgelegt bei Anlage" card instead. ADMIN + step-up; the 403
+ * STEP_UP_REQUIRED is handled transparently by stepUpMiddleware.
+ *
+ * Built on the shared spine: a Skeleton in the form's shape then ErrorState +
+ * Retry for the load, the FormScreen scaffold (sticky save + transparent
+ * step-up), the product-form controls, field-level validation that paints the
+ * offending input red + fires the Error haptic, and the theme tokens throughout.
+ * The prefill is a deliberate one-shot — it never refetches on focus, so
+ * returning mid-edit never clobbers the operator's draft.
  *
  * Reached as /product/edit?id=<id> from the product detail screen.
  */
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { ScrollView, View } from "react-native"
-import { router, useLocalSearchParams, useNavigation } from "expo-router"
+import { router, useLocalSearchParams } from "expo-router"
 import type {
   ProductConditionCode,
   ProductDetail,
   ProductUpdateBody,
 } from "@warehouse14/api-client"
-import { useSafeAreaInsets } from "react-native-safe-area-context"
+import { Lock, Tag } from "lucide-react-native"
 
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -26,27 +34,40 @@ import { Text } from "@/components/ui/text"
 import {
   categoryTree,
   describeError,
+  formatEur,
   getProduct,
   setProductCategories,
   updateProduct,
 } from "@/warehouse14/api"
-import { ChipSelect, Field } from "@/warehouse14/product-form"
-import { CONDITION_OPTIONS } from "@/warehouse14/product-ui"
-
-const DECIMAL_RE = /^\d{1,16}(\.\d{1,2})?$/
-
-interface CategoryChoice {
-  value: string
-  label: string
-}
+import {
+  CategoryPicker,
+  type CategoryChoice,
+  ChipSelect,
+  Field,
+  type InputRef,
+  MoneyField,
+} from "@/warehouse14/product-form"
+import {
+  CONDITION_OPTIONS,
+  firstProductEditError,
+  isProductEditValid,
+  type ProductEditErrors,
+  type ProductEditFieldKey,
+  STATUS_LABEL,
+  validateProductEdit,
+} from "@/warehouse14/product-ui"
+import { useW14Theme } from "@/warehouse14/theme"
+import { ErrorState, haptics, SectionCard, Skeleton, useScreenInsets } from "@/warehouse14/ui"
+import { FormScreen } from "@/warehouse14/ui/FormScreen"
 
 export default function ArtikelBearbeitenScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
-  const insets = useSafeAreaInsets()
-  const navigation = useNavigation()
+  const t = useW14Theme()
 
   const [product, setProduct] = useState<ProductDetail | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [loadCause, setLoadCause] = useState<unknown>(null)
+  const [reloadKey, setReloadKey] = useState(0)
 
   // Editable fields
   const [name, setName] = useState("")
@@ -56,16 +77,20 @@ export default function ArtikelBearbeitenScreen() {
   const [categoryId, setCategoryId] = useState<string | null>(null)
   const [categories, setCategories] = useState<CategoryChoice[]>([])
 
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [errors, setErrors] = useState<ProductEditErrors>({})
+  const [publishing, setPublishing] = useState(false)
+  const [publishError, setPublishError] = useState<string | null>(null)
+
+  const listPriceRef = useRef<InputRef>(null)
 
   useEffect(() => {
-    navigation.setOptions({ title: "Bearbeiten" })
-  }, [navigation])
-
-  useEffect(() => {
-    if (!id) return
+    if (!id) {
+      setLoadError("Kein Artikel ausgewählt.")
+      return
+    }
     let alive = true
+    setLoadError(null)
+    setLoadCause(null)
     void (async () => {
       try {
         const [p, tree] = await Promise.all([getProduct(id), categoryTree().catch(() => null)])
@@ -88,25 +113,35 @@ export default function ArtikelBearbeitenScreen() {
           setCategories(flat)
         }
       } catch (e) {
-        if (alive) setLoadError(describeError(e))
+        if (alive) {
+          setLoadError(describeError(e))
+          setLoadCause(e)
+        }
       }
     })()
     return () => {
       alive = false
     }
-  }, [id])
+  }, [id, reloadKey])
+
+  const clearError = (key: ProductEditFieldKey) =>
+    setErrors((prev) => {
+      if (!(key in prev)) return prev
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
 
   async function submit() {
-    if (!id || !product) return
-    setError(null)
-    if (!name.trim()) {
-      setError("Name ist erforderlich.")
-      return
+    if (!id || !product) throw new Error("Artikel nicht geladen.")
+
+    const problems = validateProductEdit(name, listPrice)
+    setErrors(problems)
+    if (!isProductEditValid(problems)) {
+      haptics.error()
+      throw new Error(firstProductEditError(problems) ?? "Bitte Eingaben prüfen.")
     }
-    if (!DECIMAL_RE.test(listPrice.trim())) {
-      setError("Listenpreis als Betrag angeben (z. B. 349.00).")
-      return
-    }
+
     // Only send what actually changed — the backend echoes changedFields. The
     // products PUT does NOT accept categories, so a changed primary Kategorie is
     // applied via the dedicated /categories REPLACE-ALL route below.
@@ -120,85 +155,102 @@ export default function ArtikelBearbeitenScreen() {
     const categoryChanged = categoryId !== currentPrimary
 
     if (Object.keys(body).length === 0 && !categoryChanged) {
-      router.back()
-      return
+      haptics.warning()
+      throw new Error("Keine Änderungen.")
     }
 
-    setBusy(true)
-    try {
-      if (Object.keys(body).length > 0) {
-        await updateProduct(id, body)
-      }
-      if (categoryChanged) {
-        // REPLACE-ALL semantics: keep every existing membership, only swap which
-        // node is primary (and add the new primary if it wasn't a member yet).
-        const existingIds = product.categories.map((c) => c.id)
-        const nextIds = categoryId ? Array.from(new Set([...existingIds, categoryId])) : existingIds
-        await setProductCategories(id, {
-          categoryIds: nextIds,
-          primaryCategoryId: categoryId,
-        })
-      }
-      router.back()
-    } catch (e) {
-      setError(describeError(e))
-    } finally {
-      setBusy(false)
+    // 403 STEP_UP_REQUIRED → PIN-Dialog + retry (auto via stepUpMiddleware).
+    if (Object.keys(body).length > 0) {
+      await updateProduct(id, body)
     }
+    if (categoryChanged) {
+      // REPLACE-ALL semantics: keep every existing membership, only swap which
+      // node is primary (and add the new primary if it wasn't a member yet).
+      const existingIds = product.categories.map((c) => c.id)
+      const nextIds = categoryId ? Array.from(new Set([...existingIds, categoryId])) : existingIds
+      await setProductCategories(id, {
+        categoryIds: nextIds,
+        primaryCategoryId: categoryId,
+      })
+    }
+    // The Success notification IS the confirm (pairs with the verdigris banner).
+    haptics.success()
+    router.back()
   }
 
   async function publish() {
     if (!id) return
-    setError(null)
-    setBusy(true)
+    setPublishError(null)
+    setPublishing(true)
     try {
       await updateProduct(id, { status: "AVAILABLE" })
+      haptics.success()
       router.back()
     } catch (e) {
-      setError(describeError(e))
-    } finally {
-      setBusy(false)
+      haptics.error()
+      setPublishError(describeError(e))
+      setPublishing(false)
     }
   }
 
-  if (loadError) {
+  if (loadError != null) {
     return (
       <View className="flex-1 justify-center bg-background px-4">
-        <Card className="gap-2 border-destructive px-4 py-4">
-          <Text className="text-destructive text-base font-semibold">Fehler</Text>
-          <Text className="text-muted-foreground text-sm">{loadError}</Text>
-        </Card>
+        <ErrorState
+          message={loadError}
+          cause={loadCause}
+          onRetry={id ? () => setReloadKey((k) => k + 1) : () => router.back()}
+          retryLabel={id ? "Erneut versuchen" : "Zurück"}
+        />
       </View>
     )
   }
 
   if (!product) {
-    return (
-      <View className="flex-1 justify-center bg-background px-4">
-        <Text className="text-muted-foreground">Lade Artikel…</Text>
-      </View>
-    )
+    return <EditSkeleton />
   }
 
   return (
-    <ScrollView
-      className="flex-1 bg-background"
-      contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24, gap: 14 }}
-      keyboardShouldPersistTaps="handled"
+    <FormScreen
+      title="Artikel bearbeiten"
+      subtitle="Name, Preis, Zustand und Kategorie ändern. PIN-Bestätigung kann nötig sein."
+      submitLabel="Speichern"
+      successMessage="Gespeichert."
+      submitDisabled={!name.trim() || !listPrice.trim()}
+      onSubmit={submit}
     >
-      <Card className="gap-4 px-4 py-4">
-        <Field label="Name">
-          <Input value={name} onChangeText={setName} placeholder="Artikelname" />
-        </Field>
-
-        <Field label="Listenpreis (EUR)">
+      <SectionCard title="Stammdaten" icon={Tag}>
+        <Field label="Name" required error={errors.name}>
           <Input
-            value={listPrice}
-            onChangeText={setListPrice}
-            placeholder="349.00"
-            keyboardType="decimal-pad"
+            value={name}
+            onChangeText={(v) => {
+              setName(v)
+              clearError("name")
+            }}
+            placeholder="Artikelname"
+            autoCapitalize="sentences"
+            aria-invalid={!!errors.name}
+            style={errors.name ? { borderColor: t.colors.destructive } : undefined}
+            returnKeyType="next"
+            submitBehavior="submit"
+            onSubmitEditing={() => listPriceRef.current?.focus()}
+            accessibilityLabel="Name"
           />
         </Field>
+
+        <MoneyField
+          label="Listenpreis"
+          required
+          value={listPrice}
+          onChangeText={(v) => {
+            setListPrice(v)
+            clearError("listPrice")
+          }}
+          placeholder="349.00"
+          error={errors.listPrice}
+          inputRef={listPriceRef}
+          returnKeyType="done"
+        />
 
         <Field label="Zustand">
           <ChipSelect options={CONDITION_OPTIONS} value={condition} onChange={setCondition} />
@@ -210,65 +262,105 @@ export default function ArtikelBearbeitenScreen() {
             onChangeText={setDescriptionDe}
             placeholder="Beschreibung"
             multiline
-            numberOfLines={4}
-            style={{ minHeight: 88, textAlignVertical: "top" }}
+            textAlignVertical="top"
+            className="h-auto"
+            style={{ minHeight: 88, paddingTop: t.space.x2 }}
+            accessibilityLabel="Beschreibung"
           />
         </Field>
-      </Card>
+      </SectionCard>
 
       {categories.length > 0 ? (
-        <Card className="gap-4 px-4 py-4">
-          <Field label="Kategorie" hint="Primäre Storefront-Einordnung.">
-            <ChipSelect
-              options={categories}
-              value={categoryId}
-              onChange={setCategoryId}
-              allowClear
-              clearLabel="Ohne"
-            />
-          </Field>
-        </Card>
+        <SectionCard title="Kategorie" subtitle="Primäre Storefront-Einordnung.">
+          <CategoryPicker options={categories} value={categoryId} onChange={setCategoryId} />
+        </SectionCard>
       ) : null}
 
       {/* Read-only intake-locked facts (settable only at intake). */}
-      <Card className="gap-1.5 px-4 py-4">
-        <Text className="text-muted-foreground text-xs uppercase">Festgelegt bei Anlage</Text>
-        <View className="flex-row items-center justify-between">
-          <Text className="text-muted-foreground text-sm">SKU</Text>
-          <Text className="font-mono text-xs">{product.sku}</Text>
-        </View>
-        <View className="flex-row items-center justify-between">
-          <Text className="text-muted-foreground text-sm">Einkaufspreis</Text>
-          <Text className="text-sm font-medium">{product.acquisitionCostEur} EUR</Text>
-        </View>
-      </Card>
+      <SectionCard
+        title="Festgelegt bei Anlage"
+        subtitle="Diese Werte sind nach der Anlage gesperrt (§25a-Integrität)."
+        icon={Lock}
+      >
+        <LockedRow label="SKU" value={product.sku} mono />
+        <LockedRow label="Einkaufspreis" value={formatEur(product.acquisitionCostEur)} />
+        {product.metal ? (
+          <LockedRow
+            label="Gewicht"
+            value={product.weightGrams ? `${product.weightGrams} g` : "—"}
+          />
+        ) : null}
+      </SectionCard>
 
       {product.status === "DRAFT" ? (
-        <Card className="gap-2 px-4 py-4" style={{ borderColor: "#157a4b" }}>
-          <Text className="text-base font-semibold">Veröffentlichen</Text>
-          <Text className="text-muted-foreground text-xs">
-            Status von Entwurf auf Verfügbar setzen.
-          </Text>
-          <Button variant="outline" onPress={() => void publish()} disabled={busy}>
-            <Text>Auf „Verfügbar“ setzen</Text>
+        <SectionCard
+          title="Veröffentlichen"
+          subtitle="Status von Entwurf auf Verfügbar setzen — der Artikel wird verkäuflich."
+        >
+          <Button
+            variant="outline"
+            size="xl"
+            className="h-12"
+            onPress={() => void publish()}
+            disabled={publishing}
+            accessibilityLabel="Auf Verfügbar setzen"
+          >
+            <Text>{publishing ? "Wird veröffentlicht…" : "Auf „Verfügbar“ setzen"}</Text>
           </Button>
-        </Card>
+          {publishError ? (
+            <Text className="text-xs" style={{ color: t.colors.destructive }}>
+              {publishError}
+            </Text>
+          ) : (
+            <Text className="text-muted-foreground text-2xs">
+              Aktueller Status: {STATUS_LABEL[product.status]}.
+            </Text>
+          )}
+        </SectionCard>
       ) : null}
+    </FormScreen>
+  )
+}
 
-      {error ? (
-        <Card className="gap-1 border-destructive px-4 py-3">
-          <Text className="text-destructive text-sm font-medium">{error}</Text>
-        </Card>
-      ) : null}
+/** A locked intake fact — label left, value right, with a quiet lock affordance
+ *  baked into the section header so the operator knows it cannot change here. */
+function LockedRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <View className="min-h-[36px] flex-row items-center justify-between gap-3">
+      <Text className="text-muted-foreground text-sm">{label}</Text>
+      <Text className={mono ? "font-mono text-xs" : "text-sm font-medium"} numberOfLines={1}>
+        {value}
+      </Text>
+    </View>
+  )
+}
 
-      <View className="flex-row gap-2">
-        <Button variant="outline" className="flex-1" onPress={() => router.back()} disabled={busy}>
-          <Text>Abbrechen</Text>
-        </Button>
-        <Button className="flex-1" onPress={() => void submit()} disabled={busy}>
-          <Text>{busy ? "Speichern…" : "Speichern"}</Text>
-        </Button>
+/** The first-load placeholder — the edit form's own shape (title + labelled
+ *  fields), never a mid-screen spinner (DESIGN.md §6). */
+function EditSkeleton() {
+  const insets = useScreenInsets()
+  return (
+    <ScrollView
+      className="flex-1 bg-background"
+      contentContainerStyle={{ padding: 16, paddingBottom: insets.contentBottom, gap: 14 }}
+    >
+      <View className="gap-1.5">
+        <Skeleton width="58%" height={20} />
+        <Skeleton width="86%" height={13} />
       </View>
+      <Card className="gap-3.5 px-4 py-4">
+        {[0, 1, 2].map((i) => (
+          <View key={i} className="gap-2">
+            <Skeleton width="34%" height={13} />
+            <Skeleton width="100%" height={44} radius="button" />
+          </View>
+        ))}
+      </Card>
+      <Card className="gap-2.5 px-4 py-4">
+        <Skeleton width="48%" height={16} />
+        <Skeleton width="70%" height={12} />
+        <Skeleton width="60%" height={12} />
+      </Card>
     </ScrollView>
   )
 }
