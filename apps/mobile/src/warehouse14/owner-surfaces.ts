@@ -19,6 +19,7 @@
  */
 import {
   Banknote,
+  BarChart3,
   Bell,
   CalendarClock,
   FileText,
@@ -203,6 +204,15 @@ export const OWNER_SURFACES: readonly OwnerSurface[] = [
     description: "Rechnungen, Ankaufbelege und Nachweise revisionssicher einsehen.",
     icon: FileText,
     group: "system",
+    available: true,
+  },
+  {
+    id: "analytics",
+    route: "/analytics",
+    label: "Auswertungen",
+    description: "Umsatz, Handel und Lager als Verlauf aus echten Tagesabschlüssen.",
+    icon: BarChart3,
+    group: "finanzen",
     available: true,
   },
 ] as const
