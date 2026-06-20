@@ -387,3 +387,29 @@ export {
   type WhatsAppThreadListResponse,
   type WhatsAppThreadSummary,
 } from './domains/whatsapp.js';
+
+// ───────────────────────────────────────────────────────────────────────
+// Owner OS — finance backend (migration 0075): P&L + expenses + fixed costs
+// ───────────────────────────────────────────────────────────────────────
+export {
+  financeApi,
+  expensesApi,
+  fixedCostsApi,
+  EXPENSE_CATEGORIES,
+  type FinancePeriod,
+  type ExpenseCategory,
+  type ProfitResponse,
+  type MonthRevenueResponse,
+  type InventoryValueResponse,
+  type MetalWeightsResponse,
+  type ExpenseRow,
+  type ListExpensesQuery,
+  type ListExpensesResponse,
+  type CreateExpenseBody,
+  type UpdateExpenseBody,
+  type FixedCostRow,
+  type ListFixedCostsQuery,
+  type ListFixedCostsResponse,
+  type CreateFixedCostBody,
+  type UpdateFixedCostBody,
+} from './domains/finance.js';

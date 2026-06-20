@@ -69,6 +69,9 @@ import { customersVerifyVatRoute } from './routes/customers-verify-vat.js';
 import customersRoutes from './routes/customers.js';
 import dashboardRoutes from './routes/dashboard.js';
 import documentsRoutes from './routes/documents.js';
+import expensesRoutes from './routes/expenses.js';
+import financeRoutes from './routes/finance.js';
+import fixedCostsRoutes from './routes/fixed-costs.js';
 import healthRoute from './routes/health.js';
 import intakeDraftsRoutes from './routes/intake-drafts.js';
 import integrationsRoute from './routes/integrations.js';
@@ -276,6 +279,10 @@ export async function buildApp(opts: BuildAppOpts): Promise<FastifyInstance> {
   await app.register(productsEbayPublishRoute, { env: opts.env });
   await app.register(shippingRoutes, { env: opts.env });
   await app.register(dashboardRoutes);
+  // ── Owner OS: finance backend (migration 0075) ───────────────────
+  await app.register(financeRoutes);
+  await app.register(expensesRoutes);
+  await app.register(fixedCostsRoutes);
   await app.register(bridgeRoutes);
   await app.register(approvalsRoutes);
   await app.register(settingsRoute);

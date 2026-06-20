@@ -65,3 +65,5 @@ export * from './categories/index.js';
 export * from './locations/index.js';
 // ─── Phase 2.A — Model Context Protocol audit (migration 0030) ──────────
 export * from './mcp/index.js';
+// ─── Owner OS — finance backend (migration 0075) ────────────────────────
+export * from './finance/index.js';
