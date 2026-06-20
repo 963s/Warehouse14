@@ -21,6 +21,7 @@ import {
   Banknote,
   Bell,
   CalendarClock,
+  FileText,
   ListChecks,
   type LucideIcon,
   MessageCircle,
@@ -193,6 +194,15 @@ export const OWNER_SURFACES: readonly OwnerSurface[] = [
     description: "Chats lesen, antworten und Kunden verknüpfen.",
     icon: MessageCircle,
     group: "betrieb",
+    available: true,
+  },
+  {
+    id: "belege",
+    route: "/belege",
+    label: "Belege & Dokumente",
+    description: "Rechnungen, Ankaufbelege und Nachweise revisionssicher einsehen.",
+    icon: FileText,
+    group: "system",
     available: true,
   },
 ] as const

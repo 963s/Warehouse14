@@ -27,6 +27,7 @@ import {
   createApiClient,
   customersApi,
   dashboard,
+  documentsApi,
   ebayApi,
   expensesApi,
   financeApi,
@@ -71,6 +72,8 @@ import {
   type CustomerKycDocumentBody,
   type CustomerKycDocumentResponse,
   type DashboardSummary,
+  type ListDocumentsQuery,
+  type ListDocumentsResponse,
   type EbayHistoryQuery,
   type EbayHistoryResponse,
   type EbayPublishResponse,
@@ -674,6 +677,22 @@ export async function listLedgerEvents(
   const res = await ledgerQueryApi.list(apiClient, { limit, offset: 0 })
   // The query returns newest-first already (id DESC); keep that order and map.
   return res.items.map(ledgerRowToEvent)
+}
+
+// ── Belege / Dokumente (the GoBD attachment register — read-only) ────────────
+// The documents domain is the typed attachment store: every Rechnung,
+// Ankaufbeleg, Versandbeleg, Expertise, Zertifikat or Ausweis-Scan a sale or
+// buy-in produced is registered here as a row pointing at an immutable object
+// (r2Key + sha256 for GoBD integrity). The OWNER app reads this register; it
+// does NOT upload bytes (the byte PUT is the Kassensystem's signed-URL flow) and
+// the server exposes no in-reach download URL for the stored object — so the
+// surface shows honest metadata + integrity and keeps the byte-open locked
+// rather than fabricating a link. `archive` is the only mutation (Owner-only,
+// audited) and is intentionally NOT wrapped here: this surface stays read-first.
+
+/** GET /api/documents — the paged, filterable GoBD attachment register (read). */
+export function listDocuments(query: ListDocumentsQuery = {}): Promise<ListDocumentsResponse> {
+  return documentsApi.list(apiClient, query)
 }
 
 // ── Scan → product (the real cashier flow) ───────────────────────────────────
