@@ -220,7 +220,26 @@ export interface CustomerKycDocumentResponse {
 // PATCH /api/customers/:id/kyc + /trust  (Day 26 — step-up required)
 // ────────────────────────────────────────────────────────────────────────
 
+/**
+ * Document type physically inspected at the KYC stamp. This is a SEPARATE enum
+ * from {@link KycDocumentType} (the capture/upload route): the trust/stamp route
+ * (PATCH /api/customers/:id/kyc) validates its own audit enum, so it MUST track
+ * `KycStampBody.documentType` in apps/api-cloud/src/schemas/customer-trust.ts
+ * exactly — a mismatch is a 400 VALIDATION_ERROR.
+ */
+export type CustomerKycStampDocumentType =
+  | 'PERSONALAUSWEIS'
+  | 'REISEPASS'
+  | 'EU_NATIONAL_ID'
+  | 'AUFENTHALTSTITEL'
+  | 'PASSPORT_NON_EU';
+
 export interface CustomerKycStampBody {
+  /**
+   * Document type physically inspected — REQUIRED by the backend (non-optional
+   * enum). Omitting it 400s before any DB write, so it is required here too.
+   */
+  documentType: CustomerKycStampDocumentType;
   promoteTrustLevelTo?: 'VERIFIED' | 'VIP';
   notes?: string;
 }
@@ -233,8 +252,13 @@ export interface CustomerKycStampResponse {
 
 export interface CustomerTrustChangeBody {
   trustLevel: CustomerTrustLevel;
-  /** Required when trustLevel ∈ {SUSPICIOUS, BANNED}. */
-  priceExpectationNotes?: string;
+  /**
+   * Required (≥ 8 chars) when trustLevel ∈ {SUSPICIOUS, BANNED}; saved to
+   * `price_expectation_notes`. The wire field is `reason` — the backend
+   * SetTrustBody validates/persists `req.body.reason`, so this MUST be `reason`
+   * (an earlier `priceExpectationNotes` key was silently dropped → 400).
+   */
+  reason?: string;
 }
 
 export interface CustomerTrustChangeResponse {
@@ -315,7 +339,7 @@ export const customersApi = {
   stampKyc(
     client: ApiClient,
     id: string,
-    body: CustomerKycStampBody = {},
+    body: CustomerKycStampBody,
   ): Promise<CustomerKycStampResponse> {
     return client.request<CustomerKycStampResponse>(
       'PATCH',

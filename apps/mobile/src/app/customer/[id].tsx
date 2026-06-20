@@ -173,23 +173,33 @@ export default function CustomerDetailScreen() {
   const [confirmDanger, setConfirmDanger] = useState(false)
 
   // ── Mutations (step-up is transparent in the api layer) ─────────────────────
-  const stampM = useMutation((_vars: void) => stampCustomerKyc(id, {}), {
-    onSuccess: (res) => {
-      // One haptic per action (DESIGN.md §7): the Success notification IS the
-      // confirm; the gold flood that follows is visual-only, never a second buzz.
-      haptics.success()
-      setOkMsg(res ? `KYC bestätigt · ${isoToDe(res.kycVerifiedAt)}` : "KYC bestätigt")
-      setCelebrate(true)
-      void customerQ.refetch()
+  // The backend audit enum requires `documentType` (omitting it 400s before any
+  // DB write). The stamp records the operator's eyeball-check of the physically
+  // inspected ID — for a German Ankauf counter that is the Personalausweis, the
+  // honest default audit context (the value gates nothing; it's audit metadata).
+  const stampM = useMutation(
+    (_vars: void) => stampCustomerKyc(id, { documentType: "PERSONALAUSWEIS" }),
+    {
+      onSuccess: (res) => {
+        // One haptic per action (DESIGN.md §7): the Success notification IS the
+        // confirm; the gold flood that follows is visual-only, never a second buzz.
+        haptics.success()
+        setOkMsg(res ? `KYC bestätigt · ${isoToDe(res.kycVerifiedAt)}` : "KYC bestätigt")
+        setCelebrate(true)
+        void customerQ.refetch()
+      },
+      onError: () => haptics.error(),
     },
-    onError: () => haptics.error(),
-  })
+  )
 
   const trustM = useMutation(
     (vars: { level: CustomerTrustLevel; notes: string }) =>
       setCustomerTrust(id, {
         trustLevel: vars.level,
-        ...(TRUST_NEEDS_NOTE.has(vars.level) ? { priceExpectationNotes: vars.notes } : {}),
+        // The wire field is `reason` (backend SetTrustBody persists req.body.reason).
+        // Send it whenever the operator entered one — for SUSPICIOUS/BANNED it is the
+        // required ≥8-char rationale; for the other levels a typed note is still kept.
+        ...(vars.notes ? { reason: vars.notes } : {}),
       }),
     {
       onSuccess: (_res, vars) => {

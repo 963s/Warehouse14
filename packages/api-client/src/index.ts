@@ -233,6 +233,7 @@ export {
   type CustomerKycDocumentBody,
   type CustomerKycDocumentResponse,
   type CustomerKycStampBody,
+  type CustomerKycStampDocumentType,
   type CustomerKycStampResponse,
   type CustomerKycStatus,
   type CustomerLanguage,

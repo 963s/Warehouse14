@@ -254,10 +254,11 @@ export function addCustomerKycDocument(
   return customersApi.addKycDocument(apiClient, customerId, body)
 }
 
-/** Stamp the operator's KYC (GwG) verification — step-up required (auto). */
+/** Stamp the operator's KYC (GwG) verification — step-up required (auto).
+ *  `body.documentType` is required by the backend audit enum. */
 export function stampCustomerKyc(
   id: string,
-  body: CustomerKycStampBody = {},
+  body: CustomerKycStampBody,
 ): Promise<CustomerKycStampResponse> {
   return customersApi.stampKyc(apiClient, id, body)
 }
@@ -528,7 +529,16 @@ export function describeError(err: unknown): string {
       case "STEP_UP_REQUIRED":
         return "PIN-Bestätigung erforderlich."
       case "VALIDATION_ERROR":
-        return err.message || "Eingabe ungültig."
+        // The backend message is the raw English ajv/validation string — never
+        // surface it to a German operator. A German line covers the field-level
+        // case; client-side validation should catch most of these before submit.
+        return "Eingabe ungültig — bitte die Angaben prüfen."
+      case "CONFLICT":
+        // e.g. promoting a customer to VERIFIED/VIP before the physical-ID stamp.
+        // The backend reason is English; give the operator the actionable step.
+        return "Aktion nicht möglich — zuerst die KYC-Prüfung (Ausweis) bestätigen."
+      case "NOT_FOUND":
+        return "Datensatz nicht gefunden."
       default:
         return err.message || `Fehler (${err.code}).`
     }
