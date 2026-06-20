@@ -88,6 +88,26 @@ export interface FinalizeResponse {
 }
 
 // ────────────────────────────────────────────────────────────────────────
+// GET /api/transactions/recent — last-24h VERKAUF sales for a late storno
+// ────────────────────────────────────────────────────────────────────────
+
+/** One recent VERKAUF sale (newest first, last 24h, capped at 30). */
+export interface RecentTransactionItem {
+  id: string;
+  receiptLocator: string;
+  totalEur: string;
+  finalizedAt: string;
+  /** TRUE when this row IS a storno reversal of an earlier sale. */
+  isStorno: boolean;
+  /** TRUE when this sale has already been reversed by a later storno. */
+  alreadyStornoed: boolean;
+}
+
+export interface RecentTransactionsResponse {
+  items: RecentTransactionItem[];
+}
+
+// ────────────────────────────────────────────────────────────────────────
 // Ankauf — POST /api/transactions/ankauf (Day 8 dedicated route)
 // ────────────────────────────────────────────────────────────────────────
 
@@ -229,6 +249,14 @@ export interface TseSignatureResponse {
 export const transactionsApi = {
   finalize(client: ApiClient, body: FinalizeBody): Promise<FinalizeResponse> {
     return client.request<FinalizeResponse>('POST', '/api/transactions/finalize', body);
+  },
+  /**
+   * Recent VERKAUF sales (last 24h, newest first, capped) so a mistaken ring
+   * can be stornoed after the post-finalize screen was dismissed. CASHIER/ADMIN,
+   * read-only — the storno itself is a separate step-up'd route.
+   */
+  recent(client: ApiClient): Promise<RecentTransactionsResponse> {
+    return client.request<RecentTransactionsResponse>('GET', '/api/transactions/recent');
   },
   /**
    * Durably persist the KassenSichV TSE signature for a finalized transaction

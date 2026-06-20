@@ -275,6 +275,92 @@ export interface ProductUpdateResponse {
 }
 
 // ────────────────────────────────────────────────────────────────────────
+// POST /api/products (create — Owner-only full intake)
+// ────────────────────────────────────────────────────────────────────────
+
+/** Mirrors `ItemType` in apps/api-cloud/src/schemas/product.ts. */
+export type ProductItemType =
+  | 'gold_jewelry'
+  | 'gold_coin'
+  | 'gold_bar'
+  | 'silver_jewelry'
+  | 'silver_coin'
+  | 'silver_bar'
+  | 'platinum_jewelry'
+  | 'platinum_coin'
+  | 'platinum_bar'
+  | 'antique'
+  | 'watch'
+  | 'other';
+
+/** Mirrors `ProductCondition` in apps/api-cloud/src/schemas/product.ts. */
+export type ProductConditionCode =
+  | 'NEW'
+  | 'USED_EXCELLENT'
+  | 'USED_GOOD'
+  | 'USED_FAIR'
+  | 'ANTIQUE_RESTORED'
+  | 'ANTIQUE_AS_FOUND';
+
+/** Briefmarken-Erhaltung (migration 0063) — stamp items only. */
+export type StampErhaltung = 'POSTFRISCH' | 'FALZ' | 'GESTEMPELT' | 'AUF_BRIEF';
+
+/**
+ * POST /api/products body. Intake-locked fields (sku, classification,
+ * acquisitionCostEur, isCommission, acquiredFromCustomerId) are settable here
+ * ONLY — PUT refuses them. ADMIN-only; step-up when acquisitionCostEur exceeds
+ * the transaction step-up threshold (handled transparently by the middleware).
+ * Money strings are decimal EUR (e.g. "1999.99"), matching the rest of the
+ * products surface — NOT cents.
+ */
+export interface CreateProductBody {
+  // Identity (intake-locked)
+  sku: string;
+  barcode?: string;
+  // Classification (intake-locked)
+  itemType: ProductItemType;
+  metal?: Metal;
+  karatCode?: string;
+  finenessDecimal?: string;
+  weightGrams?: string;
+  /** Defaults to [] server-side. */
+  hallmarkStamps?: string[];
+  // Pricing (acquisitionCostEur intake-locked for §25a integrity)
+  acquisitionCostEur: string;
+  listPriceEur: string;
+  taxTreatmentCode: TaxTreatmentCode;
+  // Day-16 fields
+  condition: ProductConditionCode;
+  /** TRUE = Kommissionsware. Intake-locked. Defaults to false server-side. */
+  isCommission?: boolean;
+  /** Customer this was bought from (Ankauf). Intake-locked. */
+  acquiredFromCustomerId?: string;
+  // Storefront presentation
+  name: string;
+  descriptionDe?: string;
+  marketingAttributes?: unknown[];
+  // Migration 0063 — Briefmarken + primary category
+  stampErhaltung?: StampErhaltung;
+  stampMinr?: number;
+  /** Writes a product_categories row with is_primary=TRUE in the same tx. */
+  primaryCategoryId?: string;
+  // Initial channel flags (default off — Owner publishes later via PUT)
+  listedOnStorefront?: boolean;
+  listedOnEbay?: boolean;
+  // Storage location (Lagerort) — optional at intake
+  locationStorageUnit?: string;
+  locationDrawer?: string;
+  locationPosition?: string;
+}
+
+export interface CreateProductResponse {
+  id: string;
+  sku: string;
+  status: 'DRAFT' | 'AVAILABLE';
+  createdAt: string;
+}
+
+// ────────────────────────────────────────────────────────────────────────
 // DELETE /api/products/:id — remove an unsold DRAFT (lifecycle clean-up)
 // ────────────────────────────────────────────────────────────────────────
 
@@ -348,6 +434,13 @@ function buildQuery(query: ProductListQuery): string {
 export const productsApi = {
   list(client: ApiClient, query: ProductListQuery = {}): Promise<ProductListResponse> {
     return client.request<ProductListResponse>('GET', `/api/products${buildQuery(query)}`);
+  },
+  /**
+   * Owner-only full create (POST /api/products). Step-up auto-enforced by the
+   * middleware when acquisitionCostEur exceeds the threshold.
+   */
+  create(client: ApiClient, body: CreateProductBody): Promise<CreateProductResponse> {
+    return client.request<CreateProductResponse>('POST', '/api/products', body);
   },
   get(client: ApiClient, id: string): Promise<ProductDetail> {
     return client.request<ProductDetail>('GET', `/api/products/${encodeURIComponent(id)}`);

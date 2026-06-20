@@ -162,6 +162,11 @@ export {
 } from './domains/shifts.js';
 export {
   productsApi,
+  type CreateProductBody,
+  type CreateProductResponse,
+  type ProductConditionCode,
+  type ProductItemType,
+  type StampErhaltung,
   type InventoryAdjustmentBody,
   type InventoryAdjustmentReason,
   type InventoryAdjustmentResponse,
@@ -214,6 +219,8 @@ export {
   type FinalizePayment,
   type FinalizeResponse,
   type PaymentMethod,
+  type RecentTransactionItem,
+  type RecentTransactionsResponse,
   type TransactionDirection,
   type TseSignatureBody,
   type TseSignatureResponse,

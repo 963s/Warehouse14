@@ -16,21 +16,43 @@
  */
 import {
   ApiError,
+  appointments,
   authPin,
+  belegtextApi,
   bridgeApi,
   closingsApi,
   createApiClient,
   customersApi,
   dashboard,
+  ledgerQueryApi,
   metalPricesApi,
   photosApi,
   productsApi,
+  shifts,
+  tasksApi,
+  transactionsApi,
   stepUpMiddleware,
   type ApiClient,
+  type AppointmentListQuery,
+  type AppointmentListItem,
+  type AppointmentPatchStatus,
+  type AvailableSlot,
+  type AvailableSlotsQuery,
+  type BookAppointmentRequest,
   type BridgeSummary,
   type ClosingListItem,
+  type CreateProductBody,
+  type CreateProductResponse,
+  type CreateTaskBody,
+  type CurrentBelegtextQuery,
+  type CurrentBelegtextResponse,
   type CurrentMetalPrice,
+  type CurrentMetalPricesResponse,
+  type CustomerCreateBody,
+  type CustomerCreateResponse,
   type CustomerDetail,
+  type CustomerKycDocumentBody,
+  type CustomerKycDocumentResponse,
   type DashboardSummary,
   type CustomerKycStampBody,
   type CustomerKycStampResponse,
@@ -38,12 +60,32 @@ import {
   type CustomerListResponse,
   type CustomerTrustChangeBody,
   type CustomerTrustChangeResponse,
+  type CustomerUpdateBody,
+  type CustomerUpdateResponse,
+  type FinalizeBody,
+  type FinalizeResponse,
   type InventoryAdjustmentBody,
+  type LedgerListQuery,
+  type LedgerListResponse,
+  type ListBelegtextQuery,
+  type ListBelegtextResponse,
+  type ListTasksQuery,
+  type ListTasksResponse,
   type PhotoRow,
   type PinLoginResponse,
   type ProductDetail,
   type ProductListQuery,
   type ProductListResponse,
+  type RecentTransactionsResponse,
+  type RescheduleRequest,
+  type AnkaufBody,
+  type AnkaufResponse,
+  type ShiftView,
+  type TaskRow,
+  type TransitionTaskBody,
+  type UpdateMarginBody,
+  type UpdateMarginResponse,
+  type UpdateTaskBody,
 } from "@warehouse14/api-client"
 import { Money } from "@warehouse14/domain/money"
 
@@ -93,6 +135,11 @@ export function getProduct(id: string): Promise<ProductDetail> {
   return productsApi.get(apiClient, id)
 }
 
+/** Owner-only full intake (POST /api/products). Step-up auto on high cost. */
+export function createProduct(body: CreateProductBody): Promise<CreateProductResponse> {
+  return productsApi.create(apiClient, body)
+}
+
 /** Relocate (LOCATION_CHANGE) — writes audit_log + requires step-up (auto). */
 export function relocateProduct(
   id: string,
@@ -120,6 +167,27 @@ export function listCustomers(query: CustomerListQuery = {}): Promise<CustomerLi
 
 export function getCustomer(id: string): Promise<CustomerDetail> {
   return customersApi.get(apiClient, id)
+}
+
+/** Create a new Kunde (ADMIN). Returns the new id + customerNumber. */
+export function createCustomer(body: CustomerCreateBody): Promise<CustomerCreateResponse> {
+  return customersApi.create(apiClient, body)
+}
+
+/** Update a Kunde's editable fields (ADMIN). */
+export function updateCustomer(
+  id: string,
+  body: CustomerUpdateBody,
+): Promise<CustomerUpdateResponse> {
+  return customersApi.update(apiClient, id, body)
+}
+
+/** Attach a KYC (GwG) identity document — ADMIN + step-up (auto). */
+export function addCustomerKycDocument(
+  customerId: string,
+  body: CustomerKycDocumentBody,
+): Promise<CustomerKycDocumentResponse> {
+  return customersApi.addKycDocument(apiClient, customerId, body)
 }
 
 /** Stamp the operator's KYC (GwG) verification — step-up required (auto). */
@@ -156,15 +224,136 @@ export function listClosings(): Promise<{ items: ClosingListItem[] }> {
   return closingsApi.list(apiClient)
 }
 
+/** POST /api/closings/finalize — write the legal Z-Bon (ADMIN + step-up).
+ *  Omit `businessDay` for the current day. */
+export function finalizeClosing(
+  businessDay?: string,
+): ReturnType<typeof closingsApi.finalize> {
+  return closingsApi.finalize(apiClient, businessDay)
+}
+
+/** GET /api/closings/:id/export/datev — DATEV EXTF CSV text (ADMIN + step-up). */
+export function closingDatevCsv(id: string): Promise<string> {
+  return closingsApi.datevCsv(apiClient, id)
+}
+
+/** GET /api/closings/:id/export/kassenbericht — Kassenbericht CSV text. */
+export function closingKassenberichtCsv(id: string): Promise<string> {
+  return closingsApi.kassenberichtCsv(apiClient, id)
+}
+
+// ── Termine (appointments — Owner calendar) ──────────────────────────────────
+// list is a bounded from/to window; availableSlots powers the booking picker;
+// book/setStatus/reschedule are the mutations. PATCH status carries an optional
+// cancellationReason + staffNotes.
+export function listAppointments(
+  query: AppointmentListQuery,
+): Promise<{ appointments: AppointmentListItem[] }> {
+  return appointments.list(apiClient, query)
+}
+
+export function availableSlots(
+  query: AvailableSlotsQuery,
+): Promise<{ slots: AvailableSlot[] }> {
+  return appointments.availableSlots(apiClient, query)
+}
+
+export function bookAppointment(
+  body: BookAppointmentRequest,
+): Promise<{ id: string; status: string }> {
+  return appointments.book(apiClient, body)
+}
+
+export function setAppointmentStatus(
+  id: string,
+  body: { status: AppointmentPatchStatus; cancellationReason?: string; staffNotes?: string },
+): Promise<{ id: string; status: string }> {
+  return appointments.setStatus(apiClient, id, body)
+}
+
+export function rescheduleAppointment(
+  id: string,
+  body: RescheduleRequest,
+): Promise<{ id: string; rescheduledFrom: string }> {
+  return appointments.reschedule(apiClient, id, body)
+}
+
+// ── Aufgaben (tasks — Owner to-dos) ──────────────────────────────────────────
+// transition is the lifecycle move (OPEN → IN_PROGRESS → DONE/…); update is a
+// field patch. ALLOWED_TASK_TRANSITIONS lives in the api-client for guarding.
+export function listTasks(query: ListTasksQuery = {}): Promise<ListTasksResponse> {
+  return tasksApi.list(apiClient, query)
+}
+
+export function getTask(id: string): Promise<TaskRow> {
+  return tasksApi.get(apiClient, id)
+}
+
+export function createTask(body: CreateTaskBody): Promise<TaskRow> {
+  return tasksApi.create(apiClient, body)
+}
+
+export function updateTask(id: string, body: UpdateTaskBody): Promise<TaskRow> {
+  return tasksApi.update(apiClient, id, body)
+}
+
+export function transitionTask(id: string, body: TransitionTaskBody): Promise<TaskRow> {
+  return tasksApi.transition(apiClient, id, body)
+}
+
+// ── Schicht (shift — the open till for the cash/closing context) ─────────────
+/** GET the current open shift, or null when the till is closed. */
+export function getCurrentShift(): Promise<ShiftView | null> {
+  return shifts.getCurrent(apiClient)
+}
+
+// ── Transaktionen (the physical POS moment + late-storno feed) ───────────────
+// finalize/ankauf are the fiscal mutations (TSE + step-up); recent is the
+// read-only last-24h VERKAUF feed for a late storno.
+export function recentTransactions(): Promise<RecentTransactionsResponse> {
+  return transactionsApi.recent(apiClient)
+}
+
+export function finalizeTransaction(body: FinalizeBody): Promise<FinalizeResponse> {
+  return transactionsApi.finalize(apiClient, body)
+}
+
+/** POST /api/transactions/ankauf — buy items in (creates products + fiscal row). */
+export function ankaufTransaction(body: AnkaufBody): Promise<AnkaufResponse> {
+  return transactionsApi.ankauf(apiClient, body)
+}
+
+// ── Belegtext (receipt legal text per Steuerschlüssel) ───────────────────────
+export function listBelegtext(query: ListBelegtextQuery = {}): Promise<ListBelegtextResponse> {
+  return belegtextApi.list(apiClient, query)
+}
+
+/** Resolve the current body text for a given Belegtext kind + language. */
+export function currentBelegtext(
+  query: CurrentBelegtextQuery,
+): Promise<CurrentBelegtextResponse> {
+  return belegtextApi.current(apiClient, query)
+}
+
+// ── Ledger (the GoBD audit feed — read-only history) ─────────────────────────
+export function listLedger(query: LedgerListQuery = {}): Promise<LedgerListResponse> {
+  return ledgerQueryApi.list(apiClient, query)
+}
+
 // ── Scan → product (the real cashier flow) ───────────────────────────────────
 export async function resolveScannedCode(code: string): Promise<ScanMatch> {
   const res = await productsApi.list(apiClient, { q: code, limit: 10 })
   return classifyScanMatch(code, res.items)
 }
 
-// ── Schmelzwert (melt value) ─────────────────────────────────────────────────
-export function currentMetalPrices(): ReturnType<typeof metalPricesApi.current> {
+// ── Schmelzwert (melt value) + Marge (Ankauf safety margin) ──────────────────
+export function currentMetalPrices(): Promise<CurrentMetalPricesResponse> {
   return metalPricesApi.current(apiClient)
+}
+
+/** PATCH the Ankauf safety margin (global, or per-metal). ADMIN + step-up. */
+export function updateMetalMargin(body: UpdateMarginBody): Promise<UpdateMarginResponse> {
+  return metalPricesApi.updateMargin(apiClient, body)
 }
 
 /** Schmelzwert = Feingewicht (g) × aktueller Kurs (€/g) for the product's metal. */
