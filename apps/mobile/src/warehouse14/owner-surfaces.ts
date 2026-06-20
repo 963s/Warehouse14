@@ -34,6 +34,7 @@ import {
   ShoppingCart,
   Store,
   UserPlus,
+  Users,
   Wallet,
 } from "lucide-react-native"
 
@@ -213,6 +214,15 @@ export const OWNER_SURFACES: readonly OwnerSurface[] = [
     description: "Umsatz, Handel und Lager als Verlauf aus echten Tagesabschlüssen.",
     icon: BarChart3,
     group: "finanzen",
+    available: true,
+  },
+  {
+    id: "team",
+    route: "/team",
+    label: "Team",
+    description: "Wer ist angemeldet, wer ist im Dienst und wie die Rollen geregelt sind.",
+    icon: Users,
+    group: "betrieb",
     available: true,
   },
 ] as const

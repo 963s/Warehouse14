@@ -80,6 +80,7 @@ export default function RootLayout() {
           <Stack.Screen name="ausgaben" options={{ title: "Ausgaben" }} />
           <Stack.Screen name="finanzen" options={{ title: "Finanzen" }} />
           <Stack.Screen name="analytics" options={{ title: "Auswertungen" }} />
+          <Stack.Screen name="team" options={{ title: "Team" }} />
           <Stack.Screen name="einstellungen" options={{ title: "Einstellungen" }} />
           <Stack.Screen
             name="ausgaben/ausgabe"
