@@ -18,6 +18,7 @@ import {
   ApiError,
   ApiNetworkError,
   appointments,
+  appraisalsApi,
   authPin,
   belegtextApi,
   bridgeApi,
@@ -38,6 +39,10 @@ import {
   transactionsApi,
   stepUpMiddleware,
   type ApiClient,
+  type AppraisalCompleteBody,
+  type AppraisalItemBody,
+  type AppraisalOpenBody,
+  type AppraisalView,
   type AppointmentListQuery,
   type AppointmentListItem,
   type AppointmentPatchStatus,
@@ -57,6 +62,7 @@ import {
   type CurrentBelegtextResponse,
   type CurrentMetalPrice,
   type CurrentMetalPricesResponse,
+  type MetalRatesResponse,
   type CustomerCreateBody,
   type CustomerCreateResponse,
   type CustomerDetail,
@@ -453,6 +459,36 @@ export function ankaufTransaction(body: AnkaufBody): Promise<AnkaufResponse> {
   return transactionsApi.ankauf(apiClient, body)
 }
 
+// ── Schätzung (Ankauf appraisal — the pre-payout valuation lot) ───────────────
+// The appraisal is the DRAFT valuation a buy-in is built on: open a lot for a
+// customer, add each item with its individual appraised value, then complete it
+// with the offer. The legal payout that CREATES the products is the SEPARATE
+// transactionsApi.ankauf call (the fiscal moment); the appraisal is the audited
+// estimate that precedes it. These are thin pass-throughs to the already-typed
+// appraisalsApi — no new endpoint, no math (the valuation hint is client-side).
+export function openAppraisal(body: AppraisalOpenBody): Promise<AppraisalView> {
+  return appraisalsApi.open(apiClient, body)
+}
+
+export function getAppraisal(id: string): Promise<AppraisalView> {
+  return appraisalsApi.get(apiClient, id)
+}
+
+/** POST /api/appraisals/:id/items — append one valued item to an open lot. */
+export function addAppraisalItem(id: string, body: AppraisalItemBody): Promise<AppraisalView> {
+  return appraisalsApi.addItem(apiClient, id, body)
+}
+
+/** DELETE /api/appraisals/:id/items/:itemId — remove a line from an open lot. */
+export function removeAppraisalItem(id: string, itemId: string): Promise<AppraisalView> {
+  return appraisalsApi.removeItem(apiClient, id, itemId)
+}
+
+/** POST /api/appraisals/:id/complete — lock the lot at the offered total. */
+export function completeAppraisal(id: string, body: AppraisalCompleteBody): Promise<AppraisalView> {
+  return appraisalsApi.complete(apiClient, id, body)
+}
+
 // ── Inventar-Reservierung (RESERVED↔AVAILABLE, der Verkauf-Vorlauf) ───────────
 // A Verkauf line cannot be finalized straight from AVAILABLE: the server's
 // finalize moves each line RESERVED → SOLD and refuses a product that is not
@@ -539,6 +575,18 @@ export async function resolveScannedCode(code: string): Promise<ScanMatch> {
 // ── Schmelzwert (melt value) + Marge (Ankauf safety margin) ──────────────────
 export function currentMetalPrices(): Promise<CurrentMetalPricesResponse> {
   return metalPricesApi.current(apiClient)
+}
+
+/**
+ * GET /api/metal-prices/rates — the per-metal pricing rows the Ankauf valuation
+ * leans on: the current spot (melt), the time-weighted 10-day average, the
+ * margin-baked Ankauf buy rate (`ankaufRatePerGramEur`), and the safety margin
+ * in effect. The intake screen reads this to SUGGEST a buy price (the operator
+ * stays in control — it pre-fills, never auto-commits). When a rate is null the
+ * suggestion is simply omitted (honesty: no fabricated valuation). ADMIN read.
+ */
+export function metalRates(): Promise<MetalRatesResponse> {
+  return metalPricesApi.rates(apiClient)
 }
 
 /** PATCH the Ankauf safety margin (global, or per-metal). ADMIN + step-up. */
