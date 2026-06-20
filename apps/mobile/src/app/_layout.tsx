@@ -62,6 +62,11 @@ export default function RootLayout() {
           <Stack.Screen name="customer/[id]" options={{ presentation: "modal", title: "Kunde" }} />
           <Stack.Screen name="customer/neu" options={{ presentation: "modal", title: "Neuer Kunde" }} />
           <Stack.Screen name="customer/edit" options={{ presentation: "modal", title: "Kunde bearbeiten" }} />
+          <Stack.Screen name="termine" options={{ title: "Termine" }} />
+          <Stack.Screen
+            name="termine/neu"
+            options={{ presentation: "modal", title: "Neuer Termin" }}
+          />
           <Stack.Screen
             name="capture"
             options={{ presentation: "fullScreenModal", headerShown: false }}

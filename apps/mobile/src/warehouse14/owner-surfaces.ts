@@ -76,7 +76,7 @@ export const OWNER_SURFACES: readonly OwnerSurface[] = [
     description: "Kalender, Buchungen und freie Slots.",
     icon: CalendarClock,
     group: "betrieb",
-    available: false,
+    available: true,
   },
   {
     id: "aufgaben",
