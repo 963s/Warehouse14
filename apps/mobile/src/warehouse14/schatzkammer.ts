@@ -8,7 +8,7 @@
  * If there is no prior finalized day yet, yesterday is null and the quest renders
  * honestly ("noch kein Vortag") rather than inventing a number.
  */
-import type { ClosingListItem } from "@warehouse14/api-client"
+import type { ClosingListItem, FixedCostRow } from "@warehouse14/api-client"
 
 /**
  * v0 gauge targets (value/target rings). Sensible constant defaults.
@@ -23,6 +23,18 @@ export const GAUGE_TARGETS = {
   soldCount: 20,
   /** Expertisen (pending appraisals) target (count). */
   appraisals: 10,
+  /** Gewinn heute target in EUR (net profit, period=day). */
+  netProfitDayEur: 300,
+  /** Monatsumsatz target in EUR. */
+  monthRevenueEur: 25000,
+  /** Lagerwert (Listenwert) reference in EUR — "Füllstand der Schatzkammer". */
+  inventoryValueEur: 50000,
+  /** Goldbestand reference in grams. */
+  goldGrams: 500,
+  /** Silberbestand reference in grams. */
+  silverGrams: 2000,
+  /** Monthly net-profit goal in EUR (the chest at the end of the treasure map). */
+  monthlyProfitTargetEur: 5000,
 } as const
 
 export interface DailyQuest {
@@ -96,4 +108,81 @@ export function todayBusinessDay(now: Date): string {
   const m = String(now.getMonth() + 1).padStart(2, "0")
   const d = String(now.getDate()).padStart(2, "0")
   return `${y}-${m}-${d}`
+}
+
+// ── Finanz-Modul derivations (pure; no fabrication) ──────────────────────────
+
+/** First day of `now`'s month as YYYY-MM-DD (the month boundary for filters). */
+export function monthStartDay(now: Date): string {
+  const y = now.getFullYear()
+  const m = String(now.getMonth() + 1).padStart(2, "0")
+  return `${y}-${m}-01`
+}
+
+/**
+ * Total active monthly Fixkosten in CENTS for `monthStart` (YYYY-MM-DD). A row
+ * counts when it is active on the first of the month: activeFrom ≤ monthStart and
+ * (no activeTo, or activeTo ≥ monthStart). Empty list → 0 (honest: no fixed costs
+ * configured yet).
+ */
+export function monthlyFixedCostCents(rows: FixedCostRow[], monthStart: string): number {
+  return rows
+    .filter((r) => r.activeFrom <= monthStart && (r.activeTo === null || r.activeTo >= monthStart))
+    .reduce((sum, r) => sum + r.monthlyAmountCents, 0)
+}
+
+export interface TreasureMap {
+  /** Cumulative net profit this month in cents (may be negative early on). */
+  netProfitCents: number
+  /** Total active monthly fixed cost in cents (the break-even line). */
+  fixedCostCents: number
+  /** True once cumulative net profit covers the month's fixed costs. */
+  brokeEven: boolean
+  /** Cents still needed to reach break-even (0 once covered). */
+  toBreakEvenCents: number
+  /** netProfit / fixedCost clamped to [0,1] — the bar fill toward break-even. */
+  coverage: number
+  /**
+   * Where the break-even marker sits on a "profit" axis that runs to `targetCents`,
+   * as a 0..1 fraction (so the map can place the flag). null when no target/cost.
+   */
+  breakEvenMarker: number | null
+  /** netProfit / targetCents clamped to [0,1] — progress toward the profit goal. */
+  targetProgress: number
+}
+
+/**
+ * Monthly treasure map: cumulative net profit vs the month's fixed costs (the
+ * break-even line) and a net-profit target. `netProfitCents` is the month's
+ * netProfit from financeApi.profit({ period: "month" }); `fixedCostCents` is
+ * monthlyFixedCostCents(...). `targetCents` is the owner's monthly net-profit
+ * goal (the chest at the end of the map). Pure + honest: a negative profit just
+ * yields 0 coverage, never a fabricated win.
+ */
+export function computeTreasureMap(
+  netProfitCents: number,
+  fixedCostCents: number,
+  targetCents: number,
+): TreasureMap {
+  const safeProfit = Number.isFinite(netProfitCents) ? netProfitCents : 0
+  const brokeEven = fixedCostCents <= 0 ? safeProfit > 0 : safeProfit >= fixedCostCents
+  const toBreakEvenCents = brokeEven ? 0 : Math.max(0, fixedCostCents - safeProfit)
+  const coverage =
+    fixedCostCents <= 0
+      ? safeProfit > 0
+        ? 1
+        : 0
+      : Math.max(0, Math.min(1, safeProfit / fixedCostCents))
+  const breakEvenMarker =
+    targetCents > 0 && fixedCostCents > 0 ? Math.min(1, fixedCostCents / targetCents) : null
+  const targetProgress = targetCents > 0 ? Math.max(0, Math.min(1, safeProfit / targetCents)) : 0
+  return {
+    netProfitCents: safeProfit,
+    fixedCostCents,
+    brokeEven,
+    toBreakEvenCents,
+    coverage,
+    breakEvenMarker,
+    targetProgress,
+  }
 }

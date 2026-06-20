@@ -24,6 +24,9 @@ import {
   createApiClient,
   customersApi,
   dashboard,
+  expensesApi,
+  financeApi,
+  fixedCostsApi,
   ledgerQueryApi,
   metalPricesApi,
   photosApi,
@@ -62,6 +65,21 @@ import {
   type CustomerTrustChangeResponse,
   type CustomerUpdateBody,
   type CustomerUpdateResponse,
+  type CreateExpenseBody,
+  type CreateFixedCostBody,
+  type ExpenseRow,
+  type FinancePeriod,
+  type FixedCostRow,
+  type InventoryValueResponse,
+  type ListExpensesQuery,
+  type ListExpensesResponse,
+  type ListFixedCostsQuery,
+  type ListFixedCostsResponse,
+  type MetalWeightsResponse,
+  type MonthRevenueResponse,
+  type ProfitResponse,
+  type UpdateExpenseBody,
+  type UpdateFixedCostBody,
   type FinalizeBody,
   type FinalizeResponse,
   type InventoryAdjustmentBody,
@@ -240,6 +258,63 @@ export function closingDatevCsv(id: string): Promise<string> {
 /** GET /api/closings/:id/export/kassenbericht — Kassenbericht CSV text. */
 export function closingKassenberichtCsv(id: string): Promise<string> {
   return closingsApi.kassenberichtCsv(apiClient, id)
+}
+
+// ── Finanzen (P&L, Lagerwert, Metallbestand — the Finanz-Modul) ──────────────
+// All money fields are INTEGER CENTS (format with formatCents). The read
+// aggregates are ADMIN; the expense/fixed-cost mutations are ADMIN + step-up and
+// audit-logged — a 403 STEP_UP_REQUIRED is handled transparently by
+// stepUpMiddleware. Each read is called independently so the Schatzkammer can
+// light a gauge ONLY when its own endpoint returns real data (honesty rule).
+
+/** GET /api/finance/profit?period=day|month — gross/Ankauf/expenses → netProfit. */
+export function financeProfit(period: FinancePeriod): Promise<ProfitResponse> {
+  return financeApi.profit(apiClient, { period })
+}
+
+/** GET /api/finance/revenue?period=month — month-to-date revenue in cents. */
+export function financeMonthRevenue(): Promise<MonthRevenueResponse> {
+  return financeApi.monthRevenue(apiClient)
+}
+
+/** GET /api/inventory/value — Listenwert + Einkaufswert + verfügbare Artikel. */
+export function inventoryValue(): Promise<InventoryValueResponse> {
+  return financeApi.inventoryValue(apiClient)
+}
+
+/** GET /api/inventory/metal-weights — Edelmetallbestand in Gramm je Metall. */
+export function metalWeights(): Promise<MetalWeightsResponse> {
+  return financeApi.metalWeights(apiClient)
+}
+
+/** GET /api/expenses — one-off operating expenses (paged). */
+export function listExpenses(query: ListExpensesQuery = {}): Promise<ListExpensesResponse> {
+  return expensesApi.list(apiClient, query)
+}
+
+/** POST /api/expenses — book a one-off Ausgabe (ADMIN + step-up, audit-logged). */
+export function createExpense(body: CreateExpenseBody): Promise<ExpenseRow> {
+  return expensesApi.create(apiClient, body)
+}
+
+/** PATCH /api/expenses/:id — edit a one-off Ausgabe (ADMIN + step-up). */
+export function updateExpense(id: string, body: UpdateExpenseBody): Promise<ExpenseRow> {
+  return expensesApi.update(apiClient, id, body)
+}
+
+/** GET /api/fixed-costs — recurring monthly Fixkosten (paged). */
+export function listFixedCosts(query: ListFixedCostsQuery = {}): Promise<ListFixedCostsResponse> {
+  return fixedCostsApi.list(apiClient, query)
+}
+
+/** POST /api/fixed-costs — add a recurring Fixkostenposten (ADMIN + step-up). */
+export function createFixedCost(body: CreateFixedCostBody): Promise<FixedCostRow> {
+  return fixedCostsApi.create(apiClient, body)
+}
+
+/** PATCH /api/fixed-costs/:id — edit a recurring Fixkostenposten (ADMIN + step-up). */
+export function updateFixedCost(id: string, body: UpdateFixedCostBody): Promise<FixedCostRow> {
+  return fixedCostsApi.update(apiClient, id, body)
 }
 
 // ── Termine (appointments — Owner calendar) ──────────────────────────────────
