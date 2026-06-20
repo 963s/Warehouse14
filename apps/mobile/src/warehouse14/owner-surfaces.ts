@@ -85,7 +85,7 @@ export const OWNER_SURFACES: readonly OwnerSurface[] = [
     description: "Offene To-dos und ihr Fortschritt.",
     icon: ListChecks,
     group: "betrieb",
-    available: false,
+    available: true,
   },
   {
     id: "kasse",

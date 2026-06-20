@@ -1,0 +1,204 @@
+/**
+ * Aufgaben UI helpers — the pure, dependency-light glue between the tasks
+ * api-client and the Aufgaben screens (src/app/aufgaben.tsx + aufgaben/neu.tsx
+ * + aufgaben/edit.tsx).
+ *
+ * Holds ONLY presentation + state logic: the German labels for status and
+ * priority, the status → Badge-variant map, the status-group ordering for the
+ * list, the de-DE due-date formatting, and the legal-transition model that
+ * mirrors ALLOWED_TASK_TRANSITIONS. The actual api calls live in
+ * src/warehouse14/api.ts; the server's state machine is the real authority on
+ * whether a transition is legal — this module only decides what to OFFER.
+ */
+import type { TaskPriority, TaskRow, TaskStatus } from "@warehouse14/api-client"
+import { ALLOWED_TASK_TRANSITIONS } from "@warehouse14/api-client"
+
+// ── German labels ─────────────────────────────────────────────────────────────
+export const TASK_STATUS_LABELS: Readonly<Record<TaskStatus, string>> = {
+  OPEN: "Offen",
+  IN_PROGRESS: "In Arbeit",
+  BLOCKED: "Blockiert",
+  DONE: "Erledigt",
+  CANCELLED: "Abgebrochen",
+}
+
+export const TASK_PRIORITY_LABELS: Readonly<Record<TaskPriority, string>> = {
+  LOW: "Niedrig",
+  NORMAL: "Normal",
+  HIGH: "Hoch",
+  URGENT: "Dringend",
+}
+
+/** The four priorities in the order they appear in the picker (low → urgent). */
+export const TASK_PRIORITIES: readonly TaskPriority[] = ["LOW", "NORMAL", "HIGH", "URGENT"]
+
+// ── Badge tone per status / priority ──────────────────────────────────────────
+export type StatusBadgeVariant = "default" | "secondary" | "destructive" | "success" | "outline"
+
+export const STATUS_BADGE_VARIANT: Readonly<Record<TaskStatus, StatusBadgeVariant>> = {
+  OPEN: "outline",
+  IN_PROGRESS: "secondary",
+  BLOCKED: "destructive",
+  DONE: "success",
+  CANCELLED: "outline",
+}
+
+/** Only HIGH / URGENT earn a coloured priority pill; LOW/NORMAL stay quiet. */
+export function priorityBadgeVariant(priority: TaskPriority): StatusBadgeVariant | null {
+  switch (priority) {
+    case "URGENT":
+      return "destructive"
+    case "HIGH":
+      return "secondary"
+    default:
+      return null
+  }
+}
+
+// ── List grouping ─────────────────────────────────────────────────────────────
+/**
+ * The status sections of the list, in display order. The live work sits at the
+ * top; terminal states (done/cancelled) sink to the bottom.
+ */
+export const STATUS_GROUP_ORDER: readonly TaskStatus[] = [
+  "OPEN",
+  "IN_PROGRESS",
+  "BLOCKED",
+  "DONE",
+  "CANCELLED",
+]
+
+export interface TaskGroup {
+  status: TaskStatus
+  label: string
+  tasks: TaskRow[]
+}
+
+/**
+ * Bucket tasks by status into the fixed STATUS_GROUP_ORDER, dropping empty
+ * sections. Within a group, sort by priority (urgent first), then by due date
+ * (soonest first, undated last), then by creation time as a stable tiebreaker.
+ */
+export function groupByStatus(tasks: readonly TaskRow[]): TaskGroup[] {
+  const byStatus = new Map<TaskStatus, TaskRow[]>()
+  for (const task of tasks) {
+    const list = byStatus.get(task.status) ?? []
+    list.push(task)
+    byStatus.set(task.status, list)
+  }
+  return STATUS_GROUP_ORDER.map((status) => ({
+    status,
+    label: TASK_STATUS_LABELS[status],
+    tasks: (byStatus.get(status) ?? []).sort(compareTasks),
+  })).filter((group) => group.tasks.length > 0)
+}
+
+const PRIORITY_RANK: Readonly<Record<TaskPriority, number>> = {
+  URGENT: 0,
+  HIGH: 1,
+  NORMAL: 2,
+  LOW: 3,
+}
+
+function compareTasks(a: TaskRow, b: TaskRow): number {
+  const byPriority = PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority]
+  if (byPriority !== 0) return byPriority
+  // Soonest due first; undated rows sink to the end of the group.
+  if (a.dueDate !== b.dueDate) {
+    if (a.dueDate == null) return 1
+    if (b.dueDate == null) return -1
+    return a.dueDate.localeCompare(b.dueDate)
+  }
+  return a.createdAt.localeCompare(b.createdAt)
+}
+
+// ── Transition model ──────────────────────────────────────────────────────────
+/** Whether a row is in a terminal state (no further transitions offered). */
+export function isTerminal(status: TaskStatus): boolean {
+  return ALLOWED_TASK_TRANSITIONS[status].length === 0
+}
+
+/** The legal next states for a row, straight from the api-client table. */
+export function allowedTransitions(status: TaskStatus): readonly TaskStatus[] {
+  return ALLOWED_TASK_TRANSITIONS[status]
+}
+
+/**
+ * The German verb for the button that MOVES a task INTO `target`. "Erledigen"
+ * for DONE, "Starten" for IN_PROGRESS, etc. — phrased as the action, not the
+ * resulting noun.
+ */
+export function transitionActionLabel(target: TaskStatus): string {
+  switch (target) {
+    case "IN_PROGRESS":
+      return "Starten"
+    case "BLOCKED":
+      return "Blockieren"
+    case "DONE":
+      return "Erledigen"
+    case "CANCELLED":
+      return "Abbrechen"
+    case "OPEN":
+      return "Wieder öffnen"
+    default:
+      return TASK_STATUS_LABELS[target]
+  }
+}
+
+// ── de-DE due-date formatting ─────────────────────────────────────────────────
+const DUE_DATE_FMT = new Intl.DateTimeFormat("de-DE", {
+  weekday: "short",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+})
+
+/** "Mi, 24.06.2026" for an ISO date string, or null when undated. */
+export function formatDueDate(iso: string | null): string | null {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  return DUE_DATE_FMT.format(d)
+}
+
+/**
+ * Whether the due date is in the past relative to today (local midnight). A live
+ * task past its due date is rendered with a destructive accent. Terminal rows
+ * never count as overdue.
+ */
+export function isOverdue(task: TaskRow): boolean {
+  if (!task.dueDate || isTerminal(task.status)) return false
+  const due = new Date(task.dueDate)
+  if (Number.isNaN(due.getTime())) return false
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  return due.getTime() < today.getTime()
+}
+
+// ── de-DE date parsing for the create/edit form (no date-picker dep) ──────────
+/** Prefill an "TT.MM.JJJJ" field from an ISO date string (or "" when null). */
+export function dueDateInput(iso: string | null): string {
+  if (!iso) return ""
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ""
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`
+}
+
+/**
+ * Parse a "TT.MM.JJJJ" date field → an ISO date (midnight local) for the
+ * `dueDate` body field, or null if malformed. An empty/whitespace string is
+ * treated as "no due date" and returns undefined so callers can clear it.
+ */
+export function parseDueDateInput(input: string): { ok: true; iso: string | null } | { ok: false } {
+  const trimmed = input.trim()
+  if (trimmed === "") return { ok: true, iso: null }
+  const m = trimmed.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/)
+  if (!m) return { ok: false }
+  const [, dd, mm, yyyy] = m
+  const d = new Date(Number(yyyy), Number(mm) - 1, Number(dd), 0, 0, 0, 0)
+  if (Number.isNaN(d.getTime())) return { ok: false }
+  // Guard against JS Date roll-over (e.g. 32.01 → 01.02).
+  if (d.getDate() !== Number(dd) || d.getMonth() !== Number(mm) - 1) return { ok: false }
+  return { ok: true, iso: d.toISOString() }
+}

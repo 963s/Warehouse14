@@ -67,6 +67,15 @@ export default function RootLayout() {
             name="termine/neu"
             options={{ presentation: "modal", title: "Neuer Termin" }}
           />
+          <Stack.Screen name="aufgaben" options={{ title: "Aufgaben" }} />
+          <Stack.Screen
+            name="aufgaben/neu"
+            options={{ presentation: "modal", title: "Neue Aufgabe" }}
+          />
+          <Stack.Screen
+            name="aufgaben/edit"
+            options={{ presentation: "modal", title: "Aufgabe bearbeiten" }}
+          />
           <Stack.Screen
             name="capture"
             options={{ presentation: "fullScreenModal", headerShown: false }}
