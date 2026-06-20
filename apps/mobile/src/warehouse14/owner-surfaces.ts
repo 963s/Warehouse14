@@ -94,7 +94,7 @@ export const OWNER_SURFACES: readonly OwnerSurface[] = [
     description: "Schicht, Tagesabschluss und Z-Bon.",
     icon: Receipt,
     group: "betrieb",
-    available: false,
+    available: true,
   },
   // ── Finanzen ───────────────────────────────────────────────────────────────
   {
