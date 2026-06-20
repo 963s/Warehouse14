@@ -25,7 +25,15 @@
  * reschedule sheet, the shared W14 UI kit + motion for everything else).
  */
 import { useCallback, useLayoutEffect, useMemo, useState } from "react"
-import { FlatList, Modal, Pressable, RefreshControl, View } from "react-native"
+import {
+  FlatList,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  RefreshControl,
+  View,
+} from "react-native"
 import { useNavigation, useRouter } from "expo-router"
 import type { AppointmentListItem, AppointmentPatchStatus } from "@warehouse14/api-client"
 import { APPOINTMENT_STATUS_LABELS } from "@warehouse14/api-client"
@@ -142,80 +150,97 @@ function RescheduleSheet({
 
   return (
     <Modal visible animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable
-        className="flex-1 justify-end"
-        style={{ backgroundColor: "rgba(0,0,0,0.45)" }}
-        accessibilityRole="button"
-        accessibilityLabel="Schließen"
-        onPress={onClose}
+      {/* Keyboard avoidance, same per-platform behavior as the spine's
+          KeyboardAvoidingScreen — so focusing „Neuer Beginn"/„Grund" lifts the
+          whole sheet (inputs + Abbrechen/Verschieben) clear of the keyboard. */}
+      <KeyboardAvoidingView
+        className="flex-1"
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
-        {/* Inner Pressable swallows taps so a tap inside the sheet never dismisses. */}
         <Pressable
-          onPress={() => {}}
-          className="bg-background border-border gap-4 rounded-t-2xl border-t px-5 pt-5"
-          style={{ paddingBottom: insets.stickyBottom }}
+          className="flex-1 justify-end"
+          style={{ backgroundColor: "rgba(0,0,0,0.45)" }}
+          accessibilityRole="button"
+          accessibilityLabel="Schließen"
+          onPress={onClose}
         >
-          <View className="items-center pb-1">
-            <View className="h-1 w-10 rounded-full" style={{ backgroundColor: t.colors.border }} />
-          </View>
-
-          <View className="flex-row items-center gap-2.5">
-            <View
-              className="h-9 w-9 items-center justify-center rounded-md"
-              style={{ backgroundColor: t.colors.primary + "1f" }}
-            >
-              <RotateCcw size={t.icon.md} color={t.colors.primary} />
+          {/* Inner Pressable swallows taps so a tap inside the sheet never dismisses. */}
+          <Pressable
+            onPress={() => {}}
+            className="bg-background border-border gap-4 rounded-t-2xl border-t px-5 pt-5"
+            style={{ paddingBottom: insets.stickyBottom }}
+          >
+            <View className="items-center pb-1">
+              <View
+                className="h-1 w-10 rounded-full"
+                style={{ backgroundColor: t.colors.border }}
+              />
             </View>
-            <View className="flex-1">
-              <Text className="text-base font-bold">Termin verschieben</Text>
-              <Text className="text-muted-foreground text-xs" numberOfLines={1}>
-                {typeLabel(appt.appointment_type)} · {formatTimeRange(appt.starts_at, appt.ends_at)}
-              </Text>
+
+            <View className="flex-row items-center gap-2.5">
+              <View
+                className="h-9 w-9 items-center justify-center rounded-md"
+                style={{ backgroundColor: t.colors.primary + "1f" }}
+              >
+                <RotateCcw size={t.icon.md} color={t.colors.primary} />
+              </View>
+              <View className="flex-1">
+                <Text className="text-base font-bold">Termin verschieben</Text>
+                <Text className="text-muted-foreground text-xs" numberOfLines={1}>
+                  {typeLabel(appt.appointment_type)} ·{" "}
+                  {formatTimeRange(appt.starts_at, appt.ends_at)}
+                </Text>
+              </View>
             </View>
-          </View>
 
-          {error != null ? <InlineError message={error} /> : null}
+            {error != null ? <InlineError message={error} /> : null}
 
-          <View className="gap-1.5">
-            <Text className="text-sm font-medium">Neuer Beginn</Text>
-            <Input
-              value={value}
-              onChangeText={setValue}
-              placeholder="TT.MM.JJJJ HH:MM"
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="numbers-and-punctuation"
-              accessibilityLabel="Neuer Beginn, Format Tag Punkt Monat Punkt Jahr Stunde Doppelpunkt Minute"
-            />
-          </View>
+            <View className="gap-1.5">
+              <Text className="text-sm font-medium">Neuer Beginn</Text>
+              <Input
+                value={value}
+                onChangeText={setValue}
+                placeholder="TT.MM.JJJJ HH:MM"
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="numbers-and-punctuation"
+                accessibilityLabel="Neuer Beginn, Format Tag Punkt Monat Punkt Jahr Stunde Doppelpunkt Minute"
+              />
+            </View>
 
-          <View className="gap-1.5">
-            <Text className="text-sm font-medium">Grund (optional)</Text>
-            <Input
-              value={reason}
-              onChangeText={setReason}
-              placeholder="z. B. Kundenwunsch"
-              autoCapitalize="sentences"
-              accessibilityLabel="Grund"
-            />
-          </View>
+            <View className="gap-1.5">
+              <Text className="text-sm font-medium">Grund (optional)</Text>
+              <Input
+                value={reason}
+                onChangeText={setReason}
+                placeholder="z. B. Kundenwunsch"
+                autoCapitalize="sentences"
+                accessibilityLabel="Grund"
+              />
+            </View>
 
-          <View className="flex-row gap-3 pt-1">
-            <Button
-              variant="outline"
-              size="lg"
-              className="h-12 flex-1"
-              onPress={onClose}
-              disabled={busy}
-            >
-              <Text>Abbrechen</Text>
-            </Button>
-            <Button size="lg" className="h-12 flex-1" onPress={() => void submit()} disabled={busy}>
-              <Text>{busy ? "Verschiebe…" : "Verschieben"}</Text>
-            </Button>
-          </View>
+            <View className="flex-row gap-3 pt-1">
+              <Button
+                variant="outline"
+                size="lg"
+                className="h-12 flex-1"
+                onPress={onClose}
+                disabled={busy}
+              >
+                <Text>Abbrechen</Text>
+              </Button>
+              <Button
+                size="lg"
+                className="h-12 flex-1"
+                onPress={() => void submit()}
+                disabled={busy}
+              >
+                <Text>{busy ? "Verschiebe…" : "Verschieben"}</Text>
+              </Button>
+            </View>
+          </Pressable>
         </Pressable>
-      </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   )
 }

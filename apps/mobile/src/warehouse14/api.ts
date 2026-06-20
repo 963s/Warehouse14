@@ -576,16 +576,33 @@ export function describeError(err: unknown): string {
         // one when we cannot tell which field.
         return describeValidationError(err) ?? "Eingabe ungültig — bitte die Angaben prüfen."
       case "CONFLICT": {
-        // A unique-violation (HTTP 409, SQLSTATE 23505) carries the Postgres
-        // constraint name verbatim in the message — turn the two customer
-        // blind-index constraints into an actionable German line so a duplicate
-        // entry (a common real case) never shows a raw constraint string.
+        // A 409 carries the raw English message (a DB trigger's RAISE text, a
+        // domain error, or a Postgres constraint name) verbatim — never surface
+        // it to a German operator. Match the stable tokens to an actionable
+        // German line; the order is most-specific first.
         const msg = err.message ?? ""
+        // ── Kunden (Blind-Index-Eindeutigkeit) ────────────────────────────────
         if (msg.includes("customers_email_blind_index_active_uq")) {
           return "Diese E-Mail-Adresse ist bereits einem Kunden zugeordnet."
         }
         if (msg.includes("customers_phone_blind_index_active_uq")) {
           return "Diese Telefonnummer ist bereits einem Kunden zugeordnet."
+        }
+        // ── Termine ───────────────────────────────────────────────────────────
+        // Illegal status step (DB trigger, ERRCODE check_violation → 409):
+        // "Invalid appointment status transition: CHECKED_IN → CONFIRMED (row …)".
+        if (msg.includes("Invalid appointment status transition")) {
+          return "Dieser Statuswechsel ist nicht möglich. Bitte die Termin-Ansicht aktualisieren."
+        }
+        // Double-book: the chosen slot was taken (in-txn re-check or the
+        // no-overlap EXCLUDE on book) — "Selected slot is no longer available."
+        if (msg.includes("Selected slot is no longer available")) {
+          return "Dieser Termin-Slot ist nicht mehr frei. Bitte eine andere Zeit wählen."
+        }
+        // Reschedule overlap: the no-staff-overlap EXCLUDE fires on the clone
+        // INSERT and surfaces the raw constraint name in the message.
+        if (msg.includes("appointments_no_staff_overlap")) {
+          return "Zu dieser Zeit liegt bereits ein Termin. Bitte eine andere Zeit wählen."
         }
         // Otherwise it's a domain conflict — e.g. promoting a customer to
         // VERIFIED/VIP before the physical-ID stamp. Give the actionable step.
