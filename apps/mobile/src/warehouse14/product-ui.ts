@@ -32,6 +32,22 @@ export const STATUS_FILTERS: ReadonlyArray<{ label: string; value: ProductStatus
   { label: "Verkauft", value: "SOLD" },
 ]
 
+/**
+ * A NUMERIC(15,4) gram weight from the wire → a de-DE string with a sane
+ * precision (e.g. "33.9300" → "33,93", "31.0799" → "31,08"). Matches the
+ * intake form's own Feingewicht preview (comma + maximumFractionDigits: 3),
+ * so the same value never reads two different ways across screens.
+ *
+ * The `g` suffix is the caller's job. If the wire value is not a finite
+ * number we return it unchanged rather than printing "NaN" (honesty rule).
+ */
+export function formatGrams(value: string | null | undefined): string | null {
+  if (value == null || value.trim() === "") return null
+  const n = Number(value)
+  if (!Number.isFinite(n)) return value
+  return n.toLocaleString("de-DE", { maximumFractionDigits: 3 })
+}
+
 /** A product's Lagerort triplet → "Tresor A · Schublade 1 · Pos 3" (omits gaps). */
 export function formatLocation(
   unit: string | null,

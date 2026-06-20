@@ -50,6 +50,7 @@ import {
 import {
   CONDITION_OPTIONS,
   firstProductEditError,
+  formatGrams,
   isProductEditValid,
   type ProductEditErrors,
   type ProductEditFieldKey,
@@ -287,7 +288,7 @@ export default function ArtikelBearbeitenScreen() {
         {product.metal ? (
           <LockedRow
             label="Gewicht"
-            value={product.weightGrams ? `${product.weightGrams} g` : "—"}
+            value={product.weightGrams ? `${formatGrams(product.weightGrams)} g` : "—"}
           />
         ) : null}
       </SectionCard>

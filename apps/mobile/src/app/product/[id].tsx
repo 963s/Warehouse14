@@ -62,6 +62,7 @@ import {
 } from "@/warehouse14/api"
 import {
   CONDITION_LABEL,
+  formatGrams,
   formatLocation,
   METAL_LABEL,
   STATUS_LABEL,
@@ -395,7 +396,7 @@ export default function ProductDetailScreen() {
               <ListRow
                 icon={Weight}
                 title="Feingewicht"
-                value={`${product.feingewichtGrams} g · ${METAL_LABEL[product.metal]}`}
+                value={`${formatGrams(product.feingewichtGrams)} g · ${METAL_LABEL[product.metal]}`}
               />
             ) : null}
             <ListRow
