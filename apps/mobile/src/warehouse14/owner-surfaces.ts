@@ -101,10 +101,10 @@ export const OWNER_SURFACES: readonly OwnerSurface[] = [
     id: "finanzen",
     route: "/finanzen",
     label: "Finanzen",
-    description: "Gewinn, Umsatz und Lagerwert.",
+    description: "Gewinn, Umsatz und Kosten im Detail.",
     icon: Banknote,
     group: "finanzen",
-    available: false,
+    available: true,
   },
   {
     id: "ausgaben",
