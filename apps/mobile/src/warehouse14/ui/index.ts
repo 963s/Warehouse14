@@ -11,6 +11,9 @@
  *   FormField   — labelled input with hint + per-field error.
  *   FormScreen  — form scaffold: error/success banners + sticky save (step-up
  *                 is transparent via the global StepUpDialogHost).
+ *   motion/     — the reanimated-v4 motion system (durations, easings, the
+ *                 press-scale, list stagger, CountUp, the break-even GoldFlood);
+ *                 re-exported here so surfaces pull one barrel.
  */
 export { RingGauge, type RingGaugeProps } from "./RingGauge"
 export { StatTile, type StatTileProps, type StatTileTone } from "./StatTile"
@@ -19,3 +22,6 @@ export { ListRow, type ListRowProps } from "./ListRow"
 export { EmptyState, type EmptyStateProps } from "./EmptyState"
 export { FormField, type FormFieldProps } from "./FormField"
 export { FormScreen, type FormScreenProps } from "./FormScreen"
+
+// Motion system — the shared reanimated-v4 vocabulary every surface moves with.
+export * from "./motion"
