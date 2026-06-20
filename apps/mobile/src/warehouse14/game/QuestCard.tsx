@@ -59,7 +59,7 @@ export function QuestCard({ quest }: QuestCardProps): ReactNode {
           className="h-8 w-8 items-center justify-center rounded-md"
           style={{ backgroundColor: accent + "1f" }}
         >
-          <Icon size={18} color={accent} />
+          <Icon size={t.icon.md} color={accent} />
         </View>
         <View className="flex-1">
           <Text className="text-base font-semibold" numberOfLines={1}>

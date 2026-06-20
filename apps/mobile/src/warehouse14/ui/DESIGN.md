@@ -81,11 +81,28 @@ used by the spine:
 | Section title | `text-base` (16)  | semibold 600  | `SectionCard` / group headers                |
 | Body          | `text-sm`–`base`  | regular 400   | row titles, descriptions                     |
 | Label / meta  | `text-xs` (12)    | regular 400   | captions, hints — always `text-muted-foreground` |
-| Micro         | 11px              | regular 400   | the tiniest hint under a value               |
+| Micro         | `text-2xs` (11)   | regular 400   | the tiniest hint under a value               |
+
+How weight resolves to a face: Inter loads as four DISTINCT named faces, so a
+numeric `font-weight` alone does not pick them on native. `global.css` pins each
+weight class to its face — `font-medium` → Inter 500, `font-semibold` → 600,
+`font-bold` → 700 — so `text-… font-semibold` renders the real SemiBold. Mono is
+a separate family: use `font-mono` (IDs/SKUs) or `font-mono-medium` (emphasised
+numerics — KPI values, totals) and NEVER pair mono with an Inter weight class,
+which would re-select the Inter face and lose the tabular figures. The KPI hero
+value is `font-mono-medium text-2xl`; the size carries the emphasis. The `type`
+object on `useW14Theme()` mirrors the ramp for the rare style-prop case.
 
 Rules: one hero number per tile. Captions and hints are always
 `text-muted-foreground`. `numberOfLines` everything that can overflow (titles 1,
 descriptions 2) — truncation beats reflow. Right-align mono money in any column.
+
+Icons: pull the `size` from `useW14Theme().icon` — one scale, never a raw
+number. `xs` 14 (tiny glyph beside small text), `sm` 16 (control/action glyph),
+`md` 18 (the STANDARD row/section leading icon + chevron), `lg` 20 (a glyph in a
+chip), `xl` 26 (the hero glyph in an empty/error disc). Tint icons with a theme
+colour — brass for a leading/section icon, `mutedForeground` for a chevron,
+`destructive` for an error.
 
 ---
 

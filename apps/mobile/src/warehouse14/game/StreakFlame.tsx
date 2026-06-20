@@ -52,7 +52,7 @@ export function StreakFlame({ streak, size = "md" }: StreakFlameProps): ReactNod
         accessibilityLabel={`Serie: ${streak.current} ${streak.current === 1 ? "Tag" : "Tage"}`}
       >
         <Flame size={glyph} color={flameColor} />
-        <Text className="font-mono text-sm font-bold" style={{ color: flameColor }}>
+        <Text className="font-mono-medium text-sm" style={{ color: flameColor }}>
           {streak.current}
         </Text>
       </View>
@@ -71,7 +71,7 @@ export function StreakFlame({ streak, size = "md" }: StreakFlameProps): ReactNod
       </View>
       <View className="flex-1">
         <View className="flex-row items-baseline gap-1.5">
-          <Text className="font-mono text-2xl font-bold" style={{ color: flameColor }}>
+          <Text className="font-mono-medium text-2xl" style={{ color: flameColor }}>
             {streak.current}
           </Text>
           <Text className="text-muted-foreground text-xs">
@@ -82,7 +82,7 @@ export function StreakFlame({ streak, size = "md" }: StreakFlameProps): ReactNod
           {stateLine(streak)}
         </Text>
         {streak.longest > streak.current && streak.longest > 0 ? (
-          <Text className="text-muted-foreground mt-0.5" style={{ fontSize: 11 }} numberOfLines={1}>
+          <Text className="text-muted-foreground text-2xs mt-0.5" numberOfLines={1}>
             Bestmarke: {streak.longest} {streak.longest === 1 ? "Tag" : "Tage"}
           </Text>
         ) : null}

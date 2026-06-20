@@ -61,7 +61,7 @@ export function ListRow({
           className="h-8 w-8 items-center justify-center rounded-md"
           style={{ backgroundColor: t.colors.primary + "1f" }}
         >
-          <Icon size={18} color={t.colors.primary} />
+          <Icon size={t.icon.md} color={t.colors.primary} />
         </View>
       ) : null}
       <View className="flex-1 gap-0.5">
@@ -78,13 +78,13 @@ export function ListRow({
         right
       ) : value != null ? (
         <Text
-          className={mono ? "font-mono text-sm font-medium" : "text-sm font-medium"}
+          className={mono ? "font-mono-medium text-sm" : "text-sm font-medium"}
           numberOfLines={1}
         >
           {value}
         </Text>
       ) : null}
-      {showChevron ? <ChevronRight size={18} color={t.colors.mutedForeground} /> : null}
+      {showChevron ? <ChevronRight size={t.icon.md} color={t.colors.mutedForeground} /> : null}
     </View>
   )
 

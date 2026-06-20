@@ -34,7 +34,7 @@
   --w14-card-foreground: #16191d;
   --w14-popover: #ffffff;
   --w14-popover-foreground: #16191d;
-  --w14-primary: #9a751f;
+  --w14-primary: #8a6819; /* brass, AA on parchment (theme.ts lightPalette) */
   --w14-primary-foreground: #ffffff;
   --w14-secondary: #eef0f3;
   --w14-secondary-foreground: #16191d;
@@ -42,11 +42,11 @@
   --w14-muted-foreground: #646b76;
   --w14-accent: #157a4b;
   --w14-accent-foreground: #ffffff;
-  --w14-destructive: #d63d49;
+  --w14-destructive: #cf3742; /* wax red, AA for small destructive text */
   --w14-destructive-foreground: #ffffff;
   --w14-border: #e3e6eb;
   --w14-input: #e3e6eb;
-  --w14-ring: #9a751f;
+  --w14-ring: #8a6819;
   --w14-radius: 12px;
 }
 
@@ -68,8 +68,8 @@
     --w14-accent-foreground: #131519;
     --w14-destructive: #e15862;
     --w14-destructive-foreground: #131519;
-    --w14-border: #2c313a;
-    --w14-input: #2c313a;
+    --w14-border: #363c47; /* lifted for a legible hairline (theme.ts darkPalette) */
+    --w14-input: #363c47;
     --w14-ring: #d8b14e;
   }
 }
@@ -103,7 +103,60 @@
   --radius-xl: 12px;
   --radius-2xl: 12px;
 
-  /* Fonts (already loaded by expo-font in the root layout). */
+  /* Fonts (already loaded by expo-font in the root layout). The base family is
+   * Inter Regular; the weighted faces are selected per-weight by the @utility
+   * overrides below — see the note there. */
   --font-sans: "Inter_400Regular";
   --font-mono: "JetBrainsMono_400Regular";
+
+  /* Micro step (11px) — the tiniest hint under a value (DESIGN.md §3). Exposed
+   * as `text-2xs` so surfaces stop hardcoding `fontSize: 11`. */
+  --text-2xs: 11px;
+  --text-2xs--line-height: 14px;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Type ramp — bind weight to the real Inter face (DESIGN.md §3).
+ *
+ * On native, Inter is loaded as four DISTINCT named faces (Inter_400Regular …
+ * Inter_700Bold). A numeric `font-weight` alone does NOT select them — RN can't
+ * synthesise a true bold from a single named file, so `font-bold` over
+ * `--font-sans: Inter_400Regular` would render Regular glyphs. These utilities
+ * pin each weight class to the matching face so the ramp renders truly. They
+ * also keep `font-weight` set so the web (react-native-web) export stays correct.
+ *
+ * Because 41 surfaces already use `font-medium / font-semibold / font-bold`,
+ * overriding the utilities here fixes the whole app with no per-file churn.
+ * ────────────────────────────────────────────────────────────────────────── */
+@utility font-normal {
+  font-family: "Inter_400Regular";
+  font-weight: 400;
+}
+@utility font-medium {
+  font-family: "Inter_500Medium";
+  font-weight: 500;
+}
+@utility font-semibold {
+  font-family: "Inter_600SemiBold";
+  font-weight: 600;
+}
+@utility font-bold {
+  font-family: "Inter_700Bold";
+  font-weight: 700;
+}
+/* JetBrains Mono — tabular figures for money/IDs that align in a column.
+ *
+ * Mono is a SEPARATE family with its own loaded faces, so it must NOT be paired
+ * with an Inter weight utility (`font-bold` etc.) — that would re-select the
+ * Inter face and lose the tabular figures. Use `font-mono` (regular) for IDs/
+ * SKUs and `font-mono-medium` for emphasised numerics (KPI values, totals).
+ * These own both family and weight, so a mono number never needs a second
+ * weight class. */
+@utility font-mono {
+  font-family: "JetBrainsMono_400Regular";
+  font-weight: 400;
+}
+@utility font-mono-medium {
+  font-family: "JetBrainsMono_500Medium";
+  font-weight: 500;
 }

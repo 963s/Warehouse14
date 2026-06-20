@@ -70,7 +70,7 @@ export function ConnectionBanner(): ReactNode {
       accessibilityLabel={OFFLINE_LABEL}
     >
       <View style={styles.row}>
-        <CloudOff size={15} color={t.colors.destructive} />
+        <CloudOff size={t.icon.xs} color={t.colors.destructive} />
         <Text className="text-sm font-medium" style={{ color: t.colors.destructive }}>
           {OFFLINE_LABEL}
         </Text>

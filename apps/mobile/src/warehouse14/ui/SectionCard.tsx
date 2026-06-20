@@ -39,7 +39,7 @@ export function SectionCard({
               className="h-8 w-8 items-center justify-center rounded-md"
               style={{ backgroundColor: t.colors.primary + "1f" }}
             >
-              <Icon size={18} color={t.colors.primary} />
+              <Icon size={t.icon.md} color={t.colors.primary} />
             </View>
           ) : null}
           <View className="flex-1">

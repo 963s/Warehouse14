@@ -58,7 +58,7 @@ export function InlineError({
       >
         <View className="flex-row items-start gap-2.5">
           <View className="pt-0.5">
-            <TriangleAlert size={16} color={t.colors.destructive} />
+            <TriangleAlert size={t.icon.sm} color={t.colors.destructive} />
           </View>
           <View className="flex-1 gap-0.5">
             <Text className="text-sm font-semibold" style={{ color: t.colors.destructive }}>
@@ -73,7 +73,7 @@ export function InlineError({
               accessibilityRole="button"
               accessibilityLabel="Schließen"
             >
-              <X size={16} color={t.colors.mutedForeground} />
+              <X size={t.icon.sm} color={t.colors.mutedForeground} />
             </Pressable>
           ) : null}
         </View>
@@ -85,7 +85,7 @@ export function InlineError({
             className="flex-row items-center gap-1.5 self-start rounded-md px-2 py-1"
             style={{ marginLeft: 26 }}
           >
-            <RefreshCw size={13} color={t.colors.destructive} />
+            <RefreshCw size={t.icon.xs} color={t.colors.destructive} />
             <Text className="text-sm font-medium" style={{ color: t.colors.destructive }}>
               Erneut
             </Text>

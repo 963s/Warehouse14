@@ -57,16 +57,14 @@ export function StatTile({
       ) : (
         <>
           <Text
-            className="font-mono text-2xl font-bold"
+            className="font-mono-medium text-2xl"
             style={{ color: muted ? t.colors.mutedForeground : toneColor }}
             numberOfLines={1}
           >
             {value}
           </Text>
           {hint != null ? (
-            <Text className="text-muted-foreground" style={{ fontSize: 11 }}>
-              {hint}
-            </Text>
+            <Text className="text-muted-foreground text-2xs">{hint}</Text>
           ) : null}
         </>
       )}

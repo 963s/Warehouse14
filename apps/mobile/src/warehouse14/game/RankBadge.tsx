@@ -99,7 +99,7 @@ export function RankBadge({ rank, size = "md", showNext }: RankBadgeProps): Reac
         </View>
 
         {withNext && nextHint != null ? (
-          <Text className="text-muted-foreground mt-1" style={{ fontSize: 11 }} numberOfLines={1}>
+          <Text className="text-muted-foreground text-2xs mt-1" numberOfLines={1}>
             {nextHint}
           </Text>
         ) : null}

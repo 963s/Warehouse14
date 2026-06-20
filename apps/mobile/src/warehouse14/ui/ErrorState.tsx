@@ -86,7 +86,7 @@ export function ErrorState({
           borderWidth: 1,
         }}
       >
-        <Icon size={26} color={t.colors.destructive} />
+        <Icon size={t.icon.xl} color={t.colors.destructive} />
       </View>
       <Text className="text-center text-base font-semibold">{resolvedTitle}</Text>
       <Text className="text-muted-foreground max-w-xs text-center text-sm leading-5">
@@ -100,7 +100,7 @@ export function ErrorState({
           className="mt-2"
           accessibilityLabel={retryLabel}
         >
-          <RefreshCw size={16} color={t.colors.foreground} />
+          <RefreshCw size={t.icon.sm} color={t.colors.foreground} />
           <Text>{retrying ? "Wird geladen…" : retryLabel}</Text>
         </Button>
       ) : null}

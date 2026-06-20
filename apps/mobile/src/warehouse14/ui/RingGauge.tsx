@@ -112,7 +112,7 @@ export function RingGauge({
     <View className="w-full gap-1.5">
       {label != null ? (
         <Text
-          className="font-mono text-2xl font-bold"
+          className="font-mono-medium text-2xl"
           style={muted ? { color: t.colors.mutedForeground } : undefined}
           numberOfLines={1}
         >
@@ -143,9 +143,7 @@ export function RingGauge({
         ) : null}
       </View>
       {caption != null ? (
-        <Text className="text-muted-foreground" style={{ fontSize: 11 }}>
-          {caption}
-        </Text>
+        <Text className="text-muted-foreground text-2xs">{caption}</Text>
       ) : null}
     </View>
   )

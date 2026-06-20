@@ -35,7 +35,7 @@ export function EmptyState({
         className="h-16 w-16 items-center justify-center rounded-full"
         style={{ backgroundColor: t.colors.primary + "14", borderColor: t.colors.border, borderWidth: 1 }}
       >
-        <Icon size={26} color={t.colors.primary} />
+        <Icon size={t.icon.xl} color={t.colors.primary} />
       </View>
       <Text className="text-center text-base font-semibold">{title}</Text>
       {description != null ? (

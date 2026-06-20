@@ -85,7 +85,7 @@ function SealTile({ state }: { state: SealState }): ReactNode {
           backgroundColor: earned ? t.colors.primary + "1f" : t.colors.border + "66",
         }}
       >
-        <Icon size={20} color={earned ? t.colors.primary : t.colors.mutedForeground} />
+        <Icon size={t.icon.lg} color={earned ? t.colors.primary : t.colors.mutedForeground} />
       </View>
 
       <Text
