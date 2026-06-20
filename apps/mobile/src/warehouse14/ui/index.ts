@@ -28,6 +28,10 @@
  *                   useMutation / useRefreshControl) wrapping ../api: refetch-
  *                   on-focus, pull-to-refresh, polite polling, de-dupe,
  *                   optimistic writes. Re-exported so surfaces pull one barrel.
+ *   native/       — the native-feel layer: the haptic vocabulary (no-op when
+ *                   expo-haptics is absent), safe-area paddings (useScreenInsets),
+ *                   the keyboard-avoidance scaffold (KeyboardAvoidingScreen), and
+ *                   the gesture wiring (Gesture/GestureDetector + swipeToDismiss).
  */
 export { RingGauge, type RingGaugeProps } from "./RingGauge"
 export { StatTile, type StatTileProps, type StatTileTone } from "./StatTile"
@@ -64,3 +68,31 @@ export * from "./motion"
 
 // Live-data layer — the shared fetch/mutate vocabulary every surface uses.
 export * from "./data"
+
+// Native-feel layer — haptics, safe-area paddings, keyboard avoidance, gestures.
+// The very generic bare haptic names (success/error/…) are intentionally NOT
+// re-exported here to keep the top-level barrel unambiguous; surfaces call them
+// through the `haptics` namespace object (haptics.success()) or import the bare
+// functions from "@/warehouse14/ui/native" directly.
+export {
+  haptics,
+  hapticsAvailable,
+  type Haptics,
+  useScreenInsets,
+  type ScreenInsets,
+  type ScreenInsetsOptions,
+  KeyboardAvoidingScreen,
+  type KeyboardAvoidingScreenProps,
+  GestureDetector,
+  Gesture,
+  Directions,
+  hapticOnUI,
+  swipeToDismiss,
+  type HapticKind,
+  type SwipeToDismissOptions,
+  type GestureType,
+  type PanGesture,
+  type TapGesture,
+  type LongPressGesture,
+  type FlingGesture,
+} from "./native"
