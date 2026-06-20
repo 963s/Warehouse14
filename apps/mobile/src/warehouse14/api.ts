@@ -17,15 +17,21 @@
 import {
   ApiError,
   authPin,
+  bridgeApi,
+  closingsApi,
   createApiClient,
   customersApi,
+  dashboard,
   metalPricesApi,
   photosApi,
   productsApi,
   stepUpMiddleware,
   type ApiClient,
+  type BridgeSummary,
+  type ClosingListItem,
   type CurrentMetalPrice,
   type CustomerDetail,
+  type DashboardSummary,
   type CustomerKycStampBody,
   type CustomerKycStampResponse,
   type CustomerListQuery,
@@ -132,6 +138,24 @@ export function setCustomerTrust(
   return customersApi.setTrust(apiClient, id, body)
 }
 
+// ── Schatzkammer dashboard (owner KPI snapshot — all live, ADMIN) ────────────
+// bridge/summary is the richest cents-based snapshot; dashboard/summary adds
+// pendingAppraisals + metal prices; closings give finalized daily revenue for
+// the "beat yesterday" quest + streak. No new backend — all already exist.
+export function bridgeSummary(): Promise<BridgeSummary> {
+  return bridgeApi.summary(apiClient)
+}
+
+export function dashboardSummary(): Promise<DashboardSummary> {
+  return dashboard.summary(apiClient)
+}
+
+/** GET /api/closings — recent finalized daily closings (newest first is NOT
+ *  guaranteed; the caller sorts by businessDay). */
+export function listClosings(): Promise<{ items: ClosingListItem[] }> {
+  return closingsApi.list(apiClient)
+}
+
 // ── Scan → product (the real cashier flow) ───────────────────────────────────
 export async function resolveScannedCode(code: string): Promise<ScanMatch> {
   const res = await productsApi.list(apiClient, { q: code, limit: 10 })
@@ -160,6 +184,12 @@ export function schmelzwertEur(
 // ── Formatting / helpers ─────────────────────────────────────────────────────
 export function formatEur(eur: string): string {
   return Money.of(eur, "EUR").format()
+}
+
+/** Format integer CENTS as de-DE EUR (199999 → "1.999,99 €"). Bridge KPIs are
+ *  cents on the wire; never print raw cents. */
+export function formatCents(cents: number): string {
+  return Money.of((cents / 100).toFixed(2), "EUR").format()
 }
 
 /** Prefix a relative api photo path with the base URL for <Image>. */

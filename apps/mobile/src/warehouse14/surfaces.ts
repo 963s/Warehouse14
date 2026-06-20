@@ -6,7 +6,7 @@
  * `name` is the expo-router route name inside the (tabs) group (`index` is the
  * default-landing tab). The registry order is the tab order.
  */
-import { Boxes, LayoutDashboard, ScanLine, Users, type LucideIcon } from "lucide-react-native"
+import { Boxes, ScanLine, Users, Vault, type LucideIcon } from "lucide-react-native"
 
 export interface MobileSurface {
   /** expo-router route name under (tabs). `index` = default tab. */
@@ -39,8 +39,8 @@ export const SURFACES: readonly MobileSurface[] = [
   },
   {
     name: "dashboard",
-    label: "Dashboard",
-    description: "Kennzahlen — in Arbeit.",
-    icon: LayoutDashboard,
+    label: "Schatzkammer",
+    description: "Tagesquest, Live-Kennzahlen und Fortschritt.",
+    icon: Vault,
   },
 ] as const
