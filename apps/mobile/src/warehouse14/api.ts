@@ -38,6 +38,7 @@ import {
   shifts,
   tasksApi,
   transactionsApi,
+  whatsappApi,
   stepUpMiddleware,
   type ApiClient,
   type AppraisalCompleteBody,
@@ -133,6 +134,13 @@ import {
   type UpdateMarginBody,
   type UpdateMarginResponse,
   type UpdateTaskBody,
+  type WhatsAppAiStatusResponse,
+  type WhatsAppLinkCustomerResponse,
+  type WhatsAppMarkHandledResponse,
+  type WhatsAppSendBody,
+  type WhatsAppSendResponse,
+  type WhatsAppThreadDetail,
+  type WhatsAppThreadListResponse,
 } from "@warehouse14/api-client"
 import { Money } from "@warehouse14/domain/money"
 
@@ -572,6 +580,59 @@ export function publishToEbay(productId: string): Promise<EbayPublishResponse> {
   return ebayApi.publish(apiClient, productId)
 }
 
+// ── WhatsApp-Posteingang (the inbound/outbound conversation surface) ──────────
+// CLIENT-ONLY over the server inbox: the server owns the Meta provider, the
+// message store, and the lifecycle (queued → sent → delivered → read → failed).
+// These are thin pass-throughs to the already-typed `whatsappApi`. The reads
+// (threads, thread) are plain GETs; `send` is the one MUTATION here and rides
+// the same transparent step-up middleware as every other Owner write. `send`
+// resolves with `status: 'queued'` when no Meta credentials are configured (the
+// row is stored regardless) and rejects with `EXTERNAL_SERVICE_FAILED` on a
+// provider reject — the surface reads both honestly instead of faking a "sent".
+
+/** GET /api/whatsapp/threads — the conversation list (unread counts + preview). */
+export function listWhatsappThreads(): Promise<WhatsAppThreadListResponse> {
+  return whatsappApi.listThreads(apiClient)
+}
+
+/** GET /api/whatsapp/threads/:phone — one conversation with its full message log. */
+export function getWhatsappThread(phone: string): Promise<WhatsAppThreadDetail> {
+  return whatsappApi.getThread(apiClient, phone)
+}
+
+/**
+ * POST /api/whatsapp/send — send an outbound message. The ONLY mutation in this
+ * surface; Owner + step-up is transparent via stepUpMiddleware. Resolves
+ * `status: 'queued'` when Meta is not yet configured (stored, not delivered).
+ */
+export function sendWhatsapp(body: WhatsAppSendBody): Promise<WhatsAppSendResponse> {
+  return whatsappApi.send(apiClient, body)
+}
+
+/** PATCH /api/whatsapp/messages/:id/handled — mark an inbound message triaged. */
+export function markWhatsappHandled(messageId: string): Promise<WhatsAppMarkHandledResponse> {
+  return whatsappApi.markHandled(apiClient, messageId)
+}
+
+/** PATCH /api/whatsapp/messages/:id/link-customer — attach a known customer. */
+export function linkWhatsappCustomer(
+  messageId: string,
+  customerId: string,
+): Promise<WhatsAppLinkCustomerResponse> {
+  return whatsappApi.linkCustomer(apiClient, messageId, customerId)
+}
+
+/**
+ * PATCH /api/whatsapp/threads/:phone/ai-status — hand the thread to the AI
+ * assistant or take it over as a human. Owner + step-up (transparent).
+ */
+export function setWhatsappAiStatus(
+  phone: string,
+  aiActive: boolean,
+): Promise<WhatsAppAiStatusResponse> {
+  return whatsappApi.updateAiStatus(apiClient, phone, aiActive)
+}
+
 // ── Ledger (the GoBD audit feed — read-only history) ─────────────────────────
 export function listLedger(query: LedgerListQuery = {}): Promise<LedgerListResponse> {
   return ledgerQueryApi.list(apiClient, query)
@@ -798,6 +859,11 @@ export function describeError(err: unknown): string {
       }
       case "NOT_FOUND":
         return "Datensatz nicht gefunden."
+      case "EXTERNAL_SERVICE_FAILED":
+        // A downstream provider (e.g. the WhatsApp/Meta gateway) rejected the
+        // call. The message is the raw English provider text — never surface it.
+        // The nachricht was NOT delivered; say so plainly.
+        return "Der externe Dienst hat abgelehnt — die Aktion wurde nicht ausgeführt."
       default:
         return err.message || `Fehler (${err.code}).`
     }

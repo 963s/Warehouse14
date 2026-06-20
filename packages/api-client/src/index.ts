@@ -381,6 +381,7 @@ export {
 // ───────────────────────────────────────────────────────────────────────
 export {
   whatsappApi,
+  type WhatsAppAiStatusResponse,
   type WhatsAppLinkCustomerResponse,
   type WhatsAppMarkHandledResponse,
   type WhatsAppMessage,

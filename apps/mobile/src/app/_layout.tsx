@@ -75,6 +75,7 @@ export default function RootLayout() {
           <Stack.Screen name="ankauf" options={{ title: "Ankauf" }} />
           <Stack.Screen name="drucken" options={{ title: "Drucken" }} />
           <Stack.Screen name="ebay" options={{ title: "eBay-Kanal" }} />
+          <Stack.Screen name="whatsapp" options={{ title: "WhatsApp" }} />
           <Stack.Screen name="ausgaben" options={{ title: "Ausgaben" }} />
           <Stack.Screen name="finanzen" options={{ title: "Finanzen" }} />
           <Stack.Screen name="einstellungen" options={{ title: "Einstellungen" }} />
