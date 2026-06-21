@@ -420,9 +420,6 @@ function EventDetailDialog({
         >
           {/* ── Forensik (wer · woran · welches Gerät · Signatur) ──────────── */}
           <View className="gap-0.5 rounded-xl border bg-card px-3.5 py-2.5" style={{ borderColor: t.colors.border }}>
-            <DetailRow label="Ereignistyp">
-              <MonoValue>{row.eventType}</MonoValue>
-            </DetailRow>
             <DetailRow label="Akteur">
               <PlainValue>{actor.label}</PlainValue>
             </DetailRow>
