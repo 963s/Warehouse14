@@ -17,10 +17,13 @@ import { type Static, Type } from '@sinclair/typebox';
 
 export const CustomerListQuery = Type.Object({
   /**
-   * Free-text query. The route attempts THREE match strategies:
+   * Free-text query. The route attempts these match strategies:
    *   1. exact `email_blind_index = blind_index(q)` if `q` contains `@`
-   *   2. exact `phone_blind_index = blind_index(q)` if `q` matches `/^[+\d\s().-]{5,}$/`
-   *   3. ILIKE on decrypted full_name (last resort; PII decrypt cost paid once)
+   *   2. if `q` matches `/^[+\d\s().-]{5,}$/`: exact `phone_blind_index =
+   *      blind_index(q)` OR partial `customer_number ILIKE` (a typed-out
+   *      numeric Kundennummer must resolve, not dead-end on the phone index)
+   *   3. else: ILIKE on decrypted full_name OR partial `customer_number ILIKE`
+   *      (so `CUST-2026-000006`, `CUST`, `2026` resolve the way the UI promises)
    * Order: indexed matches first, fuzzy second.
    */
   q: Type.Optional(Type.String({ minLength: 1, maxLength: 128 })),

@@ -5,10 +5,17 @@
  *   • If `q` looks like an email (contains @) → exact lookup via
  *     `email_blind_index = blind_index(q)`. Sub-millisecond, no decrypt.
  *   • Else if `q` looks like a phone (`/^[+\d\s().\-]{5,}$/`) → exact lookup
- *     via `phone_blind_index = blind_index(q)`.
- *   • Else → fuzzy ILIKE on decrypted `full_name`. The decrypt happens INSIDE
- *     `withPii` so the per-request key binding is honoured. For V1 catalog
- *     size (<10k customers) sub-100 ms p95.
+ *     via `phone_blind_index = blind_index(q)`, OR a partial match on the
+ *     plaintext `customer_number` (so a typed-out Kundennummer like `000006`
+ *     resolves instead of silently dead-ending on the phone blind index).
+ *   • Else → fuzzy ILIKE on decrypted `full_name`, OR a partial match on
+ *     `customer_number` (so `CUST-2026-000006`, `CUST`, or `2026` resolve).
+ *     The decrypt happens INSIDE `withPii` so the per-request key binding is
+ *     honoured. For V1 catalog size (<10k customers) sub-100 ms p95.
+ *
+ * `customer_number` is a plaintext, uniquely-indexed, non-PII column, so an
+ * ILIKE on it is cheap and safe — and it is the identity the Owner-app shows as
+ * each customer's subtitle, so search MUST honour it (Name ODER Nummer).
  *
  * Whichever strategy matches, the result rows still get full-name decrypted
  * so the operator UI can show "John Smith — ku-001023 — KYC ✓".
@@ -47,10 +54,11 @@ const customersListRoute: FastifyPluginAsync = async (app) => {
     {
       schema: {
         tags: ['customers'],
-        summary: 'Paged customer search by name / email / phone (Day 8).',
+        summary: 'Paged customer search by name / Kundennummer / email / phone (Day 8).',
         description:
-          'Powers Ankauf customer-lookup. Indexed blind-index match for email + phone, ' +
-          'decrypted ILIKE fallback for name. Returns minimal projection — no DOB, no address.',
+          'Powers Ankauf customer-lookup + the Owner-app global search. Indexed blind-index ' +
+          'match for email + phone, ILIKE on the plaintext customer_number, decrypted ILIKE ' +
+          'fallback for name. Returns minimal projection — no DOB, no address.',
         querystring: CustomerListQuery,
         response: {
           200: CustomerListResponse,
@@ -71,16 +79,27 @@ const customersListRoute: FastifyPluginAsync = async (app) => {
       const excludeBlocked = req.query.excludeBlocked === true;
 
       const result = await app.withPii(async (tx) => {
-        // Build the strategy SQL. The single query covers all three cases
-        // via a CTE so the count + page come from the same plan.
+        // Partial, case-insensitive match on the plaintext Kundennummer — the
+        // identity the Owner-app renders as each customer's subtitle. ESCAPEd so
+        // a typed `%`/`_` is a literal, not a wildcard.
+        const numberLike = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+        const customerNumberClause = sql`customer_number ILIKE ${numberLike} ESCAPE '\\'`;
+
+        // Build the strategy SQL. The single query covers all cases via a CTE so
+        // the count + page come from the same plan.
         const matchClause: ReturnType<typeof sql> =
           q.length === 0
             ? sql`TRUE`
             : EMAIL_HINT.test(q)
-              ? sql`email_blind_index = blind_index(${q})`
+              ? // An `@` can never be a Kundennummer → email blind index only.
+                sql`email_blind_index = blind_index(${q})`
               : PHONE_HINT.test(q)
-                ? sql`phone_blind_index = blind_index(${q})`
-                : sql`decrypt_pii(full_name_encrypted) ILIKE ${'%' + q + '%'}`;
+                ? // A purely-numeric query is BOTH a possible phone AND a typed-out
+                  // Kundennummer (e.g. `000006`); try both so it never dead-ends.
+                  sql`(phone_blind_index = blind_index(${q}) OR ${customerNumberClause})`
+                : // Name fallback, OR the Kundennummer itself (`CUST-2026-000006`,
+                  // `CUST`, `2026`) — honouring the UI's "Name oder Nummer".
+                  sql`(decrypt_pii(full_name_encrypted) ILIKE ${'%' + q + '%'} OR ${customerNumberClause})`;
 
         const kycClause = kycVerifiedOnly ? sql`AND kyc_verified_at IS NOT NULL` : sql``;
         const blockedClause = excludeBlocked

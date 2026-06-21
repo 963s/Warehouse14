@@ -1,10 +1,13 @@
 /**
  * Suche — the Owner OS global search. One debounced free-text box that fans out
  * over the three things an Owner reaches for from the phone — an Artikel, a
- * Kunde, a recent Beleg — and routes each hit straight to the surface that owns
- * it (the product detail, the customer detail, the Verkauf storno feed). It is
+ * Kunde, a recent Beleg. An Artikel / Kunde hit routes straight to the surface
+ * that owns it (the product detail, the customer detail); a recent Beleg is an
+ * honest read-only confirmation (locator · total · time · storno state) — the
+ * app has no transaction-detail / late-storno screen yet, so the row shows the
+ * receipt for reference rather than dead-ending on a blank new-sale cart. It is
  * the fast path that keeps the Owner off the desktop cashier: type a name, an
- * SKU, a Kundennummer or a Beleg-Locator and jump.
+ * SKU, a Kundennummer or a Beleg-Locator and find it.
  *
  * Architecture (the shared spine, no new primitives):
  *   • One `useMultiQuery` fans out over products / customers / recent-Belege with
@@ -147,39 +150,57 @@ function HitLeading({ hit }: { hit: SearchHit }) {
   )
 }
 
-/** One result row — leading visual · title/subtitle · trailing value · chevron. */
+/** One result row — leading visual · title/subtitle · trailing value · chevron.
+ *  A hit WITHOUT a route (a recent Beleg) renders as a calm, non-pressable read:
+ *  no chevron, no press affordance — it shows the real receipt for reference and
+ *  honestly does not pretend to navigate anywhere. */
 function HitRow({ hit, onPress }: { hit: SearchHit; onPress: () => void }) {
   const t = useW14Theme()
   // A Beleg title is a machine locator — render it mono so it scans like a code.
   const titleMono = hit.kind === "transaction"
+  const navigable = hit.route != null
+
+  const body = (
+    <Card className="flex-row items-center gap-3 rounded-xl border px-4 py-3">
+      <HitLeading hit={hit} />
+      <View className="flex-1 gap-1">
+        <Text
+          className={titleMono ? "font-mono-medium text-sm" : "text-base font-semibold"}
+          numberOfLines={1}
+        >
+          {hit.title}
+        </Text>
+        {hit.subtitle ? (
+          <Text className="text-muted-foreground text-xs" numberOfLines={1}>
+            {hit.subtitle}
+          </Text>
+        ) : null}
+      </View>
+      {hit.trailingEur != null ? (
+        <Text className="text-sm font-semibold" numberOfLines={1}>
+          {formatEur(hit.trailingEur)}
+        </Text>
+      ) : null}
+      {navigable ? <ChevronRight size={t.icon.md} color={t.colors.mutedForeground} /> : null}
+    </Card>
+  )
+
+  // Informational, routeless hit → a plain read, not a button.
+  if (!navigable) {
+    return (
+      <View accessibilityLabel={hit.subtitle ? `${hit.title}, ${hit.subtitle}` : hit.title}>
+        {body}
+      </View>
+    )
+  }
+
   return (
     <PressableScale
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={hit.subtitle ? `${hit.title}, ${hit.subtitle}` : hit.title}
     >
-      <Card className="flex-row items-center gap-3 rounded-xl border px-4 py-3">
-        <HitLeading hit={hit} />
-        <View className="flex-1 gap-1">
-          <Text
-            className={titleMono ? "font-mono-medium text-sm" : "text-base font-semibold"}
-            numberOfLines={1}
-          >
-            {hit.title}
-          </Text>
-          {hit.subtitle ? (
-            <Text className="text-muted-foreground text-xs" numberOfLines={1}>
-              {hit.subtitle}
-            </Text>
-          ) : null}
-        </View>
-        {hit.trailingEur != null ? (
-          <Text className="text-sm font-semibold" numberOfLines={1}>
-            {formatEur(hit.trailingEur)}
-          </Text>
-        ) : null}
-        <ChevronRight size={t.icon.md} color={t.colors.mutedForeground} />
-      </Card>
+      {body}
     </PressableScale>
   )
 }
@@ -256,6 +277,9 @@ export default function SucheScreen() {
 
   const openHit = useCallback(
     (hit: SearchHit) => {
+      // A routeless hit (a recent Beleg) is informational — no destination to
+      // honour, so it never navigates. The row below is rendered non-pressable.
+      if (!hit.route) return
       haptics.selection()
       router.push({ pathname: hit.route.pathname, params: hit.route.params } as Href)
     },
@@ -268,10 +292,13 @@ export default function SucheScreen() {
   }, [])
 
   // Shape the settled per-source results into the flattened header+row list.
-  const { items, totalHits } = useMemo(() => {
+  // `settledForQuery` is non-null ONLY once the fan-out for the CURRENT debounced
+  // query has settled — so a refine in flight (data momentarily null under the
+  // re-keyed spine) yields null here and we fall back to the last good list.
+  const { items, totalHits, settledForQuery } = useMemo(() => {
     const out: ListItem[] = []
     let total = 0
-    if (!active) return { items: out, totalHits: 0 }
+    if (!active) return { items: out, totalHits: 0, settledForQuery: false }
 
     const productRows = (search.results.products.data?.items ?? []) as ProductListRow[]
     const customerRows = (search.results.customers.data?.items ?? []) as CustomerListRow[]
@@ -308,15 +335,31 @@ export default function SucheScreen() {
       total += section.hits.length
       for (const hit of section.hits) out.push({ type: "hit", hit })
     }
-    return { items: out, totalHits: total }
-  }, [active, debouncedQ, search.results])
+    return { items: out, totalHits: total, settledForQuery: search.isSettled }
+  }, [active, debouncedQ, search.results, search.isSettled])
 
-  // First fan-out still settling with nothing to show yet.
-  const firstLoading = active && search.status === "loading" && !search.isSettled
+  // Stale-while-revalidate at the screen level. The spine re-keys per query, so
+  // `useQuery` nulls `data` on each refine to never show query A's rows for B —
+  // which alone would tear the whole list down to a skeleton on every keystroke.
+  // We hold the LAST settled list in a ref and keep rendering it while the next
+  // fan-out is in flight, so refining freshens in place instead of flashing.
+  const lastShown = useRef<{ items: ListItem[]; totalHits: number }>({ items: [], totalHits: 0 })
+  if (settledForQuery) lastShown.current = { items, totalHits }
+  // Reset the retained list the moment the box is cleared / falls below the
+  // threshold, so a fresh search never momentarily shows a prior query's hits.
+  if (!active) lastShown.current = { items: [], totalHits: 0 }
+
+  const shownItems = settledForQuery ? items : lastShown.current.items
+  const shownTotal = settledForQuery ? totalHits : lastShown.current.totalHits
+  const hasShownHits = shownItems.length > 0
+
+  // First fan-out still settling AND nothing prior to keep on screen — the only
+  // moment the full skeleton is honest. A refine with prior hits stays in place.
+  const firstLoading = active && !settledForQuery && !hasShownHits
   // Every source failed — the surface may show one error state.
   const allFailed = active && search.allFailed
-  // Settled, active, and not a single hit across all (healthy) sections.
-  const noHits = active && search.isSettled && !allFailed && totalHits === 0
+  // Settled (for THIS query), active, and not a single hit across all sections.
+  const noHits = active && settledForQuery && !allFailed && shownTotal === 0
 
   const header = useMemo(
     () => (
@@ -357,7 +400,7 @@ export default function SucheScreen() {
   return (
     <View className="flex-1 bg-background">
       <FlatList
-        data={items}
+        data={shownItems}
         keyExtractor={(it, i) =>
           it.type === "header" ? `h:${it.kind}` : `r:${it.hit.kind}:${it.hit.id}:${i}`
         }

@@ -12,8 +12,10 @@
  *   • the client-side Beleg matcher (the /transactions/recent feed has NO server
  *     `q`, so the last-24h sales are filtered here on the receipt locator —
  *     honestly scoped: the screen labels the section "Letzte Belege"),
- *   • the route target per hit (so a tap deep-links into Artikel / Kunde /
- *     Verkauf), and the small German helpers (initials, the meta line).
+ *   • the route target per hit — an Artikel taps into the product detail, a
+ *     Kunde into the customer detail; a Beleg has NO destination yet (`route:
+ *     null`) so it renders as an honest read, never a dead-end tap — and the
+ *     small German helpers (initials, the meta line).
  *
  * Honesty rule: nothing here fabricates a value. A shaper only ever copies real
  * fields off a real wire row; the recent-Beleg matcher filters, it never invents
@@ -73,8 +75,12 @@ export interface SearchHit {
   subtitle: string | null
   /** A trailing money string (wire EUR) the screen formats, or null. */
   trailingEur: string | null
-  /** Where a tap deep-links. */
-  route: SearchRoute
+  /**
+   * Where a tap deep-links, or `null` when this hit has no destination to honour
+   * (e.g. a recent Beleg: the app has no transaction-detail / late-storno screen
+   * yet, so the row is informational only — it must NOT pretend to navigate).
+   */
+  route: SearchRoute | null
 }
 
 // ── Shapers (real wire row → SearchHit) ─────────────────────────────────────────
@@ -127,10 +133,14 @@ export function customerHit(row: CustomerListRow): SearchHit {
 }
 
 /**
- * A recent-Beleg hit → routes to the Verkauf surface (which owns the last-24h
- * sales + the late-storno path). The locator is the title; the timestamp is the
- * subtitle (formatted by the screen). A storno reversal is flagged in the
- * subtitle prefix the screen builds, so we only lift the raw fields here.
+ * A recent-Beleg hit. It is INFORMATIONAL ONLY (`route: null`): it surfaces the
+ * real receipt — locator (title), total (trailing), time + storno state
+ * (subtitle the screen builds) — so the Owner can confirm "yes, that's the Beleg
+ * I rang up", but it does NOT navigate. There is no transaction-detail / late-
+ * storno screen in the app yet, and the new-sale POS (`/verkauf`) reads no Beleg
+ * params — so routing there would land the Owner on a blank cart. Honest > a
+ * dead-end: the row is a calm read, not a false promise. (When a real Beleg /
+ * storno surface ships, give this hit its `route` then.)
  */
 export function transactionHit(row: RecentTransactionItem, subtitle: string | null): SearchHit {
   return {
@@ -139,7 +149,7 @@ export function transactionHit(row: RecentTransactionItem, subtitle: string | nu
     title: row.receiptLocator,
     subtitle,
     trailingEur: row.totalEur,
-    route: { pathname: "/verkauf" },
+    route: null,
   }
 }
 
