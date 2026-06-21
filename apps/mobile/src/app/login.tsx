@@ -141,11 +141,21 @@ export default function LoginScreen(): ReactNode {
     return <OnboardingIntro onDone={() => setPin("")} />
   }
 
-  // Compact phones get a tighter hero so the pad never crowds the home bar.
+  // Compact phones tighten the internal gaps so the centred group breathes
+  // without overflowing on a short screen.
   const compact = height < 720
 
   // The honest status line: ready → signing in → the themed error.
   const statusLabel = error ?? (busy ? "Wird angemeldet …" : "Bitte gib deine PIN ein")
+
+  // The hero + PIN pad are ONE optically-centred group, not three blocks spread
+  // edge-to-edge. The old `justify-between` stretched the stack to fill any
+  // height, so on a tall phone the mark floated high and the pad sank toward the
+  // home bar. Here the brand + pad live in a single `justify-center` column that
+  // stays composed at any device height, and the footer is a separate,
+  // non-growing element pinned just above the home indicator.
+  const heroGap = compact ? t.space.x5 : t.space.x6
+  const groupGap = compact ? t.space.x6 : t.space.x8
 
   return (
     <View className="bg-background flex-1">
@@ -155,62 +165,77 @@ export default function LoginScreen(): ReactNode {
       <BrassCanvas />
 
       <View
-        className="flex-1 items-center justify-between"
+        className="flex-1 items-center"
         style={{
-          paddingTop: insets.screen.top + (compact ? t.space.x4 : t.space.x7),
-          paddingBottom: insets.stickyBottom + t.space.x2,
+          paddingTop: insets.screen.top + t.space.x2,
+          paddingBottom: insets.stickyBottom,
           paddingHorizontal: t.space.x6,
         }}
       >
-        {/* Hero — the real brand mark + a calm welcome. Settles with the spine's
-            screen-enter; the mark itself breathes in once. */}
-        <Animated.View
-          entering={screenEnter(reduceMotion)}
-          className="items-center"
-          style={{ gap: compact ? t.space.x4 : t.space.x5, paddingTop: compact ? 0 : t.space.x4 }}
+        {/* The centred brand + PIN group. `flex-1 justify-center` optically
+            balances it in the space the footer leaves, on every screen height;
+            the max width keeps it composed on tablets. */}
+        <View
+          className="w-full flex-1 items-center justify-center"
+          style={{ maxWidth: 420, gap: groupGap }}
         >
-          <WarehouseMark size="lg" />
-          <View className="items-center" style={{ gap: t.space.x2 }}>
-            <Text
-              className="text-primary text-2xs font-semibold uppercase"
-              style={{ letterSpacing: 2 }}
-            >
-              Warehouse 14
-            </Text>
-            <Text className="text-foreground text-center text-3xl font-bold">Willkommen zurück</Text>
-          </View>
-        </Animated.View>
-
-        {/* PIN entry — dots + brass keypad. Carries the shake + flash on error. */}
-        <View className="w-full items-center" style={{ gap: t.space.x5 }}>
-          <PinPad
-            filled={pin.length}
-            length={PIN_LENGTH}
-            onDigit={onDigit}
-            onBackspace={onBackspace}
-            errorNonce={errorNonce}
-            disabled={busy}
-          />
-
-          {/* One reserved status line so the keypad never jumps; it carries the
-              calm prompt, the signing-in state, or the themed error in place. */}
-          <View
-            style={{ minHeight: 22, paddingHorizontal: t.space.x2 }}
-            className="items-center justify-center"
+          {/* Hero — the real brand mark + a calm welcome. Settles with the spine's
+              screen-enter; the mark itself breathes in once. */}
+          <Animated.View
+            entering={screenEnter(reduceMotion)}
+            className="items-center"
+            style={{ gap: heroGap }}
           >
-            <Animated.View key={statusLabel} entering={itemEnter(0, reduceMotion)}>
+            <WarehouseMark size="lg" />
+            <View className="items-center" style={{ gap: t.space.x2 }}>
               <Text
-                className={`text-center text-sm font-medium ${error ? "text-destructive" : "text-muted-foreground"}`}
-                numberOfLines={2}
+                className="text-primary text-2xs font-semibold uppercase"
+                style={{ letterSpacing: 2 }}
               >
-                {statusLabel}
+                Warehouse 14
               </Text>
-            </Animated.View>
+              <Text className="text-foreground font-display-bold text-center text-4xl leading-tight">
+                Willkommen zurück
+              </Text>
+            </View>
+          </Animated.View>
+
+          {/* PIN entry — dots + brass keypad. Carries the shake + flash on error. */}
+          <View className="w-full items-center" style={{ gap: t.space.x5 }}>
+            <PinPad
+              filled={pin.length}
+              length={PIN_LENGTH}
+              onDigit={onDigit}
+              onBackspace={onBackspace}
+              errorNonce={errorNonce}
+              disabled={busy}
+            />
+
+            {/* One reserved status line so the keypad never jumps; it carries the
+                calm prompt, the signing-in state, or the themed error in place. */}
+            <View
+              style={{ minHeight: 22, paddingHorizontal: t.space.x2 }}
+              className="items-center justify-center"
+            >
+              <Animated.View key={statusLabel} entering={itemEnter(0, reduceMotion)}>
+                <Text
+                  className={`text-center text-sm font-medium ${error ? "text-destructive" : "text-muted-foreground"}`}
+                  numberOfLines={2}
+                >
+                  {statusLabel}
+                </Text>
+              </Animated.View>
+            </View>
           </View>
         </View>
 
-        {/* Footer — re-open the intro + the honest DEV connection hint. */}
-        <View className="w-full items-center" style={{ gap: t.space.x3 }}>
+        {/* Footer — re-open the intro + the honest DEV connection hint. Lives
+            outside the centred group as a fixed-height element pinned above the
+            home indicator, so it never tugs the brand/pad off centre. */}
+        <View
+          className="w-full items-center"
+          style={{ maxWidth: 420, gap: t.space.x3, paddingTop: t.space.x4 }}
+        >
           <PressableScale
             onPress={() => {
               haptics.selection()
