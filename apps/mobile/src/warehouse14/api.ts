@@ -15,8 +15,6 @@
  * free functions taking the client first.
  */
 import {
-  ApiError,
-  ApiNetworkError,
   appointments,
   appraisalsApi,
   authPin,
@@ -53,7 +51,6 @@ import {
   type AvailableSlotsQuery,
   type BookAppointmentRequest,
   type BridgeSummary,
-  type CategoryNode,
   type CategoryTreeResponse,
   type CreateCategoryBody,
   type CreateCategoryResponse,
@@ -83,7 +80,6 @@ import {
   type EbayHistoryQuery,
   type EbayHistoryResponse,
   type EbayPublishResponse,
-  type EbayState,
   type EbayTransitionBody,
   type EbayTransitionResponse,
   type CustomerKycStampBody,
@@ -353,9 +349,7 @@ export function listClosings(): Promise<{ items: ClosingListItem[] }> {
 
 /** POST /api/closings/finalize — write the legal Z-Bon (ADMIN + step-up).
  *  Omit `businessDay` for the current day. */
-export function finalizeClosing(
-  businessDay?: string,
-): ReturnType<typeof closingsApi.finalize> {
+export function finalizeClosing(businessDay?: string): ReturnType<typeof closingsApi.finalize> {
   return closingsApi.finalize(apiClient, businessDay)
 }
 
@@ -436,9 +430,7 @@ export function listAppointments(
   return appointments.list(apiClient, query)
 }
 
-export function availableSlots(
-  query: AvailableSlotsQuery,
-): Promise<{ slots: AvailableSlot[] }> {
+export function availableSlots(query: AvailableSlotsQuery): Promise<{ slots: AvailableSlot[] }> {
   return appointments.availableSlots(apiClient, query)
 }
 
@@ -565,9 +557,7 @@ export function listBelegtext(query: ListBelegtextQuery = {}): Promise<ListBeleg
 }
 
 /** Resolve the current body text for a given Belegtext kind + language. */
-export function currentBelegtext(
-  query: CurrentBelegtextQuery,
-): Promise<CurrentBelegtextResponse> {
+export function currentBelegtext(query: CurrentBelegtextQuery): Promise<CurrentBelegtextResponse> {
   return belegtextApi.current(apiClient, query)
 }
 
@@ -579,9 +569,7 @@ export function currentBelegtext(
  * Owner + step-up, transparent via stepUpMiddleware. The surface gates it
  * behind the explicit FiscalConfirmSheet; we never reimplement the close-out.
  */
-export function publishBelegtext(
-  body: PublishBelegtextBody,
-): Promise<PublishBelegtextResponse> {
+export function publishBelegtext(body: PublishBelegtextBody): Promise<PublishBelegtextResponse> {
   return belegtextApi.publish(apiClient, body)
 }
 
@@ -798,208 +786,10 @@ export function absoluteUrl(pathOrUrl: string): string {
   return `${API_BASE_URL}${pathOrUrl.startsWith("/") ? "" : "/"}${pathOrUrl}`
 }
 
-/** One ajv error entry as Fastify forwards it in a 400's `details` array. We
- *  only read the field path; the English keyword/message stays hidden. */
-interface AjvErrorDetail {
-  instancePath?: string
-}
-
-/** German labels for the body fields the server can reject, keyed by the
- *  top-level JSON path ajv reports in `instancePath` (e.g. "/dateOfBirth").
- *  Spans every surface's forms — field names are unique across domains, so a
- *  bad-format 400 (e.g. a due date the server reads as the wrong format) names
- *  the offending field in German instead of leaking the raw English ajv text. */
-const VALIDATION_FIELD_LABELS: Record<string, string> = {
-  // Kunden
-  fullName: "Name",
-  dateOfBirth: "Geburtsdatum",
-  email: "E-Mail-Adresse",
-  phone: "Telefonnummer",
-  address: "Adresse",
-  vatId: "USt-IdNr.",
-  notes: "Notiz",
-  // Aufgaben
-  title: "Titel",
-  description: "Beschreibung",
-  dueDate: "Fälligkeitsdatum",
-  cancellationReason: "Abbruchgrund",
-}
-
 /**
- * Turn a VALIDATION_ERROR's ajv detail into a field-specific German line, so a
- * server-side reject the client missed (a bad calendar date, a too-short phone)
- * names the offending field in German instead of leaking the raw English ajv
- * message. Returns null when no known field can be read — the caller then uses
- * a generic German fallback. The English `err.message` is never surfaced.
+ * Fehlertexte. The error→German mapping (every `ApiErrorCode`, the CONFLICT
+ * constraint tokens, the ajv 400 field paths) lives in the central German text
+ * spine. Re-exported here so the 60+ existing `import { describeError } from
+ * "@/warehouse14/api"` call sites keep working — there is one implementation.
  */
-function describeValidationError(err: ApiError): string | null {
-  const details = err.details
-  if (!Array.isArray(details)) return null
-  for (const entry of details as AjvErrorDetail[]) {
-    const path = entry?.instancePath
-    if (typeof path !== "string" || path.length === 0) continue
-    // "/dateOfBirth" → "dateOfBirth"; "/address/city" → "address".
-    const field = path.split("/").filter(Boolean)[0]
-    const label = field ? VALIDATION_FIELD_LABELS[field] : undefined
-    if (label) return `${label} ungültig — bitte prüfen.`
-  }
-  return null
-}
-
-/** Map an ApiError to a themed German message (PIN lockout, device, etc.). */
-export function describeError(err: unknown): string {
-  if (err instanceof ApiError) {
-    switch (err.code) {
-      case "PIN_LOCKED": {
-        // The api-cloud error-handler serializes the 423 lockout as
-        // `details.lockedUntil` (an ISO string) and sets NO Retry-After header
-        // (apps/api-cloud/src/plugins/error-handler.ts + lib/auth-policy.ts).
-        // Read that timestamp and derive the remaining minutes ourselves; only
-        // show the countdown when it's a future instant we can trust.
-        const lockedUntil = (err.details as { lockedUntil?: string } | undefined)?.lockedUntil
-        const untilMs = lockedUntil ? Date.parse(lockedUntil) : NaN
-        const remainingMs = Number.isFinite(untilMs) ? untilMs - Date.now() : NaN
-        const mins = Number.isFinite(remainingMs) && remainingMs > 0 ? Math.ceil(remainingMs / 60000) : null
-        return mins
-          ? `PIN gesperrt — in ${mins} Min. erneut versuchen.`
-          : "PIN gesperrt — bitte später erneut versuchen."
-      }
-      case "RATE_LIMITED":
-        // The 429 carries the raw English message ("Rate limit exceeded: 10 per
-        // 1 minute. Retry after 13977ms.") with no structured retry details, so
-        // surface a clean German throttle line instead of the wire text — and no
-        // fabricated countdown, since the ms in the message isn't a reliable
-        // structured field.
-        return "Zu viele Versuche — bitte einen Moment warten und erneut versuchen."
-      case "UNAUTHORIZED":
-        return err.message || "Falsche PIN."
-      case "DEVICE_NOT_AUTHORIZED":
-        return "Gerät nicht autorisiert (dev: Fingerprint prüfen)."
-      case "FORBIDDEN":
-        return "Keine Berechtigung für diese Aktion."
-      case "STEP_UP_REQUIRED":
-        return "PIN-Bestätigung erforderlich."
-      case "VALIDATION_ERROR":
-        // The backend message is the raw English ajv string ("body/phone must
-        // NOT have fewer than 4 characters") — never surface it to a German
-        // operator. Client validation catches most of these, but the server's
-        // format/length rules are stricter, so map the offending field (read
-        // from the ajv detail) to a precise German line; fall back to a generic
-        // one when we cannot tell which field.
-        return describeValidationError(err) ?? "Eingabe ungültig — bitte die Angaben prüfen."
-      case "CONFLICT": {
-        // A 409 carries the raw English message (a DB trigger's RAISE text, a
-        // domain error, or a Postgres constraint name) verbatim — never surface
-        // it to a German operator. Match the stable tokens to an actionable
-        // German line; the order is most-specific first.
-        const msg = err.message ?? ""
-        // ── Kunden (Blind-Index-Eindeutigkeit) ────────────────────────────────
-        if (msg.includes("customers_email_blind_index_active_uq")) {
-          return "Diese E-Mail-Adresse ist bereits einem Kunden zugeordnet."
-        }
-        if (msg.includes("customers_phone_blind_index_active_uq")) {
-          return "Diese Telefonnummer ist bereits einem Kunden zugeordnet."
-        }
-        // ── Termine ───────────────────────────────────────────────────────────
-        // Illegal status step (DB trigger, ERRCODE check_violation → 409):
-        // "Invalid appointment status transition: CHECKED_IN → CONFIRMED (row …)".
-        if (msg.includes("Invalid appointment status transition")) {
-          return "Dieser Statuswechsel ist nicht möglich. Bitte die Termin-Ansicht aktualisieren."
-        }
-        // Double-book: the chosen slot was taken (in-txn re-check or the
-        // no-overlap EXCLUDE on book) — "Selected slot is no longer available."
-        if (msg.includes("Selected slot is no longer available")) {
-          return "Dieser Termin-Slot ist nicht mehr frei. Bitte eine andere Zeit wählen."
-        }
-        // Reschedule overlap: the no-staff-overlap EXCLUDE fires on the clone
-        // INSERT and surfaces the raw constraint name in the message.
-        if (msg.includes("appointments_no_staff_overlap")) {
-          return "Zu dieser Zeit liegt bereits ein Termin. Bitte eine andere Zeit wählen."
-        }
-        // ── Sammlungen (Kategorien-Verwaltung) ────────────────────────────────
-        // Duplicate slug: the create/rename routes derive the slug from the name
-        // and raise `Slug "gold" already exists.` on the categories_slug_uq
-        // collision. The operator never sees the slug as a separate field, so
-        // name the conflict in their vocabulary (Kurzname = slug).
-        if (msg.includes("already exists.")) {
-          return "Eine Sammlung mit diesem Kurznamen gibt es bereits. Bitte einen anderen Namen wählen."
-        }
-        // Delete refused because products still point at the category — the route
-        // raises `Category … is assigned to N product(s). Unassign first.` Pull
-        // the count out of the English message so the line stays a real number.
-        if (msg.includes("is assigned to") && msg.includes("product(s)")) {
-          const n = msg.match(/is assigned to (\d+) product/)?.[1]
-          return n
-            ? `Diese Sammlung ist noch ${n} Artikel${n === "1" ? "" : "n"} zugeordnet. Bitte zuerst die Zuordnung lösen.`
-            : "Dieser Sammlung sind noch Artikel zugeordnet. Bitte zuerst die Zuordnung lösen."
-        }
-        // Delete refused because a child category exists — the route raises
-        // `Category … has N subcategory/-ies. Delete or re-parent first.`
-        if (msg.includes("subcategory/-ies")) {
-          const n = msg.match(/has (\d+) subcategory/)?.[1]
-          return n
-            ? `Diese Sammlung hat noch ${n} Untersammlung${n === "1" ? "" : "en"}. Bitte diese zuerst löschen oder verschieben.`
-            : "Diese Sammlung hat noch Untersammlungen. Bitte diese zuerst löschen oder verschieben."
-        }
-        // ── Kunden-Vertrauensstufe (KYC-Heraufstufung) ────────────────────────
-        // The ONLY 409 that the KYC/Ausweis line truthfully describes:
-        // `TrustConflictError` from the customer-trust route raises
-        // "cannot promote to {VERIFIED|VIP} without a prior physical-ID check …".
-        // Gate the KYC step on that token — never blame KYC for an unrelated
-        // conflict (e.g. a server-side constraint bug on a fully-verified seller),
-        // which would send the operator into a dead-end loop with no real fix.
-        if (msg.includes("without a prior physical-ID check")) {
-          return "Aktion nicht möglich — zuerst die KYC-Prüfung (Ausweis) bestätigen."
-        }
-        // Otherwise it's an unrecognised conflict. Stay honest: don't surface the
-        // raw English, don't fabricate a cause we can't prove. A neutral,
-        // actionable German line — and the §-weight stays visible upstream.
-        return "Aktion derzeit nicht möglich — der aktuelle Stand passt nicht mehr. Bitte aktualisieren und erneut versuchen."
-      }
-      // ── Fiskal- + Inventar-Codes der Verkauf/Ankauf-Geldwege ────────────────
-      // Diese tragen ihren EIGENEN error.code (NICHT "CONFLICT"), umgehen also
-      // den CONFLICT-Zweig und landeten zuvor im default → roher englischer Text
-      // auf dem Geldweg. Jeder bekommt eine handlungsleitende deutsche Zeile.
-      case "PRODUCT_NOT_RESERVABLE":
-        // Der häufigste Renner-Fall: der Artikel wurde zwischenzeitlich
-        // reserviert/verkauft (oder existiert nicht mehr). Wir haben ihn NICHT
-        // in den Warenkorb gelegt — sag das klar, ohne den englischen Wortlaut.
-        return "Dieser Artikel ist nicht mehr verfügbar — er wurde bereits reserviert oder verkauft."
-      case "CLOSING_DAY_FINALIZED":
-        // Nach dem Z-Bon ist der Kassentag festgeschrieben (ADR-0008 +
-        // KassenSichV); eine weitere Buchung ist erst am neuen Tag möglich.
-        return "Der Kassentag ist bereits abgeschlossen (Z-Bon). Eine Buchung ist erst nach dem nächsten Kassenstart möglich."
-      case "KYC_REQUIRED":
-        // §10 GwG / §259 StGB: ohne geprüfte Ausweis-Identität ist die Buchung
-        // unzulässig. Die Schwelle/der Grund stecken in der Server-Meldung, aber
-        // wir surfacen eine ruhige, handlungsleitende deutsche Zeile.
-        return "Ausweis-Identifikation erforderlich — bitte zuerst einen geprüften Kunden zuordnen."
-      case "SANCTIONS_BLOCK":
-        // Sanktionslisten-Treffer: harte Sperre (GwG). Niemals weich umgehen.
-        return "Sanktionslisten-Treffer — die Buchung ist gesperrt. Bitte intern prüfen."
-      case "STORNO_OF_STORNO":
-        // Ein Storno kann nicht erneut storniert werden (Hash-Kette/GoBD).
-        return "Eine Stornierung kann nicht erneut storniert werden."
-      case "NOT_FOUND":
-        return "Datensatz nicht gefunden."
-      case "EXTERNAL_SERVICE_FAILED":
-        // A downstream provider (e.g. the WhatsApp/Meta gateway) rejected the
-        // call. The message is the raw English provider text — never surface it.
-        // The nachricht was NOT delivered; say so plainly.
-        return "Der externe Dienst hat abgelehnt — die Aktion wurde nicht ausgeführt."
-      default:
-        return err.message || `Fehler (${err.code}).`
-    }
-  }
-  // Transport failures aren't ApiError subclasses, so their `.message` is the
-  // raw English string ("Network request failed" / a TimeoutError message) on
-  // React Native. Map them to a German line — distinguishing a timeout (the
-  // request reached the network but didn't answer in time) from a hard offline.
-  if (err instanceof ApiNetworkError) {
-    const timedOut = (err.cause as { name?: string } | undefined)?.name === "TimeoutError"
-    return timedOut
-      ? "Zeitüberschreitung — der Server antwortet nicht. Bitte erneut versuchen."
-      : "Keine Verbindung zum Server. Bitte Internetverbindung prüfen."
-  }
-  return err instanceof Error ? err.message : String(err)
-}
+export { describeError } from "./german-text"
