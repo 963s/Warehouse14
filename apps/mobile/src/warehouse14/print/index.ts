@@ -1,12 +1,15 @@
 /**
  * Warehouse14 Owner OS — the Print abstraction.
  *
- * The clean, no-heavy-native-dep print/share spine for receipts + labels. It has
- * two honest tiers (see capabilities.ts):
+ * The clean print/share spine for receipts + labels, built on Expo config-plugin
+ * modules (autolinked at prebuild — no heavy native dep). It has two honest tiers
+ * (see capabilities.ts):
  *
- *   • SHARE — render a receipt/label to a file and hand it to the OS share sheet
- *     (RN `Share` + expo-file-system, both already present). From there the
- *     owner saves a PDF, AirPrints, or sends it. This ships today.
+ *   • SYSTEM PRINT + PDF — render a receipt/label to HTML and hand it to the OS:
+ *     `printPrintable()` opens the platform print dialog (AirPrint on iOS, the
+ *     Android print framework on Android) for a one-tap print or "Save as PDF";
+ *     `sharePdfPrintable()` renders a real PDF and shares it via `expo-sharing`
+ *     (iOS + Android). This ships today.
  *   • DIRECT ESC/POS — streaming to a Bluetooth/LAN thermal printer. NOT in this
  *     build (needs a native transport + a custom dev-client). The surface shows
  *     an honest locked state pointing at the desktop cashier, with the precise
@@ -15,7 +18,7 @@
  *   types          — ReceiptDoc / LabelDoc / Printable (decimal-EUR-string docs).
  *   capabilities   — runtime capability detection + the ESC/POS requirement copy.
  *   render-html    — pure HTML (PDF-able) + monospace-text renderers.
- *   print-service  — sharePrintable(): write a temp file + open the share sheet.
+ *   print-service  — printPrintable() + sharePdfPrintable(): print / share a PDF.
  *   PrintPreview   — the on-screen, native preview that mirrors the printed doc.
  */
 export type {
@@ -35,9 +38,9 @@ export {
 export { renderHtml, renderText } from "./render-html"
 
 export {
-  sharePrintable,
-  type PrintFormat,
-  type ShareResult,
+  printPrintable,
+  sharePdfPrintable,
+  type PrintOutcome,
 } from "./print-service"
 
 export { PrintPreview, type PrintPreviewProps } from "./PrintPreview"

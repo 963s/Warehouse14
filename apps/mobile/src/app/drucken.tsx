@@ -25,11 +25,11 @@ import { View } from "react-native"
 import type { ProductListRow } from "@warehouse14/api-client"
 import {
   Check,
+  FileText,
   Info,
   Monitor,
   Printer,
   Search,
-  Share2,
   Tag,
 } from "lucide-react-native"
 
@@ -42,8 +42,9 @@ import { CONDITION_LABEL, METAL_LABEL } from "@/warehouse14/product-ui"
 import {
   escposRequirement,
   getPrintCapabilities,
+  printPrintable,
   PrintPreview,
-  sharePrintable,
+  sharePdfPrintable,
   type LabelDoc,
   type Printable,
 } from "@/warehouse14/print"
@@ -96,10 +97,11 @@ export default function DruckenScreen() {
   const t = useW14Theme()
   const caps = useMemo(() => getPrintCapabilities(), [])
 
-  // ── Selection + share state ────────────────────────────────────────────────
+  // ── Selection + print/share state ──────────────────────────────────────────
   const [selected, setSelected] = useState<ProductListRow | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [shareError, setShareError] = useState<string | null>(null)
+  // Which action is running, so each button shows its own "wird vorbereitet".
+  const [busy, setBusy] = useState<null | "print" | "pdf">(null)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   // ── Search (debounced, mirrors Verkauf/Lager) ──────────────────────────────
   const [q, setQ] = useState("")
@@ -122,17 +124,31 @@ export default function DruckenScreen() {
     ? { type: "labels", docs: [labelForProduct(selected)] }
     : null
 
-  async function onShare(): Promise<void> {
-    if (!printable) return
-    setBusy(true)
-    setShareError(null)
+  // One-tap print — opens the OS print dialog (AirPrint / Android print framework).
+  async function onPrint(): Promise<void> {
+    if (!printable || busy) return
+    setBusy("print")
+    setActionError(null)
     haptics.selection()
-    const res = await sharePrintable(printable, { dialogTitle: "Etikett teilen" })
-    setBusy(false)
+    const res = await printPrintable(printable)
+    setBusy(null)
     if (res.status === "ok") haptics.success()
-    else if (res.status === "unsupported") setShareError(res.reason)
-    else if (res.status === "error") setShareError(res.message)
+    else if (res.status === "unsupported") setActionError(res.reason)
+    else if (res.status === "error") setActionError(res.message)
     // "dismissed" is a normal user choice — no error, no haptic.
+  }
+
+  // Secondary — render a real PDF and hand it to the OS share sheet.
+  async function onSharePdf(): Promise<void> {
+    if (!printable || busy) return
+    setBusy("pdf")
+    setActionError(null)
+    haptics.selection()
+    const res = await sharePdfPrintable(printable, { dialogTitle: "Etikett als PDF teilen" })
+    setBusy(null)
+    if (res.status === "ok") haptics.success()
+    else if (res.status === "unsupported") setActionError(res.reason)
+    else if (res.status === "error") setActionError(res.message)
   }
 
   return (
@@ -147,14 +163,14 @@ export default function DruckenScreen() {
           <Text className="text-2xl font-display-semibold leading-tight">Drucken</Text>
         </View>
         <Text className="text-muted-foreground text-sm">
-          Etiketten und Belege als PDF teilen oder per AirPrint senden.
+          Etiketten und Belege per AirPrint drucken oder als PDF teilen.
         </Text>
       </View>
 
       {/* What this surface can do, honestly framed. */}
       <SectionCard
-        title="Etikett teilen"
-        subtitle="Artikel wählen, Vorschau prüfen, als PDF teilen oder per AirPrint senden."
+        title="Etikett drucken"
+        subtitle="Artikel wählen, Vorschau prüfen, per AirPrint drucken oder als PDF teilen."
         icon={Tag}
       >
         <View className="flex-row items-center gap-2 rounded-lg border border-border bg-background px-3">
@@ -196,7 +212,7 @@ export default function DruckenScreen() {
                     }
                     onPress={() => {
                       haptics.selection()
-                      setShareError(null)
+                      setActionError(null)
                       setSelected(isSel ? null : p)
                     }}
                     hideChevron
@@ -212,28 +228,43 @@ export default function DruckenScreen() {
       {printable ? (
         <SectionCard
           title="Vorschau"
-          subtitle="Genau dieses Etikett wird geteilt — alle Werte sind echt."
+          subtitle="Genau dieses Etikett wird gedruckt — alle Werte sind echt."
           icon={Printer}
         >
           <PrintPreview printable={printable} />
 
-          {shareError ? (
-            <InlineError message={shareError} onDismiss={() => setShareError(null)} />
+          {actionError ? (
+            <InlineError message={actionError} onDismiss={() => setActionError(null)} />
           ) : null}
 
+          {/* PRIMARY — one-tap: open the OS print dialog (AirPrint / Android). */}
           <Button
             size="xl"
-            onPress={() => void onShare()}
-            disabled={busy || !caps.canExportDocument}
-            accessibilityLabel="Etikett teilen oder als PDF sichern"
+            onPress={() => void onPrint()}
+            disabled={busy !== null || !caps.canPrintNative}
+            accessibilityLabel="Etikett drucken"
           >
-            <Share2 size={t.icon.sm} color={t.colors.primaryForeground} />
-            <Text>{busy ? "Wird vorbereitet…" : "Teilen / als PDF"}</Text>
+            <Printer size={t.icon.sm} color={t.colors.primaryForeground} />
+            <Text>{busy === "print" ? "Wird vorbereitet…" : "Etikett drucken"}</Text>
           </Button>
+
+          {/* SECONDARY — render a PDF and share it (Dateien, Mail, …). */}
+          {caps.canSharePdf ? (
+            <Button
+              variant="outline"
+              size="xl"
+              onPress={() => void onSharePdf()}
+              disabled={busy !== null}
+              accessibilityLabel="Etikett als PDF teilen"
+            >
+              <FileText size={t.icon.sm} color={t.colors.primary} />
+              <Text>{busy === "pdf" ? "Wird vorbereitet…" : "Als PDF teilen"}</Text>
+            </Button>
+          ) : null}
 
           {!caps.canExportDocument ? (
             <Text className="text-muted-foreground text-xs leading-5">
-              Auf diesem Gerät ist das Teilen nicht verfügbar.
+              Auf diesem Gerät ist das Drucken nicht verfügbar.
             </Text>
           ) : null}
         </SectionCard>

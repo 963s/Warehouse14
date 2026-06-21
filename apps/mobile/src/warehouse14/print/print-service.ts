@@ -1,116 +1,176 @@
 /**
  * print-service — the side-effecting layer of the Print abstraction: take a
- * `Printable`, render it (render-html), write it to a cache file
- * (expo-file-system), and hand it to the OS share sheet (RN `Share`). No heavy
- * native dep; no fabricated capability — every path here is gated on
- * `getPrintCapabilities()` and degrades honestly.
+ * `Printable`, render it (render-html) and hand it to the OS, with no heavy
+ * native dep and no fabricated capability. Two real, shipping paths:
  *
- * From the share sheet the owner can: save to Files as PDF, AirPrint to any
- * printer the OS knows, or send the document on. Direct ESC/POS streaming to a
- * counter thermal printer is intentionally NOT here — see `capabilities.ts`.
+ *   • printPrintable()    — render to HTML and open the platform print dialog
+ *     (`expo-print`): AirPrint on iOS, the Android print framework on Android.
+ *     One tap → the owner picks a printer (incl. networked AirPrint/Mopria) or
+ *     "Save as PDF". This is the PRIMARY action; it replaces the old two-tap
+ *     share-only flow.
+ *   • sharePdfPrintable() — render the HTML to a real PDF file
+ *     (`expo-print.printToFileAsync`) and hand that PDF to the OS share sheet
+ *     (`expo-sharing`). Works on iOS AND Android (expo-sharing supplies the
+ *     `content://` grant Android needs). This is the SECONDARY "als PDF teilen".
  *
- * The result is a typed outcome, never a thrown surprise: the surface switches
- * on `ok` / `dismissed` / `unsupported` / `error` and shows the right state.
+ * Direct ESC/POS streaming to a counter thermal printer is intentionally NOT
+ * here — see `capabilities.ts`. Each path is gated on `getPrintCapabilities()`
+ * and degrades honestly to a typed outcome, never a thrown surprise: the surface
+ * switches on `ok` / `dismissed` / `unsupported` / `error` and shows the right
+ * state. Raw native/English exception text is NEVER surfaced — the owner always
+ * gets one clean German line.
  */
-import { Share } from "react-native"
 import { File, Paths } from "expo-file-system"
 
 import { getPrintCapabilities, type PrintCapabilities } from "./capabilities"
-import { renderHtml, renderText } from "./render-html"
+import { renderHtml } from "./render-html"
 import type { Printable } from "./types"
 
-/** What kind of file to produce + share. */
-export type PrintFormat = "html" | "text"
-
-export type ShareResult =
-  /** The sheet opened and the user shared/saved. */
+export type PrintOutcome =
+  /** The print/share completed (the dialog opened and finished). */
   | { status: "ok" }
-  /** The sheet opened and the user dismissed it (not an error). */
+  /** The dialog opened and the user dismissed it (not an error). */
   | { status: "dismissed" }
-  /** Sharing/file-writing isn't available on this device. */
+  /** Printing/sharing isn't available on this device. */
   | { status: "unsupported"; reason: string }
   /** Something failed; `message` is a German, owner-readable line. */
   | { status: "error"; message: string }
 
-/** A short, filesystem-safe base name for the temp file. */
+/** A short, filesystem-safe base name for a generated PDF file. */
 function fileBase(printable: Printable): string {
   if (printable.type === "receipt") {
     const loc = printable.doc.receiptLocator
-    return loc ? `beleg-${loc.replace(/[^a-zA-Z0-9_-]/g, "")}` : `${printable.doc.kind.toLowerCase()}-vorschau`
+    return loc
+      ? `beleg-${loc.replace(/[^a-zA-Z0-9-]/g, "")}`
+      : `${printable.doc.kind.toLowerCase()}-vorschau`
   }
-  return printable.docs.length === 1 ? `etikett-${(printable.docs[0]?.sku ?? "").replace(/[^a-zA-Z0-9_-]/g, "")}` : `etiketten-${printable.docs.length}`
-}
-
-const MIME: Record<PrintFormat, string> = {
-  html: "text/html",
-  text: "text/plain",
-}
-
-/** A unique-enough suffix so two shares in the same second don't collide. */
-function stamp(): string {
-  return Date.now().toString(36)
+  return printable.docs.length === 1
+    ? `etikett-${(printable.docs[0]?.sku ?? "").replace(/[^a-zA-Z0-9-]/g, "")}`
+    : `etiketten-${printable.docs.length}`
 }
 
 /**
- * The honest, owner-readable reason document export is off — distinguishing the
- * three blocked cases so the line is never misleading (e.g. it must not claim
- * "kein Dateispeicher" on Android, where the real gap is the share path).
+ * Print width in CSS pixels for the rendered page. The receipt is an 80 mm Bon
+ * column (≈ 226 px at 72 PPI), so we constrain it; labels tile on a full Letter
+ * sheet, so we let `expo-print` use its default Letter width.
  */
-function unsupportedReason(caps: PrintCapabilities): string {
-  if (!caps.canShare) {
-    return "Auf diesem Gerät ist das Teilen nicht verfügbar."
-  }
-  if (!caps.canWriteFile) {
-    return "Auf diesem Gerät ist kein Dateispeicher für die Vorschau verfügbar."
-  }
-  // Share + file write exist, but the share sheet won't take the file (Android).
-  return (
-    "Das Teilen von Dokumenten wird auf diesem Gerät nicht unterstützt. " +
-    "Bitte über den Desktop-Kassenplatz drucken."
-  )
+function printWidth(printable: Printable): number | undefined {
+  return printable.type === "receipt" ? 226 : undefined
 }
 
 /**
- * Render `printable` to a cache file and open the OS share sheet on it.
+ * The honest, owner-readable reason a path is off. Distinguishes the cases so the
+ * line is never misleading.
+ */
+function unsupportedReason(caps: PrintCapabilities, want: "print" | "pdf"): string {
+  if (want === "print" && !caps.canPrintNative) {
+    return "Auf diesem Gerät ist das Drucken nicht verfügbar."
+  }
+  if (want === "pdf" && !caps.canSharePdf) {
+    return "Auf diesem Gerät ist das Teilen als PDF nicht verfügbar."
+  }
+  return "Auf diesem Gerät ist diese Funktion nicht verfügbar."
+}
+
+/**
+ * Open the platform print dialog on `printable` (AirPrint / Android print
+ * framework). One tap; the OS handles printer selection and "Save as PDF".
  *
- * @param printable the receipt or labels to produce
- * @param opts.format html (rich, PDF-able) or text (universal). Default html.
- * @param opts.dialogTitle Android share-sheet title.
+ * On iOS the promise resolves once printing starts and REJECTS if the user
+ * closes the dialog without printing → we map that rejection to `dismissed`,
+ * never an error. On Android the promise resolves as soon as the dialog shows.
  */
-export async function sharePrintable(
-  printable: Printable,
-  opts: { format?: PrintFormat; dialogTitle?: string } = {},
-): Promise<ShareResult> {
+export async function printPrintable(printable: Printable): Promise<PrintOutcome> {
   const caps = getPrintCapabilities()
-  if (!caps.canExportDocument) {
-    return { status: "unsupported", reason: unsupportedReason(caps) }
+  if (!caps.canPrintNative) {
+    return { status: "unsupported", reason: unsupportedReason(caps, "print") }
   }
 
-  const format = opts.format ?? "html"
-  const content = format === "html" ? renderHtml(printable) : renderText(printable)
-  const ext = format === "html" ? "html" : "txt"
-  const name = `${fileBase(printable)}-${stamp()}.${ext}`
-
-  let file: File | null = null
+  let printAsync: (opts: { html: string; width?: number }) => Promise<void>
   try {
-    file = new File(Paths.cache, name)
-    // Overwrite defensively in the (vanishingly unlikely) name-collision case.
-    if (file.exists) file.delete()
-    file.create()
-    file.write(content)
+    // Lazy import so a device without the module degrades via the capability
+    // gate above rather than crashing at module load.
+    ;({ printAsync } = require("expo-print") as {
+      printAsync: (opts: { html: string; width?: number }) => Promise<void>
+    })
+  } catch {
+    return { status: "unsupported", reason: unsupportedReason(caps, "print") }
+  }
+
+  const html = renderHtml(printable)
+  try {
+    await printAsync({ html, width: printWidth(printable) })
+    return { status: "ok" }
+  } catch {
+    // iOS rejects when the print window is closed without printing. We treat
+    // that as a normal dismissal — never surface the raw native error text.
+    return { status: "dismissed" }
+  }
+}
+
+/**
+ * Render `printable` to a real PDF and open the OS share sheet on it
+ * (`expo-print.printToFileAsync` + `expo-sharing`). Works on iOS and Android.
+ */
+export async function sharePdfPrintable(
+  printable: Printable,
+  opts: { dialogTitle?: string } = {},
+): Promise<PrintOutcome> {
+  const caps = getPrintCapabilities()
+  if (!caps.canSharePdf) {
+    return { status: "unsupported", reason: unsupportedReason(caps, "pdf") }
+  }
+
+  let printToFileAsync: (o: { html: string; width?: number }) => Promise<{ uri: string }>
+  let shareAsync: (
+    url: string,
+    o?: { mimeType?: string; UTI?: string; dialogTitle?: string },
+  ) => Promise<void>
+  let isAvailableAsync: () => Promise<boolean>
+  try {
+    ;({ printToFileAsync } = require("expo-print") as {
+      printToFileAsync: (o: { html: string; width?: number }) => Promise<{ uri: string }>
+    })
+    ;({ shareAsync, isAvailableAsync } = require("expo-sharing") as {
+      shareAsync: (
+        url: string,
+        o?: { mimeType?: string; UTI?: string; dialogTitle?: string },
+      ) => Promise<void>
+      isAvailableAsync: () => Promise<boolean>
+    })
+  } catch {
+    return { status: "unsupported", reason: unsupportedReason(caps, "pdf") }
+  }
+
+  // The runtime confirmation that the share sheet is reachable on this device.
+  try {
+    if (!(await isAvailableAsync())) {
+      return { status: "unsupported", reason: unsupportedReason(caps, "pdf") }
+    }
+  } catch {
+    return { status: "unsupported", reason: unsupportedReason(caps, "pdf") }
+  }
+
+  const html = renderHtml(printable)
+  let pdfFile: File
+  try {
+    const result = await printToFileAsync({ html, width: printWidth(printable) })
+    // Rename the rendered PDF to a friendly, owner-readable name ("beleg-…​.pdf")
+    // so it shows up sensibly in Files/Mail rather than as a random hash.
+    pdfFile = renameToFriendly(new File(result.uri), `${fileBase(printable)}-${stamp()}.pdf`)
   } catch {
     return {
       status: "error",
-      message: "Die Vorschau konnte nicht erstellt werden. Bitte erneut versuchen.",
+      message: "Die PDF-Vorschau konnte nicht erstellt werden. Bitte erneut versuchen.",
     }
   }
 
   try {
-    const res = await Share.share(
-      { url: file.uri, title: shareTitle(printable) },
-      { dialogTitle: opts.dialogTitle ?? "Beleg teilen", subject: shareTitle(printable) },
-    )
-    if (res.action === Share.dismissedAction) return { status: "dismissed" }
+    await shareAsync(pdfFile.uri, {
+      mimeType: "application/pdf",
+      UTI: "com.adobe.pdf",
+      dialogTitle: opts.dialogTitle ?? "Beleg als PDF teilen",
+    })
     return { status: "ok" }
   } catch {
     // The OS share sheet threw. The raw exception text is an English / system
@@ -120,21 +180,33 @@ export async function sharePrintable(
       message: "Das Teilen konnte nicht abgeschlossen werden. Bitte erneut versuchen.",
     }
   } finally {
-    // Best-effort cleanup; the OS may still be reading it, so failures are fine.
+    // Best-effort cleanup of the rendered PDF; the OS may still be reading it,
+    // so failures are fine — the cache directory is reclaimable anyway.
     try {
-      file?.delete()
+      if (pdfFile.exists) pdfFile.delete()
     } catch {
-      // ignore — the cache directory is reclaimable by the OS anyway.
+      // ignore — the cache directory is reclaimable by the OS.
     }
   }
 }
 
-/** The human title shown in the share sheet / as the email subject. */
-function shareTitle(printable: Printable): string {
-  if (printable.type === "receipt") {
-    const { kind, receiptLocator } = printable.doc
-    return receiptLocator ? `${kind} · Beleg ${receiptLocator}` : `${kind} · Vorschau`
+/** A unique-enough suffix so two exports in the same second don't collide. */
+function stamp(): string {
+  return Date.now().toString(36)
+}
+
+/**
+ * Move a freshly rendered PDF to a friendly name in the cache directory so it
+ * shares as "beleg-….pdf" rather than a random hash. Best-effort: if the move
+ * fails for any reason we share the original file untouched.
+ */
+function renameToFriendly(rendered: File, friendlyName: string): File {
+  try {
+    const target = new File(Paths.cache, friendlyName)
+    if (target.exists) target.delete()
+    rendered.move(target)
+    return target
+  } catch {
+    return rendered
   }
-  const n = printable.docs.length
-  return n === 1 ? "Etikett" : `${n} Etiketten`
 }

@@ -35,6 +35,7 @@ import {
   Banknote,
   Check,
   CreditCard,
+  FileText,
   IdCard,
   Info,
   Landmark,
@@ -43,7 +44,6 @@ import {
   Receipt,
   ScanFace,
   Search,
-  Share2,
   ShieldCheck,
   ShoppingCart,
   Trash2,
@@ -101,8 +101,9 @@ import {
 import {
   escposRequirement,
   getPrintCapabilities,
+  printPrintable,
   PrintPreview,
-  sharePrintable,
+  sharePdfPrintable,
   type ReceiptDoc,
 } from "@/warehouse14/print"
 import { useW14Theme } from "@/warehouse14/theme"
@@ -934,31 +935,47 @@ function SaleDoneScreen({
   const t = useW14Theme()
   const insets = useScreenInsets()
 
-  // The on-device print/share capability — resolved once. On iOS/web the owner
-  // can save a PDF / AirPrint / send the Beleg; on Android core RN Share can't
-  // take the cache file URI (no expo-sharing in this build), so the action is
-  // honestly disabled with the desktop note rather than letting a share no-op.
+  // The on-device print/share capability — resolved once. The owner can print
+  // the Beleg via the OS print dialog (AirPrint / Android print framework) or
+  // share it as a PDF (iOS + Android via expo-sharing). The certified counter
+  // print still lives on the Desktop-Kasse — see the honest note below.
   const caps = useMemo(() => getPrintCapabilities(), [])
   const printable = useMemo(
     () => ({ type: "receipt" as const, doc: receiptDoc }),
     [receiptDoc],
   )
 
-  const [sharing, setSharing] = useState(false)
-  const [shareError, setShareError] = useState<string | null>(null)
+  // Which action is running, so each button shows its own "wird vorbereitet".
+  const [busy, setBusy] = useState<null | "print" | "pdf">(null)
+  const [actionError, setActionError] = useState<string | null>(null)
   const [previewOpen, setPreviewOpen] = useState(false)
 
-  const onShare = useCallback(async () => {
-    setSharing(true)
-    setShareError(null)
+  // PRIMARY — one tap opens the OS print dialog (AirPrint / Android print).
+  const onPrint = useCallback(async () => {
+    if (busy) return
+    setBusy("print")
+    setActionError(null)
     haptics.selection()
-    const res = await sharePrintable(printable, { dialogTitle: "Beleg teilen" })
-    setSharing(false)
+    const res = await printPrintable(printable)
+    setBusy(null)
     if (res.status === "ok") haptics.success()
-    else if (res.status === "unsupported") setShareError(res.reason)
-    else if (res.status === "error") setShareError(res.message)
+    else if (res.status === "unsupported") setActionError(res.reason)
+    else if (res.status === "error") setActionError(res.message)
     // "dismissed" is a normal user choice — no error, no haptic.
-  }, [printable])
+  }, [busy, printable])
+
+  // SECONDARY — render a real PDF and hand it to the OS share sheet.
+  const onSharePdf = useCallback(async () => {
+    if (busy) return
+    setBusy("pdf")
+    setActionError(null)
+    haptics.selection()
+    const res = await sharePdfPrintable(printable, { dialogTitle: "Beleg als PDF teilen" })
+    setBusy(null)
+    if (res.status === "ok") haptics.success()
+    else if (res.status === "unsupported") setActionError(res.reason)
+    else if (res.status === "error") setActionError(res.message)
+  }, [busy, printable])
 
   return (
     <View className="flex-1 bg-background">
@@ -1041,21 +1058,36 @@ function SaleDoneScreen({
             </PressableScale>
           )}
 
-          {shareError != null ? (
-            <InlineError message={shareError} onDismiss={() => setShareError(null)} />
+          {actionError != null ? (
+            <InlineError message={actionError} onDismiss={() => setActionError(null)} />
           ) : null}
 
-          {/* Print/share — save as PDF, AirPrint, or send on. Honestly disabled
-              on a device that can't take the file (see the locked note below). */}
+          {/* PRIMARY — one tap: open the OS print dialog. AirPrint on iOS, the
+              Android print framework on Android; from there: any known printer
+              or "als PDF sichern". Honestly disabled if the module is missing. */}
           <Button
             size="xl"
-            onPress={() => void onShare()}
-            disabled={sharing || !caps.canExportDocument}
-            accessibilityLabel="Beleg teilen oder als PDF sichern"
+            onPress={() => void onPrint()}
+            disabled={busy !== null || !caps.canPrintNative}
+            accessibilityLabel="Beleg drucken"
           >
-            <Share2 size={t.icon.sm} color={t.colors.primaryForeground} />
-            <Text>{sharing ? "Wird vorbereitet…" : "Beleg teilen / als PDF"}</Text>
+            <Printer size={t.icon.sm} color={t.colors.primaryForeground} />
+            <Text>{busy === "print" ? "Wird vorbereitet…" : "Beleg drucken"}</Text>
           </Button>
+
+          {/* SECONDARY — render a PDF and share it (Dateien, Mail, …). */}
+          {caps.canSharePdf ? (
+            <Button
+              variant="outline"
+              size="xl"
+              onPress={() => void onSharePdf()}
+              disabled={busy !== null}
+              accessibilityLabel="Beleg als PDF teilen"
+            >
+              <FileText size={t.icon.sm} color={t.colors.primary} />
+              <Text>{busy === "pdf" ? "Wird vorbereitet…" : "Als PDF teilen"}</Text>
+            </Button>
+          ) : null}
 
           {!caps.canExportDocument ? <DesktopBelegNote /> : null}
         </View>
@@ -1080,9 +1112,10 @@ function SaleDoneScreen({
 }
 
 /**
- * The honest note shown when the phone can't export the Beleg (Android in this
- * build): direct counter printing lives on the Desktop-Kasse, and the precise
- * reason + the real alternative are spelled out — never a fabricated capability.
+ * The honest note shown only on the rare device where NEITHER printing nor PDF
+ * sharing is available: the certified counter print lives on the Desktop-Kasse,
+ * and the precise reason + the real alternative are spelled out — never a
+ * fabricated capability.
  */
 function DesktopBelegNote() {
   const t = useW14Theme()
@@ -1108,7 +1141,7 @@ function DesktopBelegNote() {
           <Info size={t.icon.md} color={t.colors.mutedForeground} />
         </View>
         <Text className="text-muted-foreground flex-1 text-xs leading-5">
-          Auf diesem Gerät ist das Teilen des Belegs nicht verfügbar. Der zertifizierte Druck läuft
+          Auf diesem Gerät ist das Drucken des Belegs nicht verfügbar. Der zertifizierte Druck läuft
           über die Desktop-Kasse.
         </Text>
       </View>

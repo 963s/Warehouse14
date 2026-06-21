@@ -6,8 +6,8 @@
  * caller built; nothing is fabricated. Built on the shared theme + Money helper.
  *
  * It is intentionally read-only and self-contained: the surface composes it
- * above the action buttons, and the same doc is handed to `sharePrintable`, so
- * what the owner sees is byte-for-byte what they share.
+ * above the action buttons, and the same doc is handed to `printPrintable` /
+ * `sharePdfPrintable`, so what the owner sees is byte-for-byte what prints.
  */
 import { type ReactNode } from "react"
 import { View } from "react-native"

@@ -5,17 +5,20 @@
  * The Owner OS print story has exactly two tiers, and this module makes the
  * boundary between them explicit so the UI never overpromises:
  *
- *   1. SHARE (available now on iOS/web, zero new native deps). We render the
- *      document to a file (HTML for a rich PDF-able sheet, or a monospace text
- *      fallback) using `expo-file-system` — already a dependency — and hand it to
- *      the OS share sheet via React Native's built-in `Share` API (core RN, not a
- *      new module). From there the owner saves to Files as PDF, AirPrints to any
- *      networked printer the OS knows, or sends it on. This is real, shipping
- *      capability — not a stub. NOTE: on Android, core RN `Share` cannot accept
- *      an app-private cache `file://` URI without a `content://` FileProvider
- *      grant (which `expo-sharing` would supply — and it is NOT a dependency
- *      here), so `canShareFileUri`/`canExportDocument` are `false` there: we keep
- *      the button honestly disabled instead of letting the share silently fail.
+ *   1. SYSTEM PRINT + PDF (available now on iOS/Android/web). We render the
+ *      document to self-contained HTML and hand it to the OS:
+ *        • PRINT — `expo-print`'s `printAsync({ html })` opens the platform print
+ *          dialog: AirPrint on iOS, the Android print framework on Android. From
+ *          there the owner prints to any printer the OS knows (incl. AirPrint /
+ *          Mopria network printers) or saves a PDF. One tap, no share detour.
+ *        • PDF SHARE — `printToFileAsync({ html })` renders a real PDF into the
+ *          cache, then `expo-sharing`'s `shareAsync` hands that PDF to the OS
+ *          share sheet (Files, Mail, Drive, …). `expo-sharing` provides the
+ *          `content://` FileProvider grant on Android, so the PDF share works on
+ *          Android too — unlike the old core-RN `Share` file path, which could
+ *          not. Both modules are Expo config-plugin modules autolinked at
+ *          prebuild — no manual native code, no heavy dependency.
+ *      This is real, shipping capability — not a stub.
  *
  *   2. DIRECT ESC/POS (NOT available in this build). Talking to a Bluetooth or
  *      LAN thermal printer (the 80 mm Bon-Drucker / the Brother/Zebra label
@@ -29,30 +32,30 @@
  * Nothing here fabricates capability: each flag is derived from whether the
  * underlying module is actually importable on this platform.
  */
-import { Platform, Share } from "react-native"
+import { Platform } from "react-native"
 
 /** What the device can do with a printable, resolved once at module load. */
 export interface PrintCapabilities {
   /**
-   * The OS share sheet is reachable (RN `Share`). On native this is always true;
-   * on web it is gated on the Web Share API and falls back to download.
+   * The OS print dialog is reachable (`expo-print`). True on iOS (AirPrint),
+   * Android (print framework) and web (browser print) when the module is
+   * autolinked. This is the flag the surface uses to enable its PRIMARY action.
    */
-  canShare: boolean
-  /** We can write a temp file to share/preview (expo-file-system present). */
+  canPrintNative: boolean
+  /**
+   * We can render a PDF and hand it to the OS share sheet (`expo-print`'s
+   * `printToFileAsync` + `expo-sharing`). True on iOS and Android — `expo-sharing`
+   * supplies the `content://` FileProvider grant Android needs — and on web,
+   * where it falls back to a download. This is the flag the SECONDARY "als PDF
+   * teilen" action uses.
+   */
+  canSharePdf: boolean
+  /** We can write a temp file for the PDF (expo-file-system present). */
   canWriteFile: boolean
   /**
-   * The OS share sheet reliably accepts a `file://` cache URI for an arbitrary
-   * document. True on iOS (UIActivityViewController takes the file URL directly)
-   * and on web; FALSE on Android, where core RN `Share` needs a `content://`
-   * FileProvider grant that `expo-sharing` would provide — and that module is
-   * NOT a dependency in this build. Without it the share would silently no-op or
-   * fail, so we do not claim the capability rather than ship a button that lies.
-   */
-  canShareFileUri: boolean
-  /**
-   * A receipt/label can be produced + handed off RIGHT NOW (file write + a share
-   * path that actually accepts the file). This is the flag the surface uses to
-   * enable its primary action.
+   * A receipt/label can be produced + handed off RIGHT NOW, by EITHER printing
+   * or sharing a PDF. The surface uses this to decide whether to show the action
+   * cluster at all versus the honest "nothing available" note.
    */
   canExportDocument: boolean
   /**
@@ -64,11 +67,33 @@ export interface PrintCapabilities {
   platform: typeof Platform.OS
 }
 
+/** True when `expo-print`'s `printAsync` is importable on this platform. */
+function detectPrint(): boolean {
+  try {
+    // Required lazily so a missing/unlinked module degrades to `false` instead
+    // of a crash at import time. The module is autolinked at prebuild.
+    const print = require("expo-print") as { printAsync?: unknown }
+    return typeof print?.printAsync === "function"
+  } catch {
+    return false
+  }
+}
+
+/** True when both PDF rendering (`expo-print`) and `expo-sharing` are present. */
+function detectPdfShare(): boolean {
+  try {
+    const print = require("expo-print") as { printToFileAsync?: unknown }
+    const sharing = require("expo-sharing") as { shareAsync?: unknown }
+    return typeof print?.printToFileAsync === "function" && typeof sharing?.shareAsync === "function"
+  } catch {
+    return false
+  }
+}
+
 /** True when expo-file-system's modern `File`/`Paths` API is importable. */
 function detectFileSystem(): boolean {
   try {
-    // Required lazily so a missing module degrades to `false` instead of a crash
-    // at import time. `File` + `Paths` are the SDK 54+ API we write through.
+    // `File` + `Paths` are the SDK 54+ API we use for cleanup of the rendered PDF.
     const fs = require("expo-file-system") as { File?: unknown; Paths?: unknown }
     return typeof fs?.File === "function" && typeof fs?.Paths !== "undefined"
   } catch {
@@ -76,45 +101,31 @@ function detectFileSystem(): boolean {
   }
 }
 
-/** True when the built-in RN `Share` module is wired (always so on native). */
-function detectShare(): boolean {
-  return typeof Share?.share === "function"
-}
-
-/**
- * True when this platform's share sheet reliably accepts a `file://` cache URI.
- *
- * iOS hands the file URL straight to `UIActivityViewController`, and web's
- * download fallback is fine. Android's core RN `Share` needs a `content://`
- * FileProvider grant (which `expo-sharing` would supply) before it will accept
- * an app-private cache file — and `expo-sharing` is deliberately NOT a dependency
- * in this build. So on Android the document share would no-op or fail; we report
- * `false` rather than enable a button that lies. The honest locked card and the
- * AirPrint/desktop path still stand.
- */
-function detectShareFileUri(): boolean {
-  return Platform.OS !== "android"
-}
-
 let cached: PrintCapabilities | null = null
 
 /** Resolve (and memoize) the device's print capabilities. */
 export function getPrintCapabilities(): PrintCapabilities {
   if (cached) return cached
-  const canShare = detectShare()
+  const canPrintNative = detectPrint()
+  const canSharePdf = detectPdfShare()
   const canWriteFile = detectFileSystem()
-  const canShareFileUri = detectShareFileUri()
   cached = {
-    canShare,
+    canPrintNative,
+    canSharePdf,
     canWriteFile,
-    canShareFileUri,
-    // Export needs all three: a share sheet, a temp file, AND a share path that
-    // actually accepts that file. The last one excludes Android in this build.
-    canExportDocument: canShare && canWriteFile && canShareFileUri,
+    // Either path counts as "can export": print to a printer/PDF, or share a PDF.
+    canExportDocument: canPrintNative || canSharePdf,
     canPrintEscPos: false, // no native ESC/POS transport in this build — honest.
     platform: Platform.OS,
   }
   return cached
+}
+
+/**
+ * Reset the memoized capabilities. FOR TESTS ONLY — production resolves once.
+ */
+export function __resetPrintCapabilitiesForTest(): void {
+  cached = null
 }
 
 /**
@@ -128,13 +139,14 @@ export const escposRequirement = {
     "Bon- und Etikettendrucker am Tresen werden über den Desktop-Kassenplatz angesteuert.",
   /** The technical reason, in plain German, for the detail/info row. */
   detail:
-    "Ein direkter Druck vom Telefon an einen Thermo- oder Etikettendrucker " +
-    "(Bluetooth oder Netzwerk) benötigt einen ESC/POS- bzw. ZPL-Datenstrom über " +
-    "eine native Geräteverbindung. Das erfordert ein zusätzliches natives Modul " +
-    "und einen eigenen App-Build und ist in dieser Version bewusst nicht aktiv. " +
-    "Der zertifizierte Druck läuft weiterhin über die Desktop-Kasse.",
+    "Ein direkter Druck vom Telefon an einen dedizierten Thermo- oder " +
+    "Etikettendrucker (Bluetooth oder Netzwerk) benötigt einen ESC/POS- bzw. " +
+    "ZPL-Datenstrom über eine native Geräteverbindung. Das erfordert ein " +
+    "zusätzliches natives Modul und einen eigenen App-Build und ist in dieser " +
+    "Version bewusst nicht aktiv. Der zertifizierte Druck läuft weiterhin über " +
+    "die Desktop-Kasse.",
   /** What the owner CAN do instead, today, from the phone. */
   alternative:
-    "Beleg oder Etikett als PDF teilen, per AirPrint an einen bekannten Drucker " +
-    "senden oder in Dateien sichern.",
+    "Beleg oder Etikett über die Drucken-Funktion an einen AirPrint- oder " +
+    "Netzwerkdrucker senden oder als PDF teilen und sichern.",
 } as const
