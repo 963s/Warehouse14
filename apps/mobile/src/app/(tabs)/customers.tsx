@@ -42,6 +42,7 @@ import { useW14Theme } from "@/warehouse14/theme"
 import {
   ErrorState,
   haptics,
+  PaperGrain,
   PressableScale,
   Skeleton,
   StaggerItem,
@@ -296,6 +297,9 @@ export default function KundenScreen() {
 
   return (
     <View className="flex-1 bg-background">
+      {/* The aged-paper grain canvas — depth comes from the layered cream + this
+          faint tooth, behind the list, never from a flat fill (DESIGN.md §5). */}
+      <PaperGrain />
       <FlatList
         data={rows ?? []}
         keyExtractor={(c) => c.id}
@@ -341,7 +345,7 @@ export default function KundenScreen() {
               >
                 <UserSearch size={t.icon.xl} color={t.colors.primary} />
               </View>
-              <Text className="text-center text-base font-semibold">
+              <Text className="text-center text-lg font-display-semibold leading-tight">
                 {isSearching ? "Keine Treffer" : "Noch keine Kunden"}
               </Text>
               <Text className="text-muted-foreground max-w-xs text-center text-sm leading-5">

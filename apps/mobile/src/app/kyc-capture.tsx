@@ -32,6 +32,7 @@ import {
   FormField,
   haptics,
   InlineError,
+  PaperGrain,
   PressableScale,
   SectionCard,
   StaggerItem,
@@ -132,12 +133,17 @@ export default function KycCaptureRoute() {
   }
 
   return (
-    <ScrollView
-      className="flex-1 bg-background"
-      contentContainerStyle={{ padding: 16, paddingBottom: insets.contentBottom, gap: 12 }}
-      keyboardShouldPersistTaps="handled"
-      keyboardDismissMode="on-drag"
-    >
+    <View className="flex-1 bg-background">
+      {/* The aged-paper grain canvas behind the form — the same layered cream
+          depth as the rest of the group (DESIGN.md §5). The camera phase keeps
+          its own dark over-feed chrome and is intentionally ungrained. */}
+      <PaperGrain />
+      <ScrollView
+        className="flex-1"
+        contentContainerStyle={{ padding: 16, paddingBottom: insets.contentBottom, gap: 12 }}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
       {/* Header */}
       <StaggerItem index={0}>
         <View className="flex-row items-center gap-3">
@@ -148,7 +154,9 @@ export default function KycCaptureRoute() {
             <IdCard size={t.icon.xl} color={t.colors.primary} />
           </View>
           <View className="flex-1 gap-0.5">
-            <Text className="text-xl font-bold" numberOfLines={1}>
+            {/* The screen identity — the antique DISPLAY serif (Cormorant),
+                matching the other group headlines (DESIGN.md §3). */}
+            <Text className="text-2xl font-display-semibold leading-tight" numberOfLines={1}>
               Ausweis erfassen
             </Text>
             <Text className="text-muted-foreground text-xs" numberOfLines={2}>
@@ -311,6 +319,7 @@ export default function KycCaptureRoute() {
           </Text>
         </View>
       </StaggerItem>
-    </ScrollView>
+      </ScrollView>
+    </View>
   )
 }

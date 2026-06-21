@@ -33,7 +33,7 @@ import {
   isCustomerFormValid,
   validateCustomerForm,
 } from "@/warehouse14/customer-form"
-import { ErrorState, haptics, Skeleton, useScreenInsets } from "@/warehouse14/ui"
+import { ErrorState, haptics, PaperGrain, Skeleton, useScreenInsets } from "@/warehouse14/ui"
 import { FormScreen } from "@/warehouse14/ui/FormScreen"
 
 /** Send `null` to clear a previously-set optional field, omit when untouched. */
@@ -165,6 +165,7 @@ export default function KundeBearbeitenScreen() {
   if (loadError != null) {
     return (
       <View className="flex-1 justify-center bg-background px-4">
+        <PaperGrain />
         <ErrorState
           message={loadError}
           cause={loadCause}
@@ -198,22 +199,25 @@ export default function KundeBearbeitenScreen() {
 function EditSkeleton() {
   const insets = useScreenInsets()
   return (
-    <ScrollView
-      className="flex-1 bg-background"
-      contentContainerStyle={{ padding: 16, paddingBottom: insets.contentBottom, gap: 14 }}
-    >
-      <View className="gap-1.5">
-        <Skeleton width="56%" height={20} />
-        <Skeleton width="82%" height={13} />
-      </View>
-      <View className="gap-3.5 pt-1">
-        {[0, 1, 2, 3, 4].map((i) => (
-          <View key={i} className="gap-2">
-            <Skeleton width="34%" height={13} />
-            <Skeleton width="100%" height={44} radius="button" />
-          </View>
-        ))}
-      </View>
-    </ScrollView>
+    <View className="flex-1 bg-background">
+      <PaperGrain />
+      <ScrollView
+        className="flex-1"
+        contentContainerStyle={{ padding: 16, paddingBottom: insets.contentBottom, gap: 14 }}
+      >
+        <View className="gap-1.5">
+          <Skeleton width="56%" height={20} />
+          <Skeleton width="82%" height={13} />
+        </View>
+        <View className="gap-3.5 pt-1">
+          {[0, 1, 2, 3, 4].map((i) => (
+            <View key={i} className="gap-2">
+              <Skeleton width="34%" height={13} />
+              <Skeleton width="100%" height={44} radius="button" />
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+    </View>
   )
 }

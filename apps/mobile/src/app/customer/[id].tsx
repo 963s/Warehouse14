@@ -68,6 +68,7 @@ import {
   InlineError,
   isNotFoundError,
   ListRow,
+  PaperGrain,
   PressableScale,
   SectionCard,
   Skeleton,
@@ -262,12 +263,15 @@ export default function CustomerDetailScreen() {
   // ── States ──────────────────────────────────────────────────────────────────
   if (customerQ.isLoading && customer == null) {
     return (
-      <ScrollView
-        className="flex-1 bg-background"
-        contentContainerStyle={{ padding: 16, paddingBottom: insets.contentBottom }}
-      >
-        <DetailSkeleton />
-      </ScrollView>
+      <View className="flex-1 bg-background">
+        <PaperGrain />
+        <ScrollView
+          className="flex-1"
+          contentContainerStyle={{ padding: 16, paddingBottom: insets.contentBottom }}
+        >
+          <DetailSkeleton />
+        </ScrollView>
+      </View>
     )
   }
 
@@ -277,6 +281,7 @@ export default function CustomerDetailScreen() {
     const customerMissing = isNotFoundError(customerQ.errorCause)
     return (
       <View className="flex-1 justify-center bg-background px-4">
+        <PaperGrain />
         <ErrorState
           title={customerMissing ? "Kunde nicht gefunden" : undefined}
           message={
@@ -303,6 +308,9 @@ export default function CustomerDetailScreen() {
 
   return (
     <View className="flex-1 bg-background">
+      {/* The aged-paper grain canvas behind the detail — layered cream depth, not
+          a flat fill (DESIGN.md §5). */}
+      <PaperGrain />
       <ScrollView
         className="flex-1"
         contentContainerStyle={{ padding: 16, paddingBottom: insets.contentBottom, gap: 12 }}
@@ -328,7 +336,9 @@ export default function CustomerDetailScreen() {
               </Text>
             </View>
             <View className="flex-1 gap-1">
-              <Text className="text-xl font-bold" numberOfLines={2}>
+              {/* The customer's name is the screen identity — the antique DISPLAY
+                  serif (Cormorant), like the Artikel name on the product detail. */}
+              <Text className="text-2xl font-display-semibold leading-tight" numberOfLines={2}>
                 {customer.fullName}
               </Text>
               <Text className="text-muted-foreground font-mono text-xs" numberOfLines={1}>
