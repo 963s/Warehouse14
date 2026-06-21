@@ -39,9 +39,14 @@ import type {
 import {
   Banknote,
   Check,
+  FileText,
   IdCard,
+  Info,
   Landmark,
+  Monitor,
   Plus,
+  Printer,
+  Receipt,
   ScanFace,
   Search,
   ShieldCheck,
@@ -102,11 +107,21 @@ import {
 } from "@/warehouse14/customer-ui"
 import { ChipSelect, Field, MetalWeightField, MoneyField } from "@/warehouse14/product-form"
 import {
+  buildReceiptDoc,
   FiscalConfirmSheet,
   newIdempotencyKey,
+  PAYMENT_METHOD_LABELS,
   ReceiptPreview,
   type CartTotals,
 } from "@/warehouse14/sell"
+import {
+  escposRequirement,
+  getPrintCapabilities,
+  printPrintable,
+  PrintPreview,
+  sharePdfPrintable,
+  type ReceiptDoc,
+} from "@/warehouse14/print"
 import { useW14Theme } from "@/warehouse14/theme"
 import {
   EmptyState,
@@ -183,16 +198,28 @@ export default function AnkaufScreen() {
   const [externalRef, setExternalRef] = useState("")
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [idempotencyKey, setIdempotencyKey] = useState<string>(() => newIdempotencyKey())
+  // The sealed buy-in after a successful payout — the honest "what was just
+  // booked": the server's Beleg number + payout total + the count of created
+  // articles, PLUS a full ReceiptDoc snapshot (built at commit, BEFORE the lot
+  // clears) so the Beleg screen can print/share a faithful copy of exactly this
+  // Ankauf — mirroring the Verkauf done screen.
   const [done, setDone] = useState<{
     receiptLocator: string
     totalEur: string
     count: number
+    receiptDoc: ReceiptDoc
   } | null>(null)
 
   const totalCents = lot.totalCents
   const refRequired = method === "BANK_TRANSFER"
   const refMissing = refRequired && externalRef.trim().length === 0
   const canCommit = !lot.isEmpty && customerId != null && kyc.kycVerified && !refMissing
+
+  // A receipt-shaped preview needs CartTotals; an Ankauf has no VAT, so we build a
+  // minimal, honest totals object: each line at its negotiated price, zero VAT. It
+  // feeds BOTH the confirm-sheet ReceiptPreview and the sealed Beleg ReceiptDoc, so
+  // the printed copy matches the sheet line-for-line.
+  const previewTotals = useMemo<CartTotals>(() => buildPreviewTotals(lot.lines), [lot.lines])
 
   const openConfirm = useCallback(() => {
     if (!canCommit) {
@@ -217,12 +244,28 @@ export default function AnkaufScreen() {
       idempotencyKey,
     })
     const res = await ankaufTransaction(body)
+    // Snapshot a faithful, shareable Ankauf-Beleg NOW — the lot clears in
+    // onConfirmed, so we build the ReceiptDoc from the same minimal totals the
+    // confirm sheet just showed (each line at its negotiated payout, zero VAT —
+    // a buy-in bears no output VAT) BEFORE then. The Beleg number + the sealed
+    // timestamp + the payout method ride in from the server response; every
+    // figure is the same real cents the sheet showed (honesty rule).
+    const receiptDoc = buildReceiptDoc({
+      totals: previewTotals,
+      kind: "Ankauf",
+      receiptLocator: res.receiptLocator,
+      issuedAt: res.finalizedAt,
+      // payoutMethod ⊂ PaymentMethod (CASH | BANK_TRANSFER); PAYMENT_METHOD_LABELS
+      // carries the German label for both — so the Beleg shows „Bar" / „Überweisung".
+      payment: { method: res.payoutMethod },
+    })
     setDone({
       receiptLocator: res.receiptLocator,
       totalEur: res.totalEur,
       count: res.createdProducts.length,
+      receiptDoc,
     })
-  }, [customerId, lot.lines, method, refRequired, externalRef, idempotencyKey])
+  }, [customerId, lot.lines, method, refRequired, externalRef, idempotencyKey, previewTotals])
 
   const onConfirmed = useCallback(() => {
     // After a sealed payout: clear the lot, reset the payout, arm a fresh key.
@@ -232,10 +275,6 @@ export default function AnkaufScreen() {
     setIdempotencyKey(newIdempotencyKey())
   }, [lot])
 
-  // A receipt-shaped preview needs CartTotals; an Ankauf has no VAT, so we build a
-  // minimal, honest totals object: each line at its negotiated price, zero VAT.
-  const previewTotals = useMemo<CartTotals>(() => buildPreviewTotals(lot.lines), [lot.lines])
-
   // The success screen after a finalized payout.
   if (done) {
     return (
@@ -243,6 +282,7 @@ export default function AnkaufScreen() {
         receiptLocator={done.receiptLocator}
         totalEur={done.totalEur}
         count={done.count}
+        receiptDoc={done.receiptDoc}
         onNew={() => {
           haptics.selection()
           setDone(null)
@@ -1281,71 +1321,246 @@ function ValuationHintCard({
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Success screen — the honest, sealed Ankauf receipt
+// Success screen — the honest, sealed Ankauf-Beleg (preview + print + PDF share)
 // ────────────────────────────────────────────────────────────────────────────
 
 function AnkaufDoneScreen({
   receiptLocator,
   totalEur,
   count,
+  receiptDoc,
   onNew,
   onClose,
 }: {
   receiptLocator: string
   totalEur: string
   count: number
+  receiptDoc: ReceiptDoc
   onNew: () => void
   onClose: () => void
 }) {
   const t = useW14Theme()
   const insets = useScreenInsets()
+
+  // The on-device print/share capability — resolved once. The owner can print the
+  // Ankauf-Beleg via the OS print dialog (AirPrint / Android print framework) or
+  // share it as a PDF (iOS + Android via expo-sharing). The certified counter
+  // print still lives on the Desktop-Kasse — see the honest note below. This is
+  // the exact Beleg surface the Verkauf done screen offers, so a buy-in ends with
+  // the same faithful, shareable receipt a sale does.
+  const caps = useMemo(() => getPrintCapabilities(), [])
+  const printable = useMemo(() => ({ type: "receipt" as const, doc: receiptDoc }), [receiptDoc])
+
+  // Which action is running, so each button shows its own "wird vorbereitet".
+  const [busy, setBusy] = useState<null | "print" | "pdf">(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [previewOpen, setPreviewOpen] = useState(false)
+
+  // PRIMARY — one tap opens the OS print dialog (AirPrint / Android print).
+  const onPrint = useCallback(async () => {
+    if (busy) return
+    setBusy("print")
+    setActionError(null)
+    haptics.selection()
+    const res = await printPrintable(printable)
+    setBusy(null)
+    if (res.status === "ok") haptics.success()
+    else if (res.status === "unsupported") setActionError(res.reason)
+    else if (res.status === "error") setActionError(res.message)
+    // "dismissed" is a normal user choice — no error, no haptic.
+  }, [busy, printable])
+
+  // SECONDARY — render a real PDF and hand it to the OS share sheet.
+  const onSharePdf = useCallback(async () => {
+    if (busy) return
+    setBusy("pdf")
+    setActionError(null)
+    haptics.selection()
+    const res = await sharePdfPrintable(printable, { dialogTitle: "Ankauf-Beleg als PDF teilen" })
+    setBusy(null)
+    if (res.status === "ok") haptics.success()
+    else if (res.status === "unsupported") setActionError(res.reason)
+    else if (res.status === "error") setActionError(res.message)
+  }, [busy, printable])
+
   return (
-    <View
-      className="flex-1 bg-background px-6"
-      style={{ paddingTop: insets.screen.top + t.space.x8, paddingBottom: insets.contentBottom }}
-    >
+    <View className="flex-1 bg-background">
       <PaperGrain />
-      <View className="flex-1 items-center justify-center gap-5">
-        {/* The sealed-receipt mark — a verdigris seal ringed by a fine gold
-            hairline, the antique "festgeschrieben" flourish. */}
-        <View
-          className="h-20 w-20 items-center justify-center rounded-full border"
-          style={{ backgroundColor: t.colors.verdigris + "1f", borderColor: t.colors.border }}
-        >
-          <Check size={36} color={t.colors.verdigris} />
-        </View>
-        <View className="items-center gap-1.5">
-          <Text className="text-2xl font-display-semibold leading-tight">Ankauf ausgezahlt</Text>
-          <Text className="text-muted-foreground text-center text-sm leading-5">
-            Der Beleg ist TSE-signiert und im Kassenbuch festgeschrieben.{" "}
-            {count > 0
-              ? `${count} ${count === 1 ? "Artikel wurde" : "Artikel wurden"} angelegt.`
-              : ""}
-          </Text>
+      <ScrollView
+        className="flex-1"
+        contentContainerStyle={{
+          paddingHorizontal: 24,
+          paddingTop: insets.screen.top + t.space.x6,
+          paddingBottom: insets.contentBottom,
+          gap: 20,
+        }}
+        showsVerticalScrollIndicator={false}
+      >
+        <View className="items-center gap-4 pt-2">
+          {/* The sealed-receipt mark — a verdigris seal ringed by a fine gold
+              hairline, the antique "festgeschrieben" flourish. */}
+          <View
+            className="h-20 w-20 items-center justify-center rounded-full border"
+            style={{ backgroundColor: t.colors.verdigris + "1f", borderColor: t.colors.border }}
+          >
+            <Check size={36} color={t.colors.verdigris} />
+          </View>
+          <View className="items-center gap-1.5">
+            <Text className="text-2xl font-display-semibold leading-tight">Ankauf ausgezahlt</Text>
+            <Text className="text-muted-foreground text-center text-sm leading-5">
+              Der Beleg ist TSE-signiert und im Kassenbuch festgeschrieben.{" "}
+              {count > 0
+                ? `${count} ${count === 1 ? "Artikel wurde" : "Artikel wurden"} angelegt.`
+                : ""}
+            </Text>
+          </View>
+
+          <Card className="w-full gap-2 px-4 py-4">
+            <View className="flex-row items-center justify-between">
+              <Text className="text-muted-foreground text-sm">Beleg-Nr.</Text>
+              <Text className="font-mono-medium text-sm">{receiptLocator}</Text>
+            </View>
+            <View className="h-px bg-border" />
+            <View className="flex-row items-center justify-between">
+              <Text className="text-base font-semibold">Auszahlung</Text>
+              <Text className="font-mono-medium text-xl">{formatEur(totalEur)}</Text>
+            </View>
+          </Card>
         </View>
 
-        <Card className="w-full gap-2 px-4 py-4">
-          <View className="flex-row items-center justify-between">
-            <Text className="text-muted-foreground text-sm">Beleg-Nr.</Text>
-            <Text className="font-mono-medium text-sm">{receiptLocator}</Text>
+        {/* ── Beleg: a faithful copy of exactly this buy-in, to share/print ───── */}
+        <View className="gap-3">
+          <View className="flex-row items-center gap-2">
+            <Receipt size={t.icon.md} color={t.colors.primary} />
+            <Text className="text-base font-semibold">Beleg</Text>
           </View>
-          <View className="h-px bg-border" />
-          <View className="flex-row items-center justify-between">
-            <Text className="text-base font-semibold">Auszahlung</Text>
-            <Text className="font-mono-medium text-xl">{formatEur(totalEur)}</Text>
-          </View>
-        </Card>
-      </View>
 
-      <View className="gap-2">
-        <Button size="xl" onPress={onNew} accessibilityLabel="Neuen Ankauf starten">
-          <Text>Neuer Ankauf</Text>
-        </Button>
-        <Button variant="outline" size="xl" onPress={onClose} accessibilityLabel="Ankauf schließen">
-          <Text>Fertig</Text>
-        </Button>
-      </View>
+          {/* The on-screen Beleg — the same lines and payout that were booked. A
+              tap reveals the full receipt as it will be shared/printed. */}
+          {previewOpen ? (
+            <PrintPreview printable={printable} />
+          ) : (
+            <PressableScale
+              accessibilityRole="button"
+              accessibilityLabel="Beleg-Vorschau anzeigen"
+              onPress={() => {
+                haptics.selection()
+                setPreviewOpen(true)
+              }}
+            >
+              <Card className="flex-row items-center gap-3 rounded-xl border px-4 py-3.5">
+                <View
+                  className="h-9 w-9 items-center justify-center rounded-md"
+                  style={{ backgroundColor: t.colors.primary + "1f" }}
+                >
+                  <Receipt size={t.icon.md} color={t.colors.primary} />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-sm font-semibold">Beleg-Vorschau anzeigen</Text>
+                  <Text className="text-muted-foreground text-xs">
+                    Die Belegkopie genau so, wie sie geteilt oder gedruckt wird.
+                  </Text>
+                </View>
+              </Card>
+            </PressableScale>
+          )}
+
+          {actionError != null ? (
+            <InlineError message={actionError} onDismiss={() => setActionError(null)} />
+          ) : null}
+
+          {/* PRIMARY — one tap: open the OS print dialog. AirPrint on iOS, the
+              Android print framework on Android; from there: any known printer or
+              "als PDF sichern". Honestly disabled if the module is missing. */}
+          <Button
+            size="xl"
+            onPress={() => void onPrint()}
+            disabled={busy !== null || !caps.canPrintNative}
+            accessibilityLabel="Beleg drucken"
+          >
+            <Printer size={t.icon.sm} color={t.colors.primaryForeground} />
+            <Text>{busy === "print" ? "Wird vorbereitet…" : "Beleg drucken"}</Text>
+          </Button>
+
+          {/* SECONDARY — render a PDF and share it (Dateien, Mail, …). */}
+          {caps.canSharePdf ? (
+            <Button
+              variant="outline"
+              size="xl"
+              onPress={() => void onSharePdf()}
+              disabled={busy !== null}
+              accessibilityLabel="Beleg als PDF teilen"
+            >
+              <FileText size={t.icon.sm} color={t.colors.primary} />
+              <Text>{busy === "pdf" ? "Wird vorbereitet…" : "Als PDF teilen"}</Text>
+            </Button>
+          ) : null}
+
+          {!caps.canExportDocument ? <DesktopBelegNote /> : null}
+        </View>
+
+        {/* ── Weiter ──────────────────────────────────────────────────────────── */}
+        <View className="gap-2 pt-1">
+          <Button size="xl" onPress={onNew} accessibilityLabel="Neuen Ankauf starten">
+            <Text>Neuer Ankauf</Text>
+          </Button>
+          <Button
+            variant="outline"
+            size="xl"
+            onPress={onClose}
+            accessibilityLabel="Ankauf schließen"
+          >
+            <Text>Fertig</Text>
+          </Button>
+        </View>
+      </ScrollView>
     </View>
+  )
+}
+
+/**
+ * The honest note shown only on the rare device where NEITHER printing nor PDF
+ * sharing is available: the certified counter print lives on the Desktop-Kasse,
+ * and the precise reason + the real alternative are spelled out — never a
+ * fabricated capability. Mirrors the Verkauf done-screen note.
+ */
+function DesktopBelegNote() {
+  const t = useW14Theme()
+  return (
+    <Card className="gap-3 px-4 py-3.5">
+      <View className="flex-row items-center gap-2.5">
+        <View
+          className="h-8 w-8 items-center justify-center rounded-md"
+          style={{ backgroundColor: t.colors.mutedForeground + "1f" }}
+        >
+          <Monitor size={t.icon.md} color={t.colors.mutedForeground} />
+        </View>
+        <View className="flex-1">
+          <Text className="text-sm font-semibold">Beleg über den Desktop-Kassenplatz</Text>
+          <Text className="text-muted-foreground text-xs">{escposRequirement.summary}</Text>
+        </View>
+      </View>
+      <View
+        className="flex-row items-start gap-2.5 rounded-xl px-3.5 py-3"
+        style={{ backgroundColor: t.colors.mutedForeground + "12" }}
+      >
+        <View className="pt-0.5">
+          <Info size={t.icon.md} color={t.colors.mutedForeground} />
+        </View>
+        <Text className="text-muted-foreground flex-1 text-xs leading-5">
+          Auf diesem Gerät ist das Drucken des Belegs nicht verfügbar. Der zertifizierte Druck läuft
+          über die Desktop-Kasse.
+        </Text>
+      </View>
+      <View className="flex-row items-start gap-2.5">
+        <View className="pt-0.5">
+          <Printer size={t.icon.md} color={t.colors.primary} />
+        </View>
+        <Text className="text-muted-foreground flex-1 text-xs leading-5">
+          {escposRequirement.alternative}
+        </Text>
+      </View>
+    </Card>
   )
 }
 
