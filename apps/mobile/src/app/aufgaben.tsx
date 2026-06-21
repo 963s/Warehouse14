@@ -31,7 +31,16 @@
  * de-DE dates; all labels German; no native deps added.
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
-import { ActivityIndicator, FlatList, Modal, Pressable, RefreshControl, View } from "react-native"
+import {
+  ActivityIndicator,
+  FlatList,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  RefreshControl,
+  View,
+} from "react-native"
 import { useNavigation, useRouter } from "expo-router"
 import type { TaskRow, TaskStatus } from "@warehouse14/api-client"
 import {
@@ -154,76 +163,87 @@ function CancelSheet({
       statusBarTranslucent
       navigationBarTranslucent
     >
-      <Pressable
-        className="flex-1 justify-end"
-        style={{ backgroundColor: "rgba(0,0,0,0.45)" }}
-        accessibilityRole="button"
-        accessibilityLabel="Schließen"
-        onPress={onClose}
+      {/* Keyboard avoidance, same per-platform behavior as the spine's
+          KeyboardAvoidingScreen — so focusing „Grund" lifts the whole sheet
+          (input + Zurück/Abbrechen) clear of the keyboard on small screens. */}
+      <KeyboardAvoidingView
+        className="flex-1"
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
-        {/* Inner Pressable swallows taps so a tap inside the sheet never dismisses. */}
         <Pressable
-          onPress={() => {}}
-          className="bg-background border-border gap-4 rounded-t-2xl border-t px-5 pt-5"
-          style={{ paddingBottom: insets.stickyBottom }}
+          className="flex-1 justify-end"
+          style={{ backgroundColor: "rgba(0,0,0,0.45)" }}
+          accessibilityRole="button"
+          accessibilityLabel="Schließen"
+          onPress={onClose}
         >
-          <View className="items-center pb-1">
-            <View className="h-1 w-10 rounded-full" style={{ backgroundColor: t.colors.border }} />
-          </View>
-
-          <View className="flex-row items-center gap-2.5">
-            <View
-              className="h-9 w-9 items-center justify-center rounded-md"
-              style={{ backgroundColor: t.colors.destructive + "1f" }}
-            >
-              <Ban size={t.icon.md} color={t.colors.destructive} />
+          {/* Inner Pressable swallows taps so a tap inside the sheet never dismisses. */}
+          <Pressable
+            onPress={() => {}}
+            className="bg-background border-border gap-4 rounded-t-2xl border-t px-5 pt-5"
+            style={{ paddingBottom: insets.stickyBottom }}
+          >
+            <View className="items-center pb-1">
+              <View
+                className="h-1 w-10 rounded-full"
+                style={{ backgroundColor: t.colors.border }}
+              />
             </View>
-            <View className="flex-1">
-              <Text className="text-base font-bold">Aufgabe abbrechen</Text>
-              <Text className="text-muted-foreground text-xs" numberOfLines={1}>
-                {task.title}
-              </Text>
+
+            <View className="flex-row items-center gap-2.5">
+              <View
+                className="h-9 w-9 items-center justify-center rounded-md"
+                style={{ backgroundColor: t.colors.destructive + "1f" }}
+              >
+                <Ban size={t.icon.md} color={t.colors.destructive} />
+              </View>
+              <View className="flex-1">
+                <Text className="text-base font-bold">Aufgabe abbrechen</Text>
+                <Text className="text-muted-foreground text-xs" numberOfLines={1}>
+                  {task.title}
+                </Text>
+              </View>
             </View>
-          </View>
 
-          {error != null ? <InlineError message={error} /> : null}
+            {error != null ? <InlineError message={error} /> : null}
 
-          <View className="gap-1.5">
-            <Text className="text-sm font-medium">Grund</Text>
-            <Input
-              value={reason}
-              onChangeText={(v) => {
-                setReason(v)
-                if (error) setError(null)
-              }}
-              placeholder="z. B. Nicht mehr nötig"
-              autoCapitalize="sentences"
-              accessibilityLabel="Grund für den Abbruch"
-            />
-          </View>
+            <View className="gap-1.5">
+              <Text className="text-sm font-medium">Grund</Text>
+              <Input
+                value={reason}
+                onChangeText={(v) => {
+                  setReason(v)
+                  if (error) setError(null)
+                }}
+                placeholder="z. B. Nicht mehr nötig"
+                autoCapitalize="sentences"
+                accessibilityLabel="Grund für den Abbruch"
+              />
+            </View>
 
-          <View className="flex-row gap-3 pt-1">
-            <Button
-              variant="outline"
-              size="lg"
-              className="h-12 flex-1"
-              onPress={onClose}
-              disabled={busy}
-            >
-              <Text>Zurück</Text>
-            </Button>
-            <Button
-              variant="destructive"
-              size="lg"
-              className="h-12 flex-1"
-              onPress={submit}
-              disabled={busy}
-            >
-              <Text>{busy ? "Breche ab…" : "Abbrechen"}</Text>
-            </Button>
-          </View>
+            <View className="flex-row gap-3 pt-1">
+              <Button
+                variant="outline"
+                size="lg"
+                className="h-12 flex-1"
+                onPress={onClose}
+                disabled={busy}
+              >
+                <Text>Zurück</Text>
+              </Button>
+              <Button
+                variant="destructive"
+                size="lg"
+                className="h-12 flex-1"
+                onPress={submit}
+                disabled={busy}
+              >
+                <Text>{busy ? "Breche ab…" : "Abbrechen"}</Text>
+              </Button>
+            </View>
+          </Pressable>
         </Pressable>
-      </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   )
 }
