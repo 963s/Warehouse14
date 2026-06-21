@@ -47,6 +47,32 @@ import { requireAuth, requireRole } from '../lib/auth-policy.js';
 import { MetaApiError, type MetaSendArgs, sendToMeta } from '../lib/meta-whatsapp.js';
 import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 
+/**
+ * Canonical thread key for a phone number: DIGITS ONLY, no leading '+'.
+ *
+ * This MUST match the form the inbound webhook stores. Meta delivers the
+ * sender's wa_id WITHOUT a '+' (e.g. '491701234567'), and `webhooks-whatsapp.ts`
+ * writes `from_phone = msg.from` verbatim — so the entire inbound corpus, the
+ * `whatsapp_conversations.customer_phone_e164` rows, the bot-runner replies and
+ * the booking auto-replies are all keyed on the no-'+' form. The thread-list SQL
+ * groups by that key. If the operator's "Neue Nachricht" composer (or any other
+ * caller) sends a '+'-prefixed number, storing it verbatim splits the same
+ * contact into two threads ('491701234567' vs '+491701234567'). Stripping the
+ * '+' on the send path canonicalizes outbound to the SAME key as inbound, so the
+ * two halves merge back into one conversation. The provider call still uses the
+ * '+'-prefixed E.164 form (see `toMetaE164`) — Meta accepts both, but '+' is the
+ * documented wire form.
+ */
+function canonicalThreadPhone(raw: string): string {
+  return raw.replace(/\D+/g, '');
+}
+
+/** Provider wire form: canonical digits with a leading '+' (E.164). */
+function toMetaE164(raw: string): string {
+  const digits = canonicalThreadPhone(raw);
+  return digits.length > 0 ? `+${digits}` : raw.trim();
+}
+
 // ════════════════════════════════════════════════════════════════════════
 // Typed errors
 // ════════════════════════════════════════════════════════════════════════
@@ -501,6 +527,14 @@ const whatsappInboxRoutes: FastifyPluginAsync<WhatsAppInboxOpts> = async (app, o
       const liveSendEnabled =
         opts.env.WHATSAPP_PHONE_NUMBER_ID.length > 0 && opts.env.WHATSAPP_ACCESS_TOKEN.length > 0;
 
+      // Canonicalize the destination to the no-'+' thread key BEFORE any write,
+      // so a '+'-typed number from the "Neue Nachricht" composer lands on the
+      // same thread as the inbound (no-'+') corpus instead of forking a second
+      // conversation. The stored `to_phone` and the cooldown key both use this;
+      // the Meta call uses the '+'-prefixed E.164 form below.
+      const toPhone = canonicalThreadPhone(body.toPhone);
+      const metaToPhone = toMetaE164(body.toPhone);
+
       let status: WhatsAppOutboundStatus = 'queued';
       let providerMessageId: string | null = null;
       let providerError: unknown = null;
@@ -532,7 +566,7 @@ const whatsappInboxRoutes: FastifyPluginAsync<WhatsAppInboxOpts> = async (app, o
       INSERT INTO whatsapp_outbound_messages
         (to_phone, body, body_encrypted, template_name, template_params, status, sent_by_user_id)
       VALUES
-        (${body.toPhone},
+        (${toPhone},
          ${body.body},
          encrypt_pii(${body.body}),
          ${body.templateName ?? null},
@@ -560,7 +594,7 @@ const whatsappInboxRoutes: FastifyPluginAsync<WhatsAppInboxOpts> = async (app, o
           const sendArgs: MetaSendArgs = {
             phoneNumberId: opts.env.WHATSAPP_PHONE_NUMBER_ID,
             accessToken: opts.env.WHATSAPP_ACCESS_TOKEN,
-            toPhone: body.toPhone,
+            toPhone: metaToPhone,
             messageBody: body.body,
           };
           if (body.templateName !== undefined) sendArgs.templateName = body.templateName;
@@ -575,7 +609,7 @@ const whatsappInboxRoutes: FastifyPluginAsync<WhatsAppInboxOpts> = async (app, o
           providerErrorCode = providerCode;
           status = 'failed';
           req.log.warn(
-            { err, providerCode, toPhone: body.toPhone },
+            { err, providerCode, toPhone },
             'whatsapp send: provider rejected',
           );
         }
@@ -601,12 +635,12 @@ const whatsappInboxRoutes: FastifyPluginAsync<WhatsAppInboxOpts> = async (app, o
       try {
         await app.db.execute(sql`
           INSERT INTO whatsapp_conversations (customer_phone_e164, ai_active, cooldown_until)
-          VALUES (${body.toPhone}, FALSE, now() + interval '12 hours')
+          VALUES (${toPhone}, FALSE, now() + interval '12 hours')
           ON CONFLICT (customer_phone_e164)
           DO UPDATE SET ai_active = FALSE, cooldown_until = now() + interval '12 hours'
         `);
       } catch (err) {
-        req.log.warn({ err, toPhone: body.toPhone }, 'whatsapp send: cooldown upsert failed');
+        req.log.warn({ err, toPhone }, 'whatsapp send: cooldown upsert failed');
       }
 
       if (status === 'failed') {

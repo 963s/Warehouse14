@@ -166,7 +166,14 @@ const whatsappWebhookRoutes: FastifyPluginAsync<WhatsAppWebhookOpts> = async (ap
           if (!value?.messages) continue;
           for (const msg of value.messages) {
             if (!msg.id) continue;
-            const fromPhone = msg.from ?? '';
+            // Canonical thread key: DIGITS ONLY, no leading '+'. Meta delivers
+            // the wa_id without a '+' (e.g. '491701234567'), but we strip any
+            // stray '+'/spaces defensively so the stored `from_phone`, the bot
+            // trigger and the booking-reply key are byte-identical to the
+            // outbound key written by the /api/whatsapp/send route. Matching keys
+            // are what keep one contact in ONE thread (GROUP BY phone) instead of
+            // splitting into '491701234567' vs '+491701234567'.
+            const fromPhone = (msg.from ?? '').replace(/\D+/g, '');
             const textBody = typeof msg.text?.body === 'string' ? msg.text.body : '';
             try {
               await app.db.insert(whatsappInboundMessages).values({

@@ -30,16 +30,25 @@ export const WHATSAPP_BODY_MAX = 4096
 export const WHATSAPP_PHONE_MIN_DIGITS = 7
 
 // ── Telefon-Formatierung (Anzeige + E.164-Normalisierung) ─────────────────────
-// Der Server speichert eine Telefonnummer als Schlüssel des Threads. Wir zeigen
-// sie lesbar an (mit „+"-Präfix, wenn international), normalisieren aber für den
-// Versand auf reine Ziffern mit optionalem „+", damit der Provider sie annimmt.
+// Der Server speichert eine Telefonnummer als Schlüssel des Threads. WICHTIG:
+// Meta liefert die Absender-wa_id OHNE führendes „+" (z. B. „491701234567"), und
+// genau diese ziffern-reine Form ist überall der kanonische Thread-Schlüssel —
+// die eingehenden Nachrichten, die Konversations-/KI-Zeilen und die Bot-Antworten
+// hängen alle daran. Tippt der Owner unter „Neue Nachricht" ein „+49 170 …",
+// MUSS das auf dieselbe ziffern-reine Form fallen, sonst spaltet sich derselbe
+// Kontakt in ZWEI Threads („491701234567" vs. „+491701234567"). Deshalb
+// normalisieren wir IMMER auf reine Ziffern (führendes „+" wird entfernt) — der
+// Server tut dasselbe auf der Send-Route, damit ein- und ausgehender Schlüssel
+// deckungsgleich bleiben. Die Anzeige (formatPhone) stellt das „+" rein optisch
+// wieder voran; gespeichert wird nie eines.
 
-/** Reduziert eine Eingabe auf E.164-nahe Form: führendes „+" plus Ziffern. */
+/**
+ * Kanonisiert eine Eingabe auf den Thread-Schlüssel: reine Ziffern, KEIN „+".
+ * Das deckt sich mit der Meta-wa_id und mit dem, was der Server speichert, damit
+ * ein selbst getipptes „+49…" und ein eingehendes „49…" denselben Chat treffen.
+ */
 export function normalizePhone(raw: string): string {
-  const trimmed = raw.trim()
-  const hasPlus = trimmed.startsWith("+")
-  const digits = trimmed.replace(/\D+/g, "")
-  return hasPlus ? `+${digits}` : digits
+  return raw.replace(/\D+/g, "")
 }
 
 /** Anzahl der reinen Ziffern in einer Nummer (für die Mindestlängen-Prüfung). */

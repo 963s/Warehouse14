@@ -163,13 +163,16 @@ describe('POST /api/whatsapp/send — record-intent then settle (P1.5)', () => {
 
   it('a provider rejection still records the row as failed (settle UPDATE + 0073 grant)', async () => {
     h.mode = 'fail';
+    // Operator types a '+'-prefixed number; the route canonicalizes the stored
+    // thread key to DIGITS ONLY so it matches the inbound (no-'+') corpus and
+    // does not fork a second conversation.
     const res = await send('+4915112345678');
     // The route surfaces the provider rejection — but the row MUST exist.
     expect(res.statusCode).toBeGreaterThanOrEqual(400);
 
     const rows = await migratorSql<{ status: string; provider_error: unknown }[]>`
       SELECT status::text AS status, provider_error FROM whatsapp_outbound_messages
-      WHERE to_phone = '+4915112345678'`;
+      WHERE to_phone = '4915112345678'`;
     expect(rows).toHaveLength(1);
     expect(must(rows[0]).status).toBe('failed');
     expect(must(rows[0]).provider_error).not.toBeNull();
@@ -182,9 +185,23 @@ describe('POST /api/whatsapp/send — record-intent then settle (P1.5)', () => {
 
     const rows = await migratorSql<{ status: string; provider_message_id: string | null }[]>`
       SELECT status::text AS status, provider_message_id FROM whatsapp_outbound_messages
-      WHERE to_phone = '+4915187654321'`;
+      WHERE to_phone = '4915187654321'`;
     expect(rows).toHaveLength(1);
     expect(must(rows[0]).status).toBe('sent');
     expect(must(rows[0]).provider_message_id).toBe('wamid.TEST123');
+  });
+
+  it('a "+"-typed send and a no-"+" send land on the SAME canonical thread key', async () => {
+    // The core split-thread regression: the operator typing '+49 151 1234567'
+    // under "Neue Nachricht" must NOT fork a separate conversation from the
+    // inbound '4915112345678' corpus. Both forms canonicalize to the same key.
+    h.mode = 'ok';
+    expect((await send('+49 151 1234567')).statusCode).toBe(200);
+    expect((await send('491511234567')).statusCode).toBe(200);
+
+    const rows = await migratorSql<{ to_phone: string }[]>`
+      SELECT DISTINCT to_phone FROM whatsapp_outbound_messages`;
+    expect(rows).toHaveLength(1);
+    expect(must(rows[0]).to_phone).toBe('491511234567');
   });
 });
