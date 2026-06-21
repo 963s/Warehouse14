@@ -53,7 +53,13 @@ import {
   type AvailableSlotsQuery,
   type BookAppointmentRequest,
   type BridgeSummary,
+  type CategoryNode,
   type CategoryTreeResponse,
+  type CreateCategoryBody,
+  type CreateCategoryResponse,
+  type DeleteCategoryResponse,
+  type UpdateCategoryBody,
+  type UpdateCategoryResponse,
   type ClosingListItem,
   type CreateProductBody,
   type CreateProductResponse,
@@ -112,6 +118,8 @@ import {
   type LedgerListRow,
   type ListBelegtextQuery,
   type ListBelegtextResponse,
+  type PublishBelegtextBody,
+  type PublishBelegtextResponse,
   type ListTasksQuery,
   type ListTasksResponse,
   type PhotoRow,
@@ -242,6 +250,28 @@ export function setProductCategories(
   body: SetProductCategoriesBody,
 ): Promise<SetProductCategoriesResponse> {
   return categoriesApi.setForProduct(apiClient, productId, body)
+}
+
+// Taxonomy CRUD: the Einstellungen „Sammlungen"-Editor. ADMIN, NO step-up
+// (operator-curated; no PII / fiscal / inventory side effect). A delete that the
+// FK refuses (a product or a child references the node) returns a themed 409 the
+// surface shows verbatim; we never reimplement that guard client-side.
+/** POST /api/categories: create a root or child Sammlung (ADMIN). */
+export function createCategory(body: CreateCategoryBody): Promise<CreateCategoryResponse> {
+  return categoriesApi.create(apiClient, body)
+}
+
+/** PUT /api/categories/:id: rename / re-parent / reorder a Sammlung (ADMIN). */
+export function updateCategory(
+  id: string,
+  body: UpdateCategoryBody,
+): Promise<UpdateCategoryResponse> {
+  return categoriesApi.update(apiClient, id, body)
+}
+
+/** DELETE /api/categories/:id: remove a Sammlung (ADMIN). 409 when referenced. */
+export function deleteCategory(id: string): Promise<DeleteCategoryResponse> {
+  return categoriesApi.remove(apiClient, id)
 }
 
 // ── Product photos (server-side LOCAL store; raw/thumb GET is public) ─────────
@@ -539,6 +569,20 @@ export function currentBelegtext(
   query: CurrentBelegtextQuery,
 ): Promise<CurrentBelegtextResponse> {
   return belegtextApi.current(apiClient, query)
+}
+
+/**
+ * POST /api/belegtext-templates: publish a NEW current version of a receipt
+ * legal text. The backend closes the previous CURRENT row (validTo = now()) and
+ * inserts the new one in ONE transaction, then audit-logs `belegtext.published`.
+ * This is a fiscal-relevant write (the text prints on every GoBD-relevant Beleg);
+ * Owner + step-up, transparent via stepUpMiddleware. The surface gates it
+ * behind the explicit FiscalConfirmSheet; we never reimplement the close-out.
+ */
+export function publishBelegtext(
+  body: PublishBelegtextBody,
+): Promise<PublishBelegtextResponse> {
+  return belegtextApi.publish(apiClient, body)
 }
 
 // ── eBay-Kanal (the 9-stage listing state machine + marketplace push) ─────────

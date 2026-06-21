@@ -11,6 +11,18 @@
  *     the [0, 0.5] fraction the backend expects. A real success → Success haptic
  *     + verdigris confirm + a refetch, so the number on screen is always live.
  *
+ *   • Belegtexte: the receipt legal texts (header/footer + per-Steuerschlüssel
+ *     clauses + Ankauf declaration), LIVE from GET /api/belegtext-templates. An
+ *     ADMIN edits a body and PUBLISHES a new version through the shared
+ *     FiscalConfirmSheet, a fiscal-weight commit (the text prints on every
+ *     GoBD-relevant Beleg), Owner step-up transparent via the global host. A
+ *     non-ADMIN sees the live texts, read-only. (SettingsBelegtextSection.)
+ *
+ *   • Sammlungen: the category taxonomy (up to 3 levels), LIVE from
+ *     GET /api/categories with the server's per-node productCount. ADMIN adds /
+ *     renames / deletes; a delete the FK refuses is pre-checked + shown honestly.
+ *     No step-up (operator-curated). (SettingsCategoriesSection.)
+ *
  *   • Dashboard-Ziele — the owner's editable goals behind the Schatzkammer rings
  *     (Tagesumsatz, Tagesgewinn, Monatsumsatz, Monatsgewinn). Persisted via the
  *     preferences store, seeded from the exact constants the dashboard ships with.
@@ -70,6 +82,8 @@ import {
   useDashboardTargets,
 } from "@/warehouse14/preferences"
 import { clearSession, useSession } from "@/warehouse14/session"
+import { SettingsBelegtextSection } from "@/warehouse14/SettingsBelegtextSection"
+import { SettingsCategoriesSection } from "@/warehouse14/SettingsCategoriesSection"
 import { useW14Theme } from "@/warehouse14/theme"
 import {
   InlineError,
@@ -655,6 +669,13 @@ function AppearanceSection() {
           <ChevronRight size={t.icon.md} color={t.colors.primary} />
         </View>
       </PressableScale>
+      <Text
+        className="text-muted-foreground mt-1 pt-2 text-2xs"
+        style={{ borderTopWidth: 1, borderColor: t.colors.border }}
+      >
+        {"Hell/Dunkel und „Bewegung reduzieren“ steuerst du im System; die App folgt dieser " +
+          "Wahl. Eine separate App-Umschaltung gibt es bewusst nicht."}
+      </Text>
     </SectionCard>
   )
 }
@@ -732,6 +753,8 @@ export default function EinstellungenScreen() {
   // motion (DESIGN.md §6), capped so it never feels slow.
   const sections = [
     <MarginsSection key="margins" />,
+    <SettingsBelegtextSection key="belegtext" />,
+    <SettingsCategoriesSection key="categories" />,
     <TargetsSection key="targets" />,
     <DeviceSection key="device" />,
     <AppearanceSection key="appearance" />,
@@ -756,7 +779,7 @@ export default function EinstellungenScreen() {
           <Text className="text-xl font-bold">Einstellungen</Text>
         </View>
         <Text className="text-muted-foreground text-sm">
-          Margen, Ziele, Gerät und Abmeldung — an einem Ort.
+          Margen, Belegtexte, Sammlungen, Ziele und Gerät an einem Ort.
         </Text>
       </View>
 
