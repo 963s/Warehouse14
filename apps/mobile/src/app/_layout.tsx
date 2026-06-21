@@ -12,12 +12,21 @@ import { GestureHandlerRootView } from "react-native-gesture-handler"
 import { initialWindowMetrics, SafeAreaProvider } from "react-native-safe-area-context"
 
 import { warehouse14Fonts } from "@/warehouse14/fonts"
+import { createFileReadCachePersistence, installReadCachePersistence } from "@/warehouse14/offline"
 import { useSession } from "@/warehouse14/session"
 import { StepUpDialogHost } from "@/warehouse14/StepUpDialog"
 import { darkPalette, lightPalette } from "@/warehouse14/theme"
 import { ConnectionBannerHost } from "@/warehouse14/ui"
 
 SplashScreen.preventAutoHideAsync()
+
+// Turn the read cache durable across COLD STARTS: install the on-disk adapter
+// once, before React mounts, so the very first cached read on a fresh launch can
+// hydrate its last-good snapshot from disk. Installing is side-effect-free beyond
+// wiring the adapter (keys are pulled on demand, never eagerly slurped), and the
+// adapter itself swallows every storage failure — so this can't slow or break
+// startup. Read snapshots only; fiscal/money records never live here.
+installReadCachePersistence(createFileReadCachePersistence())
 
 /** Redirect to /login when there is no session, and away from it once there is. */
 function useAuthRedirect(): void {

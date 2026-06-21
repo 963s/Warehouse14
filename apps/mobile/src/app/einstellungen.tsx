@@ -74,6 +74,7 @@ import {
   DEV_DEVICE_FINGERPRINT,
   updateMetalMargin,
 } from "@/warehouse14/api"
+import { clearCachedRead } from "@/warehouse14/offline"
 import {
   DEFAULT_DASHBOARD_TARGETS,
   type DashboardTargets,
@@ -688,6 +689,11 @@ function LogoutSection() {
 
   const logout = useCallback(() => {
     haptics.success()
+    // Wipe the last-good read cache FIRST (memory + persisted snapshots), so the
+    // next actor to sign in never briefly sees the previous actor's cached
+    // finance figures — the honesty rule across sign-ins. Reads only ever; no
+    // fiscal/money record lives in this cache.
+    clearCachedRead()
     // Clearing the in-memory session flips useSession().isAuthenticated → the
     // root auth gate (useAuthRedirect) replaces the stack with /login.
     clearSession()

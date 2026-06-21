@@ -97,6 +97,7 @@ import {
   NotificationBell,
   peakSeverity,
 } from "@/warehouse14/notifications"
+import { OfflineNotice } from "@/warehouse14/offline"
 import { useDashboardTargets } from "@/warehouse14/preferences"
 import {
   computeTreasureMap,
@@ -394,6 +395,13 @@ export default function SchatzkammerScreen() {
             </View>
           </View>
         </StaggerItem>
+
+        {/* Offline note over the last-good board — self-subscribes to the
+            connection store and shows ONLY while the cloud is unreachable. The
+            gauges below keep their last real values (the data layer holds them on
+            a background failure); this is the honest „letzter bekannter Stand"
+            marker above them, the in-context sibling of the global banner. */}
+        <OfflineNotice />
 
         {bgError ? (
           <StaggerItem index={1}>

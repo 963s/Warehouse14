@@ -34,7 +34,7 @@ import {
   isTransientTransportError,
   type RetryDecision,
 } from "./retry-policy"
-import { useConnection } from "../ui/data/connection"
+import { reportOffline, useConnection } from "../ui/data/connection"
 import { useMutation } from "../ui/data/useMutation"
 import type { MutationOptions, MutationResult } from "../ui/data/useMutation"
 
@@ -91,6 +91,17 @@ export function useSafeRetry<V, T, C = unknown>(
         attemptsRef.current = 0
         return out
       } catch (err) {
+        // A write that died on the wire is itself proof we can't reach the cloud.
+        // The connection store is otherwise fed ONLY by reads (useQuery), so on a
+        // surface with no polling read in flight a failed write would leave the
+        // store reading "online" and the reconnect effect would never fire. Feed
+        // it here so the store reflects the transport truth a write just learned —
+        // and so the later read that succeeds flips it back to "online", which is
+        // what actually re-fires a held safe write. (A clean server `ApiError` is
+        // a real answer, NOT a transport failure, so it never moves us offline.)
+        if (isTransientTransportError(err)) {
+          reportOffline()
+        }
         // Only a SAFE write that failed because the wire was down is remembered.
         // A real server refusal (validation/conflict) is a genuine answer — never
         // re-fired. A fiscal/non-idempotent write is never remembered at all.
@@ -103,8 +114,21 @@ export function useSafeRetry<V, T, C = unknown>(
     [decision.safe],
   )
 
-  // When we come back online, re-fire a held safe write — once per reconnect,
-  // up to the cap. The mutation's own optimistic/rollback + error handling apply.
+  // Re-fire a held safe write — once per reconnect, up to the cap. The mutation's
+  // own optimistic/rollback + error handling apply.
+  //
+  // The effect keys on BOTH `status` AND `pendingVars`, not status alone. Keying
+  // on status alone has a real hole: if a safe write fails on transport while the
+  // store still reads "online" (because no read had flipped it offline yet), then
+  // arming `pendingVars` would NOT re-run a status-only effect — status never
+  // changed — so the auto-retry the UI just promised (`willAutoRetry` true,
+  // „wird automatisch erneut versucht…") would never be scheduled. Depending on
+  // `pendingVars` too means the arm itself re-evaluates this guard. The body is
+  // idempotent under the extra dependency: it only acts while `status==="online"`
+  // AND something is pending, and it clears `pendingVars` before firing, so it
+  // can't loop. (The write's own catch also calls `reportOffline()` on a
+  // transport failure, so a fire while genuinely offline is held, not retried, and
+  // the next successful read flips us back to "online" to drive this effect.)
   useEffect(() => {
     if (status !== "online" || pendingVars == null) return
     if (attemptsRef.current >= maxAutoRetries) {
@@ -122,7 +146,7 @@ export function useSafeRetry<V, T, C = unknown>(
       // state and (if still transient) re-armed pendingVars for the next online.
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status])
+  }, [status, pendingVars])
 
   return {
     ...m,

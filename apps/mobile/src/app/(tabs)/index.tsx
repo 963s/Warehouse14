@@ -32,6 +32,7 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Text } from "@/components/ui/text"
 import { absoluteUrl, describeError, formatEur, listProducts } from "@/warehouse14/api"
+import { OfflineNotice, StaleBadge, useCachedQuery } from "@/warehouse14/offline"
 import {
   formatLocation,
   STATUS_FILTERS,
@@ -45,7 +46,6 @@ import {
   QueryBoundary,
   Skeleton,
   StaggerItem,
-  useQuery,
   useRefreshControl,
   useScreenInsets,
 } from "@/warehouse14/ui"
@@ -120,9 +120,14 @@ export default function LagerScreen() {
 
   // One live query keyed off the debounced search + the active filter, so the
   // data layer gives us refetch-on-focus (a fresh Entwurf shows up on return),
-  // pull-to-refresh and in-flight de-dupe for free.
+  // pull-to-refresh and in-flight de-dupe for free. `useCachedQuery` layers the
+  // durable last-good read cache under it: switch tabs (or cold-start the app on
+  // a dropped LAN) and the catalog paints its last real page instantly instead of
+  // a skeleton — marked honestly as cached (StaleBadge) until the live page lands.
+  // The cache is keyed by `key`, so each filter/search keeps its own snapshot and
+  // we never show filter A's rows under filter B.
   const key = `lager:${filter}:${debouncedQ}`
-  const products = useQuery(
+  const products = useCachedQuery(
     () =>
       listProducts({
         q: debouncedQ || undefined,
@@ -274,6 +279,15 @@ export default function LagerScreen() {
     <View className="flex-1 bg-background">
       {headerControls}
 
+      {/* The inline, in-context offline note — self-subscribes to the connection
+          store and shows ONLY while offline, right above the (last-good) list, so
+          the operator knows these rows are the last known stand. */}
+      {products.fromCache ? (
+        <View className="px-4 pb-1">
+          <OfflineNotice />
+        </View>
+      ) : null}
+
       <QueryBoundary
         query={products}
         loading={<LagerSkeleton />}
@@ -328,10 +342,18 @@ export default function LagerScreen() {
                 if (moreRemain && !paging.loading && paging.error == null) void loadMore()
               }}
               ListHeaderComponent={
-                <Text className="text-muted-foreground pb-1 text-xs">
-                  {total === 1 ? "1 Artikel" : `${total.toLocaleString("de-DE")} Artikel`}
-                  {moreRemain ? ` · ${rows.length.toLocaleString("de-DE")} geladen` : ""}
-                </Text>
+                <View className="flex-row items-center justify-between pb-1">
+                  <Text className="text-muted-foreground text-xs">
+                    {total === 1 ? "1 Artikel" : `${total.toLocaleString("de-DE")} Artikel`}
+                    {moreRemain ? ` · ${rows.length.toLocaleString("de-DE")} geladen` : ""}
+                  </Text>
+                  {/* When the list is the cached seed (live page not yet landed),
+                      pin the honest „Stand vor … "-Marker so the count never reads
+                      as live. Hidden the instant the real page replaces it. */}
+                  {products.fromCache ? (
+                    <StaleBadge cachedAt={products.cachedAt} stale={products.isStale} />
+                  ) : null}
+                </View>
               }
               ListFooterComponent={
                 <LagerListFooter

@@ -36,6 +36,8 @@ export {
   type CachedEntry,
 } from "./read-cache"
 
+export { createFileReadCachePersistence } from "./persistence"
+
 export { useCachedQuery, type CachedQueryOptions, type CachedQueryResult } from "./useCachedQuery"
 
 export {

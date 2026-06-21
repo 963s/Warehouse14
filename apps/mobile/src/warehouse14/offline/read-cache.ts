@@ -33,6 +33,15 @@ import { useSyncExternalStore } from "react"
 export interface ReadCachePersistence {
   getItem: (key: string) => Promise<string | null>
   setItem: (key: string, value: string) => Promise<void>
+  /**
+   * OPTIONAL: enumerate the keys this adapter currently holds (already
+   * unprefixed — the cache adds/strips `STORAGE_PREFIX` itself). When present,
+   * a full `clearCachedRead()` (sign-out) can purge the on-disk snapshots too,
+   * so a new actor never inherits the previous one's persisted figures. Without
+   * it the full clear still wipes memory; disk entries are then overwritten on
+   * the next write of each key (the prior degraded behaviour, made explicit).
+   */
+  keys?: () => Promise<readonly string[]>
 }
 
 /** One cached read: the real payload plus the instant the cloud delivered it. */
@@ -175,8 +184,20 @@ export function clearCachedRead(key?: string): void {
   emit()
   if (persistence) {
     if (key == null) {
-      // We can't enumerate the adapter generically; rely on per-key overwrite on
-      // next write. Best-effort: nothing to do here without a keys() API.
+      // Full wipe (sign-out): purge the on-disk snapshots too so a new actor
+      // never inherits the previous one's persisted figures. If the adapter can
+      // enumerate its keys we blank each; if it can't, we fall back to the prior
+      // degraded behaviour (disk entries are overwritten on each key's next
+      // write). Best-effort + fire-and-forget — a storage failure never throws.
+      const p = persistence
+      if (p.keys) {
+        void p
+          .keys()
+          .then((all) => {
+            for (const k of all) void p.setItem(STORAGE_PREFIX + k, "").catch(() => {})
+          })
+          .catch(() => {})
+      }
     } else {
       void persistence.setItem(STORAGE_PREFIX + key, "").catch(() => {})
     }
