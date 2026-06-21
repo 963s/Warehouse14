@@ -79,11 +79,13 @@ import {
   CONDITION_OPTIONS,
   finenessDecimalForPerMille,
   generateAnkaufSku,
+  ITEM_TYPE_LABEL,
   ITEM_TYPE_OPTIONS,
   METAL_OPTIONS,
   metalFromItemType,
   PAYOUT_METHOD_LABEL,
 } from "@/warehouse14/ankauf-ui"
+import { germanLabel } from "@/warehouse14/german-text"
 import {
   ankaufTransaction,
   formatCents,
@@ -756,8 +758,10 @@ function ComplianceStop({ sanctions }: { sanctions: boolean }) {
 
 function IntakeRow({ line, onRemove }: { line: IntakeLine; onRemove: () => void }) {
   const t = useW14Theme()
-  const itemTypeLabel =
-    ITEM_TYPE_OPTIONS.find((o) => o.value === line.itemType)?.label ?? line.itemType
+  // Always a clean German label — `germanLabel` returns „Unbekannt" rather than
+  // the raw lower_snake token if a future backend enum ever arrives unmapped, so
+  // a developer string can never surface in the lot row.
+  const itemTypeLabel = germanLabel(ITEM_TYPE_LABEL, line.itemType)
   return (
     <Card className="flex-row items-center gap-3 rounded-xl border px-3 py-3">
       <View className="flex-1 gap-1">

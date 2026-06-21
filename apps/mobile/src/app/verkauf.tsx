@@ -703,7 +703,7 @@ export default function VerkaufScreen() {
                   <View className="flex-row items-center justify-between">
                     <Text className="text-muted-foreground text-sm">Erhalten</Text>
                     <Text className="font-mono-medium text-xl">
-                      {cashReceived === "" ? "0,00 €" : `${cashReceived} €`}
+                      {formatCashReceived(cashReceived)}
                     </Text>
                   </View>
 
@@ -1147,6 +1147,18 @@ function CustomerPicker({
 // ────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Render the live „Erhalten" amount cleanly. The keypad string is a partial
+ * de-DE entry ("", "12", "12,", "12,5"); we show it verbatim with the € sign so
+ * the operator sees exactly what they typed — but a lone trailing comma ("12,")
+ * drops to the whole part so the money line never reads a dangling "12, €".
+ */
+function formatCashReceived(value: string): string {
+  if (value === "") return "0,00 €"
+  const shown = value.endsWith(",") ? value.slice(0, -1) : value
+  return `${shown} €`
+}
 
 /** First letters of the first + last name parts → the calm avatar monogram. */
 function initialsOf(fullName: string): string {
