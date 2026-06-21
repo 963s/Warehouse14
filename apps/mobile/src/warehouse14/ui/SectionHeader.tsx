@@ -67,7 +67,10 @@ export function SectionHeader({
       <View className="flex-1 flex-row items-center gap-2.5">
         {Icon ? <Icon size={t.icon.md} color={t.colors.primary} /> : null}
         <View className="flex-1">
-          <Text className="text-base font-semibold" numberOfLines={1}>
+          {/* An un-carded headline on the canvas speaks the antique DISPLAY
+              voice — Cormorant Garamond at the section-headline step (DESIGN §3:
+              headlines that sit on the canvas, not the small in-card title). */}
+          <Text className="text-lg font-display-semibold leading-tight" numberOfLines={1}>
             {title}
           </Text>
           {subtitle != null ? (

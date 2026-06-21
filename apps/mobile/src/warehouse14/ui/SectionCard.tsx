@@ -37,12 +37,18 @@ export function SectionCard({
           {Icon ? (
             <View
               className="h-8 w-8 items-center justify-center rounded-md"
-              style={{ backgroundColor: t.colors.primary + "1f" }}
+              style={{
+                backgroundColor: t.colors.primary + "1f",
+                borderColor: t.colors.border,
+                borderWidth: 1,
+              }}
             >
               <Icon size={t.icon.md} color={t.colors.primary} />
             </View>
           ) : null}
           <View className="flex-1">
+            {/* In-card section title stays Inter at the section step (DESIGN §3
+                keeps the small in-card header Inter, not the display serif). */}
             <Text className="text-base font-semibold" numberOfLines={1}>
               {title}
             </Text>

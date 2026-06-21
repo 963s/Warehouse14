@@ -13,29 +13,37 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
+        // Primary = BRASS. The brand fill, cream label, one soft whisper of shadow.
         default: cn(
           'bg-primary active:bg-primary/90 shadow-sm shadow-black/5',
           Platform.select({ web: 'hover:bg-primary/90' })
         ),
+        // Destructive = TERRACOTTA at full strength on both schemes (the palette
+        // already lifts it for dark; never wash it to /60). Cream label.
         destructive: cn(
-          'bg-destructive active:bg-destructive/90 dark:bg-destructive/60 shadow-sm shadow-black/5',
+          'bg-destructive active:bg-destructive/90 shadow-sm shadow-black/5',
           Platform.select({
             web: 'hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40',
           })
         ),
+        // Outline = the cream canvas inside a fine gold hairline. Press dips into
+        // the sunken cream well (`secondary`), never the sage `accent` (which
+        // means "positive" — a wire we never cross).
         outline: cn(
-          'border-border bg-background active:bg-accent dark:bg-input/30 dark:border-input dark:active:bg-input/50 border shadow-sm shadow-black/5',
+          'border-border bg-background active:bg-secondary dark:bg-input/30 dark:border-input dark:active:bg-input/50 border shadow-sm shadow-black/5',
           Platform.select({
-            web: 'hover:bg-accent dark:hover:bg-input/50',
+            web: 'hover:bg-secondary dark:hover:bg-input/50',
           })
         ),
+        // Secondary = the sunken cream well itself.
         secondary: cn(
           'bg-secondary active:bg-secondary/80 shadow-sm shadow-black/5',
           Platform.select({ web: 'hover:bg-secondary/80' })
         ),
+        // Ghost = bare; press settles onto the sunken cream well, not sage.
         ghost: cn(
-          'active:bg-accent dark:active:bg-accent/50',
-          Platform.select({ web: 'hover:bg-accent dark:hover:bg-accent/50' })
+          'active:bg-secondary dark:active:bg-secondary/60',
+          Platform.select({ web: 'hover:bg-secondary dark:hover:bg-secondary/60' })
         ),
         link: '',
       },
@@ -64,13 +72,13 @@ const buttonTextVariants = cva(
     variants: {
       variant: {
         default: 'text-primary-foreground',
-        destructive: 'text-white',
-        outline: cn(
-          'group-active:text-accent-foreground',
-          Platform.select({ web: 'group-hover:text-accent-foreground' })
-        ),
+        // Warm cream label on the terracotta fill — never cold pure white.
+        destructive: 'text-destructive-foreground',
+        // Outline/ghost label stays the warm ink; the press tints the surface,
+        // not the text (no sage `accent-foreground` flash on press).
+        outline: '',
         secondary: 'text-secondary-foreground',
-        ghost: 'group-active:text-accent-foreground',
+        ghost: '',
         link: cn(
           'text-primary group-active:underline',
           Platform.select({ web: 'underline-offset-4 hover:underline group-hover:underline' })

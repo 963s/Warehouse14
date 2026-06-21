@@ -59,7 +59,10 @@ function DialogContent({
       <DialogOverlay>
         <DialogPrimitive.Content
           className={cn(
-            'bg-background border-border z-50 mx-auto flex w-full max-w-[calc(100%-2rem)] flex-col gap-4 rounded-lg border p-6 shadow-lg shadow-black/5 sm:max-w-lg',
+            // Floating layer = the card fill inside a fine gold hairline at the
+            // card radius (8), with just the one soft whisper of shadow (DESIGN
+            // §5 — depth is layering + hairline + the scrim, never a heavy drop).
+            'bg-card border-border z-50 mx-auto flex w-full max-w-[calc(100%-2rem)] flex-col gap-4 rounded-lg border p-6 shadow-sm shadow-black/5 sm:max-w-lg',
             Platform.select({
               web: 'animate-in fade-in-0 zoom-in-95 duration-200',
             }),
@@ -79,7 +82,7 @@ function DialogContent({
             hitSlop={12}>
             <Icon
               as={X}
-              className={cn('text-accent-foreground web:pointer-events-none size-4 shrink-0')}
+              className={cn('text-muted-foreground web:pointer-events-none size-4 shrink-0')}
             />
             <Text className="sr-only">Schließen</Text>
           </DialogPrimitive.Close>
@@ -110,7 +113,8 @@ function DialogTitle({
 }: React.ComponentProps<typeof DialogPrimitive.Title>) {
   return (
     <DialogPrimitive.Title
-      className={cn('text-foreground text-lg font-semibold leading-none', className)}
+      // The antique DISPLAY voice — Cormorant Garamond at the title step.
+      className={cn('text-foreground text-lg font-display-semibold leading-tight', className)}
       {...props}
     />
   );

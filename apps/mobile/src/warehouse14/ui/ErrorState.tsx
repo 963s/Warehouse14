@@ -88,7 +88,7 @@ export function ErrorState({
       >
         <Icon size={t.icon.xl} color={t.colors.destructive} />
       </View>
-      <Text className="text-center text-base font-semibold">{resolvedTitle}</Text>
+      <Text className="text-center text-xl font-display-semibold leading-tight">{resolvedTitle}</Text>
       <Text className="text-muted-foreground max-w-xs text-center text-sm leading-5">
         {resolvedMessage}
       </Text>

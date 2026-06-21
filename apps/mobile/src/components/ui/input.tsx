@@ -5,7 +5,11 @@ function Input({ className, ...props }: React.ComponentProps<typeof TextInput> &
   return (
     <TextInput
       className={cn(
-        'dark:bg-input/30 border-input bg-background text-foreground flex h-11 w-full min-w-0 flex-row items-center rounded-md border px-3 py-2 text-base leading-5 shadow-sm shadow-black/5',
+        // Sunken cream well: `bg-input` (the raised/sunken surface #e8e4da) sits
+        // below the card plane, framed by the fine gold hairline (`border-input`)
+        // at the antique button radius (4). Depth is the layering + hairline, not
+        // a heavy shadow — so just the one soft whisper.
+        'border-input bg-input text-foreground flex h-11 w-full min-w-0 flex-row items-center rounded-md border px-3 py-2 text-base leading-5 shadow-sm shadow-black/5',
         props.editable === false &&
         cn(
           'opacity-50',

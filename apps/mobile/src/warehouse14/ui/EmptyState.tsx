@@ -37,7 +37,7 @@ export function EmptyState({
       >
         <Icon size={t.icon.xl} color={t.colors.primary} />
       </View>
-      <Text className="text-center text-base font-semibold">{title}</Text>
+      <Text className="text-center text-xl font-display-semibold leading-tight">{title}</Text>
       {description != null ? (
         <Text className="text-muted-foreground max-w-xs text-center text-sm leading-5">
           {description}

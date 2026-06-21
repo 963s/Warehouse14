@@ -59,7 +59,11 @@ export function ListRow({
       {Icon ? (
         <View
           className="h-8 w-8 items-center justify-center rounded-md"
-          style={{ backgroundColor: t.colors.primary + "1f" }}
+          style={{
+            backgroundColor: t.colors.primary + "1f",
+            borderColor: t.colors.border,
+            borderWidth: 1,
+          }}
         >
           <Icon size={t.icon.md} color={t.colors.primary} />
         </View>
