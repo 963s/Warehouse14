@@ -494,13 +494,36 @@ export const NOTIFIED_EVENT_TYPES: readonly string[] = [
 
 // ── Relative-time (German) ────────────────────────────────────────────────────
 /**
+ * Normalise a server timestamp into a string the Hermes engine can parse.
+ *
+ * Some endpoints (the WhatsApp inbox among them) serialise instants via a
+ * Postgres `::text` timestamptz, e.g. `"2026-06-21 04:28:55.106035+00"` — a
+ * SPACE separator, six-digit fractional seconds and a bare `+00` offset. That is
+ * NOT ISO 8601, and Hermes (the app's on-device JS runtime) only parses ISO 8601:
+ * `new Date("2026-06-21 04:28:55.106035+00")` yields an Invalid Date on the
+ * device (even though Node/V8 parse it leniently — which is why it slipped
+ * through). The result was BLANK timestamps on every WhatsApp thread row, bubble
+ * and „erledigt"-line. We turn the Postgres shape into a parseable one:
+ * `space → T`, fraction clamped to three digits, bare `±HH` / `±HHMM` expanded to
+ * `±HH:MM`. Idempotent for values that are already ISO (`…Z` passes through).
+ */
+function toParseable(value: string): string {
+  return value
+    .trim()
+    .replace(" ", "T") // date/time separator
+    .replace(/(\.\d{3})\d+/, "$1") // clamp sub-ms fraction → ms
+    .replace(/([+-]\d{2})(\d{2})$/, "$1:$2") // +0200 → +02:00
+    .replace(/([+-]\d{2})$/, "$1:00") // +00 → +00:00
+}
+
+/**
  * A calm German "vor … " relative time for a row's timestamp, with an absolute
  * de-DE fallback once a notification is older than a day. Pure; the screen calls
  * it on render. „gerade eben" for the first minute keeps fresh alerts feeling
  * live without a churning second-by-second counter.
  */
 export function relativeTime(iso: string, now: number = Date.now()): string {
-  const then = new Date(iso).getTime()
+  const then = new Date(toParseable(iso)).getTime()
   if (!Number.isFinite(then)) return ""
   const diffMs = Math.max(0, now - then)
   const min = Math.floor(diffMs / 60_000)
