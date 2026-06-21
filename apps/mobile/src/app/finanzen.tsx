@@ -66,6 +66,7 @@ import {
   haptics,
   InlineError,
   ListRow,
+  PaperGrain,
   PressableScale,
   RingGauge,
   SectionCard,
@@ -471,6 +472,9 @@ export default function FinanzenScreen() {
 
   return (
     <View className="flex-1 bg-background">
+      {/* The aged-paper grain canvas — depth from the layered cream plus this
+          faint warm tooth, never a flat fill (DESIGN.md §1, §5). */}
+      <PaperGrain />
       <ScrollView
         className="flex-1"
         contentContainerStyle={{
@@ -483,7 +487,8 @@ export default function FinanzenScreen() {
         refreshControl={<RefreshControl {...rc} progressViewOffset={8} />}
       >
         <View className="gap-1">
-          <Text className="text-xl font-bold" numberOfLines={1}>
+          {/* Screen title in the antique Cormorant display voice (DESIGN.md §3). */}
+          <Text className="text-2xl font-display-semibold leading-tight" numberOfLines={1}>
             Finanzen
           </Text>
           <Text className="text-muted-foreground text-sm" numberOfLines={2}>

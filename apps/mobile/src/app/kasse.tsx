@@ -88,6 +88,7 @@ import {
   GoldFlood,
   haptics,
   InlineError,
+  PaperGrain,
   PressableScale,
   SectionCard,
   Skeleton,
@@ -558,7 +559,7 @@ function FinalizeSheet({
               <ShieldCheck size={t.icon.md} color={t.colors.primary} />
             </View>
             <View className="flex-1">
-              <Text className="text-base font-bold">Z-Bon erstellen</Text>
+              <Text className="text-lg font-display-semibold leading-tight">Z-Bon erstellen</Text>
               <Text className="text-muted-foreground text-xs" numberOfLines={1}>
                 {formatBusinessDay(businessDay)}
               </Text>
@@ -825,6 +826,9 @@ export default function KasseScreen() {
 
   return (
     <View className="flex-1 bg-background">
+      {/* The aged-paper grain canvas — depth from the layered cream plus this
+          faint warm tooth, never a flat fill (DESIGN.md §1, §5). */}
+      <PaperGrain />
       <ScrollView
         className="flex-1"
         contentContainerStyle={{

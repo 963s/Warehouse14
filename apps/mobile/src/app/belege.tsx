@@ -63,6 +63,7 @@ import {
   EmptyState,
   haptics,
   InlineError,
+  PaperGrain,
   PressableScale,
   SectionCard,
   Skeleton,
@@ -477,6 +478,9 @@ export default function BelegeScreen() {
 
   return (
     <View className="flex-1 bg-background">
+      {/* The aged-paper grain canvas — depth from the layered cream plus this
+          faint warm tooth, never a flat fill (DESIGN.md §1, §5). */}
+      <PaperGrain />
       <ScrollView
         className="flex-1"
         contentContainerStyle={{
@@ -491,8 +495,11 @@ export default function BelegeScreen() {
         {/* ── Register-Kopf ──────────────────────────────────────────────────── */}
         <View className="gap-3">
           <View className="flex-row items-center gap-2">
-            <Receipt size={t.icon.md} color={t.colors.primary} />
-            <Text className="text-base font-semibold">Belege & Dokumente</Text>
+            <Receipt size={t.icon.lg} color={t.colors.primary} />
+            {/* Screen title in the antique Cormorant display voice (DESIGN.md §3). */}
+            <Text className="text-2xl font-display-semibold leading-tight" numberOfLines={1}>
+              Belege & Dokumente
+            </Text>
           </View>
 
           {summaryFirstLoading ? (

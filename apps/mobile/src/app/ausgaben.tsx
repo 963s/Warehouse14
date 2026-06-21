@@ -45,7 +45,6 @@ import Animated, {
 } from "react-native-reanimated"
 
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Text } from "@/components/ui/text"
 import { formatCents, listExpenses, listFixedCosts } from "@/warehouse14/api"
@@ -69,11 +68,13 @@ import {
 import { useW14Theme } from "@/warehouse14/theme"
 import {
   CountUp,
+  EmptyState,
   ErrorState,
   Gesture,
   GestureDetector,
   haptics,
   hapticOnUI,
+  PaperGrain,
   PressableScale,
   Skeleton,
   StaggerItem,
@@ -468,7 +469,9 @@ export default function AusgabenScreen() {
   // Sticky header — KPI tiles + the segmented control + an honest summary line.
   const header = useMemo(
     () => (
-      <View className="bg-background gap-3 pb-2">
+      // Transparent so the aged-paper grain canvas reads through the header
+      // (the KPI tiles + segment are carded/bordered and stay crisp over it).
+      <View className="gap-3 pb-2">
         <KpiTiles fixed={fixedRows} expenses={expenseRows} />
         <Segmented value={tab} onChange={setTab} />
         <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(160)}>
@@ -493,25 +496,34 @@ export default function AusgabenScreen() {
 
   const empty =
     tab === "fixkosten" ? (
-      <EmptyTab
+      <EmptyState
         icon={Wallet}
         title="Keine Fixkosten erfasst"
-        body="Trage Miete, Versicherungen und andere laufende Kosten ein — sie bilden die Basis für deinen Break-even."
-        cta="Fixkosten anlegen"
-        onPress={() => router.push("/ausgaben/fixkosten")}
+        description="Trage Miete, Versicherungen und andere laufende Kosten ein — sie bilden die Basis für deinen Break-even."
+        actionLabel="Fixkosten anlegen"
+        onAction={() => {
+          haptics.selection()
+          router.push("/ausgaben/fixkosten")
+        }}
       />
     ) : (
-      <EmptyTab
+      <EmptyState
         icon={Receipt}
         title="Keine Ausgaben erfasst"
-        body="Erfasse einmalige Betriebsausgaben wie Wareneinkauf oder Reparaturen — sie fließen in deinen Nettogewinn."
-        cta="Ausgabe erfassen"
-        onPress={() => router.push("/ausgaben/ausgabe")}
+        description="Erfasse einmalige Betriebsausgaben wie Wareneinkauf oder Reparaturen — sie fließen in deinen Nettogewinn."
+        actionLabel="Ausgabe erfassen"
+        onAction={() => {
+          haptics.selection()
+          router.push("/ausgaben/ausgabe")
+        }}
       />
     )
 
   return (
     <View className="flex-1 bg-background">
+      {/* The aged-paper grain canvas — depth from the layered cream plus this
+          faint warm tooth, never a flat fill (DESIGN.md §1, §5). */}
+      <PaperGrain />
       <FlatList<RowItem>
         data={activeRows ?? []}
         keyExtractor={(item) => item.id}
@@ -566,50 +578,6 @@ export default function AusgabenScreen() {
           ) : null
         }
       />
-    </View>
-  )
-}
-
-// ── Empty state ───────────────────────────────────────────────────────────────
-function EmptyTab({
-  icon: Icon,
-  title,
-  body,
-  cta,
-  onPress,
-}: {
-  icon: typeof Wallet
-  title: string
-  body: string
-  cta: string
-  onPress: () => void
-}) {
-  const t = useW14Theme()
-  return (
-    <View className="items-center justify-center gap-3 px-6 py-12">
-      <View
-        className="h-16 w-16 items-center justify-center rounded-full"
-        style={{
-          backgroundColor: t.colors.primary + "14",
-          borderColor: t.colors.border,
-          borderWidth: 1,
-        }}
-      >
-        <Icon size={t.icon.xl} color={t.colors.primary} />
-      </View>
-      <Text className="text-center text-base font-semibold">{title}</Text>
-      <Text className="text-muted-foreground max-w-xs text-center text-sm leading-5">{body}</Text>
-      <Button
-        variant="outline"
-        className="mt-2"
-        onPress={() => {
-          haptics.selection()
-          onPress()
-        }}
-        accessibilityLabel={cta}
-      >
-        <Text>{cta}</Text>
-      </Button>
     </View>
   )
 }
