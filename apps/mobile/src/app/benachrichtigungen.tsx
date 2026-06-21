@@ -66,6 +66,7 @@ import { useW14Theme } from "@/warehouse14/theme"
 import {
   EmptyState,
   haptics,
+  PaperGrain,
   PressableScale,
   Skeleton,
   StaggerItem,
@@ -234,7 +235,11 @@ function DetailSheet({ item, onClose }: { item: NotificationItem; onClose: () =>
     >
       <Pressable
         className="flex-1 justify-end"
-        style={{ backgroundColor: "rgba(0,0,0,0.45)" }}
+        // The scrim is a WARM aged-ink dim (the walnut near-black of the
+        // palette), never a cold pure black (DESIGN §5 — depth from a warm
+        // layered scrim, not a flat black drop). Theme-stable: a darkening
+        // layer reads the same warmth in light and dark.
+        style={{ backgroundColor: "rgba(23,21,15,0.5)" }}
         accessibilityRole="button"
         accessibilityLabel="Schließen"
         onPress={onClose}
@@ -242,9 +247,12 @@ function DetailSheet({ item, onClose }: { item: NotificationItem; onClose: () =>
         {/* Inner Pressable swallows taps so a tap inside the sheet never dismisses. */}
         <Pressable
           onPress={() => {}}
-          className="bg-background border-border gap-4 rounded-t-2xl border-t px-5 pt-5"
+          className="bg-background border-border gap-4 overflow-hidden rounded-t-2xl border-t px-5 pt-5"
           style={{ paddingBottom: insets.stickyBottom }}
         >
+          {/* The floating leaf carries the fainter card-surface grain so the
+              sheet reads as aged paper, clipped to its rounded top. */}
+          <PaperGrain surface="card" />
           <View className="items-center pb-1">
             <View className="h-1 w-10 rounded-full" style={{ backgroundColor: t.colors.border }} />
           </View>
@@ -257,7 +265,9 @@ function DetailSheet({ item, onClose }: { item: NotificationItem; onClose: () =>
               <Icon size={t.icon.lg} color={accent} />
             </View>
             <View className="flex-1 gap-1">
-              <Text className="text-lg font-bold" numberOfLines={2}>
+              {/* The sheet's title speaks the antique DISPLAY voice — Cormorant
+                  Garamond at the screen-title step (DESIGN §3). */}
+              <Text className="text-xl font-display-semibold leading-tight" numberOfLines={2}>
                 {item.title}
               </Text>
               <View className="flex-row items-center gap-2">
@@ -520,6 +530,7 @@ export default function BenachrichtigungenScreen() {
 
   return (
     <View className="flex-1 bg-background">
+      <PaperGrain />
       <FlatList
         data={visible}
         keyExtractor={(it) => String(it.id)}

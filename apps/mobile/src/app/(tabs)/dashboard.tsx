@@ -118,6 +118,7 @@ import {
   isConnectionError,
   isRateLimited,
   ListRow,
+  PaperGrain,
   PressableScale,
   RingGauge,
   SectionCard,
@@ -197,7 +198,7 @@ function SchatzkammerSkeleton() {
         <View className="flex-row items-center gap-2.5">
           <Skeleton width={24} height={24} radius="button" />
           <View className="gap-1.5">
-            <Skeleton width={150} height={18} />
+            <Skeleton width={170} height={24} />
             <Skeleton width={110} height={11} />
           </View>
         </View>
@@ -336,12 +337,15 @@ export default function SchatzkammerScreen() {
   // First load: a skeleton in the board's shape, never a mid-screen spinner.
   if (q.isLoading && bridge === null) {
     return (
-      <ScrollView
-        className="flex-1 bg-background"
-        contentContainerStyle={{ padding: 16, paddingBottom: insets.contentBottom, gap: 14 }}
-      >
-        <SchatzkammerSkeleton />
-      </ScrollView>
+      <View className="flex-1 bg-background">
+        <PaperGrain />
+        <ScrollView
+          className="flex-1"
+          contentContainerStyle={{ padding: 16, paddingBottom: insets.contentBottom, gap: 14 }}
+        >
+          <SchatzkammerSkeleton />
+        </ScrollView>
+      </View>
     )
   }
 
@@ -355,6 +359,7 @@ export default function SchatzkammerScreen() {
     const waiting = isRateLimited(cause) || isConnectionError(cause)
     return (
       <View className="flex-1 justify-center bg-background px-4">
+        <PaperGrain />
         {waiting ? (
           <EmptyState
             icon={isRateLimited(cause) ? Hourglass : CloudOff}
@@ -394,6 +399,7 @@ export default function SchatzkammerScreen() {
 
   return (
     <View className="flex-1 bg-background">
+      <PaperGrain />
       <ScrollView
         className="flex-1"
         contentContainerStyle={{ padding: 16, paddingBottom: insets.contentBottom, gap: 14 }}
@@ -405,7 +411,9 @@ export default function SchatzkammerScreen() {
             <View className="flex-1 flex-row items-center gap-2.5">
               <Vault size={t.icon.xl - 2} color={t.colors.primary} />
               <View className="flex-1">
-                <Text className="text-xl font-bold" numberOfLines={1}>
+                {/* The screen's hero title speaks the antique DISPLAY voice —
+                    Cormorant Garamond at the screen-title step (DESIGN §3). */}
+                <Text className="text-2xl font-display-semibold leading-tight" numberOfLines={1}>
                   Die Schatzkammer
                 </Text>
                 <Text className="text-muted-foreground text-xs" numberOfLines={1}>

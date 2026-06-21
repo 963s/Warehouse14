@@ -71,6 +71,7 @@ import {
   GoldFlood,
   haptics,
   InlineError,
+  PaperGrain,
   SectionCard,
   Skeleton,
   StaggerItem,
@@ -86,7 +87,7 @@ function ErfolgeSkeleton() {
   return (
     <View className="gap-5">
       <View className="gap-1.5">
-        <Skeleton width={140} height={22} />
+        <Skeleton width={150} height={26} />
         <Skeleton width="80%" height={12} />
       </View>
       {/* rank ladder */}
@@ -202,6 +203,7 @@ export default function ErfolgeScreen() {
 
   return (
     <View className="flex-1 bg-background">
+      <PaperGrain />
       <ScrollView
         className="flex-1"
         contentContainerStyle={{
@@ -216,7 +218,9 @@ export default function ErfolgeScreen() {
         <View className="flex-row items-center gap-2.5">
           <Trophy size={t.icon.xl - 2} color={t.colors.primary} />
           <View className="flex-1">
-            <Text className="text-xl font-bold" numberOfLines={1}>
+            {/* The screen's hero title speaks the antique DISPLAY voice —
+                Cormorant Garamond at the screen-title step (DESIGN §3). */}
+            <Text className="text-2xl font-display-semibold leading-tight" numberOfLines={1}>
               {ERFOLGE_COPY.screenTitle}
             </Text>
             <Text className="text-muted-foreground text-sm" numberOfLines={2}>
