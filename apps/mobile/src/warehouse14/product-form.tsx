@@ -11,12 +11,16 @@
  *     Steuerbehandlung). Each tap fires the selection haptic (DESIGN.md §7) and
  *     presses with the shared scale. Kept generic + backward-compatible because
  *     `customer-form` reuses it for the Sprache field.
- *   • `MoneyField` — a EUR amount input wired through the spine's `FormField`
- *     chrome, decimal-pad keyboard, and a right-aligned „€" affordance so an
- *     amount reads like money. Validates to the de-DE/decimal wire shape.
+ *   • `MoneyField` — a decimal-pad amount input wired through the spine's
+ *     `FormField` chrome with a right-aligned unit affordance. The affordance
+ *     defaults to „€" so an amount reads like money, but is honest about its
+ *     value: pass `suffix="g"` for a gram weight, or `suffix={null}` for a pure
+ *     ratio (Feinheit) so no unit is overlaid at all. Validates to the de-DE/
+ *     decimal wire shape.
  *   • `MetalWeightField` — Gewicht (g) + Feinheit side by side, decimal-pad, with
  *     a live Feingewicht hint (Gewicht × Feinheit) so the operator sees the melt
- *     basis as they type. Honest: the hint only shows once both are real numbers.
+ *     basis as they type. Honest: the hint only shows once both are real numbers,
+ *     and neither field wears a „€" — Gewicht shows „g", Feinheit shows nothing.
  *   • `CategoryPicker` — a searchable single-choice picker (a row of chips would
  *     wall off the screen with a deep taxonomy). Filters as you type; the
  *     selected node is pinned at the top with a verdigris check.
@@ -141,10 +145,15 @@ export function ChipSelect<T extends string>({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MoneyField — a EUR amount input with a right-aligned „€" affordance. Composes
-// the spine `FormField` chrome (label · required · hint/error) and forwards the
-// keyboard/ref props for focus chaining. The wire value is the decimal STRING
-// the products API expects; the operator types „199.90".
+// MoneyField — a decimal-pad amount input with a right-aligned unit affordance.
+// Composes the spine `FormField` chrome (label · required · hint/error) and
+// forwards the keyboard/ref props for focus chaining. The wire value is the
+// decimal STRING the products API expects; the operator types „199.90".
+//
+// The affordance defaults to „€" so a price reads like money, but it is honest
+// about what the value IS: pass `suffix="g"` for a gram weight, or `suffix={null}`
+// for a pure ratio (Feinheit) so NO unit is overlaid. When there is no suffix the
+// input drops its reserved right padding so the field reads as a plain number.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function MoneyField({
@@ -156,6 +165,7 @@ export function MoneyField({
   error,
   required,
   inputRef,
+  suffix = "€",
   ...inputProps
 }: {
   label: string
@@ -166,9 +176,15 @@ export function MoneyField({
   error?: string
   required?: boolean
   inputRef?: RefObject<InputRef | null>
+  /** Right-aligned unit affordance. „€" by default; „g" for a weight; `null`
+   *  for a unit-less ratio (e.g. Feinheit) so nothing is overlaid. */
+  suffix?: string | null
 } & Omit<TextInputProps, "value" | "onChangeText" | "placeholder">): ReactNode {
   const t = useW14Theme()
   const invalid = !!error
+  // Reserve the right gutter only when there is a unit to show — a unit-less
+  // field reads as a plain number with the spine's standard padding.
+  const hasSuffix = suffix != null && suffix !== ""
   return (
     <FormField label={label} required={required} hint={hint} error={error}>
       <View className="relative justify-center">
@@ -180,16 +196,21 @@ export function MoneyField({
           keyboardType="decimal-pad"
           inputMode="decimal"
           aria-invalid={invalid}
-          className="pr-9 font-mono"
+          className={hasSuffix ? "pr-9 font-mono" : "font-mono"}
           style={invalid ? { borderColor: t.colors.destructive } : undefined}
           accessibilityLabel={label}
           {...inputProps}
         />
-        <View className="absolute right-3" pointerEvents="none">
-          <Text className="font-mono-medium text-base" style={{ color: t.colors.mutedForeground }}>
-            €
-          </Text>
-        </View>
+        {hasSuffix ? (
+          <View className="absolute right-3" pointerEvents="none">
+            <Text
+              className="font-mono-medium text-base"
+              style={{ color: t.colors.mutedForeground }}
+            >
+              {suffix}
+            </Text>
+          </View>
+        ) : null}
       </View>
     </FormField>
   )
@@ -247,6 +268,8 @@ export function MetalWeightField({
             placeholder="4.20"
             error={weightError}
             inputRef={weightRef}
+            // A gram weight is not money — show „g", never „€".
+            suffix="g"
             returnKeyType="next"
             submitBehavior="submit"
             onSubmitEditing={onWeightSubmit}
@@ -260,6 +283,8 @@ export function MetalWeightField({
             placeholder="0.585"
             error={finenessError}
             inputRef={finenessRef}
+            // A 0–1 ratio carries no unit — overlay nothing (no „€", no „g").
+            suffix={null}
             returnKeyType="next"
             submitBehavior="submit"
             onSubmitEditing={onFinenessSubmit}
