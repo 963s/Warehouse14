@@ -32,6 +32,18 @@ import {
 } from "lucide-react-native"
 
 import type { BadgeProps } from "@/components/ui/badge"
+import {
+  ANKAUF_CONDITION_LABEL,
+  APPOINTMENT_STATUS_LABEL,
+  APPOINTMENT_TYPE_LABEL,
+  CUSTOMER_KYC_STATUS_LABEL,
+  CUSTOMER_TRUST_LEVEL_LABEL,
+  PAYMENT_METHOD_LABEL,
+  PRODUCT_STATUS_LABEL,
+  TASK_STATUS_LABEL,
+  TAX_TREATMENT_LABEL,
+  TRANSACTION_DIRECTION_LABEL,
+} from "@/warehouse14/german-text"
 
 export type BadgeVariant = NonNullable<BadgeProps["variant"]>
 
@@ -452,19 +464,173 @@ export interface PayloadEntry {
 
 const ID_KEY_RE = /(_id$|^id$|hash|sha|fingerprint|serial|uuid)/i
 
-function humanizeKey(key: string): string {
-  const words = key.replace(/_/g, " ").trim()
-  return words || key
+// ── Payload-Schlüssel → deutsches Label ──────────────────────────────────────
+// Die Payload-Schlüssel sind englische snake_case-Maschinennamen. Wir übersetzen
+// die tatsächlich vorkommenden Schlüssel in ruhiges Deutsch; ein unbekannter
+// Schlüssel wird humanisiert (Unterstriche raus, erster Buchstabe groß) — nie
+// roh als `snake_case` oder als blanker englischer Begriff stehengelassen.
+const PAYLOAD_KEY_LABELS: Readonly<Record<string, string>> = {
+  // Handel / Vorgang
+  direction: "Richtung",
+  total_eur: "Gesamt",
+  subtotal_eur: "Zwischensumme",
+  vat_eur: "Umsatzsteuer",
+  storno_of: "Storno von",
+  receipt_locator: "Beleg-Nummer",
+  finalized_at: "Abgeschlossen am",
+  tax_treatment_code: "Besteuerungsart",
+  payment_method: "Zahlart",
+  payout_method: "Auszahlung",
+  // Lager / Artikel
+  sku: "Artikelnummer",
+  channel: "Kanal",
+  delta: "Veränderung",
+  reason: "Grund",
+  location: "Lagerort",
+  status: "Status",
+  previous_status: "Vorheriger Status",
+  // Kunden / KYC
+  trust_level: "Vertrauensstufe",
+  kyc_status: "KYC-Status",
+  verified_by: "Geprüft von",
+  // Termine
+  appointment_type: "Terminart",
+  starts_at: "Beginn",
+  duration_minutes: "Dauer (Minuten)",
+  booked_via: "Gebucht über",
+  staff_user_id: "Mitarbeiter",
+  customer_id: "Kunde",
+  // Fiskal / Metall
+  metal: "Metall",
+  source: "Quelle",
+  price_per_gram_eur: "Preis je Gramm",
+  kind: "Art",
+  // System / Auth
+  device_class: "Geräteklasse",
+  success: "Erfolgreich",
+  title: "Titel",
 }
 
-function formatScalar(v: unknown): { value: string; mono: boolean } {
+// ── Bekannte Enum-Werte → deutsches Label, je nach Schlüssel ─────────────────
+// Ein roher String-Wert kann ein SCREAMING_SNAKE-Enum sein (`ANKAUF`,
+// `SCHEDULED`, `MARGIN_25A`) oder ein kleingeschriebenes Code-Wort (`pos`,
+// `storefront`, `manual`). Der Schlüssel bestimmt die passende Registry, damit
+// z. B. `status` bei einem Termin als „Geplant" und nie als „SCHEDULED" liest.
+// Greift keine Registry, fängt `humanizeToken` den Wert ab — es bleibt nie ein
+// SCREAMING_SNAKE oder ein englisches Code-Wort in der UI stehen.
+
+/** Schlüssel-spezifische Enum-Registrys (aus dem geteilten german-text-Vokabular). */
+const KEY_VALUE_REGISTRY: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  direction: TRANSACTION_DIRECTION_LABEL,
+  tax_treatment_code: TAX_TREATMENT_LABEL,
+  kind: TAX_TREATMENT_LABEL,
+  payment_method: PAYMENT_METHOD_LABEL,
+  payout_method: PAYMENT_METHOD_LABEL,
+  trust_level: CUSTOMER_TRUST_LEVEL_LABEL,
+  kyc_status: CUSTOMER_KYC_STATUS_LABEL,
+  appointment_type: APPOINTMENT_TYPE_LABEL,
+  status: APPOINTMENT_STATUS_LABEL,
+  previous_status: APPOINTMENT_STATUS_LABEL,
+  condition: ANKAUF_CONDITION_LABEL,
+  product_status: PRODUCT_STATUS_LABEL,
+  task_status: TASK_STATUS_LABEL,
+}
+
+/** Audit-spezifische Tokens, die das geteilte Vokabular nicht abdeckt. */
+const AUDIT_VALUE_LABELS: Readonly<Record<string, string>> = {
+  POS_TERMINAL: "Kassen-Terminal",
+  MOBILE: "Mobil",
+  WEB: "Web",
+  MANUAL: "Manuell",
+  AUTOMATIC: "Automatisch",
+  SYSTEM: "System",
+  pos: "Kasse",
+  storefront: "Ladengeschäft",
+  online: "Online",
+  manual: "Manuell",
+  gold: "Gold",
+  silver: "Silber",
+  platinum: "Platin",
+  palladium: "Palladium",
+}
+
+/**
+ * Einen rohen, code-artigen String-Wert lesbar machen, ohne je einen rohen Token
+ * (SCREAMING_SNAKE / snake_case) durchzulassen: Unterstriche zu Leerzeichen,
+ * dann nur den ersten Buchstaben groß und den Rest klein — so wird aus
+ * `POS_TERMINAL` „Pos terminal" statt eines lauten Maschinen-Strings.
+ */
+function humanizeToken(value: string): string {
+  const words = value.replace(/_/g, " ").trim().toLowerCase()
+  if (!words) return value
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}
+
+/** Ob ein String-Wert wie ein Enum-/Code-Token aussieht (kein freier Klartext). */
+function looksLikeToken(value: string): boolean {
+  // Reines SCREAMING_SNAKE / snake_case / lowercase-Code, ohne Leerzeichen.
+  return /^[A-Za-z][A-Za-z0-9]*(_[A-Za-z0-9]+)*$/.test(value) && /[_A-Z]/.test(value)
+}
+
+/**
+ * Ein `*_eur`-Payload-Feld trägt einen rohen Geld-Dezimalstring („50.00") mit
+ * Punkt-Trenner und ohne Währung. Wir formatieren ihn ehrlich nach de-DE mit €,
+ * damit nie „50.00" statt „50,00 €" in der UI steht. Kein gültiger Betrag →
+ * null (der Rohwert läuft dann durch die normale Reinigung).
+ */
+function formatEurString(value: string): string | null {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return null
+  return `${n.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`
+}
+
+/**
+ * Einen rohen String-Payload-Wert in ein sauberes deutsches Label übersetzen.
+ * Erst Geld-Felder (de-DE €), dann die schlüssel-spezifische Registry, dann das
+ * Audit-Vokabular, dann (nur für offensichtliche Code-Tokens) der Humanizer.
+ * Freier Klartext (Namen, Gründe, IDs) bleibt unverändert — er ist
+ * owner-vertraut, kein Enum.
+ */
+function purifyStringValue(key: string, value: string): string {
+  if (key.endsWith("_eur")) {
+    const money = formatEurString(value)
+    if (money != null) return money
+  }
+  // Ein `*_at`-Feld trägt einen rohen ISO-Zeitstempel — als volle de-DE
+  // Datum+Uhrzeit zeigen, damit nie ein „2026-…T…Z" in der UI steht.
+  if (key.endsWith("_at")) {
+    const date = formatEventDate(value)
+    if (date != null) return date
+  }
+  const registry = KEY_VALUE_REGISTRY[key]
+  if (registry && value in registry) return registry[value]
+  if (value in AUDIT_VALUE_LABELS) return AUDIT_VALUE_LABELS[value]
+  // Ein code-artiger Token ohne bekannte Übersetzung: humanisieren, damit nie
+  // ein SCREAMING_SNAKE / snake_case in der UI steht. Klartext bleibt unberührt.
+  if (looksLikeToken(value)) return humanizeToken(value)
+  return value
+}
+
+function humanizeKey(key: string): string {
+  const known = PAYLOAD_KEY_LABELS[key]
+  if (known) return known
+  const words = key.replace(/_/g, " ").trim()
+  if (!words) return key
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}
+
+function formatScalar(key: string, v: unknown): { value: string; mono: boolean } {
   if (v === null) return { value: "—", mono: false }
   if (typeof v === "boolean") return { value: v ? "Ja" : "Nein", mono: false }
   if (typeof v === "number") {
     return { value: Number.isFinite(v) ? v.toLocaleString("de-DE") : String(v), mono: true }
   }
   if (typeof v === "string") {
-    return { value: v, mono: v.length > 16 && !v.includes(" ") }
+    // IDs/Hashes/Seriennummern bleiben roh + monospaced (Forensik); jeder andere
+    // String wird gegen das deutsche Enum-Vokabular gereinigt, nie roh gezeigt.
+    if (ID_KEY_RE.test(key)) return { value: v, mono: true }
+    const clean = purifyStringValue(key, v)
+    return { value: clean, mono: clean.length > 16 && !clean.includes(" ") }
   }
   // Objekt/Array — kompaktes JSON, ehrlich als Rohwert markiert (monospaced).
   try {
@@ -478,7 +644,7 @@ export function payloadEntries(payload: unknown): PayloadEntry[] {
   const p = asRecord(payload)
   const out: PayloadEntry[] = []
   for (const key of Object.keys(p)) {
-    const { value, mono } = formatScalar(p[key])
+    const { value, mono } = formatScalar(key, p[key])
     out.push({ key, label: humanizeKey(key), value, mono: mono || ID_KEY_RE.test(key) })
   }
   return out

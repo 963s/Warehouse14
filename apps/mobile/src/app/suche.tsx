@@ -453,7 +453,7 @@ export default function SucheScreen() {
               <EmptyState
                 icon={RotateCcw}
                 title="Keine Treffer"
-                description={`Nichts zu „${debouncedQ}". Prüfe die Schreibweise oder suche nach einem Teil des Namens, der SKU oder der Beleg-Nummer.`}
+                description={`Nichts zu „${debouncedQ}“. Prüfe die Schreibweise oder suche nach einem Teil des Namens, der SKU oder der Beleg-Nummer.`}
               />
             </View>
           ) : null
