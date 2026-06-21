@@ -52,7 +52,7 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Text } from "@/components/ui/text"
 import { describeError, formatEur, resolveScannedCode } from "@/warehouse14/api"
-import { STATUS_LABEL, STATUS_VARIANT } from "@/warehouse14/product-ui"
+import { statusLabel, statusVariant } from "@/warehouse14/product-ui"
 import type { ScanMatch } from "@/warehouse14/scan-resolve"
 import { useW14Theme } from "@/warehouse14/theme"
 import {
@@ -537,8 +537,8 @@ function VerdictBody({
             {p.name}
           </Text>
           <View className="flex-row items-center gap-2">
-            <Badge variant={STATUS_VARIANT[p.status]}>
-              <Text>{STATUS_LABEL[p.status]}</Text>
+            <Badge variant={statusVariant(p.status)}>
+              <Text>{statusLabel(p.status)}</Text>
             </Badge>
             <Text className="font-mono text-xs text-muted-foreground" numberOfLines={1}>
               {p.sku}

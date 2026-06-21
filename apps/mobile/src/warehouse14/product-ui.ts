@@ -8,6 +8,7 @@ import type {
 } from "@warehouse14/api-client"
 
 import type { BadgeProps } from "@/components/ui/badge"
+import { germanLabel } from "@/warehouse14/german-text"
 
 export const STATUS_LABEL: Record<ProductStatus, string> = {
   AVAILABLE: "Verfügbar",
@@ -104,6 +105,33 @@ export const CONDITION_OPTIONS: ReadonlyArray<{ value: ProductConditionCode; lab
 export const CONDITION_LABEL: Record<ProductConditionCode, string> = Object.fromEntries(
   CONDITION_OPTIONS.map((o) => [o.value, o.label]),
 ) as Record<ProductConditionCode, string>
+
+/**
+ * A condition value from the wire → its clean German label. The detail wire types
+ * `condition` as a loose `string`, so an unmapped code must NOT leak as the raw
+ * SCREAMING_SNAKE token — `germanLabel` returns „Unbekannt" instead (purity rule).
+ */
+export function conditionLabel(condition: string | null | undefined): string {
+  if (!condition) return "Unbekannt"
+  return germanLabel(CONDITION_LABEL, condition)
+}
+
+/**
+ * A status value from the wire → its German label. `status` is a DB-backed enum,
+ * but reading it through the safe helper means a future/unknown member can never
+ * render as a blank badge or a raw token — it degrades to „Unbekannt".
+ */
+export function statusLabel(status: string | null | undefined): string {
+  if (!status) return "Unbekannt"
+  return germanLabel(STATUS_LABEL, status)
+}
+
+/** A status value → its Badge variant, defaulting to the quiet „secondary" tone
+ *  for any value outside the known set (never an undefined variant). */
+export function statusVariant(status: string | null | undefined): NonNullable<BadgeProps["variant"]> {
+  if (status && status in STATUS_VARIANT) return STATUS_VARIANT[status as ProductStatus]
+  return "secondary"
+}
 
 /** Steuerbehandlung — mirrors TaxTreatmentCode. Differenzbesteuerung ist der
  *  Normalfall für Ankaufsware (§25a), daher zuerst. */

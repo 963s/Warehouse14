@@ -33,12 +33,7 @@ import { Input } from "@/components/ui/input"
 import { Text } from "@/components/ui/text"
 import { absoluteUrl, describeError, formatEur, listProducts } from "@/warehouse14/api"
 import { OfflineNotice, StaleBadge, useCachedQuery } from "@/warehouse14/offline"
-import {
-  formatLocation,
-  STATUS_FILTERS,
-  STATUS_LABEL,
-  STATUS_VARIANT,
-} from "@/warehouse14/product-ui"
+import { formatLocation, STATUS_FILTERS, statusLabel, statusVariant } from "@/warehouse14/product-ui"
 import { useW14Theme } from "@/warehouse14/theme"
 import {
   haptics,
@@ -262,6 +257,11 @@ export default function LagerScreen() {
                 accessibilityRole="button"
                 accessibilityState={{ selected: active }}
                 accessibilityLabel={`Filter ${opt.label}`}
+                // The chip is visually compact, so lift the tappable area to the
+                // ≥44px minimum (DESIGN.md §8) with vertical hit-slop — the rail
+                // still reads as a slim row of chips.
+                hitSlop={{ top: 11, bottom: 11 }}
+                className="py-1"
               >
                 <Badge variant={active ? "default" : "outline"} dot={active && opt.value !== "ALL"}>
                   <Text>{opt.label}</Text>
@@ -450,8 +450,8 @@ function ProductRow({ item, onPress }: { item: ProductListRow; onPress: () => vo
           <Text className="text-primary font-mono-medium text-base" numberOfLines={1}>
             {formatEur(item.listPriceEur)}
           </Text>
-          <Badge variant={STATUS_VARIANT[item.status]} dot>
-            <Text>{STATUS_LABEL[item.status]}</Text>
+          <Badge variant={statusVariant(item.status)} dot>
+            <Text>{statusLabel(item.status)}</Text>
           </Badge>
         </View>
       </Card>

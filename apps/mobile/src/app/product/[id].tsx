@@ -61,12 +61,12 @@ import {
   setPhotoPrimary,
 } from "@/warehouse14/api"
 import {
-  CONDITION_LABEL,
+  conditionLabel,
   formatGrams,
   formatLocation,
   METAL_LABEL,
-  STATUS_LABEL,
-  STATUS_VARIANT,
+  statusLabel,
+  statusVariant,
 } from "@/warehouse14/product-ui"
 import { useW14Theme } from "@/warehouse14/theme"
 import {
@@ -86,11 +86,6 @@ import {
 } from "@/warehouse14/ui"
 
 const RELOCATE_NOTE_MIN = 8
-
-/** A condition wire string narrowed to its German label (falls back to the raw). */
-function conditionLabel(condition: string): string {
-  return CONDITION_LABEL[condition as keyof typeof CONDITION_LABEL] ?? condition
-}
 
 /**
  * The melt value in integer CENTS = Feingewicht (g) × aktueller Kurs (€/g), or
@@ -299,8 +294,8 @@ export default function ProductDetailScreen() {
                 <Text className="text-muted-foreground font-mono text-xs" numberOfLines={1}>
                   {product.sku}
                 </Text>
-                <Badge variant={STATUS_VARIANT[product.status]} dot>
-                  <Text>{STATUS_LABEL[product.status]}</Text>
+                <Badge variant={statusVariant(product.status)} dot>
+                  <Text>{statusLabel(product.status)}</Text>
                 </Badge>
               </View>
             </View>

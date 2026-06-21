@@ -54,7 +54,7 @@ import {
   isProductEditValid,
   type ProductEditErrors,
   type ProductEditFieldKey,
-  STATUS_LABEL,
+  statusLabel,
   validateProductEdit,
 } from "@/warehouse14/product-ui"
 import { useW14Theme } from "@/warehouse14/theme"
@@ -314,7 +314,7 @@ export default function ArtikelBearbeitenScreen() {
             </Text>
           ) : (
             <Text className="text-muted-foreground text-2xs">
-              Aktueller Status: {STATUS_LABEL[product.status]}.
+              Aktueller Status: {statusLabel(product.status)}.
             </Text>
           )}
         </SectionCard>
