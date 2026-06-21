@@ -24,6 +24,7 @@ import { markOnboardingSeen } from "@/warehouse14/onboarding"
 import { useW14Theme } from "@/warehouse14/theme"
 import {
   GoldFlood,
+  PaperGrain,
   PressableScale,
   haptics,
   screenEnter,
@@ -134,131 +135,141 @@ export function OnboardingIntro({ onDone }: OnboardingIntroProps): ReactNode {
   }, [back])
 
   return (
-    <View
-      className="bg-background flex-1"
-      style={{
-        paddingTop: insets.screen.top + t.space.x3,
-        paddingBottom: insets.stickyBottom,
-        paddingHorizontal: t.space.x6,
-      }}
-    >
-      {/* Top bar — the brand crest + a quiet skip. */}
-      <View className="flex-row items-center justify-between">
-        <WarehouseMark size="sm" />
-        <PressableScale
-          onPress={skip}
-          accessibilityRole="button"
-          accessibilityLabel="Einführung überspringen"
-          hitSlop={t.space.x3}
-          style={{
-            minHeight: t.touch.min,
-            justifyContent: "center",
-            paddingHorizontal: t.space.x2,
-          }}
-        >
-          <Text className="text-muted-foreground text-sm font-medium">Überspringen</Text>
-        </PressableScale>
-      </View>
+    <View className="bg-background flex-1">
+      {/* Aged-paper grain — the warm canvas reads as paper, not a flat cream
+          fill (DESIGN.md §1, §5). Full-bleed behind the padded content; pure
+          decoration, never under text it must contrast against. */}
+      <PaperGrain />
 
-      {/* The slide body — cross-fades + rises on each advance (RM: opacity only).
+      <View
+        className="flex-1"
+        style={{
+          paddingTop: insets.screen.top + t.space.x3,
+          paddingBottom: insets.stickyBottom,
+          paddingHorizontal: t.space.x6,
+        }}
+      >
+        {/* Top bar — the brand crest + a quiet skip. */}
+        <View className="flex-row items-center justify-between">
+          <WarehouseMark size="sm" />
+          <PressableScale
+            onPress={skip}
+            accessibilityRole="button"
+            accessibilityLabel="Einführung überspringen"
+            hitSlop={t.space.x3}
+            style={{
+              minHeight: t.touch.min,
+              justifyContent: "center",
+              paddingHorizontal: t.space.x2,
+            }}
+          >
+            <Text className="text-muted-foreground text-sm font-medium">Überspringen</Text>
+          </PressableScale>
+        </View>
+
+        {/* The slide body — cross-fades + rises on each advance (RM: opacity only).
           A centred column, width-capped so the copy never runs edge-to-edge, and
           the surface preview lives in a RESERVED slot so the hero+title sit at the
           same height on every slide (no jump between slides 1/2/3). */}
-      <View className="flex-1 items-center justify-center">
-        <Animated.View
-          // Re-keying on `index` replays the spine's screen-enter per slide.
-          key={index}
-          entering={screenEnter(reduceMotion)}
-          className="w-full items-center"
-          style={{ maxWidth: 360, gap: t.space.x6 }}
-        >
-          <View
-            className="bg-card border-border items-center justify-center rounded-full border"
-            style={{ width: 104, height: 104 }}
+        <View className="flex-1 items-center justify-center">
+          <Animated.View
+            // Re-keying on `index` replays the spine's screen-enter per slide.
+            key={index}
+            entering={screenEnter(reduceMotion)}
+            className="w-full items-center"
+            style={{ maxWidth: 360, gap: t.space.x6 }}
           >
-            <SlideIcon size={t.icon.xl + 10} color={t.colors.primary} strokeWidth={1.75} />
-          </View>
-
-          <View className="items-center" style={{ gap: t.space.x3 }}>
-            <Text
-              className="text-primary text-2xs font-semibold uppercase"
-              style={{ letterSpacing: 1.5 }}
+            <View
+              className="bg-card border-border items-center justify-center rounded-full border"
+              style={{ width: 104, height: 104 }}
             >
-              {slide.overline}
-            </Text>
-            <Text className="text-foreground font-display-bold text-center text-4xl leading-tight">
-              {slide.title}
-            </Text>
-            <Text className="text-muted-foreground text-center text-base leading-6">
-              {slide.body}
-            </Text>
-          </View>
+              <SlideIcon size={t.icon.xl + 10} color={t.colors.primary} strokeWidth={1.75} />
+            </View>
 
-          {/* Reserved preview slot — the four surfaces on slide two, an equal-
+            <View className="items-center" style={{ gap: t.space.x3 }}>
+              <Text
+                className="text-primary text-2xs font-semibold uppercase"
+                style={{ letterSpacing: 1.5 }}
+              >
+                {slide.overline}
+              </Text>
+              <Text className="text-foreground font-display-bold text-center text-4xl leading-tight">
+                {slide.title}
+              </Text>
+              <Text className="text-muted-foreground text-center text-base leading-6">
+                {slide.body}
+              </Text>
+            </View>
+
+            {/* Reserved preview slot — the four surfaces on slide two, an equal-
               height spacer otherwise, so the title block does not shift between
               slides. The preview itself is a calm, non-tappable row. */}
-          <View
-            className="w-full items-center justify-center"
-            style={{ minHeight: 72 }}
-          >
-            {index === 1 ? (
-              <View className="flex-row flex-wrap items-start justify-center" style={{ gap: t.space.x3 }}>
-                {SURFACES_PREVIEW.map((s) => {
-                  const Icon = s.icon
-                  return (
-                    <View
-                      key={s.label}
-                      className="items-center"
-                      style={{ width: 72, gap: t.space.x2 }}
-                    >
+            <View className="w-full items-center justify-center" style={{ minHeight: 72 }}>
+              {index === 1 ? (
+                <View
+                  className="flex-row flex-wrap items-start justify-center"
+                  style={{ gap: t.space.x3 }}
+                >
+                  {SURFACES_PREVIEW.map((s) => {
+                    const Icon = s.icon
+                    return (
                       <View
-                        className="bg-card border-border items-center justify-center rounded-lg border"
-                        style={{ width: 52, height: 52 }}
+                        key={s.label}
+                        className="items-center"
+                        style={{ width: 72, gap: t.space.x2 }}
                       >
-                        <Icon size={t.icon.lg} color={t.colors.primary} strokeWidth={1.75} />
+                        <View
+                          className="bg-card border-border items-center justify-center rounded-lg border"
+                          style={{ width: 52, height: 52 }}
+                        >
+                          <Icon size={t.icon.lg} color={t.colors.primary} strokeWidth={1.75} />
+                        </View>
+                        <Text
+                          className="text-muted-foreground text-2xs text-center"
+                          numberOfLines={1}
+                        >
+                          {s.label}
+                        </Text>
                       </View>
-                      <Text className="text-muted-foreground text-2xs text-center" numberOfLines={1}>
-                        {s.label}
-                      </Text>
-                    </View>
-                  )
-                })}
-              </View>
-            ) : null}
-          </View>
-        </Animated.View>
-      </View>
-
-      {/* Footer — page dots over the primary advance, on the spacing grid, as one
-          non-growing block pinned above the home indicator. */}
-      <View className="w-full items-center" style={{ gap: t.space.x6 }}>
-        {/* Page dots — the brass dot marks the active slide. */}
-        <View className="flex-row items-center justify-center" style={{ gap: t.space.x2 }}>
-          {SLIDES.map((s, i) => (
-            <View
-              key={s.title}
-              className="rounded-full"
-              style={{
-                width: i === index ? 22 : 7,
-                height: 7,
-                backgroundColor: i === index ? t.colors.primary : t.colors.border,
-              }}
-            />
-          ))}
+                    )
+                  })}
+                </View>
+              ) : null}
+            </View>
+          </Animated.View>
         </View>
 
-        {/* Primary advance — brass fill, comfortable 48px money-grade target. */}
-        <PressableScale
-          onPress={next}
-          accessibilityRole="button"
-          accessibilityLabel={last ? "Loslegen und zur Anmeldung" : "Weiter zur nächsten Folie"}
-          className="bg-primary w-full flex-row items-center justify-center rounded-md"
-          style={{ height: t.touch.comfortable, maxWidth: 420 }}
-        >
-          <Text className="text-primary-foreground text-base font-semibold">
-            {last ? "Loslegen" : "Weiter"}
-          </Text>
-        </PressableScale>
+        {/* Footer — page dots over the primary advance, on the spacing grid, as one
+          non-growing block pinned above the home indicator. */}
+        <View className="w-full items-center" style={{ gap: t.space.x6 }}>
+          {/* Page dots — the brass dot marks the active slide. */}
+          <View className="flex-row items-center justify-center" style={{ gap: t.space.x2 }}>
+            {SLIDES.map((s, i) => (
+              <View
+                key={s.title}
+                className="rounded-full"
+                style={{
+                  width: i === index ? 22 : 7,
+                  height: 7,
+                  backgroundColor: i === index ? t.colors.primary : t.colors.border,
+                }}
+              />
+            ))}
+          </View>
+
+          {/* Primary advance — brass fill, comfortable 48px money-grade target. */}
+          <PressableScale
+            onPress={next}
+            accessibilityRole="button"
+            accessibilityLabel={last ? "Loslegen und zur Anmeldung" : "Weiter zur nächsten Folie"}
+            className="bg-primary w-full flex-row items-center justify-center rounded-md"
+            style={{ height: t.touch.comfortable, maxWidth: 420 }}
+          >
+            <Text className="text-primary-foreground text-base font-semibold">
+              {last ? "Loslegen" : "Weiter"}
+            </Text>
+          </PressableScale>
+        </View>
       </View>
 
       {/* The one warm gold landing — fires the single Heavy on its peak, then

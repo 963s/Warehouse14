@@ -39,6 +39,7 @@
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { useWindowDimensions, View } from "react-native"
+import { ApiError } from "@warehouse14/api-client"
 import Animated from "react-native-reanimated"
 
 import { Text } from "@/components/ui/text"
@@ -49,6 +50,7 @@ import { useW14Theme } from "@/warehouse14/theme"
 import {
   haptics,
   itemEnter,
+  PaperGrain,
   PressableScale,
   screenEnter,
   useReduceMotion,
@@ -60,6 +62,42 @@ import { PinPad } from "./_login/PinPad"
 import { WarehouseMark } from "./_login/WarehouseMark"
 
 const PIN_LENGTH = 4
+
+/**
+ * The login surface describes a failure in the OWNER's login vocabulary, then
+ * defers everything else to the shared `describeError`. Only two codes are
+ * reframed here, because the app-wide default reads wrong on the brand surface:
+ *
+ *   • NOT_FOUND (404) — the shared default is "Datensatz nicht gefunden", which
+ *     is opaque on a login (the owner entered a PIN, not opened a record). A 404
+ *     from the PIN-login route means the seeded device or the owner could not be
+ *     resolved — a pairing/setup state, never a wrong PIN. Name THAT, so the
+ *     screen never blames the entered PIN with a "record" word.
+ *   • RATE_LIMITED (429) — calm and login-framed. When the server sends a real
+ *     Retry-After (surfaced as `details.retryAfterMs`), show an honest seconds
+ *     countdown; otherwise the calm "gleich wieder" line. Never a fabricated
+ *     wait — only a number the server actually gave us.
+ *
+ * Every other failure (the wrong-PIN 401, the lockout 423, a timeout, a hard
+ * offline) already reads perfectly through the shared describer, so we delegate
+ * — no parallel error vocabulary, one honest source per case.
+ */
+function describeLoginError(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.code === "NOT_FOUND") {
+      return "Dieses Gerät ist noch nicht eingerichtet. Bitte den Support kontaktieren."
+    }
+    if (err.code === "RATE_LIMITED") {
+      const retryAfterMs = (err.details as { retryAfterMs?: number } | undefined)?.retryAfterMs
+      const secs =
+        typeof retryAfterMs === "number" && retryAfterMs > 0 ? Math.ceil(retryAfterMs / 1000) : null
+      return secs
+        ? `Zu viele Versuche — in ${secs} Sek. erneut versuchen.`
+        : "Zu viele Versuche — bitte einen Moment warten, dann erneut versuchen."
+    }
+  }
+  return describeError(err)
+}
 
 export default function LoginScreen(): ReactNode {
   const t = useW14Theme()
@@ -98,7 +136,7 @@ export default function LoginScreen(): ReactNode {
     } catch (e) {
       if (!mounted.current) return
       haptics.error()
-      setError(describeError(e))
+      setError(describeLoginError(e))
       setPin("")
       setErrorNonce((n) => n + 1)
     } finally {
@@ -159,6 +197,10 @@ export default function LoginScreen(): ReactNode {
 
   return (
     <View className="bg-background flex-1">
+      {/* Aged-paper grain — the house canvas is warm paper, not a flat cream
+          fill (DESIGN.md §1, §5). Sits first, behind the brass bloom and all
+          content; pure decoration, never under text it must contrast against. */}
+      <PaperGrain />
       {/* Layered canvas — a soft brass bloom up top + a calm bottom vignette so
           the surface has depth, not a flat fill. Decorative, behind everything,
           never under text it must contrast against. */}
