@@ -233,10 +233,14 @@ function KycEarlyBanner({
     setStamping(true);
     try {
       // PATCH requires step-up — the api-client interceptor opens the PIN modal.
+      // documentType is a required backend audit enum: PERSONALAUSWEIS is the
+      // honest default ID inspected at a German Ankauf counter (metadata only).
       await customersApi.stampKyc(
         api,
         customer.id,
-        customer.trustLevel === 'NEW' ? { promoteTrustLevelTo: 'VERIFIED' } : {},
+        customer.trustLevel === 'NEW'
+          ? { documentType: 'PERSONALAUSWEIS', promoteTrustLevelTo: 'VERIFIED' }
+          : { documentType: 'PERSONALAUSWEIS' },
       );
       addToast({ tone: 'success', title: 'KYC bestätigt', body: customer.fullName });
       await qc.invalidateQueries({ queryKey: ['customers', customer.id] });

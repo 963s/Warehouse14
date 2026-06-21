@@ -445,10 +445,14 @@ function SelectedBuyer({
     try {
       // The PATCH route requires step-up — the api-client interceptor opens the
       // PIN modal and retries transparently (same eyeball-verify as Ankauf).
+      // documentType is a required backend audit enum: PERSONALAUSWEIS is the
+      // honest default ID inspected at a German counter (metadata only).
       await customersApi.stampKyc(
         api,
         customer.id,
-        customer.trustLevel === 'NEW' ? { promoteTrustLevelTo: 'VERIFIED' } : {},
+        customer.trustLevel === 'NEW'
+          ? { documentType: 'PERSONALAUSWEIS', promoteTrustLevelTo: 'VERIFIED' }
+          : { documentType: 'PERSONALAUSWEIS' },
       );
       addToast({ tone: 'success', title: 'Ausweis bestätigt', body: customer.fullName });
       await qc.invalidateQueries({ queryKey: ['customers', customer.id] });
