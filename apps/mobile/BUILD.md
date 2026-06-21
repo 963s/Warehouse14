@@ -26,6 +26,41 @@ eas build -p android --profile preview
 Produces an internal-distribution **APK**. Download the link EAS prints and
 install it on any Android device (enable "install unknown apps").
 
+### Pure-local Android `.apk` (no EAS — your own JDK + Android SDK)
+
+Needs a local Android toolchain: **JDK 17**, the **Android SDK** (platform +
+build-tools for the compile SDK), and `ANDROID_HOME` exported. No paid account.
+
+```bash
+cd apps/mobile
+
+# 1. Generate the native android/ project from app.json (config plugins run here:
+#    adaptive icon, edge-to-edge, the CAMERA permission, the German camera prompt).
+#    --clean wipes any stale android/ first; the dir is gitignored.
+npx expo prebuild -p android --clean
+
+# 2. Build the release APK with Gradle.
+cd android
+./gradlew assembleRelease           # Windows: gradlew.bat assembleRelease
+
+# 3. The signed APK lands here:
+#    apps/mobile/android/app/build/outputs/apk/release/app-release.apk
+```
+
+Install it on a device over USB with `adb install -r app-release.apk`, or copy
+the file across and open it (enable "install unknown apps").
+
+Notes:
+- A bare `assembleRelease` uses Gradle's **debug** signing key (fine for sideloading
+  / internal testing). For a Play-Store-signable artifact, add a real keystore to
+  `android/app/build.gradle`'s `signingConfigs`, or just use the EAS path above
+  which manages the keystore for you.
+- Re-run `npx expo prebuild -p android --clean` after **any** `app.json` change —
+  permissions, icons, and edge-to-edge are all applied at prebuild time, not at
+  runtime.
+- For a quick debug install while developing: `npx expo run:android` (prebuilds,
+  then `assembleDebug` + installs in one step).
+
 ## iOS `.ipa` — signed with YOUR cert (nothing provisioned on this Mac)
 
 1. Export from your Apple Developer account (Keychain → your *Apple

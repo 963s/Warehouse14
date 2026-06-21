@@ -3,7 +3,7 @@
 import "../../global.css"
 
 import { useEffect } from "react"
-import { useColorScheme } from "react-native"
+import { StatusBar, useColorScheme } from "react-native"
 import { useFonts } from "expo-font"
 import { Stack, useRouter, useSegments } from "expo-router"
 import * as SplashScreen from "expo-splash-screen"
@@ -56,6 +56,15 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+        {/*
+         * System status-bar contrast. Edge-to-edge draws the app behind the
+         * status bar (transparent background owned by the react-native-edge-to-edge
+         * plugin), so we only steer the ICON colour: light glyphs on the dark
+         * theme, dark glyphs on the light theme — readable against the header on
+         * both Android and iOS. `translucent` is left to the plugin; setting it
+         * here would fight edge-to-edge.
+         */}
+        <StatusBar barStyle={scheme === "dark" ? "light-content" : "dark-content"} animated />
         <Stack
           screenOptions={{
             headerStyle: { backgroundColor: colors.card },

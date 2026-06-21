@@ -10,7 +10,8 @@
  * — an Ausweis must never linger on the device, on ANY path.
  */
 import { useEffect, useRef, useState } from "react"
-import { Image, Pressable, StyleSheet, View } from "react-native"
+import { AppState, Image, Pressable, StyleSheet, View } from "react-native"
+import { useIsFocused } from "expo-router"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Camera, useCameraDevice, useCameraPermission } from "react-native-vision-camera"
 
@@ -42,6 +43,20 @@ export function CapturePhotoScreen({ onConfirm, onCancel, busy, error }: Capture
   const camera = useRef<Camera>(null)
   const [captured, setCaptured] = useState<CapturedPhoto | null>(null)
   const [capturing, setCapturing] = useState(false)
+
+  // Release the camera the moment this screen loses focus (navigated away) or the
+  // app leaves the foreground. On Android a hard-coded `isActive` keeps the camera
+  // session locked when backgrounded, which drains battery and can block re-open
+  // (and on some devices throws on resume); tying it to focus + app state lets the
+  // OS reclaim the sensor and the session restart cleanly when the owner returns.
+  const isFocused = useIsFocused()
+  const [appActive, setAppActive] = useState(AppState.currentState === "active")
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (next) => setAppActive(next === "active"))
+    return () => sub.remove()
+  }, [])
+  // Only run the live preview when focused, foregrounded, and not reviewing a shot.
+  const cameraActive = isFocused && appActive && captured == null
 
   // No-persist (airtight): while a capture is held, discard its temp file when we
   // stop holding it OR when the screen unmounts. This closes the one path the
@@ -144,7 +159,7 @@ export function CapturePhotoScreen({ onConfirm, onCancel, busy, error }: Capture
 
   return (
     <View style={{ flex: 1, backgroundColor: "#000" }}>
-      <Camera ref={camera} style={StyleSheet.absoluteFill} device={device} isActive photo />
+      <Camera ref={camera} style={StyleSheet.absoluteFill} device={device} isActive={cameraActive} photo />
       <View
         style={[
           barStyle,

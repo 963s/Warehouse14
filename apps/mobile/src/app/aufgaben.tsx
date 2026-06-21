@@ -146,7 +146,14 @@ function CancelSheet({
   }
 
   return (
-    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+    <Modal
+      visible
+      animationType="slide"
+      transparent
+      onRequestClose={onClose}
+      statusBarTranslucent
+      navigationBarTranslucent
+    >
       <Pressable
         className="flex-1 justify-end"
         style={{ backgroundColor: "rgba(0,0,0,0.45)" }}

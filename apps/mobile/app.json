@@ -19,7 +19,18 @@
       "foregroundImage": "./assets/images/app-icon-android-adaptive-foreground.png",
       "backgroundImage": "./assets/images/app-icon-android-adaptive-background.png"
     },
-    "allowBackup": false
+    "allowBackup": false,
+    "edgeToEdgeEnabled": true,
+    "permissions": ["android.permission.CAMERA"],
+    "blockedPermissions": [
+      "android.permission.RECORD_AUDIO",
+      "android.permission.READ_EXTERNAL_STORAGE",
+      "android.permission.WRITE_EXTERNAL_STORAGE",
+      "android.permission.READ_MEDIA_IMAGES",
+      "android.permission.READ_MEDIA_VIDEO",
+      "android.permission.ACCESS_FINE_LOCATION",
+      "android.permission.ACCESS_COARSE_LOCATION"
+    ]
   },
   "ios": {
     "icon": "./assets/images/app-icon-ios.png",
@@ -51,13 +62,21 @@
         }
       }
     ],
-    "expo-build-properties",
+    [
+      "expo-build-properties",
+      {
+        "android": {
+          "enableMinifyInReleaseBuilds": true,
+          "enableShrinkResourcesInReleaseBuilds": true
+        }
+      }
+    ],
     "expo-router",
     [
       "react-native-vision-camera",
       {
         "enableCodeScanner": true,
-        "cameraPermissionText": "$(PRODUCT_NAME) needs camera access to scan items."
+        "cameraPermissionText": "$(PRODUCT_NAME) braucht Kamerazugriff, um Artikel und Belege zu scannen."
       }
     ]
   ],

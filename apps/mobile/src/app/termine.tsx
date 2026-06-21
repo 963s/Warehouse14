@@ -149,7 +149,14 @@ function RescheduleSheet({
   }
 
   return (
-    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+    <Modal
+      visible
+      animationType="slide"
+      transparent
+      onRequestClose={onClose}
+      statusBarTranslucent
+      navigationBarTranslucent
+    >
       {/* Keyboard avoidance, same per-platform behavior as the spine's
           KeyboardAvoidingScreen — so focusing „Neuer Beginn"/„Grund" lifts the
           whole sheet (inputs + Abbrechen/Verschieben) clear of the keyboard. */}
