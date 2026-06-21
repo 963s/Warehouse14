@@ -44,6 +44,7 @@ import {
   TAX_TREATMENT_LABEL,
   TRANSACTION_DIRECTION_LABEL,
 } from "@/warehouse14/german-text"
+import { CLOSING_STATE_LABELS } from "@/warehouse14/kasse-ui"
 
 export type BadgeVariant = NonNullable<BadgeProps["variant"]>
 
@@ -245,6 +246,9 @@ const EVENT_LABELS: Readonly<Record<string, string>> = {
   "appraisal.accepted": "Bewertung angenommen",
   "appraisal.rejected": "Bewertung abgelehnt",
   "payment_intent.payment_failed": "Zahlung fehlgeschlagen",
+  "payment_intent.succeeded": "Zahlung bestätigt",
+  "payment_intent.canceled": "Zahlung abgebrochen",
+  "cart.abandoned_by_sweeper": "Warenkorb verfallen",
   // Lager
   "product.created": "Artikel angelegt",
   "product.listed": "Artikel veröffentlicht",
@@ -259,6 +263,8 @@ const EVENT_LABELS: Readonly<Record<string, string>> = {
   "inventory.adjusted": "Bestand korrigiert",
   "inventory.session_opened": "Inventur geöffnet",
   "inventory.session_closed_with_shrinkage": "Inventur mit Schwund abgeschlossen",
+  "inventory.reservation_auto_released": "Reservierung automatisch aufgehoben",
+  "product.inventory_adjustment_logged": "Bestandskorrektur erfasst",
   // Kunden
   "customer.created": "Kunde angelegt",
   "customer.updated": "Kunde geändert",
@@ -269,6 +275,7 @@ const EVENT_LABELS: Readonly<Record<string, string>> = {
   "customer.price_notes_changed": "Preisnotizen geändert",
   "customer.sanctions_checked": "Sanktionsprüfung",
   "customer.smurfing_flagged": "Smurfing-Verdacht markiert",
+  "customer.kyc_purged": "KYC-Daten gelöscht",
   // Fiskal
   "daily_closing.finalized": "Tagesabschluss gebucht",
   "shift.opened": "Schicht geöffnet",
@@ -297,9 +304,14 @@ const EVENT_LABELS: Readonly<Record<string, string>> = {
   "security.kyc_image_missing": "KYC-Bild fehlt",
   "security.kyc_image_sha_mismatch": "KYC-Bild-Prüfsumme abweichend",
   "security.kyc_image_tamper": "KYC-Bild manipuliert",
+  "auth.pin_failed": "PIN falsch eingegeben",
+  "auth.pin_locked": "PIN-Anmeldung gesperrt",
+  "auth.step_up_failed": "Bestätigung fehlgeschlagen",
+  "auth.step_up_success": "Bestätigung erfolgreich",
   // Freigaben
   "command.approval_requested": "Freigabe angefragt",
   "command.approval_resolved": "Freigabe entschieden",
+  "command.dispatched": "Befehl ausgeführt",
   // Termine
   "appointment.scheduled": "Termin gebucht",
   "appointment.booked": "Termin gebucht",
@@ -307,6 +319,7 @@ const EVENT_LABELS: Readonly<Record<string, string>> = {
   "appointment.checked_in": "Gast eingecheckt",
   "appointment.rescheduled": "Termin verschoben",
   "appointment.cancelled": "Termin abgesagt",
+  "appointment.no_show_grace_minutes": "Karenzzeit für Nichterscheinen geändert",
   // System
   "auth.pin_login": "PIN-Anmeldung",
   "auth.sign_out": "Abmeldung",
@@ -462,7 +475,16 @@ export interface PayloadEntry {
   mono: boolean
 }
 
+// ID-/Hash-artige Schlüssel (forensisch: roher Wert, monospaced). Deckt
+// snake_case (`_id`), camelCase (`customerId`, `kycDocumentId`) und die
+// Krypto-Begriffe ab. Das camelCase-`Id$` ist bewusst gross-/kleinsensitiv,
+// damit normale Wörter auf „id" (z. B. „paid", „valid") NICHT fälschlich
+// als ID gelten.
 const ID_KEY_RE = /(_id$|^id$|hash|sha|fingerprint|serial|uuid)/i
+const CAMEL_ID_KEY_RE = /[a-z]Id$/
+function isIdKey(key: string): boolean {
+  return ID_KEY_RE.test(key) || CAMEL_ID_KEY_RE.test(key)
+}
 
 // ── Payload-Schlüssel → deutsches Label ──────────────────────────────────────
 // Die Payload-Schlüssel sind englische snake_case-Maschinennamen. Wir übersetzen
@@ -505,10 +527,44 @@ const PAYLOAD_KEY_LABELS: Readonly<Record<string, string>> = {
   source: "Quelle",
   price_per_gram_eur: "Preis je Gramm",
   kind: "Art",
+  // Fiskal / Tagesabschluss (daily_closing.finalized)
+  state: "Status",
+  business_day: "Geschäftstag",
+  gross_verkauf_eur: "Verkauf brutto",
+  net_verkauf_eur: "Verkauf netto",
+  gross_ankauf_eur: "Ankauf brutto",
+  net_ankauf_eur: "Ankauf netto",
+  verkauf_count: "Anzahl Verkäufe",
+  ankauf_count: "Anzahl Ankäufe",
+  storno_count: "Anzahl Stornos",
+  cash_drawer_variance_eur: "Kassendifferenz",
+  tse_finished_count: "TSE abgeschlossen",
+  tse_pending_count: "TSE ausstehend",
+  tse_failed_count: "TSE fehlgeschlagen",
+  ledger_anchor_id: "Journal-Anker",
+  // Sicherheit / Kunde (alert.customer_*)
+  customerId: "Kunde",
+  fromTrustLevel: "Vorherige Vertrauensstufe",
+  toTrustLevel: "Neue Vertrauensstufe",
+  reasonLength: "Begründungslänge",
+  // Sicherheit / Auth (auth.pin_* / step_up_*)
+  decision: "Ergebnis",
+  failed_attempts: "Fehlversuche",
+  locked_until: "Gesperrt bis",
+  lockedUntil: "Gesperrt bis",
+  is_owner: "Inhaberkonto",
+  session_id: "Sitzung",
+  // Bestandskorrektur (product.inventory_adjustment_logged)
+  productId: "Artikel",
+  previousLocation: "Vorheriger Lagerort",
+  nextLocation: "Neuer Lagerort",
+  // KYC-Löschung (customer.kyc_purged)
+  kycDocumentId: "KYC-Nachweis",
   // System / Auth
   device_class: "Geräteklasse",
   success: "Erfolgreich",
   title: "Titel",
+  notes: "Notiz",
 }
 
 // ── Bekannte Enum-Werte → deutsches Label, je nach Schlüssel ─────────────────
@@ -519,6 +575,18 @@ const PAYLOAD_KEY_LABELS: Readonly<Record<string, string>> = {
 // Greift keine Registry, fängt `humanizeToken` den Wert ab — es bleibt nie ein
 // SCREAMING_SNAKE oder ein englisches Code-Wort in der UI stehen.
 
+/**
+ * PIN-/Step-up-Entscheidung (`decision`-Payload) → deutsches Wort. Eigene
+ * Registry, damit „success"/„failed" nur HIER greifen und nicht versehentlich
+ * gleichlautende freie Textwerte anderer Felder übersetzen.
+ */
+const AUTH_DECISION_LABEL: Readonly<Record<string, string>> = {
+  success: "Erfolgreich",
+  failed: "Fehlgeschlagen",
+  failed_now_locked: "Fehlgeschlagen, jetzt gesperrt",
+  already_locked: "Bereits gesperrt",
+}
+
 /** Schlüssel-spezifische Enum-Registrys (aus dem geteilten german-text-Vokabular). */
 const KEY_VALUE_REGISTRY: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   direction: TRANSACTION_DIRECTION_LABEL,
@@ -527,6 +595,8 @@ const KEY_VALUE_REGISTRY: Readonly<Record<string, Readonly<Record<string, string
   payment_method: PAYMENT_METHOD_LABEL,
   payout_method: PAYMENT_METHOD_LABEL,
   trust_level: CUSTOMER_TRUST_LEVEL_LABEL,
+  fromTrustLevel: CUSTOMER_TRUST_LEVEL_LABEL,
+  toTrustLevel: CUSTOMER_TRUST_LEVEL_LABEL,
   kyc_status: CUSTOMER_KYC_STATUS_LABEL,
   appointment_type: APPOINTMENT_TYPE_LABEL,
   status: APPOINTMENT_STATUS_LABEL,
@@ -534,6 +604,10 @@ const KEY_VALUE_REGISTRY: Readonly<Record<string, Readonly<Record<string, string
   condition: ANKAUF_CONDITION_LABEL,
   product_status: PRODUCT_STATUS_LABEL,
   task_status: TASK_STATUS_LABEL,
+  // Der Tagesabschluss-`state` ist COUNTING | FINALIZED — als „Offen"/
+  // „Abgeschlossen" lesen, nie als rohes „FINALIZED".
+  state: CLOSING_STATE_LABELS,
+  decision: AUTH_DECISION_LABEL,
 }
 
 /** Audit-spezifische Tokens, die das geteilte Vokabular nicht abdeckt. */
@@ -552,6 +626,15 @@ const AUDIT_VALUE_LABELS: Readonly<Record<string, string>> = {
   silver: "Silber",
   platinum: "Platin",
   palladium: "Palladium",
+  // `reason`/`decision`-Codewörter aus den Sicherheits- und Hintergrund-
+  // Ereignissen (PIN, Reservierung, KYC-Löschung) — sonst läsen sie als
+  // englische Maschinenwörter („Already locked", „Retention expired").
+  already_locked: "Bereits gesperrt",
+  failed_now_locked: "Jetzt gesperrt",
+  retention_expired: "Aufbewahrungsfrist abgelaufen",
+  reservation_expires_at_lapsed: "Reservierung abgelaufen",
+  pos_stale_hold_reclaimed: "Kassen-Reservierung zurückgeholt",
+  reservation_expires_at_passed: "Reservierung abgelaufen",
 }
 
 /**
@@ -596,11 +679,19 @@ function purifyStringValue(key: string, value: string): string {
     const money = formatEurString(value)
     if (money != null) return money
   }
-  // Ein `*_at`-Feld trägt einen rohen ISO-Zeitstempel — als volle de-DE
-  // Datum+Uhrzeit zeigen, damit nie ein „2026-…T…Z" in der UI steht.
-  if (key.endsWith("_at")) {
+  // Ein Zeitstempel-Feld (snake_case `*_at`/`*_until` oder camelCase `*At`/
+  // `*Until`) trägt einen rohen ISO-Zeitstempel — als volle de-DE Datum+Uhrzeit
+  // zeigen, damit nie ein „2026-…T…Z" in der UI steht.
+  if (/(_at|_until|At|Until)$/.test(key) && value.includes("T")) {
     const date = formatEventDate(value)
     if (date != null) return date
+  }
+  // Ein Geschäftstag-/Datums-Feld (`business_day`, `*_day`, `*_date`) trägt ein
+  // reines ISO-Datum (YYYY-MM-DD) — als de-DE Datum zeigen, nie roh als
+  // „2026-06-21".
+  if (key === "business_day" || key.endsWith("_day") || key.endsWith("_date")) {
+    const day = formatEventDay(value)
+    if (day != null) return day
   }
   const registry = KEY_VALUE_REGISTRY[key]
   if (registry && value in registry) return registry[value]
@@ -628,7 +719,7 @@ function formatScalar(key: string, v: unknown): { value: string; mono: boolean }
   if (typeof v === "string") {
     // IDs/Hashes/Seriennummern bleiben roh + monospaced (Forensik); jeder andere
     // String wird gegen das deutsche Enum-Vokabular gereinigt, nie roh gezeigt.
-    if (ID_KEY_RE.test(key)) return { value: v, mono: true }
+    if (isIdKey(key)) return { value: v, mono: true }
     const clean = purifyStringValue(key, v)
     return { value: clean, mono: clean.length > 16 && !clean.includes(" ") }
   }
@@ -645,7 +736,7 @@ export function payloadEntries(payload: unknown): PayloadEntry[] {
   const out: PayloadEntry[] = []
   for (const key of Object.keys(p)) {
     const { value, mono } = formatScalar(key, p[key])
-    out.push({ key, label: humanizeKey(key), value, mono: mono || ID_KEY_RE.test(key) })
+    out.push({ key, label: humanizeKey(key), value, mono: mono || isIdKey(key) })
   }
   return out
 }
@@ -670,6 +761,22 @@ export function formatEventDate(iso: string | null): string | null {
     minute: "2-digit",
     second: "2-digit",
   })
+}
+
+/**
+ * Ein reines ISO-Datum (YYYY-MM-DD, z. B. ein Geschäftstag) als de-DE Datum
+ * ohne Uhrzeit, oder null wenn ungültig. Wir lesen die Bestandteile direkt aus
+ * dem String (keine Date-Zeitzonen-Verschiebung), damit der Geschäftstag exakt
+ * bleibt.
+ */
+export function formatEventDay(iso: string | null): string | null {
+  if (!iso) return null
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso.trim())
+  if (!m) return null
+  const [, y, mo, d] = m
+  const dt = new Date(Number(y), Number(mo) - 1, Number(d))
+  if (Number.isNaN(dt.getTime())) return null
+  return dt.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })
 }
 
 /** Nur die Uhrzeit (HH:MM) eines ISO-Zeitstempels, oder null. */
