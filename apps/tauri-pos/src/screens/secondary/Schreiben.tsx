@@ -211,9 +211,9 @@ export function Schreiben(): JSX.Element {
                   borderRadius: 999,
                   fontSize: '0.74rem',
                   cursor: 'pointer',
-                  border: `1px solid ${tone === tn ? 'var(--w14-gold)' : 'var(--w14-rule)'}`,
-                  background: tone === tn ? 'var(--w14-gold)' : 'transparent',
-                  color: tone === tn ? '#fff' : 'var(--w14-ink-faded)',
+                  border: `1px solid ${tone === tn ? 'var(--w14-accent)' : 'var(--w14-rule)'}`,
+                  background: tone === tn ? 'var(--w14-accent)' : 'transparent',
+                  color: tone === tn ? 'var(--w14-accent-ink)' : 'var(--w14-ink-faded)',
                 }}
               >
                 {tn}

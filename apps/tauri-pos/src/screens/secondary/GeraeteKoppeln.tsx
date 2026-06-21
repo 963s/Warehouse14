@@ -200,8 +200,8 @@ export function GeraeteKoppeln(): JSX.Element {
                     fontSize: '0.74rem',
                     fontWeight: 700,
                     letterSpacing: '0.04em',
-                    color: 'var(--w14-status-alert, #dc2626)',
-                    border: '1px solid var(--w14-status-alert, #dc2626)',
+                    color: 'var(--w14-status-alert)',
+                    border: '1px solid var(--w14-status-alert)',
                     borderRadius: 999,
                     padding: '2px 10px',
                   }}
@@ -224,7 +224,7 @@ export function GeraeteKoppeln(): JSX.Element {
             </div>
             {!info.secure ? (
               <p
-                style={{ margin: 0, fontSize: '0.8rem', color: 'var(--w14-status-alert, #dc2626)' }}
+                style={{ margin: 0, fontSize: '0.8rem', color: 'var(--w14-status-alert)' }}
               >
                 Ohne HTTPS kann das Telefon die Kamera nicht öffnen. Bitte die Kasse neu starten,
                 damit der sichere Server (TLS) wieder läuft.

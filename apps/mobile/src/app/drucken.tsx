@@ -38,7 +38,7 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Text } from "@/components/ui/text"
 import { listProducts } from "@/warehouse14/api"
-import { CONDITION_LABEL, METAL_LABEL } from "@/warehouse14/product-ui"
+import { conditionLabel, METAL_LABEL } from "@/warehouse14/product-ui"
 import {
   escposRequirement,
   getPrintCapabilities,
@@ -71,9 +71,10 @@ const SEARCH_LIMIT = 20
  */
 function noteFor(p: ProductListRow): string | null {
   const metal = p.metal ? (METAL_LABEL[p.metal] ?? p.metal) : null
-  const condition = p.condition
-    ? (CONDITION_LABEL[p.condition as keyof typeof CONDITION_LABEL] ?? p.condition)
-    : null
+  // Route through the safe helper: an unknown/future condition code degrades to
+  // „Unbekannt" rather than leaking a raw SCREAMING_SNAKE token onto a printed
+  // label or PDF. Absent condition still drops the line entirely.
+  const condition = p.condition ? conditionLabel(p.condition) : null
   const parts = [metal, condition].filter((s): s is string => !!s)
   return parts.length ? parts.join(" · ") : null
 }

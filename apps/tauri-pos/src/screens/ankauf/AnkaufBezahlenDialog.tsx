@@ -709,13 +709,13 @@ function ReviewPhase(props: {
               minHeight: 78,
               fontSize: '1.1rem',
               fontWeight: 600,
-              // Solid gold once the payout can be recorded — an unmistakable
+              // Solid brass once the payout can be recorded — an unmistakable
               // "ready to finalize" affordance (matches the Verkauf footer).
               ...(canSubmit
                 ? {
-                    backgroundColor: 'var(--w14-gold)',
-                    borderColor: 'var(--w14-gold)',
-                    color: '#fff',
+                    backgroundColor: 'var(--w14-accent)',
+                    borderColor: 'var(--w14-accent)',
+                    color: 'var(--w14-accent-ink)',
                   }
                 : {}),
             }}

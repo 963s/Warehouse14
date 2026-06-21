@@ -624,9 +624,9 @@ function SelectedBuyer({
                 iconLeft={<Icon icon={ShieldCheck} size={18} />}
                 onClick={() => onConfirm(customer)}
                 style={{
-                  backgroundColor: 'var(--w14-gold)',
-                  borderColor: 'var(--w14-gold)',
-                  color: '#fff',
+                  backgroundColor: 'var(--w14-accent)',
+                  borderColor: 'var(--w14-accent)',
+                  color: 'var(--w14-accent-ink)',
                 }}
               >
                 Käufer übernehmen

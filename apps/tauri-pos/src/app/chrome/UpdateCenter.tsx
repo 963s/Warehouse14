@@ -253,7 +253,7 @@ function StatusRow({
       : tone === 'ok'
         ? 'var(--w14-accent, var(--w14-gold))'
         : tone === 'alert'
-          ? 'var(--w14-danger, #9b2c2c)'
+          ? 'var(--w14-danger)'
           : 'var(--w14-ink-faded)';
   return (
     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
@@ -309,7 +309,7 @@ function DownloadProgress({ pct, version }: { pct: number; version: string | nul
           style={{
             height: '100%',
             width: `${clamped}%`,
-            background: 'var(--w14-gold)',
+            background: 'var(--w14-accent)',
             transition: 'width var(--w14-dur-short, 150ms) linear',
           }}
         />

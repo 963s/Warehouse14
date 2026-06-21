@@ -2,8 +2,9 @@
  * ParchmentCard — the base surface every card, panel, drawer sits on.
  *
  * Parchment-2 background, hairline ink rule on the bottom (1px shadow,
- * not box border — preserves the "printed on paper" feel), 6px radius,
- * 24px interior padding by default.
+ * not box border — preserves the "printed on paper" feel), the card
+ * radius (`--w14-radius-card`, 8px — 1:1 with apps/mobile), 24px interior
+ * padding by default.
  *
  *   <ParchmentCard>
  *     <h3>Werkstatt</h3>

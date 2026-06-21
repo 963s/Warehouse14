@@ -204,8 +204,8 @@ function ThreadRow({
             className="w14-tabular"
             aria-label={`${thread.unreadCount} ungelesen`}
             style={{
-              background: 'var(--w14-gold)',
-              color: 'var(--w14-parchment)',
+              background: 'var(--w14-accent)',
+              color: 'var(--w14-accent-ink)',
               borderRadius: 999,
               fontSize: '0.66rem',
               fontFamily: 'var(--w14-font-mono)',
@@ -740,13 +740,13 @@ function ThreadSidebarBody({ phone }: { phone: string }): JSX.Element {
               borderRadius: '50%',
               display: 'inline-block',
               background: onCooldown
-                ? 'var(--w14-gold)'
+                ? 'var(--w14-ink-aged)'
                 : aiActive
                   ? 'var(--w14-verdigris)'
                   : 'var(--w14-ink-faded)',
               boxShadow: `0 0 6px -1px ${
                 onCooldown
-                  ? 'var(--w14-gold)'
+                  ? 'var(--w14-ink-aged)'
                   : aiActive
                     ? 'var(--w14-verdigris)'
                     : 'var(--w14-ink-faded)'

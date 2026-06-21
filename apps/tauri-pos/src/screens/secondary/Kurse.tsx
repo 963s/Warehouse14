@@ -40,11 +40,15 @@ const METAL_LABEL: Record<MetalKind, string> = {
   palladium: 'Palladium',
 };
 
+// Metal identity accents — warm, token-only (no cool greys). Each metal reads
+// as a distinct antique tone the way gold reads via --w14-gold: silver = warm
+// umber, platinum = the pale warm-gold hairline (its bright sheen), palladium =
+// faded warm grey. Consistent with gold's decorative-var treatment.
 const METAL_ACCENT: Record<MetalKind, string> = {
   gold: 'var(--w14-gold)',
-  silver: '#9aa0a6',
-  platinum: '#c6c8cb',
-  palladium: '#8b8fa3',
+  silver: 'var(--w14-ink-aged)',
+  platinum: 'var(--w14-rule)',
+  palladium: 'var(--w14-ink-faded)',
 };
 
 export function Kurse(): JSX.Element {

@@ -670,9 +670,9 @@ function Viewfinder({
               width: 72,
               height: 72,
               borderRadius: '50%',
-              background: 'var(--w14-gold)',
+              background: 'var(--w14-accent)',
               border: '4px solid var(--w14-parchment-1)',
-              boxShadow: '0 4px 14px rgba(0,0,0,0.55), inset 0 0 0 2px var(--w14-gold)',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.55), inset 0 0 0 2px var(--w14-accent)',
               cursor: 'pointer',
               transition: 'transform var(--w14-dur-short) var(--w14-ease-curator)',
             }}

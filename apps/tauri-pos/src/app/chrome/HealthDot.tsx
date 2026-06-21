@@ -45,7 +45,7 @@ export function HealthDot(): JSX.Element {
   if (health === 'conflict') {
     v = { color: 'var(--w14-wax-red)', label: 'Sync blockiert — Konflikt', code: 'W14-SYNC-CONFLICT', pulse: true, action: 'compliance' };
   } else if (health === 'offline') {
-    v = { color: '#b07a2e', label: `Offline — ${pendingCount} in Warteschlange`, code: 'W14-NET-OFFLINE', pulse: false, action: 'none' };
+    v = { color: 'var(--w14-accent)', label: `Offline — ${pendingCount} in Warteschlange`, code: 'W14-NET-OFFLINE', pulse: false, action: 'none' };
   } else if (health === 'unreachable') {
     v = { color: 'var(--w14-wax-red)', label: 'Server nicht erreichbar', code: 'W14-API-UNREACHABLE', pulse: true, action: 'retry' };
   } else if (health === 'syncing') {

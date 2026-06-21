@@ -1957,7 +1957,11 @@ function PaymentInput({
 
         {/* Permanent money anchor (design-brief §1) — the amount due is the
             single largest type on the payment screen, .w14-tabular, high
-            contrast for the 80cm read. It never hides behind a tap. */}
+            contrast for the 80cm read. It never hides behind a tap.
+            FONT RULE (cross-app): the single biggest money figure is TABULAR
+            MONO (--w14-font-mono) in BOTH apps — this matches the mobile money
+            hero in apps/mobile sell/FiscalConfirmSheet (font-mono-medium).
+            Serif is reserved for titles; precise money stays column-aligned. */}
         <div
           style={{
             marginTop: 12,
@@ -2304,14 +2308,14 @@ function PaymentInput({
             minHeight: 78,
             fontSize: '1.1rem',
             fontWeight: 600,
-            // Goes solid gold the moment it can record the sale — an
+            // Goes solid brass the moment it can record the sale — an
             // unmistakable "ready to finalize" affordance (matches the active
-            // gold treatment used elsewhere).
+            // brass treatment used elsewhere).
             ...(canSubmit
               ? {
-                  backgroundColor: 'var(--w14-gold)',
-                  borderColor: 'var(--w14-gold)',
-                  color: '#fff',
+                  backgroundColor: 'var(--w14-accent)',
+                  borderColor: 'var(--w14-accent)',
+                  color: 'var(--w14-accent-ink)',
                 }
               : {}),
           }}
@@ -2361,9 +2365,9 @@ function MethodChip({
         fontFamily: 'var(--w14-font-display)',
         letterSpacing: '0.08em',
         fontSize: '0.78rem',
-        backgroundColor: active ? 'var(--w14-gold)' : 'var(--w14-parchment-2)',
-        color: active ? 'var(--w14-ink-aged)' : 'var(--w14-ink-faded)',
-        border: '1px solid var(--w14-rule)',
+        backgroundColor: active ? 'var(--w14-accent)' : 'var(--w14-parchment-2)',
+        color: active ? 'var(--w14-accent-ink)' : 'var(--w14-ink-faded)',
+        border: `1px solid ${active ? 'var(--w14-accent)' : 'var(--w14-rule)'}`,
         borderRadius: 999,
         cursor: disabled ? 'not-allowed' : 'pointer',
         opacity: disabled ? 0.5 : 1,

@@ -32,7 +32,10 @@ import type { ThermalReceiptData } from '../../lib/hardware-client.js';
 import { SHOP_INFO } from '../../lib/shop-info.js';
 import { useToastStore } from '../../state/toast-store.js';
 
-const PAPER = '#fbf8f1';
+// Physical thermal-paper cream — kept as a literal (not a theme token) so the
+// printed-preview stays paper-white regardless of light/dark. Aligned to the
+// parchment-2 cream (#faf8f2) so it no longer drifts off the palette.
+const PAPER = '#faf8f2';
 const INK = '#1c1814';
 const FADED = '#6b6354';
 

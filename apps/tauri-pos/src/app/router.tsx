@@ -33,7 +33,7 @@ function SurfaceLadeAnzeige(): JSX.Element {
         alignItems: 'center',
         justifyContent: 'center',
         minHeight: '40vh',
-        color: 'var(--color-text-muted, #64748b)',
+        color: 'var(--w14-ink-faded)',
         fontSize: '0.95rem',
       }}
     >

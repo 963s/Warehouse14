@@ -646,9 +646,9 @@ const CHIP_STYLE: CSSProperties = {
   cursor: 'pointer',
 };
 const CHIP_ACTIVE: CSSProperties = {
-  background: 'var(--w14-gold)',
-  color: '#fff',
-  borderColor: 'var(--w14-gold)',
+  background: 'var(--w14-accent)',
+  color: 'var(--w14-accent-ink)',
+  borderColor: 'var(--w14-accent)',
 };
 
 const DISCOUNT_INPUT: CSSProperties = {

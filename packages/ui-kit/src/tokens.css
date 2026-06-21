@@ -6,7 +6,7 @@
  *
  * Rules (memory.md §10):
  *   • No colour outside the --w14-* palette.
- *   • No radius outside (0, 4px, 6px).
+ *   • No radius outside (0, button 4px, card 8px) — 1:1 with apps/mobile.
  *   • Dark mode toggled by adding `data-theme="dark"` to <html>.
  *
  * Any addition here requires a matching update to memory.md §10.2-§10.4.
@@ -41,6 +41,11 @@
   --w14-gold-soft: #ddc486; /* hover companion of the decorative gold */
   --w14-wax-red: #b8442b; /* terracotta — destructive / price-down, AA */
   --w14-wax-red-soft: #d98a72;
+  /* Semantic danger / alert aliases — same warm terracotta as wax-red so a
+     status message or error border never falls back to a cool off-palette
+     red (#dc2626 / #b3261e). One warm family for every alarm tone. */
+  --w14-danger: var(--w14-wax-red);
+  --w14-status-alert: var(--w14-wax-red);
   --w14-verdigris: #3a6450; /* sage — positive / price-up, AA (5.70:1 bg) */
 
   /* ─── Primary action accent — brass, deep enough for cream text ────
@@ -126,8 +131,11 @@
   --w14-leading-body: 1.55; /* body (matches the base reset) */
 
   --w14-radius-sharp: 0px; /* receipt-like surfaces */
-  --w14-radius-button: 8px;
-  --w14-radius-card: 12px;
+  /* Antique-sharp corners — unified 1:1 with apps/mobile theme.ts radii
+     ({0, button 4, card 8}). A crafted, ledger-like feel, not the bubbly
+     8/12 of the old kit. Both UIs share these exact values. */
+  --w14-radius-button: 4px;
+  --w14-radius-card: 8px;
   /* Shadows carry a warm ink tint (not cold grey) so a card reads as
      resting on aged paper, not floating on white. */
   --w14-shadow-card: 0 1px 2px rgba(23, 21, 15, 0.06), 0 1px 3px rgba(23, 21, 15, 0.08);
@@ -157,6 +165,8 @@
   --w14-gold: #cda94a; /* decorative flourish only */
   --w14-gold-soft: #e2c98c;
   --w14-wax-red: #e07a62; /* warm terracotta, lifted for the dark canvas */
+  --w14-danger: var(--w14-wax-red); /* semantic alias — tracks the lifted dark terracotta */
+  --w14-status-alert: var(--w14-wax-red);
   --w14-verdigris: #5fae89; /* warm sage, lifted */
 
   /* Brighter brass on dark surfaces; deep ink text for AA contrast. */

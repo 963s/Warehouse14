@@ -67,7 +67,7 @@ export function UpdateButton(): JSX.Element {
               width: 7,
               height: 7,
               borderRadius: '50%',
-              background: 'var(--w14-gold)',
+              background: 'var(--w14-verdigris)',
               boxShadow: '0 0 0 1.5px var(--w14-parchment-2)',
             }}
           />

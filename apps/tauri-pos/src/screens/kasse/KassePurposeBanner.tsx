@@ -47,8 +47,8 @@ export function KassePurposeBanner(): JSX.Element {
             width: 44,
             height: 44,
             borderRadius: 'var(--w14-radius-button)',
-            background: 'var(--w14-gold)',
-            color: '#fff',
+            background: 'var(--w14-accent)',
+            color: 'var(--w14-accent-ink)',
             display: 'grid',
             placeItems: 'center',
           }}

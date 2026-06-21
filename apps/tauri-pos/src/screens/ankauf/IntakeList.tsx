@@ -957,8 +957,8 @@ function CustomerRequiredLock(): JSX.Element {
             width: 40,
             height: 40,
             borderRadius: 999,
-            background: 'var(--w14-gold)',
-            color: '#fff',
+            background: 'var(--w14-accent)',
+            color: 'var(--w14-accent-ink)',
             fontFamily: 'var(--w14-font-display)',
             fontSize: '1.1rem',
             marginBottom: 12,
@@ -1036,8 +1036,8 @@ function AnkaufGuide({ step }: { step: 1 | 2 | 3 }): JSX.Element {
                 height: 20,
                 borderRadius: 999,
                 fontSize: '0.7rem',
-                background: step >= s.n ? 'var(--w14-gold)' : 'var(--w14-parchment-3)',
-                color: step >= s.n ? '#fff' : 'var(--w14-ink-faded)',
+                background: step >= s.n ? 'var(--w14-accent)' : 'var(--w14-parchment-3)',
+                color: step >= s.n ? 'var(--w14-accent-ink)' : 'var(--w14-ink-faded)',
               }}
             >
               {s.n}

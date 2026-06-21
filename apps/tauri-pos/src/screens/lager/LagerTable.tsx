@@ -345,14 +345,15 @@ const LagerRow = memo(
                 height: 8,
                 flexShrink: 0,
                 borderRadius: '50%',
-                // For a sellable item, distinguish shop-only ("Im Laden", blue)
-                // from web-published ("Online", green) — what the owner wanted to
-                // see in the cashier, not only in the phone companion.
+                // For a sellable item, distinguish shop-only ("Im Laden", brass)
+                // from web-published ("Online", sage) — what the owner wanted to
+                // see in the cashier, not only in the phone companion. Antique
+                // palette only: sage = published/positive, brass = in-store.
                 background:
                   row.status === 'AVAILABLE'
                     ? row.listedOnStorefront
-                      ? '#157a4b'
-                      : '#3b82f6'
+                      ? 'var(--w14-verdigris)'
+                      : 'var(--w14-accent)'
                     : PRODUCT_STATUS_COLOR[row.status],
               }}
             />

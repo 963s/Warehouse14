@@ -340,7 +340,7 @@ function Toggle({
           height: 24,
           flex: '0 0 auto',
           borderRadius: 999,
-          background: on ? 'var(--w14-gold)' : 'var(--w14-rule)',
+          background: on ? 'var(--w14-accent)' : 'var(--w14-rule)',
           position: 'relative',
           transition: 'background 160ms ease',
         }}

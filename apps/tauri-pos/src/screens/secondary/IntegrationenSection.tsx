@@ -328,7 +328,7 @@ function IntegrationCard({ item }: { item: IntegrationItem }): JSX.Element {
               alignItems: 'center',
               gap: 6,
               fontSize: '0.82rem',
-              color: testResult.ok ? 'var(--w14-verdigris)' : 'var(--w14-danger, #b3261e)',
+              color: testResult.ok ? 'var(--w14-verdigris)' : 'var(--w14-danger)',
             }}
           >
             {testResult.ok ? <IconCheck size={18} /> : <CrossMark />}
@@ -359,7 +359,7 @@ export function IntegrationenSection(): JSX.Element {
       )}
 
       {query.isError && (
-        <div style={{ ...card, color: 'var(--w14-danger, #b3261e)', fontSize: '0.9rem' }}>
+        <div style={{ ...card, color: 'var(--w14-danger)', fontSize: '0.9rem' }}>
           Integrationen konnten nicht geladen werden.
         </div>
       )}

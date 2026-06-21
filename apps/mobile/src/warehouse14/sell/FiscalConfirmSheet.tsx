@@ -133,7 +133,10 @@ export function FiscalConfirmSheet({
           contentContainerStyle={{ gap: 16 }}
           showsVerticalScrollIndicator={false}
         >
-          {/* The amount — the single hero number, big mono. */}
+          {/* The amount — the single hero number, big TABULAR MONO. This is the
+              cross-app money rule: the single biggest money figure is mono in
+              BOTH apps (matches the cashier "Zu zahlen" anchor in
+              apps/tauri-pos BezahlenDialog). Serif is reserved for titles. */}
           <View
             className="items-center gap-1 rounded-xl border border-border bg-card py-4"
             accessibilityRole="summary"
