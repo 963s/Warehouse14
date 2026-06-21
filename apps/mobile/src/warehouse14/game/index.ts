@@ -77,6 +77,15 @@ export {
 
 export { useGameState, type GameState, type GameStateInput } from "./useGameState"
 
+export {
+  computeGameHistory,
+  type GameHistory,
+  type RankDayPoint,
+  type StreakRun,
+  type RankUpEvent,
+  type SealEarnedEvent,
+} from "./history"
+
 // ── Break-even celebration ────────────────────────────────────────────────────
 export {
   installCelebrationPersistence,
@@ -95,8 +104,32 @@ export {
   type BreakEvenCelebrationOptions,
 } from "./useBreakEvenCelebration"
 
+export {
+  useRankUpCelebration,
+  rankUpKey,
+  type RankUpCelebrationProps,
+  type RankUpCelebrationOptions,
+} from "./useRankUpCelebration"
+
+// ── Erfolge surface — German labels + the merged milestone timeline builder ────
+export {
+  ERFOLGE_COPY,
+  formatHistoryDate,
+  formatShortDate,
+  formatRunSpan,
+  daysLabel,
+  sealTitle,
+  sealDescription,
+  buildMilestoneTimeline,
+  type MilestoneKind,
+  type MilestoneEntry,
+} from "./erfolge-ui"
+
 // ── Presentational ────────────────────────────────────────────────────────────
 export { RankBadge, type RankBadgeProps } from "./RankBadge"
 export { StreakFlame, type StreakFlameProps } from "./StreakFlame"
 export { SealGrid, type SealGridProps } from "./SealGrid"
 export { QuestCard, type QuestCardProps } from "./QuestCard"
+export { RankLadder, type RankLadderProps } from "./RankLadder"
+export { StreakHistoryList, type StreakHistoryListProps } from "./StreakHistoryList"
+export { AchievementTimeline, type AchievementTimelineProps } from "./AchievementTimeline"

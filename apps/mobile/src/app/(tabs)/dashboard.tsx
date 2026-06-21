@@ -43,7 +43,7 @@ import type {
   ProfitResponse,
 } from "@warehouse14/api-client"
 import { type Href, useRouter } from "expo-router"
-import { Gem, Lock, MapPin, Search, Vault } from "lucide-react-native"
+import { Gem, Lock, MapPin, Search, Trophy, Vault } from "lucide-react-native"
 
 import { Card } from "@/components/ui/card"
 import { Text } from "@/components/ui/text"
@@ -81,6 +81,7 @@ import {
   GoldFlood,
   haptics,
   InlineError,
+  ListRow,
   PressableScale,
   RingGauge,
   SectionCard,
@@ -204,6 +205,7 @@ function SchatzkammerSkeleton() {
 
 export default function SchatzkammerScreen() {
   const t = useW14Theme()
+  const router = useRouter()
   const insets = useScreenInsets()
   // The owner's OWN goals (Einstellungen → preferences) — the same store Finanzen
   // reads. These are the only denominators we may honestly label „Ziel"; the rest
@@ -616,6 +618,17 @@ export default function SchatzkammerScreen() {
             }
           >
             <SealGrid seals={game.seals} />
+            <View style={{ marginTop: 4 }}>
+              <ListRow
+                icon={Trophy}
+                title="Erfolge ansehen"
+                subtitle="Aufstieg, Serien-Historie und Meilensteine im Detail."
+                onPress={() => {
+                  haptics.selection()
+                  router.push("/erfolge" as Href)
+                }}
+              />
+            </View>
           </SectionCard>
         </StaggerItem>
 
