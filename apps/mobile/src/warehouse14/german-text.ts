@@ -142,6 +142,43 @@ const CONFLICT_TOKENS: ReadonlyArray<{ token: string; line: string }> = [
     token: "appointments_one_transaction_link_uq",
     line: "Dieser Termin ist bereits mit einem Vorgang verknüpft.",
   },
+  // ── Tagesabschluss / Z-Bon (Kassensturz-Reihenfolge) ───────────────────────
+  {
+    // closings-finalize raises four precise German 409s. They are the most
+    // fiscally important conflicts in the app: each names the EXACT next step
+    // (close the shift / do the Kassensturz first), so the generic
+    // "aktualisieren und erneut versuchen" fallback would actively mislead the
+    // owner. We key on a stable, collision-free substring of each message and
+    // pass through its own actionable guidance. Order is most-specific first.
+    //
+    // 1) An OPEN shift exists for the target day — the day cannot be sealed until
+    //    the till is closed. ("Für {day} ist noch eine Kasse geöffnet …")
+    token: "noch eine Kasse geöffnet",
+    line: "Für diesen Tag ist noch eine Kasse geöffnet. Bitte zuerst die Schicht abschließen (Kassensturz).",
+  },
+  {
+    // 2) Sales exist for the day but no shift was counted/closed — the cash
+    //    position is unknown. ("Für {day} liegen Belege vor, aber kein
+    //    Kassensturz …") Match the distinctive "kein Kassensturz" phrase; the
+    //    internal empty-day note string is never thrown, so there is no clash.
+    token: "kein Kassensturz",
+    line: "Für diesen Tag liegen Belege vor, aber kein Kassensturz. Bitte zuerst die Schicht abschließen.",
+  },
+  {
+    // 3) The day is already sealed — a Z-Bon is immutable, so a second finalize
+    //    is refused. ("Der Tagesabschluss für {day} besteht bereits.") "besteht
+    //    bereits" is unique to this message.
+    token: "besteht bereits",
+    line: "Der Tagesabschluss für diesen Tag besteht bereits.",
+  },
+  {
+    // 4) No ledger anchor at finalize time — the chain head is missing, so the
+    //    seal cannot be set. ("Kein Ledger-Anker vorhanden …") A system-state
+    //    edge the owner cannot self-cure, so name it plainly and point at
+    //    support rather than at a refresh that won't help.
+    token: "Kein Ledger-Anker",
+    line: "Der Tagesabschluss kann gerade nicht gesetzt werden — die Buchungskette fehlt noch. Bitte später erneut versuchen oder den Support kontaktieren.",
+  },
   // ── Geldwege (Fiskal-Eindeutigkeit) ────────────────────────────────────────
   {
     // Storno idempotency: a second storno of the same original is refused.
