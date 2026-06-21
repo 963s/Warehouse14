@@ -341,9 +341,17 @@ const transactionsAnkaufRoute: FastifyPluginAsync<TransactionsAnkaufOpts> = asyn
                 lineTotalEur: item.negotiatedPriceEur,
                 appliedTaxTreatmentCode: item.taxTreatmentCode,
                 appliedVatRate: null,
-                // Snapshot the freshly-set cost (it equals the line total here).
-                acquisitionCostEurSnapshot: item.negotiatedPriceEur,
-                // No margin on Ankauf — that lives on the future sale.
+                // §25a margin context belongs to the FUTURE SALE line, not to
+                // this buy-in line. A buy-in realizes no margin and is not itself
+                // a §25a sale, so BOTH the acquisition snapshot and the margin
+                // stay NULL here. (The acquisition cost is persisted on the
+                // PRODUCT above as `acquisitionCostEur` — intake-locked — so
+                // nothing is lost.) Leaving the snapshot set while margin is NULL
+                // violates the CHECK `transaction_items_margin_implies_acquisition`
+                // ((margin_eur IS NULL) = (acquisition_cost_eur_snapshot IS NULL),
+                // migration 0009), which previously made every Ankauf payout fail
+                // with a 409 and committed zero buy-ins.
+                acquisitionCostEurSnapshot: null,
                 marginEur: null,
                 displayOrder: idx,
               };

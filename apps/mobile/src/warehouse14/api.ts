@@ -916,9 +916,20 @@ export function describeError(err: unknown): string {
         if (msg.includes("appointments_no_staff_overlap")) {
           return "Zu dieser Zeit liegt bereits ein Termin. Bitte eine andere Zeit wählen."
         }
-        // Otherwise it's a domain conflict — e.g. promoting a customer to
-        // VERIFIED/VIP before the physical-ID stamp. Give the actionable step.
-        return "Aktion nicht möglich — zuerst die KYC-Prüfung (Ausweis) bestätigen."
+        // ── Kunden-Vertrauensstufe (KYC-Heraufstufung) ────────────────────────
+        // The ONLY 409 that the KYC/Ausweis line truthfully describes:
+        // `TrustConflictError` from the customer-trust route raises
+        // "cannot promote to {VERIFIED|VIP} without a prior physical-ID check …".
+        // Gate the KYC step on that token — never blame KYC for an unrelated
+        // conflict (e.g. a server-side constraint bug on a fully-verified seller),
+        // which would send the operator into a dead-end loop with no real fix.
+        if (msg.includes("without a prior physical-ID check")) {
+          return "Aktion nicht möglich — zuerst die KYC-Prüfung (Ausweis) bestätigen."
+        }
+        // Otherwise it's an unrecognised conflict. Stay honest: don't surface the
+        // raw English, don't fabricate a cause we can't prove. A neutral,
+        // actionable German line — and the §-weight stays visible upstream.
+        return "Aktion derzeit nicht möglich — der aktuelle Stand passt nicht mehr. Bitte aktualisieren und erneut versuchen."
       }
       // ── Fiskal- + Inventar-Codes der Verkauf/Ankauf-Geldwege ────────────────
       // Diese tragen ihren EIGENEN error.code (NICHT "CONFLICT"), umgehen also
