@@ -8,6 +8,7 @@
  * inherits the surrounding text/button tone. Decorative by default (aria-hidden)
  * — the accessible name lives on the IconButton / labelled control around it.
  */
+import type { ComponentType } from 'react';
 import type { LucideIcon, LucideProps } from 'lucide-react';
 
 export interface IconProps extends Omit<LucideProps, 'ref'> {
@@ -21,8 +22,17 @@ export function Icon({
   strokeWidth = 1.75,
   ...rest
 }: IconProps): JSX.Element {
+  // `lucide-react`'s `LucideIcon` types its return against the React types it
+  // bundles, whose `ReactNode` predates the `bigint` member added in
+  // @types/react 19. This repo compiles ui-kit against the hoisted v19 types, so
+  // the two `ReactNode`s are nominally distinct and TS rejects the component as a
+  // JSX element (TS2786) — a types-skew artefact only, never a runtime issue (the
+  // icon is a plain forwardRef component). Coerce to the local `ComponentType` at
+  // the single render site so the JSX constraint resolves; the public `icon` prop
+  // stays a `LucideIcon`, so callers are unaffected.
+  const Glyph = IconComponent as ComponentType<LucideProps>;
   return (
-    <IconComponent
+    <Glyph
       size={size}
       strokeWidth={strokeWidth}
       color="currentColor"
