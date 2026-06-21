@@ -11,6 +11,7 @@ const BELEGTEXT_KIND = Type.Union([
   Type.Literal('INVESTMENT_GOLD_25C'),
   Type.Literal('KLEINUNTERNEHMER_19'),
   Type.Literal('ANKAUFBELEG_DECLARATION'),
+  Type.Literal('REVERSE_CHARGE_13B'),
   Type.Literal('GENERIC_HEADER'),
   Type.Literal('GENERIC_FOOTER'),
 ]);

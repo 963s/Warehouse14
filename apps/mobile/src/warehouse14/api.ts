@@ -916,6 +916,31 @@ export function describeError(err: unknown): string {
         if (msg.includes("appointments_no_staff_overlap")) {
           return "Zu dieser Zeit liegt bereits ein Termin. Bitte eine andere Zeit wählen."
         }
+        // ── Sammlungen (Kategorien-Verwaltung) ────────────────────────────────
+        // Duplicate slug: the create/rename routes derive the slug from the name
+        // and raise `Slug "gold" already exists.` on the categories_slug_uq
+        // collision. The operator never sees the slug as a separate field, so
+        // name the conflict in their vocabulary (Kurzname = slug).
+        if (msg.includes("already exists.")) {
+          return "Eine Sammlung mit diesem Kurznamen gibt es bereits. Bitte einen anderen Namen wählen."
+        }
+        // Delete refused because products still point at the category — the route
+        // raises `Category … is assigned to N product(s). Unassign first.` Pull
+        // the count out of the English message so the line stays a real number.
+        if (msg.includes("is assigned to") && msg.includes("product(s)")) {
+          const n = msg.match(/is assigned to (\d+) product/)?.[1]
+          return n
+            ? `Diese Sammlung ist noch ${n} Artikel${n === "1" ? "" : "n"} zugeordnet. Bitte zuerst die Zuordnung lösen.`
+            : "Dieser Sammlung sind noch Artikel zugeordnet. Bitte zuerst die Zuordnung lösen."
+        }
+        // Delete refused because a child category exists — the route raises
+        // `Category … has N subcategory/-ies. Delete or re-parent first.`
+        if (msg.includes("subcategory/-ies")) {
+          const n = msg.match(/has (\d+) subcategory/)?.[1]
+          return n
+            ? `Diese Sammlung hat noch ${n} Untersammlung${n === "1" ? "" : "en"}. Bitte diese zuerst löschen oder verschieben.`
+            : "Diese Sammlung hat noch Untersammlungen. Bitte diese zuerst löschen oder verschieben."
+        }
         // ── Kunden-Vertrauensstufe (KYC-Heraufstufung) ────────────────────────
         // The ONLY 409 that the KYC/Ausweis line truthfully describes:
         // `TrustConflictError` from the customer-trust route raises
