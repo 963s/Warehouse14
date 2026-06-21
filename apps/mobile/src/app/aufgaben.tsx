@@ -94,6 +94,7 @@ import {
   haptics,
   hapticOnUI,
   InlineError,
+  PaperGrain,
   PressableScale,
   Skeleton,
   StaggerItem,
@@ -198,7 +199,9 @@ function CancelSheet({
                 <Ban size={t.icon.md} color={t.colors.destructive} />
               </View>
               <View className="flex-1">
-                <Text className="text-base font-bold">Aufgabe abbrechen</Text>
+                <Text className="text-lg font-display-semibold leading-tight">
+                  Aufgabe abbrechen
+                </Text>
                 <Text className="text-muted-foreground text-xs" numberOfLines={1}>
                   {task.title}
                 </Text>
@@ -823,6 +826,9 @@ export default function AufgabenScreen() {
 
   return (
     <View className="flex-1 bg-background">
+      {/* The aged-paper grain canvas — depth from the layered cream plus this
+          faint warm tooth, never a flat fill (DESIGN.md §1, §5). */}
+      <PaperGrain />
       <FlatList
         data={items}
         keyExtractor={(it) => (it.kind === "header" ? `h:${it.status}` : `t:${it.task.id}`)}
@@ -894,7 +900,7 @@ export default function AufgabenScreen() {
               >
                 <ListChecks size={t.icon.xl} color={t.colors.primary} />
               </View>
-              <Text className="text-center text-base font-semibold">
+              <Text className="text-center text-xl font-display-semibold leading-tight">
                 {filter != null
                   ? `Keine Aufgaben „${TASK_STATUS_LABELS[filter]}“`
                   : "Keine Aufgaben"}

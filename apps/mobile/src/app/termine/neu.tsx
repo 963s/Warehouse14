@@ -48,6 +48,7 @@ import {
   GoldFlood,
   haptics,
   InlineError,
+  PaperGrain,
   PressableScale,
   QueryBoundary,
   SectionCard,
@@ -179,6 +180,9 @@ export default function NeuerTerminScreen() {
   if (booked) {
     return (
       <View className="flex-1 bg-background">
+        {/* The aged-paper grain canvas — depth from the layered cream plus this
+            faint warm tooth, never a flat fill (DESIGN.md §1, §5). */}
+        <PaperGrain />
         <View className="flex-1 items-center justify-center gap-5 px-6">
           <View
             className="h-20 w-20 items-center justify-center rounded-full"
@@ -187,7 +191,7 @@ export default function NeuerTerminScreen() {
             <CalendarCheck2 size={t.icon.xl} color={t.colors.verdigris} />
           </View>
           <View className="items-center gap-1.5">
-            <Text className="text-xl font-bold">Termin gebucht</Text>
+            <Text className="text-xl font-display-semibold leading-tight">Termin gebucht</Text>
             {type != null && selected != null ? (
               <Text className="text-muted-foreground text-center text-sm" numberOfLines={2}>
                 {typeLabel(type)} · {formatDayHeader(parseServerDate(selected.slot_starts_at))},{" "}
@@ -225,6 +229,9 @@ export default function NeuerTerminScreen() {
 
   return (
     <View className="flex-1 bg-background">
+      {/* The aged-paper grain canvas — depth from the layered cream plus this
+          faint warm tooth, never a flat fill (DESIGN.md §1, §5). */}
+      <PaperGrain />
       <Step1AndSlots
         type={type}
         onChooseType={chooseType}
@@ -314,7 +321,7 @@ function Step1AndSlots({
                     className="rounded-md border px-3 py-2"
                     style={{
                       borderColor: active ? t.colors.primary : t.colors.border,
-                      backgroundColor: active ? t.colors.primary : "transparent",
+                      backgroundColor: active ? t.colors.primary : t.colors.card,
                     }}
                   >
                     <Text

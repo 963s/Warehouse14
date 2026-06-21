@@ -86,6 +86,7 @@ import {
   ErrorState,
   haptics,
   InlineError,
+  PaperGrain,
   Skeleton,
   StaggerItem,
   useMutation,
@@ -194,7 +195,9 @@ function RescheduleSheet({
                 <RotateCcw size={t.icon.md} color={t.colors.primary} />
               </View>
               <View className="flex-1">
-                <Text className="text-base font-bold">Termin verschieben</Text>
+                <Text className="text-lg font-display-semibold leading-tight">
+                  Termin verschieben
+                </Text>
                 <Text className="text-muted-foreground text-xs" numberOfLines={1}>
                   {typeLabel(appt.appointment_type)} ·{" "}
                   {formatTimeRange(appt.starts_at, appt.ends_at)}
@@ -522,7 +525,7 @@ export default function TermineScreen() {
             className="flex-1 items-center px-2"
           >
             <View className="flex-row items-center gap-2">
-              <Text className="text-lg font-bold" numberOfLines={1}>
+              <Text className="text-lg font-display-semibold leading-tight" numberOfLines={1}>
                 {relative ?? formatWeekday(day)}
               </Text>
               {relative != null && relative !== "Heute" ? (
@@ -566,6 +569,9 @@ export default function TermineScreen() {
 
   return (
     <View className="flex-1 bg-background">
+      {/* The aged-paper grain canvas — depth from the layered cream plus this
+          faint warm tooth, never a flat fill (DESIGN.md §1, §5). */}
+      <PaperGrain />
       <FlatList
         data={rows ?? []}
         keyExtractor={(a) => a.id}
@@ -620,7 +626,7 @@ export default function TermineScreen() {
               >
                 <CalendarX2 size={t.icon.xl} color={t.colors.primary} />
               </View>
-              <Text className="text-center text-base font-semibold">
+              <Text className="text-center text-xl font-display-semibold leading-tight">
                 {today
                   ? "Heute keine Termine"
                   : relative === "Morgen"
