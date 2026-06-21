@@ -143,18 +143,6 @@ function pnum(p: Record<string, unknown>, ...keys: string[]): number | null {
 }
 
 /**
- * Format integer CENTS as de-DE EUR. A standalone copy (the app's money helper
- * lives in api.ts and would be a circular import here). Only used when the event
- * actually carries a cents field — otherwise the body omits the amount entirely.
- */
-function formatCents(cents: number): string {
-  return new Intl.NumberFormat("de-DE", {
-    style: "currency",
-    currency: "EUR",
-  }).format(cents / 100)
-}
-
-/**
  * Format a decimal-EUR STRING (the form ledger payloads use, e.g. "1234.56")
  * as de-DE currency. Returns the raw string unchanged if it isn't a clean
  * number — we never guess at a malformed amount.
@@ -225,15 +213,22 @@ export function classify(e: LedgerEvent): Notification | null {
 
   // The customer / amount snippets, when the payload carries them.
   const who = pstr(p, "customerName", "customer_name", "cashierName", "cashier_name")
-  const amountCents = pnum(
+  // Real ledger payloads carry the money as a decimal-EUR STRING, never cents:
+  //   • transaction.finalized / .stornoed → `total_eur` (migration 0009: NEW.total_eur::text)
+  //   • command.approval_requested        → `amountEur` / `totalEur` / `amount`
+  //     (mirrors api-cloud approvals.ts `pamount`)
+  // There is NO `*_cents` field anywhere in the real feed — reading one only ever
+  // yielded null, silently dropping every amount. Read the EUR string and format
+  // it the same way the daily_closing branch already does (formatEurString).
+  const amountEur = pstr(
     p,
-    "amountCents",
-    "amount_cents",
-    "totalCents",
-    "total_cents",
-    "grossCents",
+    "total_eur",
+    "totalEur",
+    "amountEur",
+    "amount_eur",
+    "amount",
   )
-  const amount = amountCents != null ? formatCents(amountCents) : null
+  const amount = amountEur != null ? formatEurString(amountEur) : null
 
   switch (eventType) {
     // ── Approvals (the high-value sale gate) ────────────────────────────────

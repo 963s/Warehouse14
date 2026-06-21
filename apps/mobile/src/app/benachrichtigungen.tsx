@@ -110,8 +110,12 @@ const SEVERITY_LABEL: Record<NotificationSeverity, string> = {
 function deepLink(item: NotificationItem): { href: Href; label: string } | null {
   switch (item.channel) {
     case "approvals":
-      // High-value approvals are resolved on the Kasse / shift surface.
-      return { href: "/kasse" as Href, label: "Zur Kasse" }
+      // No CTA: `kasse.tsx` is the Z-Bon/Schicht surface — it has NO Freigabe UI,
+      // and there is no approvals API wrapper to resolve a high-value sale from
+      // the phone. The gate lives on the POS / Owner Control Desktop. Routing
+      // „Zur Kasse" was an „Öffnen" that goes nowhere; until a real Freigabe
+      // surface exists we stay honest and offer none.
+      return null
     case "appointments":
       return { href: "/termine" as Href, label: "Zu den Terminen" }
     case "compliance":
@@ -124,7 +128,11 @@ function deepLink(item: NotificationItem): { href: Href; label: string } | null 
       }
       return null
     case "sales":
-      return { href: "/kasse" as Href, label: "Zur Kasse" }
+      // No CTA: a finalized/storno/return sale is a past fiscal fact. `kasse.tsx`
+      // shows the day's Z-Bon, not this single beleg, so „Zur Kasse" would not
+      // resolve the notification — same „goes nowhere" trap. The amount now reads
+      // honestly in the body; we offer no dead tap-through.
+      return null
     case "fiscal":
     case "system":
     case "channels":

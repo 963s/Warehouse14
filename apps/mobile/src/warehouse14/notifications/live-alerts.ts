@@ -141,8 +141,15 @@ export function deriveLiveAlerts(summary: BridgeSummary, now: Date = new Date())
           ? "Das Signaturzertifikat der TSE ist abgelaufen — bitte sofort erneuern."
           : `Das Signaturzertifikat läuft in ${tseDays} ${plural(tseDays, "Tag", "Tagen")} ab.`,
       count: tseDays,
-      href: "/einstellungen",
-      hrefLabel: "Zu den Einstellungen",
+      // No CTA: the app has no TSE/Zertifikat resolution surface yet — neither
+      // `einstellungen.tsx` (Belegtext + Kategorien + Logout, no fiscal-cert
+      // section) nor anywhere else. An „Öffnen" that lands on a screen which
+      // can't address the alert is the „Öffnen that goes nowhere" the history
+      // feed's deepLink() forbids, so we stay honest and show no tap-through —
+      // exactly like the worker_dlq alert below. Renewing the cert is a
+      // back-office/TSE-provider action, not an in-app one today.
+      href: null,
+      hrefLabel: null,
     })
   }
 
@@ -171,8 +178,14 @@ export function deriveLiveAlerts(summary: BridgeSummary, now: Date = new Date())
       title: plural(n, "Freigabe wartet", "Freigaben warten"),
       body: `${n} ${plural(n, "Verkauf wartet", "Verkäufe warten")} auf deine Freigabe an der Kasse.`,
       count: n,
-      href: "/kasse",
-      hrefLabel: "Zur Kasse",
+      // No CTA: `kasse.tsx` is the Z-Bon/Schicht/closings surface — it has NO
+      // Freigabe UI, and there is no approvals API wrapper in api.ts to resolve
+      // one from the phone. The high-value sale gate lives on the POS / Owner
+      // Control Desktop. Routing „Zur Kasse" here was an „Öffnen that goes
+      // nowhere"; until a real Freigabe surface exists we surface the count
+      // honestly with no dead tap-through.
+      href: null,
+      hrefLabel: null,
     })
   }
 
@@ -216,18 +229,25 @@ export function deriveLiveAlerts(summary: BridgeSummary, now: Date = new Date())
     })
   }
 
-  // ── Offene Ankauf-Entwürfe (sales/intake — drafts to finish) ─────────────────
+  // ── Artikel-Entwürfe (inventory — products still in the DRAFT lifecycle state) ─
+  // The bridge derives this from `COUNT(*) FROM products WHERE status='DRAFT'`
+  // (bridge.ts) — ANY product in the FIRST lifecycle state (DRAFT→AVAILABLE→…,
+  // migration 0006), NOT specifically an Ankauf. Calling these „Ankauf-Entwürfe"
+  // and routing to `/ankauf` (which only STARTS a new buy-in, it can't resume a
+  // DRAFT) misrepresented the number and led nowhere. The count is real, so we
+  // keep the alert — but with honest, neutral wording („Artikel-Entwürfe") and
+  // no CTA, since there is no DRAFT-listing surface to tap through to yet.
   if (summary.intakeDraftsPending > 0) {
     const n = summary.intakeDraftsPending
     alerts.push({
       kind: "intake_drafts",
       channel: "sales",
       severity: "info",
-      title: plural(n, "Offener Ankauf-Entwurf", "Offene Ankauf-Entwürfe"),
-      body: `${n} ${plural(n, "Ankauf wartet", "Ankäufe warten")} auf den Abschluss.`,
+      title: plural(n, "Artikel-Entwurf", "Artikel-Entwürfe"),
+      body: `${n} ${plural(n, "Artikel ist", "Artikel sind")} noch im Entwurf und ${plural(n, "wartet", "warten")} auf die Veröffentlichung.`,
       count: n,
-      href: "/ankauf",
-      hrefLabel: "Zum Ankauf",
+      href: null,
+      hrefLabel: null,
     })
   }
 
