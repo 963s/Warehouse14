@@ -237,6 +237,28 @@ export function listProducts(query: ProductListQuery = {}): Promise<ProductListR
   return productsApi.list(apiClient, query)
 }
 
+/**
+ * Live availability counts — the REAL `total` per lifecycle status, read cheaply
+ * (limit:1, we only want the count the server reports). Runs the three status
+ * lists in parallel and honours an optional search `q` so the count can match a
+ * filtered picker („3 verfügbar" for the current search). Every number is the
+ * server's own `total`, never an estimate — if a request fails the whole read
+ * fails honestly (no partial fabricated count). The hook layers `useQuery`
+ * (loading/error/refetch-on-focus) on top of this.
+ */
+export async function countProductsByStatus(
+  q?: string,
+): Promise<{ available: number; reserved: number; sold: number }> {
+  const at = (status: ProductListQuery["status"]) =>
+    productsApi.list(apiClient, { status, q: q || undefined, limit: 1 }).then((r) => r.total)
+  const [available, reserved, sold] = await Promise.all([
+    at("AVAILABLE"),
+    at("RESERVED"),
+    at("SOLD"),
+  ])
+  return { available, reserved, sold }
+}
+
 export function getProduct(id: string): Promise<ProductDetail> {
   return productsApi.get(apiClient, id)
 }

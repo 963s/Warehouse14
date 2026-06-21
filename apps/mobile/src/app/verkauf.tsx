@@ -76,6 +76,13 @@ import {
 import { KYC_STATUS_LABEL, KYC_STATUS_VARIANT } from "@/warehouse14/customer-ui"
 import { STATUS_LABEL, STATUS_VARIANT } from "@/warehouse14/product-ui"
 import {
+  availabilitySummaryLine,
+  compareByAvailability,
+  isSellable,
+  notSellableReason,
+} from "@/warehouse14/availability-ui"
+import { useInventoryCounts } from "@/warehouse14/use-inventory-counts"
+import {
   buildFinalizeBody,
   buildReceiptDoc,
   CartLineRow,
@@ -139,9 +146,12 @@ function ResultRow({
   onAdd: () => void
 }) {
   const t = useW14Theme()
-  const sellable = item.status === "AVAILABLE"
-  // Only AVAILABLE stock can be reserved → sold. A SOLD/RESERVED/DRAFT row is
-  // shown honestly with its status badge and is NOT addable (no fabricated path).
+  // The ONE sellability gate, shared with the Lager + scan verdict: only an
+  // AVAILABLE article can be reserved → sold. A SOLD/RESERVED/DRAFT row is shown
+  // honestly with its status badge + a German reason and is NOT addable (no
+  // fabricated path). `reason` is null for sellable stock.
+  const sellable = isSellable(item.status)
+  const reason = sellable ? null : notSellableReason(item.status)
   const disabled = !sellable || inCart || reserving
 
   return (
@@ -156,6 +166,8 @@ function ResultRow({
             ? `${item.name} zum Warenkorb hinzufügen, ${formatEur(item.listPriceEur)}`
             : `${item.name}, ${STATUS_LABEL[item.status]}, nicht verkäuflich`
       }
+      // Dim a non-sellable (or reserving) row so the eye reads it as „shown, not
+      // actionable". A row already in the cart stays full-strength (it's a win).
       style={{ opacity: disabled && !inCart ? 0.55 : 1 }}
     >
       <Card className="flex-row items-center gap-3 rounded-xl border px-3 py-3">
@@ -173,6 +185,13 @@ function ResultRow({
               </Badge>
             ) : null}
           </View>
+          {/* The honest reason a row can't be added — only for non-sellable stock,
+              so the operator never wonders why the add affordance is gone. */}
+          {reason ? (
+            <Text className="text-muted-foreground text-2xs" numberOfLines={1}>
+              {reason}
+            </Text>
+          ) : null}
         </View>
 
         <Text className="text-primary font-mono-medium text-base" numberOfLines={1}>
@@ -319,12 +338,29 @@ export default function VerkaufScreen() {
     }
   }, [q])
 
-  // Only AVAILABLE stock is sellable, so we scope the search to it — the operator
-  // never sees a SOLD row dangling an add button. A short query still searches;
-  // an empty query lists recent available stock so the screen is useful at rest.
+  // Show EVERY match — available, reserved AND sold — so „what is available to
+  // sell" is honest: the operator who scans a SOLD piece sees that it's already
+  // gone (not a blank „no result"), and a held piece reads as Reserviert. Only
+  // AVAILABLE stays addable (the ResultRow gates that). The rows are floated
+  // available-first via `compareByAvailability`, so the sellable stock is always
+  // at the top of the list and the held/gone rows sit below for context.
   const results = useQuery(
-    () => listProducts({ q: debouncedQ || undefined, status: "AVAILABLE", limit: SEARCH_LIMIT }),
+    () => listProducts({ q: debouncedQ || undefined, limit: SEARCH_LIMIT }),
     { key: `verkauf:search:${debouncedQ}` },
+  )
+
+  // Live availability counts for the current search — the real per-status totals
+  // („11 verfügbar · 6 reserviert · 5 verkauft"). Keyed to the search so the strip
+  // narrows with the query; honest empty/loading (no fabricated zeros until the
+  // real read lands). Re-reads on focus so a sale elsewhere reflects on return.
+  const counts = useInventoryCounts({ q: debouncedQ })
+  const summaryLine = availabilitySummaryLine(counts.data)
+
+  // Available-first ordering of the page, computed once per result set. A stable
+  // sort keeps the server's order within each status bucket.
+  const sortedResults = useMemo(
+    () => (results.data ? [...results.data.items].sort(compareByAvailability) : []),
+    [results.data],
   )
 
   // ── Tender state ───────────────────────────────────────────────────────────
@@ -524,6 +560,19 @@ export default function VerkaufScreen() {
             ) : null}
           </View>
 
+          {/* The live availability triad — „11 verfügbar · 6 reserviert · 5
+              verkauft" — so the operator sees at a glance how much of the search
+              is actually sellable. Only AVAILABLE rows below carry an add button.
+              Hidden until the real counts land (no fabricated zeros). */}
+          {summaryLine ? (
+            <View className="flex-row items-center gap-1.5 px-0.5">
+              <ShieldCheck size={t.icon.xs} color={t.colors.verdigris} />
+              <Text className="text-muted-foreground text-2xs" numberOfLines={1}>
+                {summaryLine}
+              </Text>
+            </View>
+          ) : null}
+
           {detailError != null ? (
             <InlineError message={detailError} onDismiss={() => setDetailError(null)} />
           ) : null}
@@ -531,22 +580,23 @@ export default function VerkaufScreen() {
             <InlineError message={session.error} onDismiss={session.clearError} />
           ) : null}
 
-          {/* Results — AVAILABLE stock only; honest empty/loading/error. */}
+          {/* Results — every match, available-first; reserved/sold shown but not
+              addable (honest empty/loading/error). */}
           {results.status === "loading" && results.data == null ? (
             <ResultsSkeleton />
           ) : results.data != null && results.data.items.length === 0 ? (
             <EmptyState
               icon={Search}
-              title={debouncedQ ? "Keine Treffer" : "Kein verfügbarer Artikel"}
+              title={debouncedQ ? "Keine Treffer" : "Kein Artikel im Lager"}
               description={
                 debouncedQ
-                  ? "Für diese Suche ist kein verkäuflicher Artikel im Lager. Suchbegriff anpassen."
-                  : "Sobald verfügbare Artikel im Lager sind, erscheinen sie hier zum Verkauf."
+                  ? "Für diese Suche ist kein Artikel im Lager. Suchbegriff anpassen."
+                  : "Sobald Artikel im Lager sind, erscheinen sie hier. Verkäuflich sind nur verfügbare Stücke."
               }
             />
           ) : results.data != null ? (
             <View className="gap-2.5">
-              {results.data.items.map((item, index) => (
+              {sortedResults.map((item, index) => (
                 <StaggerItem key={item.id} index={Math.min(index, 8)} exit={false}>
                   <ResultRow
                     item={item}

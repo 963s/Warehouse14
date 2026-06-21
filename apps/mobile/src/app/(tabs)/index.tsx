@@ -32,6 +32,13 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Text } from "@/components/ui/text"
 import { absoluteUrl, describeError, formatEur, listProducts } from "@/warehouse14/api"
+import {
+  availabilitySummaryLine,
+  bucketCount,
+  type AvailabilityBucket,
+  type InventoryCounts,
+} from "@/warehouse14/availability-ui"
+import { useInventoryCounts } from "@/warehouse14/use-inventory-counts"
 import { OfflineNotice, StaleBadge, useCachedQuery } from "@/warehouse14/offline"
 import { formatLocation, STATUS_FILTERS, statusLabel, statusVariant } from "@/warehouse14/product-ui"
 import { useW14Theme } from "@/warehouse14/theme"
@@ -72,6 +79,21 @@ function materialLine(metal: Metal | null, weightGrams: string | null): string |
   return w ?? m
 }
 
+/**
+ * The live count to print on a filter chip, or null when there is none to show.
+ * „Alle" → the in-stock sum; an availability bucket → its real total; „Entwurf"
+ * → null (it is not an availability bucket and we don't fetch its count, so we
+ * never print a fabricated number). Null while counts are still loading.
+ */
+function chipCount(value: Filter, counts: InventoryCounts | null): number | null {
+  if (counts == null) return null
+  if (value === "ALL") return counts.inStock
+  if (value === "AVAILABLE" || value === "RESERVED" || value === "SOLD") {
+    return bucketCount(counts, value as AvailabilityBucket)
+  }
+  return null
+}
+
 export default function LagerScreen() {
   const router = useRouter()
   const navigation = useNavigation()
@@ -101,6 +123,12 @@ export default function LagerScreen() {
 
   const [q, setQ] = useState("")
   const [filter, setFilter] = useState<Filter>("ALL")
+
+  // Live availability counts for the whole catalog — the real per-status totals
+  // that label the filter chips („Verfügbar 11") and the summary line. Read
+  // unfiltered (not keyed to the search) so the chip badges are a stable, honest
+  // picture of the whole Lager regardless of what's typed in the search box.
+  const counts = useInventoryCounts()
 
   // The debounced query inputs — the text input updates `q` instantly (so the
   // field stays fluid) but the fetch key only changes after the user pauses.
@@ -208,6 +236,11 @@ export default function LagerScreen() {
   const total = products.data?.total ?? 0
   const hasQuery = debouncedQ.length > 0 || filter !== "ALL"
 
+  // The live counts snapshot the chips + summary read. Null until the first real
+  // response lands (honesty rule — no count shows until we have one).
+  const countsData = counts.data
+  const summaryLine = availabilitySummaryLine(countsData)
+
   const headerControls = useMemo(
     () => (
       <View className="gap-3 px-4 pb-1 pt-2">
@@ -251,13 +284,21 @@ export default function LagerScreen() {
         >
           {STATUS_FILTERS.map((opt) => {
             const active = filter === opt.value
+            // The live count for this chip: an availability bucket (Verfügbar/
+            // Reserviert/Verkauft) shows its real total, „Alle" shows the in-stock
+            // sum. „Entwurf" is not an availability bucket → no count (we never
+            // print a fabricated „0" for a number we didn't read).
+            const count = chipCount(opt.value, countsData)
+            const label = count != null ? `${opt.label} ${count.toLocaleString("de-DE")}` : opt.label
             return (
               <Pressable
                 key={opt.value}
                 onPress={() => onPickFilter(opt.value)}
                 accessibilityRole="button"
                 accessibilityState={{ selected: active }}
-                accessibilityLabel={`Filter ${opt.label}`}
+                accessibilityLabel={
+                  count != null ? `Filter ${opt.label}, ${count}` : `Filter ${opt.label}`
+                }
                 // The chip is visually compact, so lift the tappable area to the
                 // ≥44px minimum (DESIGN.md §8) with vertical hit-slop — the rail
                 // still reads as a slim row of chips.
@@ -265,7 +306,7 @@ export default function LagerScreen() {
                 className="py-1"
               >
                 <Badge variant={active ? "default" : "outline"} dot={active && opt.value !== "ALL"}>
-                  <Text>{opt.label}</Text>
+                  <Text>{label}</Text>
                 </Badge>
               </Pressable>
             )
@@ -273,7 +314,7 @@ export default function LagerScreen() {
         </ScrollView>
       </View>
     ),
-    [q, filter, t.icon.sm, t.colors.mutedForeground, onPickFilter],
+    [q, filter, countsData, t.icon.sm, t.colors.mutedForeground, onPickFilter],
   )
 
   return (
@@ -344,16 +385,26 @@ export default function LagerScreen() {
                 if (moreRemain && !paging.loading && paging.error == null) void loadMore()
               }}
               ListHeaderComponent={
-                <View className="flex-row items-center justify-between pb-1">
-                  <Text className="text-muted-foreground text-xs">
-                    {total === 1 ? "1 Artikel" : `${total.toLocaleString("de-DE")} Artikel`}
-                    {moreRemain ? ` · ${rows.length.toLocaleString("de-DE")} geladen` : ""}
-                  </Text>
-                  {/* When the list is the cached seed (live page not yet landed),
-                      pin the honest „Stand vor … "-Marker so the count never reads
-                      as live. Hidden the instant the real page replaces it. */}
-                  {products.fromCache ? (
-                    <StaleBadge cachedAt={products.cachedAt} stale={products.isStale} />
+                <View className="gap-0.5 pb-1">
+                  <View className="flex-row items-center justify-between">
+                    <Text className="text-muted-foreground text-xs">
+                      {total === 1 ? "1 Artikel" : `${total.toLocaleString("de-DE")} Artikel`}
+                      {moreRemain ? ` · ${rows.length.toLocaleString("de-DE")} geladen` : ""}
+                    </Text>
+                    {/* When the list is the cached seed (live page not yet landed),
+                        pin the honest „Stand vor … "-Marker so the count never reads
+                        as live. Hidden the instant the real page replaces it. */}
+                    {products.fromCache ? (
+                      <StaleBadge cachedAt={products.cachedAt} stale={products.isStale} />
+                    ) : null}
+                  </View>
+                  {/* The live availability triad — „11 verfügbar · 6 reserviert · 5
+                      verkauft" — the honest at-a-glance picture of what can be sold.
+                      Hidden until the real counts land (no fabricated zeros). */}
+                  {summaryLine ? (
+                    <Text className="text-muted-foreground text-2xs" numberOfLines={1}>
+                      {summaryLine}
+                    </Text>
                   ) : null}
                 </View>
               }
