@@ -38,12 +38,34 @@ import type {
   ClosingListItem,
   DashboardSummary,
   InventoryValueResponse,
+  MetalKind,
+  MetalRatesResponse,
   MetalWeightsResponse,
   MonthRevenueResponse,
   ProfitResponse,
 } from "@warehouse14/api-client"
 import { type Href, useRouter } from "expo-router"
-import { Gem, Lock, MapPin, Search, Trophy, Vault } from "lucide-react-native"
+import {
+  BadgeEuro,
+  CalendarClock,
+  ChevronRight,
+  Gavel,
+  Gem,
+  type LucideIcon,
+  Lock,
+  MapPin,
+  Megaphone,
+  Radio,
+  Receipt,
+  ScrollText,
+  Search,
+  Server,
+  ShoppingBag,
+  ShoppingCart,
+  Trophy,
+  UserPlus,
+  Vault,
+} from "lucide-react-native"
 
 import { Card } from "@/components/ui/card"
 import { Text } from "@/components/ui/text"
@@ -56,6 +78,7 @@ import {
   inventoryValue,
   listClosings,
   listFixedCosts,
+  metalRates,
   metalWeights,
 } from "@/warehouse14/api"
 import {
@@ -66,7 +89,14 @@ import {
   useBreakEvenCelebration,
   useGameState,
 } from "@/warehouse14/game"
-import { NotificationBell } from "@/warehouse14/notifications"
+import {
+  deriveLiveAlerts,
+  type LiveAlert,
+  type NotificationChannel,
+  type NotificationSeverity,
+  NotificationBell,
+  peakSeverity,
+} from "@/warehouse14/notifications"
 import { useDashboardTargets } from "@/warehouse14/preferences"
 import {
   computeTreasureMap,
@@ -86,6 +116,7 @@ import {
   RingGauge,
   SectionCard,
   Skeleton,
+  Sparkline,
   StaggerItem,
   StatTile,
   useMultiQuery,
@@ -225,6 +256,7 @@ export default function SchatzkammerScreen() {
       monthRev: financeMonthRevenue,
       invValue: inventoryValue,
       metals: metalWeights,
+      rates: metalRates,
       fixedCosts: () => listFixedCosts({ activeOnly: true }),
     },
     { key: "schatzkammer", pollIntervalMs: POLL_MS },
@@ -239,6 +271,7 @@ export default function SchatzkammerScreen() {
   const monthRev = q.results.monthRev.data as MonthRevenueResponse | null
   const invValue = q.results.invValue.data as InventoryValueResponse | null
   const metals = q.results.metals.data as MetalWeightsResponse | null
+  const rates = q.results.rates.data as MetalRatesResponse | null
   const fixedCosts = q.results.fixedCosts.data?.items ?? null
 
   const now = useMemo(() => new Date(), [])
@@ -277,6 +310,16 @@ export default function SchatzkammerScreen() {
   const flood = useBreakEvenCelebration(map ? map.brokeEven : false, monthStart, {
     enabled: map !== null,
   })
+
+  // Bridge alerts — the SAME pure derivation the Notifications Center's „Jetzt"
+  // section uses (live-alerts.ts), folded over the bridge snapshot THIS board
+  // already holds. No second fetch; the board's 30s poll keeps both in lockstep,
+  // and the thresholds mirror the server's deriveStatus — so the bell, the badge,
+  // and this strip can never disagree about what „dringend" means. Honest by
+  // construction: an alert exists only because a real field crossed a real
+  // threshold; zero crossings → the calm „alles ruhig" line, never an invented row.
+  const alerts = useMemo(() => (bridge ? deriveLiveAlerts(bridge, now) : []), [bridge, now])
+  const alertPeak = useMemo(() => peakSeverity(alerts), [alerts])
 
   const earnedSeals = game.seals.filter((s) => s.earned).length
 
@@ -358,8 +401,39 @@ export default function SchatzkammerScreen() {
           </StaggerItem>
         ) : null}
 
+        {/* a2) Brücken-Alarme — the „Jetzt"-Schicht: what needs the owner RIGHT NOW
+            (a Freigabe waiting, the next Termin, a stuck Hintergrund-Job, the TSE
+            Vorlauf). Same derivation + thresholds as the Notifications Center, so
+            the two never disagree. Only rendered when something actually crossed a
+            threshold — silence is honest, not an invented „alles ruhig" card. */}
+        {alerts.length > 0 ? (
+          <StaggerItem index={2}>
+            <BridgeAlertsStrip
+              alerts={alerts}
+              peak={alertPeak}
+              onOpen={(alert) => {
+                if (alert.href == null) return
+                haptics.selection()
+                router.push(alert.href as Href)
+              }}
+            />
+          </StaggerItem>
+        ) : null}
+
+        {/* a3) Schnellzugriff — the owner's most-used money-movement + intake
+            actions, one tap from the board. Pure navigation: the fiscal weight
+            lives behind each surface's own step-up + confirm, never here. */}
+        <StaggerItem index={3}>
+          <QuickActions
+            onOpen={(route) => {
+              haptics.selection()
+              router.push(route as Href)
+            }}
+          />
+        </StaggerItem>
+
         {/* b) Hero — today's quest (the deterministic, real-metric daily quest) */}
-        <StaggerItem index={2}>
+        <StaggerItem index={4}>
           <View className="gap-1.5">
             <QuestCard quest={game.quest} />
             <View className="flex-row items-center justify-between px-1">
@@ -376,7 +450,7 @@ export default function SchatzkammerScreen() {
         </StaggerItem>
 
         {/* c) Rank + streak — the standing, read as one card */}
-        <StaggerItem index={3}>
+        <StaggerItem index={5}>
           <Card className="gap-4 px-4 py-4">
             <RankBadge rank={game.rank} />
             <View className="h-px w-full" style={{ backgroundColor: t.colors.border }} />
@@ -385,7 +459,7 @@ export default function SchatzkammerScreen() {
         </StaggerItem>
 
         {/* d) Live gauge grid (2×2) — from bridge + dashboard, count-up magnitudes */}
-        <StaggerItem index={4}>
+        <StaggerItem index={6}>
           <View className="flex-row flex-wrap justify-between" style={{ rowGap: 10 }}>
             <CountTile
               label="Tagesumsatz"
@@ -422,7 +496,7 @@ export default function SchatzkammerScreen() {
         </StaggerItem>
 
         {/* e) Finance gauges — each tile lights up only when its endpoint is live */}
-        <StaggerItem index={5}>
+        <StaggerItem index={7}>
           <SectionCard title="Finanzen" subtitle="Gewinn, Umsatz und Lagerwert — live aus dem System.">
             <View className="flex-row flex-wrap justify-between" style={{ rowGap: 10 }}>
               {profitDay ? (
@@ -478,7 +552,7 @@ export default function SchatzkammerScreen() {
         </StaggerItem>
 
         {/* f) Edelmetallbestand — Gold + Silber in grams */}
-        <StaggerItem index={6}>
+        <StaggerItem index={8}>
           <SectionCard title="Edelmetallbestand" subtitle="Gewichte aus dem Lager, in Gramm.">
             <View className="flex-row flex-wrap justify-between" style={{ rowGap: 10 }}>
               {metals ? (
@@ -523,8 +597,24 @@ export default function SchatzkammerScreen() {
           </SectionCard>
         </StaggerItem>
 
+        {/* f2) Edelmetall-Kurse — the spot vs the time-weighted 10-day average per
+            gram, straight from /api/metal-prices/rates. The trend has exactly the
+            two REAL points the endpoint gives (avg10d → spot), so the sparkline is
+            an honest two-point silhouette, not an invented curve. A metal with no
+            readable rate is simply skipped; an unreadable response shows the locked
+            placeholder — never a fabricated price. */}
+        <StaggerItem index={9}>
+          <SectionCard
+            title="Edelmetall-Kurse"
+            subtitle="Spot gegen den 10-Tage-Schnitt, je Gramm — live aus dem System."
+            icon={Gem}
+          >
+            <MetalRatesStrip rates={rates} />
+          </SectionCard>
+        </StaggerItem>
+
         {/* g) Monthly treasure map — cumulative net profit vs fixed costs */}
-        <StaggerItem index={7}>
+        <StaggerItem index={10}>
           {map ? (
             <SectionCard
               title="Schatzkarte des Monats"
@@ -607,7 +697,7 @@ export default function SchatzkammerScreen() {
         </StaggerItem>
 
         {/* h) Siegelwand — earned vs locked, honestly */}
-        <StaggerItem index={8}>
+        <StaggerItem index={11}>
           <SectionCard
             title="Siegel der Werkstatt"
             subtitle="Echte Meilensteine — verdient, nie geschenkt."
@@ -633,7 +723,7 @@ export default function SchatzkammerScreen() {
         </StaggerItem>
 
         {/* i) Trust line */}
-        <StaggerItem index={9}>
+        <StaggerItem index={12}>
           <Text className="text-muted-foreground text-center text-2xs">
             Jeder Wert ist eine echte Zahl aus dem System.
           </Text>
@@ -693,5 +783,303 @@ function CountTile({
       />
       <RingGauge value={clamped} color={toneColor} caption={hint} />
     </Card>
+  )
+}
+
+// ── Brücken-Alarme (the dashboard „Jetzt"-Schicht) ───────────────────────────
+/**
+ * The channel → glyph + severity → token maps, kept local to the board (the
+ * Notifications Center owns its own copies; sharing a presentation map across
+ * features would couple them). Same vocabulary, so the two surfaces read alike.
+ */
+const ALERT_CHANNEL_ICON: Record<NotificationChannel, LucideIcon> = {
+  approvals: Gavel,
+  appointments: CalendarClock,
+  fiscal: ScrollText,
+  system: Server,
+  sales: BadgeEuro,
+  compliance: ScrollText,
+  channels: Megaphone,
+}
+
+function alertSeverityColor(
+  severity: NotificationSeverity,
+  t: ReturnType<typeof useW14Theme>,
+): string {
+  switch (severity) {
+    case "critical":
+      return t.colors.destructive
+    case "action":
+      return t.colors.primary
+    case "info":
+      return t.colors.verdigris
+  }
+}
+
+/** One compact live-alert row — severity rail, channel disc, count chip, chevron. */
+function BridgeAlertRow({ alert, onPress }: { alert: LiveAlert; onPress: () => void }) {
+  const t = useW14Theme()
+  const accent = alertSeverityColor(alert.severity, t)
+  const Icon = ALERT_CHANNEL_ICON[alert.channel]
+  const tappable = alert.href != null
+  const a11y = `${alert.title}. ${alert.body}.${tappable && alert.hrefLabel ? ` ${alert.hrefLabel}.` : ""}`
+
+  const body = (
+    <View className="flex-row items-center gap-3 py-0.5">
+      <View
+        className="h-9 w-9 items-center justify-center rounded-md"
+        style={{ backgroundColor: accent + "1f" }}
+      >
+        <Icon size={t.icon.md} color={accent} />
+      </View>
+      <View className="flex-1 gap-0.5">
+        <View className="flex-row items-center gap-2">
+          <Text className="text-base font-semibold" numberOfLines={1} style={{ flexShrink: 1 }}>
+            {alert.title}
+          </Text>
+          {alert.count != null ? (
+            <View
+              className="min-w-[20px] items-center justify-center rounded-full px-1.5"
+              style={{ height: 18, backgroundColor: accent }}
+            >
+              <Text
+                className="text-2xs font-bold"
+                style={{ color: t.colors.primaryForeground }}
+                numberOfLines={1}
+              >
+                {alert.count > 99 ? "99+" : alert.count}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+        <Text className="text-muted-foreground text-sm" numberOfLines={2}>
+          {alert.body}
+        </Text>
+      </View>
+      {tappable ? <ChevronRight size={t.icon.md} color={t.colors.mutedForeground} /> : null}
+    </View>
+  )
+
+  return (
+    <View className="flex-row overflow-hidden rounded-md">
+      <View style={{ width: 3, borderRadius: 2, backgroundColor: accent }} />
+      <View className="flex-1 pl-3">
+        {tappable ? (
+          <PressableScale accessibilityRole="button" accessibilityLabel={a11y} onPress={onPress}>
+            {body}
+          </PressableScale>
+        ) : (
+          <View accessibilityRole="text" accessibilityLabel={a11y}>
+            {body}
+          </View>
+        )}
+      </View>
+    </View>
+  )
+}
+
+/**
+ * The dashboard's „Jetzt"-strip — the live owner alerts the board surfaces from
+ * the bridge snapshot it already holds. Same `deriveLiveAlerts` + thresholds as
+ * the Notifications Center, so the two can never disagree. The caller only
+ * renders this when `alerts` is non-empty, so there is no fabricated „all calm"
+ * row here — silence on the board IS the calm state.
+ */
+function BridgeAlertsStrip({
+  alerts,
+  peak,
+  onOpen,
+}: {
+  alerts: readonly LiveAlert[]
+  peak: NotificationSeverity | null
+  onOpen: (alert: LiveAlert) => void
+}) {
+  const t = useW14Theme()
+  const peakColor = peak ? alertSeverityColor(peak, t) : t.colors.verdigris
+  return (
+    <SectionCard
+      title="Jetzt"
+      subtitle="Was gerade deine Aufmerksamkeit braucht — live aus dem System."
+      icon={Radio}
+      action={
+        <View
+          className="flex-row items-center gap-1.5 rounded-full px-2.5 py-1"
+          style={{ backgroundColor: peakColor + "1f" }}
+        >
+          <Radio size={t.icon.xs} color={peakColor} />
+          <Text className="text-2xs font-bold" style={{ color: peakColor }}>
+            {alerts.length}
+          </Text>
+        </View>
+      }
+    >
+      {alerts.map((alert) => (
+        <BridgeAlertRow key={alert.kind} alert={alert} onPress={() => onOpen(alert)} />
+      ))}
+    </SectionCard>
+  )
+}
+
+// ── Schnellzugriff (quick-actions) ───────────────────────────────────────────
+/**
+ * The owner's most-used jumps, one tap from the board. Pure navigation — the
+ * fiscal weight (TSE/§25a, step-up + confirm) lives entirely behind each target
+ * surface, never fired from here. A 2×2 grid of tap targets ≥ 44 px, each a soft
+ * brass disc + label, pressed with the spine's one feedback.
+ */
+const QUICK_ACTIONS: readonly { id: string; route: string; label: string; icon: LucideIcon }[] = [
+  { id: "verkauf", route: "/verkauf", label: "Verkauf", icon: ShoppingCart },
+  { id: "ankauf", route: "/ankauf", label: "Ankauf", icon: ShoppingBag },
+  { id: "kasse", route: "/kasse", label: "Kasse & Z-Bon", icon: Receipt },
+  { id: "kunde-neu", route: "/customer/neu", label: "Neuer Kunde", icon: UserPlus },
+]
+
+function QuickActions({ onOpen }: { onOpen: (route: string) => void }) {
+  const t = useW14Theme()
+  return (
+    <View className="flex-row flex-wrap justify-between" style={{ rowGap: 10 }}>
+      {QUICK_ACTIONS.map((a) => {
+        const Icon = a.icon
+        return (
+          <PressableScale
+            key={a.id}
+            onPress={() => onOpen(a.route)}
+            accessibilityRole="button"
+            accessibilityLabel={`${a.label} öffnen`}
+            style={{ width: "48%" }}
+          >
+            <Card className="min-h-[44px] flex-row items-center gap-3 px-3 py-3">
+              <View
+                className="h-9 w-9 items-center justify-center rounded-md"
+                style={{ backgroundColor: t.colors.primary + "14" }}
+              >
+                <Icon size={t.icon.md} color={t.colors.primary} />
+              </View>
+              <Text className="flex-1 text-sm font-semibold" numberOfLines={1}>
+                {a.label}
+              </Text>
+            </Card>
+          </PressableScale>
+        )
+      })}
+    </View>
+  )
+}
+
+// ── Edelmetall-Kurse (spot vs 10-day average) ────────────────────────────────
+/** German metal labels, local to the board (no cross-feature import). */
+const METAL_LABEL_DE: Record<MetalKind, string> = {
+  gold: "Gold",
+  silver: "Silber",
+  platinum: "Platin",
+  palladium: "Palladium",
+}
+
+/** Format a €/g decimal string as de-DE „12,3456 €/g" (4 dp matches the wire). */
+function pricePerGram(decimal: string): string {
+  const n = Number(decimal)
+  if (!Number.isFinite(n)) return "—"
+  return `${n.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 4 })} €/g`
+}
+
+/** Signed de-DE percent delta of `current` vs `avg`, e.g. „+1,4 %" — or null. */
+function pctDelta(avg: number, current: number): string | null {
+  if (!Number.isFinite(avg) || !Number.isFinite(current) || avg <= 0) return null
+  const pct = ((current - avg) / avg) * 100
+  const sign = pct > 0 ? "+" : pct < 0 ? "−" : ""
+  return `${sign}${Math.abs(pct).toLocaleString("de-DE", { maximumFractionDigits: 1 })} %`
+}
+
+/**
+ * One metal's rate row: the spot per gram, an honest two-point sparkline of the
+ * time-weighted 10-day average → the current spot, and the signed de-DE delta.
+ * Both points are REAL numbers from /api/metal-prices/rates — the sparkline is a
+ * true two-point silhouette, never an invented curve. A metal whose spot or
+ * average is unreadable is skipped by the caller, so this only ever renders a
+ * fully-known row.
+ */
+function MetalRateRow({
+  label,
+  avg,
+  current,
+}: {
+  label: string
+  avg: string
+  current: string
+}) {
+  const t = useW14Theme()
+  const avgN = Number(avg)
+  const curN = Number(current)
+  const delta = pctDelta(avgN, curN)
+  return (
+    <View className="gap-1.5 py-1">
+      <View className="flex-row items-baseline justify-between">
+        <Text className="text-sm font-semibold">{label}</Text>
+        <Text className="font-mono-medium text-base" style={{ color: t.colors.foreground }}>
+          {pricePerGram(current)}
+        </Text>
+      </View>
+      <Sparkline
+        data={[avgN, curN]}
+        height={24}
+        delta={delta ?? undefined}
+        accessibilityLabel={`${label}: 10-Tage-Schnitt ${pricePerGram(avg)}, aktuell ${pricePerGram(current)}`}
+      />
+      <Text className="text-muted-foreground text-2xs">
+        10-Tage-Schnitt {pricePerGram(avg)}
+      </Text>
+    </View>
+  )
+}
+
+function MetalRatesStrip({ rates }: { rates: MetalRatesResponse | null }) {
+  const t = useW14Theme()
+  // Only rows where BOTH the spot AND the 10-day average are readable — those are
+  // the only ones we can draw an honest avg→spot trend for. Everything else is
+  // simply absent (no fabricated price, no flat zero baseline).
+  const rows = useMemo(
+    () =>
+      (rates?.rates ?? []).filter(
+        (r) => r.currentPricePerGramEur != null && r.avg10dPricePerGramEur != null,
+      ),
+    [rates],
+  )
+
+  if (rates == null) {
+    // The rates endpoint isn't readable → the locked placeholder, never a price.
+    return (
+      <View className="flex-row items-center gap-1.5 py-1">
+        <Lock size={t.icon.xs} color={t.colors.mutedForeground} />
+        <Text className="text-muted-foreground text-sm" style={{ flexShrink: 1 }}>
+          bald verfügbar — Kurse werden geladen.
+        </Text>
+      </View>
+    )
+  }
+
+  if (rows.length === 0) {
+    // The endpoint answered but no metal has both a spot and a 10-day average yet.
+    return (
+      <Text className="text-muted-foreground text-sm">
+        Noch keine Kurse mit Vergleichswert — sobald genug Verlauf vorliegt, erscheint der Trend hier.
+      </Text>
+    )
+  }
+
+  return (
+    <View className="gap-1">
+      {rows.map((r, i) => (
+        <View key={r.metal}>
+          {i > 0 ? (
+            <View className="h-px w-full" style={{ backgroundColor: t.colors.border, marginVertical: 4 }} />
+          ) : null}
+          <MetalRateRow
+            label={METAL_LABEL_DE[r.metal]}
+            avg={r.avg10dPricePerGramEur as string}
+            current={r.currentPricePerGramEur as string}
+          />
+        </View>
+      ))}
+    </View>
   )
 }
