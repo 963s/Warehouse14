@@ -61,6 +61,7 @@ import {
   type NotificationItem,
   type NotificationSeverity,
 } from "@/warehouse14/notifications"
+import { eventLabel } from "@/warehouse14/audit-ui"
 import { useW14Theme } from "@/warehouse14/theme"
 import {
   EmptyState,
@@ -290,14 +291,10 @@ function DetailSheet({ item, onClose }: { item: NotificationItem; onClose: () =>
                 })}
               </Text>
             </View>
-            <View className="flex-row items-center justify-between">
+            <View className="flex-row items-center justify-between gap-3">
               <Text className="text-muted-foreground text-xs">Ereignis</Text>
-              <Text
-                className="font-mono-medium text-xs"
-                numberOfLines={1}
-                style={{ flexShrink: 1 }}
-              >
-                {item.eventType}
+              <Text className="text-sm font-medium" numberOfLines={1} style={{ flexShrink: 1 }}>
+                {eventLabel(item.eventType)}
               </Text>
             </View>
             <View className="flex-row items-center justify-between">
@@ -433,11 +430,12 @@ export default function BenachrichtigungenScreen() {
     ]
   }, [feed.channels, feed.unread])
 
-  // If the active filter's channel drains away (everything read + aged out), fall
-  // back to „Alle" so we never sit on an empty filtered view with no chip context.
+  // The visible slice: the whole feed under „Alle", else just the active channel.
+  // If a filtered channel drains away, we don't silently snap the chip back to
+  // „Alle" — the EmptyState below owns that, offering an explicit „Alle anzeigen"
+  // so the owner stays in control of which chip is selected.
   const visible = useMemo(() => {
-    const list = filter == null ? feed.items : feed.items.filter((i) => i.channel === filter)
-    return list
+    return filter == null ? feed.items : feed.items.filter((i) => i.channel === filter)
   }, [feed.items, filter])
 
   // Header „Alles gelesen"-action — only meaningful while something is unread.
