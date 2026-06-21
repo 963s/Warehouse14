@@ -208,6 +208,27 @@ function NoOnDutyCard() {
   )
 }
 
+/**
+ * Shown when the shift READ itself failed (honesty, DESIGN.md §4). We must NOT
+ * fall through to NoOnDutyCard — claiming "Niemand im Dienst" would be a
+ * confident false negative when in truth we could not read the shift and a till
+ * may well be open. So we surface a locked/error state that tells the truth: the
+ * status is unknown, with a retry. The real `describeError` message rides the
+ * non-blocking InlineError banner above this card.
+ */
+function OnDutyErrorCard({ onRetry }: { onRetry: () => void }) {
+  return (
+    <SectionCard title={COPY.onDutyTitle} subtitle={COPY.onDutySubtitle} icon={UserCheck}>
+      <ErrorState
+        icon={Lock}
+        title={COPY.onDutyUnknownTitle}
+        message={COPY.onDutyUnknownDescription}
+        onRetry={onRetry}
+      />
+    </SectionCard>
+  )
+}
+
 // ── Zweitkasse — the honest secondary-register explainer ──────────────────────
 function ZweitkasseCard() {
   return (
@@ -324,9 +345,12 @@ export default function TeamScreen() {
           </Text>
         </View>
 
-        {/* A live source failed while data is still on screen → one calm,
-            non-blocking card with retry. Never blanks the board. */}
-        {!firstLoad && !hardError && q.results.shift.error != null && shift != null ? (
+        {/* The shift read failed while the surface still has something to show →
+            one calm, non-blocking banner with retry. Under useMultiQuery an
+            errored source always has data === null, so this gates on the error
+            alone (a `&& shift != null` guard would be permanently dead). Never
+            blanks the board. */}
+        {!firstLoad && !hardError && q.results.shift.error != null ? (
           <InlineError message={q.results.shift.error} onRetry={() => void q.refetch()} />
         ) : null}
 
@@ -365,6 +389,11 @@ export default function TeamScreen() {
                   isCurrentOperator={duty.isCurrentOperator}
                   duty={duty}
                 />
+              ) : q.results.shift.error != null ? (
+                // The shift read FAILED — never claim "Niemand im Dienst"
+                // (that would be a fabricated negative). Show the honest
+                // unknown/locked state with a retry instead.
+                <OnDutyErrorCard onRetry={() => void q.refetch()} />
               ) : (
                 <NoOnDutyCard />
               )}

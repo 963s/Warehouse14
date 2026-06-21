@@ -175,6 +175,11 @@ export const COPY = {
   onDutySubtitle: "Wer die aktuelle Schicht geöffnet hat.",
   onDutyClosedTitle: "Niemand im Dienst",
   onDutyClosedDescription: "Keine offene Schicht. Die Kasse wird zu Schichtbeginn geöffnet.",
+  // Shown when the shift READ failed: we must NOT claim the till is closed —
+  // the status is genuinely unknown, possibly open (DESIGN.md §4 honesty).
+  onDutyUnknownTitle: "Status nicht abrufbar",
+  onDutyUnknownDescription:
+    "Die offene Schicht konnte gerade nicht gelesen werden. Ob die Kasse offen ist, ist deshalb unklar — bitte erneut versuchen.",
   rolesTitle: "Rollen",
   rolesSubtitle: "Was die drei Berechtigungen dürfen.",
   ownerBadge: "Inhaber",
