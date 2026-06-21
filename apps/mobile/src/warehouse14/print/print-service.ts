@@ -15,7 +15,7 @@
 import { Share } from "react-native"
 import { File, Paths } from "expo-file-system"
 
-import { getPrintCapabilities } from "./capabilities"
+import { getPrintCapabilities, type PrintCapabilities } from "./capabilities"
 import { renderHtml, renderText } from "./render-html"
 import type { Printable } from "./types"
 
@@ -52,6 +52,25 @@ function stamp(): string {
 }
 
 /**
+ * The honest, owner-readable reason document export is off — distinguishing the
+ * three blocked cases so the line is never misleading (e.g. it must not claim
+ * "kein Dateispeicher" on Android, where the real gap is the share path).
+ */
+function unsupportedReason(caps: PrintCapabilities): string {
+  if (!caps.canShare) {
+    return "Auf diesem Gerät ist das Teilen nicht verfügbar."
+  }
+  if (!caps.canWriteFile) {
+    return "Auf diesem Gerät ist kein Dateispeicher für die Vorschau verfügbar."
+  }
+  // Share + file write exist, but the share sheet won't take the file (Android).
+  return (
+    "Das Teilen von Dokumenten wird auf diesem Gerät nicht unterstützt. " +
+    "Bitte über den Desktop-Kassenplatz drucken."
+  )
+}
+
+/**
  * Render `printable` to a cache file and open the OS share sheet on it.
  *
  * @param printable the receipt or labels to produce
@@ -64,12 +83,7 @@ export async function sharePrintable(
 ): Promise<ShareResult> {
   const caps = getPrintCapabilities()
   if (!caps.canExportDocument) {
-    return {
-      status: "unsupported",
-      reason: caps.canShare
-        ? "Auf diesem Gerät ist kein Dateispeicher für die Vorschau verfügbar."
-        : "Auf diesem Gerät ist das Teilen nicht verfügbar.",
-    }
+    return { status: "unsupported", reason: unsupportedReason(caps) }
   }
 
   const format = opts.format ?? "html"

@@ -38,6 +38,7 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Text } from "@/components/ui/text"
 import { listProducts } from "@/warehouse14/api"
+import { CONDITION_LABEL, METAL_LABEL } from "@/warehouse14/product-ui"
 import {
   escposRequirement,
   getPrintCapabilities,
@@ -61,19 +62,33 @@ import {
 const DEBOUNCE_MS = 300
 const SEARCH_LIMIT = 20
 
+/**
+ * The German note line for a label — metal + condition, mapped through the
+ * shared label maps so a CUSTOMER-FACING tag never shows a raw machine code
+ * ("gold · USED_EXCELLENT"). An unknown code degrades to its raw value rather
+ * than being dropped, so no real attribute is ever silently lost.
+ */
+function noteFor(p: ProductListRow): string | null {
+  const metal = p.metal ? (METAL_LABEL[p.metal] ?? p.metal) : null
+  const condition = p.condition
+    ? (CONDITION_LABEL[p.condition as keyof typeof CONDITION_LABEL] ?? p.condition)
+    : null
+  const parts = [metal, condition].filter((s): s is string => !!s)
+  return parts.length ? parts.join(" · ") : null
+}
+
 /** Build the label doc for a product — every field a real `ProductListRow` column. */
 function labelForProduct(p: ProductListRow): LabelDoc {
   const locationParts = [p.locationStorageUnit, p.locationDrawer, p.locationPosition].filter(
     (s): s is string => !!s,
   )
-  const noteParts = [p.metal, p.condition].filter((s): s is string => !!s)
   return {
     name: p.name,
     sku: p.sku,
     barcode: p.barcode,
     priceEur: p.listPriceEur,
     location: locationParts.length ? locationParts.join(" · ") : null,
-    note: noteParts.length ? noteParts.join(" · ") : null,
+    note: noteFor(p),
   }
 }
 

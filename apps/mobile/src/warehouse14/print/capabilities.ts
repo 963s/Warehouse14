@@ -5,13 +5,17 @@
  * The Owner OS print story has exactly two tiers, and this module makes the
  * boundary between them explicit so the UI never overpromises:
  *
- *   1. SHARE (available now, zero new native deps). We render the document to a
- *      file (HTML for a rich PDF-able sheet, or a monospace text fallback) using
- *      `expo-file-system` — already a dependency — and hand it to the OS share
- *      sheet via React Native's built-in `Share` API (core RN, not a new
- *      module). From there the owner saves to Files as PDF, AirPrints to any
+ *   1. SHARE (available now on iOS/web, zero new native deps). We render the
+ *      document to a file (HTML for a rich PDF-able sheet, or a monospace text
+ *      fallback) using `expo-file-system` — already a dependency — and hand it to
+ *      the OS share sheet via React Native's built-in `Share` API (core RN, not a
+ *      new module). From there the owner saves to Files as PDF, AirPrints to any
  *      networked printer the OS knows, or sends it on. This is real, shipping
- *      capability — not a stub.
+ *      capability — not a stub. NOTE: on Android, core RN `Share` cannot accept
+ *      an app-private cache `file://` URI without a `content://` FileProvider
+ *      grant (which `expo-sharing` would supply — and it is NOT a dependency
+ *      here), so `canShareFileUri`/`canExportDocument` are `false` there: we keep
+ *      the button honestly disabled instead of letting the share silently fail.
  *
  *   2. DIRECT ESC/POS (NOT available in this build). Talking to a Bluetooth or
  *      LAN thermal printer (the 80 mm Bon-Drucker / the Brother/Zebra label
@@ -37,8 +41,18 @@ export interface PrintCapabilities {
   /** We can write a temp file to share/preview (expo-file-system present). */
   canWriteFile: boolean
   /**
-   * A receipt/label can be produced + handed off RIGHT NOW (share + file write).
-   * This is the flag the surface uses to enable its primary action.
+   * The OS share sheet reliably accepts a `file://` cache URI for an arbitrary
+   * document. True on iOS (UIActivityViewController takes the file URL directly)
+   * and on web; FALSE on Android, where core RN `Share` needs a `content://`
+   * FileProvider grant that `expo-sharing` would provide — and that module is
+   * NOT a dependency in this build. Without it the share would silently no-op or
+   * fail, so we do not claim the capability rather than ship a button that lies.
+   */
+  canShareFileUri: boolean
+  /**
+   * A receipt/label can be produced + handed off RIGHT NOW (file write + a share
+   * path that actually accepts the file). This is the flag the surface uses to
+   * enable its primary action.
    */
   canExportDocument: boolean
   /**
@@ -67,6 +81,21 @@ function detectShare(): boolean {
   return typeof Share?.share === "function"
 }
 
+/**
+ * True when this platform's share sheet reliably accepts a `file://` cache URI.
+ *
+ * iOS hands the file URL straight to `UIActivityViewController`, and web's
+ * download fallback is fine. Android's core RN `Share` needs a `content://`
+ * FileProvider grant (which `expo-sharing` would supply) before it will accept
+ * an app-private cache file — and `expo-sharing` is deliberately NOT a dependency
+ * in this build. So on Android the document share would no-op or fail; we report
+ * `false` rather than enable a button that lies. The honest locked card and the
+ * AirPrint/desktop path still stand.
+ */
+function detectShareFileUri(): boolean {
+  return Platform.OS !== "android"
+}
+
 let cached: PrintCapabilities | null = null
 
 /** Resolve (and memoize) the device's print capabilities. */
@@ -74,10 +103,14 @@ export function getPrintCapabilities(): PrintCapabilities {
   if (cached) return cached
   const canShare = detectShare()
   const canWriteFile = detectFileSystem()
+  const canShareFileUri = detectShareFileUri()
   cached = {
     canShare,
     canWriteFile,
-    canExportDocument: canShare && canWriteFile,
+    canShareFileUri,
+    // Export needs all three: a share sheet, a temp file, AND a share path that
+    // actually accepts that file. The last one excludes Android in this build.
+    canExportDocument: canShare && canWriteFile && canShareFileUri,
     canPrintEscPos: false, // no native ESC/POS transport in this build — honest.
     platform: Platform.OS,
   }
