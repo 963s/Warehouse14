@@ -57,6 +57,11 @@ export {
   type BuildFinalizeParams,
 } from "./build-finalize"
 
+// Build the shareable Beleg (ReceiptDoc) from the sealed sale — the receipt
+// sibling of build-finalize, so the Verkauf-Beleg screen can print/share a
+// faithful PDF copy that matches the booked sale line-for-line.
+export { buildReceiptDoc, type BuildReceiptDocParams } from "./build-receipt-doc"
+
 export { newIdempotencyKey } from "./idempotency"
 
 // Verkauf buyer-identity gate — the client mirror of the server's §10 GwG rule
