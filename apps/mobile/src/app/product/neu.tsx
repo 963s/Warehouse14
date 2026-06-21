@@ -53,7 +53,7 @@ import {
   validateProductIntake,
 } from "@/warehouse14/product-ui"
 import { useW14Theme } from "@/warehouse14/theme"
-import { GoldFlood, haptics, SectionCard, useScreenInsets } from "@/warehouse14/ui"
+import { GoldFlood, haptics, PaperGrain, SectionCard, useScreenInsets } from "@/warehouse14/ui"
 import { FormScreen } from "@/warehouse14/ui/FormScreen"
 
 export default function NeuerArtikelScreen() {
@@ -156,6 +156,7 @@ export default function NeuerArtikelScreen() {
   if (created) {
     return (
       <View className="flex-1 bg-background">
+        <PaperGrain />
         <ScrollView
           className="flex-1"
           contentContainerStyle={{ padding: 16, paddingBottom: insets.contentBottom, gap: 14 }}
@@ -168,7 +169,7 @@ export default function NeuerArtikelScreen() {
               <CheckCircle2 size={t.icon.xl} color={t.colors.verdigris} />
             </View>
             <View className="items-center gap-1">
-              <Text className="text-xl font-bold">Artikel angelegt</Text>
+              <Text className="text-2xl font-display-semibold leading-tight">Artikel angelegt</Text>
               <Text className="text-muted-foreground text-center text-sm" numberOfLines={2}>
                 {form.name.trim()}
               </Text>

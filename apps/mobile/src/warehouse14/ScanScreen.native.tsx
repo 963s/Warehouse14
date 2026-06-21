@@ -61,6 +61,7 @@ import {
   haptics,
   itemEnter,
   itemExit,
+  PaperGrain,
   PressableScale,
   useReduceMotion,
   useScreenInsets,
@@ -484,7 +485,7 @@ function VerdictBody({
         <View className="flex-row items-start gap-3">
           <VerdictDisc icon={offline ? WifiOff : PackageX} color={t.colors.destructive} />
           <View className="flex-1 gap-1">
-            <Text className="text-base font-semibold">
+            <Text className="text-xl font-display-semibold leading-tight">
               {offline ? "Keine Verbindung" : "Suche fehlgeschlagen"}
             </Text>
             <Text style={{ color: t.colors.destructive }} className="text-sm" numberOfLines={3}>
@@ -508,7 +509,7 @@ function VerdictBody({
         <View className="flex-row items-center gap-3">
           <VerdictDisc icon={PackageX} color={t.colors.destructive} />
           <View className="flex-1 gap-1">
-            <Text className="text-base font-semibold">Nicht im Lager</Text>
+            <Text className="text-xl font-display-semibold leading-tight">Nicht im Lager</Text>
             <CodeLine code={lookup.code} />
           </View>
         </View>
@@ -533,7 +534,7 @@ function VerdictBody({
       <View className="flex-row items-center gap-3">
         <VerdictDisc icon={Icon} color={tone} />
         <View className="flex-1 gap-1">
-          <Text className="text-base font-semibold" numberOfLines={2}>
+          <Text className="text-xl font-display-semibold leading-tight" numberOfLines={2}>
             {p.name}
           </Text>
           <View className="flex-row items-center gap-2">
@@ -654,6 +655,7 @@ function PermissionGate({
         gap: t.space.x4,
       }}
     >
+      <PaperGrain />
       <View
         className="h-16 w-16 items-center justify-center rounded-full"
         style={{
@@ -664,7 +666,7 @@ function PermissionGate({
       >
         <Icon size={t.icon.xl} color={t.colors.primary} />
       </View>
-      <Text className="text-center text-base font-semibold">{title}</Text>
+      <Text className="text-center text-2xl font-display-semibold leading-tight">{title}</Text>
       <Text className="text-muted-foreground max-w-xs text-center text-sm leading-5">
         {description}
       </Text>

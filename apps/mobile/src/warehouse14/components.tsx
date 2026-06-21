@@ -36,9 +36,13 @@ function textStyle(t: Theme, variant: Variant, color?: string) {
   const c = color ?? t.colors.foreground
   switch (variant) {
     case "display":
-      return { fontFamily: t.fonts.bold, fontSize: 28, lineHeight: 34, color: c }
+      // The antique display serif (Cormorant Garamond) — the aged-paper voice
+      // for a splash/overline (DESIGN.md §3). Reads light at size, so it stays at
+      // the display step, never below.
+      return { fontFamily: t.fonts.displayBold, fontSize: 28, lineHeight: 34, color: c }
     case "title":
-      return { fontFamily: t.fonts.semibold, fontSize: 18, lineHeight: 24, color: c }
+      // Screen title — also the display serif, one step down (semibold).
+      return { fontFamily: t.fonts.displaySemibold, fontSize: 22, lineHeight: 28, color: c }
     case "label":
       return { fontFamily: t.fonts.medium, fontSize: 14, lineHeight: 18, color: c }
     case "caption":

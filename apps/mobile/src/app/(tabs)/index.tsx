@@ -37,6 +37,7 @@ import { formatLocation, STATUS_FILTERS, statusLabel, statusVariant } from "@/wa
 import { useW14Theme } from "@/warehouse14/theme"
 import {
   haptics,
+  PaperGrain,
   PressableScale,
   QueryBoundary,
   Skeleton,
@@ -277,6 +278,7 @@ export default function LagerScreen() {
 
   return (
     <View className="flex-1 bg-background">
+      <PaperGrain />
       {headerControls}
 
       {/* The inline, in-context offline note — self-subscribes to the connection

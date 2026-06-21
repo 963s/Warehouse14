@@ -76,6 +76,7 @@ import {
   InlineError,
   isNotFoundError,
   ListRow,
+  PaperGrain,
   PressableScale,
   SectionCard,
   Skeleton,
@@ -282,6 +283,7 @@ export default function ProductDetailScreen() {
 
   return (
     <View className="flex-1 bg-background">
+      <PaperGrain />
       <ScrollView
         className="flex-1"
         contentContainerStyle={{ padding: 16, paddingBottom: insets.contentBottom, gap: 12 }}
@@ -297,7 +299,7 @@ export default function ProductDetailScreen() {
               <Coins size={t.icon.xl} color={t.colors.primary} />
             </View>
             <View className="flex-1 gap-1">
-              <Text className="text-xl font-bold" numberOfLines={2}>
+              <Text className="text-2xl font-display-semibold leading-tight" numberOfLines={2}>
                 {product.name}
               </Text>
               <View className="flex-row flex-wrap items-center gap-2">
