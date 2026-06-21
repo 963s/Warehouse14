@@ -62,6 +62,7 @@ import {
   EmptyState,
   ErrorState,
   haptics,
+  PaperGrain,
   PressableScale,
   Skeleton,
   StaggerItem,
@@ -364,6 +365,14 @@ export default function SucheScreen() {
   const header = useMemo(
     () => (
       <View className="bg-background px-4 pb-3 pt-3">
+        {/* Bildschirmtitel in der antiken Cormorant-Display-Stimme (DESIGN §3) —
+            das Suchfeld ist der Held dieser Fläche, der Titel gibt ihr Ruhe. */}
+        <View className="mb-3 flex-row items-center gap-2.5">
+          <Search size={t.icon.lg} color={t.colors.primary} />
+          <Text className="text-2xl font-display-semibold leading-tight" numberOfLines={1}>
+            Suche
+          </Text>
+        </View>
         <View className="justify-center">
           <Input
             value={q}
@@ -394,11 +403,24 @@ export default function SucheScreen() {
         </View>
       </View>
     ),
-    [q, clearQuery, t.colors.border, t.colors.mutedForeground, t.icon.sm, t.icon.xs],
+    [
+      q,
+      clearQuery,
+      t.colors.border,
+      t.colors.mutedForeground,
+      t.colors.primary,
+      t.icon.lg,
+      t.icon.sm,
+      t.icon.xs,
+    ],
   )
 
   return (
     <View className="flex-1 bg-background">
+      {/* Die gealterte Papier-Maserung als Leinwand, hinter der Liste — die
+          fixierte Suchkopfzeile bleibt blickdicht, Zeilen scrollen sauber
+          darunter (DESIGN.md §1, §5). */}
+      <PaperGrain />
       <FlatList
         data={shownItems}
         keyExtractor={(it, i) =>

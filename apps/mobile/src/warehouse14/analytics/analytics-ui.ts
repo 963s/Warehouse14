@@ -134,9 +134,10 @@ export const COPY = {
   emptyCategoryDescription: "Sobald Artikel Kategorien zugeordnet sind, erscheint die Verteilung.",
 } as const
 
-/** "12 Artikel" / "1 Artikel" — German article-count caption (no fabrication). */
+/** "12 Artikel" / "1 Artikel" — German article-count caption (no fabrication).
+ *  „Artikel" is invariant in German (singular = plural), so no inflection. */
 export function articleCountLabel(count: number): string {
-  return `${count} ${count === 1 ? "Artikel" : "Artikel"}`
+  return `${count} Artikel`
 }
 
 /** "über 7 Tage" / "über 1 Tag" — the span suffix for the totals caption. */

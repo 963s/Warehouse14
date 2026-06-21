@@ -78,6 +78,7 @@ import {
   ErrorState,
   haptics,
   InlineError,
+  PaperGrain,
   PeriodSwitcher,
   RingGauge,
   SectionCard,
@@ -355,6 +356,9 @@ export default function AnalyticsScreen() {
 
   return (
     <View className="flex-1 bg-background">
+      {/* The aged-paper grain canvas — depth from the layered cream plus this
+          faint warm tooth, never a flat fill (DESIGN.md §1, §5). */}
+      <PaperGrain />
       <ScrollView
         className="flex-1"
         contentContainerStyle={{
@@ -366,10 +370,14 @@ export default function AnalyticsScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl {...rc} progressViewOffset={8} />}
       >
-        <View className="gap-1">
-          <Text className="text-xl font-bold" numberOfLines={1}>
-            {COPY.screenTitle}
-          </Text>
+        <View className="gap-1.5">
+          <View className="flex-row items-center gap-2.5">
+            <TrendingUp size={t.icon.lg} color={t.colors.primary} />
+            {/* Screen title in the antique Cormorant display voice (DESIGN.md §3). */}
+            <Text className="text-2xl font-display-semibold leading-tight" numberOfLines={1}>
+              {COPY.screenTitle}
+            </Text>
+          </View>
           <Text className="text-muted-foreground text-sm" numberOfLines={2}>
             {COPY.screenSubtitle}
           </Text>

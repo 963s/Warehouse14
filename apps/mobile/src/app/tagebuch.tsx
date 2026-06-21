@@ -69,6 +69,7 @@ import {
   EmptyState,
   haptics,
   InlineError,
+  PaperGrain,
   PressableScale,
   SectionCard,
   Skeleton,
@@ -545,6 +546,10 @@ export default function TagebuchScreen() {
 
   return (
     <View className="flex-1 bg-background">
+      {/* Die gealterte Papier-Maserung als Leinwand — Tiefe aus dem geschichteten
+          Creme plus dieser feinen warmen Struktur, nie eine flache Fläche
+          (DESIGN.md §1, §5). */}
+      <PaperGrain />
       <ScrollView
         className="flex-1"
         contentContainerStyle={{
@@ -558,9 +563,12 @@ export default function TagebuchScreen() {
       >
         {/* ── Register-Kopf ──────────────────────────────────────────────────── */}
         <View className="gap-3">
-          <View className="flex-row items-center gap-2">
-            <Activity size={t.icon.md} color={t.colors.primary} />
-            <Text className="text-base font-semibold">Tagebuch</Text>
+          <View className="flex-row items-center gap-2.5">
+            <Activity size={t.icon.lg} color={t.colors.primary} />
+            {/* Bildschirmtitel in der antiken Cormorant-Display-Stimme (DESIGN §3). */}
+            <Text className="text-2xl font-display-semibold leading-tight" numberOfLines={1}>
+              Tagebuch
+            </Text>
           </View>
 
           {firstLoading ? (
