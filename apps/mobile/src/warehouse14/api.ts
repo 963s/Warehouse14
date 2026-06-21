@@ -138,6 +138,7 @@ import {
   type SetProductCategoriesResponse,
   type AnkaufBody,
   type AnkaufResponse,
+  type OpenShiftRequest,
   type ShiftView,
   type TaskRow,
   type TransitionTaskBody,
@@ -547,6 +548,20 @@ export function transitionTask(id: string, body: TransitionTaskBody): Promise<Ta
 /** GET the current open shift, or null when the till is closed. */
 export function getCurrentShift(): Promise<ShiftView | null> {
   return shifts.getCurrent(apiClient)
+}
+
+/**
+ * POST /api/shifts/open — open THIS device's register session (Zweitkasse).
+ *
+ * The one genuine cashier-session mutation a paired device may perform: it opens
+ * a shift over the shared fiscal record with a counted opening float. The server
+ * enforces one OPEN shift per device (a second open answers 409 CONFLICT), so the
+ * Team surface only offers this when no shift is open here. `openingFloatEur` is a
+ * wire DECIMAL STRING (cents-safe). NOT a fiscal write — opening a drawer signs no
+ * Beleg — so it needs no step-up; the Blindsturz CLOSE (which does) lives in Kasse.
+ */
+export function openShift(body: OpenShiftRequest): Promise<ShiftView> {
+  return shifts.open(apiClient, body)
 }
 
 // ── Transaktionen (the physical POS moment + late-storno feed) ───────────────

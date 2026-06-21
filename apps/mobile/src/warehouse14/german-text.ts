@@ -179,6 +179,15 @@ const CONFLICT_TOKENS: ReadonlyArray<{ token: string; line: string }> = [
     token: "Kein Ledger-Anker",
     line: "Der Tagesabschluss kann gerade nicht gesetzt werden — die Buchungskette fehlt noch. Bitte später erneut versuchen oder den Support kontaktieren.",
   },
+  // ── Schicht / Zweitkasse (eine offene Schicht pro Gerät) ───────────────────
+  {
+    // Opening a second shift on a device that already has one OPEN is refused —
+    // the shifts route raises "A shift is already OPEN on this device." Point the
+    // owner at the already-running register rather than the generic "aktualisieren"
+    // fallback, which would not tell them the till is in fact already open here.
+    token: "already OPEN on this",
+    line: "Auf diesem Gerät ist bereits eine Schicht geöffnet. Sie wird oben unter „Im Dienst“ angezeigt.",
+  },
   // ── Geldwege (Fiskal-Eindeutigkeit) ────────────────────────────────────────
   {
     // Storno idempotency: a second storno of the same original is refused.

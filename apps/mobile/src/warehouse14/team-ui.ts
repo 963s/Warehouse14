@@ -8,17 +8,30 @@
  *   • the CURRENT operator — `SessionActor` from the PIN-login session
  *     (`{ id, role, isOwner }`; the server deliberately does NOT ship a name or
  *     email to the device), and
- *   • who opened the OPEN till — `ShiftView.openedByUserId` + `openedAt` from
- *     `shifts.getCurrent()`.
- * So this surface READS those two facts and is explicit that the full roster,
- * roles and PINs are administered at the Desktop-Kasse. It fabricates NO staff
- * list and offers NO mutation. Every string here is a label or a pure derivation
- * over real session/shift data — nothing in this module touches the network.
+ *   • who opened the OPEN till ON THIS DEVICE — `ShiftView.openedByUserId` +
+ *     `openedAt` from `shifts.getCurrent()`. That read is DEVICE-SCOPED: the
+ *     route filters to the requesting device cert and returns null when this
+ *     device has no open shift. There is no list-all-open-registers endpoint, so
+ *     the surface never claims to see other tills — only THIS one's session.
+ * So this surface READS those facts and is explicit that the full roster, roles
+ * and PINs are administered at the Desktop-Kasse. It fabricates NO staff list.
+ *
+ * The ONE cashier-session action the API truly allows from this device is
+ * OPENING this device's register (`POST /api/shifts/open` → the Zweitkasse).
+ * That is a real, verified mutation (the server enforces one open shift per
+ * device; a second open answers 409 CONFLICT). Opening a drawer signs no Beleg,
+ * so it carries no step-up — but it sets a counted opening float, so it is a
+ * money-context act gated behind a deliberate confirm. The Blindsturz CLOSE is a
+ * fiscal write (step-up) and is owned by the Kasse cockpit — this surface hands
+ * off to it honestly rather than re-implementing it. Everything else here is a
+ * label or a pure derivation over real session/shift data.
  *
  * Role vocabulary mirrors the server's `ActorRole` union exactly
  * (ADMIN | CASHIER | READONLY) — the same three roles `auth-pin.ts` issues.
  */
 import type { ActorRole, SessionActor, ShiftView } from "@warehouse14/api-client"
+
+import { fromCents, tryToCents } from "./sell/cart-math"
 
 // ── Rollen (the server's ActorRole union, in German) ─────────────────────────
 /** German display label per role. */
@@ -140,12 +153,70 @@ export function onDuty(
  */
 export const ZWEITKASSE_COPY = {
   title: "Zweitkasse",
-  subtitle: "Diese App ist eine vollwertige zweite Kasse.",
+  subtitle: "Dieses Gerät ist eine vollwertige zweite Kasse.",
   body:
     "Jedes gekoppelte Gerät führt seine eigene Schicht über denselben " +
     "Kassen- und Steuer-Datensatz. Verkauf, Ankauf und Tagesabschluss laufen " +
-    "fiskalisch sauber über den Server — wie an der Haupt-Kasse.",
+    "fiskalisch sauber über den Server — wie an der Haupt-Kasse. „Im Dienst" +
+    "“ zeigt deshalb die Schicht dieses Geräts, nicht die anderer Kassen.",
 } as const
+
+// ── Zweitkasse öffnen (the one cashier-session mutation this device allows) ───
+/**
+ * Opening THIS device's register: a counted opening float (Anfangsbestand) is
+ * persisted as the shift's starting drawer. It is a money-context act — so it is
+ * confirmed deliberately — but NOT a fiscal write (no Beleg, no TSE signature),
+ * so it needs no PIN step-up. The server enforces one open shift per device.
+ */
+export const OPEN_SHIFT_COPY = {
+  /** The card shown when this device has no open shift. */
+  cardTitle: "Zweitkasse öffnen",
+  cardSubtitle: "Starte die Schicht dieses Geräts mit dem gezählten Anfangsbestand.",
+  floatLabel: "Anfangsbestand (Wechselgeld)",
+  floatHint: "Der gezählte Kassenbestand zu Schichtbeginn.",
+  openCta: "Zweitkasse öffnen",
+  /** The confirm sheet. */
+  confirmTitle: "Zweitkasse öffnen",
+  amountCaption: "Anfangsbestand",
+  confirmLabel: "Schicht öffnen",
+  /** Honest weight note — deliberately NOT the fiscal-Beleg framing (no TSE). */
+  note:
+    "Damit beginnt die Schicht dieses Geräts über den gemeinsamen Kassen-Datensatz. " +
+    "Der Anfangsbestand wird als Startbestand der Kasse festgehalten. Der " +
+    "Tagesabschluss (Blindzählung) erfolgt später unter „Kasse“.",
+  /** Step-by-step: open is here, close is in Kasse — say so plainly. */
+  closeHandoffNote: "Die Schicht wird beim Kassensturz unter „Kasse“ abgeschlossen.",
+} as const
+
+/** Validation outcome for the typed opening float. */
+export interface FloatValidation {
+  /** The wire DECIMAL STRING ("100.00") when valid, else null. */
+  wireValue: string | null
+  /** Integer cents when valid, else null. */
+  cents: bigint | null
+  /** A German error to show under the field, or null when fine (incl. empty). */
+  error: string | null
+}
+
+/**
+ * Validate a user-typed opening float (tolerant of the German comma). Empty is
+ * NOT an error mid-typing — it just isn't openable yet (wireValue null). A
+ * non-decimal or a negative amount is a clear error. Zero is allowed (a drawer
+ * may legitimately start empty). Mirrors the cart-math cents discipline so the
+ * value we send is byte-clean.
+ */
+export function validateOpeningFloat(input: string): FloatValidation {
+  const trimmed = input.trim()
+  if (trimmed === "") return { wireValue: null, cents: null, error: null }
+  const cents = tryToCents(trimmed)
+  if (cents == null) {
+    return { wireValue: null, cents: null, error: "Bitte einen gültigen Betrag eingeben." }
+  }
+  if (cents < 0n) {
+    return { wireValue: null, cents: null, error: "Der Anfangsbestand darf nicht negativ sein." }
+  }
+  return { wireValue: fromCents(cents), cents, error: null }
+}
 
 // ── „Verwaltung am Desktop" — the honest roster note ─────────────────────────
 /**
@@ -172,14 +243,19 @@ export const COPY = {
   operatorEmptyTitle: "Nicht angemeldet",
   operatorEmptyDescription: "Melde dich mit deiner PIN an, um dein Konto zu sehen.",
   onDutyTitle: "Im Dienst",
-  onDutySubtitle: "Wer die aktuelle Schicht geöffnet hat.",
-  onDutyClosedTitle: "Niemand im Dienst",
-  onDutyClosedDescription: "Keine offene Schicht. Die Kasse wird zu Schichtbeginn geöffnet.",
+  // Device-scoped truth: this is THIS device's open shift, not a shop-wide view.
+  onDutySubtitle: "Wer die Schicht dieses Geräts geöffnet hat.",
+  onDutyClosedTitle: "Keine Schicht auf diesem Gerät",
+  onDutyClosedDescription:
+    "Dieses Gerät hat gerade keine offene Schicht. Öffne unten die Zweitkasse, um zu starten.",
   // Shown when the shift READ failed: we must NOT claim the till is closed —
   // the status is genuinely unknown, possibly open (DESIGN.md §4 honesty).
   onDutyUnknownTitle: "Status nicht abrufbar",
   onDutyUnknownDescription:
     "Die offene Schicht konnte gerade nicht gelesen werden. Ob die Kasse offen ist, ist deshalb unklar — bitte erneut versuchen.",
+  // The honest close handoff — shown on the on-duty card when a shift is open.
+  closeHandoffCta: "Schicht abschließen",
+  closeHandoffHint: "Kassensturz unter „Kasse“",
   rolesTitle: "Rollen",
   rolesSubtitle: "Was die drei Berechtigungen dürfen.",
   ownerBadge: "Inhaber",

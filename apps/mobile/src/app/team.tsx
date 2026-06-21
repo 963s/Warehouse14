@@ -25,15 +25,35 @@
  * This surface is READ-ONLY: it moves no money and writes no staff data, so
  * there is no step-up here — just calm selection haptics on pull-to-refresh.
  */
-import { useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { RefreshControl, ScrollView, View } from "react-native"
+import { type Href, useRouter } from "expo-router"
 import type { DashboardSummary, ShiftView } from "@warehouse14/api-client"
-import { Clock, Lock, Monitor, ShieldCheck, UserCheck, UserCircle2, Users } from "lucide-react-native"
+import {
+  ChevronRight,
+  Clock,
+  Lock,
+  Monitor,
+  ShieldCheck,
+  UserCheck,
+  UserCircle2,
+  Users,
+  Wallet,
+} from "lucide-react-native"
 
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
 import { Text } from "@/components/ui/text"
-import { dashboardSummary, formatEur, getCurrentShift } from "@/warehouse14/api"
+import { dashboardSummary, describeError, formatEur, getCurrentShift, openShift } from "@/warehouse14/api"
 import { useSession } from "@/warehouse14/session"
 import {
   COPY,
@@ -41,11 +61,13 @@ import {
   DESKTOP_MANAGEMENT_COPY,
   durationSince,
   formatTimestamp,
+  OPEN_SHIFT_COPY,
   onDuty,
   roleBadgeVariant,
   ROLE_DESCRIPTIONS,
   ROLE_LABELS,
   ROLE_ORDER,
+  validateOpeningFloat,
   ZWEITKASSE_COPY,
 } from "@/warehouse14/team-ui"
 import { useW14Theme } from "@/warehouse14/theme"
@@ -53,6 +75,7 @@ import type { ActorRole } from "@warehouse14/api-client"
 import {
   EmptyState,
   ErrorState,
+  haptics,
   InlineError,
   ListRow,
   PaperGrain,
@@ -127,11 +150,13 @@ function OnDutyCard({
   summary,
   isCurrentOperator,
   duty,
+  onClose,
 }: {
   shift: ShiftView
   summary: DashboardSummary | null
   isCurrentOperator: boolean
   duty: NonNullable<ReturnType<typeof onDuty>>
+  onClose: () => void
 }) {
   const t = useW14Theme()
   const openedAt = formatTimestamp(shift.openedAt)
@@ -191,21 +216,205 @@ function OnDutyCard({
             muted={!revenueMatchesShift}
           />
         </View>
+
+        {/* The honest CLOSE handoff. Closing a shift is a Blindsturz — a fiscal
+            action with a PIN step-up — so it is owned by the Kasse cockpit, not
+            re-implemented here. We deep-link there plainly rather than fake a
+            close button that this surface shouldn't carry. */}
+        <Card
+          className="overflow-hidden p-0"
+          style={{ borderWidth: 1, borderColor: t.colors.border }}
+        >
+          <ListRow
+            icon={Wallet}
+            title={COPY.closeHandoffCta}
+            subtitle={COPY.closeHandoffHint}
+            right={<ChevronRight size={t.icon.sm} color={t.colors.mutedForeground} />}
+            onPress={onClose}
+          />
+        </Card>
       </View>
     </SectionCard>
   )
 }
 
-/** Shown when there is no OPEN shift — nobody on duty / the till is closed. */
-function NoOnDutyCard() {
+/**
+ * Shown when this device has NO open shift. Beyond the honest "nobody on duty"
+ * line it carries the one real cashier-session action the API grants this device:
+ * open THIS register (Zweitkasse) with a counted opening float. The float is
+ * validated live (tolerant of the German comma; negatives refused; empty simply
+ * disables the button) and the actual open is a two-step deliberate act — the
+ * confirm sheet — never a single tap that moves the till.
+ */
+function OpenZweitkasseCard({
+  floatInput,
+  floatError,
+  canOpen,
+  onChangeFloat,
+  onOpen,
+}: {
+  floatInput: string
+  floatError: string | null
+  canOpen: boolean
+  onChangeFloat: (v: string) => void
+  onOpen: () => void
+}) {
+  const t = useW14Theme()
   return (
     <SectionCard title={COPY.onDutyTitle} subtitle={COPY.onDutySubtitle} icon={UserCheck}>
-      <EmptyState
-        icon={Clock}
-        title={COPY.onDutyClosedTitle}
-        description={COPY.onDutyClosedDescription}
-      />
+      <View className="gap-4">
+        <EmptyState
+          icon={Clock}
+          title={COPY.onDutyClosedTitle}
+          description={COPY.onDutyClosedDescription}
+        />
+
+        {/* Zweitkasse öffnen — the counted opening float + a deliberate open. */}
+        <View
+          className="gap-3 rounded-xl px-3.5 py-3.5"
+          style={{ borderWidth: 1, borderColor: t.colors.border }}
+        >
+          <View className="flex-row items-center gap-2">
+            <Wallet size={t.icon.sm} color={t.colors.primary} />
+            <Text className="text-sm font-semibold" numberOfLines={1}>
+              {OPEN_SHIFT_COPY.cardTitle}
+            </Text>
+          </View>
+          <Text className="text-muted-foreground text-xs" style={{ lineHeight: 18 }}>
+            {OPEN_SHIFT_COPY.cardSubtitle}
+          </Text>
+
+          <View className="gap-1.5">
+            <Text className="text-muted-foreground text-xs font-medium">
+              {OPEN_SHIFT_COPY.floatLabel}
+            </Text>
+            <View className="flex-row items-center gap-2">
+              <Input
+                value={floatInput}
+                onChangeText={onChangeFloat}
+                placeholder="0,00"
+                keyboardType="decimal-pad"
+                autoCorrect={false}
+                className="flex-1"
+                aria-invalid={floatError != null}
+                accessibilityLabel={OPEN_SHIFT_COPY.floatLabel}
+              />
+              <Text className="text-muted-foreground font-mono-medium text-base">€</Text>
+            </View>
+            {floatError != null ? (
+              <Text className="text-xs" style={{ color: t.colors.destructive }}>
+                {floatError}
+              </Text>
+            ) : (
+              <Text className="text-muted-foreground text-2xs">{OPEN_SHIFT_COPY.floatHint}</Text>
+            )}
+          </View>
+
+          <Button
+            size="lg"
+            className="h-12"
+            disabled={!canOpen}
+            onPress={onOpen}
+            accessibilityLabel={OPEN_SHIFT_COPY.openCta}
+          >
+            <Wallet size={t.icon.sm} color={t.colors.primaryForeground} />
+            <Text>{OPEN_SHIFT_COPY.openCta}</Text>
+          </Button>
+        </View>
+      </View>
     </SectionCard>
+  )
+}
+
+/**
+ * The deliberate open-confirm. Opening a register sets a counted float (a
+ * money-context act) so it gets a clear confirm with the amount in hero mono and
+ * an HONEST note — deliberately NOT the fiscal-Beleg framing the FiscalConfirmSheet
+ * uses, because opening a drawer signs no Beleg and needs no step-up. The §7
+ * Medium impact lands on the commit press; a refusal keeps the sheet open with the
+ * real German message inline.
+ */
+function OpenShiftSheet({
+  open,
+  amountLabel,
+  busy,
+  error,
+  onConfirm,
+  onCancel,
+  onDismissError,
+}: {
+  open: boolean
+  amountLabel: string
+  busy: boolean
+  error: string | null
+  onConfirm: () => void
+  onCancel: () => void
+  onDismissError: () => void
+}) {
+  const t = useW14Theme()
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next: boolean) => {
+        if (busy) return
+        if (!next) onCancel()
+      }}
+    >
+      <DialogContent className="gap-4">
+        <DialogHeader>
+          <DialogTitle>{OPEN_SHIFT_COPY.confirmTitle}</DialogTitle>
+          <DialogDescription>
+            Bitte den Anfangsbestand prüfen und die Schicht öffnen.
+          </DialogDescription>
+        </DialogHeader>
+
+        <View
+          className="items-center gap-1 rounded-xl border border-border bg-card py-4"
+          accessibilityRole="summary"
+        >
+          <Text className="text-muted-foreground text-xs uppercase tracking-wide">
+            {OPEN_SHIFT_COPY.amountCaption}
+          </Text>
+          <Text className="font-mono-medium text-2xl">{amountLabel}</Text>
+        </View>
+
+        <View
+          className="flex-row items-start gap-2.5 rounded-xl px-3.5 py-3"
+          style={{ backgroundColor: t.colors.primary + "14" }}
+        >
+          <View className="pt-0.5">
+            <Wallet size={t.icon.md} color={t.colors.primary} />
+          </View>
+          <Text className="text-muted-foreground flex-1 text-xs leading-5">
+            {OPEN_SHIFT_COPY.note}
+          </Text>
+        </View>
+
+        {error != null ? (
+          <InlineError message={error} onRetry={onConfirm} onDismiss={onDismissError} />
+        ) : null}
+
+        <View className="gap-2">
+          <Button
+            size="xl"
+            onPress={onConfirm}
+            disabled={busy}
+            accessibilityLabel={OPEN_SHIFT_COPY.confirmLabel}
+          >
+            <Text>{busy ? "Wird geöffnet…" : OPEN_SHIFT_COPY.confirmLabel}</Text>
+          </Button>
+          <Button
+            variant="outline"
+            size="xl"
+            onPress={onCancel}
+            disabled={busy}
+            accessibilityLabel="Abbrechen"
+          >
+            <Text>Abbrechen</Text>
+          </Button>
+        </View>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -297,6 +506,7 @@ function DesktopManagementCard() {
 export default function TeamScreen() {
   const t = useW14Theme()
   const insets = useScreenInsets()
+  const router = useRouter()
   const { actor } = useSession()
 
   // Two independent live sources (per-source honesty): a failing dashboard read
@@ -317,6 +527,72 @@ export default function TeamScreen() {
   const duty = useMemo(() => onDuty(shift, actor), [shift, actor])
 
   const rc = useRefreshControl(q)
+
+  // ── Zweitkasse öffnen — the one cashier-session mutation this device allows ──
+  // The typed opening float is validated live; the confirm sheet is the second,
+  // deliberate act before any open is sent. Busy/error track the in-flight POST.
+  const [floatInput, setFloatInput] = useState("")
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [openBusy, setOpenBusy] = useState(false)
+  const [openError, setOpenError] = useState<string | null>(null)
+
+  const floatValidation = useMemo(() => validateOpeningFloat(floatInput), [floatInput])
+  // Openable only with a clean, valid wire value (empty/invalid/negative → no).
+  const canOpen = floatValidation.wireValue != null && floatValidation.error == null
+
+  // If a shift opens (here or elsewhere) the closed-state card is replaced by the
+  // on-duty card; tear down any stale open form so it never lingers behind it.
+  useEffect(() => {
+    if (shift != null && shift.status === "OPEN") {
+      setConfirmOpen(false)
+      setOpenError(null)
+      setFloatInput("")
+    }
+  }, [shift])
+
+  function onFloatChange(v: string): void {
+    setFloatInput(v)
+    if (openError != null) setOpenError(null)
+  }
+
+  function onOpenPressed(): void {
+    if (!canOpen) return
+    // Light press confirm as the sheet opens (§7) — the open itself is two-step.
+    haptics.impactLight()
+    setOpenError(null)
+    setConfirmOpen(true)
+  }
+
+  async function onConfirmOpen(): Promise<void> {
+    const wire = floatValidation.wireValue
+    if (wire == null) return
+    // Money-context commit haptic on the press (§7).
+    haptics.impactMedium()
+    setOpenBusy(true)
+    setOpenError(null)
+    try {
+      await openShift({ openingFloatEur: wire })
+      haptics.success()
+      setConfirmOpen(false)
+      setFloatInput("")
+      // Bring the freshly-opened shift into view (the on-duty card replaces the
+      // form, and the dashboard recomputes the shift context).
+      await q.refetch()
+    } catch (e) {
+      // A 409 (a shift is already OPEN on this device) or any refusal surfaces the
+      // real German message inline; the sheet stays open so it can be retried or
+      // cancelled. Never a fabricated success.
+      haptics.error()
+      setOpenError(describeError(e))
+    } finally {
+      setOpenBusy(false)
+    }
+  }
+
+  function goToKasse(): void {
+    haptics.selection()
+    router.push("/kasse" as Href)
+  }
 
   // The current operator is local (session), so the surface always has SOMETHING
   // to show. The skeleton is only for the very first shift/dashboard load; a hard
@@ -397,6 +673,7 @@ export default function TeamScreen() {
                   summary={summary}
                   isCurrentOperator={duty.isCurrentOperator}
                   duty={duty}
+                  onClose={goToKasse}
                 />
               ) : q.results.shift.error != null ? (
                 // The shift read FAILED — never claim "Niemand im Dienst"
@@ -404,7 +681,15 @@ export default function TeamScreen() {
                 // unknown/locked state with a retry instead.
                 <OnDutyErrorCard onRetry={() => void q.refetch()} />
               ) : (
-                <NoOnDutyCard />
+                // No open shift on this device → offer the real "Zweitkasse
+                // öffnen" action with a counted opening float.
+                <OpenZweitkasseCard
+                  floatInput={floatInput}
+                  floatError={floatValidation.error}
+                  canOpen={canOpen}
+                  onChangeFloat={onFloatChange}
+                  onOpen={onOpenPressed}
+                />
               )}
             </StaggerItem>
 
@@ -425,6 +710,23 @@ export default function TeamScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* The deliberate open-confirm — mounted at the root so it overlays the
+          whole surface. Never auto-fires; the open POST runs only on its commit
+          press. */}
+      <OpenShiftSheet
+        open={confirmOpen}
+        amountLabel={formatEur(floatValidation.wireValue ?? "0.00")}
+        busy={openBusy}
+        error={openError}
+        onConfirm={() => void onConfirmOpen()}
+        onCancel={() => {
+          if (openBusy) return
+          setConfirmOpen(false)
+          setOpenError(null)
+        }}
+        onDismissError={() => setOpenError(null)}
+      />
     </View>
   )
 }
