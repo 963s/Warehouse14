@@ -25,7 +25,7 @@
  * Motion- + §7-Haptik-Vokabular, nur W14-Theme-Tokens). Deutsche UI.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Pressable, RefreshControl, ScrollView, View } from "react-native"
+import { KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, View } from "react-native"
 import type {
   WhatsAppMessage,
   WhatsAppSendResponse,
@@ -725,6 +725,13 @@ function ChatDetailSheet({
       }}
     >
       <DialogContent className="gap-4">
+        {/* Keyboard avoidance: focusing the send composer lifts the sheet clear
+            of the keyboard (padding on iOS, height on Android — the spine's
+            KeyboardAvoidingScreen behavior), so the Senden-Knopf stays reachable. */}
+        <KeyboardAvoidingView
+          className="gap-4"
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
         <DialogHeader>
           <DialogTitle>{displayName}</DialogTitle>
           <DialogDescription>
@@ -738,6 +745,7 @@ function ChatDetailSheet({
           className="max-h-[420px]"
           contentContainerStyle={{ gap: 12 }}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
           {/* AI / human toggle */}
           {data != null ? (
@@ -871,6 +879,7 @@ function ChatDetailSheet({
         >
           <Text>Schließen</Text>
         </Button>
+        </KeyboardAvoidingView>
       </DialogContent>
     </Dialog>
   )
@@ -902,6 +911,13 @@ function NewMessageSheet({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="gap-4">
+        {/* Keyboard avoidance: focusing Nummer/Nachricht lifts the sheet clear of
+            the keyboard (padding on iOS, height on Android), so Senden + Schließen
+            stay reachable. */}
+        <KeyboardAvoidingView
+          className="gap-4"
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
         <DialogHeader>
           <DialogTitle>Neue Nachricht</DialogTitle>
           <DialogDescription>
@@ -929,6 +945,7 @@ function NewMessageSheet({
         >
           <Text>Schließen</Text>
         </Button>
+        </KeyboardAvoidingView>
       </DialogContent>
     </Dialog>
   )
