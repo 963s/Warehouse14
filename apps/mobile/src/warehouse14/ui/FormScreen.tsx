@@ -91,7 +91,7 @@ export function FormScreen({
         keyboardShouldPersistTaps="handled"
       >
         <View className="gap-1">
-          <Text className="text-xl font-bold">{title}</Text>
+          <Text className="text-2xl font-display-semibold leading-tight">{title}</Text>
           {subtitle != null ? (
             <Text className="text-muted-foreground text-sm">{subtitle}</Text>
           ) : null}
