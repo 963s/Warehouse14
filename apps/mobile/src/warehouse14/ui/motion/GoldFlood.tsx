@@ -4,9 +4,10 @@
  *
  * A full-screen, non-interactive overlay: a gold bloom rises from the bottom,
  * a shimmer band sweeps up through it, then the whole thing fades away. Pure
- * decoration — gold (`#bf9430`) is used here exactly as the tokens allow:
- * NEVER under text, never carrying meaning a user must read (DESIGN.md §4). It
- * sits above content with `pointerEvents="none"` so it never blocks a tap.
+ * decoration — the gold is read from the theme (`t.colors.gold`), used here
+ * exactly as the tokens allow: NEVER under text, never carrying meaning a user
+ * must read (DESIGN.md §4). It sits above content with `pointerEvents="none"`
+ * so it never blocks a tap.
  *
  * Haptics are intentionally NOT fired here: this is the spine's visual layer
  * and `expo-haptics` is not a dependency of this module. The gamification /
