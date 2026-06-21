@@ -31,6 +31,8 @@ import {
   Users,
 } from "lucide-react-native"
 
+import { DOCUMENT_CATEGORY_LABELS } from "@warehouse14/api-client"
+
 import type { BadgeProps } from "@/components/ui/badge"
 import {
   ANKAUF_CONDITION_LABEL,
@@ -475,22 +477,56 @@ export interface PayloadEntry {
   mono: boolean
 }
 
+// ── Schlüssel-Normalisierung (camelCase → snake_case, EINE Quelle der Wahrheit) ─
+// Der Backend-Payload mischt zwei Schreibweisen: die meisten Trigger schreiben
+// snake_case (`total_eur`, `trust_level`), aber viele Routen schreiben camelCase
+// (`customerId`, `fromTrustLevel`, `oldValue`, `kycDocumentId`, `lockedUntil`,
+// `changedFields` …). Statt jeden camelCase-Schlüssel einzeln zu aliasen,
+// kanonisieren wir JEDEN Schlüssel einmal nach snake_case, BEVOR irgendeine
+// Registry (Label oder Enum-Wert) befragt wird. So ist die snake_case-Tabelle die
+// einzige Quelle der Wahrheit und ein neuer camelCase-Schlüssel kann nie wieder
+// roh-englisch durchrutschen.
+export function toSnakeKey(key: string): string {
+  return key
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2") // userId → user_Id
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1_$2") // ISO2Code → ISO2_Code
+    .toLowerCase()
+}
+
+/**
+ * Dev-only Warnung, wenn ein Payload-Schlüssel oder Enum-Wert ohne kuratiertes
+ * deutsches Label durch die Fallback-Humanisierung läuft. In Produktion ein
+ * No-op (die Humanisierung greift weiterhin, nie ein roher Maschinen-String) —
+ * aber im Dev-Build wird die Lücke laut, damit fehlende Übersetzungen gefunden
+ * und ergänzt werden, statt still anglisiert zu rendern.
+ */
+function warnUntranslated(kind: "Schlüssel" | "Wert", raw: string, key?: string): void {
+  if (typeof __DEV__ !== "undefined" && __DEV__) {
+    const where = key ? ` (Feld „${key}")` : ""
+    console.warn(
+      `[audit-ui] Kein kuratiertes deutsches Label für ${kind} „${raw}"${where} — ` +
+        `Fallback-Humanisierung greift. Bitte in audit-ui.ts ergänzen.`,
+    )
+  }
+}
+
 // ID-/Hash-artige Schlüssel (forensisch: roher Wert, monospaced). Deckt
 // snake_case (`_id`), camelCase (`customerId`, `kycDocumentId`) und die
-// Krypto-Begriffe ab. Das camelCase-`Id$` ist bewusst gross-/kleinsensitiv,
-// damit normale Wörter auf „id" (z. B. „paid", „valid") NICHT fälschlich
-// als ID gelten.
+// Krypto-Begriffe ab. Wir normalisieren zuerst nach snake_case, damit eine
+// einzige `_id$`-Regel beide Schreibweisen erfasst.
 const ID_KEY_RE = /(_id$|^id$|hash|sha|fingerprint|serial|uuid)/i
-const CAMEL_ID_KEY_RE = /[a-z]Id$/
 function isIdKey(key: string): boolean {
-  return ID_KEY_RE.test(key) || CAMEL_ID_KEY_RE.test(key)
+  return ID_KEY_RE.test(toSnakeKey(key))
 }
 
 // ── Payload-Schlüssel → deutsches Label ──────────────────────────────────────
-// Die Payload-Schlüssel sind englische snake_case-Maschinennamen. Wir übersetzen
-// die tatsächlich vorkommenden Schlüssel in ruhiges Deutsch; ein unbekannter
-// Schlüssel wird humanisiert (Unterstriche raus, erster Buchstabe groß) — nie
-// roh als `snake_case` oder als blanker englischer Begriff stehengelassen.
+// Die Payload-Schlüssel sind englische Maschinennamen. Jeder Schlüssel wird VOR
+// dem Nachschlagen per `toSnakeKey` kanonisiert, darum ist diese Tabelle rein
+// snake_case — ein camelCase-Backend-Schlüssel (`customerId`, `fromTrustLevel`,
+// `oldValue` …) trifft denselben Eintrag wie sein snake_case-Zwilling. Ein
+// unbekannter Schlüssel wird humanisiert (Unterstriche raus, erster Buchstabe
+// groß) — nie roh als `snake_case`/`camelCase` oder als blanker englischer
+// Begriff stehengelassen.
 const PAYLOAD_KEY_LABELS: Readonly<Record<string, string>> = {
   // Handel / Vorgang
   direction: "Richtung",
@@ -522,6 +558,7 @@ const PAYLOAD_KEY_LABELS: Readonly<Record<string, string>> = {
   booked_via: "Gebucht über",
   staff_user_id: "Mitarbeiter",
   customer_id: "Kunde",
+  product_id: "Artikel",
   // Fiskal / Metall
   metal: "Metall",
   source: "Quelle",
@@ -542,29 +579,57 @@ const PAYLOAD_KEY_LABELS: Readonly<Record<string, string>> = {
   tse_pending_count: "TSE ausstehend",
   tse_failed_count: "TSE fehlgeschlagen",
   ledger_anchor_id: "Journal-Anker",
-  // Sicherheit / Kunde (alert.customer_*)
-  customerId: "Kunde",
-  fromTrustLevel: "Vorherige Vertrauensstufe",
-  toTrustLevel: "Neue Vertrauensstufe",
-  reasonLength: "Begründungslänge",
+  // Sicherheit / Kunde (alert.customer_* · customer.trust_changed)
+  // camelCase im Payload (`customerId`, `fromTrustLevel` …) — als snake_case
+  // gelistet, weil `toSnakeKey` vor dem Nachschlagen kanonisiert.
+  from_trust_level: "Vorherige Vertrauensstufe",
+  to_trust_level: "Neue Vertrauensstufe",
+  reason_length: "Begründungslänge",
+  changed_fields: "Geänderte Felder",
+  step_up_enforced: "Bestätigung erzwungen",
   // Sicherheit / Auth (auth.pin_* / step_up_*)
   decision: "Ergebnis",
   failed_attempts: "Fehlversuche",
   locked_until: "Gesperrt bis",
-  lockedUntil: "Gesperrt bis",
   is_owner: "Inhaberkonto",
   session_id: "Sitzung",
-  // Bestandskorrektur (product.inventory_adjustment_logged)
-  productId: "Artikel",
-  previousLocation: "Vorheriger Lagerort",
-  nextLocation: "Neuer Lagerort",
-  // KYC-Löschung (customer.kyc_purged)
-  kycDocumentId: "KYC-Nachweis",
+  // Bestandskorrektur (product.inventory_adjustment_logged · product.relocate)
+  previous_location: "Vorheriger Lagerort",
+  next_location: "Neuer Lagerort",
+  via: "Vorgang",
+  // KYC-Nachweis (customer.kyc_* · security.kyc_*)
+  kyc_document_id: "KYC-Nachweis",
+  document_type: "Nachweisart",
+  issuing_country_iso2: "Ausstellungsland",
+  issued_on: "Ausgestellt am",
+  expires_on: "Gültig bis",
+  retention_years: "Aufbewahrung (Jahre)",
+  // Beleg (document.uploaded / .archived)
+  document_id: "Beleg",
+  category: "Kategorie",
+  file_name: "Dateiname",
+  mime_type: "Dateityp",
+  size_bytes: "Größe (Byte)",
+  // Einstellung (system_setting.changed)
+  key: "Schlüssel",
+  old_value: "Vorher",
+  new_value: "Nachher",
+  // Freigabe (command.approval_resolved)
+  resolved_by_user_id: "Entschieden von",
+  resolved_at: "Entschieden am",
+  // Storno (transaction.stornoed*)
+  original_transaction_id: "Ursprünglicher Vorgang",
+  original_total_eur: "Ursprungsbetrag",
+  storno_total_eur: "Stornobetrag",
+  // Metallpreis (metal_price.*)
+  new_price_per_gram_eur: "Neuer Preis je Gramm",
+  previous_price_per_gram_eur: "Vorheriger Preis je Gramm",
   // System / Auth
   device_class: "Geräteklasse",
   success: "Erfolgreich",
   title: "Titel",
   notes: "Notiz",
+  route: "Route",
 }
 
 // ── Bekannte Enum-Werte → deutsches Label, je nach Schlüssel ─────────────────
@@ -587,7 +652,10 @@ const AUTH_DECISION_LABEL: Readonly<Record<string, string>> = {
   already_locked: "Bereits gesperrt",
 }
 
-/** Schlüssel-spezifische Enum-Registrys (aus dem geteilten german-text-Vokabular). */
+// Schlüssel-spezifische Enum-Registrys (aus dem geteilten german-text-Vokabular).
+// Die Schlüssel sind snake_case — der Lookup kanonisiert vorher per `toSnakeKey`,
+// also greifen camelCase-Felder (`fromTrustLevel`, `toTrustLevel`) automatisch
+// auf den `from_trust_level`/`to_trust_level`-Eintrag.
 const KEY_VALUE_REGISTRY: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   direction: TRANSACTION_DIRECTION_LABEL,
   tax_treatment_code: TAX_TREATMENT_LABEL,
@@ -595,8 +663,8 @@ const KEY_VALUE_REGISTRY: Readonly<Record<string, Readonly<Record<string, string
   payment_method: PAYMENT_METHOD_LABEL,
   payout_method: PAYMENT_METHOD_LABEL,
   trust_level: CUSTOMER_TRUST_LEVEL_LABEL,
-  fromTrustLevel: CUSTOMER_TRUST_LEVEL_LABEL,
-  toTrustLevel: CUSTOMER_TRUST_LEVEL_LABEL,
+  from_trust_level: CUSTOMER_TRUST_LEVEL_LABEL,
+  to_trust_level: CUSTOMER_TRUST_LEVEL_LABEL,
   kyc_status: CUSTOMER_KYC_STATUS_LABEL,
   appointment_type: APPOINTMENT_TYPE_LABEL,
   status: APPOINTMENT_STATUS_LABEL,
@@ -604,6 +672,9 @@ const KEY_VALUE_REGISTRY: Readonly<Record<string, Readonly<Record<string, string
   condition: ANKAUF_CONDITION_LABEL,
   product_status: PRODUCT_STATUS_LABEL,
   task_status: TASK_STATUS_LABEL,
+  // Beleg-Kategorie (document.uploaded `category`): AUSWEIS|RECHNUNG|… → „Ausweis"
+  // /„Rechnung", nie das rohe Enum.
+  category: DOCUMENT_CATEGORY_LABELS,
   // Der Tagesabschluss-`state` ist COUNTING | FINALIZED — als „Offen"/
   // „Abgeschlossen" lesen, nie als rohes „FINALIZED".
   state: CLOSING_STATE_LABELS,
@@ -635,6 +706,19 @@ const AUDIT_VALUE_LABELS: Readonly<Record<string, string>> = {
   reservation_expires_at_lapsed: "Reservierung abgelaufen",
   pos_stale_hold_reclaimed: "Kassen-Reservierung zurückgeholt",
   reservation_expires_at_passed: "Reservierung abgelaufen",
+  // Freigabe-Entscheidung (command.approval_resolved `status`) — sonst „Approved"
+  // /„Rejected". Eigener Schlüssel kollidiert mit dem Termin-`status`, darum hier
+  // im globalen Fallback (greift erst NACH der Termin-Registry, kein Konflikt).
+  APPROVED: "Freigegeben",
+  REJECTED: "Abgelehnt",
+  PENDING: "Ausstehend",
+  // Bestandskorrektur-/Umlagerungs-Grund (`reason`: inventory-adjustment ·
+  // product.relocate) — sonst „Location change", „Operator note".
+  LOCATION_CHANGE: "Lagerort geändert",
+  LOST: "Verlust",
+  DAMAGED: "Beschädigt",
+  FOUND: "Wiedergefunden",
+  OPERATOR_NOTE: "Notiz",
 }
 
 /**
@@ -675,38 +759,54 @@ function formatEurString(value: string): string | null {
  * owner-vertraut, kein Enum.
  */
 function purifyStringValue(key: string, value: string): string {
-  if (key.endsWith("_eur")) {
+  // Einmal nach snake_case kanonisieren: jede schlüssel-abhängige Regel (Geld,
+  // Datum, Enum-Registry) greift dann gleichermaßen für snake_case- UND
+  // camelCase-Felder.
+  const snake = toSnakeKey(key)
+  if (snake.endsWith("_eur")) {
     const money = formatEurString(value)
     if (money != null) return money
   }
-  // Ein Zeitstempel-Feld (snake_case `*_at`/`*_until` oder camelCase `*At`/
-  // `*Until`) trägt einen rohen ISO-Zeitstempel — als volle de-DE Datum+Uhrzeit
-  // zeigen, damit nie ein „2026-…T…Z" in der UI steht.
-  if (/(_at|_until|At|Until)$/.test(key) && value.includes("T")) {
+  // Ein Zeitstempel-Feld (`*_at`/`*_until`, camelCase wie `lockedUntil` →
+  // `locked_until`) trägt einen rohen ISO-Zeitstempel — als volle de-DE
+  // Datum+Uhrzeit zeigen, damit nie ein „2026-…T…Z" in der UI steht.
+  if (/(_at|_until)$/.test(snake) && value.includes("T")) {
     const date = formatEventDate(value)
     if (date != null) return date
   }
   // Ein Geschäftstag-/Datums-Feld (`business_day`, `*_day`, `*_date`) trägt ein
   // reines ISO-Datum (YYYY-MM-DD) — als de-DE Datum zeigen, nie roh als
   // „2026-06-21".
-  if (key === "business_day" || key.endsWith("_day") || key.endsWith("_date")) {
+  if (snake === "business_day" || snake.endsWith("_day") || snake.endsWith("_date")) {
     const day = formatEventDay(value)
     if (day != null) return day
   }
-  const registry = KEY_VALUE_REGISTRY[key]
+  const registry = KEY_VALUE_REGISTRY[snake]
   if (registry && value in registry) return registry[value]
   if (value in AUDIT_VALUE_LABELS) return AUDIT_VALUE_LABELS[value]
   // Ein code-artiger Token ohne bekannte Übersetzung: humanisieren, damit nie
-  // ein SCREAMING_SNAKE / snake_case in der UI steht. Klartext bleibt unberührt.
-  if (looksLikeToken(value)) return humanizeToken(value)
+  // ein SCREAMING_SNAKE / snake_case in der UI steht. Im Dev-Build laut warnen,
+  // damit die fehlende Übersetzung gefunden wird. Klartext (Namen, Gründe in
+  // freier Sprache) bleibt unberührt.
+  if (looksLikeToken(value)) {
+    warnUntranslated("Wert", value, key)
+    return humanizeToken(value)
+  }
   return value
 }
 
 function humanizeKey(key: string): string {
-  const known = PAYLOAD_KEY_LABELS[key]
+  // Erst nach snake_case kanonisieren — so trifft `customerId` denselben Eintrag
+  // wie `customer_id` und es muss kein camelCase-Alias gepflegt werden.
+  const snake = toSnakeKey(key)
+  const known = PAYLOAD_KEY_LABELS[snake]
   if (known) return known
-  const words = key.replace(/_/g, " ").trim()
+  // Kein kuratiertes Label: snake_case → Wörter, erster Buchstabe groß. Damit
+  // steht nie ein roher `snake_case`/`camelCase`-Maschinenname in der UI; im
+  // Dev-Build wird die Lücke laut, damit ein deutsches Label ergänzt wird.
+  const words = snake.replace(/_/g, " ").trim()
   if (!words) return key
+  warnUntranslated("Schlüssel", key)
   return words.charAt(0).toUpperCase() + words.slice(1)
 }
 

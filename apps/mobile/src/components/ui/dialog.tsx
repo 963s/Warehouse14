@@ -74,12 +74,14 @@ function DialogContent({
                 web: 'ring-offset-background focus:ring-ring data-[state=open]:bg-accent transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-offset-2',
               })
             )}
+            accessibilityRole="button"
+            accessibilityLabel="Schließen"
             hitSlop={12}>
             <Icon
               as={X}
               className={cn('text-accent-foreground web:pointer-events-none size-4 shrink-0')}
             />
-            <Text className="sr-only">Close</Text>
+            <Text className="sr-only">Schließen</Text>
           </DialogPrimitive.Close>
         </DialogPrimitive.Content>
       </DialogOverlay>
