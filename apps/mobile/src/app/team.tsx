@@ -55,6 +55,7 @@ import {
   ErrorState,
   InlineError,
   ListRow,
+  PaperGrain,
   SectionCard,
   Skeleton,
   StaggerItem,
@@ -325,6 +326,10 @@ export default function TeamScreen() {
 
   return (
     <View className="flex-1 bg-background">
+      {/* Die gealterte Papier-Maserung als Leinwand — Tiefe aus dem geschichteten
+          Creme plus dieser feinen warmen Struktur, nie eine flache Fläche
+          (DESIGN.md §1, §5). */}
+      <PaperGrain />
       <ScrollView
         className="flex-1"
         contentContainerStyle={{
@@ -337,9 +342,13 @@ export default function TeamScreen() {
         refreshControl={<RefreshControl {...rc} progressViewOffset={8} />}
       >
         <View className="gap-1">
-          <Text className="text-xl font-bold" numberOfLines={1}>
-            {COPY.screenTitle}
-          </Text>
+          <View className="flex-row items-center gap-2">
+            <Users size={t.icon.lg} color={t.colors.primary} />
+            {/* Bildschirmtitel in der antiken Cormorant-Display-Stimme (DESIGN §3). */}
+            <Text className="text-2xl font-display-semibold leading-tight" numberOfLines={1}>
+              {COPY.screenTitle}
+            </Text>
+          </View>
           <Text className="text-muted-foreground text-sm" numberOfLines={2}>
             {COPY.screenSubtitle}
           </Text>

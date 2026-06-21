@@ -22,6 +22,11 @@
  * This is deliberately layout-only and theme-driven (`bg-background`); it adds
  * no business logic and no haptics. FormScreen and bespoke input screens both
  * compose it.
+ *
+ * `grain` (default true) drops the shared `PaperGrain` canvas behind the body so
+ * an input-bearing owner surface carries the same aged-paper depth as every
+ * scroll surface (DESIGN.md §1, §5) — never a flat fill. It is pure decoration
+ * (pointer-events off, hidden from the a11y tree) and sits behind the content.
  */
 import { type ReactNode } from "react"
 import {
@@ -36,6 +41,7 @@ import {
 
 import { space } from "@/warehouse14/theme"
 
+import { PaperGrain } from "../PaperGrain"
 import { useScreenInsets } from "./useScreenInsets"
 
 export interface KeyboardAvoidingScreenProps {
@@ -60,6 +66,12 @@ export interface KeyboardAvoidingScreenProps {
     ScrollViewProps,
     "children" | "contentContainerStyle" | "keyboardShouldPersistTaps"
   >
+  /**
+   * Drop the aged-paper grain canvas behind the body (default true). The same
+   * depth every scroll surface carries (DESIGN.md §1, §5); set false only where
+   * the screen paints its own canvas.
+   */
+  grain?: boolean
 }
 
 export function KeyboardAvoidingScreen({
@@ -69,6 +81,7 @@ export function KeyboardAvoidingScreen({
   contentPadding = space.x4,
   contentContainerStyle,
   scrollViewProps,
+  grain = true,
 }: KeyboardAvoidingScreenProps): ReactNode {
   const insets = useScreenInsets()
 
@@ -100,6 +113,7 @@ export function KeyboardAvoidingScreen({
       className="flex-1 bg-background"
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
+      {grain ? <PaperGrain /> : null}
       {body}
       {footer != null ? (
         <View style={{ paddingBottom: insets.stickyBottom }}>{footer}</View>

@@ -32,7 +32,13 @@ import {
   type OwnerSurfaceGroup,
 } from "@/warehouse14/owner-surfaces"
 import { useW14Theme } from "@/warehouse14/theme"
-import { haptics, PressableScale, StaggerItem, useScreenInsets } from "@/warehouse14/ui"
+import {
+  haptics,
+  PaperGrain,
+  PressableScale,
+  StaggerItem,
+  useScreenInsets,
+} from "@/warehouse14/ui"
 
 /**
  * One launcher card. Available cards are a `PressableScale` (spine press-scale +
@@ -152,40 +158,47 @@ export default function MehrScreen() {
   let cardIndex = 0
 
   return (
-    <ScrollView
-      className="flex-1 bg-background"
-      contentContainerStyle={{
-        paddingTop: insets.screen.top + t.space.x4,
-        paddingHorizontal: t.space.x4,
-        paddingBottom: insets.contentBottom,
-        gap: t.space.x6,
-      }}
-      showsVerticalScrollIndicator={false}
-    >
-      <View className="gap-1">
-        <Text className="text-xl font-bold" numberOfLines={1}>
-          Mehr
-        </Text>
-        <Text className="text-muted-foreground text-sm" numberOfLines={2}>
-          Alle Werkzeuge deines Betriebs an einem Ort.
-        </Text>
-      </View>
-
-      {sections.map((section) => (
-        <View key={section.group} className="gap-3">
-          <Text
-            className="text-muted-foreground text-xs font-semibold uppercase"
-            style={{ letterSpacing: 0.8 }}
-          >
-            {section.label}
+    <View className="flex-1 bg-background">
+      {/* Die gealterte Papier-Maserung als Leinwand — Tiefe aus dem geschichteten
+          Creme plus dieser feinen warmen Struktur, nie eine flache Fläche
+          (DESIGN.md §1, §5). */}
+      <PaperGrain />
+      <ScrollView
+        className="flex-1"
+        contentContainerStyle={{
+          paddingTop: insets.screen.top + t.space.x4,
+          paddingHorizontal: t.space.x4,
+          paddingBottom: insets.contentBottom,
+          gap: t.space.x6,
+        }}
+        showsVerticalScrollIndicator={false}
+      >
+        <View className="gap-1">
+          {/* Bildschirmtitel in der antiken Cormorant-Display-Stimme (DESIGN §3). */}
+          <Text className="text-2xl font-display-semibold leading-tight" numberOfLines={1}>
+            Mehr
           </Text>
-          <View className="flex-row flex-wrap justify-between" style={{ rowGap: t.space.x3 }}>
-            {section.items.map((s) => (
-              <HubCard key={s.id} surface={s} index={cardIndex++} />
-            ))}
-          </View>
+          <Text className="text-muted-foreground text-sm" numberOfLines={2}>
+            Alle Werkzeuge deines Betriebs an einem Ort.
+          </Text>
         </View>
-      ))}
-    </ScrollView>
+
+        {sections.map((section) => (
+          <View key={section.group} className="gap-3">
+            <Text
+              className="text-muted-foreground text-xs font-semibold uppercase"
+              style={{ letterSpacing: 0.8 }}
+            >
+              {section.label}
+            </Text>
+            <View className="flex-row flex-wrap justify-between" style={{ rowGap: t.space.x3 }}>
+              {section.items.map((s) => (
+                <HubCard key={s.id} surface={s} index={cardIndex++} />
+              ))}
+            </View>
+          </View>
+        ))}
+      </ScrollView>
+    </View>
   )
 }

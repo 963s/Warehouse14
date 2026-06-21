@@ -140,6 +140,17 @@ export default function DruckenScreen() {
       contentPadding={t.space.x4}
       contentContainerStyle={{ gap: t.space.x4 }}
     >
+      <View className="gap-1">
+        <View className="flex-row items-center gap-2">
+          <Printer size={t.icon.lg} color={t.colors.primary} />
+          {/* Bildschirmtitel in der antiken Cormorant-Display-Stimme (DESIGN §3). */}
+          <Text className="text-2xl font-display-semibold leading-tight">Drucken</Text>
+        </View>
+        <Text className="text-muted-foreground text-sm">
+          Etiketten und Belege als PDF teilen oder per AirPrint senden.
+        </Text>
+      </View>
+
       {/* What this surface can do, honestly framed. */}
       <SectionCard
         title="Etikett teilen"

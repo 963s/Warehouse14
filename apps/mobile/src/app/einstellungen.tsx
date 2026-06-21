@@ -787,7 +787,8 @@ export default function EinstellungenScreen() {
       <View className="gap-1">
         <View className="flex-row items-center gap-2">
           <Gauge size={t.icon.lg} color={t.colors.primary} />
-          <Text className="text-xl font-bold">Einstellungen</Text>
+          {/* Bildschirmtitel in der antiken Cormorant-Display-Stimme (DESIGN §3). */}
+          <Text className="text-2xl font-display-semibold leading-tight">Einstellungen</Text>
         </View>
         <Text className="text-muted-foreground text-sm">
           Margen, Belegtexte, Sammlungen, Ziele und Gerät an einem Ort.
