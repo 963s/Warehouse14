@@ -91,6 +91,7 @@ import {
   EmptyState,
   haptics,
   InlineError,
+  PaperGrain,
   PressableScale,
   Skeleton,
   StaggerItem,
@@ -440,6 +441,9 @@ export default function VerkaufScreen() {
 
   return (
     <View className="flex-1 bg-background">
+      {/* The aged-paper grain canvas — depth from the layered cream plus this
+          faint warm tooth, never a flat fill (DESIGN.md §1). */}
+      <PaperGrain />
       <ScrollView
         className="flex-1"
         contentContainerStyle={{
@@ -846,15 +850,20 @@ function SaleDoneScreen({
       className="flex-1 bg-background px-6"
       style={{ paddingTop: insets.screen.top + t.space.x8, paddingBottom: insets.contentBottom }}
     >
+      <PaperGrain />
       <View className="flex-1 items-center justify-center gap-5">
+        {/* The sealed-receipt mark — a verdigris seal ringed by a fine gold
+            hairline, the antique "festgeschrieben" flourish. */}
         <View
-          className="h-20 w-20 items-center justify-center rounded-full"
-          style={{ backgroundColor: t.colors.verdigris + "1f" }}
+          className="h-20 w-20 items-center justify-center rounded-full border"
+          style={{ backgroundColor: t.colors.verdigris + "1f", borderColor: t.colors.border }}
         >
           <Check size={36} color={t.colors.verdigris} />
         </View>
         <View className="items-center gap-1.5">
-          <Text className="text-xl font-bold">Verkauf abgeschlossen</Text>
+          <Text className="text-2xl font-display-semibold leading-tight">
+            Verkauf abgeschlossen
+          </Text>
           <Text className="text-muted-foreground text-center text-sm leading-5">
             Der Beleg ist TSE-signiert und im Kassenbuch festgeschrieben.
           </Text>
