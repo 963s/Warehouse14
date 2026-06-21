@@ -46,18 +46,17 @@ import {
   type CategoryMeta,
   categoryMeta,
   CATEGORY_ORDER,
-  countByCategory,
-  countDocuments,
   type DocumentCategory,
-  type DocumentCounts,
   type DocumentRow,
   fileKindLabel,
   formatDocDate,
   formatFileSize,
   isArchived,
   linkSummary,
+  type RegisterSummary,
   shortHash,
   sortDocuments,
+  summarizeRegister,
 } from "@/warehouse14/belege-ui"
 import { useW14Theme } from "@/warehouse14/theme"
 import {
@@ -84,26 +83,40 @@ type Filter = "ALL" | DocumentCategory
 // Register-Kopf — die echten Beleg-Summen
 // ────────────────────────────────────────────────────────────────────────────
 
-function RegisterHeader({ counts }: { counts: DocumentCounts }) {
+function RegisterHeader({ summary }: { summary: RegisterSummary }) {
   const t = useW14Theme()
-  const tiles: { label: string; value: number; active: boolean; color: string }[] = [
+  // The "Belege" tile is the server's exact total (precise at any register size).
+  // "Fiskalisch"/"Archiviert" are derived from the loaded rows; if the server
+  // holds more than we loaded (`truncated`) they are lower bounds, so we mark
+  // them with a „≥" prefix rather than printing a precise number that undercounts.
+  const tiles: {
+    label: string
+    value: number
+    active: boolean
+    color: string
+    /** Whether this tile is a derived lower bound (not the exact server count). */
+    approx: boolean
+  }[] = [
     {
       label: "Belege",
-      value: counts.total,
-      active: counts.total > 0,
+      value: summary.total,
+      active: summary.total > 0,
       color: t.colors.primary,
+      approx: false,
     },
     {
       label: "Fiskalisch",
-      value: counts.fiscal,
-      active: counts.fiscal > 0,
+      value: summary.fiscal,
+      active: summary.fiscal > 0,
       color: t.colors.verdigris,
+      approx: summary.truncated,
     },
     {
       label: "Archiviert",
-      value: counts.archived,
-      active: counts.archived > 0,
+      value: summary.archived,
+      active: summary.archived > 0,
       color: t.colors.mutedForeground,
+      approx: summary.truncated,
     },
   ]
   return (
@@ -120,8 +133,11 @@ function RegisterHeader({ counts }: { counts: DocumentCounts }) {
           <Text
             className="font-mono-medium text-2xl"
             style={{ color: tile.active ? tile.color : t.colors.mutedForeground }}
+            accessibilityLabel={
+              tile.approx ? `${tile.label}, mindestens ${tile.value}` : undefined
+            }
           >
-            {tile.value}
+            {tile.approx ? `≥${tile.value}` : tile.value}
           </Text>
         </Card>
       ))}
@@ -136,21 +152,29 @@ function RegisterHeader({ counts }: { counts: DocumentCounts }) {
 function FilterChip({
   label,
   count,
+  approx,
   active,
   onPress,
 }: {
   label: string
   count: number | null
+  /** Whether `count` is a derived lower bound (server holds more than loaded). */
+  approx: boolean
   active: boolean
   onPress: () => void
 }) {
   const t = useW14Theme()
+  const countText = count != null ? (approx ? `≥${count}` : `${count}`) : null
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
       accessibilityState={{ selected: active }}
-      accessibilityLabel={count != null ? `${label}, ${count}` : label}
+      accessibilityLabel={
+        count != null
+          ? `${label}, ${approx ? "mindestens " : ""}${count}`
+          : label
+      }
       style={{ minHeight: t.touch.min, justifyContent: "center" }}
     >
       <View
@@ -167,14 +191,14 @@ function FilterChip({
         >
           {label}
         </Text>
-        {count != null ? (
+        {countText != null ? (
           <Text
             className="font-mono text-2xs"
             style={{
               color: active ? t.colors.primaryForeground : t.colors.mutedForeground,
             }}
           >
-            {count}
+            {countText}
           </Text>
         ) : null}
       </View>
@@ -187,11 +211,18 @@ function FilterRow({
   onChange,
   byCategory,
   total,
+  approxCategory,
 }: {
   filter: Filter
   onChange: (f: Filter) => void
   byCategory: Readonly<Record<DocumentCategory, number>>
   total: number
+  /**
+   * Whether the per-category counts are derived lower bounds (the server holds
+   * more documents than the summary loaded). The "Alle" total stays exact (it is
+   * the server's own count), so only the category chips get the „≥" marker.
+   */
+  approxCategory: boolean
 }) {
   const select = useCallback(
     (f: Filter) => {
@@ -211,6 +242,7 @@ function FilterRow({
       <FilterChip
         label="Alle"
         count={total}
+        approx={false}
         active={filter === "ALL"}
         onPress={() => select("ALL")}
       />
@@ -219,6 +251,7 @@ function FilterRow({
           key={cat}
           label={categoryMeta(cat).label}
           count={byCategory[cat]}
+          approx={approxCategory}
           active={filter === cat}
           onPress={() => select(cat)}
         />
@@ -347,11 +380,35 @@ export default function BelegeScreen() {
 
   const [filter, setFilter] = useState<Filter>("ALL")
 
+  // ── Register-Übersicht — eine eigene, filter-FREIE Abfrage ──────────────────
+  // Die Kopf-Kacheln und die „Alle"-/Kategorie-Chip-Zahlen müssen filter-
+  // unabhängig sein und die ganze Register-Wahrheit zeigen. Würden sie aus der
+  // unten gefilterten Listen-Abfrage kommen, läse die „Alle"-Chip unter dem
+  // Filter „Rechnung" die Rechnungs-Zahl, und die Kacheln würden jenseits einer
+  // Seite unterzählen. Diese Abfrage trägt deshalb NIE einen `category`-Filter:
+  // ihr Server-`total` ist die exakte Gesamtzahl bei jeder Registergröße; die
+  // abgeleiteten Teil-Summen (fiskalisch/archiviert/je Kategorie) sind exakt,
+  // solange das Register auf eine Seite passt, und werden sonst ehrlich als
+  // untere Schranken markiert. Der Schlüssel hängt NICHT vom Filter ab, damit
+  // diese Übersicht beim Kategorie-Wechsel stabil bleibt (kein Flackern).
+  const summaryQuery = useQuery(
+    () =>
+      listDocuments({
+        includeArchived: true,
+        limit: PAGE_LIMIT,
+      }),
+    {
+      key: "belege:summary",
+      staleTimeMs: 15_000,
+    },
+  )
+
   // The list query is keyed by the active filter so switching categories is a
-  // real server-side filter (honesty: the count reflects what the server holds),
+  // real server-side filter (the displayed ROWS reflect what the server holds),
   // while stale-while-revalidate keeps the previous rows on screen during the
-  // refetch. We always include archived so the "Archiviert"-tally is truthful;
-  // archived rows are dimmed + labelled, never silently dropped.
+  // refetch. We always include archived so archived rows are dimmed + labelled,
+  // never silently dropped. NOTE: this query's `total` is the FILTERED count and
+  // must NOT feed the header/chip totals — those come from `summaryQuery` above.
   const docs = useQuery(
     () =>
       listDocuments({
@@ -364,28 +421,57 @@ export default function BelegeScreen() {
       staleTimeMs: 15_000,
     },
   )
-  const rc = useRefreshControl(docs)
+  // Pull-to-refresh: the spinner tracks the rows query, but the same pull also
+  // refetches the filter-free summary so the header totals and the visible rows
+  // stay in lock-step (no stale "Alle" total after a refresh).
+  const baseRc = useRefreshControl(docs)
+  const rc = useMemo(
+    () => ({
+      ...baseRc,
+      onRefresh: () => {
+        baseRc.onRefresh()
+        void summaryQuery.refresh()
+      },
+    }),
+    [baseRc, summaryQuery],
+  )
 
   const sorted = useMemo(
     () => (docs.data ? sortDocuments(docs.data.items) : []),
     [docs.data],
   )
-  const counts = useMemo(
-    () => (docs.data ? countDocuments(docs.data.items) : null),
-    [docs.data],
+  // The register summary (header tiles + true "Alle" total + per-category chip
+  // counts) is derived from the filter-free query, so it is honest regardless of
+  // the active filter and reports the real server total at any register size.
+  const summary = useMemo<RegisterSummary | null>(
+    () =>
+      summaryQuery.data
+        ? summarizeRegister({
+            items: summaryQuery.data.items,
+            total: summaryQuery.data.total,
+            hasMore: summaryQuery.data.hasMore,
+          })
+        : null,
+    [summaryQuery.data],
   )
-  // The category-chip counts come from an unfiltered view, so they are stable as
-  // the filter changes. When a category filter is active we only have that
-  // slice, so the per-category tallies are only shown on the "Alle" view (where
-  // they are real); under a filter the chips show no number rather than a wrong
-  // one (honesty rule).
-  const byCategory = useMemo(
-    () => (filter === "ALL" && docs.data ? countByCategory(docs.data.items) : null),
-    [filter, docs.data],
-  )
-  const total = docs.data?.total ?? 0
+  const total = summary?.total ?? 0
   const hasDocs = sorted.length > 0
   const firstLoading = docs.status === "loading" && docs.data == null
+  // The header tiles + chips track the filter-free summary query independently of
+  // the (filter-keyed) rows query, so switching categories never re-skeletons the
+  // header — it only ever loads once on first paint.
+  const summaryFirstLoading = summaryQuery.status === "loading" && summary == null
+
+  // Empty per-category chip counts while the summary is still loading (the chips
+  // simply show no number until the real, filter-free counts arrive).
+  const emptyByCategory: Readonly<Record<DocumentCategory, number>> = {
+    RECHNUNG: 0,
+    ANKAUFBELEG: 0,
+    VERSANDBELEG: 0,
+    EXPERTISE: 0,
+    ZERTIFIKAT: 0,
+    AUSWEIS: 0,
+  }
 
   const emptyForFilter = filter !== "ALL"
 
@@ -409,7 +495,7 @@ export default function BelegeScreen() {
             <Text className="text-base font-semibold">Belege & Dokumente</Text>
           </View>
 
-          {firstLoading ? (
+          {summaryFirstLoading ? (
             <View className="flex-row gap-2.5" accessibilityElementsHidden>
               {Array.from({ length: 3 }).map((_, i) => (
                 <Card key={i} className="flex-1 gap-2 px-3 py-3">
@@ -418,27 +504,22 @@ export default function BelegeScreen() {
                 </Card>
               ))}
             </View>
-          ) : docs.error != null && docs.data == null ? (
-            <InlineError message={docs.error} onRetry={() => void docs.refetch()} />
-          ) : counts != null ? (
-            <RegisterHeader counts={counts} />
+          ) : summaryQuery.error != null && summary == null ? (
+            <InlineError
+              message={summaryQuery.error}
+              onRetry={() => void summaryQuery.refetch()}
+            />
+          ) : summary != null ? (
+            <RegisterHeader summary={summary} />
           ) : null}
 
-          {/* Kategorie-Filter */}
+          {/* Kategorie-Filter — Zahlen stets aus der filter-freien Übersicht. */}
           <FilterRow
             filter={filter}
             onChange={setFilter}
-            byCategory={
-              byCategory ?? {
-                RECHNUNG: 0,
-                ANKAUFBELEG: 0,
-                VERSANDBELEG: 0,
-                EXPERTISE: 0,
-                ZERTIFIKAT: 0,
-                AUSWEIS: 0,
-              }
-            }
+            byCategory={summary?.byCategory ?? emptyByCategory}
             total={total}
+            approxCategory={summary?.truncated ?? false}
           />
         </View>
 

@@ -277,6 +277,56 @@ export function countDocuments(docs: ReadonlyArray<DocumentRow>): DocumentCounts
   return { total: docs.length, fiscal, archived }
 }
 
+// ── Register-Übersicht (echte Summen, filter-unabhängig + Vollständigkeits-Wahrheit)
+// Die Kopf-Kacheln und die „Alle"-/Kategorie-Chip-Zahlen DÜRFEN nicht aus der
+// gefilterten oder abgeschnittenen Listen-Antwort kommen (sonst zeigt z. B. die
+// „Alle"-Chip unter dem Filter „Rechnung" die Rechnungs-Zahl, oder die Kacheln
+// unterzählen jenseits einer Seite). Stattdessen ziehen sie aus einer eigenen,
+// filter-FREIEN Übersichts-Abfrage (alle Kategorien, inkl. archiviert):
+//   • `total` ist die Server-Gesamtzahl — exakt in JEDER Registergröße.
+//   • fiskalisch/archiviert/je-Kategorie werden aus den geladenen Zeilen
+//     gezählt; das ist exakt, solange das Register auf eine Seite passt. Reicht
+//     der Server mehr Zeilen als geladen (`truncated`), sind diese abgeleiteten
+//     Teil-Summen nur untere Schranken — die UI zeigt sie dann ehrlich als
+//     „mindestens" statt eine falsche genaue Zahl zu behaupten.
+
+export interface RegisterSummary {
+  /** Echte Server-Gesamtzahl aller Belege (filterfrei) — exakt bei jeder Größe. */
+  total: number
+  /** Aus den geladenen Zeilen gezählt (untere Schranke, wenn `truncated`). */
+  fiscal: number
+  /** Aus den geladenen Zeilen gezählt (untere Schranke, wenn `truncated`). */
+  archived: number
+  /** Anzahl je Kategorie (untere Schranke, wenn `truncated`). */
+  byCategory: Readonly<Record<DocumentCategory, number>>
+  /**
+   * TRUE, wenn der Server mehr Belege hält, als wir für die Übersicht geladen
+   * haben — dann sind alle aus Zeilen abgeleiteten Teil-Summen untere Schranken.
+   * (Der `total` bleibt exakt, weil er die Server-Zählung ist.)
+   */
+  truncated: boolean
+}
+
+/**
+ * Leitet die Register-Übersicht aus der filter-FREIEN Listen-Antwort ab. Erwartet
+ * die rohen Felder der Antwort: die geladenen Zeilen, die Server-Gesamtzahl und
+ * ob der Server mehr hält (`hasMore`).
+ */
+export function summarizeRegister(input: {
+  items: ReadonlyArray<DocumentRow>
+  total: number
+  hasMore: boolean
+}): RegisterSummary {
+  const { fiscal, archived } = countDocuments(input.items)
+  return {
+    total: input.total,
+    fiscal,
+    archived,
+    byCategory: countByCategory(input.items),
+    truncated: input.hasMore,
+  }
+}
+
 /** Anzahl je Kategorie — füttert die Zähler-Badges an den Filter-Segmenten. */
 export function countByCategory(
   docs: ReadonlyArray<DocumentRow>,
