@@ -31,7 +31,7 @@ import {
   useScreenInsets,
 } from "@/warehouse14/ui"
 
-import { VaultCrest } from "./VaultCrest"
+import { WarehouseMark } from "./WarehouseMark"
 
 interface Slide {
   /** The leading icon of the slide's hero disc (brass — it carries meaning). */
@@ -120,7 +120,7 @@ export function OnboardingIntro({ onDone }: OnboardingIntroProps): ReactNode {
     >
       {/* Top bar — the brand crest + a quiet skip. */}
       <View className="flex-row items-center justify-between">
-        <VaultCrest size="sm" />
+        <WarehouseMark size="sm" />
         <PressableScale
           onPress={skip}
           accessibilityRole="button"
