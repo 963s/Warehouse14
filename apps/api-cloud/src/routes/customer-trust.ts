@@ -240,6 +240,13 @@ const customerTrustRoutes: FastifyPluginAsync = async (app) => {
         // Emit ledger alerts for the two notable transitions.
         // Raw SQL because the SECURITY DEFINER hash-chain trigger fills
         // prev_hash + row_hash — Drizzle's typed insert insists they be set.
+        // NOTE: every interpolated parameter inside `jsonb_build_object(...)`
+        // MUST carry an explicit cast. The function is variadic `"any"`, so a
+        // bare bind parameter leaves Postgres unable to infer its type at
+        // prepare time and the whole INSERT fails with 42P18 ("could not
+        // determine data type of parameter $n"). That is exactly why entering
+        // SUSPICIOUS / BANNED used to 500 while NEW / VERIFIED / VIP (which skip
+        // this ledger insert) succeeded. Keep the `::text` / `::int` casts.
         if (target === 'SUSPICIOUS' && current.trustLevel !== 'SUSPICIOUS') {
           await tx.execute(drizzleSql`
             INSERT INTO ledger_events
@@ -252,8 +259,8 @@ const customerTrustRoutes: FastifyPluginAsync = async (app) => {
               ${deviceId},
               jsonb_build_object(
                 'customerId', ${row.id}::text,
-                'fromTrustLevel', ${current.trustLevel},
-                'reasonLength', ${req.body.reason?.length ?? 0}
+                'fromTrustLevel', ${current.trustLevel}::text,
+                'reasonLength', ${req.body.reason?.length ?? 0}::int
               )
             )`);
         } else if (target === 'BANNED' && current.trustLevel !== 'BANNED') {
@@ -268,8 +275,8 @@ const customerTrustRoutes: FastifyPluginAsync = async (app) => {
               ${deviceId},
               jsonb_build_object(
                 'customerId', ${row.id}::text,
-                'fromTrustLevel', ${current.trustLevel},
-                'reasonLength', ${req.body.reason?.length ?? 0}
+                'fromTrustLevel', ${current.trustLevel}::text,
+                'reasonLength', ${req.body.reason?.length ?? 0}::int
               )
             )`);
         }

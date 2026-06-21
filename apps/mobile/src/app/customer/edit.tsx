@@ -22,6 +22,7 @@ import { router, useLocalSearchParams } from "expo-router"
 import type { CustomerUpdateBody } from "@warehouse14/api-client"
 
 import { describeError, getCustomer, updateCustomer } from "@/warehouse14/api"
+import { addressInputValue } from "@/warehouse14/customer-ui"
 import {
   type CustomerFieldKey,
   CustomerFields,
@@ -78,12 +79,18 @@ export default function KundeBearbeitenScreen() {
       try {
         const c = await getCustomer(id)
         if (!alive) return
+        // A POS/seed customer stores `address` as a JSON blob with English keys.
+        // Fold it to a clean German one-liner for BOTH the prefill and the diff
+        // baseline, so the owner never edits raw JSON and an untouched field
+        // diffs as unchanged (no silent re-write). When the owner DOES edit, the
+        // clean string replaces the blob — the intended outcome.
+        const addressClean = addressInputValue(c.address)
         setOriginal({
           fullName: c.fullName,
           dateOfBirth: c.dateOfBirth,
           email: c.email,
           phone: c.phone,
-          address: c.address,
+          address: addressClean.length > 0 ? addressClean : null,
           vatId: c.vatId,
           notes: c.notes,
         })
@@ -92,7 +99,7 @@ export default function KundeBearbeitenScreen() {
           dateOfBirth: c.dateOfBirth ?? "",
           email: c.email ?? "",
           phone: c.phone ?? "",
-          address: c.address ?? "",
+          address: addressClean,
           vatId: c.vatId ?? "",
           notes: c.notes ?? "",
           preferredLanguage: c.preferredLanguage,

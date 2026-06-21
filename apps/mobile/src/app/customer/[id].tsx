@@ -53,6 +53,7 @@ import { Input } from "@/components/ui/input"
 import { Text } from "@/components/ui/text"
 import { formatEur, getCustomer, setCustomerTrust, stampCustomerKyc } from "@/warehouse14/api"
 import {
+  formatCustomerAddress,
   KYC_STATUS_LABEL,
   KYC_STATUS_VARIANT,
   TRUST_LEVEL_LABEL,
@@ -427,7 +428,7 @@ export default function CustomerDetailScreen() {
             />
             <ListRow icon={Mail} title="E-Mail" value={customer.email ?? "—"} />
             <ListRow icon={Phone} title="Telefon" value={customer.phone ?? "—"} />
-            <ListRow icon={MapPin} title="Adresse" value={customer.address ?? "—"} />
+            <ListRow icon={MapPin} title="Adresse" value={formatCustomerAddress(customer.address) ?? "—"} />
             {customer.vatId ? (
               <ListRow icon={IdCard} title="USt-IdNr." value={customer.vatId} mono />
             ) : null}
