@@ -39,7 +39,7 @@ export function useSessionProbe(): void {
 
     (async () => {
       try {
-        const res = await authPin.session(api);
+        const res = await authPin.sessionSafe(api);
         if (cancelled) return;
         useSyncStore.getState().recordRequestSuccess();
         setFromProbe(res);

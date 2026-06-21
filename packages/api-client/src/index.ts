@@ -38,6 +38,10 @@ export {
 } from './middleware.js';
 export { TimeoutError } from './internal/abort.js';
 export {
+  AuthFlowCoordinator,
+  type AuthFlowOptions,
+} from './internal/auth-flow.js';
+export {
   telemetryMiddleware,
   type TelemetrySink,
   type TelemetryOptions,

@@ -64,7 +64,7 @@ export function PinLogin(): JSX.Element {
     setSubmitting(true);
     setErrorMsg(null);
     try {
-      const res = await authPin.login(api, { pin });
+      const res = await authPin.loginSafe(api, { pin });
       // Store the token for the Bearer-header auth path (Windows WebView2 drops
       // the cross-site session cookie) before flipping the session state.
       setSessionToken(res.token);

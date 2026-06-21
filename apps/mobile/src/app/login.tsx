@@ -26,7 +26,12 @@
  * driving effect can re-run freely (StrictMode / concurrent re-renders, OS
  * theme flips, keyboard insets) without double-dispatching or cancelling the
  * request that is mid-flight. We do not pass an AbortSignal: a login attempt the
- * owner has committed to must run to completion and report a real result.
+ * owner has committed to must run to completion and report a real result. This
+ * UI guard is now belt-and-suspenders: `pinLogin` routes through the shared
+ * api-client `loginSafe`, which ALSO coalesces a double-submit of the same PIN
+ * onto one POST, runs detached from any caller signal, and silently re-issues
+ * once on a transient network/timeout blip — the same guarantee the cashier
+ * gets from the one shared client.
  *
  * Honesty: the only figures on screen are the entered PIN length and the DEV
  * connection hint — no fabricated state. A failure shows the themed

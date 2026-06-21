@@ -99,7 +99,7 @@ export function useLedgerStream(enabled: boolean): UseLedgerStreamResult {
       if (probingRef.current) return;
       probingRef.current = true;
       try {
-        await authPin.session(apiClientRef.current);
+        await authPin.sessionSafe(apiClientRef.current);
         // Session is alive — the SSE failure was transient/proxy-side. Reset the
         // counter so a later genuine 401 still gets its own probe.
         if (!cancelled) {

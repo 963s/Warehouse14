@@ -24,7 +24,20 @@ export function getSessionToken(): string | null {
   return token
 }
 
+/** Plain (non-React) read of "is there a session" — for imperative guards. */
+export function hasSession(): boolean {
+  return token != null
+}
+
 export function setSession(next: { token: string; actor: SessionActor; expiresAt: string }): void {
+  // Idempotent: a re-issued login (e.g. a coalesced double-submit replaying the
+  // same successful response) must NOT churn the auth gate. Only a genuinely
+  // new token emits — that is what the root redirect is waiting on. Without this
+  // guard, the same token re-set would notify every subscriber on each call and
+  // re-run the redirect effect needlessly.
+  if (token === next.token && actor?.id === next.actor.id && expiresAt === next.expiresAt) {
+    return
+  }
   token = next.token
   actor = next.actor
   expiresAt = next.expiresAt
@@ -32,6 +45,7 @@ export function setSession(next: { token: string; actor: SessionActor; expiresAt
 }
 
 export function clearSession(): void {
+  if (token === null && actor === null && expiresAt === null) return
   token = null
   actor = null
   expiresAt = null

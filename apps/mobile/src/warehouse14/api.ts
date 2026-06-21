@@ -179,8 +179,16 @@ export const apiClient: ApiClient = createApiClient({
 })
 
 // ── Auth ────────────────────────────────────────────────────────────────────
+/**
+ * The Owner PIN login. Routed through the api-client's reliable `loginSafe`:
+ * it runs DETACHED from any caller signal (a re-render can never abort a login
+ * the owner committed to), coalesces a double-submit of the same PIN onto one
+ * POST (so the backend's 10/min budget is never halved → no spurious
+ * RATE_LIMITED), and silently re-issues once on a transient network/timeout
+ * blip. A real answer (401 / PIN_LOCKED / …) is surfaced unchanged.
+ */
 export function pinLogin(pin: string): Promise<PinLoginResponse> {
-  return authPin.login(apiClient, { pin })
+  return authPin.loginSafe(apiClient, { pin })
 }
 
 /** PIN step-up — refreshes the session's step-up window (used by the Dialog). */
