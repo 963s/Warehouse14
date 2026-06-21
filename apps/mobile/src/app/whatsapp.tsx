@@ -89,6 +89,7 @@ import {
   EmptyState,
   haptics,
   InlineError,
+  PaperGrain,
   PressableScale,
   SectionCard,
   Skeleton,
@@ -988,6 +989,9 @@ export default function WhatsAppScreen() {
 
   return (
     <View className="flex-1 bg-background">
+      {/* The aged-paper grain canvas — depth from the layered cream plus this
+          faint warm tooth, never a flat fill (DESIGN.md §1, §5). */}
+      <PaperGrain />
       <ScrollView
         className="flex-1"
         contentContainerStyle={{
@@ -1003,10 +1007,16 @@ export default function WhatsAppScreen() {
       >
         {/* ── Posteingang-Kopf ─────────────────────────────────────────────── */}
         <View className="gap-3">
-          <View className="flex-row items-center justify-between">
-            <View className="flex-row items-center gap-2">
-              <MessageCircle size={t.icon.md} color={t.colors.primary} />
-              <Text className="text-base font-semibold">WhatsApp-Posteingang</Text>
+          <View className="flex-row items-center justify-between gap-2">
+            <View className="flex-1 flex-row items-center gap-2">
+              <MessageCircle size={t.icon.lg} color={t.colors.primary} />
+              {/* Screen title in the antique Cormorant display voice (DESIGN.md §3). */}
+              <Text
+                className="flex-1 text-2xl font-display-semibold leading-tight"
+                numberOfLines={1}
+              >
+                WhatsApp-Posteingang
+              </Text>
             </View>
             <Button
               size="sm"
