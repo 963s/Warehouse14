@@ -59,8 +59,8 @@ const BASE_CSS = `
   html, body { margin: 0; padding: 0; }
   body {
     font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
-    color: #16191d;
-    background: #ffffff;
+    color: #17150f; /* warm antique ink — matches the app foreground */
+    background: #ffffff; /* white: a Bon roll / PDF, not the cream app canvas */
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
@@ -84,16 +84,16 @@ const RECEIPT_CSS = `
   .receipt { width: 76mm; max-width: 100%; margin: 0 auto; padding: 4mm 2mm; }
   .receipt .head { text-align: center; margin-bottom: 6px; }
   .receipt .shop { font-size: 15px; font-weight: 700; }
-  .receipt .kind { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: #646b76; }
-  .receipt .meta { font-size: 10px; color: #646b76; text-align: center; }
-  .receipt hr { border: none; border-top: 1px dashed #c9ced6; margin: 6px 0; }
+  .receipt .kind { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: #67645d; }
+  .receipt .meta { font-size: 10px; color: #67645d; text-align: center; }
+  .receipt hr { border: none; border-top: 1px dashed #cdb787; margin: 6px 0; }
   .receipt .row { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; align-items: baseline; }
   .receipt .row .name { flex: 1; }
-  .receipt .row .sku { font-size: 10px; color: #646b76; }
+  .receipt .row .sku { font-size: 10px; color: #67645d; }
   .receipt .row .amt { white-space: nowrap; }
-  .receipt .muted { color: #646b76; font-size: 11px; }
+  .receipt .muted { color: #67645d; font-size: 11px; }
   .receipt .total { font-weight: 700; font-size: 14px; }
-  .receipt .legal { font-size: 9px; color: #646b76; line-height: 1.45; margin-top: 8px; }
+  .receipt .legal { font-size: 9px; color: #67645d; line-height: 1.45; margin-top: 8px; }
 `
 
 function receiptHtml(doc: ReceiptDoc): string {
@@ -172,11 +172,11 @@ function receiptHtml(doc: ReceiptDoc): string {
 
 const LABEL_CSS = `
   .sheet { display: grid; grid-template-columns: repeat(auto-fill, minmax(48mm, 1fr)); gap: 4mm; padding: 4mm; }
-  .label { border: 1px solid #c9ced6; border-radius: 6px; padding: 8px 10px; page-break-inside: avoid; }
+  .label { border: 1px solid #cdb787; border-radius: 6px; padding: 8px 10px; page-break-inside: avoid; }
   .label .name { font-size: 12px; font-weight: 600; line-height: 1.25; }
-  .label .note { font-size: 10px; color: #646b76; margin-top: 2px; }
+  .label .note { font-size: 10px; color: #67645d; margin-top: 2px; }
   .label .price { font-size: 18px; font-weight: 700; margin-top: 6px; }
-  .label .sku { font-size: 10px; color: #646b76; margin-top: 6px; }
+  .label .sku { font-size: 10px; color: #67645d; margin-top: 6px; }
   .label .barcode { font-size: 11px; letter-spacing: .12em; margin-top: 2px; }
 `
 

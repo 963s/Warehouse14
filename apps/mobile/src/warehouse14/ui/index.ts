@@ -3,6 +3,9 @@
  * owner screens are assembled from. All built on the RNR components
  * (@/components/ui/*) + the typed theme (useW14Theme); no native deps added.
  *
+ *   PaperGrain    — the aged-paper grain overlay behind the cream canvas (pure
+ *                   RN flecks, decorative, no native dep). One per screen root.
+ *   Hairline      — the fine warm-gold rule, the only divider weight (h/v, inset).
  *   RingGauge     — progress gauge (animated bar fallback, no react-native-svg).
  *   StatTile      — half-width KPI tile (label · value · gauge · hint).
  *   SectionCard   — titled panel with optional icon + action slot.
@@ -38,6 +41,10 @@
  *                   the keyboard-avoidance scaffold (KeyboardAvoidingScreen), and
  *                   the gesture wiring (Gesture/GestureDetector + swipeToDismiss).
  */
+// Antique primitives — the aged-paper depth layer.
+export { PaperGrain, type PaperGrainProps } from "./PaperGrain"
+export { Hairline, type HairlineProps } from "./Hairline"
+
 export { RingGauge, type RingGaugeProps } from "./RingGauge"
 export { StatTile, type StatTileProps, type StatTileTone } from "./StatTile"
 export { SectionCard, type SectionCardProps } from "./SectionCard"
@@ -58,11 +65,7 @@ export {
 // every list and detail screen renders its states the same way.
 export { ErrorState, type ErrorStateProps } from "./ErrorState"
 export { InlineError, type InlineErrorProps } from "./InlineError"
-export {
-  QueryBoundary,
-  type QueryBoundaryProps,
-  type QueryBoundaryEmpty,
-} from "./QueryBoundary"
+export { QueryBoundary, type QueryBoundaryProps, type QueryBoundaryEmpty } from "./QueryBoundary"
 export { ConnectionBanner, ConnectionBannerHost } from "./ConnectionBanner"
 
 export { FormField, type FormFieldProps } from "./FormField"

@@ -1,15 +1,21 @@
-# Warehouse14 Owner OS — Design Language
+# Warehouse14 Owner OS — Design Language (the Antique Identity)
 
 The single visual contract for the OWNER mobile app. Every later agent follows
 this. The goal is one feel across all surfaces: native, fluid, beautiful,
 instantly understandable, deep, trustworthy — an app you would believe shipped
-from Apple. Consistency is the whole point; do not invent parallel scales.
+from Apple, dressed as an aged jeweller's ledger.
+
+The house voice is ANTIQUE: warm aged-cream paper, ink that is never pure black,
+brass and gold accents, fine warm-gold hairlines on every edge. Luxurious, calm,
+crafted — explainable to a child, trustworthy to an adult. LIGHT is the hero: the
+app opens in the warm cream, not in the dark. DARK is a warm candlelit-walnut
+variant of the same palette — never the old black+yellow. Consistency is the
+whole point; do not invent parallel scales or a flat, cold look.
 
 Source of truth for token VALUES is `apps/mobile/src/warehouse14/theme.ts`
 (mirrored 1:1 into `apps/mobile/global.css` as `--w14-*` vars, then exposed as
 NativeWind utility tokens). This file is the source of truth for the RULES —
-how those tokens are used, plus motion and haptics, which have no code yet and
-must be built to match what is written here.
+how those tokens are used, plus motion and haptics.
 
 Hard rule that overrides taste: never hardcode a hex colour, a radius, a font
 family, or a magic spacing number in a component. Pull from `useW14Theme()` or
@@ -44,54 +50,63 @@ Defaults that keep surfaces identical:
 
 ---
 
-## 2. Radii — only three values exist
+## 2. Radii — only three values exist (antique, tight)
 
-From `theme.radii`. There is no other radius anywhere.
+From `theme.radii`. There is no other radius anywhere. The antique system keeps
+corners small and crafted, not bubbly.
 
 - `none` = 0 — full-bleed dividers, edge-to-edge media.
-- `button` = 8 — buttons, inputs, chips, badges, small controls.
-- `card` = 12 — cards, sheets, panels, the soft disc behind an empty-state icon
+- `button` = 4 — buttons, inputs, chips, badges, small controls.
+- `card` = 8 — cards, sheets, panels, the soft disc behind an empty-state icon
   (a circle = `rounded-full`, the one allowed exception, only for icon discs and
   avatars).
 
-NativeWind mapping is pinned in `global.css`: `rounded-md` → 8, `rounded-xl` /
-`rounded-2xl` → 12. Do not reach for `rounded-lg`/`rounded-3xl` expecting a new
-radius — they resolve into the allowed set on purpose.
+NativeWind mapping is pinned in `global.css`: `rounded-md` → 4, `rounded-lg` /
+`rounded-xl` / `rounded-2xl` → 8. Do not reach for `rounded-3xl` expecting a new
+radius — everything resolves into the allowed set on purpose.
 
 ---
 
-## 3. Type ramp — Inter + JetBrains Mono
+## 3. Type ramp — Cormorant Garamond (display) + Inter (body) + JetBrains Mono
 
 Families load in the root layout via `theme.fonts`; never name a raw font
-string. Two families only:
+string. Three families, each with one job:
 
-- Inter — all display and body text. Weights: `body` 400, `medium` 500,
-  `semibold` 600, `bold` 700.
+- Cormorant Garamond — the antique DISPLAY serif. Screen titles, the hero KPI,
+  section HEADLINES that sit on the canvas — the elegant aged-paper voice. Use
+  `font-display` (500), `font-display-semibold` (600), `font-display-bold`
+  (700). It is a high-contrast serif that reads light at small sizes, so NEVER
+  use it below the section-headline step (16) and never for body or meta.
+- Inter — all body and UI text, and the small in-card section title. Calm and
+  legible against the serif. Weights: `body` 400, `medium` 500, `semibold` 600,
+  `bold` 700.
 - JetBrains Mono — numerals that must align in a column (money tables, weights,
   serial numbers, IDs): `mono` 400, `monoMedium` 500. Mono is for tabular
   numerics, not prose.
 
-The ramp (size · weight · use). Sizes are the NativeWind text classes already
-used by the spine:
+The ramp (size · family/weight · use). Sizes are the NativeWind text classes:
 
-| step          | class / size      | weight        | use                                         |
-| ------------- | ----------------- | ------------- | ------------------------------------------- |
-| Hero KPI      | `text-2xl` (24)   | bold 700      | the single big number on a `StatTile`        |
-| Screen title  | `text-xl` (20)    | bold 700      | screen header                                |
-| Section title | `text-base` (16)  | semibold 600  | `SectionCard` / group headers                |
-| Body          | `text-sm`–`base`  | regular 400   | row titles, descriptions                     |
-| Label / meta  | `text-xs` (12)    | regular 400   | captions, hints — always `text-muted-foreground` |
-| Micro         | `text-2xs` (11)   | regular 400   | the tiniest hint under a value               |
+| step           | class / size     | family · weight                | use                                              |
+| -------------- | ---------------- | ------------------------------ | ------------------------------------------------ |
+| Display        | `text-3xl` (28)  | Cormorant `font-display-bold`  | the big hero title (a splash, a screen overline) |
+| Hero KPI       | `text-2xl` (26)  | Cormorant `font-display-semibold` · or `font-mono-medium` for a pure number | the single big number on a `StatTile` |
+| Screen title   | `text-2xl` (22)  | Cormorant `font-display-semibold` | screen header                                  |
+| Section title  | `text-base` (16) | Inter `font-semibold`          | `SectionCard` in-card headers (kept Inter — small) |
+| Body           | `text-sm`–`base` | Inter regular 400              | row titles, descriptions                          |
+| Label / meta   | `text-xs` (12)   | Inter regular 400              | captions, hints — always `text-muted-foreground`  |
+| Micro          | `text-2xs` (11)  | Inter regular 400              | the tiniest hint under a value                     |
 
-How weight resolves to a face: Inter loads as four DISTINCT named faces, so a
+How weight resolves to a face: each family loads as DISTINCT named faces, so a
 numeric `font-weight` alone does not pick them on native. `global.css` pins each
-weight class to its face — `font-medium` → Inter 500, `font-semibold` → 600,
-`font-bold` → 700 — so `text-… font-semibold` renders the real SemiBold. Mono is
-a separate family: use `font-mono` (IDs/SKUs) or `font-mono-medium` (emphasised
-numerics — KPI values, totals) and NEVER pair mono with an Inter weight class,
-which would re-select the Inter face and lose the tabular figures. The KPI hero
-value is `font-mono-medium text-2xl`; the size carries the emphasis. The `type`
-object on `useW14Theme()` mirrors the ramp for the rare style-prop case.
+weight class to its face — `font-display-semibold` → Cormorant 600,
+`font-semibold` → Inter 600, `font-bold` → Inter 700 — so the class renders the
+real face. NEVER pair a display class with an Inter weight class (or mono),
+which would re-select the other family and lose the serif. Mono is a separate
+family: use `font-mono` (IDs/SKUs) or `font-mono-medium` (emphasised numerics —
+KPI values, totals). A KPI hero VALUE that is a pure number stays
+`font-mono-medium` for tabular figures; a KPI that reads as a phrase (a rank, a
+streak) uses the Cormorant display step. The `type` object on `useW14Theme()`
+mirrors the ramp for the rare style-prop case.
 
 Rules: one hero number per tile. Captions and hints are always
 `text-muted-foreground`. `numberOfLines` everything that can overflow (titles 1,
@@ -106,31 +121,47 @@ colour — brass for a leading/section icon, `mutedForeground` for a chevron,
 
 ---
 
-## 4. Colour — brass, verdigris, gold, and the honest palette
+## 4. Colour — brass, sage, terracotta, gold, on aged cream
 
 Pull from `useW14Theme().colors`. Light and dark palettes both live in
 `theme.ts` and flip on the OS scheme; never branch on `isDark` to pick a colour
-that the palette already resolves.
+that the palette already resolves. The text-bearing colours are AA-safe antique
+variants; the pure brand hues (`gold`, and the bright `#c0492f`/`#3f6b54`) are
+decoration only.
+
+The cream is LAYERED for depth, not one flat fill:
+
+- `background` — the aged cream canvas (`#efece3` light · walnut `#17150f` dark).
+- `card` — the raised cream leaf (`#faf8f2` · `#1f1c16`).
+- `raised` (`bg-raised`) — the SUNKEN surface: inputs, wells, a deep tray
+  (`#e8e4da` · `#14110c`). Use it to push a field below the card plane.
+
+Over the canvas sits the aged-paper grain (the `PaperGrain` primitive on native,
+the `paper` className on web) — faint warm flecks, decoration only, never
+touching contrast.
 
 Role colours and their ONE meaning each — do not cross the wires:
 
-- `primary` — BRASS (`#9a751f` light · `#d8b14e` dark). The primary action and
+- `primary` — BRASS (`#7e6228` light · `#d8b14e` dark). The primary action and
   the brand. Primary buttons, active states, the leading icon on a `SectionCard`,
   the default `StatTile` value, focus `ring`. This is the colour that carries
-  text-bearing emphasis. When in doubt, brass.
-- `verdigris` — GREEN POSITIVE (`#157a4b` light · `#2fb277` dark). Success,
-  positive deltas, "paid / done / in stock", confirmation banners. Mapped to the
-  NativeWind `accent` token. Profit up is verdigris; profit down is
-  `destructive` — never colour a real loss green.
-- `gold` (`#bf9430`) — DECORATIVE ONLY. Hairline flourishes, a celebratory
-  shimmer, a gauge accent on a milestone. NEVER text, never a text-bearing fill,
-  never an icon a user must read. If a glyph or label sits on it, it is wrong —
-  use brass. This is a hard rule carried from the web tokens.
-- `destructive` — WAX RED (`#d63d49` / `#e15862`). Errors, irreversible/danger
-  actions, real negative numbers.
-- `foreground` / `mutedForeground` — primary text / captions+hints+meta.
-- `background` / `card` — app canvas (parchment) / panels.
-- `border` — hairline rules (1px), the only divider weight.
+  text-bearing emphasis, and it clears AA as text and as a fill with cream text.
+  When in doubt, brass — never flat gold.
+- `verdigris` — SAGE GREEN POSITIVE (`#3a6450` light · `#5fae89` dark). Success,
+  positive deltas, "paid / done / in stock", a price moving UP, confirmation
+  banners. Mapped to the NativeWind `accent` token. Profit up is sage; profit
+  down is `destructive` — never colour a real loss green.
+- `destructive` — TERRACOTTA (`#b8442b` light · `#e07a62` dark). Errors,
+  irreversible/danger actions, real negative numbers, a price moving DOWN.
+- `gold` (`#bf9430`) and the `border` hairline (`#cdb787`) — DECORATIVE ONLY.
+  Hairline flourishes on edges, a celebratory shimmer, a gauge accent on a
+  milestone. NEVER text, never a text-bearing fill, never an icon a user must
+  read. If a glyph or label sits on it, it is wrong — use brass. Hard rule.
+- `foreground` / `mutedForeground` — warm ink (`#17150f`, never pure black) /
+  faded ink for captions+hints+meta.
+- `border` — the fine warm-gold HAIRLINE (1px), the only divider weight. Use the
+  `Hairline` primitive (native) or `hairline` / `hairline-t` / `hairline-b`
+  classes (web) for a standalone rule.
 
 Honesty rule (absolute, overrides design): a number shown to the owner must be a
 real value from a real endpoint. If the source is unavailable, render a locked or
@@ -146,19 +177,26 @@ copy throughout; comma decimal, dot thousands.
 
 ---
 
-## 5. Elevation — flat, one soft shadow
+## 5. Elevation — flat paper, the gold hairline, one whisper of shadow
 
-Warehouse14 is a flat, paper-calm surface. There is exactly one elevation step
+Warehouse14 is a flat, aged-paper surface. Depth comes from LAYERING (the cream
+canvas → card leaf → sunken `raised` well), the fine GOLD HAIRLINE on edges, and
+the paper grain — NOT from heavy shadows. There is exactly one soft shadow step
 and it is already on the RNR `Card`: `shadow-sm shadow-black/5` over a 1px
-`border`. Cards do not stack shadows or get heavier on press.
+hairline `border`. Cards do not stack shadows or get heavier on press.
 
-- Resting card: 1px `border` + the single soft shadow. That is the maximum.
+- The canvas: a screen root carries the aged-paper grain (the `PaperGrain`
+  primitive on native; the `paper` class on web), behind the content.
+- Resting card: a 1px gold hairline `border` + the single soft shadow. That is
+  the maximum. The hairline, not the shadow, is what reads as the card's edge.
+- A standalone divider is the `Hairline` primitive (native) or `hairline-b`
+  (web) — the only divider weight; never a thick rule or a second shadow.
 - Pressed card/row: do NOT raise elevation — signal press with the motion +
   haptic below (a brief scale-down and an opacity dip), not a bigger shadow.
 - Floating layers (sheets, dialogs, the sticky save bar): same `card` fill, a
-  top `border` hairline, and a scrim behind modals (`background` at ~50% via an
-  overlay) — not a darker drop shadow. Depth comes from layering and motion, not
-  from shadow weight.
+  top hairline (`hairline-t` / `<Hairline />`), and a scrim behind modals
+  (`background` at ~50% via an overlay) — not a darker drop shadow. Depth comes
+  from layering, the hairline, and motion, not from shadow weight.
 
 ---
 
@@ -236,6 +274,13 @@ The owner surfaces are assembled from `apps/mobile/src/warehouse14/ui` (exported
 via `index.ts`), built on the RNR primitives (`@/components/ui/*`) and the typed
 theme. Do not rebuild these; compose them.
 
+- `PaperGrain` — the aged-paper grain overlay. Drop once as the first child of a
+  screen root that fills the canvas, behind the content, so the cream reads as
+  aged paper, not a flat fill. Pure decoration (no touch, hidden from a11y), no
+  native dependency. `surface="card"` for the fainter over-a-card variant.
+- `Hairline` — the fine warm-gold rule, the only divider weight. Horizontal by
+  default; `vertical` for an inline rule, `inset` for a list-row separator that
+  starts under the text.
 - `StatTile` — half-width KPI tile (label · value · optional `RingGauge` · hint).
   Caller pre-formats cents via `formatCents`. `tone` = primary | accent | muted;
   `muted` dims when the live source is unavailable (honesty rule).
@@ -282,7 +327,11 @@ German.
   NativeWind.
 - Money via `formatCents` (cents in, de-DE EUR out); dates/weights de-DE; copy
   German.
-- Gold appears only as decoration, never under text.
+- Headings use the Cormorant display class (`font-display*`); body + meta stay
+  Inter; tabular numbers stay mono. No family is paired with another's weight.
+- Gold and the hairline appear only as decoration, never under text.
+- A screen carries the `PaperGrain` canvas; dividers are the `Hairline`, the
+  only divider weight. Depth is layering + hairline, never a heavy shadow.
 - Every shown number is real from an endpoint, or a locked/empty/`muted` state.
 - Reuses the spine components; does not fork them.
 - Motion uses the four durations + named easings; press = scale 0.97 + opacity.

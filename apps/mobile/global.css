@@ -14,7 +14,7 @@
 @source "./src/**/*.{ts,tsx}";
 
 /* ──────────────────────────────────────────────────────────────────────────
- * Warehouse14 design tokens → shadcn/RNR CSS variables.
+ * Warehouse14 design tokens → shadcn/RNR CSS variables — THE ANTIQUE IDENTITY.
  *
  * Source of truth: apps/mobile/src/warehouse14/theme.ts (hex values mirrored
  * 1:1 here — NOT reinvented). Tailwind v4 accepts full color values, so the
@@ -22,55 +22,71 @@
  * `@theme inline` maps them to the `--color-*` utility tokens so dark mode
  * switches at runtime (web: CSS media query, native: RN Appearance).
  *
- * RULES carried from the web tokens:
- *   • gold #bf9430 is DECORATIVE ONLY — never a text/fill token here.
- *   • brand-positive/success = verdigris (#157a4b / #2fb277) → `accent`.
- *   • PRIMARY action = brass (#9a751f / #d8b14e), never gold.
+ * The house voice: aged warm cream paper, ink that is never pure black, brass
+ * and gold accents, fine warm-gold hairlines on every edge. LIGHT is the hero
+ * (the app opens here); DARK is a warm candlelit-walnut variant — never the old
+ * black+yellow.
+ *
+ * RULES carried from the brand tokens:
+ *   • gold #bf9430 and the hairline #cdb787 are DECORATIVE ONLY — never a
+ *     text/fill token. Brass (`primary`) carries text-bearing emphasis.
+ *   • positive / price-up = sage (#3a6450 / #5fae89) → `accent`.
+ *   • destructive / price-down = terracotta (#b8442b / #e07a62).
+ *   • PRIMARY action = brass (#7e6228 / #d8b14e), never flat gold.
  * ────────────────────────────────────────────────────────────────────────── */
 :root {
-  --w14-background: #f5f6f8;
-  --w14-foreground: #16191d;
-  --w14-card: #ffffff;
-  --w14-card-foreground: #16191d;
-  --w14-popover: #ffffff;
-  --w14-popover-foreground: #16191d;
-  --w14-primary: #8a6819; /* brass, AA on parchment (theme.ts lightPalette) */
-  --w14-primary-foreground: #ffffff;
-  --w14-secondary: #eef0f3;
-  --w14-secondary-foreground: #16191d;
-  --w14-muted: #eef0f3;
-  --w14-muted-foreground: #646b76;
-  --w14-accent: #157a4b;
-  --w14-accent-foreground: #ffffff;
-  --w14-destructive: #cf3742; /* wax red, AA for small destructive text */
-  --w14-destructive-foreground: #ffffff;
-  --w14-border: #e3e6eb;
-  --w14-input: #e3e6eb;
-  --w14-ring: #8a6819;
-  --w14-radius: 12px;
+  --w14-background: #efece3; /* aged warm cream — the paper canvas */
+  --w14-foreground: #17150f; /* warm near-black ink, never pure #000 */
+  --w14-card: #faf8f2; /* raised cream leaf */
+  --w14-card-foreground: #17150f;
+  --w14-popover: #faf8f2;
+  --w14-popover-foreground: #17150f;
+  --w14-primary: #7e6228; /* brass-deep, AA as text + as a fill (theme.ts lightPalette) */
+  --w14-primary-foreground: #faf8f2;
+  --w14-secondary: #e8e4da; /* sunken cream well / input tray */
+  --w14-secondary-foreground: #17150f;
+  --w14-muted: #e8e4da;
+  --w14-muted-foreground: #67645d; /* faded ink — AA with margin */
+  --w14-accent: #3a6450; /* sage — positive / price-up */
+  --w14-accent-foreground: #faf8f2;
+  --w14-destructive: #b8442b; /* terracotta — destructive / price-down, AA */
+  --w14-destructive-foreground: #faf8f2;
+  --w14-border: #cdb787; /* fine warm-gold hairline */
+  --w14-input: #e8e4da;
+  --w14-ring: #7e6228;
+  --w14-radius: 8px;
+
+  /* Decorative-only flourish: gold. NEVER under text — exposed so a shimmer or
+   * milestone accent can pull it without re-hardcoding. */
+  --w14-gold: #bf9430;
+  /* The sunken/raised surface, exposed for the `bg-raised` utility. */
+  --w14-raised: #e8e4da;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --w14-background: #131519;
-    --w14-foreground: #e9ebee;
-    --w14-card: #1b1e24;
-    --w14-card-foreground: #e9ebee;
-    --w14-popover: #1b1e24;
-    --w14-popover-foreground: #e9ebee;
-    --w14-primary: #d8b14e;
+    --w14-background: #17150f; /* deep ink-brown walnut */
+    --w14-foreground: #e9e7e1; /* warm aged cream, never cold white */
+    --w14-card: #1f1c16;
+    --w14-card-foreground: #e9e7e1;
+    --w14-popover: #1f1c16;
+    --w14-popover-foreground: #e9e7e1;
+    --w14-primary: #d8b14e; /* bright brass */
     --w14-primary-foreground: #1a1407;
-    --w14-secondary: #242831;
-    --w14-secondary-foreground: #e9ebee;
-    --w14-muted: #242831;
-    --w14-muted-foreground: #939aa3;
-    --w14-accent: #2fb277;
-    --w14-accent-foreground: #131519;
-    --w14-destructive: #e15862;
-    --w14-destructive-foreground: #131519;
-    --w14-border: #363c47; /* lifted for a legible hairline (theme.ts darkPalette) */
-    --w14-input: #363c47;
+    --w14-secondary: #14110c; /* sunken walnut well */
+    --w14-secondary-foreground: #e9e7e1;
+    --w14-muted: #14110c;
+    --w14-muted-foreground: #a39d90; /* faded warm grey — AA */
+    --w14-accent: #5fae89; /* warm sage on dark */
+    --w14-accent-foreground: #17150f;
+    --w14-destructive: #e07a62; /* warm terracotta on dark */
+    --w14-destructive-foreground: #17150f;
+    --w14-border: #4a4029; /* warm-gold hairline on walnut — calm, legible */
+    --w14-input: #4a4029;
     --w14-ring: #d8b14e;
+
+    --w14-gold: #bf9430;
+    --w14-raised: #14110c;
   }
 }
 
@@ -95,18 +111,27 @@
   --color-input: var(--w14-input);
   --color-ring: var(--w14-ring);
 
-  /* Radii — Warehouse14 allows only {0, button 8, card 12}. The RNR Card uses
-   * `rounded-xl` and the Button uses `rounded-md`, so pin those to 12 and 8. */
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 10px;
-  --radius-xl: 12px;
-  --radius-2xl: 12px;
+  /* Decorative flourish + the sunken surface as first-class utility colours
+   * (`text-gold`/`bg-gold` — decorative only; `bg-raised` for sunken wells). */
+  --color-gold: var(--w14-gold);
+  --color-raised: var(--w14-raised);
 
-  /* Fonts (already loaded by expo-font in the root layout). The base family is
-   * Inter Regular; the weighted faces are selected per-weight by the @utility
-   * overrides below — see the note there. */
+  /* Radii — the ANTIQUE scale allows only {0, button 4, card 8}. Tight, crafted
+   * corners, not bubbly. The RNR Card uses `rounded-xl` and the Button uses
+   * `rounded-md`, so pin those to 8 and 4. `rounded-lg` folds into the card
+   * radius so the "only three radii" rule holds. */
+  --radius-sm: 4px;
+  --radius-md: 4px;
+  --radius-lg: 8px;
+  --radius-xl: 8px;
+  --radius-2xl: 8px;
+
+  /* Fonts (loaded by expo-font in the root layout). Body family is Inter
+   * Regular; weighted faces are selected per-weight by the @utility overrides
+   * below. The display family is Cormorant Garamond — the antique serif used
+   * for headings via `font-display*` (see below). */
   --font-sans: "Inter_400Regular";
+  --font-serif: "CormorantGaramond_500Medium";
   --font-mono: "JetBrainsMono_400Regular";
 
   /* Micro step (11px) — the tiniest hint under a value (DESIGN.md §3). Exposed
@@ -116,17 +141,13 @@
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
- * Type ramp — bind weight to the real Inter face (DESIGN.md §3).
+ * Type ramp — bind weight to the real loaded face (DESIGN.md §3).
  *
- * On native, Inter is loaded as four DISTINCT named faces (Inter_400Regular …
- * Inter_700Bold). A numeric `font-weight` alone does NOT select them — RN can't
- * synthesise a true bold from a single named file, so `font-bold` over
- * `--font-sans: Inter_400Regular` would render Regular glyphs. These utilities
- * pin each weight class to the matching face so the ramp renders truly. They
- * also keep `font-weight` set so the web (react-native-web) export stays correct.
- *
- * Because 41 surfaces already use `font-medium / font-semibold / font-bold`,
- * overriding the utilities here fixes the whole app with no per-file churn.
+ * On native, each weight is loaded as a DISTINCT named face. A numeric
+ * `font-weight` alone does NOT select them — RN can't synthesise a true bold
+ * from a single named file — so each weight utility pins the matching face.
+ * Overriding the utilities here fixes the whole app with no per-file churn.
+ * `font-weight` is kept set so the web (react-native-web) export stays correct.
  * ────────────────────────────────────────────────────────────────────────── */
 @utility font-normal {
   font-family: "Inter_400Regular";
@@ -144,14 +165,33 @@
   font-family: "Inter_700Bold";
   font-weight: 700;
 }
+
+/* Cormorant Garamond — the antique DISPLAY serif. Screen titles, the hero KPI,
+ * section headlines: the elegant aged-paper voice of the house. Cormorant loads
+ * as distinct named faces too, so the weight is pinned to its own file. Use
+ * `font-display` (medium), `font-display-semibold` (600), `font-display-bold`
+ * (700). NEVER pair these with an Inter weight class — that would re-select the
+ * Inter face and lose the serif. Headings only; body stays Inter for legibility
+ * at small sizes. */
+@utility font-display {
+  font-family: "CormorantGaramond_500Medium";
+  font-weight: 500;
+}
+@utility font-display-semibold {
+  font-family: "CormorantGaramond_600SemiBold";
+  font-weight: 600;
+}
+@utility font-display-bold {
+  font-family: "CormorantGaramond_700Bold";
+  font-weight: 700;
+}
+
 /* JetBrains Mono — tabular figures for money/IDs that align in a column.
  *
  * Mono is a SEPARATE family with its own loaded faces, so it must NOT be paired
- * with an Inter weight utility (`font-bold` etc.) — that would re-select the
- * Inter face and lose the tabular figures. Use `font-mono` (regular) for IDs/
- * SKUs and `font-mono-medium` for emphasised numerics (KPI values, totals).
- * These own both family and weight, so a mono number never needs a second
- * weight class. */
+ * with an Inter/Cormorant weight utility — that would re-select the other face
+ * and lose the tabular figures. Use `font-mono` (regular) for IDs/SKUs and
+ * `font-mono-medium` for emphasised numerics (KPI values, totals). */
 @utility font-mono {
   font-family: "JetBrainsMono_400Regular";
   font-weight: 400;
@@ -159,4 +199,64 @@
 @utility font-mono-medium {
   font-family: "JetBrainsMono_500Medium";
   font-weight: 500;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Antique primitives — the fine gold hairline + the subtle paper grain.
+ *
+ * These give every surface its aged depth without each component re-deriving a
+ * colour or texture. They are pure className utilities so a card, sheet, or
+ * screen background composes them with no extra dependency.
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/* `hairline` — a 1px fine warm-gold rule on every edge. The ONLY divider weight
+ * in the antique system (DESIGN.md §5). Use on cards, rows, sheets, the save
+ * bar. It is `border` already pinned to the hairline colour; this names the
+ * intent and guarantees the 1px hairline width regardless of platform default. */
+@utility hairline {
+  border-width: 1px;
+  border-color: var(--w14-border);
+}
+/* A hairline only along the top edge — for sticky bars, sheet tops, the tab bar
+ * lip. Depth comes from layering + this rule, never a heavy shadow. */
+@utility hairline-t {
+  border-top-width: 1px;
+  border-top-color: var(--w14-border);
+}
+/* A hairline only along the bottom edge — for list-row separators and headers. */
+@utility hairline-b {
+  border-bottom-width: 1px;
+  border-bottom-color: var(--w14-border);
+}
+
+/* `paper` — the subtle aged-paper grain on a background. A faint warm tooth
+ * over the cream (and a faint amber over the walnut in dark), layered so the
+ * canvas reads as aged paper, not a flat fill. Implemented as soft, near-
+ * invisible radial flecks composited over the surface colour; it is decorative
+ * texture only and never touches contrast. On native (no CSS gradients on every
+ * RN view) a screen uses the `<PaperGrain>` primitive instead; this utility is
+ * for the react-native-web export and any web preview so the two stay in sync. */
+@utility paper {
+  background-color: var(--w14-background);
+  background-image:
+    radial-gradient(rgba(120, 98, 40, 0.035) 0.5px, transparent 0.5px),
+    radial-gradient(rgba(120, 98, 40, 0.025) 0.5px, transparent 0.5px);
+  background-size:
+    3px 3px,
+    5px 5px;
+  background-position:
+    0 0,
+    1px 2px;
+}
+@utility paper-card {
+  background-color: var(--w14-card);
+  background-image:
+    radial-gradient(rgba(120, 98, 40, 0.03) 0.5px, transparent 0.5px),
+    radial-gradient(rgba(120, 98, 40, 0.02) 0.5px, transparent 0.5px);
+  background-size:
+    3px 3px,
+    5px 5px;
+  background-position:
+    0 0,
+    1px 2px;
 }

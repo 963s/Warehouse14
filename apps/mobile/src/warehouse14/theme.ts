@@ -1,89 +1,119 @@
 /**
- * Warehouse14 design tokens, ported to React Native.
+ * Warehouse14 design tokens — the ANTIQUE IDENTITY, ported to React Native.
  *
- * The web app's source of truth is packages/ui-kit/src/tokens.css. The ui-kit
- * itself is DOM/CSS and cannot run in React Native, so only the token VALUES
- * are mirrored here as a typed theme — no web styling is imported.
+ * The house voice is an aged jeweller's ledger: warm cream paper, ink that is
+ * never pure black, brass and gold accents, fine gold hairlines on every edge.
+ * The brand lives in `packages/ui-kit` and the storefront (warehouse14-onlineshop);
+ * those values are mirrored here as a typed theme — no web styling is imported.
  *
- * Rules carried over from the web tokens:
- *   • Colour only from this palette.
- *   • Radii ONLY {0, button 8, card 12}.
+ * The mirror into `apps/mobile/global.css` (`--w14-*` vars → NativeWind utility
+ * tokens) is 1:1 with this file. Token NAMES are stable across the redesign, so
+ * every surface inherits the new look with no per-file churn.
+ *
+ * Rules carried over from the brand:
+ *   • Colour only from this palette. The cream is AGED and warm, layered for
+ *     depth — never flat, never the old black+yellow.
+ *   • Radii small: {0, button 4, card 8} — antique, not bubbly.
  *   • Spacing on a 4px grid.
  *   • Touch target ≥44px; money-path actions ≥48px.
- *   • Type = Inter (display + body) + JetBrains Mono (mono). Cormorant is a
- *     legacy comment only — not used.
- *   • GOLD (#bf9430) is DECORATIVE ONLY — never text or a text-bearing fill.
- *     Use brass `accent` for anything carrying text.
+ *   • Type = Cormorant Garamond (display/headings) + Inter (body) +
+ *     JetBrains Mono (tabular numerals).
+ *   • GOLD (#bf9430) and the HAIRLINE (#cdb787) are DECORATIVE ONLY — never
+ *     text, never a text-bearing fill. Use brass (`primary`) for emphasis text.
+ *   • Text-bearing colours are darkened antique variants that clear WCAG AA on
+ *     BOTH the cream bg and the card; the pure brand hues stay for decoration.
  */
 import { useColorScheme } from "react-native"
 
 export interface Palette {
-  /** app background (--w14-parchment) */
+  /** app background — aged warm cream (--w14-paper) */
   background: string
-  /** cards / panels (--w14-parchment-2) */
+  /** cards / panels — the raised cream leaf (--w14-paper-card) */
   card: string
-  /** primary text (--w14-ink) */
+  /** sunken surface — inputs, wells, deep tray (--w14-paper-raised) */
+  raised: string
+  /** primary text — warm near-black ink (--w14-ink) */
   foreground: string
-  /** captions / hints / meta (--w14-ink-faded) */
+  /** captions / hints / meta — faded ink (--w14-ink-faded) */
   mutedForeground: string
-  /** primary action fill, brass (--w14-accent) */
+  /** primary action fill, brass-deep; carries white text at AA (--w14-brass) */
   primary: string
   /** text/icon on the primary fill */
   primaryForeground: string
-  /** positive / brand verdigris (--w14-verdigris) */
+  /** positive / brand sage-green — AA as text + as a fill (--w14-sage) */
   verdigris: string
-  /** destructive (--w14-wax-red) */
+  /** destructive / price-down terracotta — AA as text + as a fill (--w14-terracotta) */
   destructive: string
-  /** hairline borders (--w14-rule) */
+  /** hairline borders — fine warm gold rule (--w14-hairline) */
   border: string
-  /** focus ring = accent */
+  /** focus ring = brass */
   ring: string
   /** DECORATIVE accent only — never behind text (--w14-gold) */
   gold: string
 }
 
+/**
+ * LIGHT — the HERO theme. Warm aged cream paper, warm ink, brass + gold.
+ * This is the default; the app opens here, not in the dark.
+ *
+ * Layered cream for depth (not one flat fill):
+ *   paper #efece3 (canvas) · card #faf8f2 (raised leaf) · raised #e8e4da (sunken
+ *   well / input). The grain primitive (global.css) adds the subtle paper tooth.
+ */
 export const lightPalette: Palette = {
-  background: "#f5f6f8",
-  card: "#ffffff",
-  foreground: "#16191d",
-  mutedForeground: "#646b76", // 4.97:1 on bg — AA
-  // Brass, darkened from the web #9a751f (which was only 3.93:1 on the parchment
-  // canvas) so text-bearing brass clears WCAG AA (4.5:1) on BOTH bg and card —
-  // 4.77 / 5.15. DESIGN.md §4 makes brass the text-emphasis colour, so it must
-  // pass as normal text, not just large.
-  primary: "#8a6819",
-  primaryForeground: "#ffffff", // 5.15:1 on the new brass fill — AA
-  verdigris: "#157a4b", // 4.96:1 on bg — AA
-  // Wax red, nudged darker from #d63d49 (4.20:1) to clear AA for the small
-  // destructive text in InlineError/FormField — 4.54 / 4.91.
-  destructive: "#cf3742",
-  border: "#e3e6eb",
-  ring: "#8a6819",
-  gold: "#bf9430", // decorative only — never under text, so not contrast-bound
+  background: "#efece3",
+  card: "#faf8f2",
+  raised: "#e8e4da",
+  foreground: "#17150f", // 15.45:1 on bg — warm near-black, never pure #000
+  // Faded ink for captions/hints. Brand faded is #6e6b64 (exactly 4.5:1 — too
+  // tight); nudged to #67645d so meta clears AA with margin on bg AND card.
+  mutedForeground: "#67645d", // 5.00:1 bg · 5.56:1 card — AA
+  // Brass-deep. The brand brass (#9a7726/#bf9430 gold) is decorative; the
+  // text/fill brass is darkened so it clears AA as normal text on bg AND card,
+  // and so white text on the brass fill clears AA too.
+  primary: "#7e6228", // 4.85:1 bg · 5.40:1 card — AA as text
+  primaryForeground: "#faf8f2", // warm cream on brass — 5.4:1 — AA
+  // Sage green = positive / price-up. AA as text and as a fill with cream text.
+  verdigris: "#3a6450", // 5.70:1 bg · 6.34:1 card · cream-on 6.7:1 — AA
+  // Terracotta = destructive / price-down. Brand terracotta #c0492f is the
+  // decorative price-down chip; the text-bearing variant is darkened to AA.
+  destructive: "#b8442b", // 4.56:1 bg · 5.07:1 card · cream-on 5.4:1 — AA
+  border: "#cdb787", // fine warm-gold hairline — decorative, not contrast-bound
+  ring: "#7e6228",
+  gold: "#bf9430", // decorative flourish only — never under text
 }
 
+/**
+ * DARK — a WARM antique dark. Deep ink-brown paper, aged cream text, the same
+ * brass + gold. NEVER the old #131519 black+yellow; this is candlelit walnut.
+ *
+ *   paper #17150f (canvas) · card #1f1c16 (raised) · raised #14110c (sunken).
+ */
 export const darkPalette: Palette = {
-  background: "#131519",
-  card: "#1b1e24",
-  foreground: "#e9ebee", // 15.30:1 on bg — AA
-  mutedForeground: "#939aa3", // 6.43:1 on bg — AA
-  primary: "#d8b14e", // 8.98:1 on bg — AA
-  primaryForeground: "#1a1407", // 9.00:1 on the brass fill — AA
-  verdigris: "#2fb277", // 6.75:1 on bg — AA
-  destructive: "#e15862", // 5.03:1 on bg — AA
-  // Lifted from #2c313a (1.28:1 on card — nearly invisible) to #363c47 so the
-  // single hairline that carries all structure on the dark canvas is actually
-  // legible (1.65/1.51) while staying calm and flat. DESIGN.md §5.
-  border: "#363c47",
+  background: "#17150f",
+  card: "#1f1c16",
+  raised: "#14110c",
+  foreground: "#e9e7e1", // 14.76:1 on bg — warm aged cream, never cold white
+  mutedForeground: "#a39d90", // 6.76:1 on bg — faded warm grey
+  primary: "#d8b14e", // bright brass — 9.0:1 on bg — AA
+  primaryForeground: "#1a1407", // deep ink on the brass fill — 9.0:1 — AA
+  verdigris: "#5fae89", // warm sage, lifted for the dark canvas — 7.4:1 — AA
+  destructive: "#e07a62", // warm terracotta, lifted — 6.4:1 on bg — AA
+  // The single hairline that carries structure on the dark canvas: a dim warm
+  // gold, lifted just enough to read against the walnut without glowing.
+  border: "#4a4029", // warm-gold hairline on dark — calm, legible
   ring: "#d8b14e",
-  gold: "#bf9430", // decorative only
+  gold: "#bf9430", // decorative flourish only
 }
 
-/** Radii — the only three allowed values. */
+/**
+ * Radii — antique, small. {0, button 4, card 8}. The brand storefront uses tight
+ * corners; this is a sharper, more crafted feel than the old 8/12.
+ */
 export const radii = {
   none: 0,
-  button: 8,
-  card: 12,
+  button: 4,
+  card: 8,
 } as const
 
 /** 4px spacing grid. */
@@ -106,9 +136,7 @@ export const touch = {
 } as const
 
 /**
- * Icon sizing — one scale, so a glyph is never a raw magic number (DESIGN.md
- * §3 calls for consistent icon sizing across the kit). Lucide takes a `size`
- * number; pull from here.
+ * Icon sizing — one scale, so a glyph is never a raw magic number.
  *
  *   xs 14 — a tiny glyph beside small text (a retry link, the offline bar).
  *   sm 16 — control / action glyph (buttons, inline-error heading, the X).
@@ -124,8 +152,18 @@ export const icon = {
   xl: 26,
 } as const
 
-/** Font families loaded in the root layout (see fonts.ts). */
+/**
+ * Font families loaded in the root layout (see fonts.ts).
+ *
+ *   display* — Cormorant Garamond, the antique DISPLAY serif. Screen titles,
+ *     the hero KPI, section headlines. The elegant aged-paper voice.
+ *   body/medium/semibold/bold — Inter, all UI + body text.
+ *   mono/monoMedium — JetBrains Mono, tabular numerals (money, weights, IDs).
+ */
 export const fonts = {
+  display: "CormorantGaramond_500Medium",
+  displaySemibold: "CormorantGaramond_600SemiBold",
+  displayBold: "CormorantGaramond_700Bold",
   body: "Inter_400Regular",
   medium: "Inter_500Medium",
   semibold: "Inter_600SemiBold",
@@ -135,19 +173,19 @@ export const fonts = {
 } as const
 
 /**
- * The type ramp (DESIGN.md §3), typed so a surface can read a step instead of
- * re-deriving a `fontSize`. The NativeWind `className` form stays the primary
- * way to set type; this mirror is for the rare style-prop case (e.g. an
- * animated value) so the ramp is never re-invented with a magic number.
+ * The type ramp, typed so a surface can read a step instead of re-deriving a
+ * `fontSize`. The NativeWind `className` form stays primary; this mirror is for
+ * the rare style-prop case (e.g. an animated value).
  *
- * Each step is the rendered size in px and the Inter face that the matching
- * weight class resolves to (see global.css). `micro` is the 11px hint, exposed
- * to NativeWind as `text-2xs`.
+ * Headings are the Cormorant display serif (the antique voice); body/meta are
+ * Inter. Cormorant is a high-contrast serif that reads light at small sizes, so
+ * display steps are sized up a touch and never used below the section heading.
  */
 export const type = {
-  heroKpi: { size: 24, family: fonts.bold },
-  title: { size: 20, family: fonts.bold },
-  section: { size: 16, family: fonts.semibold },
+  display: { size: 28, family: fonts.displayBold }, // hero screen title / splash
+  heroKpi: { size: 26, family: fonts.displaySemibold }, // the single big number
+  title: { size: 22, family: fonts.displaySemibold }, // screen header
+  section: { size: 16, family: fonts.semibold }, // SectionCard / group headers (Inter — small)
   body: { size: 14, family: fonts.body },
   label: { size: 12, family: fonts.body },
   micro: { size: 11, family: fonts.body },
@@ -164,7 +202,7 @@ export interface Theme {
   type: typeof type
 }
 
-/** Active theme keyed off the OS colour scheme. */
+/** Active theme keyed off the OS colour scheme. Light is the hero default. */
 export function useW14Theme(): Theme {
   const scheme = useColorScheme()
   const isDark = scheme === "dark"
