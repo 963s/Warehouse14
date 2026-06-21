@@ -66,6 +66,7 @@ import {
   GoldFlood,
   haptics,
   InlineError,
+  isNotFoundError,
   ListRow,
   PressableScale,
   SectionCard,
@@ -271,10 +272,18 @@ export default function CustomerDetailScreen() {
   }
 
   if (customer == null) {
+    // A 404 here is normal (a deep-link to a customer that was merged or removed)
+    // — render the calm muted „nicht gefunden" frame, never the red error card.
+    const customerMissing = isNotFoundError(customerQ.errorCause)
     return (
       <View className="flex-1 justify-center bg-background px-4">
         <ErrorState
-          message={customerQ.error ?? "Der Kunde konnte nicht geladen werden."}
+          title={customerMissing ? "Kunde nicht gefunden" : undefined}
+          message={
+            customerMissing
+              ? "Dieser Kunde ist nicht mehr vorhanden."
+              : (customerQ.error ?? "Der Kunde konnte nicht geladen werden.")
+          }
           cause={customerQ.errorCause}
           onRetry={() => void customerQ.refetch()}
           retrying={customerQ.isFetching}

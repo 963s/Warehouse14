@@ -29,6 +29,27 @@ import { describeError } from "../../api"
 
 const DEFAULT_STALE_MS = 10_000
 
+/**
+ * Hard floor on how often a FOCUS event may trigger a refetch for a given key,
+ * regardless of `staleTimeMs`. Tab-hopping fires `useFocusEffect` on every
+ * return; the per-query stale window already guards the common case, but a key
+ * shared by several mounted hooks (or a fan-out that maps to many endpoints)
+ * could still re-fire on a rapid blur→focus→blur. This module-level clock
+ * collapses those into at most one focus-refetch per window per key, so a
+ * jittery navigation can never restart the dashboard's whole fan-out.
+ *
+ * Only focus-driven refetches are throttled. Manual refetch/refresh, the mount
+ * load, and background polling are never gated by this — the operator's intent
+ * and the steady heartbeat always go through.
+ */
+const FOCUS_THROTTLE_MS = 8_000
+const lastFocusFetchAt = new Map<string, number>()
+
+/** Test seam — drop the focus-throttle clock. */
+export function __resetFocusThrottle(): void {
+  lastFocusFetchAt.clear()
+}
+
 function initialState<T>(enabled: boolean): QueryState<T> {
   return {
     data: null,
@@ -171,9 +192,20 @@ export function useQuery<T>(fetcher: () => Promise<T>, options: QueryOptions = {
       // Don't double-fire on the very first focus (the mount effect's load is
       // already in flight), and don't refetch data that's still fresh.
       if (fetchingRef.current) return
-      const age = updatedAtRef.current == null ? Infinity : Date.now() - updatedAtRef.current
-      if (age >= staleTimeMs) void run("auto")
-    }, [enabled, refetchOnFocus, staleTimeMs, run]),
+      const now = Date.now()
+      const age = updatedAtRef.current == null ? Infinity : now - updatedAtRef.current
+      if (age < staleTimeMs) return
+      // Hard focus-throttle floor, keyed by the query key: a rapid blur→focus
+      // dance (or several mounts sharing one key) can re-enter this within the
+      // stale window's blind spot. Collapse those into one focus-refetch per
+      // window per key so a jittery navigation can't restart a whole fan-out.
+      if (key) {
+        const lastFocus = lastFocusFetchAt.get(key)
+        if (lastFocus != null && now - lastFocus < FOCUS_THROTTLE_MS) return
+        lastFocusFetchAt.set(key, now)
+      }
+      void run("auto")
+    }, [enabled, refetchOnFocus, staleTimeMs, key, run]),
   )
 
   // Polite polling: only while focused, never stacking on top of an in-flight

@@ -19,12 +19,12 @@
 import { type ReactNode } from "react"
 import { View } from "react-native"
 import Animated from "react-native-reanimated"
-import { CloudOff, RefreshCw, TriangleAlert, type LucideIcon } from "lucide-react-native"
+import { CloudOff, RefreshCw, SearchX, TriangleAlert, type LucideIcon } from "lucide-react-native"
 
 import { Button } from "@/components/ui/button"
 import { Text } from "@/components/ui/text"
 import { useW14Theme } from "@/warehouse14/theme"
-import { isConnectionError } from "./data/connection"
+import { isConnectionError, isNotFoundError } from "./data/connection"
 import { screenEnter } from "./motion/transitions"
 import { useReduceMotion } from "./motion/useReduceMotion"
 
@@ -63,14 +63,25 @@ export function ErrorState({
   const t = useW14Theme()
   const reduceMotion = useReduceMotion()
   const offline = isConnectionError(cause)
+  // A missing record is a CALM absence, not a failure — render it in the neutral
+  // muted tone with a „nicht gefunden" frame, never the destructive red of a
+  // real error. (A surface that wants a richer empty layout should use
+  // QueryBoundary's `notFound`; this keeps a direct <ErrorState cause={…}> honest.)
+  const notFound = !offline && isNotFoundError(cause)
 
-  const Icon = icon ?? (offline ? CloudOff : TriangleAlert)
-  const resolvedTitle = title ?? (offline ? "Keine Verbindung" : "Konnte nicht geladen werden")
+  const Icon = icon ?? (offline ? CloudOff : notFound ? SearchX : TriangleAlert)
+  const resolvedTitle =
+    title ??
+    (offline ? "Keine Verbindung" : notFound ? "Nicht gefunden" : "Konnte nicht geladen werden")
   const resolvedMessage =
     message ??
     (offline
       ? "Die Cloud ist gerade nicht erreichbar. Sobald die Verbindung steht, hier erneut versuchen."
-      : "Beim Laden ist ein Fehler aufgetreten.")
+      : notFound
+        ? "Dieser Datensatz ist nicht (mehr) vorhanden."
+        : "Beim Laden ist ein Fehler aufgetreten.")
+  // Tint: calm muted disc for a not-found absence, destructive red for a real error.
+  const tint = notFound ? t.colors.mutedForeground : t.colors.destructive
 
   return (
     <Animated.View
@@ -81,12 +92,12 @@ export function ErrorState({
       <View
         className="h-16 w-16 items-center justify-center rounded-full"
         style={{
-          backgroundColor: t.colors.destructive + "14",
-          borderColor: t.colors.destructive + "33",
+          backgroundColor: tint + "14",
+          borderColor: tint + "33",
           borderWidth: 1,
         }}
       >
-        <Icon size={t.icon.xl} color={t.colors.destructive} />
+        <Icon size={t.icon.xl} color={tint} />
       </View>
       <Text className="text-center text-xl font-display-semibold leading-tight">{resolvedTitle}</Text>
       <Text className="text-muted-foreground max-w-xs text-center text-sm leading-5">

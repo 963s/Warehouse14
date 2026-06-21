@@ -74,6 +74,7 @@ import {
   ErrorState,
   haptics,
   InlineError,
+  isNotFoundError,
   ListRow,
   PressableScale,
   SectionCard,
@@ -254,10 +255,19 @@ export default function ProductDetailScreen() {
   }
 
   if (product == null) {
+    // A 404 here is normal (a deleted/merged article reached via a deep-link or a
+    // stale list) — let ErrorState render its calm muted „nicht gefunden" frame
+    // with a domain title, never the red „konnte nicht geladen werden" card.
+    const productMissing = isNotFoundError(productQ.errorCause)
     return (
       <View className="flex-1 justify-center bg-background px-4">
         <ErrorState
-          message={productQ.error ?? "Der Artikel konnte nicht geladen werden."}
+          title={productMissing ? "Artikel nicht gefunden" : undefined}
+          message={
+            productMissing
+              ? "Dieser Artikel ist nicht mehr vorhanden — er wurde vermutlich gelöscht."
+              : (productQ.error ?? "Der Artikel konnte nicht geladen werden.")
+          }
           cause={productQ.errorCause}
           onRetry={() => void productQ.refetch()}
           retrying={productQ.isFetching}

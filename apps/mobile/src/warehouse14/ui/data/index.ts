@@ -22,10 +22,13 @@ export { useMultiQuery } from "./useMultiQuery"
 export { useMutation } from "./useMutation"
 export { useRefreshControl } from "./useRefreshControl"
 export { dedupe, isInFlight, clearInFlight } from "./dedupe"
+export { readGate, createRequestGate, type RequestGate } from "./gate"
 export {
   useConnection,
   useIsOffline,
   isConnectionError,
+  isNotFoundError,
+  isRateLimited,
   reportOnline,
   reportOffline,
   reportQueryOutcome,

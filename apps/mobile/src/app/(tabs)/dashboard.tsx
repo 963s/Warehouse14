@@ -49,8 +49,10 @@ import {
   BadgeEuro,
   CalendarClock,
   ChevronRight,
+  CloudOff,
   Gavel,
   Gem,
+  Hourglass,
   type LucideIcon,
   Lock,
   MapPin,
@@ -109,9 +111,12 @@ import {
 import { useW14Theme } from "@/warehouse14/theme"
 import {
   CountUp,
+  EmptyState,
   GoldFlood,
   haptics,
   InlineError,
+  isConnectionError,
+  isRateLimited,
   ListRow,
   PressableScale,
   RingGauge,
@@ -340,14 +345,34 @@ export default function SchatzkammerScreen() {
     )
   }
 
-  // Core source down with nothing to show — one honest error card with Retry.
+  // Core source down with nothing to show. A rate-limit or an offline blip is a
+  // TRANSIENT wait, not a fault the owner caused — so present it as a calm „gleich
+  // wieder da" empty state (no red error), and reserve the destructive InlineError
+  // for a genuine server failure. The transport layer already backed the 429 off
+  // and honoured Retry-After, so reaching here at all means it stayed busy.
   if (bridge === null) {
+    const cause = q.results.bridge.errorCause
+    const waiting = isRateLimited(cause) || isConnectionError(cause)
     return (
       <View className="flex-1 justify-center bg-background px-4">
-        <InlineError
-          message={q.results.bridge.error ?? "Die Schatzkammer konnte nicht geladen werden."}
-          onRetry={onRetry}
-        />
+        {waiting ? (
+          <EmptyState
+            icon={isRateLimited(cause) ? Hourglass : CloudOff}
+            title={isRateLimited(cause) ? "Einen Moment" : "Keine Verbindung"}
+            description={
+              isRateLimited(cause)
+                ? "Gerade sehr viele Anfragen — die Schatzkammer lädt gleich von selbst. Du kannst es auch jetzt erneut versuchen."
+                : "Die Cloud ist gerade nicht erreichbar. Sobald die Verbindung steht, hier erneut versuchen."
+            }
+            actionLabel="Erneut versuchen"
+            onAction={onRetry}
+          />
+        ) : (
+          <InlineError
+            message={q.results.bridge.error ?? "Die Schatzkammer konnte nicht geladen werden."}
+            onRetry={onRetry}
+          />
+        )}
       </View>
     )
   }

@@ -19,6 +19,7 @@
 import { useSyncExternalStore } from "react"
 import {
   ApiCircuitOpenError,
+  ApiError,
   ApiNetworkError,
   ApiOfflineQueuedError,
 } from "@warehouse14/api-client"
@@ -115,6 +116,38 @@ export function isConnectionError(error: unknown): boolean {
     error instanceof ApiNetworkError ||
     error instanceof ApiCircuitOpenError ||
     error instanceof ApiOfflineQueuedError
+  )
+}
+
+/**
+ * True when a thrown value is a server "this record does not exist" (HTTP 404 /
+ * `NOT_FOUND`). On many surfaces a missing record is a NORMAL outcome, not a
+ * failure: a deep-link to an item that was deleted, a detail opened for an id
+ * the server no longer has, a freshly-created entity not yet visible. Those
+ * deserve a calm German empty state ("nicht gefunden"), never a red error card.
+ *
+ * Surfaces and `QueryBoundary` use this to route a 404-with-no-data into the
+ * empty branch instead of the error branch. It does NOT change honesty: we
+ * still show nothing fabricated — just a calmer frame around a real absence.
+ */
+export function isNotFoundError(error: unknown): boolean {
+  return (
+    (error instanceof ApiError && (error.code === "NOT_FOUND" || error.httpStatus === 404)) === true
+  )
+}
+
+/**
+ * True when a thrown value is the server's rate-limit refusal (HTTP 429 /
+ * `RATE_LIMITED`). The transport layer already backs these off and honours
+ * `Retry-After`, so a 429 only reaches the UI when the budget stays exhausted
+ * past every retry. A surface uses this to present a CALM „einen Moment"
+ * waiting state ("Zu viele Anfragen — gleich wieder da") instead of a red error
+ * card — it is a transient throttle, not a fault the owner caused.
+ */
+export function isRateLimited(error: unknown): boolean {
+  return (
+    (error instanceof ApiError && (error.code === "RATE_LIMITED" || error.httpStatus === 429)) ===
+    true
   )
 }
 

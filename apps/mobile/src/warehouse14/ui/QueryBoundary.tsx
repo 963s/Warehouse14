@@ -34,11 +34,12 @@
  * response. There is no code path that renders content without real data.
  */
 import { type ReactNode } from "react"
-import { Inbox, type LucideIcon } from "lucide-react-native"
+import { Inbox, SearchX, type LucideIcon } from "lucide-react-native"
 
 import { EmptyState } from "./EmptyState"
 import { ErrorState } from "./ErrorState"
 import { SkeletonCard } from "./Skeleton"
+import { isNotFoundError } from "./data/connection"
 import type { QueryResult } from "./data/types"
 
 /** The empty-state config a boundary renders when a real result has no rows. */
@@ -75,8 +76,17 @@ export interface QueryBoundaryProps<T> {
   /** The empty-state to show when `isEmpty` is true. Omit to render nothing. */
   empty?: QueryBoundaryEmpty
   /**
+   * The calm state for a server "record not found" (HTTP 404 / `NOT_FOUND`)
+   * when there is no cached data. On a detail/deep-link surface a missing record
+   * is NORMAL, not a failure — so we show a quiet „nicht gefunden" empty state
+   * with a Retry, never a red error card. When omitted, a 404 falls back to
+   * `empty` (if given), and only otherwise to the standard error block.
+   */
+  notFound?: QueryBoundaryEmpty
+  /**
    * Override the error block (e.g. to place it inside a card). When omitted, the
-   * standard centred <ErrorState> with Retry is shown.
+   * standard centred <ErrorState> with Retry is shown. A 404 routed into the
+   * not-found / empty path above never reaches here.
    */
   renderError?: (args: {
     message: string | null
@@ -92,6 +102,7 @@ export function QueryBoundary<T>({
   loading,
   isEmpty,
   empty,
+  notFound,
   renderError,
 }: QueryBoundaryProps<T>): ReactNode {
   const { data, status, error, errorCause, isFetching, refetch } = query
@@ -105,6 +116,20 @@ export function QueryBoundary<T>({
   if (status === "error" && data == null) {
     const retry = () => {
       void refetch()
+    }
+    // A missing record is a calm absence, not a failure: route a 404 into the
+    // quiet not-found / empty state with Retry instead of the red error card.
+    const notFoundCfg = isNotFoundError(errorCause) ? (notFound ?? empty) : null
+    if (notFoundCfg != null) {
+      return (
+        <EmptyState
+          icon={notFoundCfg.icon ?? SearchX}
+          title={notFoundCfg.title}
+          description={notFoundCfg.description}
+          actionLabel={notFoundCfg.actionLabel ?? "Erneut versuchen"}
+          onAction={notFoundCfg.onAction ?? retry}
+        />
+      )
     }
     if (renderError != null) {
       return <>{renderError({ message: error, cause: errorCause, retry, retrying: isFetching })}</>

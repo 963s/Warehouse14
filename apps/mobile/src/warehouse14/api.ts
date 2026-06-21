@@ -38,6 +38,9 @@ import {
   tasksApi,
   transactionsApi,
   whatsappApi,
+  circuitBreakerMiddleware,
+  inflightDedupMiddleware,
+  retryMiddleware,
   stepUpMiddleware,
   type ApiClient,
   type AppraisalCompleteBody,
@@ -170,12 +173,45 @@ export const DEV_DEVICE_FINGERPRINT =
   process.env.EXPO_PUBLIC_DEV_DEVICE_FINGERPRINT ??
   "71defad08503fcfb00b0b57e7654b3ed48afb264d34c69c3edb90a65a6b8f698"
 
+/**
+ * The resilience stack — mirrors the production tauri-pos ordering (asserted by
+ * its CI test) so the Owner phone gets the SAME 429/flap protection the counter
+ * terminal has. Outermost → innermost:
+ *
+ *   step-up   replays a single attempt after a STEP_UP_REQUIRED PIN dialog.
+ *   retry     idempotent reads only: full-jitter exponential backoff that
+ *             HONORS the server's `Retry-After` on a 429 (the api-client lifts
+ *             it onto `ApiError.details.retryAfterMs`). This is the core of the
+ *             "Zu viele Versuche" fix — a rate-limited read now waits the budget
+ *             window and silently recovers instead of throwing a red error.
+ *   circuit   per-endpoint breaker: after repeated 429/5xx on one bucket it
+ *             fast-fails for a cooldown so a struggling endpoint isn't hammered
+ *             (and the retry budget isn't burnt) — degrades to a calm banner.
+ *   dedup     coalesces concurrent identical GETs at the transport layer, a
+ *             second line below the hook-level `dedupe` (different keys, same
+ *             goal: never send the same read twice at once).
+ *
+ * The mobile app keeps its OWN offline model (the `offline/` module + the
+ * read-cache), so the durable offline-queue middleware is intentionally absent
+ * here — reads that can't reach the cloud surface as a calm offline state, not
+ * a queued mutation.
+ *
+ * maxDelayMs is raised to 8s (vs the package default 4s) because the api-cloud
+ * read budget is a sliding 10/min window: when it answers 429 without a precise
+ * Retry-After, a longer cap keeps the backoff comfortably inside the budget so
+ * the retry actually clears instead of re-tripping it.
+ */
 export const apiClient: ApiClient = createApiClient({
   baseUrl: API_BASE_URL,
   credentials: "include",
   defaultHeaders: { "x-dev-device-fingerprint": DEV_DEVICE_FINGERPRINT },
   getAuthToken: getSessionToken,
-  middlewares: [stepUpMiddleware(stepUpService)],
+  middlewares: [
+    stepUpMiddleware(stepUpService),
+    retryMiddleware({ maxAttempts: 4, baseDelayMs: 400, maxDelayMs: 8_000 }),
+    circuitBreakerMiddleware(),
+    inflightDedupMiddleware(),
+  ],
 })
 
 // ── Auth ────────────────────────────────────────────────────────────────────

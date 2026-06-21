@@ -21,6 +21,7 @@
 import { useMemo } from "react"
 import { ApiOfflineQueuedError } from "@warehouse14/api-client"
 
+import { readGate } from "./gate"
 import type { QueryActions, QueryOptions, QueryStatus } from "./types"
 import { useQuery } from "./useQuery"
 import { describeError } from "../../api"
@@ -77,9 +78,18 @@ export function useMultiQuery<M extends FetcherMap>(
 
   // One combined fetcher: settle every source, never throw, so `useQuery`
   // always lands in "success" and we expose per-source errors ourselves.
+  //
+  // Every source runs through the shared `readGate` so a fan-out of ~10 reads
+  // (the Schatzkammer board) lands as a few small waves instead of one burst
+  // that overruns the api-cloud's per-minute read budget → no RATE_LIMITED
+  // storm. The gate is transparent: it only spaces out WHEN each request fires;
+  // each promise still resolves/rejects with exactly its own real outcome, so
+  // `Promise.allSettled` sees the same per-source result it always did.
   const combined = useMemo(
     () => async (): Promise<Record<string, InternalRow>> => {
-      const settled = await Promise.allSettled(keys.map((k) => fetchers[k]()))
+      const settled = await Promise.allSettled(
+        keys.map((k) => readGate.run(() => fetchers[k]())),
+      )
       const out: Record<string, InternalRow> = {}
       keys.forEach((k, i) => {
         const r = settled[i]
