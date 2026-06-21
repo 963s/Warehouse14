@@ -297,6 +297,14 @@ export default function CustomerDetailScreen() {
         className="flex-1"
         contentContainerStyle={{ padding: 16, paddingBottom: insets.contentBottom, gap: 12 }}
         refreshControl={<RefreshControl {...rc} />}
+        // With the multiline trust-note focused, Android's default
+        // (`keyboardShouldPersistTaps="never"`) eats the first tap on
+        // „Vertrauen setzen" to merely dismiss the keyboard — a lost tap on a
+        // money-adjacent action. „handled" lets the button receive that tap
+        // while a tap on empty space still closes the keyboard. Drag-to-dismiss
+        // matches the group's other scroll surfaces (kyc-capture, Kunden-Liste).
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       >
         {/* Identity header — avatar monogram · name · number · the flags an operator scans */}
         <StaggerItem index={0}>
