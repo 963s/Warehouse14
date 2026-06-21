@@ -46,8 +46,13 @@
  * Reached from the „Mehr"-Hub (/einstellungen).
  */
 import { useCallback, useMemo, useState } from "react"
-import { Linking, ScrollView, useColorScheme, View } from "react-native"
-import { metalPricesApi, type MetalKind, type MetalRate } from "@warehouse14/api-client"
+import { Linking, useColorScheme, View } from "react-native"
+import {
+  type ActorRole,
+  metalPricesApi,
+  type MetalKind,
+  type MetalRate,
+} from "@warehouse14/api-client"
 import {
   Check,
   ChevronRight,
@@ -74,6 +79,7 @@ import {
   DEV_DEVICE_FINGERPRINT,
   updateMetalMargin,
 } from "@/warehouse14/api"
+import { ACTOR_ROLE_LABEL } from "@/warehouse14/german-text"
 import { clearCachedRead } from "@/warehouse14/offline"
 import {
   DEFAULT_DASHBOARD_TARGETS,
@@ -88,6 +94,7 @@ import { SettingsCategoriesSection } from "@/warehouse14/SettingsCategoriesSecti
 import { useW14Theme } from "@/warehouse14/theme"
 import {
   InlineError,
+  KeyboardAvoidingScreen,
   PressableScale,
   SectionCard,
   Skeleton,
@@ -95,7 +102,6 @@ import {
   haptics,
   useMutation,
   useQuery,
-  useScreenInsets,
 } from "@/warehouse14/ui"
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -543,10 +549,16 @@ function TargetsSection() {
 
 // ── Gerät & Sitzung ─────────────────────────────────────────────────────────--
 
-const ROLE_LABEL: Record<string, string> = {
-  ADMIN: "Inhaber (ADMIN)",
-  CASHIER: "Kasse",
-  READONLY: "Nur Lesen",
+/**
+ * The honest role line for the signed-in account. The role comes from the
+ * canonical text spine (`ACTOR_ROLE_LABEL`) — never a developer token — and an
+ * „· Inhaber"-Zusatz is appended only when the session's real `isOwner` flag is
+ * set, so the marker reflects truth rather than being baked into a label.
+ */
+function roleFactLabel(actor: { role: ActorRole; isOwner: boolean } | null): string {
+  if (actor == null) return "–"
+  const label = ACTOR_ROLE_LABEL[actor.role]
+  return actor.isOwner ? `${label} · Inhaber` : label
 }
 
 /** A read-only fact row: label on the left, a value on the right (mono optional). */
@@ -605,7 +617,7 @@ function DeviceSection() {
       subtitle="Angemeldetes Konto und das verbundene Backend."
       icon={Smartphone}
     >
-      <FactRow label="Rolle" value={actor ? (ROLE_LABEL[actor.role] ?? actor.role) : "—"} />
+      <FactRow label="Rolle" value={roleFactLabel(actor)} />
       <FactRow label="Sitzung läuft ab" value={expiryLabel} mono />
       <FactRow label="Geräte-Fingerprint" value={fingerprintShort} mono />
       <FactRow label="API-Server" value={apiHost} mono last />
@@ -753,7 +765,6 @@ function LogoutSection() {
 
 export default function EinstellungenScreen() {
   const t = useW14Theme()
-  const insets = useScreenInsets()
 
   // A single running index so the whole column settles top-to-bottom as one
   // motion (DESIGN.md §6), capped so it never feels slow.
@@ -768,16 +779,10 @@ export default function EinstellungenScreen() {
   ]
 
   return (
-    <ScrollView
-      className="flex-1 bg-background"
-      contentContainerStyle={{
-        paddingTop: t.space.x4,
-        paddingHorizontal: t.space.x4,
-        paddingBottom: insets.contentBottom,
-        gap: t.space.x4,
-      }}
-      keyboardShouldPersistTaps="handled"
-      showsVerticalScrollIndicator={false}
+    <KeyboardAvoidingScreen
+      contentPadding={t.space.x4}
+      contentContainerStyle={{ gap: t.space.x4 }}
+      scrollViewProps={{ showsVerticalScrollIndicator: false }}
     >
       <View className="gap-1">
         <View className="flex-row items-center gap-2">
@@ -798,6 +803,6 @@ export default function EinstellungenScreen() {
       <Text className="text-muted-foreground pt-1 text-center text-2xs">
         Warehouse14 Owner · v1.0.0
       </Text>
-    </ScrollView>
+    </KeyboardAvoidingScreen>
   )
 }

@@ -112,9 +112,13 @@ export async function sharePrintable(
     )
     if (res.action === Share.dismissedAction) return { status: "dismissed" }
     return { status: "ok" }
-  } catch (e) {
-    const message = e instanceof Error ? e.message : "Das Teilen wurde abgebrochen."
-    return { status: "error", message }
+  } catch {
+    // The OS share sheet threw. The raw exception text is an English / system
+    // string, so we NEVER surface it — the owner gets one clean German line.
+    return {
+      status: "error",
+      message: "Das Teilen konnte nicht abgeschlossen werden. Bitte erneut versuchen.",
+    }
   } finally {
     // Best-effort cleanup; the OS may still be reading it, so failures are fine.
     try {

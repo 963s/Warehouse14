@@ -21,7 +21,7 @@
  * de-DE money via the shared helpers.
  */
 import { useEffect, useMemo, useRef, useState } from "react"
-import { ScrollView, View } from "react-native"
+import { View } from "react-native"
 import type { ProductListRow } from "@warehouse14/api-client"
 import {
   Check,
@@ -52,11 +52,11 @@ import {
   EmptyState,
   haptics,
   InlineError,
+  KeyboardAvoidingScreen,
   ListRow,
   QueryBoundary,
   SectionCard,
   useQuery,
-  useScreenInsets,
 } from "@/warehouse14/ui"
 
 const DEBOUNCE_MS = 300
@@ -94,7 +94,6 @@ function labelForProduct(p: ProductListRow): LabelDoc {
 
 export default function DruckenScreen() {
   const t = useW14Theme()
-  const insets = useScreenInsets()
   const caps = useMemo(() => getPrintCapabilities(), [])
 
   // ── Selection + share state ────────────────────────────────────────────────
@@ -137,15 +136,9 @@ export default function DruckenScreen() {
   }
 
   return (
-    <ScrollView
-      className="flex-1 bg-background"
-      contentContainerStyle={{
-        paddingTop: t.space.x4,
-        paddingHorizontal: t.space.x4,
-        paddingBottom: insets.contentBottom,
-        gap: t.space.x4,
-      }}
-      keyboardShouldPersistTaps="handled"
+    <KeyboardAvoidingScreen
+      contentPadding={t.space.x4}
+      contentContainerStyle={{ gap: t.space.x4 }}
     >
       {/* What this surface can do, honestly framed. */}
       <SectionCard
@@ -243,7 +236,7 @@ export default function DruckenScreen() {
 
       {/* The honest locked tier — direct thermal printing lives on the desktop. */}
       <DesktopPrinterCard />
-    </ScrollView>
+    </KeyboardAvoidingScreen>
   )
 }
 
