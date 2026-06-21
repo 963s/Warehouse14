@@ -28,24 +28,35 @@
  * vocabulary, W14 theme tokens only). German UI, de-DE money.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { FlatList, Pressable, ScrollView, View } from "react-native"
-import { useRouter } from "expo-router"
-import type { PaymentMethod, ProductListRow } from "@warehouse14/api-client"
+import { Pressable, ScrollView, View } from "react-native"
+import { useFocusEffect, useRouter } from "expo-router"
+import type { CustomerListRow, PaymentMethod, ProductListRow } from "@warehouse14/api-client"
 import {
   Banknote,
   Check,
   CreditCard,
+  IdCard,
   Landmark,
   Receipt,
+  ScanFace,
   Search,
+  ShieldCheck,
   ShoppingCart,
   Trash2,
+  UserRound,
   X,
 } from "lucide-react-native"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Text } from "@/components/ui/text"
 import {
@@ -53,16 +64,19 @@ import {
   finalizeTransaction,
   formatCents,
   formatEur,
+  getCustomer,
   getProduct,
+  listCustomers,
   listProducts,
 } from "@/warehouse14/api"
+import { KYC_STATUS_LABEL, KYC_STATUS_VARIANT } from "@/warehouse14/customer-ui"
 import { STATUS_LABEL, STATUS_VARIANT } from "@/warehouse14/product-ui"
 import {
-  appendKey,
   buildFinalizeBody,
   CartLineRow,
   CartSummary,
   computeTender,
+  evaluateVerkaufKyc,
   FiscalConfirmSheet,
   MoneyKeypad,
   newIdempotencyKey,
@@ -70,6 +84,7 @@ import {
   ReceiptPreview,
   tryToCents,
   useVerkaufSession,
+  VERKAUF_KYC_THRESHOLD_CENTS,
 } from "@/warehouse14/sell"
 import { useW14Theme } from "@/warehouse14/theme"
 import {
@@ -256,6 +271,29 @@ export default function VerkaufScreen() {
   const { cart, addProduct, removeLine, clearAll, markFinalized } = session
   const totals = cart.totals
 
+  // ── Käufer (optional below the §10 line; required + verified at/above it) ────
+  // A buyer is OPTIONAL for a normal sale (pure attribution / cumulative-spend
+  // link), but the api-cloud finalize route hard-rejects a sale whose total is
+  // at/above the GwG §10 threshold (default €2.000) without a KYC-verified buyer
+  // (KYC_REQUIRED, 403). So we attach a customer and mirror that gate honestly.
+  const [customerId, setCustomerId] = useState<string | null>(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const customerQ = useQuery(() => getCustomer(customerId as string), {
+    key: `verkauf:customer:${customerId}`,
+    enabled: !!customerId,
+  })
+  const customer = customerId ? (customerQ.data ?? null) : null
+
+  // The buyer's KYC may have been stamped on the detail screen we just returned
+  // from, so re-read it on focus (mirrors the Ankauf seller gate).
+  useFocusEffect(
+    useCallback(() => {
+      if (customerId) void customerQ.refetch()
+      // refetch identity is stable for a fixed key
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [customerId]),
+  )
+
   // ── Search (debounced, mirrors the Lager tab) ──────────────────────────────
   const [q, setQ] = useState("")
   const [debouncedQ, setDebouncedQ] = useState("")
@@ -285,6 +323,15 @@ export default function VerkaufScreen() {
   const tender = useMemo(
     () => computeTender({ dueCents: totalCents, receivedCents: tryToCents(cashReceived) ?? 0n }),
     [totalCents, cashReceived],
+  )
+
+  // ── §10 GwG buyer-identity gate (mirrors the server's VERKAUF rule) ──────────
+  // At/above the threshold a KYC-verified buyer is REQUIRED; below it the buyer
+  // is optional. When `blocked`, the server would 403 KYC_REQUIRED, so the fiscal
+  // gate must stay shut until a verified buyer is attached.
+  const kyc = useMemo(
+    () => evaluateVerkaufKyc({ customer, totalCents }),
+    [customer, totalCents],
   )
 
   // ── Fiscal confirm + finalize ──────────────────────────────────────────────
@@ -323,6 +370,12 @@ export default function VerkaufScreen() {
 
   const openConfirm = useCallback(() => {
     if (totals.isEmpty) return
+    // §10 GwG: a sale at/above the threshold needs a KYC-verified buyer. We never
+    // open the fiscal gate on a sale the server would refuse with KYC_REQUIRED.
+    if (kyc.blocked) {
+      haptics.error()
+      return
+    }
     // For a cash sale, require the received amount to cover the due before the
     // fiscal gate can open — we never finalize a cash sale we can't make change
     // for. Cashless tenders pay the exact total, so they open straight away.
@@ -332,7 +385,7 @@ export default function VerkaufScreen() {
     }
     haptics.impactLight() // light press confirm as the fiscal sheet opens (§7)
     setConfirmOpen(true)
-  }, [totals.isEmpty, method, tender.covered])
+  }, [totals.isEmpty, kyc.blocked, method, tender.covered])
 
   // The legal commit handed to the FiscalConfirmSheet. It builds the exact
   // FinalizeBody from the derived cart + tender, POSTs it (step-up transparent),
@@ -341,7 +394,10 @@ export default function VerkaufScreen() {
   const commit = useCallback(async () => {
     const body = buildFinalizeBody({
       totals,
-      customerId: null,
+      // The attached buyer (or null for an anonymous walk-in below the §10 line).
+      // It rides into the finalize so the sale is buyer-attributed (cumulative
+      // spend) and clears the GwG identity gate at/above the threshold.
+      customerId,
       idempotencyKey,
       payment: { method },
     })
@@ -349,14 +405,15 @@ export default function VerkaufScreen() {
     // RESERVED → SOLD happened server-side — abandon the release bookkeeping.
     markFinalized()
     setDone({ receiptLocator: res.receiptLocator, totalEur: res.totalEur })
-  }, [totals, idempotencyKey, method, markFinalized])
+  }, [totals, customerId, idempotencyKey, method, markFinalized])
 
   const onConfirmed = useCallback(() => {
     // After a sealed sale: clear the cart (holds already consumed), reset tender,
-    // and arm a fresh idempotency key for the next sale.
+    // detach the buyer, and arm a fresh idempotency key for the next sale.
     cart.clear()
     setCashReceived("")
     setMethod("CASH")
+    setCustomerId(null)
     setIdempotencyKey(newIdempotencyKey())
   }, [cart])
 
@@ -378,7 +435,8 @@ export default function VerkaufScreen() {
     )
   }
 
-  const canCheckout = !totals.isEmpty && (method !== "CASH" || tender.covered)
+  const canCheckout =
+    !totals.isEmpty && !kyc.blocked && (method !== "CASH" || tender.covered)
 
   return (
     <View className="flex-1 bg-background">
@@ -527,6 +585,113 @@ export default function VerkaufScreen() {
               <CartSummary totals={totals} />
             </Card>
 
+            {/* ── Käufer ─────────────────────────────────────────────────────── */}
+            {/* Optional below the §10 line (buyer attribution / cumulative spend),
+                REQUIRED + verified at/above it. The threshold note + KYC gate make
+                the fiscal weight visible BEFORE the commit. */}
+            <View className="gap-3">
+              <View className="flex-row items-center gap-2">
+                <UserRound size={t.icon.md} color={t.colors.primary} />
+                <Text className="text-base font-semibold">Käufer</Text>
+                {kyc.thresholdReached ? (
+                  <Badge variant="outline">
+                    <Text>Pflicht ab {formatCents(Number(VERKAUF_KYC_THRESHOLD_CENTS))}</Text>
+                  </Badge>
+                ) : (
+                  <Text className="text-muted-foreground text-xs">Optional</Text>
+                )}
+              </View>
+
+              {customerId == null ? (
+                <PressableScale
+                  accessibilityRole="button"
+                  accessibilityLabel="Käufer auswählen"
+                  onPress={() => {
+                    haptics.selection()
+                    setPickerOpen(true)
+                  }}
+                >
+                  <Card
+                    className="min-h-[56px] flex-row items-center gap-3 rounded-xl border px-4 py-3"
+                    style={{
+                      borderColor: kyc.blocked ? t.colors.primary + "55" : t.colors.border,
+                      backgroundColor: kyc.blocked ? t.colors.primary + "0D" : t.colors.card,
+                    }}
+                  >
+                    <View
+                      className="h-9 w-9 items-center justify-center rounded-md"
+                      style={{ backgroundColor: t.colors.primary + "1f" }}
+                    >
+                      <Search size={t.icon.md} color={t.colors.primary} />
+                    </View>
+                    <View className="flex-1">
+                      <Text className="text-base font-semibold">Käufer auswählen</Text>
+                      <Text className="text-muted-foreground text-xs">
+                        {kyc.thresholdReached
+                          ? "Pflicht — ab dieser Höhe verlangt der Verkauf eine geprüfte Identität."
+                          : "Optional — verknüpft den Kauf mit dem Kunden (Kundenhistorie)."}
+                      </Text>
+                    </View>
+                  </Card>
+                </PressableScale>
+              ) : customerQ.isLoading && customer == null ? (
+                <Card className="flex-row items-center gap-3 rounded-xl border px-4 py-3">
+                  <Skeleton width={44} height={44} radius="full" />
+                  <View className="flex-1 gap-2">
+                    <Skeleton width="56%" height={14} />
+                    <Skeleton width="32%" height={11} />
+                  </View>
+                </Card>
+              ) : customer != null ? (
+                <BuyerCard
+                  fullName={customer.fullName}
+                  customerNumber={customer.customerNumber}
+                  kycStatus={customer.kycStatus}
+                  onChange={() => {
+                    haptics.selection()
+                    setPickerOpen(true)
+                  }}
+                  onRemove={() => {
+                    haptics.selection()
+                    setCustomerId(null)
+                  }}
+                />
+              ) : (
+                <InlineError
+                  message={customerQ.error ?? "Der Kunde konnte nicht geladen werden."}
+                  onRetry={() => void customerQ.refetch()}
+                />
+              )}
+
+              {/* The honest §10 gate: a sale at/above the threshold without a
+                  verified buyer is blocked — with a one-tap path to stamp the
+                  Ausweis in the profile. Never a fabricated green. */}
+              {kyc.blocked ? (
+                <BuyerKycGate
+                  hasCustomer={customer != null}
+                  fullName={customer?.fullName ?? null}
+                  onAction={() => {
+                    haptics.selection()
+                    if (customer != null) {
+                      router.push({ pathname: "/customer/[id]", params: { id: customer.id } })
+                    } else {
+                      setPickerOpen(true)
+                    }
+                  }}
+                />
+              ) : customer != null && kyc.kycVerified ? (
+                <View
+                  className="flex-row items-center gap-2 rounded-xl px-3 py-2"
+                  style={{ backgroundColor: t.colors.verdigris + "12" }}
+                >
+                  <ShieldCheck size={t.icon.sm} color={t.colors.verdigris} />
+                  <Text className="text-xs font-medium" style={{ color: t.colors.verdigris }}>
+                    Identität geprüft — Verkauf zulässig.
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+
             <View className="gap-3">
               <Text className="text-base font-semibold">Zahlungsart</Text>
               <TenderPicker method={method} onPick={setMethod} />
@@ -605,7 +770,13 @@ export default function VerkaufScreen() {
                 <Receipt size={t.icon.sm} color={t.colors.primaryForeground} />
                 <Text>{`Verkaufen · ${formatCents(Number(totalCents))}`}</Text>
               </Button>
-              {method === "CASH" && !tender.covered ? (
+              {kyc.blocked ? (
+                <Text className="text-muted-foreground text-center text-xs">
+                  {customer != null
+                    ? "Identität des Käufers zuerst prüfen (KYC)."
+                    : "Ab dieser Höhe zuerst einen geprüften Käufer zuordnen."}
+                </Text>
+              ) : method === "CASH" && !tender.covered ? (
                 <Text className="text-muted-foreground text-center text-xs">
                   Bitte den erhaltenen Bargeldbetrag eingeben.
                 </Text>
@@ -614,6 +785,17 @@ export default function VerkaufScreen() {
           </>
         ) : null}
       </ScrollView>
+
+      {/* The buyer picker sheet — search + attach a customer to the sale. */}
+      <CustomerPicker
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        onPick={(row) => {
+          haptics.selection()
+          setCustomerId(row.id)
+          setPickerOpen(false)
+        }}
+      />
 
       {/* The ONE fiscal gate. It owns the commit lifecycle (busy/error/success),
           the legal framing, the step-up transparency, and the money-path haptic.
@@ -709,8 +891,270 @@ function SaleDoneScreen({
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// Buyer card — the attached customer, with the KYC status an operator scans
+// ────────────────────────────────────────────────────────────────────────────
+
+function BuyerCard({
+  fullName,
+  customerNumber,
+  kycStatus,
+  onChange,
+  onRemove,
+}: {
+  fullName: string
+  customerNumber: string
+  kycStatus: keyof typeof KYC_STATUS_LABEL
+  onChange: () => void
+  onRemove: () => void
+}) {
+  const t = useW14Theme()
+  return (
+    <Card className="gap-3 rounded-xl border px-4 py-3">
+      <View className="flex-row items-center gap-3">
+        <View
+          className="h-11 w-11 items-center justify-center rounded-full"
+          style={{ backgroundColor: t.colors.primary + "1f" }}
+        >
+          <Text className="text-sm font-semibold" style={{ color: t.colors.primary }}>
+            {initialsOf(fullName)}
+          </Text>
+        </View>
+        <View className="flex-1 gap-0.5">
+          <Text className="text-base font-semibold" numberOfLines={1}>
+            {fullName}
+          </Text>
+          <Text className="text-muted-foreground font-mono text-xs" numberOfLines={1}>
+            {customerNumber}
+          </Text>
+        </View>
+        <View className="flex-row items-center gap-1">
+          <Button variant="ghost" size="sm" onPress={onChange} accessibilityLabel="Käufer wechseln">
+            <Text className="text-primary">Wechseln</Text>
+          </Button>
+          <Pressable
+            onPress={onRemove}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Käufer entfernen"
+            className="h-8 w-8 items-center justify-center rounded-md"
+          >
+            <X size={t.icon.sm} color={t.colors.mutedForeground} />
+          </Pressable>
+        </View>
+      </View>
+      <View className="flex-row flex-wrap items-center gap-2">
+        <Badge variant={KYC_STATUS_VARIANT[kycStatus]} dot>
+          <Text>{KYC_STATUS_LABEL[kycStatus]}</Text>
+        </Badge>
+      </View>
+    </Card>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Buyer KYC gate — the honest §10 block, with a path to verify (or to pick one)
+// ────────────────────────────────────────────────────────────────────────────
+
+function BuyerKycGate({
+  hasCustomer,
+  fullName,
+  onAction,
+}: {
+  hasCustomer: boolean
+  fullName: string | null
+  onAction: () => void
+}) {
+  const t = useW14Theme()
+  return (
+    <Card
+      className="gap-3 rounded-xl border px-4 py-3.5"
+      style={{ borderColor: t.colors.primary + "55", backgroundColor: t.colors.primary + "0F" }}
+      accessibilityRole="alert"
+    >
+      <View className="flex-row items-start gap-2.5">
+        <View className="pt-0.5">
+          <IdCard size={t.icon.md} color={t.colors.primary} />
+        </View>
+        <View className="flex-1 gap-1">
+          <Text className="text-sm font-semibold" style={{ color: t.colors.primary }}>
+            Identifizierung erforderlich (§ 10 GwG)
+          </Text>
+          <Text className="text-muted-foreground text-sm leading-5">
+            {hasCustomer && fullName != null
+              ? `Ab ${formatCents(Number(VERKAUF_KYC_THRESHOLD_CENTS))} verlangt der Verkauf eine geprüfte Ausweis-Identifikation des Käufers. „${fullName}“ ist noch nicht bestätigt.`
+              : `Ab ${formatCents(Number(VERKAUF_KYC_THRESHOLD_CENTS))} verlangt der Verkauf einen geprüften Käufer. Bitte einen Käufer mit bestätigter Identität zuordnen.`}
+          </Text>
+        </View>
+      </View>
+      <Button
+        onPress={onAction}
+        accessibilityLabel={hasCustomer ? "Identität jetzt prüfen" : "Käufer auswählen"}
+      >
+        <ScanFace size={t.icon.sm} color={t.colors.primaryForeground} />
+        <Text>{hasCustomer ? "Identität prüfen" : "Käufer auswählen"}</Text>
+      </Button>
+    </Card>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Customer picker sheet — search + attach the buyer
+// ────────────────────────────────────────────────────────────────────────────
+
+function CustomerPicker({
+  open,
+  onOpenChange,
+  onPick,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onPick: (row: CustomerListRow) => void
+}) {
+  const t = useW14Theme()
+  const router = useRouter()
+  const [q, setQ] = useState("")
+  const [debouncedQ, setDebouncedQ] = useState("")
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => setDebouncedQ(q.trim()), DEBOUNCE_MS)
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
+  }, [q])
+
+  // A BANNED buyer is a compliance dead end (the server refuses the sale), so we
+  // exclude blocked customers honestly rather than offering a pick that can't pay.
+  const results = useQuery(
+    () => listCustomers({ q: debouncedQ || undefined, excludeBlocked: true, limit: 30 }),
+    { key: `verkauf:picker:${debouncedQ}`, enabled: open },
+  )
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="gap-4">
+        <DialogHeader>
+          <DialogTitle>Käufer wählen</DialogTitle>
+          <DialogDescription>Suche nach Name, E-Mail oder Telefon.</DialogDescription>
+        </DialogHeader>
+
+        <View className="relative justify-center">
+          <View className="absolute left-3 z-10">
+            <Search size={t.icon.sm} color={t.colors.mutedForeground} />
+          </View>
+          <Input
+            value={q}
+            onChangeText={setQ}
+            placeholder="Kunde suchen…"
+            autoCorrect={false}
+            autoCapitalize="none"
+            returnKeyType="search"
+            className="pl-9 pr-9"
+            accessibilityLabel="Käufer durchsuchen"
+          />
+          {q.length > 0 ? (
+            <Pressable
+              onPress={() => setQ("")}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Suche löschen"
+              className="absolute right-2.5 z-10 h-6 w-6 items-center justify-center"
+            >
+              <X size={t.icon.sm} color={t.colors.mutedForeground} />
+            </Pressable>
+          ) : null}
+        </View>
+
+        <ScrollView
+          className="max-h-[360px]"
+          contentContainerStyle={{ gap: 8 }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {results.status === "loading" && results.data == null ? (
+            <View className="gap-2">
+              {[0, 1, 2, 3].map((i) => (
+                <Card key={i} className="flex-row items-center gap-3 rounded-xl border px-3 py-3">
+                  <Skeleton width={40} height={40} radius="full" />
+                  <View className="flex-1 gap-2">
+                    <Skeleton width="58%" height={13} />
+                    <Skeleton width="32%" height={10} />
+                  </View>
+                </Card>
+              ))}
+            </View>
+          ) : results.data != null && results.data.items.length === 0 ? (
+            <EmptyState
+              icon={UserRound}
+              title={debouncedQ ? "Keine Treffer" : "Keine Kunden"}
+              description={
+                debouncedQ
+                  ? "Kein Kunde zu dieser Suche. Schreibweise prüfen oder neu anlegen."
+                  : "Lege zuerst einen Kunden an, dann erscheint er hier."
+              }
+            />
+          ) : results.data != null ? (
+            results.data.items.map((row) => (
+              <PressableScale
+                key={row.id}
+                accessibilityRole="button"
+                accessibilityLabel={`${row.fullName}, ${KYC_STATUS_LABEL[row.kycStatus]}`}
+                onPress={() => onPick(row)}
+              >
+                <Card className="flex-row items-center gap-3 rounded-xl border px-3 py-3">
+                  <View
+                    className="h-10 w-10 items-center justify-center rounded-full"
+                    style={{ backgroundColor: t.colors.primary + "1f" }}
+                  >
+                    <Text className="text-xs font-semibold" style={{ color: t.colors.primary }}>
+                      {initialsOf(row.fullName)}
+                    </Text>
+                  </View>
+                  <View className="flex-1 gap-1">
+                    <Text className="text-sm font-semibold" numberOfLines={1}>
+                      {row.fullName}
+                    </Text>
+                    <Text className="text-muted-foreground font-mono text-2xs" numberOfLines={1}>
+                      {row.customerNumber}
+                    </Text>
+                  </View>
+                  <Badge variant={KYC_STATUS_VARIANT[row.kycStatus]} dot>
+                    <Text>{KYC_STATUS_LABEL[row.kycStatus]}</Text>
+                  </Badge>
+                </Card>
+              </PressableScale>
+            ))
+          ) : results.error != null ? (
+            <InlineError message={results.error} onRetry={() => void results.refetch()} />
+          ) : null}
+        </ScrollView>
+
+        <Button
+          variant="outline"
+          onPress={() => {
+            onOpenChange(false)
+            router.push("/customer/neu")
+          }}
+          accessibilityLabel="Neuen Kunden anlegen"
+        >
+          <Text>Neuen Kunden anlegen</Text>
+        </Button>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ────────────────────────────────────────────────────────────────────────────
+
+/** First letters of the first + last name parts → the calm avatar monogram. */
+function initialsOf(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return "?"
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}
 
 /**
  * The quick-cash chips for the keypad: the exact due (passend), rounded up to

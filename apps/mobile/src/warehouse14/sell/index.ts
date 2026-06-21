@@ -59,6 +59,15 @@ export {
 
 export { newIdempotencyKey } from "./idempotency"
 
+// Verkauf buyer-identity gate — the client mirror of the server's §10 GwG rule
+// (a sale at/above the threshold needs a KYC-verified buyer), so the screen can
+// gate the fiscal commit honestly instead of surfacing a post-commit 403.
+export {
+  evaluateVerkaufKyc,
+  VERKAUF_KYC_THRESHOLD_CENTS,
+  type VerkaufKycDecision,
+} from "./verkauf-kyc"
+
 // Verkauf reservation lifecycle — the hook that backs the pure cart with real
 // RESERVED→SOLD server locks (reserve-on-add, release-on-back-out).
 export {

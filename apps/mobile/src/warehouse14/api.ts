@@ -920,6 +920,30 @@ export function describeError(err: unknown): string {
         // VERIFIED/VIP before the physical-ID stamp. Give the actionable step.
         return "Aktion nicht möglich — zuerst die KYC-Prüfung (Ausweis) bestätigen."
       }
+      // ── Fiskal- + Inventar-Codes der Verkauf/Ankauf-Geldwege ────────────────
+      // Diese tragen ihren EIGENEN error.code (NICHT "CONFLICT"), umgehen also
+      // den CONFLICT-Zweig und landeten zuvor im default → roher englischer Text
+      // auf dem Geldweg. Jeder bekommt eine handlungsleitende deutsche Zeile.
+      case "PRODUCT_NOT_RESERVABLE":
+        // Der häufigste Renner-Fall: der Artikel wurde zwischenzeitlich
+        // reserviert/verkauft (oder existiert nicht mehr). Wir haben ihn NICHT
+        // in den Warenkorb gelegt — sag das klar, ohne den englischen Wortlaut.
+        return "Dieser Artikel ist nicht mehr verfügbar — er wurde bereits reserviert oder verkauft."
+      case "CLOSING_DAY_FINALIZED":
+        // Nach dem Z-Bon ist der Kassentag festgeschrieben (ADR-0008 +
+        // KassenSichV); eine weitere Buchung ist erst am neuen Tag möglich.
+        return "Der Kassentag ist bereits abgeschlossen (Z-Bon). Eine Buchung ist erst nach dem nächsten Kassenstart möglich."
+      case "KYC_REQUIRED":
+        // §10 GwG / §259 StGB: ohne geprüfte Ausweis-Identität ist die Buchung
+        // unzulässig. Die Schwelle/der Grund stecken in der Server-Meldung, aber
+        // wir surfacen eine ruhige, handlungsleitende deutsche Zeile.
+        return "Ausweis-Identifikation erforderlich — bitte zuerst einen geprüften Kunden zuordnen."
+      case "SANCTIONS_BLOCK":
+        // Sanktionslisten-Treffer: harte Sperre (GwG). Niemals weich umgehen.
+        return "Sanktionslisten-Treffer — die Buchung ist gesperrt. Bitte intern prüfen."
+      case "STORNO_OF_STORNO":
+        // Ein Storno kann nicht erneut storniert werden (Hash-Kette/GoBD).
+        return "Eine Stornierung kann nicht erneut storniert werden."
       case "NOT_FOUND":
         return "Datensatz nicht gefunden."
       case "EXTERNAL_SERVICE_FAILED":
