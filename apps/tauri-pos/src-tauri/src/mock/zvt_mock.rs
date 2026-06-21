@@ -79,9 +79,7 @@ pub async fn authorize_payment(_endpoint: ZvtEndpoint, amount_cents: u64) -> HwR
         success: true,
         authorization_code: Some(format!("MOCK-{auth_hex}")),
         card_pan_masked: Some(format!("****{suffix}")),
-        card_brand: Some(
-            ["VISA", "MASTERCARD", "GIROCARD"][fastrand::usize(0..3)].to_string(),
-        ),
+        card_brand: Some(["VISA", "MASTERCARD", "GIROCARD"][fastrand::usize(0..3)].to_string()),
         receipt_text: Some(format!(
             "MOCK-TERMINAL\nBetrag: {:.2} EUR\nAUTHORISATION: {auth_hex}",
             amount_cents as f64 / 100.0,

@@ -29,7 +29,11 @@ pub struct CompressOptions {
 
 impl Default for CompressOptions {
     fn default() -> Self {
-        Self { quality: 80, max_kb: 300, min_quality: 60 }
+        Self {
+            quality: 80,
+            max_kb: 300,
+            min_quality: 60,
+        }
     }
 }
 

@@ -22,7 +22,7 @@
 use serde::Deserialize;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
-use tokio::time::{Duration, timeout};
+use tokio::time::{timeout, Duration};
 
 use crate::config::{self, DEFAULT_TCP_TIMEOUT_MS};
 use crate::error::{HardwareError, HwResult};
@@ -97,7 +97,10 @@ pub async fn label_check_connection(config: LabelConfig) -> HwResult<bool> {
 /// True iff a CUPS queue with this exact name is listed by `lpstat -p`. Used
 /// to "verify" a system-mode label printer without dispatching a job.
 async fn system_queue_exists(printer_name: &str) -> bool {
-    let output = tokio::process::Command::new("lpstat").arg("-p").output().await;
+    let output = tokio::process::Command::new("lpstat")
+        .arg("-p")
+        .output()
+        .await;
     let stdout = match output {
         Ok(o) => String::from_utf8_lossy(&o.stdout).to_string(),
         Err(_) => return false,
@@ -185,7 +188,10 @@ async fn send_system(printer_name: &str, bytes: &[u8]) -> HwResult<()> {
     let _ = std::fs::remove_file(&tmp);
 
     if !status.success() {
-        return Err(HardwareError::Device(format!("lpr exited with {:?}", status.code())));
+        return Err(HardwareError::Device(format!(
+            "lpr exited with {:?}",
+            status.code()
+        )));
     }
     Ok(())
 }
@@ -212,10 +218,10 @@ fn build_zpl(labels: &[LabelData]) -> Vec<u8> {
         // across the top, human-readable rows beneath.
         out.push_str("^XA\n");
         out.push_str("^CI28\n"); // UTF-8 input
-        // Code128 of the SKU. `^BY2,3,70` = module 2 dots, wide/narrow 3, height
-        // 70. `^BCN,70,N,N,N` = Normal orientation, height 70, no interpretation
-        // line (we print the SKU ourselves below), no line above, no UCC check.
-        // ZPL auto-selects the Code128 subset for the data.
+                                 // Code128 of the SKU. `^BY2,3,70` = module 2 dots, wide/narrow 3, height
+                                 // 70. `^BCN,70,N,N,N` = Normal orientation, height 70, no interpretation
+                                 // line (we print the SKU ourselves below), no line above, no UCC check.
+                                 // ZPL auto-selects the Code128 subset for the data.
         out.push_str("^BY2,3,70\n");
         out.push_str(&format!("^FO20,20^BCN,70,N,N,N^FD{sku}^FS\n"));
         // Human-readable rows.
@@ -256,7 +262,10 @@ fn build_escpos(labels: &[LabelData]) -> Vec<u8> {
         text_line(&mut b, &format!("{weight} g  ·  {karat}"));
         text_line(
             &mut b,
-            &format!("Lager: {}", label.storage_location.as_deref().unwrap_or("-")),
+            &format!(
+                "Lager: {}",
+                label.storage_location.as_deref().unwrap_or("-")
+            ),
         );
 
         // Feed past the label gap — NO cut (sticker rolls aren't cut per label).
@@ -298,7 +307,10 @@ fn truncate(s: &str, max: usize) -> String {
     if s.chars().count() <= max {
         s.to_string()
     } else {
-        s.chars().take(max - 1).chain(std::iter::once('…')).collect()
+        s.chars()
+            .take(max - 1)
+            .chain(std::iter::once('…'))
+            .collect()
     }
 }
 
@@ -340,7 +352,7 @@ mod tests {
     fn escpos_inits_and_feeds_without_cut() {
         let bytes = build_escpos(&[sample()]);
         assert_eq!(&bytes[0..2], &[ESC, b'@']); // init
-        // No full-cut sequence (GS V).
+                                                // No full-cut sequence (GS V).
         assert!(!bytes.windows(2).any(|w| w == [GS, b'V']));
         // Contains the SKU text.
         assert!(bytes.windows(15).any(|w| w == b"W14-AU-750-0012"));

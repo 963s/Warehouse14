@@ -228,7 +228,11 @@ pub async fn tse_finish_transaction(mut params: TseFinishParams) -> HwResult<Tse
         .ok_or_else(|| HardwareError::Device("Fiskaly response missing signature".into()))?;
 
     Ok(TseSignature {
-        signature_value: sig.get("value").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+        signature_value: sig
+            .get("value")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
         signature_counter: sig.get("counter").and_then(|v| v.as_u64()).unwrap_or(0),
         signature_algorithm: sig
             .get("algorithm")

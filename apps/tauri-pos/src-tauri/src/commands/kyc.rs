@@ -21,7 +21,7 @@ use std::path::PathBuf;
 use aes_gcm::aead::rand_core::RngCore;
 use aes_gcm::aead::{Aead, AeadCore, KeyInit, OsRng};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
-use base64::{Engine, engine::general_purpose::STANDARD as B64};
+use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use tauri::Manager;
@@ -65,7 +65,9 @@ fn encrypt_payload(key: &[u8; KEY_LEN], plaintext: &[u8]) -> HwResult<Vec<u8>> {
 /// returns an error rather than garbage — GCM verifies the tag.
 fn decrypt_payload(key: &[u8; KEY_LEN], payload: &[u8]) -> HwResult<Vec<u8>> {
     if payload.len() < NONCE_LEN {
-        return Err(HardwareError::Encoding("ciphertext shorter than nonce".into()));
+        return Err(HardwareError::Encoding(
+            "ciphertext shorter than nonce".into(),
+        ));
     }
     let (nonce_bytes, ciphertext) = payload.split_at(NONCE_LEN);
     let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(key));
@@ -75,7 +77,10 @@ fn decrypt_payload(key: &[u8; KEY_LEN], payload: &[u8]) -> HwResult<Vec<u8>> {
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
-    Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
+    Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -94,7 +99,9 @@ fn load_or_create_master_key() -> HwResult<[u8; KEY_LEN]> {
                 .decode(b64.trim())
                 .map_err(|e| HardwareError::Internal(format!("keyring key decode: {e}")))?;
             if raw.len() != KEY_LEN {
-                return Err(HardwareError::Internal("master key has wrong length".into()));
+                return Err(HardwareError::Internal(
+                    "master key has wrong length".into(),
+                ));
             }
             let mut key = [0u8; KEY_LEN];
             key.copy_from_slice(&raw);
@@ -156,7 +163,10 @@ pub async fn encrypt_and_save_kyc_document(
     let path = dir.join(format!("{}.enc", uuid::Uuid::new_v4()));
     std::fs::write(&path, &payload).map_err(HardwareError::from)?;
 
-    Ok(EncryptResult { path: path.to_string_lossy().into_owned(), sha256 })
+    Ok(EncryptResult {
+        path: path.to_string_lossy().into_owned(),
+        sha256,
+    })
 }
 
 /// Decrypt a vault file back to plaintext bytes for the React layer.
@@ -169,10 +179,13 @@ pub async fn decrypt_and_load_kyc_document(
     app_handle: tauri::AppHandle,
 ) -> HwResult<Vec<u8>> {
     let dir = vault_dir(&app_handle)?;
-    let canonical = std::fs::canonicalize(PathBuf::from(&file_path)).map_err(HardwareError::from)?;
+    let canonical =
+        std::fs::canonicalize(PathBuf::from(&file_path)).map_err(HardwareError::from)?;
     let canonical_dir = std::fs::canonicalize(&dir).map_err(HardwareError::from)?;
     if !canonical.starts_with(&canonical_dir) {
-        return Err(HardwareError::InvalidArgument("path is outside the KYC vault".into()));
+        return Err(HardwareError::InvalidArgument(
+            "path is outside the KYC vault".into(),
+        ));
     }
 
     let payload = std::fs::read(&canonical).map_err(HardwareError::from)?;
@@ -207,7 +220,9 @@ mod tests {
         let payload = encrypt_payload(&key, plaintext).unwrap();
         assert!(payload.len() > NONCE_LEN);
         assert!(
-            !payload.windows(plaintext.len()).any(|w| w == plaintext.as_slice()),
+            !payload
+                .windows(plaintext.len())
+                .any(|w| w == plaintext.as_slice()),
             "plaintext leaked into ciphertext payload"
         );
     }

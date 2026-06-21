@@ -66,9 +66,9 @@ pub fn parse_mt_sics(raw: &str) -> HwResult<WeightReading> {
 
     // Token 2 is the numeric weight; validate it parses, but return the original
     // string so we keep the scale's exact precision (e.g. "14.50", not "14.5").
-    let value = tokens.next().ok_or_else(|| {
-        HardwareError::Device(format!("scale: no weight value in {line:?}"))
-    })?;
+    let value = tokens
+        .next()
+        .ok_or_else(|| HardwareError::Device(format!("scale: no weight value in {line:?}")))?;
     if value.parse::<f64>().is_err() {
         return Err(HardwareError::Device(format!(
             "scale: non-numeric weight {value:?} in {line:?}"

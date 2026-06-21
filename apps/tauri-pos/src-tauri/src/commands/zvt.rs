@@ -106,7 +106,9 @@ async fn run_authorisation_conversation(stream: &mut TcpStream) -> HwResult<ZvtR
             (0x80, 0x00) => {}
             // Negative ACK / NAK ends the conversation with an error.
             (0x84, n) => {
-                return Err(HardwareError::Device(format!("ZVT: Terminal-NAK (84 {n:02X})")))
+                return Err(HardwareError::Device(format!(
+                    "ZVT: Terminal-NAK (84 {n:02X})"
+                )))
             }
             // Intermediate status ("Bitte Karte", "PIN" …): ACK and keep waiting.
             (0x04, 0xFF) => send_ack(stream, &ECR_ACK).await?,
@@ -119,7 +121,9 @@ async fn run_authorisation_conversation(stream: &mut TcpStream) -> HwResult<ZvtR
             (0x06, 0x0F) => {
                 send_ack(stream, &ECR_ACK).await?;
                 return result.ok_or_else(|| {
-                    HardwareError::Device("ZVT: Completion ohne vorherige Status-Information".into())
+                    HardwareError::Device(
+                        "ZVT: Completion ohne vorherige Status-Information".into(),
+                    )
                 });
             }
             // Abort: ACK and finish with an unsuccessful result.
@@ -240,7 +244,7 @@ pub fn build_authorisation_frame(amount_cents: u64) -> Vec<u8> {
 fn build_reversal_frame(authorization_code: &str) -> Vec<u8> {
     let mut payload = Vec::with_capacity(8);
     payload.extend_from_slice(&[0x87, 0x04]); // TLV: receipt-no tag
-    // Pack the 4-digit auth code as BCD; pad short codes with leading zeros.
+                                              // Pack the 4-digit auth code as BCD; pad short codes with leading zeros.
     let padded: String = if authorization_code.len() >= 4 {
         authorization_code[authorization_code.len() - 4..].to_string()
     } else {
@@ -288,7 +292,9 @@ pub fn parse_authorisation_response(buf: &[u8]) -> HwResult<ZvtResult> {
         (0x80, 0x00) => Err(HardwareError::Device(
             "ZVT: nur positiver ACK (80 00) empfangen, noch keine Status-Information".into(),
         )),
-        (0x84, n) => Err(HardwareError::Device(format!("ZVT: Terminal-NAK (84 {n:02X})"))),
+        (0x84, n) => Err(HardwareError::Device(format!(
+            "ZVT: Terminal-NAK (84 {n:02X})"
+        ))),
         // Abort APDU: [06 1E LEN result-code …].
         (0x06, 0x1E) => Ok(decline_result(buf.get(3).copied().unwrap_or(0xFF))),
         // Status-Information / Completion → walk the BMP block.
@@ -442,7 +448,8 @@ fn next_bmp(data: &[u8]) -> Option<(u8, &[u8], usize)> {
                 ),
                 n => (1usize, n as usize),
             };
-            (rest.len() >= vstart + vlen).then(|| (id, &rest[vstart..vstart + vlen], 1 + vstart + vlen))
+            (rest.len() >= vstart + vlen)
+                .then(|| (id, &rest[vstart..vstart + vlen], 1 + vstart + vlen))
         }
     }
 }
@@ -566,7 +573,9 @@ pub fn parse_auth_frame_amount(frame: &[u8]) -> Result<u64, String> {
     let got_crc = u16::from(frame[frame.len() - 2]) | (u16::from(frame[frame.len() - 1]) << 8);
     let want_crc = crc_ccitt(body);
     if got_crc != want_crc {
-        return Err(format!("CRC mismatch: got {got_crc:#06x}, want {want_crc:#06x}"));
+        return Err(format!(
+            "CRC mismatch: got {got_crc:#06x}, want {want_crc:#06x}"
+        ));
     }
     // Scan the payload TLVs (after the 3-byte header) for the amount tag 0x04.
     let payload = &frame[3..3 + declared];
