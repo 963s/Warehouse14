@@ -105,6 +105,41 @@ export function advanceAccessibilityLabel(next: AppointmentPatchStatus): string 
   }
 }
 
+// ── Server timestamp parsing (Hermes-safe) ────────────────────────────────────
+/**
+ * The appointments endpoints serialise every instant as a Postgres `::text`
+ * timestamptz, e.g. `"2026-06-21 07:00:00+00"` — a SPACE separator and a bare
+ * `+00` offset. That is NOT ISO 8601, and the Hermes engine (the app's JS
+ * runtime) only parses ISO 8601: `new Date("2026-06-21 07:00:00+00")` returns an
+ * Invalid Date on the device, even though V8/Node parse it leniently. Feeding
+ * that Invalid Date into `Intl.DateTimeFormat.format(...)` throws a RangeError —
+ * which, on the Termine agenda and the booking flow, crashed the render and
+ * bounced the owner out of the screen ("eine Buchung wirft mich raus").
+ *
+ * This normaliser turns the Postgres text shape (and any already-ISO value) into
+ * a string Hermes parses: `space → T`, fractional seconds clamped to three
+ * digits, and a bare `±HH` / `±HHMM` offset expanded to `±HH:MM`. It returns a
+ * Date that may be Invalid — callers must treat that gracefully (the formatters
+ * below do, never throwing). Idempotent for ISO inputs (`…Z` passes through).
+ */
+export function parseServerDate(value: string | Date): Date {
+  if (value instanceof Date) return value
+  if (typeof value !== "string") return new Date(NaN)
+  const iso = value
+    .trim()
+    .replace(" ", "T") // date/time separator
+    .replace(/(\.\d{3})\d+/, "$1") // clamp sub-ms fraction → ms
+    .replace(/([+-]\d{2})(\d{2})$/, "$1:$2") // +0200 → +02:00
+    .replace(/([+-]\d{2})$/, "$1:00") // +00 → +00:00
+  return new Date(iso)
+}
+
+/** A parsed instant only when it is a real, finite date — else null. */
+function validDate(value: string | Date): Date | null {
+  const d = parseServerDate(value)
+  return Number.isNaN(d.getTime()) ? null : d
+}
+
 // ── de-DE date / time formatting ──────────────────────────────────────────────
 const TIME_FMT = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit" })
 const DATE_FMT = new Intl.DateTimeFormat("de-DE", {
@@ -119,14 +154,16 @@ const DAY_HEADER_FMT = new Intl.DateTimeFormat("de-DE", {
   month: "long",
 })
 
-/** "14:30" for an ISO timestamp. */
-export function formatTime(iso: string): string {
-  return TIME_FMT.format(new Date(iso))
+/** "14:30" for a server timestamp. A neutral clock placeholder if unparseable —
+ *  never throws (a Hermes Invalid Date into Intl would otherwise crash). */
+export function formatTime(value: string | Date): string {
+  const d = validDate(value)
+  return d ? TIME_FMT.format(d) : "--:--"
 }
 
-/** "14:30–15:00" for a start + end ISO pair. */
-export function formatTimeRange(startIso: string, endIso: string): string {
-  return `${formatTime(startIso)}–${formatTime(endIso)}`
+/** "14:30 bis 15:00" for a start + end pair (server timestamps). */
+export function formatTimeRange(start: string | Date, end: string | Date): string {
+  return `${formatTime(start)} bis ${formatTime(end)}`
 }
 
 /** "Mo, 23.06.2026" — the compact date shown in the agenda's date stepper. */
@@ -134,9 +171,12 @@ export function formatDateShort(d: Date): string {
   return DATE_FMT.format(d)
 }
 
-/** "Montag, 23. Juni" — the long header used inside the booking flow. */
-export function formatDayHeader(d: Date): string {
-  return DAY_HEADER_FMT.format(d)
+/** "Montag, 23. Juni" — the long header used inside the booking flow. Accepts a
+ *  Date (the day stepper) or a server timestamp string (a slot's day); a value
+ *  Hermes cannot parse yields a neutral German placeholder, never a crash. */
+export function formatDayHeader(value: Date | string): string {
+  const d = validDate(value)
+  return d ? DAY_HEADER_FMT.format(d) : "Unbekannter Tag"
 }
 
 const WEEKDAY_FMT = new Intl.DateTimeFormat("de-DE", { weekday: "long" })

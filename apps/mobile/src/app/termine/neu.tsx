@@ -39,6 +39,7 @@ import {
   BOOKABLE_TYPES,
   formatDayHeader,
   formatTime,
+  parseServerDate,
   startOfDay,
   typeLabel,
 } from "@/warehouse14/termine-ui"
@@ -70,7 +71,7 @@ function groupByDay(
 ): { key: string; label: string; slots: AvailableSlot[] }[] {
   const byKey = new Map<string, { label: string; slots: AvailableSlot[] }>()
   for (const s of [...slots].sort((a, b) => a.slot_starts_at.localeCompare(b.slot_starts_at))) {
-    const d = new Date(s.slot_starts_at)
+    const d = parseServerDate(s.slot_starts_at)
     const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
     const bucket = byKey.get(key) ?? { label: formatDayHeader(d), slots: [] }
     bucket.slots.push(s)
@@ -189,7 +190,7 @@ export default function NeuerTerminScreen() {
             <Text className="text-xl font-bold">Termin gebucht</Text>
             {type != null && selected != null ? (
               <Text className="text-muted-foreground text-center text-sm" numberOfLines={2}>
-                {typeLabel(type)} · {formatDayHeader(new Date(selected.slot_starts_at))},{" "}
+                {typeLabel(type)} · {formatDayHeader(parseServerDate(selected.slot_starts_at))},{" "}
                 {formatTime(selected.slot_starts_at)} Uhr
               </Text>
             ) : null}

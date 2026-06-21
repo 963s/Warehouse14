@@ -66,12 +66,14 @@ import {
   advanceAccessibilityLabel,
   endOfDay,
   formatDayMonth,
+  formatTime,
   formatTimeRange,
   formatWeekday,
   isActionable,
   isToday,
   nextStatus,
   nextStatusLabel,
+  parseServerDate,
   relativeDayLabel,
   sortByStart,
   startOfDay,
@@ -276,7 +278,11 @@ function ApptRow({
   const t = useW14Theme()
   const next = nextStatus(appt.status)
   const actionable = isActionable(appt.status)
-  const [start, end] = formatTimeRange(appt.starts_at, appt.ends_at).split("–")
+  // Format each end of the range independently — never split a formatted string
+  // (the separator is German prose, and the values are server timestamps that
+  // must go through the Hermes-safe formatter, not a raw `new Date`).
+  const start = formatTime(appt.starts_at)
+  const end = formatTime(appt.ends_at)
   const AdvanceIcon = next != null ? advanceIcon(next) : ArrowRight
 
   return (
@@ -655,9 +661,12 @@ export default function TermineScreen() {
 }
 
 // ── Local de-DE date-time parsing (no date-picker dep) ────────────────────────
-/** Prefill the reschedule field with the appointment's current start, de-DE. */
-function defaultRescheduleInput(iso: string): string {
-  const d = new Date(iso)
+/** Prefill the reschedule field with the appointment's current start, de-DE.
+ *  The start is a server timestamp, so parse it Hermes-safely; an unparseable
+ *  value leaves the field empty rather than seeding "NaN.NaN.NaN". */
+function defaultRescheduleInput(serverStart: string): string {
+  const d = parseServerDate(serverStart)
+  if (Number.isNaN(d.getTime())) return ""
   const pad = (n: number) => String(n).padStart(2, "0")
   return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
