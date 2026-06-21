@@ -42,7 +42,8 @@ import type {
   MonthRevenueResponse,
   ProfitResponse,
 } from "@warehouse14/api-client"
-import { Gem, Lock, MapPin, Vault } from "lucide-react-native"
+import { type Href, useRouter } from "expo-router"
+import { Gem, Lock, MapPin, Search, Vault } from "lucide-react-native"
 
 import { Card } from "@/components/ui/card"
 import { Text } from "@/components/ui/text"
@@ -78,7 +79,9 @@ import { useW14Theme } from "@/warehouse14/theme"
 import {
   CountUp,
   GoldFlood,
+  haptics,
   InlineError,
+  PressableScale,
   RingGauge,
   SectionCard,
   Skeleton,
@@ -116,6 +119,34 @@ function LockedTile({ label }: { label: string }) {
         <Text className="text-muted-foreground text-xs">bald verfügbar</Text>
       </View>
     </Card>
+  )
+}
+
+/**
+ * The header search action — a calm brass disc that opens the global search
+ * (Artikel · Kunden · Belege in one field). Mirrors the NotificationBell's
+ * weight so the two header glyphs read as a pair. Spine: press-scale + the §7
+ * selection haptic on navigate; tokens only.
+ */
+function SearchAction() {
+  const t = useW14Theme()
+  const router = useRouter()
+  return (
+    <PressableScale
+      onPress={() => {
+        haptics.selection()
+        router.push("/suche" as Href)
+      }}
+      accessibilityRole="button"
+      accessibilityLabel="Suche öffnen"
+    >
+      <View
+        className="h-10 w-10 items-center justify-center rounded-full"
+        style={{ backgroundColor: t.colors.primary + "14" }}
+      >
+        <Search size={t.icon.lg} color={t.colors.primary} />
+      </View>
+    </PressableScale>
   )
 }
 
@@ -313,6 +344,7 @@ export default function SchatzkammerScreen() {
             </View>
             <View className="flex-row items-center gap-1.5">
               <StreakFlame streak={game.streak} size="sm" />
+              <SearchAction />
               <NotificationBell />
             </View>
           </View>

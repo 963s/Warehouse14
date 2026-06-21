@@ -82,6 +82,7 @@ export default function RootLayout() {
           <Stack.Screen name="analytics" options={{ title: "Auswertungen" }} />
           <Stack.Screen name="team" options={{ title: "Team" }} />
           <Stack.Screen name="tagebuch" options={{ title: "Tagebuch" }} />
+          <Stack.Screen name="suche" options={{ title: "Suche" }} />
           <Stack.Screen name="einstellungen" options={{ title: "Einstellungen" }} />
           <Stack.Screen
             name="ausgaben/ausgabe"

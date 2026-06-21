@@ -30,6 +30,7 @@ import {
   Printer,
   Receipt,
   ScanLine,
+  Search,
   Settings,
   ShoppingBag,
   ShoppingCart,
@@ -233,6 +234,15 @@ export const OWNER_SURFACES: readonly OwnerSurface[] = [
     description: "Das lückenlose Ereignisprotokoll — wer wann was getan hat, revisionssicher.",
     icon: Activity,
     group: "system",
+    available: true,
+  },
+  {
+    id: "suche",
+    route: "/suche",
+    label: "Suche",
+    description: "Artikel, Kunden und Belege in einem Feld finden und direkt öffnen.",
+    icon: Search,
+    group: "betrieb",
     available: true,
   },
 ] as const
