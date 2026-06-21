@@ -153,6 +153,16 @@ function formatEurString(eur: string): string {
   return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(n)
 }
 
+/**
+ * Drop a single leading minus from a decimal-EUR string. Storno rows carry a
+ * NEGATIVE `total_eur` (DB invariant), but the German body reads „über X" where
+ * X is the magnitude — the word „storniert" already conveys the reversal, so a
+ * „-50,00 €" would read as a double negative. Leaves a positive value untouched.
+ */
+function stripLeadingMinus(eur: string): string {
+  return eur.replace(/^-/, "")
+}
+
 /** A short de-DE date from a "YYYY-MM-DD" business day, or the raw string. */
 function formatBusinessDay(day: string): string {
   const d = new Date(`${day}T00:00:00`)
@@ -180,6 +190,21 @@ function appointmentBody(p: Record<string, unknown>, who: string | null, verb: s
   const when = formatAppointmentWhen(p)
   if (who) return `${who}: Termin ${verb}${when}.`
   return `Ein Termin ${verb}${when}.`
+}
+
+/**
+ * The money direction of a transaction event, read from the real ledger payload.
+ *
+ * The `transaction.finalized` / `transaction.stornoed` rows carry the enum
+ * `direction` verbatim (migration 0009: `jsonb_build_object('direction',
+ * NEW.direction, …)`), so it is the literal string `"VERKAUF"` (we sell — cash
+ * IN) or `"ANKAUF"` (we buy from the customer — cash OUT). Conflating the two
+ * misreports the money direction to the owner: a buy-in shown as a sale. We
+ * default to a sale ONLY when the field is genuinely absent, and never surface
+ * the raw enum token — it maps to clean German at the edge.
+ */
+function isAnkauf(p: Record<string, unknown>): boolean {
+  return pstr(p, "direction") === "ANKAUF"
 }
 
 // ── The classifier ────────────────────────────────────────────────────────────
@@ -306,19 +331,42 @@ export function classify(e: LedgerEvent): Notification | null {
       return make("fiscal", "info", "Tagesabschluss gebucht", `${lead}${tail}`)
     }
 
-    // ── Sales worth surfacing ───────────────────────────────────────────────
+    // ── Verkäufe & Ankäufe worth surfacing ──────────────────────────────────
+    // The ledger row carries the real money `direction` (VERKAUF = cash IN,
+    // ANKAUF = cash OUT). We MUST honour it: an Ankauf is a payout, not a sale.
+    // Reporting a buy-in as „Verkauf abgeschlossen" shows the owner the wrong
+    // money direction. Branch on it and render clean, idiomatic German for both.
     case "transaction.finalized":
-      // Only a finalized sale carrying a real amount is worth a notification;
-      // the dashboard already shows the running total, so keep this calm.
+      // Only a finalized transaction carrying a real amount is worth a
+      // notification; the dashboard already shows the running total, so keep
+      // this calm.
       if (amount == null) return null
-      return make("sales", "info", "Verkauf abgeschlossen", `Beleg über ${amount} wurde gebucht.`)
-    case "transaction.stornoed":
+      return isAnkauf(p)
+        ? make("sales", "info", "Ankauf abgeschlossen", `Auszahlung über ${amount} wurde gebucht.`)
+        : make("sales", "info", "Verkauf abgeschlossen", `Beleg über ${amount} wurde gebucht.`)
+    case "transaction.stornoed": {
+      // `total_eur` is negative on a storno row (DB invariant). Surface the
+      // amount as an absolute value so the German reads naturally („über 50,00 €").
+      const stornoAmount = amountEur != null ? formatEurString(stripLeadingMinus(amountEur)) : null
+      if (isAnkauf(p)) {
+        return make(
+          "sales",
+          "action",
+          "Ankauf storniert",
+          stornoAmount
+            ? `Ein Ankauf über ${stornoAmount} wurde storniert.`
+            : "Ein Ankauf wurde storniert.",
+        )
+      }
       return make(
         "sales",
         "action",
         "Storno gebucht",
-        amount ? `Ein Verkauf über ${amount} wurde storniert.` : "Ein Verkauf wurde storniert.",
+        stornoAmount
+          ? `Ein Verkauf über ${stornoAmount} wurde storniert.`
+          : "Ein Verkauf wurde storniert.",
       )
+    }
     case "transaction.returned":
       return make(
         "sales",
