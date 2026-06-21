@@ -28,8 +28,9 @@
  * vocabulary, W14 theme tokens only). German UI, de-DE money.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Pressable, ScrollView, View } from "react-native"
+import { ActivityIndicator, Pressable, ScrollView, View } from "react-native"
 import { useFocusEffect, useRouter } from "expo-router"
+import { ApiOfflineQueuedError } from "@warehouse14/api-client"
 import type { CustomerListRow, PaymentMethod, ProductListRow } from "@warehouse14/api-client"
 import {
   Banknote,
@@ -42,6 +43,7 @@ import {
   Monitor,
   Printer,
   Receipt,
+  RefreshCw,
   ScanFace,
   Search,
   ShieldCheck,
@@ -120,7 +122,10 @@ import {
 } from "@/warehouse14/ui"
 
 const DEBOUNCE_MS = 300
-const SEARCH_LIMIT = 20
+/** Rows per fetched page. The first page comes from `useQuery`; the rest are
+ *  accumulated via „Mehr laden" so every match — including every AVAILABLE
+ *  article — is reachable, not capped at one page (mirrors the Lager spine). */
+const PAGE_SIZE = 50
 
 /** The tenders the mobile Verkauf offers. CASH drives the keypad + change; the
  *  cashless tenders pay the exact total (the terminal/transfer handles the rest).
@@ -292,6 +297,77 @@ function ResultsSkeleton() {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// „Mehr laden" footer — the explicit path to the rest of the catalog
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The results-list footer for the ScrollView-based picker: a „Mehr laden" tap
+ * while pages remain, a spinner while one is fetching, and an honest retry on a
+ * failed page (never a silent stop). Renders nothing once the whole result set
+ * is on screen, so a one-page search stays clean.
+ */
+function ResultsMoreFooter({
+  loading,
+  error,
+  moreRemain,
+  onLoadMore,
+}: {
+  loading: boolean
+  error: string | null
+  moreRemain: boolean
+  onLoadMore: () => void
+}) {
+  const t = useW14Theme()
+
+  if (error != null) {
+    return (
+      <View className="items-center px-4 pt-1.5">
+        <Text className="text-muted-foreground pb-2 text-center text-xs">{error}</Text>
+        <Pressable
+          onPress={() => {
+            haptics.selection()
+            onLoadMore()
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Weitere Artikel erneut laden"
+          className="flex-row items-center gap-1.5 rounded-full border px-3.5 py-2"
+          style={{ borderColor: t.colors.border, minHeight: t.touch.min }}
+        >
+          <RefreshCw size={t.icon.xs} color={t.colors.primary} />
+          <Text className="text-primary text-sm font-medium">Erneut laden</Text>
+        </Pressable>
+      </View>
+    )
+  }
+
+  if (loading) {
+    return (
+      <View className="items-center py-3" accessibilityElementsHidden>
+        <ActivityIndicator color={t.colors.mutedForeground} />
+      </View>
+    )
+  }
+
+  if (!moreRemain) return null
+
+  return (
+    <Pressable
+      onPress={() => {
+        haptics.selection()
+        onLoadMore()
+      }}
+      accessibilityRole="button"
+      accessibilityLabel="Mehr Artikel laden"
+      className="mt-0.5 flex-row items-center justify-center gap-1.5 self-center rounded-full border px-4 py-2.5"
+      style={{ borderColor: t.colors.border, minHeight: t.touch.min }}
+    >
+      <RefreshCw size={t.icon.xs} color={t.colors.primary} />
+      <Text className="text-primary text-sm font-medium">Mehr laden</Text>
+    </Pressable>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // Screen
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -345,9 +421,10 @@ export default function VerkaufScreen() {
   // AVAILABLE stays addable (the ResultRow gates that). The rows are floated
   // available-first via `compareByAvailability`, so the sellable stock is always
   // at the top of the list and the held/gone rows sit below for context.
+  const searchKey = `verkauf:search:${debouncedQ}`
   const results = useQuery(
-    () => listProducts({ q: debouncedQ || undefined, limit: SEARCH_LIMIT }),
-    { key: `verkauf:search:${debouncedQ}` },
+    () => listProducts({ q: debouncedQ || undefined, limit: PAGE_SIZE }),
+    { key: searchKey },
   )
 
   // Live availability counts for the current search — the real per-status totals
@@ -357,12 +434,86 @@ export default function VerkaufScreen() {
   const counts = useInventoryCounts({ q: debouncedQ })
   const summaryLine = availabilitySummaryLine(counts.data)
 
-  // Available-first ordering of the page, computed once per result set. A stable
-  // sort keeps the server's order within each status bucket.
-  const sortedResults = useMemo(
-    () => (results.data ? [...results.data.items].sort(compareByAvailability) : []),
-    [results.data],
-  )
+  // ── Pagination ────────────────────────────────────────────────────────────
+  // The server returns mixed statuses in `createdAt DESC` order, NOT availability
+  // order, so a single first page can hide AVAILABLE stock behind newer reserved/
+  // sold rows. Without paging the operator would see fewer addable rows than the
+  // availability strip promises (the honesty gap). `useQuery` owns the FIRST page;
+  // further pages are accumulated here so every match — and every AVAILABLE piece
+  // the strip counts — is actually reachable. Everything resets the instant the
+  // search key (or a refetched first page) changes, so two result sets never mix.
+  const [extra, setExtra] = useState<ProductListRow[]>([])
+  const [exhausted, setExhausted] = useState(false)
+  const [paging, setPaging] = useState<{ loading: boolean; error: string | null }>({
+    loading: false,
+    error: null,
+  })
+  // Read inside the async loader without re-creating it on every keystroke.
+  const keyRef = useRef(searchKey)
+  keyRef.current = searchKey
+  const extraRef = useRef(extra)
+  extraRef.current = extra
+  const firstPageCountRef = useRef(0)
+  firstPageCountRef.current = results.data?.items.length ?? 0
+  // Set once the wire hands back a short/empty page — the truth that there is
+  // nothing left, so we stop paging even if `total` is momentarily ahead of what
+  // is reachable (a concurrent reserve/sale) and never loop.
+  const exhaustedRef = useRef(false)
+
+  // A fresh first page (new search, or a refetch-on-focus that re-resolved the
+  // head) invalidates any accumulated tail — drop it and clear the paging state.
+  const firstPageStamp = results.updatedAt
+  useEffect(() => {
+    setExtra([])
+    setExhausted(false)
+    setPaging({ loading: false, error: null })
+    exhaustedRef.current = false
+  }, [searchKey, firstPageStamp])
+
+  const loadMore = useCallback(async () => {
+    const myKey = keyRef.current
+    const offset = firstPageCountRef.current + extraRef.current.length
+    if (offset === 0 || exhaustedRef.current) return
+    setPaging({ loading: true, error: null })
+    try {
+      const page = await listProducts({
+        q: debouncedQ || undefined,
+        limit: PAGE_SIZE,
+        offset,
+      })
+      // Drop a late response whose result set no longer matches the screen.
+      if (keyRef.current !== myKey) return
+      // The wire said „no more" — stop, even if `total` hasn't caught up yet.
+      if (!page.hasMore || page.items.length === 0) {
+        exhaustedRef.current = true
+        setExhausted(true)
+      }
+      setExtra((prev) => [...prev, ...page.items])
+      setPaging({ loading: false, error: null })
+    } catch (err) {
+      if (keyRef.current !== myKey) return
+      // An offline-queued read is not a failure — just stop the footer spinner.
+      if (err instanceof ApiOfflineQueuedError) {
+        setPaging({ loading: false, error: null })
+        return
+      }
+      haptics.error()
+      setPaging({ loading: false, error: describeError(err) })
+    }
+  }, [debouncedQ])
+
+  // The full loaded set — first page + every accumulated tail page, de-duped by
+  // id (a row near a page boundary can repeat under concurrent writes). Floated
+  // available-first via `compareByAvailability` ACROSS the whole loaded set, so
+  // the sellable stock always sits at the top no matter which page it arrived on.
+  const total = results.data?.total ?? 0
+  const sortedResults = useMemo(() => {
+    if (results.data == null) return []
+    return dedupeById(results.data.items, extra).sort(compareByAvailability)
+  }, [results.data, extra])
+  // More to fetch when the wire hasn't said „done" and fewer rows are loaded than
+  // the server's reported total. Drives the honest „Mehr laden" footer.
+  const moreRemain = !exhausted && sortedResults.length < total
 
   // ── Tender state ───────────────────────────────────────────────────────────
   const [method, setMethod] = useState<PaymentMethod>("CASH")
@@ -597,6 +748,15 @@ export default function VerkaufScreen() {
             />
           ) : results.data != null ? (
             <View className="gap-2.5">
+              {/* Honest coverage line — how many of the total matches are on
+                  screen. Only worth showing once there is more than one page, so
+                  the operator never wonders whether the strip's „verfügbar" count
+                  is reachable: tap „Mehr laden" until everything is here. */}
+              {moreRemain || extra.length > 0 ? (
+                <Text className="text-muted-foreground text-2xs px-0.5" numberOfLines={1}>
+                  {`${sortedResults.length.toLocaleString("de-DE")} von ${total.toLocaleString("de-DE")} geladen`}
+                </Text>
+              ) : null}
               {sortedResults.map((item, index) => (
                 <StaggerItem key={item.id} index={Math.min(index, 8)} exit={false}>
                   <ResultRow
@@ -607,6 +767,16 @@ export default function VerkaufScreen() {
                   />
                 </StaggerItem>
               ))}
+              {/* „Mehr laden" — the explicit path to the rest of the catalog. The
+                  picker lives in a ScrollView (not a FlatList), so paging is a
+                  deliberate tap rather than an invisible scroll trigger; the
+                  operator sees exactly when more stock is being fetched. */}
+              <ResultsMoreFooter
+                loading={paging.loading}
+                error={paging.error}
+                moreRemain={moreRemain}
+                onLoadMore={() => void loadMore()}
+              />
             </View>
           ) : results.error != null ? (
             <InlineError message={results.error} onRetry={() => void results.refetch()} />
@@ -1425,6 +1595,31 @@ function formatCashReceived(value: string): string {
   if (value === "") return "0,00 €"
   const shown = value.endsWith(",") ? value.slice(0, -1) : value
   return `${shown} €`
+}
+
+/**
+ * Merge the first page with the accumulated tail pages, de-duped by id so a row
+ * that straddles a page boundary (or repeats under a concurrent reserve/sale)
+ * appears once. First-page order is preserved ahead of the tail; the caller then
+ * floats the merged set available-first via `compareByAvailability`.
+ */
+function dedupeById(
+  first: readonly ProductListRow[],
+  rest: readonly ProductListRow[],
+): ProductListRow[] {
+  const seen = new Set<string>()
+  const out: ProductListRow[] = []
+  for (const row of first) {
+    if (seen.has(row.id)) continue
+    seen.add(row.id)
+    out.push(row)
+  }
+  for (const row of rest) {
+    if (seen.has(row.id)) continue
+    seen.add(row.id)
+    out.push(row)
+  }
+  return out
 }
 
 /** First letters of the first + last name parts → the calm avatar monogram. */
