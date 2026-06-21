@@ -123,6 +123,7 @@ function Segmented({ value, onChange }: { value: Tab; onChange: (next: Tab) => v
             <View
               className="items-center justify-center rounded-md py-2"
               style={{
+                minHeight: t.touch.min,
                 backgroundColor: active ? t.colors.card : "transparent",
                 borderWidth: active ? 1 : 0,
                 borderColor: t.colors.border,

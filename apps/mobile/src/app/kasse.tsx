@@ -430,6 +430,7 @@ function ClosingCard({
               onPress={() => onExport("datev")}
               disabled={busy}
               accessibilityLabel={`${EXPORT_LABELS.datev} teilen`}
+              hitSlop={{ top: 8, bottom: 8 }}
             >
               <Download size={t.icon.xs} color={t.colors.foreground} />
               <Text>DATEV</Text>
@@ -440,6 +441,7 @@ function ClosingCard({
               onPress={() => onExport("kassenbericht")}
               disabled={busy}
               accessibilityLabel={`${EXPORT_LABELS.kassenbericht} teilen`}
+              hitSlop={{ top: 8, bottom: 8 }}
             >
               <FileSpreadsheet size={t.icon.xs} color={t.colors.foreground} />
               <Text>Kassenbericht</Text>
@@ -524,7 +526,10 @@ function FinalizeSheet({
       visible
       animationType="slide"
       transparent
-      onRequestClose={onClose}
+      // Android hardware back: while the legal Z-Bon write is in flight the sheet
+      // stays put (matching the scrim + Abbrechen, both disabled when busy) so a
+      // back-press can't tear it down mid-commit.
+      onRequestClose={busy ? undefined : onClose}
       statusBarTranslucent
       navigationBarTranslucent
     >

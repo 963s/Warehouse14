@@ -165,6 +165,7 @@ export default function AusgabeScreen() {
         <View
           className="flex-row items-center gap-1.5 rounded-md border px-3 py-2"
           style={{
+            minHeight: t.touch.min,
             borderColor: active ? t.colors.primary : t.colors.border,
             backgroundColor: active ? t.colors.primary : t.colors.card,
           }}
