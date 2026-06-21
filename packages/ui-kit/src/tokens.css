@@ -14,52 +14,58 @@
 
 :root,
 :root[data-theme="light"] {
-  /* ─── Neutral surfaces (modern clean) ──────────────────────────── */
-  /* var names kept for compat; values are now a cool neutral system:
-     app background → white card → subtle raised. */
-  --w14-parchment: #f5f6f8; /* app background */
-  --w14-parchment-1: #fbfbfd; /* list / sub-panel surface (just above app bg) */
-  --w14-parchment-2: #ffffff; /* cards / panels */
-  --w14-parchment-3: #eef0f3; /* inputs / hover / raised */
+  /* ─── The ANTIQUE IDENTITY — aged warm cream, never cool neutral ──
+     Unified with apps/mobile theme.ts + the warehouse14-onlineshop
+     globals.css so web + POS share one identity (memory.md §10). The
+     paper is AGED and warm, layered for depth — never flat, never the
+     old cool grey. The cashier is the antiquarian's ledger. */
+  --w14-parchment: #efece3; /* app background — deep warm cream canvas */
+  --w14-parchment-1: #f4f1e9; /* list / sub-panel surface (half-step above bg) */
+  --w14-parchment-2: #faf8f2; /* cards / panels — raised cream leaf */
+  --w14-parchment-3: #e8e4da; /* inputs / hover / sunken cream well */
 
-  /* ─── Ink (text + strokes) — high contrast for clarity ─────────── */
-  --w14-ink: #16191d;
-  --w14-ink-aged: #3a3f47;
+  /* ─── Ink (text + strokes) — warm near-black, never pure ─────────── */
+  --w14-ink: #17150f; /* 15.45:1 on parchment — warm near-black */
+  --w14-ink-aged: #45413a; /* secondary text — warm grey-umber */
   /* ink-faded is the smallest legible text tone (captions, hints, meta).
-     Darkened from #6b7280 → #646b76 so body-size text clears WCAG AA 4.5:1
-     even on the lowest input/hover surface (--w14-parchment-3): was 4.23,
-     now 4.71. Still reads as a quiet "elegant grey", just legible. */
-  --w14-ink-faded: #646b76;
-  --w14-rule: #e3e6eb; /* hairline borders (decorative — WCAG 1.4.11 exempt) */
+     Nudged to #67645d so meta clears WCAG AA 4.5:1 on bg (5.00:1) AND on
+     the card surface (5.56:1) — AA with margin on both. */
+  --w14-ink-faded: #67645d;
+  --w14-rule: #cdb787; /* fine warm-gold hairline (decorative, exempt) */
 
-  /* ─── Accent palette — gold as a sparing accent, modern semantics ─ */
-  --w14-gold: #bf9430;
-  --w14-gold-soft: #ddc486;
-  --w14-wax-red: #d63d49; /* destructive / price-down */
-  --w14-wax-red-soft: #ef8a92;
-  --w14-verdigris: #157a4b; /* positive / price-up — darkened for WCAG AA as text on white (was #1f9d62 = 3.47:1; now ~5.4:1). Dark-theme token (line ~150) is untouched. Every verdigris background in the app is a decorative aria-hidden dot, so this only improves contrast. */
+  /* ─── Accent palette — gold is DECORATIVE only (memory.md §10.2) ───
+     Gold and the hairline are flourish: edges, seals, the 2px underline
+     on the active Karteikasten chip. NEVER a fill behind text, NEVER a
+     text colour. Text-bearing emphasis uses --w14-accent (brass). */
+  --w14-gold: #bf9430; /* decorative flourish only — never under text */
+  --w14-gold-soft: #ddc486; /* hover companion of the decorative gold */
+  --w14-wax-red: #b8442b; /* terracotta — destructive / price-down, AA */
+  --w14-wax-red-soft: #d98a72;
+  --w14-verdigris: #3a6450; /* sage — positive / price-up, AA (5.70:1 bg) */
 
-  /* ─── Primary action accent ────────────────────────────────────────
-     The confident brand fill for the single most important action on a
-     surface. A deepened brass so white text clears WCAG AA. Used by the
-     ui-kit Button 'primary' variant. */
-  --w14-accent: #9a751f; /* primary fill (brass, deep enough for white text) */
-  --w14-accent-hover: #845f16; /* hover / active */
-  --w14-accent-ink: #ffffff; /* text on the accent fill */
+  /* ─── Primary action accent — brass, deep enough for cream text ────
+     The single confident fill for the money-path CTA (finalize sale,
+     open till). Brass-deep so cream text clears AA; gold stays reserved
+     for decoration. Mirrors apps/mobile theme.ts primary. */
+  --w14-accent: #7e6228; /* brass-deep — AA as text + as a fill (4.85:1 bg) */
+  --w14-accent-hover: #6a5120; /* hover / active */
+  --w14-accent-ink: #faf8f2; /* warm cream on the brass fill (5.4:1) */
 
   /* ─── Scrims + utility ─────────────────────────────────────────── */
-  --w14-overlay: rgba(17, 21, 28, 0.45);
-  /* Focus ring colour — must clear WCAG 1.4.11 (≥3:1 against every surface).
-     The decorative brass #bf9430 only reached 2.45–2.80:1; the deeper brass
-     accent (#9a751f, already AA-grade) clears 3.72:1 on the worst surface,
-     ties focus to the brand, and is always visible. */
-  --w14-focus-ring: #9a751f;
+  --w14-overlay: rgba(23, 21, 15, 0.45);
+  /* Focus ring — the deeper brass accent (#7e6228) clears 3:1 on every
+     surface and ties focus to the brand. */
+  --w14-focus-ring: #7e6228;
   /* Ready-to-use focus halo: a 3px brass ring (visible, ≥3:1). Apply via
      `box-shadow: var(--w14-focus-shadow)` on :focus-visible. */
-  --w14-focus-shadow: 0 0 0 3px rgba(154, 117, 31, 0.45);
+  --w14-focus-shadow: 0 0 0 3px rgba(126, 98, 40, 0.45);
 
-  /* ─── Typography — clean modern sans primary ───────────────────── */
-  --w14-font-display: "Inter", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  /* ─── Typography — Cormorant display, Inter body, JetBrains numerals ─
+     The antique voice: a Didone-adjacent serif for titles + totals, a
+     humanist sans for body/forms, a mono for tabular money. The woff2
+     files live in apps/tauri-pos/public/fonts/ (self-hosted, no CDN —
+     memory.md §10.3). Mirrors apps/mobile fonts.ts + theme.ts. */
+  --w14-font-display: "Cormorant Garamond", "Inter", system-ui, -apple-system, BlinkMacSystemFont, serif;
   --w14-font-body: "Inter", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   --w14-font-mono: "JetBrains Mono", "Menlo", "Consolas", monospace;
 
@@ -93,7 +99,7 @@
      • --w14-gold / --w14-gold-soft are DECORATIVE ONLY — hairlines, contour
        traces, swashes. NEVER use them as a text colour or as a text-bearing
        fill (white-on-gold is ~2.0:1 and FAILS WCAG AA).
-     • --w14-accent (#9a751f) is the AA-safe brass for any gold-toned control
+     • --w14-accent (#7e6228) is the AA-safe brass for any gold-toned control
        that carries text (active chips, primary fills, gold-coloured labels). */
 
   /* ─── Type scale — canonical sizes, now REAL and in rem ─────────────
@@ -122,8 +128,10 @@
   --w14-radius-sharp: 0px; /* receipt-like surfaces */
   --w14-radius-button: 8px;
   --w14-radius-card: 12px;
-  --w14-shadow-card: 0 1px 2px rgba(16, 24, 40, 0.05), 0 1px 3px rgba(16, 24, 40, 0.08);
-  --w14-shadow-modal: 0 18px 44px rgba(16, 24, 40, 0.2);
+  /* Shadows carry a warm ink tint (not cold grey) so a card reads as
+     resting on aged paper, not floating on white. */
+  --w14-shadow-card: 0 1px 2px rgba(23, 21, 15, 0.06), 0 1px 3px rgba(23, 21, 15, 0.08);
+  --w14-shadow-modal: 0 18px 44px rgba(23, 21, 15, 0.22);
 
   /* ─── Motion ──────────────────────────────────────────────────── */
   --w14-ease-curator: cubic-bezier(0.16, 1, 0.3, 1); /* drawer slide */
@@ -133,23 +141,25 @@
 }
 
 :root[data-theme="dark"] {
-  /* Modern dark — near-black neutrals, same accent hues. */
-  --w14-parchment: #131519;
-  --w14-parchment-1: #16191f; /* list / sub-panel surface (just above app bg) */
-  --w14-parchment-2: #1b1e24;
-  --w14-parchment-3: #242831;
+  /* The ANTIQUE dark — warm candlelit walnut, never the old cold
+     black+yellow. Deep ink-brown paper, aged cream text, the same
+     brass + gold. Mirrors apps/mobile theme.ts darkPalette. */
+  --w14-parchment: #17150f; /* canvas — deep warm ink-brown */
+  --w14-parchment-1: #1c1913; /* list / sub-panel surface */
+  --w14-parchment-2: #1f1c16; /* cards / panels — raised leaf */
+  --w14-parchment-3: #14110c; /* sunken well / input tray */
 
-  --w14-ink: #e9ebee;
-  --w14-ink-aged: #c4c8ce;
-  --w14-ink-faded: #939aa3;
-  --w14-rule: #2c313a;
+  --w14-ink: #e9e7e1; /* 14.76:1 on bg — warm aged cream, never cold white */
+  --w14-ink-aged: #c4bfb2; /* secondary warm grey */
+  --w14-ink-faded: #a39d90; /* 6.76:1 — faded warm grey */
+  --w14-rule: #4a4029; /* warm-gold hairline on dark — calm, legible */
 
-  --w14-gold: #cda94a;
+  --w14-gold: #cda94a; /* decorative flourish only */
   --w14-gold-soft: #e2c98c;
-  --w14-wax-red: #e15862;
-  --w14-verdigris: #2fb277;
+  --w14-wax-red: #e07a62; /* warm terracotta, lifted for the dark canvas */
+  --w14-verdigris: #5fae89; /* warm sage, lifted */
 
-  /* Brighter brass on dark surfaces; keep dark ink for AA contrast. */
+  /* Brighter brass on dark surfaces; deep ink text for AA contrast. */
   --w14-accent: #d8b14e;
   --w14-accent-hover: #e4c069;
   --w14-accent-ink: #1a1407;

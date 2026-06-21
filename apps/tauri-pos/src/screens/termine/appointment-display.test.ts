@@ -90,13 +90,13 @@ describe('transition graph (mirror of DB trigger 0012 §9)', () => {
 
 describe('type colour coding', () => {
   it('covers all four types with the briefed palette roles', () => {
-    // gold=Ankauf, olive=Besichtigung, ink=Beratung, terra=Abholung
-    expect(APPOINTMENT_TYPE_COLORS.BUYBACK_EVAL.bg).toBe('#9a751f');
-    expect(APPOINTMENT_TYPE_COLORS.VIEWING.bg).toBe('#6b7c3a');
-    expect(APPOINTMENT_TYPE_COLORS.CONSULTATION.bg).toBe('#3a3f47');
-    expect(APPOINTMENT_TYPE_COLORS.PICKUP.bg).toBe('#b05f3c');
+    // brass=Ankauf, forest=Besichtigung, warm ink=Beratung, terra=Abholung
+    expect(APPOINTMENT_TYPE_COLORS.BUYBACK_EVAL.bg).toBe('#7e6228');
+    expect(APPOINTMENT_TYPE_COLORS.VIEWING.bg).toBe('#46583f');
+    expect(APPOINTMENT_TYPE_COLORS.CONSULTATION.bg).toBe('#45413a');
+    expect(APPOINTMENT_TYPE_COLORS.PICKUP.bg).toBe('#b8442b');
     for (const c of Object.values(APPOINTMENT_TYPE_COLORS)) {
-      expect(c.text).toBe('#ffffff');
+      expect(c.text).toBe('#faf8f2');
       expect(c.border).toMatch(/^#[0-9a-f]{6}$/);
     }
   });
@@ -121,14 +121,14 @@ describe('toCalendarEvents', () => {
       title: 'Ankauf-Bewertung · Bestätigt',
       start: '2026-06-10T08:00:00.000Z',
       end: '2026-06-10T08:30:00.000Z',
-      backgroundColor: '#9a751f',
+      backgroundColor: '#7e6228',
       startEditable: true,
       durationEditable: false,
     });
     expect(events[1]).toMatchObject({
       id: 'e2',
       title: 'Abholung · Eingecheckt',
-      backgroundColor: '#b05f3c',
+      backgroundColor: '#b8442b',
       startEditable: false,
     });
   });

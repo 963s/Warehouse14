@@ -40,10 +40,10 @@ export interface AppointmentTypeColor {
 }
 
 export const APPOINTMENT_TYPE_COLORS: Readonly<Record<AppointmentType, AppointmentTypeColor>> = {
-  BUYBACK_EVAL: { bg: '#9a751f', border: '#7c5e18', text: '#ffffff' }, // gold/brass
-  VIEWING: { bg: '#6b7c3a', border: '#55632e', text: '#ffffff' }, // olive
-  CONSULTATION: { bg: '#3a3f47', border: '#2a2e34', text: '#ffffff' }, // ink
-  PICKUP: { bg: '#b05f3c', border: '#8e4c30', text: '#ffffff' }, // terra
+  BUYBACK_EVAL: { bg: '#7e6228', border: '#6a5120', text: '#faf8f2' }, // brass
+  VIEWING: { bg: '#46583f', border: '#37452f', text: '#faf8f2' }, // forest/olive
+  CONSULTATION: { bg: '#45413a', border: '#332f2a', text: '#faf8f2' }, // warm ink
+  PICKUP: { bg: '#b8442b', border: '#943720', text: '#faf8f2' }, // terracotta
 };
 
 // ────────────────────────────────────────────────────────────────────────
