@@ -224,10 +224,15 @@ export default function LoginScreen(): ReactNode {
             <Text className="text-primary text-sm font-medium">App kennenlernen</Text>
           </PressableScale>
 
-          <Text className="text-muted-foreground text-2xs text-center">
-            Dev-Backend · {API_BASE_URL}
-            {"\n"}Owner basel@warehouse14.local · PIN 0000
-          </Text>
+          {/* Honest DEV-only convenience hint — the backend it talks to and the
+              seeded owner credentials. Gated to dev builds so a real owner on a
+              release build never sees a developer string or a plaintext PIN. */}
+          {__DEV__ ? (
+            <Text className="text-muted-foreground text-2xs text-center">
+              Dev-Backend · {API_BASE_URL}
+              {"\n"}Owner basel@warehouse14.local · PIN 0000
+            </Text>
+          ) : null}
         </View>
       </View>
     </View>

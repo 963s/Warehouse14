@@ -14,8 +14,8 @@
  * landing), and the theme tokens (brass brand, verdigris positive, gold purely
  * decorative — never under text). Fully skippable, fast, never a wall.
  */
-import { useCallback, useState, type ReactNode } from "react"
-import { View } from "react-native"
+import { useCallback, useEffect, useState, type ReactNode } from "react"
+import { BackHandler, View } from "react-native"
 import { Boxes, ScrollText, ShieldCheck, Users, Vault, type LucideIcon } from "lucide-react-native"
 import Animated from "react-native-reanimated"
 
@@ -108,6 +108,30 @@ export function OnboardingIntro({ onDone }: OnboardingIntroProps): ReactNode {
     haptics.selection()
     finish()
   }, [finish])
+
+  // Step one slide back (Android hardware back). On the first slide there is
+  // nothing behind the intro, so back skips it — the calm, expected gesture.
+  const back = useCallback(() => {
+    if (flood) return
+    haptics.selection()
+    if (index === 0) {
+      finish()
+      return
+    }
+    setIndex((i) => i - 1)
+  }, [flood, index, finish])
+
+  // Android: the intro is a routeless overlay, so the hardware back button would
+  // otherwise bubble to the router and try to leave the screen. Capture it here
+  // and treat it as "one slide back" (skip from the first). iOS has no hardware
+  // back, so this is a no-op there.
+  useEffect(() => {
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      back()
+      return true
+    })
+    return () => sub.remove()
+  }, [back])
 
   return (
     <View

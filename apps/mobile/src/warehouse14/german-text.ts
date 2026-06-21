@@ -223,6 +223,44 @@ function describeConflict(err: ApiError): string {
 }
 
 /**
+ * Map a 401 UNAUTHORIZED to an actionable German line.
+ *
+ * CRITICAL: the api-cloud PIN-login route raises its 401 messages in ENGLISH —
+ * "Invalid PIN (N attempts remaining)", "PIN login requires a paired device",
+ * "PIN not set for this user", "Authentication required". (We cannot change that
+ * route: it is shared by the cashier POS + storefront.) So the owner must NEVER
+ * see `err.message` here — we recognise the stable English token and answer in
+ * German, pulling the real attempts-remaining count out of the message so the
+ * line stays an honest number rather than a guess. An unrecognised 401 falls
+ * back to the calm German default ("Falsche PIN."), never the raw English.
+ */
+function describeUnauthorized(err: ApiError): string {
+  const msg = err.message ?? ""
+
+  // The common wrong-PIN case carries the real attempts-remaining count in its
+  // English text — surface that number in German so the owner knows how many
+  // tries remain before the lockout, without ever seeing the English.
+  if (msg.includes("Invalid PIN")) {
+    const n = msg.match(/\((\d+) attempts? remaining\)/)?.[1]
+    if (n === "1") return "Falsche PIN — noch 1 Versuch, dann wird die PIN gesperrt."
+    return n
+      ? `Falsche PIN — noch ${n} Versuche.`
+      : "Falsche PIN — bitte erneut versuchen."
+  }
+  // Device pairing / PIN-not-set are setup states, not a wrong PIN. Name them in
+  // the owner's vocabulary so the screen never blames the entered PIN.
+  if (msg.includes("requires a paired device")) {
+    return "Dieses Gerät ist nicht freigegeben — bitte zuerst koppeln."
+  }
+  if (msg.includes("PIN not set")) {
+    return "Für dieses Konto ist noch keine PIN hinterlegt."
+  }
+  // Any other 401 (e.g. "Authentication required") → calm German default. We
+  // never echo the wire message, which is English on every PIN-login reject.
+  return "Falsche PIN."
+}
+
+/**
  * The fixed German line for each stable `ApiErrorCode`, EXCEPT the four codes
  * whose copy depends on the response body and so are computed in
  * `describeError`: PIN_LOCKED (countdown), UNAUTHORIZED (server message),
@@ -279,9 +317,10 @@ export function describeError(err: unknown): string {
           : "PIN gesperrt — bitte später erneut versuchen."
       }
       case "UNAUTHORIZED":
-        // The PIN-login route returns a clean German message here ("Falsche
-        // PIN."); keep it, fall back to a German default if ever empty.
-        return err.message || "Falsche PIN."
+        // The PIN-login route raises its 401 messages in ENGLISH — never echo
+        // them. `describeUnauthorized` recognises each stable token and answers
+        // in German, surfacing the real attempts-remaining count.
+        return describeUnauthorized(err)
       case "VALIDATION_ERROR":
         return describeValidationError(err) ?? "Eingabe ungültig — bitte die Angaben prüfen."
       case "CONFLICT":
