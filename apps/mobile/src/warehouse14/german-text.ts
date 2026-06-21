@@ -113,6 +113,16 @@ const CONFLICT_TOKENS: ReadonlyArray<{ token: string; line: string }> = [
     token: "customers_phone_blind_index_active_uq",
     line: "Diese Telefonnummer ist bereits einem Kunden zugeordnet.",
   },
+  // ── eBay-Listung (Zustandsmaschine) ──────────────────────────────────────────
+  {
+    // The 9-stage eBay state machine raises "Illegal eBay transition X → Y" on a
+    // step the server doesn't allow. The app normally only offers legal steps, but
+    // a stale pipeline (another device moved the listing on, or a concurrent
+    // enroll) can make a now-illegal step reachable. Name it in the operator's
+    // vocabulary and point them at the cure (refresh) — never leak the English.
+    token: "Illegal eBay transition",
+    line: "Dieser eBay-Schritt ist nicht mehr möglich — der Zustand hat sich geändert. Bitte die Listung aktualisieren.",
+  },
   // ── Termine ────────────────────────────────────────────────────────────────
   {
     token: "Invalid appointment status transition",

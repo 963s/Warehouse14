@@ -327,7 +327,10 @@ function CreateCategoryForm({
       createCategory({
         nameDe: vars.nameDe,
         slug: vars.slug,
-        parentId: vars.parentId,
+        // A root Sammlung has no parent: OMIT the key rather than send `null`, so
+        // the create succeeds against any server (the create-body schema only
+        // started accepting an explicit null recently). A child sends its parent id.
+        ...(vars.parentId != null ? { parentId: vars.parentId } : {}),
       }),
     {
       onSuccess: () => {

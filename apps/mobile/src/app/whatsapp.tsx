@@ -69,6 +69,7 @@ import {
   setWhatsappAiStatus,
 } from "@/warehouse14/api"
 import { relativeTime } from "@/warehouse14/notifications"
+import { OfflineNotice, useSafeRetry } from "@/warehouse14/offline"
 import { useW14Theme } from "@/warehouse14/theme"
 import {
   countInbox,
@@ -667,24 +668,38 @@ function ChatDetailSheet({
     },
   )
 
+  // Marking an inbound message „erledigt" is an IDEMPOTENT, NON-FISCAL admin write
+  // (PATCH …/handled just stamps handled_at = now()). Route it through useSafeRetry
+  // so a transport drop mid-tap doesn't lose the operator's triage: the policy
+  // classifies it `safe`, and the moment the LAN returns the hook re-fires the
+  // exact same PATCH on its own — repeating it lands the same end state. A real
+  // server refusal (never fiscal here) is still surfaced, not retried. This is the
+  // first real consumer of the offline safe-retry path.
+  const handledM = useSafeRetry((messageId: string) => markWhatsappHandled(messageId), {
+    request: { method: "PATCH", path: "/api/whatsapp/messages/:id/handled", idempotent: true },
+    onSuccess: () => {
+      haptics.success()
+      void detail.refetch()
+      onChanged()
+    },
+    onError: (e) => {
+      haptics.error()
+      setHandleError(describeError(e))
+    },
+    onSettled: () => setHandlingId(null),
+  })
+
   const markHandled = useCallback(
     async (messageId: string) => {
       haptics.selection()
       setHandlingId(messageId)
       setHandleError(null)
-      try {
-        await markWhatsappHandled(messageId)
-        haptics.success()
-        void detail.refetch()
-        onChanged()
-      } catch (e) {
-        haptics.error()
-        setHandleError(describeError(e))
-      } finally {
-        setHandlingId(null)
-      }
+      // mutate REJECTS on a real failure (onError already themed the message +
+      // armed the auto-retry if the drop was transient); swallow so the tap's
+      // promise doesn't bubble an unhandled rejection.
+      await handledM.mutate(messageId).catch(() => {})
     },
-    [detail, onChanged],
+    [handledM],
   )
 
   const data = detail.data
@@ -789,7 +804,17 @@ function ChatDetailSheet({
             </View>
           )}
 
-          {handleError != null ? (
+          {/* The triage-mark is being held to re-fire on reconnect (the wire
+              dropped mid-tap): show the calm offline note with the honest auto-
+              retry line — NOT a red error, because nothing was lost. A real
+              server refusal (no auto-retry) still shows the themed InlineError. */}
+          {handledM.willAutoRetry ? (
+            <OfflineNotice
+              show
+              message={"Die Markierung „erledigt“ konnte gerade nicht gespeichert werden."}
+              retryHint={handledM.retryHint}
+            />
+          ) : handleError != null ? (
             <InlineError message={handleError} onDismiss={() => setHandleError(null)} />
           ) : null}
 

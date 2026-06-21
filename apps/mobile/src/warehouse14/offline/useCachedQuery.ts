@@ -133,11 +133,22 @@ export function useCachedQuery<T>(
   const fromCache = q.data == null && seed != null
   const cachedAt = q.data != null ? q.updatedAt : (seed?.cachedAt ?? null)
 
-  // While `fromCache`, the surface is showing the seed: its status is effectively
-  // "success" (we have real data) even though `useQuery` may still say "loading"
-  // on the very first fetch. Reconcile so a seeded surface never shows a skeleton.
-  const status = fromCache && q.status === "loading" ? "success" : q.status
+  // While `fromCache`, the surface is showing the REAL last-good seed, so its
+  // status is effectively "success" no matter what the live `useQuery` says.
+  // Two cases this must cover, both the heart of offline resilience:
+  //   • the very first fetch is still in flight → useQuery says "loading"
+  //   • the live fetch FAILED (the offline case) → useQuery says "error"
+  // In both we have real data on screen, so we must NOT leak a skeleton OR an
+  // error state — otherwise a QueryBoundary that branches on `status`, or any
+  // surface reading it directly, would hide the cached numbers the cache exists
+  // to keep showing. The StaleBadge/OfflineNotice carry the honesty (this is the
+  // last-good stand), so reporting "success" here is truthful, not a fabrication.
+  const status = fromCache && q.status !== "success" ? "success" : q.status
   const isLoading = fromCache ? false : q.isLoading
+  // The live error is suppressed from the surface state while the seed carries
+  // the screen (the OfflineNotice tells the real story); it resurfaces naturally
+  // the moment there's no seed to fall back on (fromCache === false).
+  const error = fromCache ? null : q.error
 
   const isStale = useMemo(() => isStaleAt(cachedAt, staleAfterMs), [cachedAt, staleAfterMs])
 
@@ -146,6 +157,7 @@ export function useCachedQuery<T>(
     data,
     status,
     isLoading,
+    error,
     cachedAt,
     fromCache,
     isStale,

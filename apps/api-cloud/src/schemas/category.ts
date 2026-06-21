@@ -28,7 +28,11 @@ export const CreateCategoryBody = Type.Object({
   schemaOrgType: Type.Optional(Type.String({ maxLength: 64 })),
   displayOrder: Type.Optional(Type.Integer({ minimum: 0, maximum: 32767, default: 0 })),
   hiddenFromStorefront: Type.Optional(Type.Boolean({ default: false })),
-  parentId: Type.Optional(Type.String({ format: 'uuid' })),
+  // A root (top-level) Sammlung has no parent: clients send `parentId: null`.
+  // Accept null as well as a UUID (matching UpdateCategoryBody + the api-client
+  // type `parentId?: string | null`); the handler already coalesces with `?? null`.
+  // Without the Null() branch, creating a top-level category 400s on the operator.
+  parentId: Type.Optional(Type.Union([Type.String({ format: 'uuid' }), Type.Null()])),
 });
 export type TCreateCategoryBody = Static<typeof CreateCategoryBody>;
 

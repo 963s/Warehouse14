@@ -238,6 +238,13 @@ describe("describeError · every backend code maps to clean German", () => {
       raw: 'violates unique constraint "transactions_one_storno_per_original_uq"',
       expectIncludes: "storniert",
     },
+    {
+      // The eBay 9-stage state machine raises this on a step the server refuses
+      // (a stale pipeline can make a now-illegal step reachable). Must read as a
+      // clean German "der Zustand hat sich geändert", never the English token.
+      raw: "Illegal eBay transition ENTWURF → VERKAUFT",
+      expectIncludes: "eBay-Schritt",
+    },
     { raw: 'Slug "gold" already exists.', expectIncludes: "Kurznamen" },
     { raw: "without a prior physical-ID check on file", expectIncludes: "KYC" },
     {
