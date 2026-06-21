@@ -78,7 +78,8 @@
         "enableCodeScanner": true,
         "cameraPermissionText": "$(PRODUCT_NAME) braucht Kamerazugriff, um Artikel und Belege zu scannen."
       }
-    ]
+    ],
+    "./plugins/withGradleWrapperVersion"
   ],
   "experiments": {
     "tsconfigPaths": true,
