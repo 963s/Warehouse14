@@ -75,6 +75,14 @@ const productsListRoute: FastifyPluginAsync = async (app) => {
           ? eq(products.listedOnStorefront, q.listedOnStorefront)
           : undefined,
         q.listedOnEbay !== undefined ? eq(products.listedOnEbay, q.listedOnEbay) : undefined,
+        // enrolledOnEbay: filters by the 9-stage state machine, NOT the legacy
+        // listed_on_ebay flag. TRUE = somewhere in the pipeline (ebay_state set);
+        // FALSE = never enrolled (ebay_state NULL); undefined = both.
+        q.enrolledOnEbay === true
+          ? sql`${products.ebayState} IS NOT NULL`
+          : q.enrolledOnEbay === false
+            ? sql`${products.ebayState} IS NULL`
+            : undefined,
         // archived: TRUE = archived only; FALSE = active only; undefined = both.
         q.archived === true
           ? sql`${products.archivedAt} IS NOT NULL`

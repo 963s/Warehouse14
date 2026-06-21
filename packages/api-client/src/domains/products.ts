@@ -99,7 +99,19 @@ export interface ProductListQuery {
   itemType?: string;
   isCommission?: boolean;
   listedOnStorefront?: boolean;
+  /**
+   * Legacy operator-intent flag (`products.listed_on_ebay`), flipped TRUE only
+   * by a real marketplace publish. To filter by enrollment in the 9-stage eBay
+   * listing state machine, use `enrolledOnEbay` instead.
+   */
   listedOnEbay?: boolean;
+  /**
+   * Enrollment in the eBay listing state machine (`products.ebay_state`):
+   * TRUE → ebay_state IS NOT NULL (in the pipeline, any stage); FALSE →
+   * ebay_state IS NULL (never enrolled); omitted → no filter. Distinct from
+   * `listedOnEbay`, which only flips on a real marketplace publish.
+   */
+  enrolledOnEbay?: boolean;
   archived?: boolean;
   priceMin?: string;
   priceMax?: string;

@@ -29,7 +29,23 @@ export const ProductListQuery = Type.Object({
   itemType: Type.Optional(ItemType),
   isCommission: Type.Optional(Type.Boolean()),
   listedOnStorefront: Type.Optional(Type.Boolean()),
+  /**
+   * Legacy operator-intent flag (`products.listed_on_ebay`). Flipped TRUE only
+   * by a real marketplace publish; it does NOT track enrollment in the 9-stage
+   * listing state machine. To filter the eBay pipeline by "is this row in the
+   * state machine", use `enrolledOnEbay` instead.
+   */
   listedOnEbay: Type.Optional(Type.Boolean()),
+  /**
+   * Enrollment in the eBay listing state machine, keyed off `products.ebay_state`:
+   *   TRUE  → ebay_state IS NOT NULL (the row sits somewhere in the pipeline,
+   *           ENTWURF…RETOURNIERT), regardless of `listed_on_ebay`.
+   *   FALSE → ebay_state IS NULL (never enrolled — a candidate to einbuchen).
+   *   omitted → no filter.
+   * Distinct from `listedOnEbay`: a row can be enrolled (ENTWURF) long before a
+   * marketplace publish ever flips `listed_on_ebay`.
+   */
+  enrolledOnEbay: Type.Optional(Type.Boolean()),
   /** TRUE = only archived; FALSE = only active; omitted = both. */
   archived: Type.Optional(Type.Boolean()),
   /** EUR price range (inclusive). NUMERIC(18,2) strings. */

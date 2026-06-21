@@ -126,9 +126,14 @@ interface PipelineData {
  * items is small in practice; we cap the fan-out and de-dupe via the query key.
  * A single failed detail read does not blank the board — that listing is shown
  * with an unknown state and the board is flagged `partial` (honesty rule).
+ *
+ * We filter by `enrolledOnEbay: true` (ebay_state IS NOT NULL) — the real
+ * pipeline membership — NOT by the legacy `listedOnEbay` flag, which only flips
+ * on a marketplace publish and so leaves every Owner-enrolled item invisible
+ * until a real eBay token is wired up.
  */
 async function fetchPipeline(): Promise<PipelineData> {
-  const list = await listProducts({ listedOnEbay: true, limit: PIPELINE_DETAIL_CAP })
+  const list = await listProducts({ enrolledOnEbay: true, limit: PIPELINE_DETAIL_CAP })
   const rows = list.items
   const details = await Promise.allSettled(rows.map((r) => getProduct(r.id)))
 
@@ -687,14 +692,17 @@ export default function EbayScreen() {
     }
   }, [q])
 
-  // We search AVAILABLE stock not yet listed on eBay; the server filters by
-  // `listedOnEbay: false` so a row that is already enrolled never appears here.
+  // We search AVAILABLE stock not yet in the eBay pipeline; the server filters by
+  // `enrolledOnEbay: false` (ebay_state IS NULL) so a row that is already
+  // enrolled — at ENTWURF or any later stage — never appears here again. (The
+  // legacy `listedOnEbay` flag would NOT exclude it: it stays false until a real
+  // marketplace publish, so an already-enrolled item would keep showing up.)
   const search = useQuery(
     () =>
       listProducts({
         q: debouncedQ || undefined,
         status: "AVAILABLE",
-        listedOnEbay: false,
+        enrolledOnEbay: false,
         limit: SEARCH_LIMIT,
       }),
     { key: `ebay:enroll:${debouncedQ}` },
