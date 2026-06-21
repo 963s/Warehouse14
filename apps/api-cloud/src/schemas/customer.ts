@@ -17,12 +17,19 @@ import { DecimalString } from './money.js';
 
 const Iso2Lang = Type.Union([Type.Literal('de'), Type.Literal('en'), Type.Literal('ar')]);
 
+// Mirrors the live `kyc_status` Postgres enum exactly (see customer-list.ts and
+// packages/api-client customers.ts). The lifecycle is
+// PENDING → CAPTURED (Ausweis erfasst) → VERIFIED (geprüft), with EXPIRED/REJECTED
+// as terminal states. The earlier COMPLETED/FAILED pair never existed in the DB;
+// listing it here made Fastify's response serializer reject every CAPTURED/
+// VERIFIED/REJECTED customer with a 500, taking down the whole Kunde detail screen.
 const KycStatus = Type.Union([
   Type.Literal('NOT_REQUIRED'),
   Type.Literal('PENDING'),
-  Type.Literal('COMPLETED'),
+  Type.Literal('CAPTURED'),
+  Type.Literal('VERIFIED'),
   Type.Literal('EXPIRED'),
-  Type.Literal('FAILED'),
+  Type.Literal('REJECTED'),
 ]);
 
 // ────────────────────────────────────────────────────────────────────────

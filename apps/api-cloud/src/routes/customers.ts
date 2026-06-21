@@ -283,9 +283,10 @@ const customersRoutes: FastifyPluginAsync = async (app) => {
         kycStatus: row.kyc_status as
           | 'NOT_REQUIRED'
           | 'PENDING'
-          | 'COMPLETED'
+          | 'CAPTURED'
+          | 'VERIFIED'
           | 'EXPIRED'
-          | 'FAILED',
+          | 'REJECTED',
         kycCompletedAt: row.kyc_completed_at ? new Date(row.kyc_completed_at).toISOString() : null,
         kycVerifiedAt: row.kyc_verified_at ? new Date(row.kyc_verified_at).toISOString() : null,
         trustLevel: row.trust_level as 'NEW' | 'VERIFIED' | 'VIP' | 'SUSPICIOUS' | 'BANNED',
