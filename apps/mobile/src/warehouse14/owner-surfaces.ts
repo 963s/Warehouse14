@@ -18,6 +18,7 @@
  *     SECTION_ORDER below. Unknown groups fall into "Sonstiges".
  */
 import {
+  Activity,
   Banknote,
   BarChart3,
   Bell,
@@ -223,6 +224,15 @@ export const OWNER_SURFACES: readonly OwnerSurface[] = [
     description: "Wer ist angemeldet, wer ist im Dienst und wie die Rollen geregelt sind.",
     icon: Users,
     group: "betrieb",
+    available: true,
+  },
+  {
+    id: "tagebuch",
+    route: "/tagebuch",
+    label: "Tagebuch",
+    description: "Das lückenlose Ereignisprotokoll — wer wann was getan hat, revisionssicher.",
+    icon: Activity,
+    group: "system",
     available: true,
   },
 ] as const
