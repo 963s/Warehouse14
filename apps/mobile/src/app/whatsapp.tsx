@@ -175,7 +175,7 @@ function ThreadRow({
         unread ? `, ${thread.unreadCount} ungelesen` : ""
       }`}
     >
-      <Card className="flex-row items-center gap-3 rounded-xl border px-3 py-3">
+ <View className="flex-row items-center gap-3 hairline-b px-3 py-3">
         <View
           className="h-10 w-10 items-center justify-center rounded-full"
           style={{ backgroundColor: t.colors.primary + (unread ? "29" : "14") }}
@@ -225,7 +225,7 @@ function ThreadRow({
             <ChevronRight size={t.icon.sm} color={t.colors.mutedForeground} />
           )}
         </View>
-      </Card>
+      </View>
     </PressableScale>
   )
 }
@@ -1052,14 +1052,14 @@ export default function WhatsAppScreen() {
           {threads.status === "loading" && threads.data == null ? (
             <View className="gap-2.5" accessibilityElementsHidden>
               {Array.from({ length: 4 }).map((_, i) => (
-                <Card key={i} className="flex-row items-center gap-3 rounded-xl border px-3 py-3">
+ <View key={i} className="flex-row items-center gap-3 hairline-b px-3 py-3">
                   <Skeleton width={40} height={40} radius="full" />
                   <View className="flex-1 gap-2">
                     <Skeleton width="55%" height={14} />
                     <Skeleton width="75%" height={12} />
                   </View>
                   <Skeleton width={36} height={20} radius="button" />
-                </Card>
+                </View>
               ))}
             </View>
           ) : !hasThreads && threads.data != null ? (

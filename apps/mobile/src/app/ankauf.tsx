@@ -347,13 +347,13 @@ export default function AnkaufScreen() {
               </Card>
             </PressableScale>
           ) : customerQ.isLoading && customer == null ? (
-            <Card className="flex-row items-center gap-3 rounded-xl border px-4 py-3">
+ <View className="flex-row items-center gap-3 hairline-b px-4 py-3">
               <Skeleton width={44} height={44} radius="full" />
               <View className="flex-1 gap-2">
                 <Skeleton width="56%" height={14} />
                 <Skeleton width="32%" height={11} />
               </View>
-            </Card>
+            </View>
           ) : customer != null ? (
             <SellerCard
               fullName={customer.fullName}
@@ -807,7 +807,7 @@ function IntakeRow({ line, onRemove }: { line: IntakeLine; onRemove: () => void 
   // a developer string can never surface in the lot row.
   const itemTypeLabel = germanLabel(ITEM_TYPE_LABEL, line.itemType)
   return (
-    <Card className="flex-row items-center gap-3 rounded-xl border px-3 py-3">
+ <View className="flex-row items-center gap-3 hairline-b px-3 py-3">
       <View className="flex-1 gap-1">
         <Text className="text-base font-semibold" numberOfLines={1}>
           {line.name || "Unbenanntes Stück"}
@@ -834,7 +834,7 @@ function IntakeRow({ line, onRemove }: { line: IntakeLine; onRemove: () => void 
       >
         <Trash2 size={t.icon.sm} color={t.colors.destructive} />
       </Pressable>
-    </Card>
+    </View>
   )
 }
 
@@ -916,13 +916,13 @@ function CustomerPicker({
           {results.status === "loading" && results.data == null ? (
             <View className="gap-2">
               {[0, 1, 2, 3].map((i) => (
-                <Card key={i} className="flex-row items-center gap-3 rounded-xl border px-3 py-3">
+ <View key={i} className="flex-row items-center gap-3 hairline-b px-3 py-3">
                   <Skeleton width={40} height={40} radius="full" />
                   <View className="flex-1 gap-2">
                     <Skeleton width="58%" height={13} />
                     <Skeleton width="32%" height={10} />
                   </View>
-                </Card>
+                </View>
               ))}
             </View>
           ) : results.data != null && results.data.items.length === 0 ? (
@@ -943,7 +943,7 @@ function CustomerPicker({
                 accessibilityLabel={`${row.fullName}, ${KYC_STATUS_LABEL[row.kycStatus]}`}
                 onPress={() => onPick(row)}
               >
-                <Card className="flex-row items-center gap-3 rounded-xl border px-3 py-3">
+ <View className="flex-row items-center gap-3 hairline-b px-3 py-3">
                   <View
                     className="h-10 w-10 items-center justify-center rounded-full"
                     style={{ backgroundColor: t.colors.primary + "1f" }}
@@ -963,7 +963,7 @@ function CustomerPicker({
                   <Badge variant={KYC_STATUS_VARIANT[row.kycStatus]} dot>
                     <Text>{KYC_STATUS_LABEL[row.kycStatus]}</Text>
                   </Badge>
-                </Card>
+                </View>
               </PressableScale>
             ))
           ) : results.error != null ? (
@@ -1448,7 +1448,7 @@ function AnkaufDoneScreen({
                 setPreviewOpen(true)
               }}
             >
-              <Card className="flex-row items-center gap-3 rounded-xl border px-4 py-3.5">
+ <View className="flex-row items-center gap-3 hairline-b px-4 py-3.5">
                 <View
                   className="h-9 w-9 items-center justify-center rounded-md"
                   style={{ backgroundColor: t.colors.primary + "1f" }}
@@ -1461,7 +1461,7 @@ function AnkaufDoneScreen({
                     Die Belegkopie genau so, wie sie geteilt oder gedruckt wird.
                   </Text>
                 </View>
-              </Card>
+              </View>
             </PressableScale>
           )}
 

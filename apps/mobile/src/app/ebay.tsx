@@ -215,7 +215,7 @@ function ListingRow({
       accessibilityRole="button"
       accessibilityLabel={`${row.name}, eBay-Zustand ${stateLabel(state)}`}
     >
-      <Card className="flex-row items-center gap-3 rounded-xl border px-3 py-3">
+ <View className="flex-row items-center gap-3 hairline-b px-3 py-3">
         <View className="flex-1 gap-1">
           <Text className="text-base font-semibold" numberOfLines={1}>
             {row.name}
@@ -235,7 +235,7 @@ function ListingRow({
           <Text>{stateLabel(state)}</Text>
         </Badge>
         <ChevronRight size={t.icon.md} color={t.colors.mutedForeground} />
-      </Card>
+      </View>
     </PressableScale>
   )
 }
@@ -631,7 +631,7 @@ function EnrollRow({
       accessibilityLabel={`${item.name} als eBay-Entwurf einbuchen`}
       style={{ opacity: enrolling ? 0.55 : 1 }}
     >
-      <Card className="flex-row items-center gap-3 rounded-xl border px-3 py-3">
+ <View className="flex-row items-center gap-3 hairline-b px-3 py-3">
         <View className="flex-1 gap-1">
           <Text className="text-base font-semibold" numberOfLines={1}>
             {item.name}
@@ -645,7 +645,7 @@ function EnrollRow({
             </Badge>
           </View>
         </View>
-        <Text className="text-primary font-mono-medium text-base" numberOfLines={1}>
+        <Text className="text-foreground font-mono-medium text-base" numberOfLines={1}>
           {formatEur(item.listPriceEur)}
         </Text>
         <View
@@ -654,7 +654,7 @@ function EnrollRow({
         >
           <PackagePlus size={t.icon.sm} color={t.colors.primary} />
         </View>
-      </Card>
+      </View>
     </PressableScale>
   )
 }
@@ -805,13 +805,13 @@ export default function EbayScreen() {
           {pipeline.status === "loading" && pipeline.data == null ? (
             <View className="gap-2.5" accessibilityElementsHidden>
               {Array.from({ length: 3 }).map((_, i) => (
-                <Card key={i} className="flex-row items-center gap-3 rounded-xl border px-3 py-3">
+ <View key={i} className="flex-row items-center gap-3 hairline-b px-3 py-3">
                   <View className="flex-1 gap-2">
                     <Skeleton width="60%" height={14} />
                     <Skeleton width="35%" height={11} />
                   </View>
                   <Skeleton width={70} height={22} radius="button" />
-                </Card>
+                </View>
               ))}
             </View>
           ) : !hasListings && pipeline.data != null ? (
@@ -874,14 +874,14 @@ export default function EbayScreen() {
           {search.status === "loading" && search.data == null ? (
             <View className="gap-2.5" accessibilityElementsHidden>
               {Array.from({ length: 3 }).map((_, i) => (
-                <Card key={i} className="flex-row items-center gap-3 rounded-xl border px-3 py-3">
+ <View key={i} className="flex-row items-center gap-3 hairline-b px-3 py-3">
                   <View className="flex-1 gap-2">
                     <Skeleton width="60%" height={14} />
                     <Skeleton width="35%" height={11} />
                   </View>
                   <Skeleton width={56} height={14} />
                   <Skeleton width={32} height={32} radius="button" />
-                </Card>
+                </View>
               ))}
             </View>
           ) : search.data != null && search.data.items.length === 0 ? (

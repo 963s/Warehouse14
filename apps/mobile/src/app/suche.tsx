@@ -39,7 +39,6 @@ import type {
 } from "@warehouse14/api-client"
 import { ChevronRight, Receipt, RotateCcw, Search, X } from "lucide-react-native"
 
-import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Text } from "@/components/ui/text"
 import { formatEur, listCustomers, listProducts, recentTransactions } from "@/warehouse14/api"
@@ -132,7 +131,7 @@ function HitLeading({ hit }: { hit: SearchHit }) {
     return (
       <View
         className="h-11 w-11 items-center justify-center rounded-full"
-        style={{ backgroundColor: t.colors.primary + "1f" }}
+        style={{ backgroundColor: t.colors.raised }}
       >
         <Text className="text-sm font-semibold" style={{ color: t.colors.primary }}>
           {initialsOf(hit.title)}
@@ -144,7 +143,7 @@ function HitLeading({ hit }: { hit: SearchHit }) {
   return (
     <View
       className="h-11 w-11 items-center justify-center rounded-xl"
-      style={{ backgroundColor: t.colors.primary + "14" }}
+      style={{ backgroundColor: t.colors.raised }}
     >
       <Icon size={t.icon.lg} color={t.colors.primary} />
     </View>
@@ -162,7 +161,7 @@ function HitRow({ hit, onPress }: { hit: SearchHit; onPress: () => void }) {
   const navigable = hit.route != null
 
   const body = (
-    <Card className="flex-row items-center gap-3 rounded-xl border px-4 py-3">
+ <View className="flex-row items-center gap-3 hairline-b px-4 py-3">
       <HitLeading hit={hit} />
       <View className="flex-1 gap-1">
         <Text
@@ -183,7 +182,7 @@ function HitRow({ hit, onPress }: { hit: SearchHit; onPress: () => void }) {
         </Text>
       ) : null}
       {navigable ? <ChevronRight size={t.icon.md} color={t.colors.mutedForeground} /> : null}
-    </Card>
+    </View>
   )
 
   // Informational, routeless hit → a plain read, not a button.
@@ -226,14 +225,14 @@ function SearchSkeleton() {
         <View key={s} className="gap-2.5">
           <Skeleton width="32%" height={11} />
           {Array.from({ length: 3 }).map((__, i) => (
-            <Card key={i} className="flex-row items-center gap-3 rounded-xl border px-4 py-3">
+ <View key={i} className="flex-row items-center gap-3 hairline-b px-4 py-3">
               <Skeleton width={44} height={44} radius="card" />
               <View className="flex-1 gap-2">
                 <Skeleton width="62%" height={14} />
                 <Skeleton width="38%" height={11} />
               </View>
               <Skeleton width={56} height={14} />
-            </Card>
+            </View>
           ))}
         </View>
       ))}

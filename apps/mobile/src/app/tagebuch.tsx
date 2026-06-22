@@ -302,7 +302,7 @@ function EventRow({ row, onPress }: { row: LedgerListRow; onPress: () => void })
       accessibilityRole="button"
       accessibilityLabel={`${title}. ${entity}. ${actor.label}. ${time ?? ""}. Details öffnen.`}
     >
-      <Card className="flex-row items-center gap-3 rounded-xl border px-3.5 py-3">
+ <View className="flex-row items-center gap-3 hairline-b px-3.5 py-3">
         <View
           className="h-9 w-9 items-center justify-center rounded-xl"
           style={{ backgroundColor: tint + "14" }}
@@ -332,7 +332,7 @@ function EventRow({ row, onPress }: { row: LedgerListRow; onPress: () => void })
             </Text>
           </View>
         </View>
-      </Card>
+      </View>
     </PressableScale>
   )
 }
@@ -602,13 +602,13 @@ export default function TagebuchScreen() {
           {firstLoading ? (
             <View className="gap-2.5" accessibilityElementsHidden>
               {Array.from({ length: 6 }).map((_, i) => (
-                <Card key={i} className="flex-row items-center gap-3 rounded-xl border px-3.5 py-3">
+ <View key={i} className="flex-row items-center gap-3 hairline-b px-3.5 py-3">
                   <Skeleton width={36} height={36} radius="card" />
                   <View className="flex-1 gap-2">
                     <Skeleton width="65%" height={14} />
                     <Skeleton width="40%" height={11} />
                   </View>
-                </Card>
+                </View>
               ))}
             </View>
           ) : ledger.error != null && ledger.data == null ? (
