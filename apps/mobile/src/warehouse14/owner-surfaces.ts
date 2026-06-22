@@ -40,8 +40,13 @@ import {
   Wallet,
 } from "lucide-react-native"
 
-/** Hub sections, rendered in this order. */
-export type OwnerSurfaceGroup = "betrieb" | "finanzen" | "system"
+/**
+ * Hub sections, rendered in this order. The money paths (Verkauf/Ankauf/Kasse)
+ * lead, so the owner's core commerce is the first thing in the hub — not buried
+ * in a 12-tile "Betrieb" wall. Then daily operation, then the external channels,
+ * then finance, then system.
+ */
+export type OwnerSurfaceGroup = "verkauf" | "betrieb" | "kanale" | "finanzen" | "system"
 
 export interface OwnerSurface {
   /** Stable unique slug (React key only). */
@@ -64,7 +69,9 @@ export interface OwnerSurface {
 
 /** Section label + order for the hub. */
 export const SECTION_ORDER: readonly { group: OwnerSurfaceGroup; label: string }[] = [
+  { group: "verkauf", label: "Verkauf & Kasse" },
   { group: "betrieb", label: "Betrieb" },
+  { group: "kanale", label: "Kanäle & Belege" },
   { group: "finanzen", label: "Finanzen" },
   { group: "system", label: "System" },
 ] as const
@@ -93,9 +100,9 @@ export const OWNER_SURFACES: readonly OwnerSurface[] = [
     id: "kasse",
     route: "/kasse",
     label: "Kasse",
-    description: "Schicht, Tagesabschluss und Z-Bon.",
-    icon: Receipt,
-    group: "betrieb",
+    description: "Schicht, Tagesabschluss, Z-Bon.",
+    icon: Wallet,
+    group: "verkauf",
     available: true,
   },
   // ── Finanzen ───────────────────────────────────────────────────────────────
@@ -150,18 +157,18 @@ export const OWNER_SURFACES: readonly OwnerSurface[] = [
     id: "verkauf",
     route: "/verkauf",
     label: "Verkauf",
-    description: "Artikel kassieren und rechtsverbindlich abschließen.",
+    description: "Direkter Verkauf: Warenkorb, Bezahlvorgang, Beleg.",
     icon: ShoppingCart,
-    group: "betrieb",
+    group: "verkauf",
     available: true,
   },
   {
     id: "ankauf",
     route: "/ankauf",
     label: "Ankauf",
-    description: "Stücke bewerten und an geprüfte Verkäufer auszahlen.",
+    description: "Ankauf erfassen, auszahlen, belegen.",
     icon: ShoppingBag,
-    group: "betrieb",
+    group: "verkauf",
     available: true,
   },
   {
@@ -177,27 +184,27 @@ export const OWNER_SURFACES: readonly OwnerSurface[] = [
     id: "ebay",
     route: "/ebay",
     label: "eBay-Kanal",
-    description: "Listungen steuern, veröffentlichen und Konflikte sehen.",
+    description: "Angebote, Bestellungen, Sync.",
     icon: Store,
-    group: "betrieb",
+    group: "kanale",
     available: true,
   },
   {
     id: "whatsapp",
     route: "/whatsapp",
     label: "WhatsApp",
-    description: "Chats lesen, antworten und Kunden verknüpfen.",
+    description: "Posteingang, Antworten, Vorlagen.",
     icon: MessageCircle,
-    group: "betrieb",
+    group: "kanale",
     available: true,
   },
   {
     id: "belege",
     route: "/belege",
     label: "Belege & Dokumente",
-    description: "Rechnungen, Ankaufbelege und Nachweise revisionssicher einsehen.",
+    description: "Rechnungen, Lieferscheine, Storno.",
     icon: FileText,
-    group: "system",
+    group: "kanale",
     available: true,
   },
   {

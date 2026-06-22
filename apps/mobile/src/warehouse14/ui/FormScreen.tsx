@@ -83,7 +83,11 @@ export function FormScreen({
   return (
     <KeyboardAvoidingView
       className="flex-1 bg-background"
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      // iOS "padding" keeps the save bar + field above the keyboard cleanly;
+      // Android "height" resizes the scroll viewport so inputs stay reachable
+      // (matches the shared KeyboardAvoidingScreen — earlier this was
+      // `undefined` on Android, which let the keyboard cover the active field).
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       <ScrollView
         className="flex-1"
