@@ -12,6 +12,9 @@ import { GestureHandlerRootView } from "react-native-gesture-handler"
 import { initialWindowMetrics, SafeAreaProvider } from "react-native-safe-area-context"
 
 import { warehouse14Fonts } from "@/warehouse14/fonts"
+import { createAppStatePersistence } from "@/warehouse14/app-state-persistence"
+import { installOnboardingPersistence } from "@/warehouse14/onboarding"
+import { installPreferencesPersistence } from "@/warehouse14/preferences"
 import { createFileReadCachePersistence, installReadCachePersistence } from "@/warehouse14/offline"
 import { useSession } from "@/warehouse14/session"
 import { StepUpDialogHost } from "@/warehouse14/StepUpDialog"
@@ -28,6 +31,16 @@ SplashScreen.preventAutoHideAsync()
 // adapter itself swallows every storage failure — so this can't slow or break
 // startup. Read snapshots only; fiscal/money records never live here.
 installReadCachePersistence(createFileReadCachePersistence())
+
+// Durable app-state flags — the first-run "seen" gate + the owner's dashboard
+// targets. Same expo-file-system shoulder, documents dir (user state the OS
+// must not reclaim). Without this the onboarding intro re-shows every cold
+// start and the owner's goal edits vanish on relaunch. Hydration is async +
+// fire-and-forget; a failure degrades gracefully (intro plays once more,
+// goals revert to defaults) — never a crash, never fabricated state.
+const appStatePersistence = createAppStatePersistence()
+void installOnboardingPersistence(appStatePersistence)
+void installPreferencesPersistence(appStatePersistence)
 
 /** Redirect to /login when there is no session, and away from it once there is. */
 function useAuthRedirect(): void {
