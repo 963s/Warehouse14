@@ -122,6 +122,7 @@ import {
   PressableScale,
   RingGauge,
   SectionCard,
+  SectionHeader,
   Skeleton,
   Sparkline,
   StaggerItem,
@@ -536,10 +537,12 @@ export default function SchatzkammerScreen() {
           </View>
         </StaggerItem>
 
-        {/* e) Finance gauges — each tile lights up only when its endpoint is live */}
+        {/* e) Finance gauges — each tile lights up only when its endpoint is live.
+            Un-boxed: SectionHeader on the canvas, tiles directly below (one border
+            layer, not SectionCard>Card>tile = box-in-box). */}
         <StaggerItem index={7}>
-          <SectionCard title="Finanzen" subtitle="Gewinn, Umsatz und Lagerwert — live aus dem System.">
-            <View className="flex-row flex-wrap justify-between" style={{ rowGap: 10 }}>
+          <SectionHeader title="Finanzen" subtitle="Gewinn, Umsatz und Lagerwert — live aus dem System." />
+          <View className="flex-row flex-wrap justify-between" style={{ rowGap: 10 }}>
               {profitDay ? (
                 <CountTile
                   label="Gewinn heute"
@@ -588,14 +591,14 @@ export default function SchatzkammerScreen() {
               ) : (
                 <LockedTile label="Fixkosten gedeckt" />
               )}
-            </View>
-          </SectionCard>
+          </View>
         </StaggerItem>
 
-        {/* f) Edelmetallbestand — Gold + Silber in grams */}
+        {/* f) Edelmetallbestand — Gold + Silber in grams. Un-boxed (SectionHeader
+            on canvas, tiles directly below). */}
         <StaggerItem index={8}>
-          <SectionCard title="Edelmetallbestand" subtitle="Gewichte aus dem Lager, in Gramm.">
-            <View className="flex-row flex-wrap justify-between" style={{ rowGap: 10 }}>
+          <SectionHeader title="Edelmetallbestand" subtitle="Gewichte aus dem Lager, in Gramm." />
+          <View className="flex-row flex-wrap justify-between" style={{ rowGap: 10 }}>
               {metals ? (
                 <>
                   <StatTile
@@ -634,8 +637,7 @@ export default function SchatzkammerScreen() {
                   <LockedTile label="Silberbestand" />
                 </>
               )}
-            </View>
-          </SectionCard>
+          </View>
         </StaggerItem>
 
         {/* f2) Edelmetall-Kurse — the spot vs the time-weighted 10-day average per

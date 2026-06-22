@@ -123,10 +123,10 @@ export function DiscountEditor({ line, onApply }: DiscountEditorProps): ReactNod
   }
 
   return (
-    <View
-      className="mt-2 gap-3 rounded-lg border border-border bg-card p-3"
-      style={{ borderRadius: t.radii.card }}
-    >
+    // Box-free: this editor lives INSIDE the cart Card, so it has no border/bg
+    // of its own — a hairline-t separates it from the line row above (box-in-box
+    // was the prior `border border-border bg-card` wrapper).
+    <View className="mt-2 gap-3 border-t border-border pt-3">
       <View className="flex-row items-center justify-between">
         <Text className="font-display-semibold text-base">Rabatt</Text>
         <Pressable
