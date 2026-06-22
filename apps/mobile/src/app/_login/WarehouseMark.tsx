@@ -24,13 +24,11 @@ import { Image, View } from "react-native"
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
-  withDelay,
   withSpring,
-  withTiming,
 } from "react-native-reanimated"
 
 import { useW14Theme } from "@/warehouse14/theme"
-import { duration, easing, emphasisSpring, useReduceMotion } from "@/warehouse14/ui"
+import { emphasisSpring, useReduceMotion } from "@/warehouse14/ui"
 
 // The genuine shop mark, brass on transparent (same asset as the splash) — the
 // single source of truth for the brand everywhere in the app.
@@ -49,32 +47,21 @@ export function WarehouseMark({ size = "lg" }: WarehouseMarkProps): ReactNode {
   // Sizing scale — the hero is generous; the bar mark is compact.
   const disc = lg ? 132 : 44
   const ring = lg ? 150 : 50
-  const bloom = lg ? 220 : 64
   const logo = lg ? 92 : 30
 
-  // Entrance: the disc settles with one emphasis spring (hero only); the bloom
-  // fades up just behind it so depth arrives a beat after the mark. Static on
+  // Entrance: the disc settles with one emphasis spring (hero only). Static on
   // reduce-motion. Never loops — premium is calm, not busy.
   const scale = useSharedValue(reduceMotion || !lg ? 1 : 0.92)
-  const glow = useSharedValue(reduceMotion || !lg ? 1 : 0)
   useEffect(() => {
     if (reduceMotion || !lg) return
     scale.value = withSpring(1, emphasisSpring)
-    glow.value = withDelay(
-      duration.fast,
-      withTiming(1, { duration: duration.slow, easing: easing.standard }),
-    )
-    // Run once on mount; the values are seeded for the static case above.
+    // Run once on mount; the value is seeded for the static case above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const discStyle = useAnimatedStyle(() => {
     "worklet"
     return { transform: [{ scale: scale.value }] }
-  })
-  const bloomStyle = useAnimatedStyle(() => {
-    "worklet"
-    return { opacity: glow.value }
   })
 
   return (
@@ -83,40 +70,13 @@ export function WarehouseMark({ size = "lg" }: WarehouseMarkProps): ReactNode {
       importantForAccessibility="no-hide-descendants"
       style={{ width: ring, height: ring, alignItems: "center", justifyContent: "center" }}
     >
-      {/* Brass radial bloom — soft depth behind the medallion. A stack of fading
-          rings approximates a glow without a gradient dependency; gold-tinted,
-          purely decorative, never behind text. */}
-      {lg ? (
-        <Animated.View
-          pointerEvents="none"
-          style={[
-            bloomStyle,
-            {
-              position: "absolute",
-              width: bloom,
-              height: bloom,
-              alignItems: "center",
-              justifyContent: "center",
-            },
-          ]}
-        >
-          {[1, 0.74, 0.5].map((scaleF, i) => (
-            <View
-              key={i}
-              style={{
-                position: "absolute",
-                width: bloom * scaleF,
-                height: bloom * scaleF,
-                borderRadius: (bloom * scaleF) / 2,
-                backgroundColor: t.colors.primary,
-                opacity: t.isDark ? 0.05 : 0.04,
-              }}
-            />
-          ))}
-        </Animated.View>
-      ) : null}
+      {/* Bloom REMOVED — the layered brass discs read as a glow behind the
+          medallion, which the official store motion language forbids. The
+          medallion now sits on the warm paper ground; depth comes from the
+          concentric hairline rings below, never from a glow. */}
+      {lg ? null : null}
 
-      {/* Outer decorative gold ring — a single hairline flourish. */}
+      {/* Outer decorative gilt ring — a single hairline flourish. */}
       <View
         pointerEvents="none"
         style={{
@@ -125,11 +85,11 @@ export function WarehouseMark({ size = "lg" }: WarehouseMarkProps): ReactNode {
           height: ring,
           borderRadius: ring / 2,
           borderWidth: lg ? 1.5 : 1,
-          borderColor: `${t.colors.gold}59`,
+          borderColor: `${t.colors.gilt}59`,
         }}
       />
 
-      {/* Inner brass hairline, just inside the gold — a second concentric line
+      {/* Inner ink hairline, just inside the gilt — a second concentric line
           that gives the medallion engraved depth. */}
       <View
         pointerEvents="none"
@@ -139,7 +99,7 @@ export function WarehouseMark({ size = "lg" }: WarehouseMarkProps): ReactNode {
           height: ring - (lg ? 9 : 4),
           borderRadius: ring / 2,
           borderWidth: 1,
-          borderColor: `${t.colors.primary}33`,
+          borderColor: `${t.colors.foreground}26`,
         }}
       />
 

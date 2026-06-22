@@ -8,11 +8,11 @@
  *
  * This is THE brand surface, so it is built to feel premium on the first tap and
  * to continue the splash without a seam:
- *   • a layered brass canvas — a soft radial bloom up top and a calm vignette —
- *     so the screen has real depth, not a flat fill;
+ *   • the warm paper ground (PaperGrain gives the subtle aged tooth) — depth
+ *     comes from hierarchy + a hairline, never a glow or bloom;
  *   • the GENUINE shop logo (the same WAREHOUSE 14 mark as the splash) seated in
- *     a brass medallion that breathes in once and then holds still;
- *   • a custom brass PIN pad with engraved, recessing keys, a spring-pop dot
+ *     a calm medallion that breathes in once and then holds still;
+ *   • a custom PIN pad with engraved, recessing keys, a spring-pop dot
  *     row, per-tap haptics, an auto-submit when the row fills, and a shake +
  *     error flash + Error haptic on a wrong PIN — all from the shared spine;
  *   • calm German copy throughout, with one honest status line that only ever
@@ -198,12 +198,12 @@ export default function LoginScreen(): ReactNode {
   return (
     <View className="bg-background flex-1">
       {/* Aged-paper grain — the house canvas is warm paper, not a flat cream
-          fill (DESIGN.md §1, §5). Sits first, behind the brass bloom and all
-          content; pure decoration, never under text it must contrast against. */}
+          fill (DESIGN.md §1, §5). Sits first, behind all content; pure
+          decoration, never under text it must contrast against. */}
       <PaperGrain />
-      {/* Layered canvas — a soft brass bloom up top + a calm bottom vignette so
-          the surface has depth, not a flat fill. Decorative, behind everything,
-          never under text it must contrast against. */}
+      {/* No glow/bloom: the official store motion language forbids it. The login
+          rests on the warm paper ground alone. BrassCanvas is now a no-op kept
+          only so the call site compiles during the migration. */}
       <BrassCanvas />
 
       <View
@@ -307,60 +307,14 @@ export default function LoginScreen(): ReactNode {
 }
 
 /**
- * BrassCanvas — the calm, layered backdrop behind the login. A brass radial
- * bloom near the hero and a soft vignette toward the bottom give the surface
- * depth without a gradient/native-svg dependency: each glow is a stack of large,
- * very-faint concentric brass discs. Purely decorative, behind all content, and
- * never the contrast surface for any text.
+ * BrassCanvas — REMOVED. The old login painted a stack of large translucent
+ * brass/verdigris discs behind the lock screen (a "bloom" glow). The official
+ * store motion language forbids glow/bloom, and the layered discs were the
+ * visual noise the owner flagged. The login now rests on the warm paper ground
+ * alone (PaperGrain gives the subtle aged tooth); depth comes from hierarchy +
+ * a hairline, never from a glow. Kept as a no-op so existing call sites compile
+ * while they migrate to the bare-paper composition.
  */
 function BrassCanvas(): ReactNode {
-  const t = useW14Theme()
-  const { width } = useWindowDimensions()
-  const bloom = width * 1.5
-
-  return (
-    <View pointerEvents="none" style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
-      {/* Top brass bloom — sits behind the brand mark. */}
-      <View
-        style={{
-          position: "absolute",
-          top: -bloom * 0.42,
-          left: (width - bloom) / 2,
-          width: bloom,
-          height: bloom,
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        {[1, 0.66, 0.4].map((f, i) => (
-          <View
-            key={i}
-            style={{
-              position: "absolute",
-              width: bloom * f,
-              height: bloom * f,
-              borderRadius: (bloom * f) / 2,
-              backgroundColor: t.colors.primary,
-              opacity: t.isDark ? 0.04 : 0.03,
-            }}
-          />
-        ))}
-      </View>
-
-      {/* Bottom verdigris vignette — the faintest cool counterweight so the
-          canvas is not all warm. Decorative; verdigris is the brand positive. */}
-      <View
-        style={{
-          position: "absolute",
-          bottom: -bloom * 0.6,
-          left: (width - bloom) / 2,
-          width: bloom,
-          height: bloom,
-          borderRadius: bloom / 2,
-          backgroundColor: t.colors.verdigris,
-          opacity: t.isDark ? 0.03 : 0.02,
-        }}
-      />
-    </View>
-  )
+  return null
 }
