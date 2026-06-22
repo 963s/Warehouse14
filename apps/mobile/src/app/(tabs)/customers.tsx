@@ -31,7 +31,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Text } from "@/components/ui/text"
-import { describeError, formatEur, listCustomers } from "@/warehouse14/api"
+import { formatEur, listCustomers } from "@/warehouse14/api"
 import {
   KYC_STATUS_LABEL,
   KYC_STATUS_VARIANT,
@@ -40,10 +40,10 @@ import {
 } from "@/warehouse14/customer-ui"
 import { useW14Theme } from "@/warehouse14/theme"
 import {
-  ErrorState,
   haptics,
   PaperGrain,
   PressableScale,
+  QueryBoundary,
   Skeleton,
   StaggerItem,
   useQuery,
@@ -319,42 +319,37 @@ export default function KundenScreen() {
           </StaggerItem>
         )}
         ListEmptyComponent={
-          // First load with nothing yet → the shaped skeleton.
-          customers.status === "loading" && rows == null ? (
-            <View className="pt-1">
-              <KundenSkeleton />
-            </View>
-          ) : customers.status === "error" && rows == null ? (
-            <View className="pt-6">
-              <ErrorState
-                message={customers.error ?? describeError(customers.errorCause)}
-                cause={customers.errorCause}
-                onRetry={() => void customers.refetch()}
-                retrying={customers.isFetching}
-              />
-            </View>
-          ) : rows != null && rows.length === 0 ? (
-            <View className="items-center justify-center gap-3 px-6 py-12">
-              <View
-                className="h-16 w-16 items-center justify-center rounded-full"
-                style={{
-                  backgroundColor: t.colors.primary + "14",
-                  borderColor: t.colors.border,
-                  borderWidth: 1,
-                }}
-              >
-                <UserSearch size={t.icon.xl} color={t.colors.primary} />
+          // The spine owns the four states — loading (the list's shaped
+          // skeleton), error (the shared ErrorState + Retry), and the real
+          // empty result (the Kunden-specific EmptyState copy). Routed through
+          // QueryBoundary so Kunden matches the Lager screen; the populated
+          // case never reaches here (FlatList drives those via data/renderItem).
+          <QueryBoundary
+            query={customers}
+            loading={
+              <View className="pt-1">
+                <KundenSkeleton />
               </View>
-              <Text className="text-center text-lg font-display-semibold leading-tight">
-                {isSearching ? "Keine Treffer" : "Noch keine Kunden"}
-              </Text>
-              <Text className="text-muted-foreground max-w-xs text-center text-sm leading-5">
-                {isSearching
-                  ? "Keine Kunden zu dieser Suche. Prüfe die Schreibweise oder lockere den Filter."
-                  : "Lege den ersten Kunden über das Plus oben rechts an."}
-              </Text>
-            </View>
-          ) : null
+            }
+            isEmpty={(d) => d.items.length === 0}
+            empty={
+              isSearching
+                ? {
+                    icon: UserSearch,
+                    title: "Keine Treffer",
+                    description:
+                      "Keine Kunden zu dieser Suche. Prüfe die Schreibweise oder lockere den Filter.",
+                  }
+                : {
+                    icon: UserSearch,
+                    title: "Noch keine Kunden",
+                    description:
+                      "Lege den ersten Kunden über das Plus oben rechts an.",
+                  }
+            }
+          >
+            {() => null}
+          </QueryBoundary>
         }
       />
     </View>
