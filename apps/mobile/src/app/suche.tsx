@@ -365,7 +365,7 @@ export default function SucheScreen() {
   const header = useMemo(
     () => (
       <View className="bg-background px-4 pb-3 pt-3">
-        {/* Bildschirmtitel in der antiken Cormorant-Display-Stimme (DESIGN §3) —
+        {/* Bildschirmtitel in der Bricolage-Display-Stimme (DESIGN-SYSTEM.md §3) —
             das Suchfeld ist der Held dieser Fläche, der Titel gibt ihr Ruhe. */}
         <View className="mb-3 flex-row items-center gap-2.5">
           <Search size={t.icon.lg} color={t.colors.primary} />

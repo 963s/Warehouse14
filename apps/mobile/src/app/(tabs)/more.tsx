@@ -174,7 +174,7 @@ export default function MehrScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View className="gap-1">
-          {/* Bildschirmtitel in der antiken Cormorant-Display-Stimme (DESIGN §3). */}
+          {/* Bildschirmtitel in der Bricolage-Display-Stimme (DESIGN-SYSTEM.md §3). */}
           <Text className="text-2xl font-display-semibold leading-tight" numberOfLines={1}>
             Mehr
           </Text>

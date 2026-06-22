@@ -1010,7 +1010,7 @@ export default function WhatsAppScreen() {
           <View className="flex-row items-center justify-between gap-2">
             <View className="flex-1 flex-row items-center gap-2">
               <MessageCircle size={t.icon.lg} color={t.colors.primary} />
-              {/* Screen title in the antique Cormorant display voice (DESIGN.md §3). */}
+              {/* Screen title in the Bricolage Grotesque display voice (DESIGN-SYSTEM.md §3). */}
               <Text
                 className="flex-1 text-2xl font-display-semibold leading-tight"
                 numberOfLines={1}

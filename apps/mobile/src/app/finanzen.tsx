@@ -487,7 +487,7 @@ export default function FinanzenScreen() {
         refreshControl={<RefreshControl {...rc} progressViewOffset={8} />}
       >
         <View className="gap-1">
-          {/* Screen title in the antique Cormorant display voice (DESIGN.md §3). */}
+          {/* Screen title in the Bricolage Grotesque display voice (DESIGN-SYSTEM.md §3). */}
           <Text className="text-2xl font-display-semibold leading-tight" numberOfLines={1}>
             Finanzen
           </Text>

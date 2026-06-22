@@ -337,7 +337,7 @@ export default function CustomerDetailScreen() {
             </View>
             <View className="flex-1 gap-1">
               {/* The customer's name is the screen identity — the antique DISPLAY
-                  serif (Cormorant), like the Artikel name on the product detail. */}
+                  display voice (Bricolage Grotesque), like the Artikel name on the product detail. */}
               <Text className="text-2xl font-display-semibold leading-tight" numberOfLines={2}>
                 {customer.fullName}
               </Text>

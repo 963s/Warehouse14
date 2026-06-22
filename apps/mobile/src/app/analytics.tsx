@@ -373,7 +373,7 @@ export default function AnalyticsScreen() {
         <View className="gap-1.5">
           <View className="flex-row items-center gap-2.5">
             <TrendingUp size={t.icon.lg} color={t.colors.primary} />
-            {/* Screen title in the antique Cormorant display voice (DESIGN.md §3). */}
+            {/* Screen title in the Bricolage Grotesque display voice (DESIGN-SYSTEM.md §3). */}
             <Text className="text-2xl font-display-semibold leading-tight" numberOfLines={1}>
               {COPY.screenTitle}
             </Text>

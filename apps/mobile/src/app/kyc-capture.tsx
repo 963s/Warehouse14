@@ -154,7 +154,7 @@ export default function KycCaptureRoute() {
             <IdCard size={t.icon.xl} color={t.colors.primary} />
           </View>
           <View className="flex-1 gap-0.5">
-            {/* The screen identity — the antique DISPLAY serif (Cormorant),
+            {/* The screen identity — the display voice (Bricolage Grotesque),
                 matching the other group headlines (DESIGN.md §3). */}
             <Text className="text-2xl font-display-semibold leading-tight" numberOfLines={1}>
               Ausweis erfassen

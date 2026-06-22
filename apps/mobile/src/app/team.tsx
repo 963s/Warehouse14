@@ -620,7 +620,7 @@ export default function TeamScreen() {
         <View className="gap-1">
           <View className="flex-row items-center gap-2">
             <Users size={t.icon.lg} color={t.colors.primary} />
-            {/* Bildschirmtitel in der antiken Cormorant-Display-Stimme (DESIGN §3). */}
+            {/* Bildschirmtitel in der Bricolage-Display-Stimme (DESIGN-SYSTEM.md §3). */}
             <Text className="text-2xl font-display-semibold leading-tight" numberOfLines={1}>
               {COPY.screenTitle}
             </Text>

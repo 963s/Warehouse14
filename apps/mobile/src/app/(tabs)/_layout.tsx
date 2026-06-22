@@ -11,6 +11,7 @@ import { useColorScheme } from "react-native"
 
 import { SURFACES } from "@/warehouse14/surfaces"
 import { darkPalette, lightPalette } from "@/warehouse14/theme"
+import { haptics } from "@/warehouse14/ui"
 
 // Land on the Schatzkammer, not the (file-system default) index/Lager route.
 export const unstable_settings = {
@@ -39,6 +40,13 @@ export default function TabsLayout() {
           <Tabs.Screen
             key={s.name}
             name={s.name}
+            listeners={() => ({
+              // A tab switch is a navigation tap → the same quiet selection
+              // haptic every row/chip fires, so the most-touched control in
+              // the app is no longer silent. Fires on tab press; navigation
+              // proceeds normally (no default-prevention).
+              tabPress: () => haptics.selection(),
+            })}
             options={{
               title: s.label,
               // Hidden surfaces stay mounted (deep-linkable) but show no tab button.

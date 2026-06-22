@@ -268,7 +268,7 @@ function DetailSheet({ item, onClose }: { item: NotificationItem; onClose: () =>
               <Icon size={t.icon.lg} color={accent} />
             </View>
             <View className="flex-1 gap-1">
-              {/* The sheet's title speaks the antique DISPLAY voice — Cormorant
+              {/* The sheet's title speaks the display voice — Bricolage Grotesque
                   Garamond at the screen-title step (DESIGN §3). */}
               <Text className="text-xl font-display-semibold leading-tight" numberOfLines={2}>
                 {item.title}

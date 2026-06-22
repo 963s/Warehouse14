@@ -31,7 +31,7 @@ function CardTitle({
       ref={ref}
       role="heading"
       aria-level={3}
-      // The antique DISPLAY voice — Cormorant Garamond at the section-title
+      // The display voice — Bricolage Grotesque at the section-title
       // step. `font-display-semibold` carries the serif face + weight; it is
       // never paired with an Inter weight class.
       className={cn('text-lg font-display-semibold leading-tight', className)}

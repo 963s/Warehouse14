@@ -160,7 +160,7 @@ export default function DruckenScreen() {
       <View className="gap-1">
         <View className="flex-row items-center gap-2">
           <Printer size={t.icon.lg} color={t.colors.primary} />
-          {/* Bildschirmtitel in der antiken Cormorant-Display-Stimme (DESIGN §3). */}
+          {/* Bildschirmtitel in der Bricolage-Display-Stimme (DESIGN-SYSTEM.md §3). */}
           <Text className="text-2xl font-display-semibold leading-tight">Drucken</Text>
         </View>
         <Text className="text-muted-foreground text-sm">

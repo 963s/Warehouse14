@@ -759,7 +759,7 @@ export default function EbayScreen() {
         <View className="gap-3">
           <View className="flex-row items-center gap-2">
             <Store size={t.icon.lg} color={t.colors.primary} />
-            {/* Screen title in the antique Cormorant display voice (DESIGN.md §3). */}
+            {/* Screen title in the Bricolage Grotesque display voice (DESIGN-SYSTEM.md §3). */}
             <Text className="text-2xl font-display-semibold leading-tight" numberOfLines={1}>
               eBay-Pipeline
             </Text>

@@ -113,7 +113,7 @@ function DialogTitle({
 }: React.ComponentProps<typeof DialogPrimitive.Title>) {
   return (
     <DialogPrimitive.Title
-      // The antique DISPLAY voice — Cormorant Garamond at the title step.
+      // The display voice — Bricolage Grotesque at the title step.
       className={cn('text-foreground text-lg font-display-semibold leading-tight', className)}
       {...props}
     />

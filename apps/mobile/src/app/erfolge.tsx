@@ -219,7 +219,7 @@ export default function ErfolgeScreen() {
           <Trophy size={t.icon.xl - 2} color={t.colors.primary} />
           <View className="flex-1">
             {/* The screen's hero title speaks the antique DISPLAY voice —
-                Cormorant Garamond at the screen-title step (DESIGN §3). */}
+                Bricolage Grotesque at the screen-title step (DESIGN-SYSTEM.md §3). */}
             <Text className="text-2xl font-display-semibold leading-tight" numberOfLines={1}>
               {ERFOLGE_COPY.screenTitle}
             </Text>

@@ -68,7 +68,7 @@ export function SectionHeader({
         {Icon ? <Icon size={t.icon.md} color={t.colors.primary} /> : null}
         <View className="flex-1">
           {/* An un-carded headline on the canvas speaks the antique DISPLAY
-              voice — Cormorant Garamond at the section-headline step (DESIGN §3:
+              voice — Bricolage Grotesque at the section-headline step (DESIGN-SYSTEM.md §3:
               headlines that sit on the canvas, not the small in-card title). */}
           <Text className="text-lg font-display-semibold leading-tight" numberOfLines={1}>
             {title}

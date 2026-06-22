@@ -36,7 +36,7 @@ function textStyle(t: Theme, variant: Variant, color?: string) {
   const c = color ?? t.colors.foreground
   switch (variant) {
     case "display":
-      // The antique display serif (Cormorant Garamond) — the aged-paper voice
+      // The display voice (Bricolage Grotesque) — the confident house voice
       // for a splash/overline (DESIGN.md §3). Reads light at size, so it stays at
       // the display step, never below.
       return { fontFamily: t.fonts.displayBold, fontSize: 28, lineHeight: 34, color: c }

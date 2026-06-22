@@ -15,7 +15,7 @@ const textVariants = cva(
     variants: {
       variant: {
         default: '',
-        // Headings speak the antique DISPLAY voice — Cormorant Garamond. Never
+        // Headings speak the display voice — Bricolage Grotesque. Never
         // paired with an Inter weight class (that would re-select Inter and lose
         // the serif); the `font-display*` utility carries both face + weight.
         h1: cn(
