@@ -36,6 +36,7 @@ import {
   haptics,
   PaperGrain,
   PressableScale,
+  SectionHeader,
   StaggerItem,
   useScreenInsets,
 } from "@/warehouse14/ui"
@@ -185,12 +186,9 @@ export default function MehrScreen() {
 
         {sections.map((section) => (
           <View key={section.group} className="gap-3">
-            <Text
-              className="text-muted-foreground text-xs font-semibold uppercase"
-              style={{ letterSpacing: 0.8 }}
-            >
-              {section.label}
-            </Text>
+            {/* Section label — the shared overline (small-caps eyebrow), not a
+                hand-rolled uppercase Text. One identity across the app. */}
+            <SectionHeader title={section.label} emphasis="overline" />
             <View className="flex-row flex-wrap justify-between" style={{ rowGap: t.space.x3 }}>
               {section.items.map((s) => (
                 <HubCard key={s.id} surface={s} index={cardIndex++} />

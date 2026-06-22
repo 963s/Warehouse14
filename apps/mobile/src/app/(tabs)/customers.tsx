@@ -28,7 +28,6 @@ import {
 } from "lucide-react-native"
 
 import { Badge } from "@/components/ui/badge"
-import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Text } from "@/components/ui/text"
 import { formatEur, listCustomers } from "@/warehouse14/api"
@@ -97,13 +96,15 @@ function KundenRow({
       accessibilityRole="button"
       accessibilityLabel={`${row.fullName}, Kundennummer ${row.customerNumber}`}
     >
-      <Card className="flex-row items-center gap-3 rounded-xl border px-4 py-3">
-        {/* Avatar monogram in a soft brass disc — the calm leading anchor. */}
+      {/* Box-free row on the parchment canvas — no Card border, separated from
+          the next row by a single warm hairline below. */}
+      <View className="hairline-b flex-row items-center gap-3 px-4 py-3">
+        {/* Avatar monogram in a soft raised disc — the calm leading anchor. */}
         <View
           className="h-11 w-11 items-center justify-center rounded-full"
-          style={{ backgroundColor: t.colors.primary + "1f" }}
+          style={{ backgroundColor: t.colors.raised }}
         >
-          <Text className="text-sm font-semibold" style={{ color: t.colors.primary }}>
+          <Text className="text-sm font-semibold" style={{ color: t.colors.foreground }}>
             {initialsOf(row.fullName)}
           </Text>
         </View>
@@ -143,7 +144,7 @@ function KundenRow({
             </View>
           ) : null}
         </View>
-      </Card>
+      </View>
     </PressableScale>
   )
 }
@@ -153,14 +154,15 @@ function KundenSkeleton() {
   return (
     <View className="gap-2.5">
       {Array.from({ length: 7 }).map((_, i) => (
-        <Card key={i} className="flex-row items-center gap-3 rounded-xl border px-4 py-3">
+        // Box-free skeleton row — matches the real KundenRow (hairline-b, no Card).
+        <View key={i} className="hairline-b flex-row items-center gap-3 px-4 py-3">
           <Skeleton width={44} height={44} radius="full" />
           <View className="flex-1 gap-2">
             <Skeleton width="58%" height={14} />
             <Skeleton width="34%" height={11} />
           </View>
           <Skeleton width={64} height={22} radius="button" />
-        </Card>
+        </View>
       ))}
     </View>
   )

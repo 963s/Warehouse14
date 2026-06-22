@@ -28,7 +28,6 @@ import type { Metal, ProductListRow, ProductStatus } from "@warehouse14/api-clie
 import { Boxes, MapPin, PackagePlus, Plus, RefreshCw, Search, X } from "lucide-react-native"
 
 import { Badge } from "@/components/ui/badge"
-import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Text } from "@/components/ui/text"
 import { absoluteUrl, describeError, formatEur, listProducts } from "@/warehouse14/api"
@@ -449,8 +448,10 @@ function ProductRow({ item, onPress }: { item: ProductListRow; onPress: () => vo
 
   return (
     <PressableScale onPress={onPress} accessibilityRole="button" accessibilityLabel={item.name}>
-      <Card className="flex-row items-center gap-3 rounded-xl border px-3 py-3">
-        {/* Thumbnail — the real primary photo, or a typed brass fallback disc. */}
+      {/* Box-free row on the parchment canvas — no Card border, separated from
+          the next row by a single warm hairline below. Comfortable density. */}
+      <View className="hairline-b flex-row items-center gap-3 px-3 py-3">
+        {/* Thumbnail — the real primary photo, or a typed ink fallback disc. */}
         {item.primaryPhotoThumbUrl ? (
           <Image
             source={{ uri: absoluteUrl(item.primaryPhotoThumbUrl) }}
@@ -465,9 +466,9 @@ function ProductRow({ item, onPress }: { item: ProductListRow; onPress: () => vo
         ) : (
           <View
             className="items-center justify-center rounded-md"
-            style={{ width: 52, height: 52, backgroundColor: t.colors.primary + "14" }}
+            style={{ width: 52, height: 52, backgroundColor: t.colors.raised }}
           >
-            <Boxes size={t.icon.lg} color={t.colors.primary} />
+            <Boxes size={t.icon.lg} color={t.colors.foreground} />
           </View>
         )}
 
@@ -481,10 +482,10 @@ function ProductRow({ item, onPress }: { item: ProductListRow; onPress: () => vo
           <View className="flex-row items-center gap-1">
             <MapPin
               size={t.icon.xs}
-              color={hasLocation ? t.colors.primary : t.colors.mutedForeground}
+              color={hasLocation ? t.colors.foreground : t.colors.mutedForeground}
             />
             <Text
-              className={hasLocation ? "text-xs text-primary" : "text-muted-foreground text-xs"}
+              className={hasLocation ? "text-xs text-foreground" : "text-muted-foreground text-xs"}
               numberOfLines={1}
               style={{ flexShrink: 1 }}
             >
@@ -500,14 +501,14 @@ function ProductRow({ item, onPress }: { item: ProductListRow; onPress: () => vo
         </View>
 
         <View className="items-end gap-1.5">
-          <Text className="text-primary font-mono-medium text-base" numberOfLines={1}>
+          <Text className="text-foreground font-mono-medium text-base" numberOfLines={1}>
             {formatEur(item.listPriceEur)}
           </Text>
           <Badge variant={statusVariant(item.status)} dot>
             <Text>{statusLabel(item.status)}</Text>
           </Badge>
         </View>
-      </Card>
+      </View>
     </PressableScale>
   )
 }
@@ -592,7 +593,8 @@ function LagerSkeleton() {
     <View className="gap-2.5 px-4 pt-2" accessibilityElementsHidden>
       <Skeleton width={64} height={11} />
       {Array.from({ length: 7 }).map((_, i) => (
-        <Card key={i} className="flex-row items-center gap-3 rounded-xl border px-3 py-3">
+        // Box-free skeleton row — matches the real ProductRow (hairline-b, no Card).
+        <View key={i} className="hairline-b flex-row items-center gap-3 px-3 py-3">
           <Skeleton width={52} height={52} radius="button" />
           <View className="flex-1 gap-2">
             <Skeleton width="70%" height={14} />
@@ -603,7 +605,7 @@ function LagerSkeleton() {
             <Skeleton width={62} height={14} />
             <Skeleton width={70} height={18} radius="full" />
           </View>
-        </Card>
+        </View>
       ))}
     </View>
   )
