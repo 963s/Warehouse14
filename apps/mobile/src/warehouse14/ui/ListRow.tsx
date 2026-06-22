@@ -6,8 +6,8 @@
  *
  * Tappable rows press with the spine's one feedback (scale 0.97 + opacity dip on
  * the UI thread, reduced-motion aware) — never a hand-rolled opacity, so every
- * row in the app presses identically (DESIGN.md §6). A leading icon sits in a
- * soft brass disc for a calm, native target. Pass `mono` to render a right-hand
+ * row in the app presses identically (DESIGN-SYSTEM.md §5). A leading icon sits
+ * bare (no chip) for a calm, native target. Pass `mono` to render a right-hand
  * value in JetBrains Mono so amounts in a column align (§3).
  */
 import { type ReactNode } from "react"
@@ -57,15 +57,10 @@ export function ListRow({
       style={muted ? { opacity: 0.55 } : undefined}
     >
       {Icon ? (
-        <View
-          className="h-8 w-8 items-center justify-center rounded-md"
-          style={{
-            backgroundColor: t.colors.primary + "1f",
-            borderColor: t.colors.border,
-            borderWidth: 1,
-          }}
-        >
-          <Icon size={t.icon.md} color={t.colors.primary} />
+        // The leading icon sits directly — no tinted chip box (box-free). A
+        // bare ink glyph is calmer and reads as a native list target.
+        <View className="h-7 w-7 items-center justify-center">
+          <Icon size={t.icon.md} color={t.colors.foreground} />
         </View>
       ) : null}
       <View className="flex-1 gap-0.5">
