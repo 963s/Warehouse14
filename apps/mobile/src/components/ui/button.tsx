@@ -15,13 +15,13 @@ const buttonVariants = cva(
       variant: {
         // Primary = BRASS. The brand fill, cream label, one soft whisper of shadow.
         default: cn(
-          'bg-primary active:bg-primary/90 shadow-sm shadow-black/5',
+          'bg-primary active:bg-primary/90',
           Platform.select({ web: 'hover:bg-primary/90' })
         ),
         // Destructive = TERRACOTTA at full strength on both schemes (the palette
         // already lifts it for dark; never wash it to /60). Cream label.
         destructive: cn(
-          'bg-destructive active:bg-destructive/90 shadow-sm shadow-black/5',
+          'bg-destructive active:bg-destructive/90',
           Platform.select({
             web: 'hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40',
           })
@@ -30,14 +30,14 @@ const buttonVariants = cva(
         // the sunken cream well (`secondary`), never the sage `accent` (which
         // means "positive" — a wire we never cross).
         outline: cn(
-          'border-border bg-background active:bg-secondary dark:bg-input/30 dark:border-input dark:active:bg-input/50 border shadow-sm shadow-black/5',
+          'border-border bg-background active:bg-secondary dark:bg-input/30 dark:border-input dark:active:bg-input/50 border',
           Platform.select({
             web: 'hover:bg-secondary dark:hover:bg-input/50',
           })
         ),
         // Secondary = the sunken cream well itself.
         secondary: cn(
-          'bg-secondary active:bg-secondary/80 shadow-sm shadow-black/5',
+          'bg-secondary active:bg-secondary/80',
           Platform.select({ web: 'hover:bg-secondary/80' })
         ),
         // Ghost = bare; press settles onto the sunken cream well, not sage.

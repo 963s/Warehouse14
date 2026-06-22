@@ -7,7 +7,12 @@ function Card({ className, ...props }: React.ComponentProps<typeof View> & React
     <TextClassContext.Provider value="text-card-foreground">
       <View
         className={cn(
-          'bg-card border-border flex flex-col gap-4 rounded-xl border py-4 shadow-sm shadow-black/5',
+          // Content-first, not box-first: a raised parchment leaf (parchment-2)
+          // separated from the canvas by a single warm hairline — NO cold drop
+          // shadow. Depth comes from the layered surfaces (DESIGN-SYSTEM.md §1,
+          // §5), never from shadow-black/5 (that read as a flat material box).
+          // The card-pad rhythm + generous gap let the content breathe.
+          'bg-card border-border flex flex-col gap-4 rounded-xl border p-5',
           className
         )}
         {...props}
@@ -32,7 +37,7 @@ function CardTitle({
       role="heading"
       aria-level={3}
       // The display voice — Bricolage Grotesque at the section-title
-      // step. `font-display-semibold` carries the serif face + weight; it is
+      // step. `font-display-semibold` carries the face + weight; it is
       // never paired with an Inter weight class.
       className={cn('text-lg font-display-semibold leading-tight', className)}
       {...props}

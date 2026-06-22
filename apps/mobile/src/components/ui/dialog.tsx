@@ -62,7 +62,7 @@ function DialogContent({
             // Floating layer = the card fill inside a fine gold hairline at the
             // card radius (8), with just the one soft whisper of shadow (DESIGN
             // §5 — depth is layering + hairline + the scrim, never a heavy drop).
-            'bg-card border-border z-50 mx-auto flex w-full max-w-[calc(100%-2rem)] flex-col gap-4 rounded-lg border p-6 shadow-sm shadow-black/5 sm:max-w-lg',
+            'bg-card border-border z-50 mx-auto flex w-full max-w-[calc(100%-2rem)] flex-col gap-4 rounded-lg border p-6 sm:max-w-lg',
             Platform.select({
               web: 'animate-in fade-in-0 zoom-in-95 duration-200',
             }),
