@@ -242,7 +242,7 @@ export default function LoginScreen(): ReactNode {
             </View>
           </Animated.View>
 
-          {/* PIN entry — dots + brass keypad. Carries the shake + flash on error. */}
+          {/* PIN entry — dots + the clean ink keypad. Carries the shake + flash on error. */}
           <View className="w-full items-center" style={{ gap: t.space.x5 }}>
             <PinPad
               filled={pin.length}

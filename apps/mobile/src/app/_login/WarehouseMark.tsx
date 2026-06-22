@@ -3,17 +3,17 @@
  *
  * This is the one place the app shows its face, so it shows the GENUINE shop
  * logo — the same WAREHOUSE 14 mark the cashier already sees on the POS, shipped
- * as `splash-logo.png` (the brass-on-transparent rasterisation of
+ * as `splash-logo.png` (the logo-on-transparent rasterisation of
  * apps/tauri-pos/public/shop-logo.svg) — not an invented glyph. Seating it on
  * the login continues the splash seamlessly: the owner watches the very same
  * mark settle from the launch screen into the medallion.
  *
  * The medallion is built only from `View`s + theme tokens around the real logo
- * image: a soft brass radial bloom, two concentric hairline rings (the outer in
- * decorative gold, never under text), and a brass-tinted disc that seats the
- * mark. On the `lg` hero it breathes once on entrance — a single settled scale
- * pop from the emphasis spring — and then holds perfectly still (calm, never a
- * loop). Reduce-motion renders it static.
+ * image: a parchment disc that seats the mark, two concentric hairline rings
+ * (the outer in decorative gilt, never under text), and the logo itself. On
+ * the `lg` hero it breathes once on entrance — a single settled scale pop from
+ * the emphasis spring — and then holds perfectly still (calm, never a loop).
+ * Reduce-motion renders it static.
  *
  * Honesty: purely a brand surface. It is decorative for accessibility (the
  * screen titles carry the real, readable label), so it never competes with the
@@ -103,7 +103,7 @@ export function WarehouseMark({ size = "lg" }: WarehouseMarkProps): ReactNode {
         }}
       />
 
-      {/* The brass-tinted disc that seats the real logo. */}
+      {/* The parchment disc that seats the real logo. */}
       <Animated.View
         style={[
           discStyle,
