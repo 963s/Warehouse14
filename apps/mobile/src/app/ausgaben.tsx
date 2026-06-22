@@ -72,6 +72,7 @@ import {
   ErrorState,
   Gesture,
   GestureDetector,
+  duration,
   haptics,
   hapticOnUI,
   PaperGrain,
@@ -199,8 +200,8 @@ function SwipeToEdit({ onEdit, children }: { onEdit: () => void; children: React
             hapticOnUI("impactLight")
             runOnJS(fire)()
           }
-          translateX.value = withTiming(0, { duration: 160 })
-          progress.value = withTiming(0, { duration: 160 })
+          translateX.value = withTiming(0, { duration: duration.fast })
+          progress.value = withTiming(0, { duration: duration.fast })
         }),
     [fire, translateX, progress],
   )

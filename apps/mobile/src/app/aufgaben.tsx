@@ -91,6 +91,7 @@ import {
   ErrorState,
   Gesture,
   GestureDetector,
+  duration,
   haptics,
   hapticOnUI,
   InlineError,
@@ -363,8 +364,8 @@ function TaskCard({
             hapticOnUI("impactLight")
             runOnJS(fireCommit)()
           }
-          translateX.value = withTiming(0, { duration: 160 })
-          progress.value = withTiming(0, { duration: 160 })
+          translateX.value = withTiming(0, { duration: duration.fast })
+          progress.value = withTiming(0, { duration: duration.fast })
         }),
     [canSwipe, fireCommit, translateX, progress],
   )
