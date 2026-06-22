@@ -1,16 +1,17 @@
 /**
  * PinPad — the premium numeric PIN entry for the login + lock surface.
  *
- * A row of brass PIN dots over a calm 3×4 keypad of engraved brass keys. It is
- * built entirely on the shared spine so it feels like the rest of the app, but
- * with the extra craft the brand surface deserves:
+ * A row of ink PIN dots over a calm 3×4 keypad of engraved keys. It is built
+ * entirely on the shared spine so it feels like the rest of the app, but with
+ * the extra craft the brand surface deserves:
  *
- *   • Dots — an empty hairline ring fills to a solid brass dot with a settled
- *     spring pop and a soft brass halo as each digit lands; on a wrong PIN the
- *     row shakes (reduce-motion aware) and the dots flash to the error colour.
+ *   • Dots — an empty hairline ring fills to a solid ink disc with a settled
+ *     spring pop as each digit lands; on a wrong PIN the row shakes
+ *     (reduce-motion aware) and the dots flash to the wax-red error colour.
  *   • Keys — each is a spine `PressableScale` over an `Animated.View` that
- *     deepens its fill + ring on press, so a tap feels physically recessed, not
- *     just scaled. The active digit gets a brass-tinted face.
+ *     deepens its fill to the raised surface on press, so a tap feels
+ *     physically recessed, not just scaled. One clean circle per key — no
+ *     nested shapes, no halo, no glow (the design law forbids them).
  *   • Targets — every key is ≥64px (money-grade) and grows on larger screens.
  *   • Haptics — one selection per tap, nothing on render; the parent fires the
  *     success/error notification on the attempt result.
@@ -121,7 +122,7 @@ export function PinPad({
 
   return (
     <View className="items-center" style={{ gap: t.space.x8 }}>
-      {/* PIN dots — fill with a brass spring pop + halo; flash on a wrong PIN. */}
+      {/* PIN dots — fill with a settled spring pop; flash wax-red on a wrong PIN. */}
       <Animated.View
         style={dotsRowStyle}
         className="flex-row items-center justify-center"
@@ -162,7 +163,9 @@ export function PinPad({
   )
 }
 
-/** A single PIN dot — hairline ring when empty, brass disc + halo when filled. */
+/** A single PIN dot — hairline ring when empty, solid ink disc when filled.
+ *  No halo, no nested shapes — a single precise disc that fills with a settled
+ *  spring pop. On a wrong PIN the dots flash wax-red (the destructive token). */
 interface PinDotProps {
   on: boolean
   index: number
@@ -172,8 +175,7 @@ interface PinDotProps {
 
 function PinDot({ on, index, errorFlash, reduceMotion }: PinDotProps): ReactNode {
   const t = useW14Theme()
-  const SIZE = 15
-  const HALO = 30
+  const SIZE = 14
 
   // Fill progress 0..1 with a settled pop as the digit lands.
   const fill = useSharedValue(on ? 1 : 0)
@@ -188,37 +190,17 @@ function PinDot({ on, index, errorFlash, reduceMotion }: PinDotProps): ReactNode
   const dotStyle = useAnimatedStyle(() => {
     "worklet"
     const flash = errorFlash.value
-    // Lerp brass→error on the flash so a wrong PIN reads instantly on the dots.
     const base = fill.value
     return {
-      backgroundColor: base > 0.02 ? (flash > 0.5 ? t.colors.destructive : t.colors.primary) : "transparent",
+      backgroundColor: base > 0.02 ? (flash > 0.5 ? t.colors.destructive : t.colors.foreground) : "transparent",
       borderColor: flash > 0.5 ? t.colors.destructive : t.colors.border,
       borderWidth: base > 0.5 ? 0 : 1.5,
       transform: [{ scale: 0.6 + base * 0.4 }],
     }
   })
 
-  const haloStyle = useAnimatedStyle(() => {
-    "worklet"
-    return { opacity: fill.value * (errorFlash.value > 0.5 ? 0 : 0.18) }
-  })
-
   return (
     <View style={{ width: SIZE, height: SIZE, alignItems: "center", justifyContent: "center" }}>
-      {/* Soft brass halo behind a filled dot. */}
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          haloStyle,
-          {
-            position: "absolute",
-            width: HALO,
-            height: HALO,
-            borderRadius: HALO / 2,
-            backgroundColor: t.colors.primary,
-          },
-        ]}
-      />
       <Animated.View style={[dotStyle, { width: SIZE, height: SIZE, borderRadius: SIZE / 2 }]} />
     </View>
   )
@@ -239,8 +221,10 @@ function Key({ label, glyph, accessibilityLabel, onPress, disabled, ghost, size 
   const t = useW14Theme()
   const reduceMotion = useReduceMotion()
 
-  // Press depth — the face deepens and the ring warms to brass on press-in, so
-  // a tap feels recessed into the panel rather than only scaled.
+  // Press depth — the face deepens its fill to the raised surface on press-in,
+  // so a tap feels recessed into the panel rather than only scaled. Ink-only
+  // palette (no brass): the key rests on the card, presses into the raised
+  // surface, with a hairline border — one clean circle, no nested shapes.
   const depth = useSharedValue(0)
   const faceStyle = useAnimatedStyle(() => {
     "worklet"
@@ -249,9 +233,9 @@ function Key({ label, glyph, accessibilityLabel, onPress, disabled, ghost, size 
       backgroundColor: ghost
         ? "transparent"
         : p > 0.5
-          ? t.colors.background
+          ? t.colors.raised
           : t.colors.card,
-      borderColor: ghost ? "transparent" : p > 0.5 ? t.colors.primary : t.colors.border,
+      borderColor: ghost ? "transparent" : p > 0.5 ? t.colors.foreground : t.colors.border,
     }
   })
 
