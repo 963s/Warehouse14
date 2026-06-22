@@ -17,6 +17,7 @@ import { useSession } from "@/warehouse14/session"
 import { StepUpDialogHost } from "@/warehouse14/StepUpDialog"
 import { darkPalette, lightPalette } from "@/warehouse14/theme"
 import { ConnectionBannerHost } from "@/warehouse14/ui"
+import { modalPresent, stackPush } from "@/warehouse14/ui/motion/nav-transitions"
 
 SplashScreen.preventAutoHideAsync()
 
@@ -75,44 +76,44 @@ export default function RootLayout() {
         >
           <Stack.Screen name="login" options={{ headerShown: false }} />
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="product/[id]" options={{ presentation: "modal", title: "Artikel" }} />
-          <Stack.Screen name="product/neu" options={{ presentation: "modal", title: "Neuer Artikel" }} />
-          <Stack.Screen name="product/edit" options={{ presentation: "modal", title: "Bearbeiten" }} />
-          <Stack.Screen name="customer/[id]" options={{ presentation: "modal", title: "Kunde" }} />
-          <Stack.Screen name="customer/neu" options={{ presentation: "modal", title: "Neuer Kunde" }} />
-          <Stack.Screen name="customer/edit" options={{ presentation: "modal", title: "Kunde bearbeiten" }} />
-          <Stack.Screen name="aufgaben" options={{ title: "Aufgaben" }} />
-          <Stack.Screen name="benachrichtigungen" options={{ title: "Benachrichtigungen" }} />
-          <Stack.Screen name="kasse" options={{ title: "Kasse" }} />
-          <Stack.Screen name="verkauf" options={{ title: "Verkauf" }} />
-          <Stack.Screen name="ankauf" options={{ title: "Ankauf" }} />
-          <Stack.Screen name="drucken" options={{ title: "Drucken" }} />
-          <Stack.Screen name="ebay" options={{ title: "eBay-Kanal" }} />
-          <Stack.Screen name="whatsapp" options={{ title: "WhatsApp" }} />
-          <Stack.Screen name="belege" options={{ title: "Belege & Dokumente" }} />
-          <Stack.Screen name="ausgaben" options={{ title: "Ausgaben" }} />
-          <Stack.Screen name="finanzen" options={{ title: "Finanzen" }} />
-          <Stack.Screen name="analytics" options={{ title: "Auswertungen" }} />
-          <Stack.Screen name="team" options={{ title: "Team" }} />
-          <Stack.Screen name="tagebuch" options={{ title: "Tagebuch" }} />
-          <Stack.Screen name="suche" options={{ title: "Suche" }} />
-          <Stack.Screen name="erfolge" options={{ title: "Erfolge" }} />
-          <Stack.Screen name="einstellungen" options={{ title: "Einstellungen" }} />
+          <Stack.Screen name="product/[id]" options={{ presentation: "modal", title: "Artikel", ...modalPresent() }} />
+          <Stack.Screen name="product/neu" options={{ presentation: "modal", title: "Neuer Artikel", ...modalPresent() }} />
+          <Stack.Screen name="product/edit" options={{ presentation: "modal", title: "Bearbeiten", ...modalPresent() }} />
+          <Stack.Screen name="customer/[id]" options={{ presentation: "modal", title: "Kunde", ...modalPresent() }} />
+          <Stack.Screen name="customer/neu" options={{ presentation: "modal", title: "Neuer Kunde", ...modalPresent() }} />
+          <Stack.Screen name="customer/edit" options={{ presentation: "modal", title: "Kunde bearbeiten", ...modalPresent() }} />
+          <Stack.Screen name="aufgaben" options={{ title: "Aufgaben", ...stackPush() }} />
+          <Stack.Screen name="benachrichtigungen" options={{ title: "Benachrichtigungen", ...stackPush() }} />
+          <Stack.Screen name="kasse" options={{ title: "Kasse", ...stackPush() }} />
+          <Stack.Screen name="verkauf" options={{ title: "Verkauf", ...stackPush() }} />
+          <Stack.Screen name="ankauf" options={{ title: "Ankauf", ...stackPush() }} />
+          <Stack.Screen name="drucken" options={{ title: "Drucken", ...stackPush() }} />
+          <Stack.Screen name="ebay" options={{ title: "eBay-Kanal", ...stackPush() }} />
+          <Stack.Screen name="whatsapp" options={{ title: "WhatsApp", ...stackPush() }} />
+          <Stack.Screen name="belege" options={{ title: "Belege & Dokumente", ...stackPush() }} />
+          <Stack.Screen name="ausgaben" options={{ title: "Ausgaben", ...stackPush() }} />
+          <Stack.Screen name="finanzen" options={{ title: "Finanzen", ...stackPush() }} />
+          <Stack.Screen name="analytics" options={{ title: "Auswertungen", ...stackPush() }} />
+          <Stack.Screen name="team" options={{ title: "Team", ...stackPush() }} />
+          <Stack.Screen name="tagebuch" options={{ title: "Tagebuch", ...stackPush() }} />
+          <Stack.Screen name="suche" options={{ title: "Suche", ...stackPush() }} />
+          <Stack.Screen name="erfolge" options={{ title: "Erfolge", ...stackPush() }} />
+          <Stack.Screen name="einstellungen" options={{ title: "Einstellungen", ...stackPush() }} />
           <Stack.Screen
             name="ausgaben/ausgabe"
-            options={{ presentation: "modal", title: "Ausgabe" }}
+            options={{ presentation: "modal", title: "Ausgabe", ...modalPresent() }}
           />
           <Stack.Screen
             name="ausgaben/fixkosten"
-            options={{ presentation: "modal", title: "Fixkosten" }}
+            options={{ presentation: "modal", title: "Fixkosten", ...modalPresent() }}
           />
           <Stack.Screen
             name="aufgaben/neu"
-            options={{ presentation: "modal", title: "Neue Aufgabe" }}
+            options={{ presentation: "modal", title: "Neue Aufgabe", ...modalPresent() }}
           />
           <Stack.Screen
             name="aufgaben/edit"
-            options={{ presentation: "modal", title: "Aufgabe bearbeiten" }}
+            options={{ presentation: "modal", title: "Aufgabe bearbeiten", ...modalPresent() }}
           />
           <Stack.Screen
             name="capture"

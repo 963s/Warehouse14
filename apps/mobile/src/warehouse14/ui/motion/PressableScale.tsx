@@ -73,10 +73,12 @@ export function PressableScale({
   return (
     <Pressable
       onPressIn={(e) => {
-        progress.value = withTiming(1, { duration: duration.instant, easing: easing.standard })
+        progress.value = withTiming(1, { duration: duration.instant, easing: easing.hover })
         onPressIn?.(e)
       }}
       onPressOut={(e) => {
+        // Release uses the curator ease-out so the surface settles back to rest
+        // with the signature deceleration (DESIGN-SYSTEM.md §5).
         progress.value = withTiming(0, { duration: duration.fast, easing: easing.standard })
         onPressOut?.(e)
       }}

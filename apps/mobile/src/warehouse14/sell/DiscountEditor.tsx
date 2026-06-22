@@ -108,10 +108,12 @@ export function DiscountEditor({ line, onApply }: DiscountEditorProps): ReactNod
         style={{ paddingTop: 4 }}
       >
         <View className="flex-row items-center gap-1">
-          <Tag size={t.icon.xs} color={t.colors.gilt} />
+          {/* A discount is a positive price move for the buyer → verdigris (the
+              law: green = positive). Gilt is a thread/edge/seal only, never text. */}
+          <Tag size={t.icon.xs} color={t.colors.verdigris} />
           <Text
             className="text-xs"
-            style={{ color: t.colors.gilt }}
+            style={{ color: t.colors.verdigris }}
           >
             {line.discountEur ? "Rabatt ändern" : "Rabatt"}
           </Text>

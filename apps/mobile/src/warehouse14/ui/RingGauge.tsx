@@ -127,6 +127,9 @@ export function RingGauge({
       >
         <Animated.View style={[{ height: "100%", backgroundColor: fill }, fillStyle]} />
         {atGoal && !reduceMotion ? (
+          // The milestone shimmer — the ONE sanctioned gilt "seal" use
+          // (DESIGN-SYSTEM.md §1: gilt as a seal is allowed; never a fill under
+          // text). Fires only at 100% goal, decorative, no text over it.
           <Animated.View
             pointerEvents="none"
             style={[
@@ -135,7 +138,7 @@ export function RingGauge({
                 top: 0,
                 bottom: 0,
                 width: "30%",
-                backgroundColor: t.colors.gold,
+                backgroundColor: t.colors.gilt,
               },
               shimmerStyle,
             ]}

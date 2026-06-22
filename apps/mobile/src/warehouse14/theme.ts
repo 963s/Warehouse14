@@ -83,7 +83,12 @@ export const lightPalette: Palette = {
   ring: "#1c1c1c", // ink focus ring
   gilt: "#a3823b", // DECORATIVE thread/edge/seal — NEVER a fill or text
   giltDeep: "#876a2c", // pressed / hover gilt
-  gold: "#a3823b", // legacy alias of gilt — decorative thread/edge/seal
+  // Legacy `gold` alias — mirrors the official store remap (DESIGN-SYSTEM.md §2
+  // "Legacy"): the old gold token now resolves to quiet ink-umber, so any stale
+  // `colors.gold` call site reads as ink, NEVER yellow. This MUST match
+  // global.css `--w14-gold: #2e2b26`. For decorative gold use `gilt`; for
+  // text-bearing emphasis use `primary` (ink).
+  gold: "#2e2b26",
   forest: "#46583f",
   terra: "#a4633c",
 }
