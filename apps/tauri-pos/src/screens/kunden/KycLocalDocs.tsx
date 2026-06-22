@@ -129,7 +129,7 @@ export function KycLocalDocs({
             key={rec.id}
             style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '0.84rem' }}
           >
-            <span style={{ minWidth: 120 }}>{DOC_LABEL[rec.docType] ?? rec.docType}</span>
+            <span style={{ minWidth: 120 }}>{DOC_LABEL[rec.docType] ?? 'Dokument'}</span>
             <span style={{ color: 'var(--w14-ink-faded)' }}>
               {new Date(rec.createdAt).toLocaleString('de-DE')}
             </span>

@@ -238,7 +238,8 @@ const LagerRow = memo(
 
     // Calm secondary scan-line: metal + weight when present (helps staff
     // confirm a piece by sight). Presentation only — no math, just a label.
-    const metalTag = row.metal ? (METAL_LABEL[row.metal] ?? row.metal) : null;
+    // Unknown metal values degrade to a German word, never the raw token.
+    const metalTag = row.metal ? (METAL_LABEL[row.metal] ?? 'Edelmetall') : null;
     const weightTag =
       row.weightGrams && row.weightGrams.trim().length > 0
         ? `${formatGrams(row.weightGrams)} g`
