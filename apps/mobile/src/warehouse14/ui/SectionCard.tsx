@@ -35,20 +35,13 @@ export function SectionCard({
       <View className="flex-row items-center justify-between gap-3">
         <View className="flex-1 flex-row items-center gap-2.5">
           {Icon ? (
-            <View
-              className="h-8 w-8 items-center justify-center rounded-md"
-              style={{
-                backgroundColor: t.colors.primary + "1f",
-                borderColor: t.colors.border,
-                borderWidth: 1,
-              }}
-            >
-              <Icon size={t.icon.md} color={t.colors.primary} />
-            </View>
+            // The icon sits directly — no tinted chip box (that was a
+            // box-in-box). A bare ink glyph reads calmer + more premium.
+            <Icon size={t.icon.md} color={t.colors.foreground} />
           ) : null}
           <View className="flex-1">
-            {/* In-card section title stays Inter at the section step (DESIGN §3
-                keeps the small in-card header Inter, not the display serif). */}
+            {/* In-card section title stays Inter at the section step (DESIGN-SYSTEM.md §3
+                keeps the small in-card header Inter, not the display voice). */}
             <Text className="text-base font-semibold" numberOfLines={1}>
               {title}
             </Text>
