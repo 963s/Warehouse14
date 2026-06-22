@@ -30,6 +30,9 @@
       "ios": {
         "credentialsSource": "local",
         "simulator": false
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://api.warehouse14.de"
       }
     },
     "production": {
@@ -38,6 +41,9 @@
       },
       "ios": {
         "credentialsSource": "local"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://api.warehouse14.de"
       }
     }
   },
