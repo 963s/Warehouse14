@@ -30,6 +30,9 @@ export interface CartLineRowProps {
   editableQty?: boolean
   onIncQty?: (delta: number) => void
   onRemove?: () => void
+  /** Optional per-line discount editor rendered below the row (Verkauf). Omit
+   *  on read-only surfaces (Ankauf) that do not discount. */
+  discountEditor?: ReactNode
 }
 
 function StepButton({
@@ -66,11 +69,13 @@ export function CartLineRow({
   editableQty = false,
   onIncQty,
   onRemove,
+  discountEditor,
 }: CartLineRowProps): ReactNode {
   const t = useW14Theme()
   const hasDiscount = line.math.lineDiscountCents > 0n
 
   return (
+    <View>
     <View className="flex-row items-center gap-3 py-2">
       <View className="flex-1 gap-1">
         <Text className="text-base font-medium" numberOfLines={1}>
@@ -128,6 +133,8 @@ export function CartLineRow({
           <Trash2 size={t.icon.sm} color={t.colors.mutedForeground} />
         </PressableScale>
       ) : null}
+    </View>
+      {discountEditor ? <View className="pb-1">{discountEditor}</View> : null}
     </View>
   )
 }

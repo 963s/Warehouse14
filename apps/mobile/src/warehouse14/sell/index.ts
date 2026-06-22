@@ -91,6 +91,7 @@ export {
 // UI (composed on the shared spine)
 export { MoneyKeypad, appendKey, type MoneyKeypadProps } from "./MoneyKeypad"
 export { CartLineRow, type CartLineRowProps } from "./CartLineRow"
+export { DiscountEditor, type DiscountEditorProps } from "./DiscountEditor"
 export { CartSummary, type CartSummaryProps } from "./CartSummary"
 export { ReceiptPreview, type ReceiptPreviewProps } from "./ReceiptPreview"
 export { FiscalConfirmSheet, type FiscalConfirmSheetProps } from "./FiscalConfirmSheet"

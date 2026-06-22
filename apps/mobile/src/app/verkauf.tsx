@@ -90,6 +90,7 @@ import {
   CartLineRow,
   CartSummary,
   computeTender,
+  DiscountEditor,
   evaluateVerkaufKyc,
   FiscalConfirmSheet,
   MoneyKeypad,
@@ -833,6 +834,14 @@ export default function VerkaufScreen() {
                     haptics.selection()
                     removeLine(line.id)
                   }}
+                  discountEditor={
+                    <DiscountEditor
+                      line={line}
+                      onApply={(discountEur, reason) =>
+                        cart.setDiscount(line.id, discountEur, reason)
+                      }
+                    />
+                  }
                 />
               ))}
             </Card>
