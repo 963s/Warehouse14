@@ -98,3 +98,5 @@ certs/
 
 # EAS `--local` build artifacts (.xcarchive / .apk / .aab dropped here)
 output/
+# Local dev env (the API base URL override). NEVER commit — contains a LAN IP.
+.env

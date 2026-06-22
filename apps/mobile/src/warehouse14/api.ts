@@ -153,10 +153,20 @@ import { getSessionToken } from "./session"
 import { stepUpService } from "./step-up"
 
 /**
- * LOCAL dev api-cloud only — the Mac LAN IP. NEVER production
- * (https://api.warehouse14.de). Override via EXPO_PUBLIC_API_BASE_URL.
+ * The API origin.
+ *
+ * PRODUCTION is the default — the live app MUST talk to https://api.warehouse14.de.
+ * A stale Mac LAN IP here was the root cause of the login bug (HTTP 000 timeout →
+ * "Keine Verbindung zum Server"): every device build fell back to a dead local IP
+ * because EXPO_PUBLIC_API_BASE_URL was never set in any build profile. Production
+ * is now the safe default; local dev OVERRIDES it explicitly.
+ *
+ * Local dev: set EXPO_PUBLIC_API_BASE_URL=http://localhost:3001 (or your Mac LAN
+ * IP) in apps/mobile/.env before `pnpm start`. The iOS Simulator reaches
+ * localhost directly; a physical device needs the Mac's LAN IP + adb reverse on
+ * Android. NEVER commit a LAN IP as the fallback — it only works on one network.
  */
-export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://192.168.179.27:3001"
+export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? "https://api.warehouse14.de"
 
 /**
  * DEV device fingerprint = SHA-256 of the dev cert seeded by api-cloud's
