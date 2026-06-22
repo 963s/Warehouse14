@@ -44,10 +44,9 @@ thiserror = "1"
 tokio = { version = "1", features = ["net", "time", "io-util", "rt-multi-thread", "macros", "process"] }
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 
-# ── Time + base64 + QR ───────────────────────────────────────────────
+# ── Time + base64 ────────────────────────────────────────────────────
 chrono = { version = "0.4", features = ["serde"] }
 base64 = "0.22"
-qrcode = "0.14"
 
 # ── Image processing (Mandate 1) ─────────────────────────────────────
 image = { version = "0.25", default-features = false, features = ["webp", "jpeg", "png"] }
@@ -76,48 +75,6 @@ typst = "0.11"
 typst-pdf = "0.11"
 comemo = "0.4.0"
 typst-assets = { version = "0.11", features = ["fonts"] }
-mdns-sd = "0.20"
-
-# ── Companion LAN hub (mother-as-server) ─────────────────────────────
-# The mother POS embeds an axum server on the LAN so paired companion
-# devices (second cashier / customer display) connect to it directly.
-# `local-ip-address` resolves the real LAN IP for the pairing QR/URL.
-# tokio already carries rt-multi-thread + net; axum reuses the existing hyper.
-# `ws` enables the customer-display realtime WebSocket (GET /ws, phase 3); it
-# pulls `tokio-tungstenite`, already resolvable in the lock graph.
-axum = { version = "0.7", features = ["ws"] }
-local-ip-address = "0.6"
-# `futures-util` (already transitive via axum/reqwest) splits the WS into a
-# sink + stream so the broadcast fan-out can push while the read half watches
-# for the client closing the socket.
-futures-util = "0.3"
-# Hardening layers for the companion router (security review M2/M3/L2):
-# request-body cap + per-request timeout from tower-http; a global concurrency
-# cap from tower. Both are already in the lock graph (transitive via axum), so
-# declaring them direct adds no new downloads. `percent-encoding` (also already
-# transitive) is used to safely percent-decode + validate the proxy path (C2).
-tower = { version = "0.5", features = ["limit"] }
-tower-http = { version = "0.6", features = ["limit", "timeout"] }
-percent-encoding = "2"
-# Companion pairing/token security: CSPRNG token bytes + constant-time compare.
-# Both already in the dependency graph (pulled by aes-gcm / keyring); declaring
-# them direct just makes them usable here without new downloads.
-getrandom = "0.2"
-subtle = "2"
-# Companion HTTPS (secure-context on the LAN hop). `axum-server` 0.7 binds the
-# SAME axum 0.7 Router over rustls (hyper 1.x + rustls 0.23 + tokio-rustls 0.26
-# — already the exact versions in the lock graph) with graceful shutdown;
-# `rcgen` 0.13 mints the persisted self-signed cert (SANs = LAN IP + localhost +
-# warehouse14.local). Both are rustls-only (NO OpenSSL — the project is
-# OpenSSL-free). We pick `tls-rustls-no-provider` and bring the **ring** crypto
-# provider (NOT aws-lc-rs) so we reuse the exact rustls+ring stack reqwest
-# already links — no new `aws-lc-sys` C build, which keeps the Windows OTA
-# cross-compile unchanged. `rcgen` defaults to `ring` too. If TLS setup fails at
-# runtime we fall back to plain `axum::serve`, so these deps never become a hard
-# runtime requirement.
-axum-server = { version = "0.7", default-features = false, features = ["tls-rustls-no-provider"] }
-rustls = { version = "0.23", default-features = false, features = ["ring", "logging", "std", "tls12"] }
-rcgen = "0.13"
 
 # ── Windows raw receipt printing (USB thermal printer) ───────────────
 # The macOS/Linux path uses CUPS (`lpr -o raw`); Windows has no `lpr`, so

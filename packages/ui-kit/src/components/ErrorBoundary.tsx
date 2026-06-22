@@ -3,7 +3,7 @@
  *
  * Wraps a sub-tree so a thrown render error renders a calm parchment
  * fallback instead of a white screen. The fallback quotes the broadside
- * motto and offers a Cormorant "Erneut versuchen" reset button that
+ * motto and offers a display-face "Erneut versuchen" reset button that
  * remounts the children (cleared error).
  *
  * Use at two depths (memory.md #76):

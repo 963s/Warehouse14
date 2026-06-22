@@ -95,3 +95,6 @@ app-dependency-graph.png
 credentials.json
 ios/certs/
 certs/
+
+# EAS `--local` build artifacts (.xcarchive / .apk / .aab dropped here)
+output/

@@ -24,7 +24,7 @@ const SIZE_PX = { sm: 32, md: 56, lg: 96 } as const;
 
 const TONE_VAR: Record<NonNullable<SealProps['tone']>, string> = {
   ink: 'var(--w14-ink)',
-  gold: 'var(--w14-gold)',
+  gold: 'var(--w14-gilt)',
   'wax-red': 'var(--w14-wax-red)',
   faded: 'var(--w14-ink-faded)',
 };
@@ -45,7 +45,7 @@ export function Seal({
     ...style,
   };
 
-  // Font size proportional to ring radius; Cormorant takes the lead inside.
+  // Font size proportional to ring radius; the display face takes the lead inside.
   const fontSize = Math.round(px * 0.52);
 
   return (

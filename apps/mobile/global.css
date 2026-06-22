@@ -14,81 +14,76 @@
 @source "./src/**/*.{ts,tsx}";
 
 /* ──────────────────────────────────────────────────────────────────────────
- * Warehouse14 design tokens → shadcn/RNR CSS variables — THE ANTIQUE IDENTITY.
+ * Warehouse14 design tokens — THE OFFICIAL STORE DESIGN SYSTEM.
  *
  * Source of truth: apps/mobile/src/warehouse14/theme.ts (hex values mirrored
- * 1:1 here — NOT reinvented). Tailwind v4 accepts full color values, so the
- * hex is used directly. The raw `--w14-*` vars flip on prefers-color-scheme;
- * `@theme inline` maps them to the `--color-*` utility tokens so dark mode
- * switches at runtime (web: CSS media query, native: RN Appearance).
+ * 1:1 here — NOT reinvented) AND the public webshop (warehouse14-onlineshop
+ * globals.css). Tailwind v4 accepts full color values, so the hex is used
+ * directly; `@theme inline` maps them to the `--color-*` utility tokens.
  *
- * The house voice: aged warm cream paper, ink that is never pure black, brass
- * and gold accents, fine warm-gold hairlines on every edge. LIGHT is the hero
- * (the app opens here); DARK is a warm candlelit-walnut variant — never the old
- * black+yellow.
+ * PHILOSOPHY (binding):
+ *   • One warm paper ground + one ink + hairlines. Aged paper, NEVER bright
+ *     white. Layered for depth.
+ *   • GILT = a thread / an edge / a seal ONLY. NEVER a fill, NEVER a
+ *     background, NEVER body text.
+ *   • Functional colours carry MEANING only: verdigris = positive/up/alive,
+ *     wax-red = error/down.
+ *   • LIGHT ONLY. The store has no dark mode; this file never defines one.
  *
  * RULES carried from the brand tokens:
- *   • gold #bf9430 and the hairline #cdb787 are DECORATIVE ONLY — never a
- *     text/fill token. Brass (`primary`) carries text-bearing emphasis.
- *   • positive / price-up = sage (#3a6450 / #5fae89) → `accent`.
- *   • destructive / price-down = terracotta (#b8442b / #e07a62).
- *   • PRIMARY action = brass (#7e6228 / #d8b14e), never flat gold.
+ *   • gilt (#a3823b) is DECORATIVE ONLY — never a text/fill token.
+ *   • PRIMARY action = INK (#1c1c1c), never gold.
+ *   • positive / price-up = verdigris (#3f6b54) → `accent`.
+ *   • destructive / price-down = wax-red (#c0492f).
  * ────────────────────────────────────────────────────────────────────────── */
 :root {
+  /* Surfaces — warm parchment, layered for depth */
   --w14-background: #efece3; /* aged warm cream — the paper canvas */
-  --w14-foreground: #17150f; /* warm near-black ink, never pure #000 */
-  --w14-card: #faf8f2; /* raised cream leaf */
-  --w14-card-foreground: #17150f;
-  --w14-popover: #faf8f2;
-  --w14-popover-foreground: #17150f;
-  --w14-primary: #7e6228; /* brass-deep, AA as text + as a fill (theme.ts lightPalette) */
-  --w14-primary-foreground: #faf8f2;
-  --w14-secondary: #e8e4da; /* sunken cream well / input tray */
-  --w14-secondary-foreground: #17150f;
-  --w14-muted: #e8e4da;
-  --w14-muted-foreground: #67645d; /* faded ink — AA with margin */
-  --w14-accent: #3a6450; /* sage — positive / price-up */
-  --w14-accent-foreground: #faf8f2;
-  --w14-destructive: #b8442b; /* terracotta — destructive / price-down, AA */
-  --w14-destructive-foreground: #faf8f2;
-  --w14-border: #cdb787; /* fine warm-gold hairline */
-  --w14-input: #e8e4da;
-  --w14-ring: #7e6228;
-  --w14-radius: 8px;
+  --w14-foreground: #1c1c1c; /* near-black ink, never pure #000 */
+  --w14-card: #f8f6f1; /* raised cream leaf (half-step lighter) */
+  --w14-card-foreground: #1c1c1c;
+  --w14-popover: #f8f6f1;
+  --w14-popover-foreground: #1c1c1c;
+  /* Ink shades */
+  --w14-ink-aged: #4c4a45;
+  --w14-ink-faded: #6e6b64;
+  /* Primary action = INK (the house accent). Gold is a thread only. */
+  --w14-primary: #1c1c1c;
+  --w14-primary-foreground: #f8f6f1;
+  /* Secondary / muted / raised surfaces */
+  --w14-secondary: #e6e2d6; /* raised / hover — deeper than the ground */
+  --w14-secondary-foreground: #1c1c1c;
+  --w14-muted: #e6e2d6;
+  --w14-muted-foreground: #6e6b64; /* faint ink — meta */
+  /* Accent = positive (verdigris) for semantic emphasis. */
+  --w14-accent: #3f6b54;
+  --w14-accent-foreground: #f8f6f1;
+  --w14-destructive: #c0492f; /* sealing-wax red — error / price-down */
+  --w14-destructive-foreground: #f8f6f1;
+  --w14-border: #e9e7e1; /* soft hairline — structure, not decoration */
+  --w14-input: #e6e2d6;
+  --w14-ring: #1c1c1c; /* ink focus ring */
+  --w14-radius: 12px;
 
-  /* Decorative-only flourish: gold. NEVER under text — exposed so a shimmer or
-   * milestone accent can pull it without re-hardcoding. */
-  --w14-gold: #bf9430;
+  /* GILT — decorative thread/edge/seal ONLY. NEVER under text. Exposed so a
+   * shimmer or milestone accent can pull it without re-hardcoding. */
+  --w14-gilt: #a3823b;
+  --w14-gilt-deep: #876a2c;
   /* The sunken/raised surface, exposed for the `bg-raised` utility. */
-  --w14-raised: #e8e4da;
+  --w14-raised: #e6e2d6;
+
+  /* Functional (rare) */
+  --w14-forest: #46583f;
+  --w14-terra: #a4633c;
+
+  /* Legacy alias — kept so any old `gold` utility resolves to quiet ink-umber
+   * (the store's intentional remap), never yellow. */
+  --w14-gold: #2e2b26;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --w14-background: #17150f; /* deep ink-brown walnut */
-    --w14-foreground: #e9e7e1; /* warm aged cream, never cold white */
-    --w14-card: #1f1c16;
-    --w14-card-foreground: #e9e7e1;
-    --w14-popover: #1f1c16;
-    --w14-popover-foreground: #e9e7e1;
-    --w14-primary: #d8b14e; /* bright brass */
-    --w14-primary-foreground: #1a1407;
-    --w14-secondary: #14110c; /* sunken walnut well */
-    --w14-secondary-foreground: #e9e7e1;
-    --w14-muted: #14110c;
-    --w14-muted-foreground: #a39d90; /* faded warm grey — AA */
-    --w14-accent: #5fae89; /* warm sage on dark */
-    --w14-accent-foreground: #17150f;
-    --w14-destructive: #e07a62; /* warm terracotta on dark */
-    --w14-destructive-foreground: #17150f;
-    --w14-border: #4a4029; /* warm-gold hairline on walnut — calm, legible */
-    --w14-input: #4a4029;
-    --w14-ring: #d8b14e;
+/* NOTE: no @media (prefers-color-scheme: dark) block. The official store has
+ * no dark mode; the app is LIGHT ONLY. */
 
-    --w14-gold: #bf9430;
-    --w14-raised: #14110c;
-  }
-}
 
 @theme inline {
   --color-background: var(--w14-background);
@@ -111,33 +106,39 @@
   --color-input: var(--w14-input);
   --color-ring: var(--w14-ring);
 
-  /* Decorative flourish + the sunken surface as first-class utility colours
-   * (`text-gold`/`bg-gold` — decorative only; `bg-raised` for sunken wells). */
-  --color-gold: var(--w14-gold);
+  /* Ink shades as first-class utility colours. */
+  --color-ink-aged: var(--w14-ink-aged);
+  --color-ink-faded: var(--w14-ink-faded);
+
+  /* Decorative gilt + the raised surface as first-class utility colours.
+   * `text-gilt`/`border-gilt` — decorative thread/edge/seal only;
+   * `bg-raised` for the raised/hover surface. */
+  --color-gilt: var(--w14-gilt);
+  --color-gilt-deep: var(--w14-gilt-deep);
+  --color-gold: var(--w14-gold); /* legacy alias — quiet ink-umber */
   --color-raised: var(--w14-raised);
 
-  /* Radii — the ANTIQUE scale allows only {0, button 4, card 8}. Tight, crafted
-   * corners, not bubbly. The RNR Card uses `rounded-xl` and the Button uses
-   * `rounded-md`, so pin those to 8 and 4. `rounded-lg` folds into the card
-   * radius so the "only three radii" rule holds. */
-  --radius-sm: 4px;
-  --radius-md: 4px;
-  --radius-lg: 8px;
-  --radius-xl: 8px;
-  --radius-2xl: 8px;
+  /* Radii — ONE system (the official store scale). button 8 / card 12 / xl2 20.
+   * The RNR Card uses `rounded-xl` and the Button uses `rounded-md`, so pin
+   * those to 12 and 8. */
+  --radius-sm: 8px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 12px;
+  --radius-2xl: 20px;
 
   /* Fonts (loaded by expo-font in the root layout). Body family is Inter
    * Regular; weighted faces are selected per-weight by the @utility overrides
-   * below. The display family is Cormorant Garamond — the antique serif used
-   * for headings via `font-display*` (see below). */
+   * below. The display family is Bricolage Grotesque — the confident grotesque
+   * used for headings via `font-display*` (see below). */
   --font-sans: "Inter_400Regular";
-  --font-serif: "CormorantGaramond_500Medium";
+  --font-serif: "BricolageGrotesque_500Medium";
   --font-mono: "JetBrainsMono_400Regular";
 
-  /* Micro step (11px) — the tiniest hint under a value (DESIGN.md §3). Exposed
-   * as `text-2xs` so surfaces stop hardcoding `fontSize: 11`. */
-  --text-2xs: 11px;
-  --text-2xs--line-height: 14px;
+  /* Micro step (12px) — the tiniest hint under a value. Exposed as `text-2xs`
+   * so surfaces stop hardcoding `fontSize: 12`. */
+  --text-2xs: 12px;
+  --text-2xs--line-height: 15px;
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -166,23 +167,23 @@
   font-weight: 700;
 }
 
-/* Cormorant Garamond — the antique DISPLAY serif. Screen titles, the hero KPI,
- * section headlines: the elegant aged-paper voice of the house. Cormorant loads
- * as distinct named faces too, so the weight is pinned to its own file. Use
+/* Bricolage Grotesque — the DISPLAY grotesque. Screen titles, the hero KPI,
+ * section headlines: the confident house display voice. Bricolage loads as
+ * distinct named faces too, so the weight is pinned to its own file. Use
  * `font-display` (medium), `font-display-semibold` (600), `font-display-bold`
  * (700). NEVER pair these with an Inter weight class — that would re-select the
- * Inter face and lose the serif. Headings only; body stays Inter for legibility
- * at small sizes. */
+ * Inter face and lose the display. Headings only; body stays Inter for
+ * legibility at small sizes. */
 @utility font-display {
-  font-family: "CormorantGaramond_500Medium";
+  font-family: "BricolageGrotesque_500Medium";
   font-weight: 500;
 }
 @utility font-display-semibold {
-  font-family: "CormorantGaramond_600SemiBold";
+  font-family: "BricolageGrotesque_600SemiBold";
   font-weight: 600;
 }
 @utility font-display-bold {
-  font-family: "CormorantGaramond_700Bold";
+  font-family: "BricolageGrotesque_700Bold";
   font-weight: 700;
 }
 

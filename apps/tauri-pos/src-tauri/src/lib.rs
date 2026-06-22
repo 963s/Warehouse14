@@ -34,48 +34,7 @@ pub fn run() {
         },
     ];
 
-    // Local P2P terminal discovery — shared peer registry, advertised + browsed
-    // by a background mDNS thread spawned in `.setup()` below.
-    let peer_registry = commands::mdns::PeerRegistry::new();
-
-    // Companion LAN hub — the embedded axum server's lifecycle handle. It is
-    // AUTO-STARTED in `.setup()` below (frictionless phone link: persisted
-    // pairings reconnect without re-scanning the QR); the explicit
-    // companion_start from "Geräte koppeln" then only mints a fresh pairing
-    // code. See commands/companion.rs and docs/companion-architecture.md.
-    let companion_state = commands::companion::CompanionState::new();
-    let companion_autostart_state = companion_state.clone();
-
     tauri::Builder::default()
-        .manage(peer_registry.clone())
-        .manage(companion_state)
-        // Spawn the mDNS daemon once the app is up. It advertises this terminal
-        // as `_w14pos._tcp.local.` and discovers peers; it is fail-safe (logs and
-        // exits if mDNS is unavailable) and never blocks or crashes startup.
-        .setup(move |app| {
-            commands::mdns::start_mdns_daemon(app.handle().clone(), peer_registry.clone());
-            // Auto-start the companion hub so it is ALWAYS up at :8714 without
-            // opening "Geräte koppeln". Idempotent + fail-safe (a bind failure
-            // — e.g. AddrInUse on both the fixed and fallback port — is logged
-            // and never blocks startup). No pairing code is issued here; the
-            // mother's Bearer arrives later via companion_set_auth, and until
-            // then companions get a clear "Mutter noch nicht angemeldet".
-            // The app data dir anchors the persisted pairing registry.
-            use tauri::Manager as _;
-            let companion_data_dir = app.path().app_data_dir().ok();
-            // Phase B — wire the app handle so an inbound phone scan can be
-            // re-emitted to the mother React cart. Set before the spawn moves the
-            // state; the hub Arc is shared with the Tauri-managed instance.
-            companion_autostart_state.set_app_handle(app.handle().clone());
-            tauri::async_runtime::spawn(async move {
-                commands::companion::companion_autostart(
-                    companion_autostart_state,
-                    companion_data_dir,
-                )
-                .await;
-            });
-            Ok(())
-        })
         // Plugins — order doesn't matter, registration is idempotent.
         // V1 only needs `shell` (for the PDF preview opener); store +
         // dialog land in V1.1 if the operator asks for a save dialog.
@@ -131,16 +90,6 @@ pub fn run() {
             // USB digital scale (MT-SICS over serial)
             commands::scale::read_scale_weight,
             commands::scale::list_scale_ports,
-            // Local P2P — discovered LAN peers
-            commands::mdns::get_local_peers,
-            // Companion LAN hub — embedded server lifecycle (mother-as-server)
-            commands::companion::companion_start,
-            commands::companion::companion_stop,
-            commands::companion::companion_status,
-            // Companion LAN hub — auth injection + live cart publish + scanner command
-            commands::companion::companion_set_auth,
-            commands::companion::companion_publish_cart,
-            commands::companion::companion_send_command,
         ])
         .run(tauri::generate_context!())
         .expect("error while running warehouse14-tauri-pos");

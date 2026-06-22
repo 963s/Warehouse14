@@ -18,7 +18,7 @@ export interface SparklineProps {
 }
 
 const TONE_STROKE: Record<SparklineTone, string> = {
-  gold: 'var(--w14-gold)',
+  gold: 'var(--w14-gilt)',
   up: 'var(--w14-verdigris)',
   down: 'var(--w14-wax-red)',
   neutral: 'var(--w14-ink-faded)',

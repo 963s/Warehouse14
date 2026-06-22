@@ -30,7 +30,7 @@
  * vocabulary (selection on an export tap, Light on opening the Z-Bon sheet, Medium
  * on the Z-Bon commit press, Success on the sealed day, Error on a refusal).
  *
- * Honesty rule (mirrors Aufgaben + Termine): every row + the overview are real
+ * Honesty rule (mirrors Aufgaben): every row + the overview are real
  * values from a real endpoint; an empty list shows the EmptyState, never a
  * fabricated day. All labels German; de-DE money/dates. Money on the wire here is
  * EUR DECIMAL STRINGS — formatted with `formatEur`, never `formatCents`. No native

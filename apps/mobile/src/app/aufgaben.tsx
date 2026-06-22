@@ -21,7 +21,7 @@
  * / error+retry / empty / content) render inside the list body so the header
  * stays mounted across every state change.
  *
- * Honesty rule (mirrors Termine + Schatzkammer): every row + the summary line are
+ * Honesty rule (mirrors Schatzkammer): every row + the summary line are
  * real values from a real endpoint; an empty list shows the EmptyState, never a
  * fabricated to-do. Transitions are step-up gated server-side — the global
  * StepUpDialogHost fires transparently and the middleware retries the PATCH after

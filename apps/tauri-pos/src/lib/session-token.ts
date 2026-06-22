@@ -29,8 +29,7 @@ const listeners = new Set<TokenListener>();
 
 /**
  * Subscribe to token changes — login, mid-shift RENEWAL, and sign-out all flow
- * through here. Returns an unsubscribe. The companion bridge uses this to keep
- * the LAN hub's mother Bearer in lockstep (a stale hub token 503s every phone).
+ * through here. Returns an unsubscribe.
  * A listener that throws can never break the token write or sibling listeners.
  */
 export function onSessionTokenChange(fn: TokenListener): () => void {

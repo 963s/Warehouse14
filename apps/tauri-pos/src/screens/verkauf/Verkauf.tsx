@@ -53,7 +53,6 @@
  */
 
 import { useQueryClient } from '@tanstack/react-query';
-import { listen } from '@tauri-apps/api/event';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
@@ -333,27 +332,6 @@ function VerkaufFloor(): JSX.Element {
   // Listen globally while a shift is open; pause during payment so the dialog
   // keeps Enter + the AmountPad for itself.
   useBarcodeScanner({ enabled: !bezahlenOpen, onScan: (c) => void onScan(c) });
-
-  // Phase B — a scan from a paired phone (companion Warehouse/Cashier socket)
-  // arrives as a Tauri event and rings up through the SAME resolution as a local
-  // scan. Fail-safe: in a plain browser (no Tauri) `listen` rejects → no-op.
-  useEffect(() => {
-    let unlisten: (() => void) | undefined;
-    let active = true;
-    listen<{ deviceId: string; code: string }>('companion://scan-result', (e) => {
-      const code = e.payload?.code;
-      if (code && !bezahlenOpen) void onScan(code);
-    })
-      .then((u) => {
-        if (active) unlisten = u;
-        else u();
-      })
-      .catch(() => undefined);
-    return () => {
-      active = false;
-      unlisten?.();
-    };
-  }, [onScan, bezahlenOpen]);
 
   // ────────────────────────────────────────────────────────────────────
   // Release handlers

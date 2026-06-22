@@ -18,8 +18,8 @@
  *     unread dot + a relative German timestamp — the calm, scannable list shape.
  *   • the clean LIST→DETAIL pattern: tapping a row opens a spine-native bottom
  *     sheet with the full title/body, the source event meta, and a deep-link CTA
- *     („Öffnen") that routes to the relevant surface (Freigaben → Kasse, Termin →
- *     Termine, a Kunde/Artikel → its detail). Opening a row marks it read.
+ *     („Öffnen") that routes to the relevant surface (Freigaben → Kasse,
+ *     a Kunde/Artikel → its detail). Opening a row marks it read.
  *   • the four list states render through the same skeleton/empty/error vocabulary
  *     every surface uses; pull-to-refresh forces a one-shot live fetch.
  *   • §7 haptics: selection on a filter / row open, success on „Alles gelesen",
@@ -119,7 +119,10 @@ function deepLink(item: NotificationItem): { href: Href; label: string } | null 
       // surface exists we stay honest and offer none.
       return null
     case "appointments":
-      return { href: "/termine" as Href, label: "Zu den Terminen" }
+      // No CTA: the Termine surface was removed (owner focus is inventory +
+      // direct cashier). Until a replacement exists we stay honest and offer
+      // no „Öffnen" that goes nowhere.
+      return null
     case "compliance":
       // A flagged customer → its profile, when the event carries a customer id.
       if (item.entityTable === "customers" && item.entityId) {

@@ -1,24 +1,24 @@
 /**
- * Font map for the root layout. The Warehouse14 Owner OS speaks three voices:
+ * Font map for the root layout. The Warehouse14 Owner OS speaks three voices
+ * (the OFFICIAL STORE design system):
  *
- *   • Cormorant Garamond — the antique DISPLAY serif. Screen titles, the hero
- *     KPI, section headlines: the elegant, aged-paper voice of the house.
- *   • Inter — all body and UI text. Calm, legible, neutral against the serif.
+ *   • Bricolage Grotesque — the DISPLAY grotesque. Screen titles, the hero
+ *     KPI, section headlines: the confident house display voice.
+ *   • Inter — all body and UI text. Calm, legible, neutral against the display.
  *   • JetBrains Mono — tabular numerals (money, weights, SKUs, IDs) that must
  *     align in a column.
  *
  * Loaded together via expo-font's useFonts in the root layout. Each weight is a
  * DISTINCT named face — React Native cannot synthesise a true bold/semibold from
  * a single file, so every weight class binds to its own loaded face (see
- * global.css). Cormorant's display weights mirror Inter's so a heading can pick
- * the matching emphasis.
+ * global.css). The display weights mirror Inter's emphasis ladder.
  */
 import {
-  CormorantGaramond_400Regular,
-  CormorantGaramond_500Medium,
-  CormorantGaramond_600SemiBold,
-  CormorantGaramond_700Bold,
-} from "@expo-google-fonts/cormorant-garamond"
+  BricolageGrotesque_400Regular,
+  BricolageGrotesque_500Medium,
+  BricolageGrotesque_600SemiBold,
+  BricolageGrotesque_700Bold,
+} from "@expo-google-fonts/bricolage-grotesque"
 import {
   Inter_400Regular,
   Inter_500Medium,
@@ -31,10 +31,10 @@ import {
 } from "@expo-google-fonts/jetbrains-mono"
 
 export const warehouse14Fonts = {
-  CormorantGaramond_400Regular,
-  CormorantGaramond_500Medium,
-  CormorantGaramond_600SemiBold,
-  CormorantGaramond_700Bold,
+  BricolageGrotesque_400Regular,
+  BricolageGrotesque_500Medium,
+  BricolageGrotesque_600SemiBold,
+  BricolageGrotesque_700Bold,
   Inter_400Regular,
   Inter_500Medium,
   Inter_600SemiBold,

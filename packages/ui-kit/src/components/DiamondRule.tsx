@@ -22,7 +22,7 @@ export interface DiamondRuleProps {
 
 const TONE_VAR: Record<NonNullable<DiamondRuleProps['tone']>, string> = {
   ink: 'var(--w14-ink)',
-  gold: 'var(--w14-gold)',
+  gold: 'var(--w14-gilt)',
   'wax-red': 'var(--w14-wax-red)',
   faded: 'var(--w14-ink-faded)',
 };

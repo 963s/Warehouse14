@@ -14,11 +14,9 @@
 //! with an `if config::is_mock_mode()` short-circuit so the dev/CI build
 //! never touches real hardware.
 
-pub mod companion;
 pub mod image;
 pub mod kyc;
 pub mod label;
-pub mod mdns;
 pub mod pdf;
 pub mod scale;
 pub mod system;

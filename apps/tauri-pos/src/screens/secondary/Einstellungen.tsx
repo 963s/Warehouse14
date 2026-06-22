@@ -30,14 +30,12 @@ import { useIntegrationSettings } from '../../state/integration-settings-store.j
 import { useSessionStore } from '../../state/session-store.js';
 import { useToastStore } from '../../state/toast-store.js';
 import { Belegdesigner } from './Belegdesigner.js';
-import { GeraeteKoppeln } from './GeraeteKoppeln.js';
 import { GeraeteManager } from './GeraeteManager.js';
 import { IntegrationenSection } from './IntegrationenSection.js';
 import { SteuerComplianceSection } from './SteuerComplianceSection.js';
 
 type SectionId =
   | 'hardware'
-  | 'pairing'
   | 'ai'
   | 'integrationen'
   | 'server'
@@ -60,12 +58,6 @@ const SECTIONS: SectionDef[] = [
     label: 'Geräte & Kasse',
     icon: <IconBox size={18} />,
     desc: 'Drucker · Terminal · TSE',
-  },
-  {
-    id: 'pairing',
-    label: 'Geräte koppeln',
-    icon: <IconUsers size={18} />,
-    desc: 'iPad · Tablet · Mobil',
   },
   {
     id: 'ai',
@@ -192,7 +184,6 @@ export function Einstellungen(): JSX.Element {
 
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
         {activeSection === 'hardware' && <GeraeteManager />}
-        {activeSection === 'pairing' && <GeraeteKoppeln />}
         {activeSection === 'ai' && <AiSection />}
         {activeSection === 'integrationen' && <IntegrationenSection />}
         {activeSection === 'server' && <ServerSection />}

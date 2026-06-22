@@ -34,7 +34,7 @@
     "build:android:prod": "eas build --profile production --platform android --local"
   },
   "dependencies": {
-    "@expo-google-fonts/cormorant-garamond": "0.4.1",
+    "@expo-google-fonts/bricolage-grotesque": "0.4.1",
     "@expo-google-fonts/inter": "^0.4.0",
     "@expo-google-fonts/jetbrains-mono": "^0.4.0",
     "@expo/metro-runtime": "~55.0.6",
@@ -43,7 +43,6 @@
     "@rn-primitives/portal": "^1.4.0",
     "@rn-primitives/slot": "^1.4.0",
     "@warehouse14/api-client": "workspace:*",
-    "@warehouse14/appointments": "workspace:*",
     "@warehouse14/domain": "workspace:*",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

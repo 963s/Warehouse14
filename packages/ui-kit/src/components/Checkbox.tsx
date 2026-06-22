@@ -33,7 +33,7 @@ export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(function Che
         id={inputId}
         type="checkbox"
         disabled={disabled}
-        style={{ width: 22, height: 22, accentColor: 'var(--w14-gold)', cursor: 'inherit' }}
+        style={{ width: 22, height: 22, accentColor: 'var(--w14-ink)', cursor: 'inherit' }}
         {...rest}
       />
       <span

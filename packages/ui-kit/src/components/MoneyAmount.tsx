@@ -2,7 +2,7 @@
  * MoneyAmount — formatted EUR display with tabular figures.
  *
  *   <MoneyAmount valueEur="1234.50" />              →  €&nbsp;1.234,50
- *   <MoneyAmount valueEur="1234.50" emphasis />     →  large Cormorant
+ *   <MoneyAmount valueEur="1234.50" emphasis />     →  large Bricolage Grotesque
  *   <MoneyAmount valueEur="-99.99" signed />        →  shows leading minus in wax-red
  *
  * Accepts string values (the only safe wire format — never JS numbers for
@@ -14,7 +14,7 @@ import type { CSSProperties } from 'react';
 export interface MoneyAmountProps {
   /** EUR amount as a decimal STRING (never a number). */
   valueEur: string;
-  /** Use the Cormorant display face + larger size. */
+  /** Use the Bricolage display face + larger size. */
   emphasis?: boolean;
   /** When `valueEur` is negative, render the minus in wax-red. */
   signed?: boolean;

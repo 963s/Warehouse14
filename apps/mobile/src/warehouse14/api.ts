@@ -15,7 +15,6 @@
  * free functions taking the client first.
  */
 import {
-  appointments,
   appraisalsApi,
   authPin,
   belegtextApi,
@@ -47,12 +46,6 @@ import {
   type AppraisalItemBody,
   type AppraisalOpenBody,
   type AppraisalView,
-  type AppointmentListQuery,
-  type AppointmentListItem,
-  type AppointmentPatchStatus,
-  type AvailableSlot,
-  type AvailableSlotsQuery,
-  type BookAppointmentRequest,
   type BridgeSummary,
   type CategoryTreeResponse,
   type CreateCategoryBody,
@@ -485,40 +478,6 @@ export function createFixedCost(body: CreateFixedCostBody): Promise<FixedCostRow
 /** PATCH /api/fixed-costs/:id — edit a recurring Fixkostenposten (ADMIN + step-up). */
 export function updateFixedCost(id: string, body: UpdateFixedCostBody): Promise<FixedCostRow> {
   return fixedCostsApi.update(apiClient, id, body)
-}
-
-// ── Termine (appointments — Owner calendar) ──────────────────────────────────
-// list is a bounded from/to window; availableSlots powers the booking picker;
-// book/setStatus/reschedule are the mutations. PATCH status carries an optional
-// cancellationReason + staffNotes.
-export function listAppointments(
-  query: AppointmentListQuery,
-): Promise<{ appointments: AppointmentListItem[] }> {
-  return appointments.list(apiClient, query)
-}
-
-export function availableSlots(query: AvailableSlotsQuery): Promise<{ slots: AvailableSlot[] }> {
-  return appointments.availableSlots(apiClient, query)
-}
-
-export function bookAppointment(
-  body: BookAppointmentRequest,
-): Promise<{ id: string; status: string }> {
-  return appointments.book(apiClient, body)
-}
-
-export function setAppointmentStatus(
-  id: string,
-  body: { status: AppointmentPatchStatus; cancellationReason?: string; staffNotes?: string },
-): Promise<{ id: string; status: string }> {
-  return appointments.setStatus(apiClient, id, body)
-}
-
-export function rescheduleAppointment(
-  id: string,
-  body: RescheduleRequest,
-): Promise<{ id: string; rescheduledFrom: string }> {
-  return appointments.reschedule(apiClient, id, body)
 }
 
 // ── Aufgaben (tasks — Owner to-dos) ──────────────────────────────────────────

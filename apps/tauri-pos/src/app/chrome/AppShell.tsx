@@ -33,7 +33,6 @@ import { ErrorBoundary, ToastContainer } from '@warehouse14/ui-kit';
 
 import { useAlertSubscription } from '../../hooks/useAlertSubscription.js';
 import { useApiClient } from '../../lib/api-context.js';
-import { clearCompanionAuth } from '../../lib/companion-bridge.js';
 import { releaseCart } from '../../lib/release-cart.js';
 import { clearSessionToken } from '../../lib/session-token.js';
 import { useAnkaufCartStore } from '../../state/ankauf-cart-store.js';
@@ -186,9 +185,6 @@ export function AppShell(): JSX.Element {
       /* network failure should NOT block local sign-out */
     }
     clearSessionToken();
-    // Drop the Bearer the companion hub still holds, or paired phones keep
-    // hitting a now-invalid mother token (endless "Sitzung abgelaufen" loop).
-    void clearCompanionAuth();
     setUnauthenticated();
     clearLedger();
     clearRecents();

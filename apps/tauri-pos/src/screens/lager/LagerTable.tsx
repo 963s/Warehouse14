@@ -347,8 +347,8 @@ const LagerRow = memo(
                 borderRadius: '50%',
                 // For a sellable item, distinguish shop-only ("Im Laden", brass)
                 // from web-published ("Online", sage) — what the owner wanted to
-                // see in the cashier, not only in the phone companion. Antique
-                // palette only: sage = published/positive, brass = in-store.
+                // see in the cashier. Antique palette only: sage =
+                // published/positive, brass = in-store.
                 background:
                   row.status === 'AVAILABLE'
                     ? row.listedOnStorefront

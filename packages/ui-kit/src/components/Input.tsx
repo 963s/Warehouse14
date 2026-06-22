@@ -29,7 +29,7 @@ export function baseControlStyle(opts: {
   const borderColor = opts.invalid
     ? 'var(--w14-wax-red)'
     : opts.focused
-      ? 'var(--w14-gold)'
+      ? 'var(--w14-ink)'
       : 'var(--w14-rule)';
   return {
     width: '100%',

@@ -171,9 +171,9 @@ export function AmountPad({
               ...KEY_BASE,
               minHeight: 44,
               flex: '1 1 auto',
-              background: 'var(--w14-gold)',
-              color: '#fff',
-              borderColor: 'var(--w14-gold)',
+              background: 'var(--w14-ink)',
+              color: 'var(--w14-parchment-2)',
+              borderColor: 'var(--w14-ink)',
               fontSize: '0.95rem',
             }}
             onMouseDown={(e) => e.preventDefault()}

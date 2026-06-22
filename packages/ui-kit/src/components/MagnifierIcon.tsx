@@ -24,7 +24,7 @@ export interface MagnifierIconProps extends SVGProps<SVGSVGElement> {
 
 const TONE_VAR: Record<NonNullable<MagnifierIconProps['tone']>, string> = {
   ink: 'var(--w14-ink)',
-  gold: 'var(--w14-gold)',
+  gold: 'var(--w14-gilt)',
   'wax-red': 'var(--w14-wax-red)',
   faded: 'var(--w14-ink-faded)',
 };

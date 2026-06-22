@@ -1,56 +1,56 @@
 /**
- * Local @font-face declarations — NEVER from a CDN (memory.md #74-C).
+ * Local @font-face declarations — NEVER from a CDN (DSGVO, memory.md #74-C).
  *
  * Drop the .woff2 files into the consuming app's `/public/fonts/` directory
  * (Vite serves `/fonts/*` from there). Run `scripts/download-fonts.sh` once
  * to fetch the open-source releases. Filenames below match that script.
  *
- * All three faces are free / open-source — Cormorant Garamond (SIL OFL),
+ * All three faces are free / open-source — Bricolage Grotesque (SIL OFL),
  * Inter (SIL OFL), JetBrains Mono (Apache 2.0).
+ *
+ * The OFFICIAL STORE design system (warehouse14-onlineshop globals.css) is
+ * the single source of truth: headings = Bricolage Grotesque, body = Inter,
+ * numerals = JetBrains Mono. This file mirrors that exactly.
  */
 
-/* ─── Cormorant Garamond — Display ────────────────────────────────── */
+/* ─── Bricolage Grotesque — Display ─────────────────────────────────
+ * The house display voice — a confident grotesque for every H1/H2/H3 and
+ * the hero totals. Variable on the webshop; here we ship static weights
+ * 400/500/600/700/800. */
 @font-face {
-  font-family: "Cormorant Garamond";
-  font-style: normal;
-  font-weight: 300;
-  font-display: swap;
-  src: url("/fonts/CormorantGaramond-Light.woff2") format("woff2");
-}
-@font-face {
-  font-family: "Cormorant Garamond";
+  font-family: "Bricolage Grotesque";
   font-style: normal;
   font-weight: 400;
   font-display: swap;
-  src: url("/fonts/CormorantGaramond-Regular.woff2") format("woff2");
+  src: url("/fonts/BricolageGrotesque-400.woff2") format("woff2");
 }
 @font-face {
-  font-family: "Cormorant Garamond";
-  font-style: italic;
-  font-weight: 400;
-  font-display: swap;
-  src: url("/fonts/CormorantGaramond-Italic.woff2") format("woff2");
-}
-@font-face {
-  font-family: "Cormorant Garamond";
+  font-family: "Bricolage Grotesque";
   font-style: normal;
   font-weight: 500;
   font-display: swap;
-  src: url("/fonts/CormorantGaramond-Medium.woff2") format("woff2");
+  src: url("/fonts/BricolageGrotesque-500.woff2") format("woff2");
 }
 @font-face {
-  font-family: "Cormorant Garamond";
+  font-family: "Bricolage Grotesque";
   font-style: normal;
   font-weight: 600;
   font-display: swap;
-  src: url("/fonts/CormorantGaramond-SemiBold.woff2") format("woff2");
+  src: url("/fonts/BricolageGrotesque-600.woff2") format("woff2");
 }
 @font-face {
-  font-family: "Cormorant Garamond";
+  font-family: "Bricolage Grotesque";
   font-style: normal;
   font-weight: 700;
   font-display: swap;
-  src: url("/fonts/CormorantGaramond-Bold.woff2") format("woff2");
+  src: url("/fonts/BricolageGrotesque-700.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Bricolage Grotesque";
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("/fonts/BricolageGrotesque-800.woff2") format("woff2");
 }
 
 /* ─── Inter — Body ────────────────────────────────────────────────── */

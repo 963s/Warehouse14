@@ -26,7 +26,7 @@ export interface ToastShape {
 
 const TONE_BORDER: Record<ToastTone, string> = {
   info: 'var(--w14-rule)',
-  success: 'var(--w14-gold)',
+  success: 'var(--w14-verdigris)',
   alert: 'var(--w14-wax-red)',
 };
 
@@ -38,7 +38,7 @@ const TONE_GLYPH: Record<ToastTone, string> = {
 
 const TONE_COLOR: Record<ToastTone, string> = {
   info: 'var(--w14-ink-aged)',
-  success: 'var(--w14-gold)',
+  success: 'var(--w14-verdigris)',
   alert: 'var(--w14-wax-red)',
 };
 

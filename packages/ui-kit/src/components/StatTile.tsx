@@ -4,7 +4,7 @@
  *   ┌──────────────┐
  *   │ ◆ I          │  ← optional Roman index (the dashboard "page number")
  *   │              │
- *   │      47      │  ← value, large Cormorant
+ *   │      47      │  ← value, large Bricolage Grotesque
  *   │ Meine Aufgaben│  ← label, small-caps
  *   │              │
  *   │ ⚪ Action       │  ← optional attention dot + caption (wax-red when urgent)
@@ -82,7 +82,7 @@ export function StatTile({
         }
       }}
       onMouseEnter={(ev) => {
-        (ev.currentTarget as HTMLDivElement).style.borderColor = 'var(--w14-gold)';
+        (ev.currentTarget as HTMLDivElement).style.borderColor = 'var(--w14-gilt)';
       }}
       onMouseLeave={(ev) => {
         (ev.currentTarget as HTMLDivElement).style.borderColor = 'transparent';
