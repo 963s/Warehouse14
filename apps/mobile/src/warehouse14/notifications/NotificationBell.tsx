@@ -6,9 +6,9 @@
  * and never a stale snapshot.
  *
  * Spine: the §6 press-scale, the §7 selection haptic on navigate, theme tokens
- * only (the badge is brass; a critical-unread bell rings in wax-red). The badge
- * shows a real count from real ledger events — it renders nothing at zero, never
- * a fabricated „0".
+ * only (the badge is ink; a critical-unread bell rings in wax-red). The badge
+ * shows a real count from real ledger events, it renders nothing at zero, never
+ * a fabricated 0.
  */
 import { View } from "react-native"
 import { type Href, useRouter } from "expo-router"
@@ -33,8 +33,8 @@ export function NotificationBell({ size, href }: NotificationBellProps) {
   const { unread, hasCriticalUnread } = useNotifications()
   const iconSize = size ?? t.icon.lg
 
-  // A critical unread bell rings in wax-red; otherwise it is a calm brass bell.
-  const tint = hasCriticalUnread ? t.colors.destructive : t.colors.primary
+  // A critical unread bell rings in wax-red; otherwise it is a calm ink bell.
+  const tint = hasCriticalUnread ? t.colors.destructive : t.colors.foreground
   const Icon = hasCriticalUnread ? BellRing : Bell
 
   return (
@@ -48,10 +48,9 @@ export function NotificationBell({ size, href }: NotificationBellProps) {
         unread > 0 ? `Benachrichtigungen, ${unread} ungelesen` : "Benachrichtigungen"
       }
     >
-      <View
-        className="h-10 w-10 items-center justify-center rounded-full"
-        style={{ backgroundColor: tint + "14" }}
-      >
+      {/* Bare bell (no tinted disc — box-free). The unread count sits as a
+          fixed-size circular badge on top, never stretched by the parent. */}
+      <View className="h-10 w-10 items-center justify-center">
         <Icon size={iconSize} color={tint} />
         {unread > 0 ? (
           <View
@@ -67,7 +66,7 @@ export function NotificationBell({ size, href }: NotificationBellProps) {
               borderColor: t.colors.background,
             }}
           >
-            <Text className="text-2xs font-bold" style={{ color: t.colors.primaryForeground }}>
+            <Text className="text-2xs font-bold" style={{ color: t.colors.card }}>
               {unread > 99 ? "99+" : unread}
             </Text>
           </View>

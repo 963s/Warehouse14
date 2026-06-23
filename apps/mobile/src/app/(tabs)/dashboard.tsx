@@ -945,11 +945,18 @@ function BridgeAlertsStrip({
       subtitle="Was gerade deine Aufmerksamkeit braucht live aus dem System."
       icon={Radio}
       action={
+        // Fixed-size circular badge — self-center so the parent's flex never
+        // stretches it vertically. Fixed height + aspect ratio guarantees a
+        // perfect circle regardless of the parent's align-items.
         <View
-          className="flex-row items-center gap-1.5 rounded-full px-2.5 py-1"
-          style={{ backgroundColor: peakColor + "1f" }}
+          className="flex-row items-center justify-center self-center rounded-full"
+          style={{
+            backgroundColor: peakColor + "1f",
+            minWidth: 28,
+            height: 28,
+            paddingHorizontal: 8,
+          }}
         >
-          <Radio size={t.icon.xs} color={peakColor} />
           <Text className="text-2xs font-bold" style={{ color: peakColor }}>
             {alerts.length}
           </Text>
