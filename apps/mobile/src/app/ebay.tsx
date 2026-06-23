@@ -650,7 +650,7 @@ function EnrollRow({
         </Text>
         <View
           className="h-8 w-8 items-center justify-center rounded-md"
-          style={{ backgroundColor: t.colors.primary + "1f" }}
+          style={{ backgroundColor: t.colors.raised }}
         >
           <PackagePlus size={t.icon.sm} color={t.colors.primary} />
         </View>

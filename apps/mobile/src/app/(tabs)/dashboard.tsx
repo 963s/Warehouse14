@@ -183,7 +183,7 @@ function SearchAction() {
     >
       <View
         className="h-10 w-10 items-center justify-center rounded-full"
-        style={{ backgroundColor: t.colors.primary + "14" }}
+        style={{ backgroundColor: t.colors.raised }}
       >
         <Search size={t.icon.lg} color={t.colors.primary} />
       </View>
@@ -485,7 +485,7 @@ export default function SchatzkammerScreen() {
                 value={bridge.todayRevenueCents}
                 format={formatCents}
                 className="font-mono-medium text-sm"
-                style={{ color: t.colors.primary }}
+                style={{ color: t.colors.foreground }}
                 accessibilityLabel={`Tagesumsatz heute ${formatCents(bridge.todayRevenueCents)}`}
               />
             </View>

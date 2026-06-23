@@ -212,7 +212,7 @@ function OpenDayCard({
           <View className="border-border gap-2 border-t pt-3">
             <View className="flex-row items-center gap-1.5">
               <ShieldCheck size={t.icon.xs} color={t.colors.primary} />
-              <Text className="text-xs font-semibold" style={{ color: t.colors.primary }}>
+              <Text className="text-xs font-semibold" style={{ color: t.colors.foreground }}>
                 Fiskalische Aktion
               </Text>
             </View>
@@ -224,7 +224,7 @@ function OpenDayCard({
             {shiftOpenHere ? (
               <View className="flex-row items-start gap-1.5">
                 <AlertTriangle size={t.icon.xs} color={t.colors.primary} />
-                <Text className="flex-1 text-xs" style={{ color: t.colors.primary }}>
+                <Text className="flex-1 text-xs" style={{ color: t.colors.foreground }}>
                   Diese Kasse ist noch geöffnet. Schließe zuerst die Schicht am POS.
                 </Text>
               </View>
@@ -454,7 +454,7 @@ function ClosingCard({
             <View className="border-border gap-2 border-t pt-3">
               <View className="flex-row items-center gap-1.5">
                 <ShieldCheck size={t.icon.xs} color={t.colors.primary} />
-                <Text className="text-xs font-semibold" style={{ color: t.colors.primary }}>
+                <Text className="text-xs font-semibold" style={{ color: t.colors.foreground }}>
                   Fiskalische Aktion
                 </Text>
               </View>
@@ -554,7 +554,7 @@ function FinalizeSheet({
           <View className="flex-row items-center gap-2.5">
             <View
               className="h-9 w-9 items-center justify-center rounded-md"
-              style={{ backgroundColor: t.colors.primary + "1f" }}
+              style={{ backgroundColor: t.colors.raised }}
             >
               <ShieldCheck size={t.icon.md} color={t.colors.primary} />
             </View>

@@ -546,7 +546,7 @@ function VerdictBody({
             </Text>
           </View>
         </View>
-        <Text className="font-mono-medium text-base" style={{ color: t.colors.primary }}>
+        <Text className="font-mono-medium text-base" style={{ color: t.colors.foreground }}>
           {formatEur(p.listPriceEur)}
         </Text>
       </View>
@@ -659,7 +659,7 @@ function PermissionGate({
       <View
         className="h-16 w-16 items-center justify-center rounded-full"
         style={{
-          backgroundColor: t.colors.primary + "14",
+          backgroundColor: t.colors.raised,
           borderColor: t.colors.border,
           borderWidth: 1,
         }}

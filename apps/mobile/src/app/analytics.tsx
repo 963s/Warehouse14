@@ -251,7 +251,7 @@ function InventorySnapshotCard({ inv }: { inv: InventoryValueResponse }) {
               value={margin.listValueCents}
               format={formatCents}
               className="font-mono-medium text-2xl"
-              style={{ color: t.colors.primary }}
+              style={{ color: t.colors.foreground }}
               accessibilityLabel={`${COPY.listValueLabel} ${formatCents(margin.listValueCents)}`}
             />
           </View>

@@ -462,7 +462,7 @@ function ParentChip({
         className="rounded-full border px-3 py-1.5"
         style={{
           borderColor: active ? t.colors.primary : t.colors.border,
-          backgroundColor: active ? t.colors.primary + "1f" : "transparent",
+          backgroundColor: active ? t.colors.raised : "transparent",
         }}
       >
         <Text
@@ -537,7 +537,7 @@ export function SettingsCategoriesSection() {
           {!canEdit ? (
             <View
               className="flex-row items-start gap-2.5 rounded-xl px-3 py-2.5"
-              style={{ backgroundColor: t.colors.primary + "14" }}
+              style={{ backgroundColor: t.colors.raised }}
             >
               <View className="pt-0.5">
                 <ShieldCheck size={t.icon.sm} color={t.colors.primary} />

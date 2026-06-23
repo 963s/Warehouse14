@@ -119,7 +119,7 @@ export function TopNList({
               <View
                 className="h-6 w-6 items-center justify-center rounded-md"
                 style={{
-                  backgroundColor: isTop ? t.colors.primary + "1f" : t.colors.border,
+                  backgroundColor: isTop ? t.colors.raised : t.colors.border,
                 }}
               >
                 <Text

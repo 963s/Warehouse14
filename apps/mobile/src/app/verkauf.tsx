@@ -884,8 +884,8 @@ export default function VerkaufScreen() {
                   <Card
                     className="min-h-[56px] flex-row items-center gap-3 rounded-xl border px-4 py-3"
                     style={{
-                      borderColor: kyc.blocked ? t.colors.primary + "55" : t.colors.border,
-                      backgroundColor: kyc.blocked ? t.colors.primary + "0D" : t.colors.card,
+                      borderColor: kyc.blocked ? t.colors.border : t.colors.border,
+                      backgroundColor: kyc.blocked ? t.colors.raised : t.colors.card,
                     }}
                   >
                     <View
@@ -1027,7 +1027,7 @@ export default function VerkaufScreen() {
             <View className="gap-2 pt-1">
               <View className="flex-row items-center gap-1.5">
                 <Receipt size={t.icon.xs} color={t.colors.primary} />
-                <Text className="text-xs font-semibold" style={{ color: t.colors.primary }}>
+                <Text className="text-xs font-semibold" style={{ color: t.colors.foreground }}>
                   Fiskalische Aktion
                 </Text>
               </View>
@@ -1361,7 +1361,7 @@ function BuyerCard({
           className="h-11 w-11 items-center justify-center rounded-full"
           style={{ backgroundColor: t.colors.raised }}
         >
-          <Text className="text-sm font-semibold" style={{ color: t.colors.primary }}>
+          <Text className="text-sm font-semibold" style={{ color: t.colors.foreground }}>
             {initialsOf(fullName)}
           </Text>
         </View>
@@ -1414,7 +1414,7 @@ function BuyerKycGate({
   return (
     <Card
       className="gap-3 rounded-xl border px-4 py-3.5"
-      style={{ borderColor: t.colors.primary + "55", backgroundColor: t.colors.primary + "0F" }}
+      style={{ borderColor: t.colors.border, backgroundColor: t.colors.primary + "0F" }}
       accessibilityRole="alert"
     >
       <View className="flex-row items-start gap-2.5">
@@ -1422,7 +1422,7 @@ function BuyerKycGate({
           <IdCard size={t.icon.md} color={t.colors.primary} />
         </View>
         <View className="flex-1 gap-1">
-          <Text className="text-sm font-semibold" style={{ color: t.colors.primary }}>
+          <Text className="text-sm font-semibold" style={{ color: t.colors.foreground }}>
             Identifizierung erforderlich (§ 10 GwG)
           </Text>
           <Text className="text-muted-foreground text-sm leading-5">
@@ -1552,7 +1552,7 @@ function CustomerPicker({
                     className="h-10 w-10 items-center justify-center rounded-full"
                     style={{ backgroundColor: t.colors.raised }}
                   >
-                    <Text className="text-xs font-semibold" style={{ color: t.colors.primary }}>
+                    <Text className="text-xs font-semibold" style={{ color: t.colors.foreground }}>
                       {initialsOf(row.fullName)}
                     </Text>
                   </View>

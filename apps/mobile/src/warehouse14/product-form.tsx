@@ -294,7 +294,7 @@ export function MetalWeightField({
       {feingewicht ? (
         <View className="flex-row items-center justify-between">
           <Text className="text-muted-foreground text-2xs">Feingewicht (Schmelzbasis)</Text>
-          <Text className="font-mono-medium text-xs" style={{ color: t.colors.primary }}>
+          <Text className="font-mono-medium text-xs" style={{ color: t.colors.foreground }}>
             {feingewicht} g
           </Text>
         </View>

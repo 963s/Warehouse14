@@ -152,7 +152,7 @@ export function FiscalConfirmSheet({
           {/* The fiscal weight made visible, never hidden. */}
           <View
             className="flex-row items-start gap-2.5 rounded-xl px-3.5 py-3"
-            style={{ backgroundColor: t.colors.primary + "14" }}
+            style={{ backgroundColor: t.colors.raised }}
           >
             <View className="pt-0.5">
               <ShieldCheck size={t.icon.md} color={t.colors.primary} />

@@ -115,9 +115,9 @@ function OperatorCard({ actor }: { actor: ReturnType<typeof currentOperator> }) 
       <View className="flex-row items-center gap-3 py-1">
         <View
           className="h-11 w-11 items-center justify-center rounded-full"
-          style={{ backgroundColor: t.colors.primary + "1f" }}
+          style={{ backgroundColor: t.colors.raised }}
         >
-          <Text className="font-mono-medium text-base" style={{ color: t.colors.primary }}>
+          <Text className="font-mono-medium text-base" style={{ color: t.colors.foreground }}>
             {actor.shortRef.slice(0, 2)}
           </Text>
         </View>
@@ -380,7 +380,7 @@ function OpenShiftSheet({
 
         <View
           className="flex-row items-start gap-2.5 rounded-xl px-3.5 py-3"
-          style={{ backgroundColor: t.colors.primary + "14" }}
+          style={{ backgroundColor: t.colors.raised }}
         >
           <View className="pt-0.5">
             <Wallet size={t.icon.md} color={t.colors.primary} />

@@ -251,7 +251,7 @@ function MessageBubble({
       <View
         className="max-w-[82%] gap-1 rounded-2xl px-3.5 py-2.5"
         style={{
-          backgroundColor: outbound ? t.colors.primary + "1f" : t.colors.card,
+          backgroundColor: outbound ? t.colors.raised : t.colors.card,
           borderWidth: outbound ? 0 : 1,
           borderColor: t.colors.border,
           borderBottomRightRadius: outbound ? 4 : 16,

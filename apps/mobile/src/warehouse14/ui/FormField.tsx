@@ -41,7 +41,7 @@ export function FormField({
     <View className="gap-1.5">
       <Text className="text-sm font-medium">
         {label}
-        {required ? <Text style={{ color: t.colors.primary }}> *</Text> : null}
+        {required ? <Text style={{ color: t.colors.foreground }}> *</Text> : null}
       </Text>
       {children ?? (
         <Input

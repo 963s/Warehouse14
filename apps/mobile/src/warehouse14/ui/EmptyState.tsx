@@ -33,7 +33,7 @@ export function EmptyState({
     <View className="items-center justify-center gap-3 px-6 py-10">
       <View
         className="h-16 w-16 items-center justify-center rounded-full"
-        style={{ backgroundColor: t.colors.primary + "14", borderColor: t.colors.border, borderWidth: 1 }}
+        style={{ backgroundColor: t.colors.raised, borderColor: t.colors.border, borderWidth: 1 }}
       >
         <Icon size={t.icon.xl} color={t.colors.primary} />
       </View>

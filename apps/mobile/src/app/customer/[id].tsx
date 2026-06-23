@@ -329,9 +329,9 @@ export default function CustomerDetailScreen() {
           <View className="flex-row items-center gap-3">
             <View
               className="h-14 w-14 items-center justify-center rounded-full"
-              style={{ backgroundColor: t.colors.primary + "1f" }}
+              style={{ backgroundColor: t.colors.raised }}
             >
-              <Text className="text-lg font-bold" style={{ color: t.colors.primary }}>
+              <Text className="text-lg font-bold" style={{ color: t.colors.foreground }}>
                 {initialsOf(customer.fullName)}
               </Text>
             </View>
@@ -501,8 +501,8 @@ export default function CustomerDetailScreen() {
               <View
                 className="min-h-[48px] flex-row items-center gap-3 rounded-xl px-3 py-3"
                 style={{
-                  backgroundColor: t.colors.primary + "14",
-                  borderColor: t.colors.primary + "33",
+                  backgroundColor: t.colors.raised,
+                  borderColor: t.colors.border,
                   borderWidth: 1,
                 }}
               >
@@ -638,7 +638,7 @@ export default function CustomerDetailScreen() {
               <Card className="min-h-[48px] flex-row items-center gap-3 px-4 py-3">
                 <View
                   className="h-8 w-8 items-center justify-center rounded-md"
-                  style={{ backgroundColor: t.colors.primary + "1f" }}
+                  style={{ backgroundColor: t.colors.raised }}
                 >
                   <ShieldCheck size={t.icon.md} color={t.colors.primary} />
                 </View>

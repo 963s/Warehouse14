@@ -149,7 +149,7 @@ export default function KycCaptureRoute() {
         <View className="flex-row items-center gap-3">
           <View
             className="h-12 w-12 items-center justify-center rounded-xl"
-            style={{ backgroundColor: t.colors.primary + "1f" }}
+            style={{ backgroundColor: t.colors.raised }}
           >
             <IdCard size={t.icon.xl} color={t.colors.primary} />
           </View>

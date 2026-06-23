@@ -300,7 +300,7 @@ export default function ProductDetailScreen() {
           <View className="flex-row items-center gap-3">
             <View
               className="h-14 w-14 items-center justify-center rounded-xl"
-              style={{ backgroundColor: t.colors.primary + "1f" }}
+              style={{ backgroundColor: t.colors.raised }}
             >
               <Coins size={t.icon.xl} color={t.colors.primary} />
             </View>
@@ -333,7 +333,7 @@ export default function ProductDetailScreen() {
             <Card className="min-h-[48px] flex-row items-center gap-3 px-4 py-3">
               <View
                 className="h-8 w-8 items-center justify-center rounded-md"
-                style={{ backgroundColor: t.colors.primary + "1f" }}
+                style={{ backgroundColor: t.colors.raised }}
               >
                 <Pencil size={t.icon.md} color={t.colors.primary} />
               </View>
@@ -380,7 +380,7 @@ export default function ProductDetailScreen() {
               <View className="flex-row items-center gap-2.5">
                 <View
                   className="h-8 w-8 items-center justify-center rounded-md"
-                  style={{ backgroundColor: t.colors.primary + "1f" }}
+                  style={{ backgroundColor: t.colors.raised }}
                 >
                   <Weight size={t.icon.md} color={t.colors.primary} />
                 </View>
@@ -709,7 +709,7 @@ function SchmelzValue({ cents }: { cents: number | null }) {
       format={(c) => formatEur((c / 100).toFixed(2))}
       motion="timing"
       className="font-mono-medium text-lg"
-      style={{ color: t.colors.primary }}
+      style={{ color: t.colors.foreground }}
     />
   )
 }

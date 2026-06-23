@@ -64,9 +64,9 @@ function SealTile({ state }: { state: SealState }): ReactNode {
     <View
       className="items-center gap-1.5 rounded-md px-2 py-3"
       style={{
-        backgroundColor: earned ? t.colors.primary + "14" : "transparent",
+        backgroundColor: earned ? t.colors.raised : "transparent",
         borderWidth: 1,
-        borderColor: earned ? t.colors.primary + "33" : t.colors.border,
+        borderColor: earned ? t.colors.border : t.colors.border,
         borderStyle: earned ? "solid" : "dashed",
         opacity: earned ? 1 : 0.9,
       }}
@@ -82,7 +82,7 @@ function SealTile({ state }: { state: SealState }): ReactNode {
         style={{
           width: 36,
           height: 36,
-          backgroundColor: earned ? t.colors.primary + "1f" : t.colors.border + "66",
+          backgroundColor: earned ? t.colors.raised : t.colors.border + "66",
         }}
       >
         <Icon size={t.icon.lg} color={earned ? t.colors.primary : t.colors.mutedForeground} />

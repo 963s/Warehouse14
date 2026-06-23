@@ -306,7 +306,7 @@ function DocumentCard({ doc, meta }: { doc: DocumentRow; meta: CategoryMeta }) {
         <View className="flex-row items-start gap-3">
           <View
             className="h-10 w-10 items-center justify-center rounded-xl"
-            style={{ backgroundColor: t.colors.primary + "14" }}
+            style={{ backgroundColor: t.colors.raised }}
           >
             <Icon size={t.icon.md} color={t.colors.primary} />
           </View>
@@ -598,7 +598,7 @@ export default function BelegeScreen() {
             style={{ minHeight: t.touch.min }}
           >
             <Receipt size={t.icon.sm} color={t.colors.primary} />
-            <Text className="text-sm font-medium" style={{ color: t.colors.primary }}>
+            <Text className="text-sm font-medium" style={{ color: t.colors.foreground }}>
               Steuerliche Exporte (DATEV, Kassenbericht) in der Kasse
             </Text>
           </Pressable>

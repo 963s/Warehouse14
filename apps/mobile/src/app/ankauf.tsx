@@ -328,13 +328,13 @@ export default function AnkaufScreen() {
               <Card
                 className="min-h-[56px] flex-row items-center gap-3 rounded-xl border px-4 py-3"
                 style={{
-                  borderColor: t.colors.primary + "33",
-                  backgroundColor: t.colors.primary + "0D",
+                  borderColor: t.colors.border,
+                  backgroundColor: t.colors.raised,
                 }}
               >
                 <View
                   className="h-9 w-9 items-center justify-center rounded-md"
-                  style={{ backgroundColor: t.colors.primary + "1f" }}
+                  style={{ backgroundColor: t.colors.raised }}
                 >
                   <Search size={t.icon.md} color={t.colors.primary} />
                 </View>
@@ -529,7 +529,7 @@ export default function AnkaufScreen() {
             <Card className="gap-2 px-4 py-4">
               <View className="flex-row items-center justify-between">
                 <Text className="text-muted-foreground text-sm">Auszahlung gesamt</Text>
-                <Text className="font-mono-medium text-2xl" style={{ color: t.colors.primary }}>
+                <Text className="font-mono-medium text-2xl" style={{ color: t.colors.foreground }}>
                   {formatCents(Number(totalCents))}
                 </Text>
               </View>
@@ -539,7 +539,7 @@ export default function AnkaufScreen() {
             <View className="gap-2 pt-1">
               <View className="flex-row items-center gap-1.5">
                 <ShieldCheck size={t.icon.xs} color={t.colors.primary} />
-                <Text className="text-xs font-semibold" style={{ color: t.colors.primary }}>
+                <Text className="text-xs font-semibold" style={{ color: t.colors.foreground }}>
                   Fiskalische Aktion
                 </Text>
               </View>
@@ -634,9 +634,9 @@ function SectionTitle({
     <View className="flex-row items-center gap-2">
       <View
         className="h-6 w-6 items-center justify-center rounded-full"
-        style={{ backgroundColor: t.colors.primary + "1f" }}
+        style={{ backgroundColor: t.colors.raised }}
       >
-        <Text className="text-2xs font-bold" style={{ color: t.colors.primary }}>
+        <Text className="text-2xs font-bold" style={{ color: t.colors.foreground }}>
           {index}
         </Text>
       </View>
@@ -680,9 +680,9 @@ function SellerCard({
       <View className="flex-row items-center gap-3">
         <View
           className="h-11 w-11 items-center justify-center rounded-full"
-          style={{ backgroundColor: t.colors.primary + "1f" }}
+          style={{ backgroundColor: t.colors.raised }}
         >
-          <Text className="text-sm font-semibold" style={{ color: t.colors.primary }}>
+          <Text className="text-sm font-semibold" style={{ color: t.colors.foreground }}>
             {initialsOf(fullName)}
           </Text>
         </View>
@@ -739,7 +739,7 @@ function KycGateBanner({
   return (
     <Card
       className="gap-3 rounded-xl border px-4 py-3.5"
-      style={{ borderColor: t.colors.primary + "55", backgroundColor: t.colors.primary + "0F" }}
+      style={{ borderColor: t.colors.border, backgroundColor: t.colors.primary + "0F" }}
       accessibilityRole="alert"
     >
       <View className="flex-row items-start gap-2.5">
@@ -747,7 +747,7 @@ function KycGateBanner({
           <IdCard size={t.icon.md} color={t.colors.primary} />
         </View>
         <View className="flex-1 gap-1">
-          <Text className="text-sm font-semibold" style={{ color: t.colors.primary }}>
+          <Text className="text-sm font-semibold" style={{ color: t.colors.foreground }}>
             Identifizierung erforderlich (§ 259 StGB)
           </Text>
           <Text className="text-muted-foreground text-sm leading-5">
@@ -946,9 +946,9 @@ function CustomerPicker({
  <View className="flex-row items-center gap-3 hairline-b px-3 py-3">
                   <View
                     className="h-10 w-10 items-center justify-center rounded-full"
-                    style={{ backgroundColor: t.colors.primary + "1f" }}
+                    style={{ backgroundColor: t.colors.raised }}
                   >
-                    <Text className="text-xs font-semibold" style={{ color: t.colors.primary }}>
+                    <Text className="text-xs font-semibold" style={{ color: t.colors.foreground }}>
                       {initialsOf(row.fullName)}
                     </Text>
                   </View>
@@ -1295,10 +1295,10 @@ function ValuationHintCard({
       {hint.suggestedCents != null ? (
         <>
           <View className="flex-row items-center justify-between">
-            <Text className="text-sm font-medium" style={{ color: t.colors.primary }}>
+            <Text className="text-sm font-medium" style={{ color: t.colors.foreground }}>
               Vorschlag Ankauf
             </Text>
-            <Text className="font-mono-medium text-base" style={{ color: t.colors.primary }}>
+            <Text className="font-mono-medium text-base" style={{ color: t.colors.foreground }}>
               {formatCents(Number(hint.suggestedCents))}
             </Text>
           </View>
@@ -1451,7 +1451,7 @@ function AnkaufDoneScreen({
  <View className="flex-row items-center gap-3 hairline-b px-4 py-3.5">
                 <View
                   className="h-9 w-9 items-center justify-center rounded-md"
-                  style={{ backgroundColor: t.colors.primary + "1f" }}
+                  style={{ backgroundColor: t.colors.raised }}
                 >
                   <Receipt size={t.icon.md} color={t.colors.primary} />
                 </View>

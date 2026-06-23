@@ -168,12 +168,12 @@ function RankRow({
             <View
               className="self-center items-center justify-center rounded-md"
               style={{
-                backgroundColor: t.colors.primary + "1f",
+                backgroundColor: t.colors.raised,
                 paddingHorizontal: 6,
                 height: 20,
               }}
             >
-              <Text className="text-2xs font-bold" style={{ color: t.colors.primary }}>
+              <Text className="text-2xs font-bold" style={{ color: t.colors.foreground }}>
                 Aktuell
               </Text>
             </View>

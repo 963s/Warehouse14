@@ -133,7 +133,7 @@ function HitLeading({ hit }: { hit: SearchHit }) {
         className="h-11 w-11 items-center justify-center rounded-full"
         style={{ backgroundColor: t.colors.raised }}
       >
-        <Text className="text-sm font-semibold" style={{ color: t.colors.primary }}>
+        <Text className="text-sm font-semibold" style={{ color: t.colors.foreground }}>
           {initialsOf(hit.title)}
         </Text>
       </View>

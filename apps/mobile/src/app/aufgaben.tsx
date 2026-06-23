@@ -894,7 +894,7 @@ export default function AufgabenScreen() {
               <View
                 className="h-16 w-16 items-center justify-center rounded-full"
                 style={{
-                  backgroundColor: t.colors.primary + "14",
+                  backgroundColor: t.colors.raised,
                   borderColor: t.colors.border,
                   borderWidth: 1,
                 }}

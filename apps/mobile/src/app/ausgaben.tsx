@@ -157,10 +157,10 @@ function EditBackdrop({ progress }: { progress: SharedValue<number> }) {
     <Animated.View
       pointerEvents="none"
       className="absolute inset-0 flex-row items-center rounded-xl px-5"
-      style={[{ backgroundColor: t.colors.primary + "1f" }, style]}
+      style={[{ backgroundColor: t.colors.raised }, style]}
     >
       <RotateCw size={t.icon.lg} color={t.colors.primary} />
-      <Text className="font-semibold" style={{ color: t.colors.primary, marginLeft: 8 }}>
+      <Text className="font-semibold" style={{ color: t.colors.foreground, marginLeft: 8 }}>
         Bearbeiten
       </Text>
     </Animated.View>
@@ -294,7 +294,7 @@ function ExpenseCard({ row, onEdit }: { row: ExpenseRow; onEdit: () => void }) {
         <Card className="flex-row items-center gap-3 px-4 py-4">
           <View
             className="h-10 w-10 items-center justify-center rounded-md"
-            style={{ backgroundColor: t.colors.primary + "14" }}
+            style={{ backgroundColor: t.colors.raised }}
           >
             <Icon size={t.icon.md} color={t.colors.primary} />
           </View>

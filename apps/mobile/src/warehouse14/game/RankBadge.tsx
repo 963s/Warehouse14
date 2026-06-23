@@ -56,7 +56,7 @@ export function RankBadge({ rank, size = "md", showNext }: RankBadgeProps): Reac
     <View className="flex-row items-center gap-3">
       <View
         className="items-center justify-center rounded-md"
-        style={{ width: chip, height: chip, backgroundColor: t.colors.primary + "1f" }}
+        style={{ width: chip, height: chip, backgroundColor: t.colors.raised }}
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants"
       >
