@@ -13,10 +13,10 @@
  * the endpoint; nothing is fabricated.
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { Image } from "expo-image"
 import {
   ActivityIndicator,
   FlatList,
-  Image,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -459,9 +459,12 @@ function ProductRow({ item, onPress }: { item: ProductListRow; onPress: () => vo
               width: 52,
               height: 52,
               borderRadius: t.radii.button,
-              backgroundColor: t.colors.border,
+              backgroundColor: t.colors.raised,
             }}
-            accessibilityIgnoresInvertColors
+            contentFit="cover"
+            transition={180}
+            recyclingKey={item.id}
+            cachePolicy="memory-disk"
           />
         ) : (
           <View

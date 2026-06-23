@@ -264,6 +264,9 @@ importers:
       expo-font:
         specifier: ~55.0.4
         version: 55.0.8(expo@55.0.5)(react-native@0.83.2(@babel/core@7.29.7)(@types/react@19.2.17)(react@19.2.0))(react@19.2.0)
+      expo-image:
+        specifier: ^56.0.11
+        version: 56.0.11(expo@55.0.5)(react-native-web@0.21.2(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react-native@0.83.2(@babel/core@7.29.7)(@types/react@19.2.17)(react@19.2.0))(react@19.2.0)
       expo-linking:
         specifier: ~55.0.7
         version: 55.0.15(expo@55.0.5)(react-native@0.83.2(@babel/core@7.29.7)(@types/react@19.2.17)(react@19.2.0))(react@19.2.0)
@@ -6384,6 +6387,17 @@ packages:
 
   expo-image@55.0.11:
     resolution: {integrity: sha512-PVIBYQJW/h1f6Zb9xnoWlgfqyOPVm2yb6eo6ZogaKbvMrhb/Q/fiERbagi4oqmR6IPljWPEpkXXQyFBUh7TjpQ==}
+    peerDependencies:
+      expo: '*'
+      react: '*'
+      react-native: '*'
+      react-native-web: '*'
+    peerDependenciesMeta:
+      react-native-web:
+        optional: true
+
+  expo-image@56.0.11:
+    resolution: {integrity: sha512-k2xwxGk14xi6zxmEGAU4rUTb1lK5qf0y0Qb8+Jaggnul0KaJJxcq9qvyDp9iyJBW35cp9isONAUnNtIiooZ/Pw==}
     peerDependencies:
       expo: '*'
       react: '*'
@@ -16518,6 +16532,15 @@ snapshots:
       react-native: 0.83.2(@babel/core@7.29.7)(@types/react@19.2.17)(react@19.2.0)
 
   expo-image@55.0.11(expo@55.0.5)(react-native-web@0.21.2(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react-native@0.83.2(@babel/core@7.29.7)(@types/react@19.2.17)(react@19.2.0))(react@19.2.0):
+    dependencies:
+      expo: 55.0.5(@babel/core@7.29.7)(@expo/dom-webview@55.0.6)(@expo/metro-runtime@55.0.11)(expo-router@55.0.16)(react-dom@19.2.0(react@19.2.0))(react-native@0.83.2(@babel/core@7.29.7)(@types/react@19.2.17)(react@19.2.0))(react@19.2.0)(typescript@5.9.3)
+      react: 19.2.0
+      react-native: 0.83.2(@babel/core@7.29.7)(@types/react@19.2.17)(react@19.2.0)
+      sf-symbols-typescript: 2.2.0
+    optionalDependencies:
+      react-native-web: 0.21.2(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
+
+  expo-image@56.0.11(expo@55.0.5)(react-native-web@0.21.2(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react-native@0.83.2(@babel/core@7.29.7)(@types/react@19.2.17)(react@19.2.0))(react@19.2.0):
     dependencies:
       expo: 55.0.5(@babel/core@7.29.7)(@expo/dom-webview@55.0.6)(@expo/metro-runtime@55.0.11)(expo-router@55.0.16)(react-dom@19.2.0(react@19.2.0))(react-native@0.83.2(@babel/core@7.29.7)(@types/react@19.2.17)(react@19.2.0))(react@19.2.0)(typescript@5.9.3)
       react: 19.2.0

@@ -22,7 +22,8 @@
  * StaggerItem + PressableScale motion, the haptic vocabulary, and theme tokens.
  */
 import { useCallback, useState } from "react"
-import { Image, RefreshControl, ScrollView, View } from "react-native"
+import { RefreshControl, ScrollView, View } from "react-native"
+import { Image } from "expo-image"
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router"
 import type { CurrentMetalPrice, PhotoRow } from "@warehouse14/api-client"
 import {
@@ -505,11 +506,15 @@ export default function ProductDetailScreen() {
                         <Image
                           source={{ uri: absoluteUrl(ph.thumbUrl ?? `/api/photos/${ph.id}/thumb`) }}
                           style={{
-                            width: 84,
-                            height: 84,
+                            width: 96,
+                            height: 96,
                             borderRadius: t.radii.button,
-                            backgroundColor: t.colors.border,
+                            backgroundColor: t.colors.raised,
                           }}
+                          contentFit="cover"
+                          transition={180}
+                          recyclingKey={ph.id}
+                          cachePolicy="memory-disk"
                         />
                       </View>
                       <Text
