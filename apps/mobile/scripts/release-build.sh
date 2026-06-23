@@ -76,31 +76,25 @@ build_ios() {
   cd ios
   # Archive into a Payload/ for the unsigned .ipa the owner signs himself.
   rm -rf build
+  # Archive for a REAL DEVICE (iphoneos / arm64), unsigned — the owner signs it
+  # himself. NEVER iphonesimulator: a simulator .app cannot install on an iPhone.
   xcodebuild \
     -workspace Warehouse14.xcworkspace \
     -scheme Warehouse14 \
     -configuration Release \
-    -sdk iphonesimulator \
-    -derivedDataPath build \
-    -destination 'generic/platform=iOS Simulator' \
+    -sdk iphoneos \
+    -destination 'generic/platform=iOS' \
     -archivePath build/Warehouse14.xcarchive \
-    -authenticationKeyID NONE CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
-    ONLY_ACTIVE_ARCH=NO \
-    archive 2>&1 | tail -3 || true
-  # The archive path may vary; fall back to a clean build if archive failed.
+    CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" AD_HOC_CODE_SIGNING_ALLOWED=YES \
+    archive 2>&1 | tail -5 || true
+  # The unsigned device .app lives inside the archive.
   local app
-  app=$(find build -name "Warehouse14.app" -path "*Release*" 2>/dev/null | head -1)
-  if [ -z "$app" ]; then
-    echo "  (archive path not found, falling back to plain build)"
-    xcodebuild \
-      -workspace Warehouse14.xcworkspace -scheme Warehouse14 \
-      -configuration Release -sdk iphonesimulator \
-      -derivedDataPath build \
-      -destination 'platform=iOS Simulator,name=iPhone 17,arch=arm64' \
-      ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build 2>&1 | tail -3
-    app=$(find build -name "Warehouse14.app" -path "*Release*" 2>/dev/null | head -1)
+  app=$(find build/Warehouse14.xcarchive/Products/Applications -name "*.app" 2>/dev/null | head -1)
+  [ -n "$app" ] || { echo "❌ no Warehouse14.app produced (device archive failed)"; exit 1; }
+  # Assert it is a device build, not a simulator one.
+  if ! plutil -p "$app/Info.plist" 2>/dev/null | grep -q 'iphoneos'; then
+    echo "❌ archive is not an iphoneos (device) build — refusing"; exit 1
   fi
-  [ -n "$app" ] || { echo "❌ no Warehouse14.app produced"; exit 1; }
   # Pack the unsigned .ipa.
   rm -rf /tmp/w14-ipa && mkdir -p /tmp/w14-ipa/Payload
   cp -R "$app" /tmp/w14-ipa/Payload/
