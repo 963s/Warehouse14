@@ -131,7 +131,7 @@ import {
   useRefreshControl,
   useScreenInsets,
 } from "@/warehouse14/ui"
-import { SteampunkGrid, SteampunkTile, SteampunkLockedTile } from "@/warehouse14/game/steampunk"
+import { SteampunkGrid, SteampunkTile, SteampunkLockedTile, SteampunkTreasureMap } from "@/warehouse14/game/steampunk"
 
 function heuteLabel(now: Date): string {
   return now.toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" })
@@ -589,103 +589,43 @@ export default function SchatzkammerScreen() {
           </SteampunkGrid>
         </StaggerItem>
 
-        {/* f2) Edelmetall-Kurse the spot vs the time-weighted 10-day average per
-            gram, straight from /api/metal-prices/rates. The trend has exactly the
-            two REAL points the endpoint gives (avg10d → spot), so the sparkline is
-            an honest two-point silhouette, not an invented curve. A metal with no
-            readable rate is simply skipped; an unreadable response shows the locked
-            placeholder never a fabricated price. */}
+        {/* f2) Edelmetall-Kurse — steampunk metal price panel. */}
         <StaggerItem index={9}>
-          <SectionCard
-            title="Edelmetall-Kurse"
-            subtitle="Spot gegen den 10-Tage-Schnitt, je Gramm live aus dem System."
-            icon={Gem}
-          >
-            <MetalRatesStrip rates={rates} />
-          </SectionCard>
+          <SectionHeader title="Edelmetall-Kurse" subtitle="Spot gegen 10-Tage-Schnitt, je Gramm." />
+          <SteampunkGrid>
+            <View style={{ width: "100%", padding: 4 }}>
+              <MetalRatesStrip rates={rates} />
+            </View>
+          </SteampunkGrid>
         </StaggerItem>
 
-        {/* g) Monthly treasure map cumulative net profit vs fixed costs */}
+        {/* g) Schatzkarte — steampunk break-even panel. */}
         <StaggerItem index={10}>
           {map ? (
-            <SectionCard
-              title="Schatzkarte des Monats"
-              subtitle="Erst Kosten decken, dann Gewinn heben."
-              icon={MapPin}
-              action={
-                map.brokeEven ? (
-                  <View
-                    className="rounded-md px-2.5 py-1"
-                    style={{ borderWidth: 1, borderColor: t.colors.verdigris }}
-                  >
-                    <Text className="text-xs font-semibold" style={{ color: t.colors.verdigris }}>
-                      Break-even
-                    </Text>
-                  </View>
-                ) : (
-                  <Gem size={t.icon.md} color={t.colors.primary} />
-                )
-              }
-            >
-              <View className="gap-1">
-                <View className="flex-row items-end justify-between">
-                  <CountUp
-                    value={map.netProfitCents}
-                    format={formatCents}
-                    className="font-mono-medium text-2xl"
-                    style={{ color: map.brokeEven ? t.colors.verdigris : t.colors.foreground }}
-                    accessibilityLabel={`Monatsgewinn ${formatCents(map.netProfitCents)}`}
-                  />
-                  <Text className="text-muted-foreground text-xs">
-                    {map.brokeEven
-                      ? `Ziel ${formatCents(profitTargetCents)}`
-                      : `Fixkosten ${formatCents(map.fixedCostCents)}`}
-                  </Text>
-                </View>
-
-                {/* Before break-even the bar fills with fixed-cost coverage (gross
-                    margin / fixed → 100 % exactly when netProfit hits 0); once in
-                    the black it tracks the owner's OWN profit goal. Both are real. */}
-                <View className="w-full py-1.5">
-                  <RingGauge
-                    value={map.brokeEven ? map.targetProgress : map.coverage}
-                    color={map.brokeEven ? t.colors.verdigris : t.colors.primary}
-                  />
-                </View>
-
-                <View className="flex-row items-center justify-between">
-                  <Text className="text-muted-foreground text-2xs">
-                    {map.brokeEven
-                      ? "Fixkosten gedeckt der Monat ist im Plus"
-                      : `Fixkosten zu ${Math.round(map.coverage * 100)} % gedeckt`}
-                  </Text>
-                  <Text
-                    className="text-xs font-semibold"
-                    style={{ color: map.brokeEven ? t.colors.verdigris : t.colors.primary }}
-                  >
-                    {map.brokeEven
-                      ? "Break-even erreicht"
-                      : `noch ${formatCents(map.toBreakEvenCents)}`}
-                  </Text>
-                </View>
-              </View>
-            </SectionCard>
-          ) : (
-            <Card
-              className="gap-2.5 px-4 py-4"
-              style={{ borderWidth: 1, borderStyle: "dashed", borderColor: t.colors.border }}
-            >
-              <View className="flex-row items-center justify-between">
-                <Text className="text-muted-foreground text-sm font-semibold" numberOfLines={1}>
-                  Schatzkarte des Monats · Kosten decken → Gewinn
-                </Text>
-                <Lock size={t.icon.xs} color={t.colors.mutedForeground} />
-              </View>
-              <Text className="text-muted-foreground text-2xs">
-                Break-even-Marke erscheint, sobald Monatsgewinn und Fixkosten geladen sind.
-              </Text>
-            </Card>
-          )}
+            <SectionHeader title="Schatzkarte des Monats" subtitle="Erst Kosten decken, dann Gewinn heben." />
+          ) : null}
+          <SteampunkGrid>
+            {map ? (
+              <>
+                <SteampunkTile
+                  label={map.brokeEven ? "Monatsgewinn" : "Fixkosten gedeckt"}
+                  value={map.brokeEven ? map.netProfitCents : map.coverage * 100}
+                  format={map.brokeEven ? formatCents : (v: number) => `${Math.round(v)} %`}
+                  target={map.brokeEven ? formatCents(profitTargetCents) : "100 %"}
+                  ratio={map.brokeEven ? map.targetProgress : map.coverage}
+                />
+                <SteampunkTile
+                  label="Fixkosten"
+                  value={map.fixedCostCents}
+                  format={formatCents}
+                  target={map.brokeEven ? "Gedeckt" : `${formatCents(map.toBreakEvenCents)}`}
+                  ratio={map.coverage}
+                />
+              </>
+            ) : (
+              <SteampunkLockedTile label="Schatzkarte des Monats" />
+            )}
+          </SteampunkGrid>
         </StaggerItem>
 
         {/* h) Siegelwand earned vs locked, honestly */}
@@ -714,7 +654,27 @@ export default function SchatzkammerScreen() {
           </SectionCard>
         </StaggerItem>
 
-        {/* i) Trust line */}
+        {/* i) Treasure map — the overall goal achievement, steampunk. */}
+        <StaggerItem index={12}>
+          <SteampunkTreasureMap
+            pct={
+              // Average of the live ratios we have (honest, not fabricated).
+              [
+                profitDay ? profitDayEur / targets.netProfitDayEur : null,
+                monthRev ? monthRevEur / targets.monthRevenueEur : null,
+                invValue ? invValueEur / GAUGE_TARGETS.inventoryValueEur : null,
+                map ? map.coverage : null,
+                metals ? metals.goldGrams / GAUGE_TARGETS.goldGrams : null,
+                metals ? metals.silverGrams / GAUGE_TARGETS.silverGrams : null,
+              ]
+                .filter((r): r is number => r != null && r > 0)
+                .reduce((sum, r, _, arr) => sum + r / arr.length, 0)
+            }
+            label="Zielerreichung aus echten Tagesabschlüssen"
+          />
+        </StaggerItem>
+
+        {/* j) Trust line */}
         <StaggerItem index={12}>
           <Text className="text-muted-foreground text-center text-2xs">
             Jeder Wert ist eine echte Zahl aus dem System.

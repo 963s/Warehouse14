@@ -116,6 +116,53 @@ export function SteampunkLockedTile({ label }: { label: string }): ReactNode {
   )
 }
 
+/**
+ * The treasure-map panel — a wide parchment-styled panel showing the overall
+ * goal achievement as a percentage + a simple route from "Start" to "X marks
+ * the spot" (the profit goal). The "path" is a CSS-styled dotted line. Honest:
+ * the percentage is the real average of the individual tile ratios.
+ */
+export function SteampunkTreasureMap({ pct, label }: { pct: number; label: string }): ReactNode {
+  const reached = pct >= 1
+  return (
+    <View
+      style={{
+        width: "100%",
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: "#3a342a",
+        backgroundColor: "#232019",
+        padding: 16,
+        gap: 10,
+      }}
+    >
+      <Text
+        style={{ color: "#c9a55c", fontSize: 10, fontWeight: "600", letterSpacing: 0.6, textTransform: "uppercase" }}
+      >
+        Gesamtübersicht
+      </Text>
+      {/* The big percentage — the overall goal achievement */}
+      <Text style={{ color: reached ? "#7bc4a0" : "#efece3", fontSize: 28, fontFamily: "JetBrainsMono_500Medium" }}>
+        {Math.round(pct * 100)} %
+      </Text>
+      <Text style={{ color: "#a39d90", fontSize: 11 }}>{label}</Text>
+      {/* The dotted path: Start ──────── X */}
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 }}>
+        <Text style={{ color: "#6e6b64", fontSize: 9, fontFamily: "JetBrainsMono_400Regular" }}>Start</Text>
+        <View
+          style={{
+            flex: 1,
+            height: 2,
+            borderRadius: 1,
+            backgroundColor: reached ? "#7bc4a0" : "#3a342a",
+          }}
+        />
+        <Text style={{ color: reached ? "#7bc4a0" : "#c9a55c", fontSize: 11, fontWeight: "700" }}>X</Text>
+      </View>
+    </View>
+  )
+}
+
 /** The steampunk grid container — 12 tiles in a 2-column scroll on umber. */
 export function SteampunkGrid({ children }: { children: ReactNode }): ReactNode {
   return (
