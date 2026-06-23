@@ -31,8 +31,6 @@ import {
   ScanLine,
   Search,
   Settings,
-  ShoppingBag,
-  ShoppingCart,
   Store,
   Trophy,
   UserPlus,
@@ -46,7 +44,7 @@ import {
  * in a 12-tile "Betrieb" wall. Then daily operation, then the external channels,
  * then finance, then system.
  */
-export type OwnerSurfaceGroup = "verkauf" | "betrieb" | "kanale" | "finanzen" | "system"
+export type OwnerSurfaceGroup = "betrieb" | "kanale" | "finanzen" | "system"
 
 export interface OwnerSurface {
   /** Stable unique slug (React key only). */
@@ -69,7 +67,6 @@ export interface OwnerSurface {
 
 /** Section label + order for the hub. */
 export const SECTION_ORDER: readonly { group: OwnerSurfaceGroup; label: string }[] = [
-  { group: "verkauf", label: "Verkauf & Kasse" },
   { group: "betrieb", label: "Betrieb" },
   { group: "kanale", label: "Kanäle & Belege" },
   { group: "finanzen", label: "Finanzen" },
@@ -94,15 +91,6 @@ export const OWNER_SURFACES: readonly OwnerSurface[] = [
     description: "Offene To-dos und ihr Fortschritt.",
     icon: ListChecks,
     group: "betrieb",
-    available: true,
-  },
-  {
-    id: "kasse",
-    route: "/kasse",
-    label: "Kasse",
-    description: "Schicht, Tagesabschluss, Z-Bon.",
-    icon: Wallet,
-    group: "verkauf",
     available: true,
   },
   // ── Finanzen ───────────────────────────────────────────────────────────────
@@ -151,24 +139,6 @@ export const OWNER_SURFACES: readonly OwnerSurface[] = [
     description: "Freigaben und Hinweise an einem Ort.",
     icon: Bell,
     group: "system",
-    available: true,
-  },
-  {
-    id: "verkauf",
-    route: "/verkauf",
-    label: "Verkauf",
-    description: "Direkter Verkauf: Warenkorb, Bezahlvorgang, Beleg.",
-    icon: ShoppingCart,
-    group: "verkauf",
-    available: true,
-  },
-  {
-    id: "ankauf",
-    route: "/ankauf",
-    label: "Ankauf",
-    description: "Ankauf erfassen, auszahlen, belegen.",
-    icon: ShoppingBag,
-    group: "verkauf",
     available: true,
   },
   {
