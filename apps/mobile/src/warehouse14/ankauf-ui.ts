@@ -50,11 +50,11 @@ export const ITEM_TYPE_OPTIONS: ReadonlyArray<{ value: AnkaufItemType; label: st
 
 export const CONDITION_LABEL: Readonly<Record<AnkaufCondition, string>> = {
   NEW: "Neu",
-  USED_EXCELLENT: "Gebraucht — sehr gut",
-  USED_GOOD: "Gebraucht — gut",
-  USED_FAIR: "Gebraucht — mäßig",
-  ANTIQUE_RESTORED: "Antik — restauriert",
-  ANTIQUE_AS_FOUND: "Antik — Fundzustand",
+  USED_EXCELLENT: "Gebraucht sehr gut",
+  USED_GOOD: "Gebraucht gut",
+  USED_FAIR: "Gebraucht mäßig",
+  ANTIQUE_RESTORED: "Antik restauriert",
+  ANTIQUE_AS_FOUND: "Antik Fundzustand",
 }
 
 export const CONDITION_OPTIONS: ReadonlyArray<{ value: AnkaufCondition; label: string }> = (

@@ -208,7 +208,7 @@ export default function NeuerArtikelScreen() {
           </SectionCard>
         </ScrollView>
 
-        {/* The new-article milestone flood — visual only (the Success haptic
+        {/* The new-article milestone flood visual only (the Success haptic
             already fired); once per create, above content, never blocks a tap. */}
         <GoldFlood visible={celebrate} onDone={() => setCelebrate(false)} />
       </View>
@@ -246,7 +246,7 @@ export default function NeuerArtikelScreen() {
           />
         </Field>
 
-        <Field label="Edelmetall" hint="Optional — nur bei Edelmetallware.">
+        <Field label="Edelmetall" hint="Optional nur bei Edelmetallware.">
           <ChipSelect
             options={METAL_OPTIONS}
             value={form.metal}
@@ -320,7 +320,7 @@ export default function NeuerArtikelScreen() {
       </SectionCard>
 
       {categories.length > 0 ? (
-        <SectionCard title="Kategorie" subtitle="Optional — bestimmt die Storefront-Einordnung.">
+        <SectionCard title="Kategorie" subtitle="Optional bestimmt die Storefront-Einordnung.">
           <CategoryPicker
             options={categories}
             value={form.categoryId}
@@ -329,7 +329,7 @@ export default function NeuerArtikelScreen() {
         </SectionCard>
       ) : null}
 
-      <SectionCard title="Lagerort" subtitle="Optional — Tresor, Fach und Position.">
+      <SectionCard title="Lagerort" subtitle="Optional Tresor, Fach und Position.">
         <Input
           value={form.unit}
           onChangeText={(v) => patch("unit", v)}

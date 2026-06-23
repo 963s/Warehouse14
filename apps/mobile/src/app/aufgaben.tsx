@@ -166,7 +166,7 @@ function CancelSheet({
       navigationBarTranslucent
     >
       {/* Keyboard avoidance, same per-platform behavior as the spine's
-          KeyboardAvoidingScreen — so focusing „Grund" lifts the whole sheet
+          KeyboardAvoidingScreen so focusing Grund" lifts the whole sheet
           (input + Zurück/Abbrechen) clear of the keyboard on small screens. */}
       <KeyboardAvoidingView
         className="flex-1"
@@ -827,7 +827,7 @@ export default function AufgabenScreen() {
 
   return (
     <View className="flex-1 bg-background">
-      {/* The aged-paper grain canvas — depth from the layered cream plus this
+      {/* The aged-paper grain canvas depth from the layered cream plus this
           faint warm tooth, never a flat fill (DESIGN.md §1, §5). */}
       <PaperGrain />
       <FlatList
@@ -903,12 +903,12 @@ export default function AufgabenScreen() {
               </View>
               <Text className="text-center text-xl font-display-semibold leading-tight">
                 {filter != null
-                  ? `Keine Aufgaben „${TASK_STATUS_LABELS[filter]}“`
+                  ? `Keine Aufgaben ${TASK_STATUS_LABELS[filter]}`
                   : "Keine Aufgaben"}
               </Text>
               <Text className="text-muted-foreground max-w-xs text-center text-sm leading-5">
                 {filter != null
-                  ? "In diesem Status liegt gerade nichts. Wähle „Alle“ oder lege eine neue Aufgabe an."
+                  ? "In diesem Status liegt gerade nichts. Wähle Alle oder lege eine neue Aufgabe an."
                   : "Lege über das Plus oben rechts eine neue Aufgabe an."}
               </Text>
               <Button

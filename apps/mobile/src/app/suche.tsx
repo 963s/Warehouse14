@@ -416,7 +416,7 @@ export default function SucheScreen() {
 
   return (
     <View className="flex-1 bg-background">
-      {/* Die gealterte Papier-Maserung als Leinwand, hinter der Liste — die
+      {/* Die gealterte Papier-Maserung als Leinwand, hinter der Liste die
           fixierte Suchkopfzeile bleibt blickdicht, Zeilen scrollen sauber
           darunter (DESIGN.md §1, §5). */}
       <PaperGrain />
@@ -474,7 +474,7 @@ export default function SucheScreen() {
               <EmptyState
                 icon={RotateCcw}
                 title="Keine Treffer"
-                description={`Nichts zu „${debouncedQ}“. Prüfe die Schreibweise oder suche nach einem Teil des Namens, der SKU oder der Beleg-Nummer.`}
+                description={`Nichts zu ${debouncedQ}. Prüfe die Schreibweise oder suche nach einem Teil des Namens, der SKU oder der Beleg-Nummer.`}
               />
             </View>
           ) : null

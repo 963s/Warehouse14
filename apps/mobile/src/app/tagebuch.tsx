@@ -470,7 +470,7 @@ function EventDetailDialog({
             </View>
           ) : (
             <Text className="text-muted-foreground px-1 text-xs leading-5">
-              Dieser Eintrag trägt keine zusätzlichen Felder — Typ, Akteur und Zeitpunkt oben sind
+              Dieser Eintrag trägt keine zusätzlichen Felder Typ, Akteur und Zeitpunkt oben sind
               die vollständige Wahrheit.
             </Text>
           )}
@@ -543,7 +543,7 @@ export default function TagebuchScreen() {
 
   return (
     <View className="flex-1 bg-background">
-      {/* Die gealterte Papier-Maserung als Leinwand — Tiefe aus dem geschichteten
+      {/* Die gealterte Papier-Maserung als Leinwand Tiefe aus dem geschichteten
           Creme plus dieser feinen warmen Struktur, nie eine flache Fläche
           (DESIGN.md §1, §5). */}
       <PaperGrain />
@@ -621,9 +621,9 @@ export default function TagebuchScreen() {
               }
               description={
                 categoryActive
-                  ? "In den geladenen Einträgen liegt nichts in dieser Kategorie. Wähle „Alle“ oder einen größeren Zeitraum."
+                  ? "In den geladenen Einträgen liegt nichts in dieser Kategorie. Wähle Alle oder einen größeren Zeitraum."
                   : range === "all"
-                    ? "Sobald im Betrieb etwas passiert — ein Verkauf, eine Änderung, eine Anmeldung — erscheint es hier, lückenlos und in der echten Reihenfolge."
+                    ? "Sobald im Betrieb etwas passiert ein Verkauf, eine Änderung, eine Anmeldung erscheint es hier, lückenlos und in der echten Reihenfolge."
                     : "In diesem Zeitraum wurde nichts protokolliert. Wähle einen größeren Zeitraum."
               }
             />
@@ -660,12 +660,12 @@ export default function TagebuchScreen() {
         {/* ── Ehrlicher Scope-Hinweis ────────────────────────────────────────── */}
         <SectionCard
           title="So funktioniert das Tagebuch"
-          subtitle="Ein lückenloses, unveränderliches Protokoll — gelesen, nie verändert."
+          subtitle="Ein lückenloses, unveränderliches Protokoll gelesen, nie verändert."
           icon={Activity}
         >
           <Text className="text-muted-foreground text-xs leading-5">
             Jede bedeutsame Handlung im Betrieb schreibt einen unveränderlichen, hash-verketteten
-            Eintrag (GoBD). Diese App zeigt das Protokoll ehrlich an — wer, was, wann — und
+            Eintrag (GoBD). Diese App zeigt das Protokoll ehrlich an wer, was, wann und
             verändert nichts daran. Der Zeitraum-Filter läuft serverseitig; der Kategorie-Filter
             ordnet die geladenen Einträge.
           </Text>

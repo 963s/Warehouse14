@@ -248,7 +248,7 @@ function ProfitWaterfall({
   return (
     <SectionCard
       title="Gewinn- und Verlustrechnung"
-      subtitle="So entsteht der Nettogewinn — Umsatz minus aller Kosten."
+      subtitle="So entsteht der Nettogewinn Umsatz minus aller Kosten."
       icon={TrendingUp}
     >
       <WaterfallLine icon={Coins} label="Umsatz" cents={profit.grossRevenueCents} tone="add" />
@@ -351,7 +351,7 @@ function BreakEvenCard({
         <View className="flex-row items-center justify-between">
           <Text className="text-muted-foreground text-2xs" numberOfLines={1}>
             {map.brokeEven
-              ? "Fixkosten gedeckt — der Monat ist im Plus"
+              ? "Fixkosten gedeckt der Monat ist im Plus"
               : `Fixkosten zu ${Math.round(map.coverage * 100)} % gedeckt`}
           </Text>
           <Text
@@ -472,7 +472,7 @@ export default function FinanzenScreen() {
 
   return (
     <View className="flex-1 bg-background">
-      {/* The aged-paper grain canvas — depth from the layered cream plus this
+      {/* The aged-paper grain canvas depth from the layered cream plus this
           faint warm tooth, never a flat fill (DESIGN.md §1, §5). */}
       <PaperGrain />
       <ScrollView
@@ -492,7 +492,7 @@ export default function FinanzenScreen() {
             Finanzen
           </Text>
           <Text className="text-muted-foreground text-sm" numberOfLines={2}>
-            Gewinn, Umsatz und Kosten — Tag und Monat im Detail.
+            Gewinn, Umsatz und Kosten Tag und Monat im Detail.
           </Text>
         </View>
 
@@ -563,7 +563,7 @@ export default function FinanzenScreen() {
         ) : null}
       </ScrollView>
 
-      {/* Break-even gold flood — plays once on the real crossing into profit. */}
+      {/* Break-even gold flood plays once on the real crossing into profit. */}
       <GoldFlood visible={flood.visible} onReachPeak={flood.onReachPeak} onDone={flood.onDone} />
     </View>
   )

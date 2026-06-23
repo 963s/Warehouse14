@@ -252,7 +252,7 @@ function FixedCostCard({ row, onEdit }: { row: FixedCostRow; onEdit: () => void 
                     <Text>{FIXED_COST_STATE_LABEL[state]}</Text>
                   </Badge>
                   <Text className="text-muted-foreground text-xs" numberOfLines={1}>
-                    {toLabel ? `${fromLabel} – ${toLabel}` : `seit ${fromLabel}`}
+                    {toLabel ? `${fromLabel} ${toLabel}` : `seit ${fromLabel}`}
                   </Text>
                 </View>
               </View>
@@ -480,7 +480,7 @@ export default function AusgabenScreen() {
             {tab === "fixkosten"
               ? fixedRows != null && fixedRows.length > 0
                 ? fixedCostsSummaryLine(fixedRows)
-                : "Laufende monatliche Kosten — die Basis für den Break-even."
+                : "Laufende monatliche Kosten die Basis für den Break-even."
               : expenseRows != null && expenseRows.length > 0
                 ? expensesSummaryLine(expenseRows)
                 : "Einmalige Betriebsausgaben, nach Datum sortiert."}
@@ -500,7 +500,7 @@ export default function AusgabenScreen() {
       <EmptyState
         icon={Wallet}
         title="Keine Fixkosten erfasst"
-        description="Trage Miete, Versicherungen und andere laufende Kosten ein — sie bilden die Basis für deinen Break-even."
+        description="Trage Miete, Versicherungen und andere laufende Kosten ein sie bilden die Basis für deinen Break-even."
         actionLabel="Fixkosten anlegen"
         onAction={() => {
           haptics.selection()
@@ -511,7 +511,7 @@ export default function AusgabenScreen() {
       <EmptyState
         icon={Receipt}
         title="Keine Ausgaben erfasst"
-        description="Erfasse einmalige Betriebsausgaben wie Wareneinkauf oder Reparaturen — sie fließen in deinen Nettogewinn."
+        description="Erfasse einmalige Betriebsausgaben wie Wareneinkauf oder Reparaturen sie fließen in deinen Nettogewinn."
         actionLabel="Ausgabe erfassen"
         onAction={() => {
           haptics.selection()
@@ -522,7 +522,7 @@ export default function AusgabenScreen() {
 
   return (
     <View className="flex-1 bg-background">
-      {/* The aged-paper grain canvas — depth from the layered cream plus this
+      {/* The aged-paper grain canvas depth from the layered cream plus this
           faint warm tooth, never a flat fill (DESIGN.md §1, §5). */}
       <PaperGrain />
       <FlatList<RowItem>

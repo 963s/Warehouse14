@@ -443,7 +443,7 @@ function SendComposer({
         <InlineError message={sendM.error} onDismiss={sendM.reset} />
       ) : null}
 
-      {/* The explicit confirm gate — a second press before the provider call.
+      {/* The explicit confirm gate a second press before the provider call.
           Step-up (403) is transparent via the global StepUpDialogHost. */}
       {pending ? (
         <View className="gap-2 rounded-xl border border-border bg-card p-3">
@@ -727,7 +727,7 @@ function ChatDetailSheet({
     >
       <DialogContent className="gap-4">
         {/* Keyboard avoidance: focusing the send composer lifts the sheet clear
-            of the keyboard (padding on iOS, height on Android — the spine's
+            of the keyboard (padding on iOS, height on Android the spine's
             KeyboardAvoidingScreen behavior), so the Senden-Knopf stays reachable. */}
         <KeyboardAvoidingView
           className="gap-4"
@@ -815,19 +815,19 @@ function ChatDetailSheet({
 
           {/* The triage-mark is being held to re-fire on reconnect (the wire
               dropped mid-tap): show the calm offline note with the honest auto-
-              retry line — NOT a red error, because nothing was lost. A real
+              retry line NOT a red error, because nothing was lost. A real
               server refusal (no auto-retry) still shows the themed InlineError. */}
           {handledM.willAutoRetry ? (
             <OfflineNotice
               show
-              message={"Die Markierung „erledigt“ konnte gerade nicht gespeichert werden."}
+              message={"Die Markierung erledigt konnte gerade nicht gespeichert werden."}
               retryHint={handledM.retryHint}
             />
           ) : handleError != null ? (
             <InlineError message={handleError} onDismiss={() => setHandleError(null)} />
           ) : null}
 
-          {/* Link customer — only when not yet linked + there is an inbound anchor */}
+          {/* Link customer only when not yet linked + there is an inbound anchor */}
           {data != null && linkedId == null && lastInbound != null ? (
             linking ? (
               <LinkCustomerPicker
@@ -989,7 +989,7 @@ export default function WhatsAppScreen() {
 
   return (
     <View className="flex-1 bg-background">
-      {/* The aged-paper grain canvas — depth from the layered cream plus this
+      {/* The aged-paper grain canvas depth from the layered cream plus this
           faint warm tooth, never a flat fill (DESIGN.md §1, §5). */}
       <PaperGrain />
       <ScrollView

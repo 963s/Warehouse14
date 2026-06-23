@@ -266,7 +266,7 @@ export function SettingsBelegtextSection() {
   return (
     <SectionCard
       title="Belegtexte"
-      subtitle="Die rechtlichen Texte auf jedem Beleg - pro Steuerart und Beleg-Rahmen."
+      subtitle="Die rechtlichen Texte auf jedem Beleg, pro Steuerart und Beleg-Rahmen."
       icon={FileText}
     >
       {q.isLoading && q.data == null ? (

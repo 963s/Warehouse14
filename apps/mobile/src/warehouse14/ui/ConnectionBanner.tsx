@@ -28,7 +28,7 @@ import { useConnection } from "./data/connection"
 import { duration } from "./motion/tokens"
 import { useReduceMotion } from "./motion/useReduceMotion"
 
-const OFFLINE_LABEL = "Offline — Daten werden lokal gehalten"
+const OFFLINE_LABEL = "Offline Daten werden lokal gehalten"
 
 /**
  * The visual bar. Rendered only while offline by the Host; kept separate so it

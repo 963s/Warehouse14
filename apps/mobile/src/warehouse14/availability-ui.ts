@@ -57,11 +57,11 @@ export function notSellableReason(status: ProductStatus | string | null | undefi
     case "AVAILABLE":
       return null
     case "RESERVED":
-      return "Reserviert — in einer laufenden Sitzung gehalten, nicht verkäuflich."
+      return "Reserviert in einer laufenden Sitzung gehalten, nicht verkäuflich."
     case "SOLD":
-      return "Bereits verkauft — nicht mehr im Bestand."
+      return "Bereits verkauft nicht mehr im Bestand."
     case "DRAFT":
-      return "Entwurf — noch nicht für den Verkauf freigegeben."
+      return "Entwurf noch nicht für den Verkauf freigegeben."
     default:
       return "Zurzeit nicht verkäuflich."
   }

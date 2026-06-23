@@ -225,11 +225,11 @@ export default function DruckenScreen() {
         </QueryBoundary>
       </SectionCard>
 
-      {/* Live preview + the share action — only once a real article is chosen. */}
+      {/* Live preview + the share action only once a real article is chosen. */}
       {printable ? (
         <SectionCard
           title="Vorschau"
-          subtitle="Genau dieses Etikett wird gedruckt — alle Werte sind echt."
+          subtitle="Genau dieses Etikett wird gedruckt alle Werte sind echt."
           icon={Printer}
         >
           <PrintPreview printable={printable} />
@@ -238,7 +238,7 @@ export default function DruckenScreen() {
             <InlineError message={actionError} onDismiss={() => setActionError(null)} />
           ) : null}
 
-          {/* PRIMARY — one-tap: open the OS print dialog (AirPrint / Android). */}
+          {/* PRIMARY one-tap: open the OS print dialog (AirPrint / Android). */}
           <Button
             size="xl"
             onPress={() => void onPrint()}
@@ -249,7 +249,7 @@ export default function DruckenScreen() {
             <Text>{busy === "print" ? "Wird vorbereitet…" : "Etikett drucken"}</Text>
           </Button>
 
-          {/* SECONDARY — render a PDF and share it (Dateien, Mail, …). */}
+          {/* SECONDARY render a PDF and share it (Dateien, Mail, …). */}
           {caps.canSharePdf ? (
             <Button
               variant="outline"
@@ -277,7 +277,7 @@ export default function DruckenScreen() {
         />
       )}
 
-      {/* The honest locked tier — direct thermal printing lives on the desktop. */}
+      {/* The honest locked tier direct thermal printing lives on the desktop. */}
       <DesktopPrinterCard />
     </KeyboardAvoidingScreen>
   )

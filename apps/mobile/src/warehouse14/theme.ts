@@ -79,9 +79,9 @@ export const lightPalette: Palette = {
   primaryForeground: "#f8f6f1",
   verdigris: "#3f6b54", // positive / price-up
   destructive: "#c0492f", // negative / price-down
-  border: "#e9e7e1", // soft hairline — structure, not decoration
+  border: "#e9e7e1", // soft hairline structure, not decoration
   ring: "#1c1c1c", // ink focus ring
-  gilt: "#a3823b", // DECORATIVE thread/edge/seal — NEVER a fill or text
+  gilt: "#a3823b", // DECORATIVE thread/edge/seal NEVER a fill or text
   giltDeep: "#876a2c", // pressed / hover gilt
   // Legacy `gold` alias — mirrors the official store remap (DESIGN-SYSTEM.md §2
   // "Legacy"): the old gold token now resolves to quiet ink-umber, so any stale

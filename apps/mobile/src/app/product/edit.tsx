@@ -257,7 +257,7 @@ export default function ArtikelBearbeitenScreen() {
           <ChipSelect options={CONDITION_OPTIONS} value={condition} onChange={setCondition} />
         </Field>
 
-        <Field label="Beschreibung" hint="Optional — erscheint in der Storefront.">
+        <Field label="Beschreibung" hint="Optional erscheint in der Storefront.">
           <Input
             value={descriptionDe}
             onChangeText={setDescriptionDe}
@@ -296,7 +296,7 @@ export default function ArtikelBearbeitenScreen() {
       {product.status === "DRAFT" ? (
         <SectionCard
           title="Veröffentlichen"
-          subtitle="Status von Entwurf auf Verfügbar setzen — der Artikel wird verkäuflich."
+          subtitle="Status von Entwurf auf Verfügbar setzen der Artikel wird verkäuflich."
         >
           <Button
             variant="outline"
@@ -306,7 +306,7 @@ export default function ArtikelBearbeitenScreen() {
             disabled={publishing}
             accessibilityLabel="Auf Verfügbar setzen"
           >
-            <Text>{publishing ? "Wird veröffentlicht…" : "Auf „Verfügbar“ setzen"}</Text>
+            <Text>{publishing ? "Wird veröffentlicht…" : "Auf Verfügbar setzen"}</Text>
           </Button>
           {publishError ? (
             <Text className="text-xs" style={{ color: t.colors.destructive }}>

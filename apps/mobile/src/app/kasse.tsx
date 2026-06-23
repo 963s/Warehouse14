@@ -188,7 +188,7 @@ function OpenDayCard({
   return (
     <Card className="overflow-hidden p-0">
       <View className="flex-row">
-        {/* Brass rail — an action still owed for the open trading day. */}
+        {/* Brass rail an action still owed for the open trading day. */}
         <View style={{ width: 4, backgroundColor: t.colors.primary }} />
 
         <View className="flex-1 gap-3 px-4 py-4">
@@ -200,7 +200,7 @@ function OpenDayCard({
                   {formatBusinessDay(businessDay)}
                 </Text>
                 <Text className="text-muted-foreground text-xs" numberOfLines={1}>
-                  Heute — noch nicht abgeschlossen
+                  Heute noch nicht abgeschlossen
                 </Text>
               </View>
             </View>
@@ -298,8 +298,8 @@ function FiscalOverviewPanel({ closings, today }: { closings: ClosingListItem[];
 
       {/* The fiscal trust line. We only assert the audit trail's health when there
           is a real signal to assert: recorded TSE failures raise a destructive
-          line. With none recorded we state that plainly — NOT a green "lückenlos"
-          seal — because the underlying count is a backend stub, not a verified
+          line. With none recorded we state that plainly NOT a green "lückenlos"
+          seal because the underlying count is a backend stub, not a verified
           completeness check. */}
       <View
         className="flex-row items-center gap-2 rounded-xl px-3 py-2.5"
@@ -361,7 +361,7 @@ function ClosingCard({
   return (
     <Card className="overflow-hidden p-0">
       <View className="flex-row">
-        {/* Status accent rail — sealed (verdigris) vs. open (brass). */}
+        {/* Status accent rail sealed (verdigris) vs. open (brass). */}
         <View style={{ width: 4, backgroundColor: railColor }} />
 
         <View className="flex-1 gap-3 px-4 py-4">
@@ -449,7 +449,7 @@ function ClosingCard({
             </Button>
           </View>
 
-          {/* Z-Bon — fiskalische Aktion, nur wenn der Tag noch offen ist */}
+          {/* Z-Bon fiskalische Aktion, nur wenn der Tag noch offen ist */}
           {!finalized ? (
             <View className="border-border gap-2 border-t pt-3">
               <View className="flex-row items-center gap-1.5">
@@ -571,7 +571,7 @@ function FinalizeSheet({
             im Prüfprotokoll vermerkt und kann danach nicht mehr geändert werden.
           </Text>
 
-          {/* Netto-Zusammenfassung — the real figures being sealed. For the open
+          {/* Netto-Zusammenfassung the real figures being sealed. For the open
               current day no row exists yet, so we state honestly that the totals
               are computed at finalize rather than show a fabricated summary. */}
           {closing != null ? (
@@ -607,7 +607,7 @@ function FinalizeSheet({
             </View>
           )}
 
-          {/* A day with TSE failures is sealed WITH that flaw on record — say so. */}
+          {/* A day with TSE failures is sealed WITH that flaw on record say so. */}
           {hasTseFailures && closing != null ? (
             <View className="flex-row items-start gap-2">
               <AlertTriangle size={t.icon.sm} color={t.colors.destructive} />
@@ -826,7 +826,7 @@ export default function KasseScreen() {
 
   return (
     <View className="flex-1 bg-background">
-      {/* The aged-paper grain canvas — depth from the layered cream plus this
+      {/* The aged-paper grain canvas depth from the layered cream plus this
           faint warm tooth, never a flat fill (DESIGN.md §1, §5). */}
       <PaperGrain />
       <ScrollView
@@ -859,7 +859,7 @@ export default function KasseScreen() {
               <FiscalOverviewPanel closings={closings} today={today} />
             ) : null}
 
-            {/* The current open trading day — the ONLY path to write its first
+            {/* The current open trading day the ONLY path to write its first
                 Z-Bon (no list row can exist for it yet). */}
             {todayIsOpen ? (
               <View className="gap-3">
@@ -946,7 +946,7 @@ export default function KasseScreen() {
         />
       ) : null}
 
-      {/* The day-seal flourish — gold, decorative only, plays once on success. */}
+      {/* The day-seal flourish gold, decorative only, plays once on success. */}
       <GoldFlood
         visible={celebrate}
         onReachPeak={() => haptics.impactHeavy()}

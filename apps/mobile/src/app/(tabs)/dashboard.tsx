@@ -367,7 +367,7 @@ export default function SchatzkammerScreen() {
             title={isRateLimited(cause) ? "Einen Moment" : "Keine Verbindung"}
             description={
               isRateLimited(cause)
-                ? "Gerade sehr viele Anfragen — die Schatzkammer lädt gleich von selbst. Du kannst es auch jetzt erneut versuchen."
+                ? "Gerade sehr viele Anfragen die Schatzkammer lädt gleich von selbst. Du kannst es auch jetzt erneut versuchen."
                 : "Die Cloud ist gerade nicht erreichbar. Sobald die Verbindung steht, hier erneut versuchen."
             }
             actionLabel="Erneut versuchen"
@@ -406,7 +406,7 @@ export default function SchatzkammerScreen() {
         contentContainerStyle={{ padding: 16, paddingBottom: insets.contentBottom, gap: 14 }}
         refreshControl={<RefreshControl {...rc} />}
       >
-        {/* a) Header — title + live rank/streak chips */}
+        {/* a) Header title + live rank/streak chips */}
         <StaggerItem index={0}>
           <View className="flex-row items-center justify-between">
             <View className="flex-1 flex-row items-center gap-2.5">
@@ -430,10 +430,10 @@ export default function SchatzkammerScreen() {
           </View>
         </StaggerItem>
 
-        {/* Offline note over the last-good board — self-subscribes to the
+        {/* Offline note over the last-good board self-subscribes to the
             connection store and shows ONLY while the cloud is unreachable. The
             gauges below keep their last real values (the data layer holds them on
-            a background failure); this is the honest „letzter bekannter Stand"
+            a background failure); this is the honest letzter bekannter Stand"
             marker above them, the in-context sibling of the global banner. */}
         <OfflineNotice />
 
@@ -443,11 +443,11 @@ export default function SchatzkammerScreen() {
           </StaggerItem>
         ) : null}
 
-        {/* a2) Brücken-Alarme — the „Jetzt"-Schicht: what needs the owner RIGHT NOW
+        {/* a2) Brücken-Alarme the Jetzt"-Schicht: what needs the owner RIGHT NOW
             (a Freigabe waiting, the next Termin, a stuck Hintergrund-Job, the TSE
             Vorlauf). Same derivation + thresholds as the Notifications Center, so
             the two never disagree. Only rendered when something actually crossed a
-            threshold — silence is honest, not an invented „alles ruhig" card. */}
+            threshold silence is honest, not an invented alles ruhig" card. */}
         {alerts.length > 0 ? (
           <StaggerItem index={2}>
             <BridgeAlertsStrip
@@ -462,7 +462,7 @@ export default function SchatzkammerScreen() {
           </StaggerItem>
         ) : null}
 
-        {/* a3) Schnellzugriff — the owner's most-used money-movement + intake
+        {/* a3) Schnellzugriff the owner's most-used money-movement + intake
             actions, one tap from the board. Pure navigation: the fiscal weight
             lives behind each surface's own step-up + confirm, never here. */}
         <StaggerItem index={3}>
@@ -474,7 +474,7 @@ export default function SchatzkammerScreen() {
           />
         </StaggerItem>
 
-        {/* b) Hero — today's quest (the deterministic, real-metric daily quest) */}
+        {/* b) Hero today's quest (the deterministic, real-metric daily quest) */}
         <StaggerItem index={4}>
           <View className="gap-1.5">
             <QuestCard quest={game.quest} />
@@ -491,7 +491,7 @@ export default function SchatzkammerScreen() {
           </View>
         </StaggerItem>
 
-        {/* c) Rank + streak — the standing, read as one card */}
+        {/* c) Rank + streak the standing, read as one card */}
         <StaggerItem index={5}>
           <Card className="gap-4 px-4 py-4">
             <RankBadge rank={game.rank} />
@@ -500,7 +500,7 @@ export default function SchatzkammerScreen() {
           </Card>
         </StaggerItem>
 
-        {/* d) Live gauge grid (2×2) — from bridge + dashboard, count-up magnitudes */}
+        {/* d) Live gauge grid (2×2) from bridge + dashboard, count-up magnitudes */}
         <StaggerItem index={6}>
           <View className="flex-row flex-wrap justify-between" style={{ rowGap: 10 }}>
             <CountTile
@@ -537,11 +537,11 @@ export default function SchatzkammerScreen() {
           </View>
         </StaggerItem>
 
-        {/* e) Finance gauges — each tile lights up only when its endpoint is live.
+        {/* e) Finance gauges each tile lights up only when its endpoint is live.
             Un-boxed: SectionHeader on the canvas, tiles directly below (one border
             layer, not SectionCard>Card>tile = box-in-box). */}
         <StaggerItem index={7}>
-          <SectionHeader title="Finanzen" subtitle="Gewinn, Umsatz und Lagerwert — live aus dem System." />
+          <SectionHeader title="Finanzen" subtitle="Gewinn, Umsatz und Lagerwert live aus dem System." />
           <View className="flex-row flex-wrap justify-between" style={{ rowGap: 10 }}>
               {profitDay ? (
                 <CountTile
@@ -594,7 +594,7 @@ export default function SchatzkammerScreen() {
           </View>
         </StaggerItem>
 
-        {/* f) Edelmetallbestand — Gold + Silber in grams. Un-boxed (SectionHeader
+        {/* f) Edelmetallbestand Gold + Silber in grams. Un-boxed (SectionHeader
             on canvas, tiles directly below). */}
         <StaggerItem index={8}>
           <SectionHeader title="Edelmetallbestand" subtitle="Gewichte aus dem Lager, in Gramm." />
@@ -640,23 +640,23 @@ export default function SchatzkammerScreen() {
           </View>
         </StaggerItem>
 
-        {/* f2) Edelmetall-Kurse — the spot vs the time-weighted 10-day average per
+        {/* f2) Edelmetall-Kurse the spot vs the time-weighted 10-day average per
             gram, straight from /api/metal-prices/rates. The trend has exactly the
             two REAL points the endpoint gives (avg10d → spot), so the sparkline is
             an honest two-point silhouette, not an invented curve. A metal with no
             readable rate is simply skipped; an unreadable response shows the locked
-            placeholder — never a fabricated price. */}
+            placeholder never a fabricated price. */}
         <StaggerItem index={9}>
           <SectionCard
             title="Edelmetall-Kurse"
-            subtitle="Spot gegen den 10-Tage-Schnitt, je Gramm — live aus dem System."
+            subtitle="Spot gegen den 10-Tage-Schnitt, je Gramm live aus dem System."
             icon={Gem}
           >
             <MetalRatesStrip rates={rates} />
           </SectionCard>
         </StaggerItem>
 
-        {/* g) Monthly treasure map — cumulative net profit vs fixed costs */}
+        {/* g) Monthly treasure map cumulative net profit vs fixed costs */}
         <StaggerItem index={10}>
           {map ? (
             <SectionCard
@@ -707,7 +707,7 @@ export default function SchatzkammerScreen() {
                 <View className="flex-row items-center justify-between">
                   <Text className="text-muted-foreground text-2xs">
                     {map.brokeEven
-                      ? "Fixkosten gedeckt — der Monat ist im Plus"
+                      ? "Fixkosten gedeckt der Monat ist im Plus"
                       : `Fixkosten zu ${Math.round(map.coverage * 100)} % gedeckt`}
                   </Text>
                   <Text
@@ -739,11 +739,11 @@ export default function SchatzkammerScreen() {
           )}
         </StaggerItem>
 
-        {/* h) Siegelwand — earned vs locked, honestly */}
+        {/* h) Siegelwand earned vs locked, honestly */}
         <StaggerItem index={11}>
           <SectionCard
             title="Siegel der Werkstatt"
-            subtitle="Echte Meilensteine — verdient, nie geschenkt."
+            subtitle="Echte Meilensteine verdient, nie geschenkt."
             action={
               <Text className="text-muted-foreground text-xs">
                 {earnedSeals} / {game.seals.length}
@@ -773,7 +773,7 @@ export default function SchatzkammerScreen() {
         </StaggerItem>
       </ScrollView>
 
-      {/* Break-even celebration — the gold flood, once per month, on the real
+      {/* Break-even celebration the gold flood, once per month, on the real
           false→true crossing. Sits above content, never blocks a tap. */}
       <GoldFlood visible={flood.visible} onReachPeak={flood.onReachPeak} onDone={flood.onDone} />
     </View>
@@ -942,7 +942,7 @@ function BridgeAlertsStrip({
   return (
     <SectionCard
       title="Jetzt"
-      subtitle="Was gerade deine Aufmerksamkeit braucht — live aus dem System."
+      subtitle="Was gerade deine Aufmerksamkeit braucht live aus dem System."
       icon={Radio}
       action={
         <View
@@ -992,7 +992,7 @@ function QuickActions({ onOpen }: { onOpen: (route: string) => void }) {
             style={{ width: "48%" }}
           >
             <Card className="min-h-[44px] flex-row items-center gap-3 px-3 py-3">
-              {/* Bare icon — no tinted chip (the chip was offset/clipped on some
+              {/* Bare icon no tinted chip (the chip was offset/clipped on some
                   devices). Ink glyph, calm, matches ListRow + SectionCard. */}
               <Icon size={t.icon.md} color={t.colors.foreground} />
               <Text className="flex-1 text-sm font-semibold" numberOfLines={1}>
@@ -1091,7 +1091,7 @@ function MetalRatesStrip({ rates }: { rates: MetalRatesResponse | null }) {
       <View className="flex-row items-center gap-1.5 py-1">
         <Lock size={t.icon.xs} color={t.colors.mutedForeground} />
         <Text className="text-muted-foreground text-sm" style={{ flexShrink: 1 }}>
-          bald verfügbar — Kurse werden geladen.
+          bald verfügbar Kurse werden geladen.
         </Text>
       </View>
     )
@@ -1101,7 +1101,7 @@ function MetalRatesStrip({ rates }: { rates: MetalRatesResponse | null }) {
     // The endpoint answered but no metal has both a spot and a 10-day average yet.
     return (
       <Text className="text-muted-foreground text-sm">
-        Noch keine Kurse mit Vergleichswert — sobald genug Verlauf vorliegt, erscheint der Trend hier.
+        Noch keine Kurse mit Vergleichswert sobald genug Verlauf vorliegt, erscheint der Trend hier.
       </Text>
     )
   }

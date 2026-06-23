@@ -68,7 +68,7 @@ export function formatPhone(phone: string): string {
   if (digits.length === 0) return phone
   const withPlus = `+${digits}`
   // In 3er/4er-Blöcken gruppieren, ab dem Länder-Teil — rein optisch.
-  const head = withPlus.slice(0, 3) // „+49"
+  const head = withPlus.slice(0, 3) // +49"
   const rest = withPlus.slice(3)
   const grouped = rest.replace(/(\d{3,4})(?=\d)/g, "$1 ").trim()
   return grouped ? `${head} ${grouped}` : head
@@ -222,7 +222,7 @@ export function describeAiStatus(aiActive: boolean): AiStatusMeta {
   }
   return {
     title: "Du antwortest",
-    hint: "Du hast den Chat übernommen — die KI pausiert.",
+    hint: "Du hast den Chat übernommen die KI pausiert.",
     toggleLabel: "An KI zurückgeben",
   }
 }

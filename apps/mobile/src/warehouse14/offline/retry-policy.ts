@@ -145,7 +145,7 @@ export function describeRetryDecision(decision: RetryDecision): string {
   }
   switch (decision.reason) {
     case "fiscal":
-      return "Steuerlich relevant — bitte am Gerät erneut bestätigen, sobald wieder Verbindung besteht."
+      return "Steuerlich relevant bitte am Gerät erneut bestätigen, sobald wieder Verbindung besteht."
     case "not-idempotent":
       return "Diese Aktion wird nicht automatisch wiederholt, um Doppelbuchungen zu vermeiden."
     case "read":

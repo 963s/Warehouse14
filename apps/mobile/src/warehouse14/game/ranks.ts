@@ -78,7 +78,7 @@ export const RANKS: readonly Rank[] = [
   {
     id: "schatzmeister",
     title: "Schatzmeister",
-    description: "Vierzehn Tage Aufstieg — Hüter der Schatzkammer.",
+    description: "Vierzehn Tage Aufstieg Hüter der Schatzkammer.",
     tier: 4,
     minStreak: 14,
     nextAtStreak: null,

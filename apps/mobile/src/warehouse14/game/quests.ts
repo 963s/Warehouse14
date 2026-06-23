@@ -166,7 +166,7 @@ function firstDayQuest(m: QuestMetrics): ActiveQuest {
   return {
     id: "tagesziel-umsatz",
     title: "Den ersten Tag öffnen",
-    description: "Noch kein Vortag — leg mit dem Tagesziel los.",
+    description: "Noch kein Vortag leg mit dem Tagesziel los.",
     icon: "Target",
     value,
     target,

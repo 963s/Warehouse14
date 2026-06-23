@@ -105,7 +105,7 @@ export default function NeuerKundeScreen() {
         <CustomerFields value={form} onChange={setForm} errors={errors} onClearError={clearError} />
       </FormScreen>
 
-      {/* The new-customer milestone flood — visual only (the Success haptic
+      {/* The new-customer milestone flood visual only (the Success haptic
           already fired); once per create, above content, never blocks a tap. */}
       <GoldFlood visible={celebrate} onDone={() => setCelebrate(false)} />
     </>

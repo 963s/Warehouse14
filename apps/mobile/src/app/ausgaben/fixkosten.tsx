@@ -198,7 +198,7 @@ export default function FixkostenScreen() {
         subtitle={
           isEdit
             ? "Bezeichnung, Betrag und Laufzeit anpassen."
-            : "Laufende monatliche Kosten — die Basis für deinen Break-even."
+            : "Laufende monatliche Kosten die Basis für deinen Break-even."
         }
         submitLabel={isEdit ? "Änderungen speichern" : "Fixkosten speichern"}
         successMessage={isEdit ? "Fixkosten aktualisiert." : "Fixkosten gespeichert."}
@@ -242,7 +242,7 @@ export default function FixkostenScreen() {
         <FormField
           label="Aktiv ab"
           required
-          hint="Format TT.MM.JJJJ — ab wann der Posten anfällt."
+          hint="Format TT.MM.JJJJ ab wann der Posten anfällt."
           error={fromError}
           inputProps={{
             value: fromInput,
@@ -259,7 +259,7 @@ export default function FixkostenScreen() {
 
         <FormField
           label="Aktiv bis"
-          hint="Optional — leer lassen, solange der Posten weiterläuft."
+          hint="Optional leer lassen, solange der Posten weiterläuft."
           error={toError}
           inputProps={{
             value: toInput,
@@ -290,7 +290,7 @@ export default function FixkostenScreen() {
         ) : null}
       </FormScreen>
 
-      {/* The committed-write flood — visual only (the Success haptic already
+      {/* The committed-write flood visual only (the Success haptic already
           fired). When it fades, pop back to the list, which refetches on focus. */}
       <GoldFlood visible={celebrate} onDone={() => router.back()} />
     </View>

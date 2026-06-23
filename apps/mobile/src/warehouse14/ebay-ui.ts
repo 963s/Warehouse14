@@ -145,7 +145,7 @@ const TRANSITION_META: Readonly<
   },
   VERKAUFT: {
     actionLabel: "Als verkauft markieren",
-    hint: "Käufer steht fest — reserviert den Bestand.",
+    hint: "Käufer steht fest reserviert den Bestand.",
   },
   BEZAHLT: {
     actionLabel: "Zahlung bestätigen",
@@ -244,7 +244,7 @@ export function describeSideEffect(effect: EbayInventorySideEffect): SideEffectM
         isConflict: false,
         tone: "neutral",
         title: "Bereits reserviert",
-        message: "Der Artikel war bereits für eBay reserviert — keine Änderung am Bestand.",
+        message: "Der Artikel war bereits für eBay reserviert keine Änderung am Bestand.",
       }
     case "CONFLICT_LOCAL_RESERVATION":
       return {
@@ -264,7 +264,7 @@ export function describeSideEffect(effect: EbayInventorySideEffect): SideEffectM
         title: "Konflikt: lokal verkauft",
         message:
           "Dieser Artikel wurde im Laden bereits verkauft. Der eBay-Verkauf kann nicht " +
-          "erfüllt werden — bitte die Listung stornieren oder den Käufer informieren.",
+          "erfüllt werden bitte die Listung stornieren oder den Käufer informieren.",
       }
     case "NONE":
     default:
@@ -306,7 +306,7 @@ export function describePublish(res: EbayPublishResponse): PublishMeta {
       title: "Bei eBay veröffentlicht",
       message:
         res.detail ||
-        "Die Listung ist live. Der Zustand wurde auf „Online“ gesetzt.",
+        "Die Listung ist live. Der Zustand wurde auf Online gesetzt.",
       isLive: true,
     }
   }

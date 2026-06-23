@@ -306,7 +306,7 @@ function ScanOverlay({ scanning, insets }: { scanning: boolean; insets: number }
             ]}
           />
 
-          {/* Animated scan sweep — a brass hairline travelling the window. */}
+          {/* Animated scan sweep a brass hairline travelling the window. */}
           <Animated.View
             style={[
               {
@@ -382,13 +382,13 @@ function ScrimFrame({
   const topBand = Math.max(top, insets)
   return (
     <>
-      {/* Top band — full width, down to the window's top edge (≥ the notch). */}
+      {/* Top band full width, down to the window's top edge (≥ the notch). */}
       <View style={[band, { top: 0, left: 0, right: 0, height: topBand }]} />
-      {/* Bottom band — full width, from the window's bottom edge down. */}
+      {/* Bottom band full width, from the window's bottom edge down. */}
       <View style={[band, { top: top + size, left: 0, right: 0, bottom: 0 }]} />
-      {/* Left band — beside the window only. */}
+      {/* Left band beside the window only. */}
       <View style={[band, { top, height: size, left: 0, width: left }]} />
-      {/* Right band — beside the window only. */}
+      {/* Right band beside the window only. */}
       <View style={[band, { top, height: size, left: left + size, right: 0 }]} />
     </>
   )

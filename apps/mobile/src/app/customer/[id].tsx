@@ -308,7 +308,7 @@ export default function CustomerDetailScreen() {
 
   return (
     <View className="flex-1 bg-background">
-      {/* The aged-paper grain canvas behind the detail — layered cream depth, not
+      {/* The aged-paper grain canvas behind the detail layered cream depth, not
           a flat fill (DESIGN.md §5). */}
       <PaperGrain />
       <ScrollView
@@ -324,7 +324,7 @@ export default function CustomerDetailScreen() {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
       >
-        {/* Identity header — avatar monogram · name · number · the flags an operator scans */}
+        {/* Identity header avatar monogram · name · number · the flags an operator scans */}
         <StaggerItem index={0}>
           <View className="flex-row items-center gap-3">
             <View
@@ -336,7 +336,7 @@ export default function CustomerDetailScreen() {
               </Text>
             </View>
             <View className="flex-1 gap-1">
-              {/* The customer's name is the screen identity — the antique DISPLAY
+              {/* The customer's name is the screen identity the antique DISPLAY
                   display voice (Bricolage Grotesque), like the Artikel name on the product detail. */}
               <Text className="text-2xl font-display-semibold leading-tight" numberOfLines={2}>
                 {customer.fullName}
@@ -369,7 +369,7 @@ export default function CustomerDetailScreen() {
           </View>
         </StaggerItem>
 
-        {/* A real sanctions/PEP hit is a compliance stop — surface it loudly, once. */}
+        {/* A real sanctions/PEP hit is a compliance stop surface it loudly, once. */}
         {customer.sanctionsMatch || customer.pepMatch ? (
           <StaggerItem index={2}>
             <Card
@@ -397,7 +397,7 @@ export default function CustomerDetailScreen() {
           </StaggerItem>
         ) : null}
 
-        {/* Action feedback — the verdigris success / the unified error card */}
+        {/* Action feedback the verdigris success / the unified error card */}
         {okMsg ? (
           <StaggerItem index={3} exit>
             <Card
@@ -454,11 +454,11 @@ export default function CustomerDetailScreen() {
           </SectionCard>
         </StaggerItem>
 
-        {/* KYC + Bilanz — the cumulative balance count-ups (honest: only real amounts) */}
+        {/* KYC + Bilanz the cumulative balance count-ups (honest: only real amounts) */}
         <StaggerItem index={5}>
           <SectionCard
             title="KYC + Bilanz"
-            subtitle="Geldwäschegesetz (GwG) — Schwellen aus dem rollierenden Fenster."
+            subtitle="Geldwäschegesetz (GwG) Schwellen aus dem rollierenden Fenster."
             icon={ShieldCheck}
           >
             <ListRow
@@ -482,7 +482,7 @@ export default function CustomerDetailScreen() {
           </SectionCard>
         </StaggerItem>
 
-        {/* KYC document — the keystone capture + the verification stamp */}
+        {/* KYC document the keystone capture + the verification stamp */}
         <StaggerItem index={6}>
           <SectionCard
             title="KYC-Dokument"
@@ -593,12 +593,12 @@ export default function CustomerDetailScreen() {
                   />
                   {noteError ? (
                     <Text className="text-destructive text-xs">
-                      Für „{TRUST_LEVEL_LABEL[trustLevel]}" ist eine Notiz (min. {TRUST_NOTE_MIN}{" "}
+                      Für {TRUST_LEVEL_LABEL[trustLevel]}" ist eine Notiz (min. {TRUST_NOTE_MIN}{" "}
                       Zeichen) erforderlich.
                     </Text>
                   ) : (
                     <Text className="text-muted-foreground text-2xs">
-                      Pflichtfeld für „Beobachten" und „Gesperrt" (GwG-Nachvollziehbarkeit).
+                      Pflichtfeld für Beobachten" und Gesperrt" (GwG-Nachvollziehbarkeit).
                     </Text>
                   )}
                 </View>
@@ -660,7 +660,7 @@ export default function CustomerDetailScreen() {
         </StaggerItem>
       </ScrollView>
 
-      {/* Danger confirm — BANNED reads as irreversible, so make the operator mean it. */}
+      {/* Danger confirm BANNED reads as irreversible, so make the operator mean it. */}
       <Dialog open={confirmDanger} onOpenChange={setConfirmDanger}>
         <DialogContent>
           <DialogHeader>
@@ -674,7 +674,7 @@ export default function CustomerDetailScreen() {
               <DialogTitle>Kunde sperren?</DialogTitle>
             </View>
             <DialogDescription>
-              „{customer.fullName}" wird gesperrt. Käufe und Verkäufe werden an der Kasse blockiert,
+              {customer.fullName}" wird gesperrt. Käufe und Verkäufe werden an der Kasse blockiert,
               bis die Sperre aufgehoben wird.
             </DialogDescription>
           </DialogHeader>
@@ -697,7 +697,7 @@ export default function CustomerDetailScreen() {
         </DialogContent>
       </Dialog>
 
-      {/* The KYC-confirmed milestone flood — visual only (the Success haptic already
+      {/* The KYC-confirmed milestone flood visual only (the Success haptic already
           fired on the confirm); once per stamp, above content, never blocks a tap. */}
       <GoldFlood visible={celebrate} onDone={() => setCelebrate(false)} />
     </View>

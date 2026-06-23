@@ -124,7 +124,7 @@ function BaldTile({ icon: Icon, copy }: { icon: LucideIcon; copy: BaldTileCopy }
         </View>
       </View>
       <Text className="text-muted-foreground text-xs">{copy.description}</Text>
-      {/* The explicit backend-gap footnote — honesty made visible. */}
+      {/* The explicit backend-gap footnote honesty made visible. */}
       <Text className="text-muted-foreground text-2xs" style={{ opacity: 0.8 }}>
         {copy.gap}
       </Text>
@@ -178,7 +178,7 @@ function FlowCard({
             />
           </View>
 
-          {/* The net trading result of the window — coloured by sign, honest. */}
+          {/* The net trading result of the window coloured by sign, honest. */}
           <View
             className="flex-row items-center justify-between border-t pt-3"
             style={{ borderTopColor: t.colors.border }}
@@ -261,7 +261,7 @@ function InventorySnapshotCard({ inv }: { inv: InventoryValueResponse }) {
           </View>
         </View>
 
-        {/* The share of the shelf price that is margin — the gauge fills it. */}
+        {/* The share of the shelf price that is margin the gauge fills it. */}
         <RingGauge
           value={margin.marginRatio}
           color={t.colors.verdigris}
@@ -356,7 +356,7 @@ export default function AnalyticsScreen() {
 
   return (
     <View className="flex-1 bg-background">
-      {/* The aged-paper grain canvas — depth from the layered cream plus this
+      {/* The aged-paper grain canvas depth from the layered cream plus this
           faint warm tooth, never a flat fill (DESIGN.md §1, §5). */}
       <PaperGrain />
       <ScrollView
@@ -411,7 +411,7 @@ export default function AnalyticsScreen() {
               />
             </StaggerItem>
 
-            {/* Umsatz-Verlauf — net Verkauf per finalized day (real cents). */}
+            {/* Umsatz-Verlauf net Verkauf per finalized day (real cents). */}
             <StaggerItem index={1} exit={false}>
               <SectionCard
                 title={COPY.revenueTitle}
@@ -431,7 +431,7 @@ export default function AnalyticsScreen() {
               </SectionCard>
             </StaggerItem>
 
-            {/* Handelsergebnis — Verkauf − Ankauf per day; goes negative honestly. */}
+            {/* Handelsergebnis Verkauf − Ankauf per day; goes negative honestly. */}
             <StaggerItem index={2} exit={false}>
               <SectionCard
                 title={COPY.tradingTitle}
@@ -450,12 +450,12 @@ export default function AnalyticsScreen() {
               </SectionCard>
             </StaggerItem>
 
-            {/* Ankauf vs Verkauf — the window's balance + totals. */}
+            {/* Ankauf vs Verkauf the window's balance + totals. */}
             <StaggerItem index={3} exit={false}>
               <FlowCard closings={closings} period={period} />
             </StaggerItem>
 
-            {/* Ankauf-Verlauf — net Ankauf per finalized day. */}
+            {/* Ankauf-Verlauf net Ankauf per finalized day. */}
             <StaggerItem index={4} exit={false}>
               <SectionCard
                 title={COPY.ankaufTrendTitle}
@@ -474,7 +474,7 @@ export default function AnalyticsScreen() {
               </SectionCard>
             </StaggerItem>
 
-            {/* Bestand nach Kategorie — productCount ranking (honest: by stock). */}
+            {/* Bestand nach Kategorie productCount ranking (honest: by stock). */}
             <StaggerItem index={5} exit={false}>
               <SectionCard
                 title={COPY.categoryTitle}
@@ -502,7 +502,7 @@ export default function AnalyticsScreen() {
               </SectionCard>
             </StaggerItem>
 
-            {/* Lagerwert heute — the snapshot + its unrealised margin. */}
+            {/* Lagerwert heute the snapshot + its unrealised margin. */}
             <StaggerItem index={6} exit={false}>
               {inventory != null ? (
                 <InventorySnapshotCard inv={inventory} />
@@ -515,7 +515,7 @@ export default function AnalyticsScreen() {
               )}
             </StaggerItem>
 
-            {/* The honest gaps — real profit trend, value history, top products. */}
+            {/* The honest gaps real profit trend, value history, top products. */}
             <StaggerItem index={7} exit={false}>
               <BaldTile icon={ShoppingCart} copy={BALD_PROFIT_TREND} />
             </StaggerItem>

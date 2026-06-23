@@ -106,7 +106,7 @@ function LiveAlertRow({ alert, onPress }: { alert: LiveAlert; onPress?: () => vo
           <Text className="text-base font-semibold" numberOfLines={1} style={{ flexShrink: 1 }}>
             {alert.title}
           </Text>
-          {/* The live count chip — only when the alert carries a real figure. */}
+          {/* The live count chip only when the alert carries a real figure. */}
           {alert.count != null ? (
             <View
               className="min-w-[20px] items-center justify-center rounded-full px-1.5"
@@ -135,7 +135,7 @@ function LiveAlertRow({ alert, onPress }: { alert: LiveAlert; onPress?: () => vo
 
   return (
     <View className="flex-row overflow-hidden rounded-md">
-      {/* Severity accent rail — same language as a feed row. */}
+      {/* Severity accent rail same language as a feed row. */}
       <View style={{ width: 3, borderRadius: 2, backgroundColor: accent }} />
       <View className="flex-1 pl-3">
         {tappable ? (
@@ -223,7 +223,7 @@ export function LiveAlertsSection({ now }: LiveAlertsSectionProps) {
   return (
     <SectionCard
       title="Jetzt"
-      subtitle="Was gerade deine Aufmerksamkeit braucht — live aus dem System."
+      subtitle="Was gerade deine Aufmerksamkeit braucht live aus dem System."
       icon={Radio}
       action={
         alerts.length > 0 ? (
@@ -257,7 +257,7 @@ export function LiveAlertsSection({ now }: LiveAlertsSectionProps) {
             <Radio size={t.icon.sm} color={t.colors.verdigris} />
           </View>
           <Text className="text-muted-foreground text-sm" style={{ flexShrink: 1 }}>
-            Alles ruhig — keine offenen Freigaben, Termine oder Systemhinweise.
+            Alles ruhig keine offenen Freigaben, Termine oder Systemhinweise.
           </Text>
         </View>
       )}

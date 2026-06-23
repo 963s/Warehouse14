@@ -162,7 +162,7 @@ export function validateCategoryName(rawName: string, rawSlug?: string): Categor
       ok: false,
       nameDe,
       slug,
-      error: "Kurzname (Slug) ungültig - nur Kleinbuchstaben, Ziffern und Bindestriche.",
+      error: "Kurzname (Slug) ungültig, nur Kleinbuchstaben, Ziffern und Bindestriche.",
     }
   }
   return { ok: true, nameDe, slug, error: null }

@@ -211,7 +211,7 @@ export default function AusgabeScreen() {
         subtitle={
           isEdit
             ? "Betrag, Kategorie und Datum anpassen."
-            : "Einmalige Betriebsausgabe — fließt in deinen Nettogewinn."
+            : "Einmalige Betriebsausgabe fließt in deinen Nettogewinn."
         }
         submitLabel={isEdit ? "Änderungen speichern" : "Ausgabe speichern"}
         successMessage={isEdit ? "Ausgabe aktualisiert." : "Ausgabe gespeichert."}
@@ -262,7 +262,7 @@ export default function AusgabeScreen() {
 
         <FormField
           label="Notiz"
-          hint="Optional — z. B. Lieferant oder Beleg-Nr."
+          hint="Optional z. B. Lieferant oder Beleg-Nr."
           inputProps={{
             value: note,
             onChangeText: setNote,
@@ -275,7 +275,7 @@ export default function AusgabeScreen() {
         />
       </FormScreen>
 
-      {/* The committed-write flood — visual only (the Success haptic already
+      {/* The committed-write flood visual only (the Success haptic already
           fired). When it fades, pop back to the list, which refetches on focus. */}
       <GoldFlood visible={celebrate} onDone={() => router.back()} />
     </View>

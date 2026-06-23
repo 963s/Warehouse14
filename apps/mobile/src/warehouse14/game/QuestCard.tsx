@@ -66,7 +66,7 @@ export function QuestCard({ quest }: QuestCardProps): ReactNode {
             {quest.title}
           </Text>
           <Text className="text-muted-foreground text-xs" numberOfLines={2}>
-            {quest.done ? "Geschafft — heute erledigt." : quest.description}
+            {quest.done ? "Geschafft heute erledigt." : quest.description}
           </Text>
         </View>
       </View>

@@ -92,8 +92,8 @@ function describeLoginError(err: unknown): string {
       const secs =
         typeof retryAfterMs === "number" && retryAfterMs > 0 ? Math.ceil(retryAfterMs / 1000) : null
       return secs
-        ? `Zu viele Versuche — in ${secs} Sek. erneut versuchen.`
-        : "Zu viele Versuche — bitte einen Moment warten, dann erneut versuchen."
+        ? `Zu viele Versuche in ${secs} Sek. erneut versuchen.`
+        : "Zu viele Versuche bitte einen Moment warten, dann erneut versuchen."
     }
   }
   return describeError(err)
@@ -197,7 +197,7 @@ export default function LoginScreen(): ReactNode {
 
   return (
     <View className="bg-background flex-1">
-      {/* Aged-paper grain — the house canvas is warm paper, not a flat cream
+      {/* Aged-paper grain the house canvas is warm paper, not a flat cream
           fill (DESIGN.md §1, §5). Sits first, behind all content; pure
           decoration, never under text it must contrast against. */}
       <PaperGrain />
@@ -217,7 +217,7 @@ export default function LoginScreen(): ReactNode {
           className="w-full flex-1 items-center justify-center"
           style={{ maxWidth: 420, gap: groupGap }}
         >
-          {/* Hero — the real brand mark + a calm welcome. Settles with the spine's
+          {/* Hero the real brand mark + a calm welcome. Settles with the spine's
               screen-enter; the mark itself breathes in once. */}
           <Animated.View
             entering={screenEnter(reduceMotion)}
@@ -238,7 +238,7 @@ export default function LoginScreen(): ReactNode {
             </View>
           </Animated.View>
 
-          {/* PIN entry — dots + the clean ink keypad. Carries the shake + flash on error. */}
+          {/* PIN entry dots + the clean ink keypad. Carries the shake + flash on error. */}
           <View className="w-full items-center" style={{ gap: t.space.x5 }}>
             <PinPad
               filled={pin.length}
@@ -267,7 +267,7 @@ export default function LoginScreen(): ReactNode {
           </View>
         </View>
 
-        {/* Footer — re-open the intro + the honest DEV connection hint. Lives
+        {/* Footer re-open the intro + the honest DEV connection hint. Lives
             outside the centred group as a fixed-height element pinned above the
             home indicator, so it never tugs the brand/pad off centre. */}
         <View
@@ -280,14 +280,14 @@ export default function LoginScreen(): ReactNode {
               replayOnboarding()
             }}
             accessibilityRole="button"
-            accessibilityLabel="App kennenlernen — Einführung erneut ansehen"
+            accessibilityLabel="App kennenlernen Einführung erneut ansehen"
             hitSlop={12}
             style={{ minHeight: 44, justifyContent: "center", paddingHorizontal: t.space.x2 }}
           >
             <Text className="text-primary text-sm font-medium">App kennenlernen</Text>
           </PressableScale>
 
-          {/* Honest DEV-only convenience hint — the backend it talks to and the
+          {/* Honest DEV-only convenience hint the backend it talks to and the
               seeded owner credentials. Gated to dev builds so a real owner on a
               release build never sees a developer string or a plaintext PIN. */}
           {__DEV__ ? (

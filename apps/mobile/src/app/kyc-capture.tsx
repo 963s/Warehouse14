@@ -134,7 +134,7 @@ export default function KycCaptureRoute() {
 
   return (
     <View className="flex-1 bg-background">
-      {/* The aged-paper grain canvas behind the form — the same layered cream
+      {/* The aged-paper grain canvas behind the form the same layered cream
           depth as the rest of the group (DESIGN.md §5). The camera phase keeps
           its own dark over-feed chrome and is intentionally ungrained. */}
       <PaperGrain />
@@ -154,7 +154,7 @@ export default function KycCaptureRoute() {
             <IdCard size={t.icon.xl} color={t.colors.primary} />
           </View>
           <View className="flex-1 gap-0.5">
-            {/* The screen identity — the display voice (Bricolage Grotesque),
+            {/* The screen identity the display voice (Bricolage Grotesque),
                 matching the other group headlines (DESIGN.md §3). */}
             <Text className="text-2xl font-display-semibold leading-tight" numberOfLines={1}>
               Ausweis erfassen
@@ -166,7 +166,7 @@ export default function KycCaptureRoute() {
         </View>
       </StaggerItem>
 
-      {/* Privacy reassurance — the honest promise about the sensitive image. */}
+      {/* Privacy reassurance the honest promise about the sensitive image. */}
       <StaggerItem index={1}>
         <Card
           className="flex-row items-start gap-2.5 px-4 py-3.5"
@@ -190,7 +190,7 @@ export default function KycCaptureRoute() {
         </Card>
       </StaggerItem>
 
-      {/* Document type — the chip picker */}
+      {/* Document type the chip picker */}
       <StaggerItem index={2}>
         <SectionCard title="Dokument-Typ" icon={IdCard}>
           <View className="flex-row flex-wrap gap-2">
@@ -217,7 +217,7 @@ export default function KycCaptureRoute() {
         </SectionCard>
       </StaggerItem>
 
-      {/* Document fields — labelled, per-field validated */}
+      {/* Document fields labelled, per-field validated */}
       <StaggerItem index={3}>
         <SectionCard title="Angaben" subtitle="Direkt vom Ausweis übernehmen.">
           <FormField
@@ -283,7 +283,7 @@ export default function KycCaptureRoute() {
         </StaggerItem>
       ) : null}
 
-      {/* Actions — Abbrechen + go to the camera (Schritt 2) */}
+      {/* Actions Abbrechen + go to the camera (Schritt 2) */}
       <StaggerItem index={5}>
         <View className="flex-row items-center gap-2 pt-1">
           <Button

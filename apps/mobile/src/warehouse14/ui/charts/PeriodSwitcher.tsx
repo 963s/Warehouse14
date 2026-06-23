@@ -101,7 +101,7 @@ export function PeriodSwitcher<Id extends string = string>({
       className="h-9 flex-row rounded-md p-0.5"
       style={{ backgroundColor: t.colors.border }}
     >
-      {/* The sliding thumb — a brass-tinted card the width of one segment. */}
+      {/* The sliding thumb a brass-tinted card the width of one segment. */}
       {segWidth > 0 ? (
         <Animated.View
           pointerEvents="none"

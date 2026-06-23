@@ -61,7 +61,7 @@ const CATEGORY_META: Readonly<Record<DocumentCategory, CategoryMeta>> = {
     icon: Receipt,
     variant: "default",
     fiscal: true,
-    hint: "Verkaufsrechnungen — der steuerlich relevante Ausgangsbeleg.",
+    hint: "Verkaufsrechnungen der steuerlich relevante Ausgangsbeleg.",
   },
   ANKAUFBELEG: {
     category: "ANKAUFBELEG",
@@ -69,7 +69,7 @@ const CATEGORY_META: Readonly<Record<DocumentCategory, CategoryMeta>> = {
     icon: ScrollText,
     variant: "default",
     fiscal: true,
-    hint: "Ankaufbelege — der Nachweis jeder Auszahlung an Verkäufer.",
+    hint: "Ankaufbelege der Nachweis jeder Auszahlung an Verkäufer.",
   },
   VERSANDBELEG: {
     category: "VERSANDBELEG",
@@ -77,7 +77,7 @@ const CATEGORY_META: Readonly<Record<DocumentCategory, CategoryMeta>> = {
     icon: Truck,
     variant: "secondary",
     fiscal: false,
-    hint: "Versandbelege — Nachweis über den Versand verkaufter Stücke.",
+    hint: "Versandbelege Nachweis über den Versand verkaufter Stücke.",
   },
   EXPERTISE: {
     category: "EXPERTISE",
@@ -85,7 +85,7 @@ const CATEGORY_META: Readonly<Record<DocumentCategory, CategoryMeta>> = {
     icon: FileText,
     variant: "secondary",
     fiscal: false,
-    hint: "Expertisen — fachliche Begutachtung eines Stücks.",
+    hint: "Expertisen fachliche Begutachtung eines Stücks.",
   },
   ZERTIFIKAT: {
     category: "ZERTIFIKAT",
@@ -93,7 +93,7 @@ const CATEGORY_META: Readonly<Record<DocumentCategory, CategoryMeta>> = {
     icon: BadgeCheck,
     variant: "secondary",
     fiscal: false,
-    hint: "Zertifikate — Echtheits- oder Herkunftsnachweis.",
+    hint: "Zertifikate Echtheits- oder Herkunftsnachweis.",
   },
   AUSWEIS: {
     category: "AUSWEIS",
@@ -101,7 +101,7 @@ const CATEGORY_META: Readonly<Record<DocumentCategory, CategoryMeta>> = {
     icon: IdCard,
     variant: "outline",
     fiscal: false,
-    hint: "Ausweis-Scans — sensibler KYC-Nachweis nach Geldwäschegesetz.",
+    hint: "Ausweis-Scans sensibler KYC-Nachweis nach Geldwäschegesetz.",
   },
 }
 

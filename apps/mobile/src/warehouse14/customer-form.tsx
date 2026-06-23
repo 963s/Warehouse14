@@ -125,7 +125,7 @@ export function validateCustomerForm(s: CustomerFormState): CustomerFormErrors {
   }
 
   if (s.dateOfBirth.trim() && !isRealIsoDate(s.dateOfBirth.trim())) {
-    errors.dateOfBirth = "Datum ungültig — Format JJJJ-MM-TT."
+    errors.dateOfBirth = "Datum ungültig Format JJJJ-MM-TT."
   }
 
   if (s.email.trim() && !EMAIL_RE.test(s.email.trim())) {
@@ -137,7 +137,7 @@ export function validateCustomerForm(s: CustomerFormState): CustomerFormErrors {
   }
 
   if (s.vatId.trim() && !VAT_RE.test(s.vatId.trim())) {
-    errors.vatId = "USt-IdNr. ungültig — z. B. DE123456789."
+    errors.vatId = "USt-IdNr. ungültig z. B. DE123456789."
   }
 
   return errors
@@ -254,7 +254,7 @@ export function CustomerFields({
 
       <TextField
         label="Geburtsdatum"
-        hint="Optional — z. B. 1985-04-23."
+        hint="Optional z. B. 1985-04-23."
         error={errors.dateOfBirth}
         inputRef={dobRef}
         value={value.dateOfBirth}
@@ -307,7 +307,7 @@ export function CustomerFields({
 
       <TextField
         label="Adresse"
-        hint="Optional — Straße, PLZ und Ort."
+        hint="Optional Straße, PLZ und Ort."
         inputRef={addressRef}
         value={value.address}
         onChangeText={patch("address")}
@@ -322,7 +322,7 @@ export function CustomerFields({
 
       <TextField
         label="USt-IdNr."
-        hint="Optional — nur bei gewerblichen Kunden."
+        hint="Optional nur bei gewerblichen Kunden."
         error={errors.vatId}
         inputRef={vatRef}
         value={value.vatId}
@@ -349,7 +349,7 @@ export function CustomerFields({
 
       <TextField
         label="Notiz"
-        hint="Optional — interne Anmerkung."
+        hint="Optional interne Anmerkung."
         inputRef={notesRef}
         value={value.notes}
         onChangeText={patch("notes")}

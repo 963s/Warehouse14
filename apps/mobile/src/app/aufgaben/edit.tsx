@@ -178,7 +178,7 @@ export default function AufgabeBearbeitenScreen() {
 
         <FormField
           label="Beschreibung"
-          hint="Optional — Details oder nächste Schritte."
+          hint="Optional Details oder nächste Schritte."
           inputProps={{
             value: description,
             onChangeText: setDescription,
@@ -195,7 +195,7 @@ export default function AufgabeBearbeitenScreen() {
 
         <FormField
           label="Fällig am"
-          hint="Optional — Format TT.MM.JJJJ. Leer lassen entfernt das Datum."
+          hint="Optional Format TT.MM.JJJJ. Leer lassen entfernt das Datum."
           error={dueError}
           inputProps={{
             value: dueInput,
@@ -211,7 +211,7 @@ export default function AufgabeBearbeitenScreen() {
         />
       </FormScreen>
 
-      {/* The saved-changes flood — visual only (the Success haptic already fired).
+      {/* The saved-changes flood visual only (the Success haptic already fired).
           When it fades, pop back to the list, which refetches on focus. */}
       <GoldFlood visible={celebrate} onDone={() => router.back()} />
     </View>

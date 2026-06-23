@@ -115,7 +115,7 @@ export function getPrintCapabilities(): PrintCapabilities {
     canWriteFile,
     // Either path counts as "can export": print to a printer/PDF, or share a PDF.
     canExportDocument: canPrintNative || canSharePdf,
-    canPrintEscPos: false, // no native ESC/POS transport in this build — honest.
+    canPrintEscPos: false, // no native ESC/POS transport in this build honest.
     platform: Platform.OS,
   }
   return cached

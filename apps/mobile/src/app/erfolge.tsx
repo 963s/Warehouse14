@@ -235,7 +235,7 @@ export default function ErfolgeScreen() {
           <ErfolgeSkeleton />
         ) : (
           <View className="gap-5">
-            {/* a) Aufstieg — the full ladder + the level-up moment */}
+            {/* a) Aufstieg the full ladder + the level-up moment */}
             <StaggerItem index={0} exit={false}>
               <SectionCard
                 title={ERFOLGE_COPY.rankSection.title}
@@ -246,7 +246,7 @@ export default function ErfolgeScreen() {
               </SectionCard>
             </StaggerItem>
 
-            {/* b) Serien-Historie — every run, longest-first */}
+            {/* b) Serien-Historie every run, longest-first */}
             <StaggerItem index={1} exit={false}>
               <SectionCard
                 title={ERFOLGE_COPY.streakSection.title}
@@ -258,13 +258,13 @@ export default function ErfolgeScreen() {
                   <EmptyState
                     icon={Sparkles}
                     title="Noch keine Serie"
-                    description="Sobald ein Tag den Vortag schlägt, beginnt deine erste Serie — und erscheint hier."
+                    description="Sobald ein Tag den Vortag schlägt, beginnt deine erste Serie und erscheint hier."
                   />
                 )}
               </SectionCard>
             </StaggerItem>
 
-            {/* c) Meilensteine — the chronological rank-up + seal timeline */}
+            {/* c) Meilensteine the chronological rank-up + seal timeline */}
             <StaggerItem index={2} exit={false}>
               <SectionCard
                 title={ERFOLGE_COPY.achievementSection.title}
@@ -278,7 +278,7 @@ export default function ErfolgeScreen() {
                     title="Noch keine Meilensteine"
                     description={
                       hasHistory
-                        ? "Steig einen Rang auf oder verdien dein erstes Siegel — der Moment landet hier mit echtem Datum."
+                        ? "Steig einen Rang auf oder verdien dein erstes Siegel der Moment landet hier mit echtem Datum."
                         : ERFOLGE_COPY.emptyBody
                     }
                   />
@@ -286,7 +286,7 @@ export default function ErfolgeScreen() {
               </SectionCard>
             </StaggerItem>
 
-            {/* d) Siegel — earned vs locked, honestly (incl. the live break-even seal) */}
+            {/* d) Siegel earned vs locked, honestly (incl. the live break-even seal) */}
             <StaggerItem index={3} exit={false}>
               <SectionCard
                 title={ERFOLGE_COPY.sealSection.title}
@@ -311,7 +311,7 @@ export default function ErfolgeScreen() {
         )}
       </ScrollView>
 
-      {/* Level-up gold flood — once per rank, on the real upward crossing. */}
+      {/* Level-up gold flood once per rank, on the real upward crossing. */}
       <GoldFlood visible={flood.visible} onReachPeak={flood.onReachPeak} onDone={flood.onDone} />
     </View>
   )

@@ -63,7 +63,7 @@ function HubCard({ surface, index }: { surface: OwnerSurface; index: number }) {
       style={available ? undefined : { borderStyle: "dashed", opacity: 0.9 }}
     >
       <View className="flex-row items-start justify-between">
-        {/* Leading icon disc — a soft brass-tinted square so the glyph reads as a
+        {/* Leading icon disc a soft brass-tinted square so the glyph reads as a
             launcher target. The tint carries no text, so brass is correct here. */}
         <View
           className="items-center justify-center rounded-xl"
@@ -160,7 +160,7 @@ export default function MehrScreen() {
 
   return (
     <View className="flex-1 bg-background">
-      {/* Die gealterte Papier-Maserung als Leinwand — Tiefe aus dem geschichteten
+      {/* Die gealterte Papier-Maserung als Leinwand Tiefe aus dem geschichteten
           Creme plus dieser feinen warmen Struktur, nie eine flache Fläche
           (DESIGN.md §1, §5). */}
       <PaperGrain />
@@ -186,7 +186,7 @@ export default function MehrScreen() {
 
         {sections.map((section) => (
           <View key={section.group} className="gap-3">
-            {/* Section label — the shared overline (small-caps eyebrow), not a
+            {/* Section label the shared overline (small-caps eyebrow), not a
                 hand-rolled uppercase Text. One identity across the app. */}
             <SectionHeader title={section.label} emphasis="overline" />
             <View className="flex-row flex-wrap justify-between" style={{ rowGap: t.space.x3 }}>

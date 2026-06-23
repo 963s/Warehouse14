@@ -217,8 +217,8 @@ function OnDutyCard({
           />
         </View>
 
-        {/* The honest CLOSE handoff. Closing a shift is a Blindsturz — a fiscal
-            action with a PIN step-up — so it is owned by the Kasse cockpit, not
+        {/* The honest CLOSE handoff. Closing a shift is a Blindsturz a fiscal
+            action with a PIN step-up so it is owned by the Kasse cockpit, not
             re-implemented here. We deep-link there plainly rather than fake a
             close button that this surface shouldn't carry. */}
         <Card
@@ -269,7 +269,7 @@ function OpenZweitkasseCard({
           description={COPY.onDutyClosedDescription}
         />
 
-        {/* Zweitkasse öffnen — the counted opening float + a deliberate open. */}
+        {/* Zweitkasse öffnen the counted opening float + a deliberate open. */}
         <View
           className="gap-3 rounded-xl px-3.5 py-3.5"
           style={{ borderWidth: 1, borderColor: t.colors.border }}
@@ -602,7 +602,7 @@ export default function TeamScreen() {
 
   return (
     <View className="flex-1 bg-background">
-      {/* Die gealterte Papier-Maserung als Leinwand — Tiefe aus dem geschichteten
+      {/* Die gealterte Papier-Maserung als Leinwand Tiefe aus dem geschichteten
           Creme plus dieser feinen warmen Struktur, nie eine flache Fläche
           (DESIGN.md §1, §5). */}
       <PaperGrain />
@@ -654,7 +654,7 @@ export default function TeamScreen() {
               <OperatorCard actor={operator} />
             </StaggerItem>
 
-            {/* Who is on duty — the open shift, or its skeleton/closed state. */}
+            {/* Who is on duty the open shift, or its skeleton/closed state. */}
             <StaggerItem index={1} exit={false}>
               {firstLoad ? (
                 <Card className="gap-3 px-4 py-4">
@@ -693,17 +693,17 @@ export default function TeamScreen() {
               )}
             </StaggerItem>
 
-            {/* The Zweitkasse explainer — honest secondary-register model. */}
+            {/* The Zweitkasse explainer honest secondary-register model. */}
             <StaggerItem index={2} exit={false}>
               <ZweitkasseCard />
             </StaggerItem>
 
-            {/* The role reference — the current operator's role highlighted. */}
+            {/* The role reference the current operator's role highlighted. */}
             <StaggerItem index={3} exit={false}>
               <RolesCard activeRole={operator?.role ?? null} />
             </StaggerItem>
 
-            {/* The honest roster note — administered at the Desktop-Kasse. */}
+            {/* The honest roster note administered at the Desktop-Kasse. */}
             <StaggerItem index={4} exit={false}>
               <DesktopManagementCard />
             </StaggerItem>
@@ -711,7 +711,7 @@ export default function TeamScreen() {
         )}
       </ScrollView>
 
-      {/* The deliberate open-confirm — mounted at the root so it overlays the
+      {/* The deliberate open-confirm mounted at the root so it overlays the
           whole surface. Never auto-fires; the open POST runs only on its commit
           press. */}
       <OpenShiftSheet

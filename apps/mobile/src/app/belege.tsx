@@ -297,7 +297,7 @@ function DocumentCard({ doc, meta }: { doc: DocumentRow; meta: CategoryMeta }) {
       accessibilityRole="button"
       accessibilityLabel={`${meta.label}, ${doc.fileName}${
         archived ? ", archiviert" : ""
-      }. Öffnen ist in dieser App nicht verfügbar — bitte im Kassensystem öffnen.`}
+      }. Öffnen ist in dieser App nicht verfügbar bitte im Kassensystem öffnen.`}
     >
       <Card
         className="gap-3 rounded-xl border px-3.5 py-3"
@@ -339,7 +339,7 @@ function DocumentCard({ doc, meta }: { doc: DocumentRow; meta: CategoryMeta }) {
           </View>
         </View>
 
-        {/* Verknüpfung + Integrität — die ruhige Vertrauens-Zeile. */}
+        {/* Verknüpfung + Integrität die ruhige Vertrauens-Zeile. */}
         <View className="gap-1.5 border-t pt-2.5" style={{ borderColor: t.colors.border }}>
           <DocumentMetaRow icon={Link2}>
             <Text className="text-muted-foreground text-xs" numberOfLines={1}>
@@ -361,7 +361,7 @@ function DocumentCard({ doc, meta }: { doc: DocumentRow; meta: CategoryMeta }) {
           <Lock size={t.icon.xs} color={t.colors.mutedForeground} />
           <Text className="text-muted-foreground flex-1 text-2xs leading-4">
             {archived
-              ? "Archiviert — Beleg bleibt revisionssicher im Kassensystem."
+              ? "Archiviert Beleg bleibt revisionssicher im Kassensystem."
               : "Öffnen/Teilen erfolgt im Kassensystem (kein App-Download)."}
           </Text>
         </View>
@@ -478,7 +478,7 @@ export default function BelegeScreen() {
 
   return (
     <View className="flex-1 bg-background">
-      {/* The aged-paper grain canvas — depth from the layered cream plus this
+      {/* The aged-paper grain canvas depth from the layered cream plus this
           faint warm tooth, never a flat fill (DESIGN.md §1, §5). */}
       <PaperGrain />
       <ScrollView
@@ -520,7 +520,7 @@ export default function BelegeScreen() {
             <RegisterHeader summary={summary} />
           ) : null}
 
-          {/* Kategorie-Filter — Zahlen stets aus der filter-freien Übersicht. */}
+          {/* Kategorie-Filter Zahlen stets aus der filter-freien Übersicht. */}
           <FilterRow
             filter={filter}
             onChange={setFilter}
@@ -555,8 +555,8 @@ export default function BelegeScreen() {
               title={emptyForFilter ? "Keine Belege in dieser Kategorie" : "Noch keine Belege"}
               description={
                 emptyForFilter
-                  ? "In dieser Kategorie liegt noch kein Beleg. Wähle „Alle“ oder eine andere Kategorie."
-                  : "Sobald am POS ein Verkauf oder Ankauf einen Beleg erzeugt, erscheint er hier — revisionssicher und nach Kategorie geordnet."
+                  ? "In dieser Kategorie liegt noch kein Beleg. Wähle Alle oder eine andere Kategorie."
+                  : "Sobald am POS ein Verkauf oder Ankauf einen Beleg erzeugt, erscheint er hier revisionssicher und nach Kategorie geordnet."
               }
             />
           ) : (
@@ -593,7 +593,7 @@ export default function BelegeScreen() {
               router.push("/kasse" as Href)
             }}
             accessibilityRole="button"
-            accessibilityLabel="Zur Kasse — steuerliche Exporte (DATEV, Kassenbericht)"
+            accessibilityLabel="Zur Kasse steuerliche Exporte (DATEV, Kassenbericht)"
             className="bg-muted mt-1 flex-row items-center gap-1.5 self-start rounded-md px-2.5 py-2"
             style={{ minHeight: t.touch.min }}
           >

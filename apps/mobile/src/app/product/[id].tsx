@@ -266,7 +266,7 @@ export default function ProductDetailScreen() {
           title={productMissing ? "Artikel nicht gefunden" : undefined}
           message={
             productMissing
-              ? "Dieser Artikel ist nicht mehr vorhanden — er wurde vermutlich gelöscht."
+              ? "Dieser Artikel ist nicht mehr vorhanden er wurde vermutlich gelöscht."
               : (productQ.error ?? "Der Artikel konnte nicht geladen werden.")
           }
           cause={productQ.errorCause}
@@ -289,7 +289,7 @@ export default function ProductDetailScreen() {
         contentContainerStyle={{ padding: 16, paddingBottom: insets.contentBottom, gap: 12 }}
         refreshControl={<RefreshControl {...rc} />}
       >
-        {/* Identity header — name · SKU · status, with a leading article disc. */}
+        {/* Identity header name · SKU · status, with a leading article disc. */}
         <StaggerItem index={0}>
           <View className="flex-row items-center gap-3">
             <View
@@ -314,7 +314,7 @@ export default function ProductDetailScreen() {
           </View>
         </StaggerItem>
 
-        {/* Bearbeiten — the one calm primary nav off this screen. */}
+        {/* Bearbeiten the one calm primary nav off this screen. */}
         <StaggerItem index={1}>
           <PressableScale
             accessibilityRole="button"
@@ -336,7 +336,7 @@ export default function ProductDetailScreen() {
           </PressableScale>
         </StaggerItem>
 
-        {/* Action feedback — the verdigris success / the unified error card. */}
+        {/* Action feedback the verdigris success / the unified error card. */}
         {okMsg ? (
           <StaggerItem index={2} exit>
             <Card
@@ -367,7 +367,7 @@ export default function ProductDetailScreen() {
           </StaggerItem>
         ) : null}
 
-        {/* Werte — Schmelzwert (live count-up) + the prices + Lagerort. */}
+        {/* Werte Schmelzwert (live count-up) + the prices + Lagerort. */}
         <StaggerItem index={3}>
           <SectionCard title="Werte" icon={Banknote}>
             <View className="flex-row items-center justify-between py-1">
@@ -419,7 +419,7 @@ export default function ProductDetailScreen() {
           </SectionCard>
         </StaggerItem>
 
-        {/* Fotos — primary first; tap a non-primary thumb to promote it. */}
+        {/* Fotos primary first; tap a non-primary thumb to promote it. */}
         <StaggerItem index={4}>
           <SectionCard
             title={`Fotos${photoCountLabel}`}
@@ -474,7 +474,7 @@ export default function ProductDetailScreen() {
               </View>
             ) : photos.length === 0 ? (
               <Text className="text-muted-foreground text-sm">
-                Noch keine Fotos. „Hinzufügen", um das erste aufzunehmen — es wird zum Hauptbild.
+                Noch keine Fotos. Hinzufügen", um das erste aufzunehmen es wird zum Hauptbild.
               </Text>
             ) : (
               <View className="flex-row flex-wrap gap-2">
@@ -523,7 +523,7 @@ export default function ProductDetailScreen() {
           </SectionCard>
         </StaggerItem>
 
-        {/* Umlagern — the relocate sheet (a real audit_log write + step-up). */}
+        {/* Umlagern the relocate sheet (a real audit_log write + step-up). */}
         <StaggerItem index={5}>
           {editing ? (
             <SectionCard title="Umlagern" icon={Warehouse}>
@@ -601,7 +601,7 @@ export default function ProductDetailScreen() {
           )}
         </StaggerItem>
 
-        {/* Entwurf löschen — only unsold DRAFTs, confirmed in a dialog first. */}
+        {/* Entwurf löschen only unsold DRAFTs, confirmed in a dialog first. */}
         {isDeletableDraft ? (
           <StaggerItem index={6}>
             <Button
@@ -618,7 +618,7 @@ export default function ProductDetailScreen() {
         ) : null}
       </ScrollView>
 
-      {/* Delete confirm — irreversible, so make the operator mean it. */}
+      {/* Delete confirm irreversible, so make the operator mean it. */}
       <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <DialogContent>
           <DialogHeader>
@@ -632,8 +632,8 @@ export default function ProductDetailScreen() {
               <DialogTitle>Artikel löschen?</DialogTitle>
             </View>
             <DialogDescription>
-              „{product.name}" wird unwiderruflich gelöscht. Nur unverkaufte Entwürfe können
-              gelöscht werden — die Aktion kann nicht rückgängig gemacht werden.
+              {product.name}" wird unwiderruflich gelöscht. Nur unverkaufte Entwürfe können
+              gelöscht werden die Aktion kann nicht rückgängig gemacht werden.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

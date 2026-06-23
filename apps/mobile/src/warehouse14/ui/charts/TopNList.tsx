@@ -115,7 +115,7 @@ export function TopNList({
         const body = (
           <View className="gap-1.5" style={{ minHeight: t.touch.min }}>
             <View className="flex-row items-center gap-2.5">
-              {/* rank chip — brass on the leader, muted-tinted otherwise */}
+              {/* rank chip brass on the leader, muted-tinted otherwise */}
               <View
                 className="h-6 w-6 items-center justify-center rounded-md"
                 style={{
@@ -143,7 +143,7 @@ export function TopNList({
                 {formatValue(item.value)}
               </Text>
             </View>
-            {/* proportional bar — share of the top row */}
+            {/* proportional bar share of the top row */}
             <View
               className="overflow-hidden rounded-full"
               style={{ height: 4, backgroundColor: t.colors.border, marginLeft: 34 }}

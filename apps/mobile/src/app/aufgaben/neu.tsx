@@ -120,7 +120,7 @@ export default function NeueAufgabeScreen() {
 
         <FormField
           label="Beschreibung"
-          hint="Optional — Details oder nächste Schritte."
+          hint="Optional Details oder nächste Schritte."
           inputProps={{
             value: description,
             onChangeText: setDescription,
@@ -137,7 +137,7 @@ export default function NeueAufgabeScreen() {
 
         <FormField
           label="Fällig am"
-          hint="Optional — Format TT.MM.JJJJ."
+          hint="Optional Format TT.MM.JJJJ."
           error={dueError}
           inputProps={{
             value: dueInput,
@@ -170,7 +170,7 @@ export default function NeueAufgabeScreen() {
         </FormField>
       </FormScreen>
 
-      {/* The new-task milestone flood — visual only (the Success haptic already
+      {/* The new-task milestone flood visual only (the Success haptic already
           fired). When it fades, pop back to the list, which refetches on focus. */}
       <GoldFlood visible={celebrate} onDone={() => router.back()} />
     </View>

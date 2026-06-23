@@ -87,7 +87,7 @@ function RunRow({ run, ratio }: { run: StreakRun; ratio: number }): ReactNode {
         )}
       </View>
 
-      {/* Proportional bar vs the longest run — a real ranking of the best stretches. */}
+      {/* Proportional bar vs the longest run a real ranking of the best stretches. */}
       <View
         className="w-full overflow-hidden rounded-full"
         style={{ height: 6, backgroundColor: t.colors.border }}

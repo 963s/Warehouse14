@@ -686,7 +686,7 @@ function AppearanceSection() {
         className="text-muted-foreground mt-1 pt-2 text-2xs"
         style={{ borderTopWidth: 1, borderColor: t.colors.border }}
       >
-        {"Hell/Dunkel und „Bewegung reduzieren“ steuerst du im System; die App folgt dieser " +
+        {"Hell/Dunkel und Bewegung reduzieren steuerst du im System; die App folgt dieser " +
           "Wahl. Eine separate App-Umschaltung gibt es bewusst nicht."}
       </Text>
     </SectionCard>

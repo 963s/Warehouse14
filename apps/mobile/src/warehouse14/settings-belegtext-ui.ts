@@ -95,7 +95,7 @@ export function validateBelegtextDraft(
     }
   }
   if (currentBody != null && value === currentBody.trim()) {
-    return { ok: false, value, error: "Text ist unverändert - nichts zu speichern." }
+    return { ok: false, value, error: "Text ist unverändert, nichts zu speichern." }
   }
   return { ok: true, value, error: null }
 }

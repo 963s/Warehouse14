@@ -121,7 +121,7 @@ const CONFLICT_TOKENS: ReadonlyArray<{ token: string; line: string }> = [
     // enroll) can make a now-illegal step reachable. Name it in the operator's
     // vocabulary and point them at the cure (refresh) — never leak the English.
     token: "Illegal eBay transition",
-    line: "Dieser eBay-Schritt ist nicht mehr möglich — der Zustand hat sich geändert. Bitte die Listung aktualisieren.",
+    line: "Dieser eBay-Schritt ist nicht mehr möglich der Zustand hat sich geändert. Bitte die Listung aktualisieren.",
   },
   // ── Termine ────────────────────────────────────────────────────────────────
   {
@@ -177,7 +177,7 @@ const CONFLICT_TOKENS: ReadonlyArray<{ token: string; line: string }> = [
     //    edge the owner cannot self-cure, so name it plainly and point at
     //    support rather than at a refresh that won't help.
     token: "Kein Ledger-Anker",
-    line: "Der Tagesabschluss kann gerade nicht gesetzt werden — die Buchungskette fehlt noch. Bitte später erneut versuchen oder den Support kontaktieren.",
+    line: "Der Tagesabschluss kann gerade nicht gesetzt werden die Buchungskette fehlt noch. Bitte später erneut versuchen oder den Support kontaktieren.",
   },
   // ── Schicht / Zweitkasse (eine offene Schicht pro Gerät) ───────────────────
   {
@@ -186,7 +186,7 @@ const CONFLICT_TOKENS: ReadonlyArray<{ token: string; line: string }> = [
     // owner at the already-running register rather than the generic "aktualisieren"
     // fallback, which would not tell them the till is in fact already open here.
     token: "already OPEN on this",
-    line: "Auf diesem Gerät ist bereits eine Schicht geöffnet. Sie wird oben unter „Im Dienst“ angezeigt.",
+    line: "Auf diesem Gerät ist bereits eine Schicht geöffnet. Sie wird oben unter Im Dienst angezeigt.",
   },
   // ── Geldwege (Fiskal-Eindeutigkeit) ────────────────────────────────────────
   {
@@ -208,7 +208,7 @@ const CONFLICT_TOKENS: ReadonlyArray<{ token: string; line: string }> = [
     // Gate the KYC step on this token alone — never blame KYC for an unrelated
     // conflict, which would send the operator into a dead-end loop.
     token: "without a prior physical-ID check",
-    line: "Aktion nicht möglich — zuerst die KYC-Prüfung (Ausweis) bestätigen.",
+    line: "Aktion nicht möglich zuerst die KYC-Prüfung (Ausweis) bestätigen.",
   },
 ]
 
@@ -228,7 +228,7 @@ function describeValidationError(err: ApiError): string | null {
     // "/dateOfBirth" → "dateOfBirth"; "/address/city" → "address".
     const field = path.split("/").filter(Boolean)[0]
     const label = field ? VALIDATION_FIELD_LABELS[field] : undefined
-    if (label) return `${label} ungültig — bitte prüfen.`
+    if (label) return `${label} ungültig bitte prüfen.`
   }
   return null
 }
@@ -265,7 +265,7 @@ function describeConflict(err: ApiError): string {
 
   // Unrecognised conflict. Stay honest: don't surface the raw English, don't
   // fabricate a cause we can't prove. A neutral, actionable German line.
-  return "Aktion derzeit nicht möglich — der aktuelle Stand passt nicht mehr. Bitte aktualisieren und erneut versuchen."
+  return "Aktion derzeit nicht möglich der aktuelle Stand passt nicht mehr. Bitte aktualisieren und erneut versuchen."
 }
 
 /**
@@ -288,15 +288,15 @@ function describeUnauthorized(err: ApiError): string {
   // tries remain before the lockout, without ever seeing the English.
   if (msg.includes("Invalid PIN")) {
     const n = msg.match(/\((\d+) attempts? remaining\)/)?.[1]
-    if (n === "1") return "Falsche PIN — noch 1 Versuch, dann wird die PIN gesperrt."
+    if (n === "1") return "Falsche PIN noch 1 Versuch, dann wird die PIN gesperrt."
     return n
-      ? `Falsche PIN — noch ${n} Versuche.`
-      : "Falsche PIN — bitte erneut versuchen."
+      ? `Falsche PIN noch ${n} Versuche.`
+      : "Falsche PIN bitte erneut versuchen."
   }
   // Device pairing / PIN-not-set are setup states, not a wrong PIN. Name them in
   // the owner's vocabulary so the screen never blames the entered PIN.
   if (msg.includes("requires a paired device")) {
-    return "Dieses Gerät ist nicht freigegeben — bitte zuerst koppeln."
+    return "Dieses Gerät ist nicht freigegeben bitte zuerst koppeln."
   }
   if (msg.includes("PIN not set")) {
     return "Für dieses Konto ist noch keine PIN hinterlegt."
@@ -325,17 +325,17 @@ const STATIC_ERROR_LINES: Readonly<Record<StaticErrorCode, string>> = {
   FORBIDDEN: "Keine Berechtigung für diese Aktion.",
   STEP_UP_REQUIRED: "PIN-Bestätigung erforderlich.",
   DEVICE_NOT_AUTHORIZED: "Dieses Gerät ist nicht freigegeben.",
-  RATE_LIMITED: "Zu viele Versuche — bitte einen Moment warten und erneut versuchen.",
+  RATE_LIMITED: "Zu viele Versuche bitte einen Moment warten und erneut versuchen.",
   // Fiskal- + Inventar-Codes der Geldwege — sie tragen ihren EIGENEN code.
   PRODUCT_NOT_RESERVABLE:
-    "Dieser Artikel ist nicht mehr verfügbar — er wurde bereits reserviert oder verkauft.",
+    "Dieser Artikel ist nicht mehr verfügbar er wurde bereits reserviert oder verkauft.",
   CLOSING_DAY_FINALIZED:
     "Der Kassentag ist bereits abgeschlossen (Z-Bon). Eine Buchung ist erst nach dem nächsten Kassenstart möglich.",
   KYC_REQUIRED:
-    "Ausweis-Identifikation erforderlich — bitte zuerst einen geprüften Kunden zuordnen.",
-  SANCTIONS_BLOCK: "Sanktionslisten-Treffer — die Buchung ist gesperrt. Bitte intern prüfen.",
+    "Ausweis-Identifikation erforderlich bitte zuerst einen geprüften Kunden zuordnen.",
+  SANCTIONS_BLOCK: "Sanktionslisten-Treffer die Buchung ist gesperrt. Bitte intern prüfen.",
   STORNO_OF_STORNO: "Eine Stornierung kann nicht erneut storniert werden.",
-  EXTERNAL_SERVICE_FAILED: "Der externe Dienst hat abgelehnt — die Aktion wurde nicht ausgeführt.",
+  EXTERNAL_SERVICE_FAILED: "Der externe Dienst hat abgelehnt die Aktion wurde nicht ausgeführt.",
   INTERNAL_ERROR:
     "Es ist ein unerwarteter Serverfehler aufgetreten. Bitte später erneut versuchen.",
 }
@@ -359,8 +359,8 @@ export function describeError(err: unknown): string {
         const mins =
           Number.isFinite(remainingMs) && remainingMs > 0 ? Math.ceil(remainingMs / 60000) : null
         return mins
-          ? `PIN gesperrt — in ${mins} Min. erneut versuchen.`
-          : "PIN gesperrt — bitte später erneut versuchen."
+          ? `PIN gesperrt in ${mins} Min. erneut versuchen.`
+          : "PIN gesperrt bitte später erneut versuchen."
       }
       case "UNAUTHORIZED":
         // The PIN-login route raises its 401 messages in ENGLISH — never echo
@@ -368,7 +368,7 @@ export function describeError(err: unknown): string {
         // in German, surfacing the real attempts-remaining count.
         return describeUnauthorized(err)
       case "VALIDATION_ERROR":
-        return describeValidationError(err) ?? "Eingabe ungültig — bitte die Angaben prüfen."
+        return describeValidationError(err) ?? "Eingabe ungültig bitte die Angaben prüfen."
       case "CONFLICT":
         return describeConflict(err)
       default:
@@ -382,7 +382,7 @@ export function describeError(err: unknown): string {
   if (err instanceof ApiNetworkError) {
     const timedOut = (err.cause as { name?: string } | undefined)?.name === "TimeoutError"
     return timedOut
-      ? "Zeitüberschreitung — der Server antwortet nicht. Bitte erneut versuchen."
+      ? "Zeitüberschreitung der Server antwortet nicht. Bitte erneut versuchen."
       : "Keine Verbindung zum Server. Bitte Internetverbindung prüfen."
   }
   // A non-api error we can't classify. Stay calm and generic — never echo a raw
@@ -566,11 +566,11 @@ export const ANKAUF_METAL_LABEL: Readonly<Record<AnkaufMetal, string>> = {
 
 export const ANKAUF_CONDITION_LABEL: Readonly<Record<AnkaufCondition, string>> = {
   NEW: "Neu",
-  USED_EXCELLENT: "Gebraucht — sehr gut",
-  USED_GOOD: "Gebraucht — gut",
-  USED_FAIR: "Gebraucht — mäßig",
-  ANTIQUE_RESTORED: "Antik — restauriert",
-  ANTIQUE_AS_FOUND: "Antik — Fundzustand",
+  USED_EXCELLENT: "Gebraucht sehr gut",
+  USED_GOOD: "Gebraucht gut",
+  USED_FAIR: "Gebraucht mäßig",
+  ANTIQUE_RESTORED: "Antik restauriert",
+  ANTIQUE_AS_FOUND: "Antik Fundzustand",
 }
 
 // ── Steuer (Besteuerungsart + Belegtext-Art) ─────────────────────────────────

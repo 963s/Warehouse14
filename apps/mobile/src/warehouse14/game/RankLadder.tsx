@@ -79,7 +79,7 @@ export function RankLadder({ rank, celebrate = false }: RankLadderProps): ReactN
         )
       })}
 
-      {/* The held tier's progress toward the next — one real gauge, honest copy. */}
+      {/* The held tier's progress toward the next one real gauge, honest copy. */}
       <View className="mt-1 gap-1.5">
         <RingGauge
           value={rank.progress}
@@ -89,7 +89,7 @@ export function RankLadder({ rank, celebrate = false }: RankLadderProps): ReactN
         <Text className="text-muted-foreground text-2xs" numberOfLines={1}>
           {rank.next != null
             ? `Aktuelle Serie: ${rank.streak} ${rank.streak === 1 ? "Tag" : "Tage"}`
-            : `Serie: ${rank.streak} ${rank.streak === 1 ? "Tag" : "Tage"} — Hüter der Schatzkammer`}
+            : `Serie: ${rank.streak} ${rank.streak === 1 ? "Tag" : "Tage"} Hüter der Schatzkammer`}
         </Text>
       </View>
     </Card>
@@ -187,7 +187,7 @@ function RankRow({
       </View>
 
       {/* Trailing status glyph: a check for a reached (not-held) tier, a lock for
-          a still-locked one; the held tier needs no glyph (its „Aktuell" pill says it). */}
+          a still-locked one; the held tier needs no glyph (its Aktuell" pill says it). */}
       {!held ? (
         reached ? (
           <Check size={t.icon.sm} color={t.colors.primary} />

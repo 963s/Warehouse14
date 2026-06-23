@@ -143,7 +143,7 @@ export function DiscountEditor({ line, onApply }: DiscountEditorProps): ReactNod
         </Pressable>
       </View>
 
-      {/* Percent presets — the fast path. */}
+      {/* Percent presets the fast path. */}
       <View className="flex-row flex-wrap gap-2">
         {PCT_PRESETS.map((p) => {
           const active = pct === String(p)

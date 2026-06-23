@@ -451,13 +451,13 @@ function ListingDetailSheet({
             <InlineError message={publishM.error} onDismiss={publishM.reset} />
           ) : null}
 
-          {/* Publish action — honest token-pending state lives in the result */}
+          {/* Publish action honest token-pending state lives in the result */}
           {canPublish ? (
             <View className="gap-2">
               <Text className="text-sm font-semibold">Bei eBay veröffentlichen</Text>
               <Text className="text-muted-foreground text-xs leading-5">
                 Schiebt den Artikel als Listung zum Marktplatz. Ist noch kein eBay-Zugang
-                hinterlegt, passiert nichts Echtes — du siehst dann „Token ausstehend".
+                hinterlegt, passiert nichts Echtes du siehst dann Token ausstehend".
               </Text>
               <Button
                 variant="outline"
@@ -471,12 +471,12 @@ function ListingDetailSheet({
             </View>
           ) : null}
 
-          {/* Transition actions — exactly the server-allowed next steps */}
+          {/* Transition actions exactly the server-allowed next steps */}
           <View className="gap-2">
             <Text className="text-sm font-semibold">Nächster Schritt</Text>
             {transitions.length === 0 ? (
               <Text className="text-muted-foreground text-xs leading-5">
-                Diese Listung ist am Ende der Pipeline — kein weiterer Schritt möglich.
+                Diese Listung ist am Ende der Pipeline kein weiterer Schritt möglich.
               </Text>
             ) : (
               transitions.map((opt) => (
@@ -515,7 +515,7 @@ function ListingDetailSheet({
             )}
           </View>
 
-          {/* History — the append-only event log */}
+          {/* History the append-only event log */}
           <View className="gap-2">
             <View className="flex-row items-center gap-2">
               <History size={t.icon.sm} color={t.colors.mutedForeground} />
@@ -557,7 +557,7 @@ function ListingDetailSheet({
           </View>
         </ScrollView>
 
-        {/* The transition confirm gate — an explicit second press before a step
+        {/* The transition confirm gate an explicit second press before a step
             that the server may have inventory side effects for. Step-up (403)
             is transparent via the global host. */}
         {pending != null ? (
@@ -739,7 +739,7 @@ export default function EbayScreen() {
 
   return (
     <View className="flex-1 bg-background">
-      {/* The aged-paper grain canvas — depth from the layered cream plus this
+      {/* The aged-paper grain canvas depth from the layered cream plus this
           faint warm tooth, never a flat fill (DESIGN.md §1, §5). */}
       <PaperGrain />
       <ScrollView

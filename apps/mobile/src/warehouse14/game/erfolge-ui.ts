@@ -13,10 +13,10 @@ import type { RankUpEvent, SealEarnedEvent, StreakRun } from "./history"
 /** The Erfolge screen's static copy (title + each section's heading/subtitle). */
 export const ERFOLGE_COPY = {
   screenTitle: "Erfolge",
-  screenSubtitle: "Rang, Serien und Siegel — die ganze Geschichte aus echten Tagesabschlüssen.",
+  screenSubtitle: "Rang, Serien und Siegel die ganze Geschichte aus echten Tagesabschlüssen.",
   rankSection: {
     title: "Aufstieg",
-    subtitle: "Die Leiter der Werkstatt — wo du stehst und was als Nächstes kommt.",
+    subtitle: "Die Leiter der Werkstatt wo du stehst und was als Nächstes kommt.",
   },
   streakSection: {
     title: "Serien-Historie",
@@ -28,12 +28,12 @@ export const ERFOLGE_COPY = {
   },
   sealSection: {
     title: "Siegel der Werkstatt",
-    subtitle: "Echte Meilensteine — verdient, nie geschenkt.",
+    subtitle: "Echte Meilensteine verdient, nie geschenkt.",
   },
   /** Honest empty copy when there is no finalized history yet. */
   emptyTitle: "Noch keine Geschichte",
   emptyBody:
-    "Sobald die ersten Tage abgeschlossen sind, erscheinen hier deine Serien, Aufstiege und Siegel — jede Zahl aus echten Tagesabschlüssen.",
+    "Sobald die ersten Tage abgeschlossen sind, erscheinen hier deine Serien, Aufstiege und Siegel jede Zahl aus echten Tagesabschlüssen.",
 } as const
 
 /** A finalized business day (YYYY-MM-DD) as de-DE „21. Juni 2026". */
@@ -65,13 +65,13 @@ export function formatRunSpan(run: StreakRun): string {
   const start = Date.parse(`${run.startDay}T00:00:00`)
   const end = Date.parse(`${run.endDay}T00:00:00`)
   if (!Number.isFinite(start) || !Number.isFinite(end)) {
-    return `${formatShortDate(run.startDay)} – ${formatShortDate(run.endDay)}`
+    return `${formatShortDate(run.startDay)} ${formatShortDate(run.endDay)}`
   }
   const sameMonth = run.startDay.slice(0, 7) === run.endDay.slice(0, 7)
   const startStr = sameMonth
     ? `${new Date(start).getDate()}.`
     : formatShortDate(run.startDay)
-  return `${startStr} – ${formatShortDate(run.endDay)}`
+  return `${startStr} ${formatShortDate(run.endDay)}`
 }
 
 /** The German seal title for an id (falls back to the id if unknown). */
@@ -119,7 +119,7 @@ export function buildMilestoneTimeline(
       kind: "rank-up",
       businessDay: r.businessDay,
       title: `Zum ${r.rank.title} aufgestiegen`,
-      detail: `${daysLabel(r.streak)} in Folge — ${r.rank.description}`,
+      detail: `${daysLabel(r.streak)} in Folge ${r.rank.description}`,
     })
   }
 
@@ -128,7 +128,7 @@ export function buildMilestoneTimeline(
       key: `seal-${s.sealId}-${s.businessDay}`,
       kind: "seal",
       businessDay: s.businessDay,
-      title: `Siegel „${sealTitle(s.sealId)}" verdient`,
+      title: `Siegel ${sealTitle(s.sealId)}" verdient`,
       detail: sealDescription(s.sealId),
     })
   }

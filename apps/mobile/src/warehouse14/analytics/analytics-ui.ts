@@ -63,7 +63,7 @@ export interface BaldTileCopy {
 export const BALD_PROFIT_TREND: BaldTileCopy = {
   title: "Gewinn-Verlauf",
   description:
-    "Der echte Gewinn pro Tag — Umsatz minus Ankauf, Ausgaben und anteiliger Fixkosten — erscheint hier, sobald die Auswertung steht.",
+    "Der echte Gewinn pro Tag Umsatz minus Ankauf, Ausgaben und anteiliger Fixkosten erscheint hier, sobald die Auswertung steht.",
   gap: "Backend-Lücke: kein Tages-Zeitreihen-Endpunkt für den Nettogewinn (financeApi.profit liefert nur einen Einzelwert für Tag/Monat; Tagesabschlüsse enthalten keine Ausgaben/Fixkosten).",
 }
 
@@ -94,7 +94,7 @@ export const BALD_TOP_PRODUCTS: BaldTileCopy = {
 // ── Section copy (kept here so the screen reads as layout) ───────────────────
 export const COPY = {
   screenTitle: "Auswertungen",
-  screenSubtitle: "Umsatz, Handel und Lager — aus echten Tagesabschlüssen.",
+  screenSubtitle: "Umsatz, Handel und Lager aus echten Tagesabschlüssen.",
 
   revenueTitle: "Umsatz-Verlauf",
   revenueSubtitle: "Netto-Verkauf je abgeschlossenem Tag.",
@@ -109,7 +109,7 @@ export const COPY = {
   ankaufTrendSubtitle: "Netto-Ankauf je abgeschlossenem Tag.",
 
   categoryTitle: "Bestand nach Kategorie",
-  categorySubtitle: "Wo die Artikel im Lager liegen — nach Anzahl, nicht nach Verkauf.",
+  categorySubtitle: "Wo die Artikel im Lager liegen nach Anzahl, nicht nach Verkauf.",
 
   inventoryTitle: "Lagerwert heute",
   inventorySubtitle: "Listenwert, Einkaufswert und die stille Marge im Regal.",

@@ -32,8 +32,8 @@ import type { LabelDoc, Printable, ReceiptDoc } from "./types"
 // hex is hardcoded in the template. `PAPER` is the one non-brand value: it is
 // the physical white of a Bon roll / PDF sheet, NOT the cream app canvas, so it
 // is intentionally not a palette token.
-const INK = lightPalette.foreground // warm antique ink — matches the app foreground
-const MUTED = lightPalette.mutedForeground // faded ink — captions / meta
+const INK = lightPalette.foreground // warm antique ink matches the app foreground
+const MUTED = lightPalette.mutedForeground // faded ink captions / meta
 const HAIRLINE = lightPalette.border // fine warm-gold rule
 const PAPER = "#ffffff" // white Bon roll / PDF, not the cream app canvas
 
@@ -73,7 +73,7 @@ const BASE_CSS = `
   html, body { margin: 0; padding: 0; }
   body {
     font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
-    color: ${INK}; /* warm antique ink — matches the app foreground */
+    color: ${INK}; /* warm antique ink matches the app foreground */
     background: ${PAPER}; /* white: a Bon roll / PDF, not the cream app canvas */
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;

@@ -300,7 +300,7 @@ export function MetalWeightField({
         </View>
       ) : (
         <Text className="text-muted-foreground text-2xs">
-          Optional — bei Edelmetallware. Feingewicht = Gewicht × Feinheit.
+          Optional bei Edelmetallware. Feingewicht = Gewicht × Feinheit.
         </Text>
       )}
     </View>
@@ -347,7 +347,7 @@ export function CategoryPicker({
 
   return (
     <View className="gap-2">
-      {/* Selected node — pinned, with a verdigris check + clear affordance. */}
+      {/* Selected node pinned, with a verdigris check + clear affordance. */}
       {selected ? (
         <PressableScale
           accessibilityRole="button"
@@ -371,7 +371,7 @@ export function CategoryPicker({
         </PressableScale>
       ) : null}
 
-      {/* Search box — filters the list as you type. */}
+      {/* Search box filters the list as you type. */}
       <View className="relative justify-center">
         <Input
           value={query}
@@ -387,7 +387,7 @@ export function CategoryPicker({
         </View>
       </View>
 
-      {/* Filtered choices — chips, capped so the picker never walls the screen. */}
+      {/* Filtered choices chips, capped so the picker never walls the screen. */}
       {filtered.length > 0 ? (
         <View className="flex-row flex-wrap gap-2">
           {filtered.map((opt) => (

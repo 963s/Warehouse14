@@ -96,10 +96,10 @@ function KundenRow({
       accessibilityRole="button"
       accessibilityLabel={`${row.fullName}, Kundennummer ${row.customerNumber}`}
     >
-      {/* Box-free row on the parchment canvas — no Card border, separated from
+      {/* Box-free row on the parchment canvas no Card border, separated from
           the next row by a single warm hairline below. */}
       <View className="hairline-b flex-row items-center gap-3 px-4 py-3">
-        {/* Avatar monogram in a soft raised disc — the calm leading anchor. */}
+        {/* Avatar monogram in a soft raised disc the calm leading anchor. */}
         <View
           className="h-11 w-11 items-center justify-center rounded-full"
           style={{ backgroundColor: t.colors.raised }}
@@ -299,7 +299,7 @@ export default function KundenScreen() {
 
   return (
     <View className="flex-1 bg-background">
-      {/* The aged-paper grain canvas — depth comes from the layered cream + this
+      {/* The aged-paper grain canvas depth comes from the layered cream + this
           faint tooth, behind the list, never from a flat fill (DESIGN.md §5). */}
       <PaperGrain />
       <FlatList

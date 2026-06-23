@@ -297,7 +297,7 @@ export default function AnkaufScreen() {
 
   return (
     <View className="flex-1 bg-background">
-      {/* The aged-paper grain canvas — depth from the layered cream plus this
+      {/* The aged-paper grain canvas depth from the layered cream plus this
           faint warm tooth, never a flat fill (DESIGN.md §1). */}
       <PaperGrain />
       <ScrollView
@@ -341,7 +341,7 @@ export default function AnkaufScreen() {
                 <View className="flex-1">
                   <Text className="text-base font-semibold">Verkäufer auswählen</Text>
                   <Text className="text-muted-foreground text-xs">
-                    Pflicht — der Ankauf verlangt eine geprüfte Identität.
+                    Pflicht der Ankauf verlangt eine geprüfte Identität.
                   </Text>
                 </View>
               </Card>
@@ -374,7 +374,7 @@ export default function AnkaufScreen() {
           )}
 
           {/* The honest KYC gate. A selected-but-unverified seller blocks the
-              payout — with a one-tap path to stamp the Ausweis in the profile. */}
+              payout with a one-tap path to stamp the Ausweis in the profile. */}
           {customer != null && kyc.blocked ? (
             <KycGateBanner
               fullName={customer.fullName}
@@ -396,7 +396,7 @@ export default function AnkaufScreen() {
             >
               <ShieldCheck size={t.icon.sm} color={t.colors.verdigris} />
               <Text className="text-xs font-medium" style={{ color: t.colors.verdigris }}>
-                Identität geprüft — Ankauf zulässig.
+                Identität geprüft Ankauf zulässig.
               </Text>
             </View>
           ) : null}
@@ -428,7 +428,7 @@ export default function AnkaufScreen() {
               <View className="items-center gap-1.5">
                 <ShoppingBag size={t.icon.xl} color={t.colors.mutedForeground} />
                 <Text className="text-muted-foreground text-center text-sm">
-                  Noch kein Stück erfasst. „Stück hinzufügen“ unten beginnt die Bewertung.
+                  Noch kein Stück erfasst. Stück hinzufügen unten beginnt die Bewertung.
                 </Text>
               </View>
             </Card>
@@ -505,7 +505,7 @@ export default function AnkaufScreen() {
                   error={
                     refMissing ? "Für eine Überweisung ist eine Referenz erforderlich." : undefined
                   }
-                  hint="Pflicht bei Überweisung — erscheint im Kassenbuch."
+                  hint="Pflicht bei Überweisung erscheint im Kassenbuch."
                 >
                   <Input
                     value={externalRef}
@@ -535,7 +535,7 @@ export default function AnkaufScreen() {
               </View>
             </Card>
 
-            {/* The fiscal gate opener — NEVER the commit itself. */}
+            {/* The fiscal gate opener NEVER the commit itself. */}
             <View className="gap-2 pt-1">
               <View className="flex-row items-center gap-1.5">
                 <ShieldCheck size={t.icon.xs} color={t.colors.primary} />
@@ -575,7 +575,7 @@ export default function AnkaufScreen() {
         }}
       />
 
-      {/* The item-entry sheet — valuation happens here. */}
+      {/* The item-entry sheet valuation happens here. */}
       <ItemEntrySheet
         open={entryOpen}
         onOpenChange={setEntryOpen}
@@ -751,13 +751,13 @@ function KycGateBanner({
             Identifizierung erforderlich (§ 259 StGB)
           </Text>
           <Text className="text-muted-foreground text-sm leading-5">
-            Jeder Ankauf verlangt eine geprüfte Ausweis-Identifikation des Verkäufers. „{fullName}“
+            Jeder Ankauf verlangt eine geprüfte Ausweis-Identifikation des Verkäufers. {fullName}
             ist noch nicht bestätigt.
           </Text>
           {aggregateReached ? (
             <Text className="text-muted-foreground text-2xs leading-4">
               Hinweis: Die Ankäufe dieses Verkäufers überschreiten im Fenster der letzten{" "}
-              {windowDays} Tage die GwG-Schwelle (§ 10) — verknüpfte Transaktionen.
+              {windowDays} Tage die GwG-Schwelle (§ 10) verknüpfte Transaktionen.
             </Text>
           ) : null}
         </View>
@@ -1117,7 +1117,7 @@ function ItemEntrySheet({
                 </View>
               ) : null}
 
-              {/* The valuation hint — honest: shown only when a real rate computes it. */}
+              {/* The valuation hint honest: shown only when a real rate computes it. */}
               <ValuationHintCard
                 hint={hint}
                 onUseSuggestion={(eur) => patch({ negotiatedPriceEur: eur })}
@@ -1150,7 +1150,7 @@ function ItemEntrySheet({
                 ? "Bitte einen Auszahlungsbetrag > 0 eingeben."
                 : undefined
             }
-            hint="Der bar/überwiesen gezahlte Betrag — wird zum gesperrten Einkaufswert."
+            hint="Der bar/überwiesen gezahlte Betrag wird zum gesperrten Einkaufswert."
           />
 
           <MoneyField
@@ -1185,7 +1185,7 @@ function ItemEntrySheet({
             />
           </Field>
 
-          <Field label="SKU" hint="Automatisch vergeben — bei Bedarf anpassbar.">
+          <Field label="SKU" hint="Automatisch vergeben bei Bedarf anpassbar.">
             <View className="flex-row items-center gap-2">
               <View className="flex-1">
                 <Input
@@ -1397,7 +1397,7 @@ function AnkaufDoneScreen({
         showsVerticalScrollIndicator={false}
       >
         <View className="items-center gap-4 pt-2">
-          {/* The sealed-receipt mark — a verdigris seal ringed by a fine gold
+          {/* The sealed-receipt mark a verdigris seal ringed by a fine gold
               hairline, the antique "festgeschrieben" flourish. */}
           <View
             className="h-20 w-20 items-center justify-center rounded-full border"
@@ -1435,7 +1435,7 @@ function AnkaufDoneScreen({
             <Text className="text-base font-semibold">Beleg</Text>
           </View>
 
-          {/* The on-screen Beleg — the same lines and payout that were booked. A
+          {/* The on-screen Beleg the same lines and payout that were booked. A
               tap reveals the full receipt as it will be shared/printed. */}
           {previewOpen ? (
             <PrintPreview printable={printable} />
@@ -1469,7 +1469,7 @@ function AnkaufDoneScreen({
             <InlineError message={actionError} onDismiss={() => setActionError(null)} />
           ) : null}
 
-          {/* PRIMARY — one tap: open the OS print dialog. AirPrint on iOS, the
+          {/* PRIMARY one tap: open the OS print dialog. AirPrint on iOS, the
               Android print framework on Android; from there: any known printer or
               "als PDF sichern". Honestly disabled if the module is missing. */}
           <Button
@@ -1482,7 +1482,7 @@ function AnkaufDoneScreen({
             <Text>{busy === "print" ? "Wird vorbereitet…" : "Beleg drucken"}</Text>
           </Button>
 
-          {/* SECONDARY — render a PDF and share it (Dateien, Mail, …). */}
+          {/* SECONDARY render a PDF and share it (Dateien, Mail, …). */}
           {caps.canSharePdf ? (
             <Button
               variant="outline"

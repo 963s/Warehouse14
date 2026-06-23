@@ -138,7 +138,7 @@ export function deriveLiveAlerts(summary: BridgeSummary, now: Date = new Date())
       title: "TSE-Zertifikat läuft ab",
       body:
         tseDays <= 0
-          ? "Das Signaturzertifikat der TSE ist abgelaufen — bitte sofort erneuern."
+          ? "Das Signaturzertifikat der TSE ist abgelaufen bitte sofort erneuern."
           : `Das Signaturzertifikat läuft in ${tseDays} ${plural(tseDays, "Tag", "Tagen")} ab.`,
       count: tseDays,
       // No CTA: the app has no TSE/Zertifikat resolution surface yet — neither

@@ -157,8 +157,8 @@ export const ZWEITKASSE_COPY = {
   body:
     "Jedes gekoppelte Gerät führt seine eigene Schicht über denselben " +
     "Kassen- und Steuer-Datensatz. Verkauf, Ankauf und Tagesabschluss laufen " +
-    "fiskalisch sauber über den Server — wie an der Haupt-Kasse. „Im Dienst" +
-    "“ zeigt deshalb die Schicht dieses Geräts, nicht die anderer Kassen.",
+    "fiskalisch sauber über den Server wie an der Haupt-Kasse. Im Dienst" +
+    " zeigt deshalb die Schicht dieses Geräts, nicht die anderer Kassen.",
 } as const
 
 // ── Zweitkasse öffnen (the one cashier-session mutation this device allows) ───
@@ -183,9 +183,9 @@ export const OPEN_SHIFT_COPY = {
   note:
     "Damit beginnt die Schicht dieses Geräts über den gemeinsamen Kassen-Datensatz. " +
     "Der Anfangsbestand wird als Startbestand der Kasse festgehalten. Der " +
-    "Tagesabschluss (Blindzählung) erfolgt später unter „Kasse“.",
+    "Tagesabschluss (Blindzählung) erfolgt später unter Kasse.",
   /** Step-by-step: open is here, close is in Kasse — say so plainly. */
-  closeHandoffNote: "Die Schicht wird beim Kassensturz unter „Kasse“ abgeschlossen.",
+  closeHandoffNote: "Die Schicht wird beim Kassensturz unter Kasse abgeschlossen.",
 } as const
 
 /** Validation outcome for the typed opening float. */
@@ -228,7 +228,7 @@ export const DESKTOP_MANAGEMENT_COPY = {
   title: "Verwaltung am Desktop",
   description:
     "Mitarbeiter anlegen, Rollen vergeben und PINs setzen erfolgt sicher an " +
-    "der Desktop-Kasse. Diese App zeigt das Team und wer im Dienst ist — sie " +
+    "der Desktop-Kasse. Diese App zeigt das Team und wer im Dienst ist sie " +
     "verändert die Stammdaten nicht.",
   /** The explicit backend-gap footnote — honesty made visible (DESIGN.md §4). */
   gap: "Hinweis: Das Telefon hat bewusst keinen Schreibzugriff auf Mitarbeiterdaten.",
@@ -237,7 +237,7 @@ export const DESKTOP_MANAGEMENT_COPY = {
 /** Screen-level copy (title + subtitle + the empty/closed states). */
 export const COPY = {
   screenTitle: "Team",
-  screenSubtitle: "Wer ist angemeldet, wer ist im Dienst — und wie die Rollen geregelt sind.",
+  screenSubtitle: "Wer ist angemeldet, wer ist im Dienst und wie die Rollen geregelt sind.",
   operatorTitle: "Angemeldet auf diesem Gerät",
   operatorSubtitle: "Die aktuelle Sitzung dieses Telefons.",
   operatorEmptyTitle: "Nicht angemeldet",
@@ -252,10 +252,10 @@ export const COPY = {
   // the status is genuinely unknown, possibly open (DESIGN.md §4 honesty).
   onDutyUnknownTitle: "Status nicht abrufbar",
   onDutyUnknownDescription:
-    "Die offene Schicht konnte gerade nicht gelesen werden. Ob die Kasse offen ist, ist deshalb unklar — bitte erneut versuchen.",
+    "Die offene Schicht konnte gerade nicht gelesen werden. Ob die Kasse offen ist, ist deshalb unklar bitte erneut versuchen.",
   // The honest close handoff — shown on the on-duty card when a shift is open.
   closeHandoffCta: "Schicht abschließen",
-  closeHandoffHint: "Kassensturz unter „Kasse“",
+  closeHandoffHint: "Kassensturz unter Kasse",
   rolesTitle: "Rollen",
   rolesSubtitle: "Was die drei Berechtigungen dürfen.",
   ownerBadge: "Inhaber",

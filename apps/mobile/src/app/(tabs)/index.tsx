@@ -274,7 +274,7 @@ export default function LagerScreen() {
           ) : null}
         </View>
 
-        {/* Status filter chips — a single horizontal rail (never wraps/jumps). */}
+        {/* Status filter chips a single horizontal rail (never wraps/jumps). */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -321,7 +321,7 @@ export default function LagerScreen() {
       <PaperGrain />
       {headerControls}
 
-      {/* The inline, in-context offline note — self-subscribes to the connection
+      {/* The inline, in-context offline note self-subscribes to the connection
           store and shows ONLY while offline, right above the (last-good) list, so
           the operator knows these rows are the last known stand. */}
       {products.fromCache ? (
@@ -391,14 +391,14 @@ export default function LagerScreen() {
                       {moreRemain ? ` · ${rows.length.toLocaleString("de-DE")} geladen` : ""}
                     </Text>
                     {/* When the list is the cached seed (live page not yet landed),
-                        pin the honest „Stand vor … "-Marker so the count never reads
+                        pin the honest Stand vor … "-Marker so the count never reads
                         as live. Hidden the instant the real page replaces it. */}
                     {products.fromCache ? (
                       <StaleBadge cachedAt={products.cachedAt} stale={products.isStale} />
                     ) : null}
                   </View>
-                  {/* The live availability triad — „11 verfügbar · 6 reserviert · 5
-                      verkauft" — the honest at-a-glance picture of what can be sold.
+                  {/* The live availability triad 11 verfügbar · 6 reserviert · 5
+                      verkauft" the honest at-a-glance picture of what can be sold.
                       Hidden until the real counts land (no fabricated zeros). */}
                   {summaryLine ? (
                     <Text className="text-muted-foreground text-2xs" numberOfLines={1}>
@@ -448,10 +448,10 @@ function ProductRow({ item, onPress }: { item: ProductListRow; onPress: () => vo
 
   return (
     <PressableScale onPress={onPress} accessibilityRole="button" accessibilityLabel={item.name}>
-      {/* Box-free row on the parchment canvas — no Card border, separated from
+      {/* Box-free row on the parchment canvas no Card border, separated from
           the next row by a single warm hairline below. Comfortable density. */}
       <View className="hairline-b flex-row items-center gap-3 px-3 py-3">
-        {/* Thumbnail — the real primary photo, or a typed ink fallback disc. */}
+        {/* Thumbnail the real primary photo, or a typed ink fallback disc. */}
         {item.primaryPhotoThumbUrl ? (
           <Image
             source={{ uri: absoluteUrl(item.primaryPhotoThumbUrl) }}

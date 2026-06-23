@@ -196,7 +196,7 @@ export function computeGameHistory(closings: ClosingListItem[], today = ""): Gam
     }
     for (const seal of SEALS) {
       if (earnedSealIds.has(seal.id)) continue
-      if (seal.id === "schwelle") continue // break-even seal — not date-able here
+      if (seal.id === "schwelle") continue // break-even seal not date-able here
       if (seal.isEarned(signalsToday)) {
         earnedSealIds.add(seal.id)
         sealsEarned.push({ sealId: seal.id, businessDay: cur.businessDay })

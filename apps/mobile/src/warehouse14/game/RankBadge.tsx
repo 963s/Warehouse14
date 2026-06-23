@@ -78,7 +78,7 @@ export function RankBadge({ rank, size = "md", showNext }: RankBadgeProps): Reac
           </Text>
         ) : null}
 
-        {/* Tier dots — the held tier filled, higher tiers faint outlines. */}
+        {/* Tier dots the held tier filled, higher tiers faint outlines. */}
         <View className="mt-1.5 flex-row items-center gap-1.5">
           {RANKS.map((r) => {
             const reached = r.tier <= rank.current.tier

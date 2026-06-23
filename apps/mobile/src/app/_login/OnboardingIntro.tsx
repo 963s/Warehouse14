@@ -48,19 +48,19 @@ const SLIDES: readonly Slide[] = [
     icon: Vault,
     overline: "Dein Tag",
     title: "Die Schatzkammer",
-    body: "Dein Tag auf einen Blick — die Tagesquest, deine Live-Kennzahlen und der Fortschritt. Hier startest du jeden Morgen.",
+    body: "Dein Tag auf einen Blick die Tagesquest, deine Live-Kennzahlen und der Fortschritt. Hier startest du jeden Morgen.",
   },
   {
     icon: Boxes,
     overline: "Vier Flächen",
     title: "Alles an seinem Platz",
-    body: "Schatzkammer, Lager, Kunden und Mehr. Vier ruhige Flächen führen dich durch den Betrieb — der Rest wohnt aufgeräumt unter „Mehr“.",
+    body: "Schatzkammer, Lager, Kunden und Mehr. Vier ruhige Flächen führen dich durch den Betrieb der Rest wohnt aufgeräumt unter Mehr.",
   },
   {
     icon: ShieldCheck,
     overline: "Vertrauen",
     title: "Ehrliche Zahlen",
-    body: "Jede Zahl, die du siehst, kommt live aus deinem Betrieb. Fehlt eine Quelle, bleibt das Feld leer oder gesperrt — nie erfunden. Darauf kannst du dich verlassen.",
+    body: "Jede Zahl, die du siehst, kommt live aus deinem Betrieb. Fehlt eine Quelle, bleibt das Feld leer oder gesperrt nie erfunden. Darauf kannst du dich verlassen.",
   },
 ] as const
 
@@ -136,7 +136,7 @@ export function OnboardingIntro({ onDone }: OnboardingIntroProps): ReactNode {
 
   return (
     <View className="bg-background flex-1">
-      {/* Aged-paper grain — the warm canvas reads as paper, not a flat cream
+      {/* Aged-paper grain the warm canvas reads as paper, not a flat cream
           fill (DESIGN.md §1, §5). Full-bleed behind the padded content; pure
           decoration, never under text it must contrast against. */}
       <PaperGrain />
@@ -149,7 +149,7 @@ export function OnboardingIntro({ onDone }: OnboardingIntroProps): ReactNode {
           paddingHorizontal: t.space.x6,
         }}
       >
-        {/* Top bar — the brand crest + a quiet skip. */}
+        {/* Top bar the brand crest + a quiet skip. */}
         <View className="flex-row items-center justify-between">
           <WarehouseMark size="sm" />
           <PressableScale
@@ -167,7 +167,7 @@ export function OnboardingIntro({ onDone }: OnboardingIntroProps): ReactNode {
           </PressableScale>
         </View>
 
-        {/* The slide body — cross-fades + rises on each advance (RM: opacity only).
+        {/* The slide body cross-fades + rises on each advance (RM: opacity only).
           A centred column, width-capped so the copy never runs edge-to-edge, and
           the surface preview lives in a RESERVED slot so the hero+title sit at the
           same height on every slide (no jump between slides 1/2/3). */}
@@ -201,7 +201,7 @@ export function OnboardingIntro({ onDone }: OnboardingIntroProps): ReactNode {
               </Text>
             </View>
 
-            {/* Reserved preview slot — the four surfaces on slide two, an equal-
+            {/* Reserved preview slot the four surfaces on slide two, an equal-
               height spacer otherwise, so the title block does not shift between
               slides. The preview itself is a calm, non-tappable row. */}
             <View className="w-full items-center justify-center" style={{ minHeight: 72 }}>
@@ -239,10 +239,10 @@ export function OnboardingIntro({ onDone }: OnboardingIntroProps): ReactNode {
           </Animated.View>
         </View>
 
-        {/* Footer — page dots over the primary advance, on the spacing grid, as one
+        {/* Footer page dots over the primary advance, on the spacing grid, as one
           non-growing block pinned above the home indicator. */}
         <View className="w-full items-center" style={{ gap: t.space.x6 }}>
-          {/* Page dots — the brass dot marks the active slide. */}
+          {/* Page dots the brass dot marks the active slide. */}
           <View className="flex-row items-center justify-center" style={{ gap: t.space.x2 }}>
             {SLIDES.map((s, i) => (
               <View
@@ -257,7 +257,7 @@ export function OnboardingIntro({ onDone }: OnboardingIntroProps): ReactNode {
             ))}
           </View>
 
-          {/* Primary advance — brass fill, comfortable 48px money-grade target. */}
+          {/* Primary advance brass fill, comfortable 48px money-grade target. */}
           <PressableScale
             onPress={next}
             accessibilityRole="button"
@@ -272,7 +272,7 @@ export function OnboardingIntro({ onDone }: OnboardingIntroProps): ReactNode {
         </View>
       </View>
 
-      {/* The one warm gold landing — fires the single Heavy on its peak, then
+      {/* The one warm gold landing fires the single Heavy on its peak, then
           hands off to the login screen. Decorative only; never under text. */}
       <GoldFlood visible={flood} onReachPeak={() => haptics.impactHeavy()} onDone={finish} />
     </View>

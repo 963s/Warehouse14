@@ -180,7 +180,7 @@ function NotificationRow({ item, onOpen }: { item: NotificationItem; onOpen: () 
                 >
                   {item.title}
                 </Text>
-                {/* Unread dot — the calm "neu" marker, no loud fill. */}
+                {/* Unread dot the calm "neu" marker, no loud fill. */}
                 {!item.read ? (
                   <View
                     className="h-2 w-2 rounded-full"
@@ -268,7 +268,7 @@ function DetailSheet({ item, onClose }: { item: NotificationItem; onClose: () =>
               <Icon size={t.icon.lg} color={accent} />
             </View>
             <View className="flex-1 gap-1">
-              {/* The sheet's title speaks the display voice — Bricolage Grotesque
+              {/* The sheet's title speaks the display voice Bricolage Grotesque
                   Garamond at the screen-title step (DESIGN §3). */}
               <Text className="text-xl font-display-semibold leading-tight" numberOfLines={2}>
                 {item.title}
@@ -290,7 +290,7 @@ function DetailSheet({ item, onClose }: { item: NotificationItem; onClose: () =>
 
           <Text className="text-foreground text-base leading-6">{item.body}</Text>
 
-          {/* Source meta — the honest provenance: this is event #N from the ledger. */}
+          {/* Source meta the honest provenance: this is event #N from the ledger. */}
           <View className="bg-card border-border gap-1.5 rounded-xl border px-4 py-3">
             <View className="flex-row items-center justify-between">
               <Text className="text-muted-foreground text-xs">Zeitpunkt</Text>
@@ -575,12 +575,12 @@ export default function BenachrichtigungenScreen() {
                 title={
                   filter == null
                     ? "Keine Benachrichtigungen"
-                    : `Nichts unter „${CHANNEL_LABELS[filter]}“`
+                    : `Nichts unter ${CHANNEL_LABELS[filter]}`
                 }
                 description={
                   filter == null
-                    ? "Sobald etwas passiert — eine Freigabe, ein Termin, ein Hinweis — erscheint es hier."
-                    : "In diesem Kanal liegt gerade nichts an. Wähle „Alle“, um den ganzen Verlauf zu sehen."
+                    ? "Sobald etwas passiert eine Freigabe, ein Termin, ein Hinweis erscheint es hier."
+                    : "In diesem Kanal liegt gerade nichts an. Wähle Alle, um den ganzen Verlauf zu sehen."
                 }
                 actionLabel={filter == null ? undefined : "Alle anzeigen"}
                 onAction={filter == null ? undefined : () => setFilter(null)}

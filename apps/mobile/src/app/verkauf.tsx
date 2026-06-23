@@ -192,7 +192,7 @@ function ResultRow({
               </Badge>
             ) : null}
           </View>
-          {/* The honest reason a row can't be added — only for non-sellable stock,
+          {/* The honest reason a row can't be added only for non-sellable stock,
               so the operator never wonders why the add affordance is gone. */}
           {reason ? (
             <Text className="text-muted-foreground text-2xs" numberOfLines={1}>
@@ -666,7 +666,7 @@ export default function VerkaufScreen() {
 
   return (
     <View className="flex-1 bg-background">
-      {/* The aged-paper grain canvas — depth from the layered cream plus this
+      {/* The aged-paper grain canvas depth from the layered cream plus this
           faint warm tooth, never a flat fill (DESIGN.md §1). */}
       <PaperGrain />
       <ScrollView
@@ -713,8 +713,8 @@ export default function VerkaufScreen() {
             ) : null}
           </View>
 
-          {/* The live availability triad — „11 verfügbar · 6 reserviert · 5
-              verkauft" — so the operator sees at a glance how much of the search
+          {/* The live availability triad 11 verfügbar · 6 reserviert · 5
+              verkauft" so the operator sees at a glance how much of the search
               is actually sellable. Only AVAILABLE rows below carry an add button.
               Hidden until the real counts land (no fabricated zeros). */}
           {summaryLine ? (
@@ -733,7 +733,7 @@ export default function VerkaufScreen() {
             <InlineError message={session.error} onDismiss={session.clearError} />
           ) : null}
 
-          {/* Results — every match, available-first; reserved/sold shown but not
+          {/* Results every match, available-first; reserved/sold shown but not
               addable (honest empty/loading/error). */}
           {results.status === "loading" && results.data == null ? (
             <ResultsSkeleton />
@@ -749,10 +749,10 @@ export default function VerkaufScreen() {
             />
           ) : results.data != null ? (
             <View className="gap-2.5">
-              {/* Honest coverage line — how many of the total matches are on
+              {/* Honest coverage line how many of the total matches are on
                   screen. Only worth showing once there is more than one page, so
-                  the operator never wonders whether the strip's „verfügbar" count
-                  is reachable: tap „Mehr laden" until everything is here. */}
+                  the operator never wonders whether the strip's verfügbar" count
+                  is reachable: tap Mehr laden" until everything is here. */}
               {moreRemain || extra.length > 0 ? (
                 <Text className="text-muted-foreground text-2xs px-0.5" numberOfLines={1}>
                   {`${sortedResults.length.toLocaleString("de-DE")} von ${total.toLocaleString("de-DE")} geladen`}
@@ -768,7 +768,7 @@ export default function VerkaufScreen() {
                   />
                 </StaggerItem>
               ))}
-              {/* „Mehr laden" — the explicit path to the rest of the catalog. The
+              {/* Mehr laden" the explicit path to the rest of the catalog. The
                   picker lives in a ScrollView (not a FlatList), so paging is a
                   deliberate tap rather than an invisible scroll trigger; the
                   operator sees exactly when more stock is being fetched. */}
@@ -898,8 +898,8 @@ export default function VerkaufScreen() {
                       <Text className="text-base font-semibold">Käufer auswählen</Text>
                       <Text className="text-muted-foreground text-xs">
                         {kyc.thresholdReached
-                          ? "Pflicht — ab dieser Höhe verlangt der Verkauf eine geprüfte Identität."
-                          : "Optional — verknüpft den Kauf mit dem Kunden (Kundenhistorie)."}
+                          ? "Pflicht ab dieser Höhe verlangt der Verkauf eine geprüfte Identität."
+                          : "Optional verknüpft den Kauf mit dem Kunden (Kundenhistorie)."}
                       </Text>
                     </View>
                   </Card>
@@ -934,7 +934,7 @@ export default function VerkaufScreen() {
               )}
 
               {/* The honest §10 gate: a sale at/above the threshold without a
-                  verified buyer is blocked — with a one-tap path to stamp the
+                  verified buyer is blocked with a one-tap path to stamp the
                   Ausweis in the profile. Never a fabricated green. */}
               {kyc.blocked ? (
                 <BuyerKycGate
@@ -956,7 +956,7 @@ export default function VerkaufScreen() {
                 >
                   <ShieldCheck size={t.icon.sm} color={t.colors.verdigris} />
                   <Text className="text-xs font-medium" style={{ color: t.colors.verdigris }}>
-                    Identität geprüft — Verkauf zulässig.
+                    Identität geprüft Verkauf zulässig.
                   </Text>
                 </View>
               ) : null}
@@ -984,7 +984,7 @@ export default function VerkaufScreen() {
                     accessibilityLabelPrefix="Bargeld Ziffer"
                   />
 
-                  {/* Live tender feedback — change (verdigris) or shortfall (brass). */}
+                  {/* Live tender feedback change (verdigris) or shortfall (brass). */}
                   {tryToCents(cashReceived) != null && cashReceived !== "" ? (
                     <View
                       className="flex-row items-center justify-between rounded-xl px-3 py-2.5"
@@ -1021,7 +1021,7 @@ export default function VerkaufScreen() {
               )}
             </View>
 
-            {/* The fiscal gate opener — NEVER the commit itself. A clearly marked
+            {/* The fiscal gate opener NEVER the commit itself. A clearly marked
                 fiskalische Aktion that opens the confirm sheet (which then needs a
                 second, explicit press). 48px money target. */}
             <View className="gap-2 pt-1">
@@ -1056,7 +1056,7 @@ export default function VerkaufScreen() {
         ) : null}
       </ScrollView>
 
-      {/* The buyer picker sheet — search + attach a customer to the sale. */}
+      {/* The buyer picker sheet search + attach a customer to the sale. */}
       <CustomerPicker
         open={pickerOpen}
         onOpenChange={setPickerOpen}
@@ -1170,7 +1170,7 @@ function SaleDoneScreen({
         showsVerticalScrollIndicator={false}
       >
         <View className="items-center gap-4 pt-2">
-          {/* The sealed-receipt mark — a verdigris seal ringed by a fine gold
+          {/* The sealed-receipt mark a verdigris seal ringed by a fine gold
               hairline, the antique "festgeschrieben" flourish. */}
           <View
             className="h-20 w-20 items-center justify-center rounded-full border"
@@ -1207,7 +1207,7 @@ function SaleDoneScreen({
             <Text className="text-base font-semibold">Beleg</Text>
           </View>
 
-          {/* The on-screen Beleg — the same lines, VAT and total that were booked.
+          {/* The on-screen Beleg the same lines, VAT and total that were booked.
               A tap reveals the full receipt as it will be shared/printed. */}
           {previewOpen ? (
             <PrintPreview printable={printable} />
@@ -1241,7 +1241,7 @@ function SaleDoneScreen({
             <InlineError message={actionError} onDismiss={() => setActionError(null)} />
           ) : null}
 
-          {/* PRIMARY — one tap: open the OS print dialog. AirPrint on iOS, the
+          {/* PRIMARY one tap: open the OS print dialog. AirPrint on iOS, the
               Android print framework on Android; from there: any known printer
               or "als PDF sichern". Honestly disabled if the module is missing. */}
           <Button
@@ -1254,7 +1254,7 @@ function SaleDoneScreen({
             <Text>{busy === "print" ? "Wird vorbereitet…" : "Beleg drucken"}</Text>
           </Button>
 
-          {/* SECONDARY — render a PDF and share it (Dateien, Mail, …). */}
+          {/* SECONDARY render a PDF and share it (Dateien, Mail, …). */}
           {caps.canSharePdf ? (
             <Button
               variant="outline"
@@ -1427,7 +1427,7 @@ function BuyerKycGate({
           </Text>
           <Text className="text-muted-foreground text-sm leading-5">
             {hasCustomer && fullName != null
-              ? `Ab ${formatCents(Number(VERKAUF_KYC_THRESHOLD_CENTS))} verlangt der Verkauf eine geprüfte Ausweis-Identifikation des Käufers. „${fullName}“ ist noch nicht bestätigt.`
+              ? `Ab ${formatCents(Number(VERKAUF_KYC_THRESHOLD_CENTS))} verlangt der Verkauf eine geprüfte Ausweis-Identifikation des Käufers. ${fullName} ist noch nicht bestätigt.`
               : `Ab ${formatCents(Number(VERKAUF_KYC_THRESHOLD_CENTS))} verlangt der Verkauf einen geprüften Käufer. Bitte einen Käufer mit bestätigter Identität zuordnen.`}
           </Text>
         </View>

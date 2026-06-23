@@ -144,7 +144,7 @@ function CategoryRowItem({
     return (
       <View className="gap-2 py-2.5" style={{ paddingLeft: indent }}>
         <Text className="text-muted-foreground text-2xs">
-          {`Name ändern · Kurzname bleibt „${node.slug}"`}
+          {`Name ändern · Kurzname bleibt ${node.slug}"`}
         </Text>
         <View className="flex-row items-center gap-2">
           <Input
@@ -203,7 +203,7 @@ function CategoryRowItem({
       <View className="py-2.5" style={{ paddingLeft: indent }}>
         <Card className="gap-3 px-3.5 py-3" style={{ borderColor: t.colors.destructive }}>
           <Text className="text-sm font-semibold" style={{ color: t.colors.destructive }}>
-            {`„${node.nameDe}" löschen?`}
+            {`${node.nameDe}" löschen?`}
           </Text>
           <Text className="text-muted-foreground text-xs leading-5">
             Die Sammlung wird entfernt. Artikelzuordnungen müssen vorher gelöst sein.
@@ -386,7 +386,7 @@ function CreateCategoryForm({
         )}
       </View>
 
-      {/* Parent picker - „oberste Ebene" first, then each legal parent. */}
+      {/* Parent picker - oberste Ebene" first, then each legal parent. */}
       <View className="gap-1.5">
         <Text className="text-sm font-medium">Übergeordnet</Text>
         <ScrollView
@@ -498,7 +498,7 @@ export function SettingsCategoriesSection() {
   return (
     <SectionCard
       title="Sammlungen"
-      subtitle="Die Kategorien deines Sortiments - bis zu drei Ebenen."
+      subtitle="Die Kategorien deines Sortiments, bis zu drei Ebenen."
       icon={FolderTree}
       action={
         canEdit && !creating && q.data != null ? (

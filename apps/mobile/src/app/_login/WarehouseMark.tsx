@@ -70,13 +70,13 @@ export function WarehouseMark({ size = "lg" }: WarehouseMarkProps): ReactNode {
       importantForAccessibility="no-hide-descendants"
       style={{ width: ring, height: ring, alignItems: "center", justifyContent: "center" }}
     >
-      {/* Bloom REMOVED — the layered brass discs read as a glow behind the
+      {/* Bloom REMOVED the layered brass discs read as a glow behind the
           medallion, which the official store motion language forbids. The
           medallion now sits on the warm paper ground; depth comes from the
           concentric hairline rings below, never from a glow. */}
       {lg ? null : null}
 
-      {/* Outer decorative gilt ring — a single hairline flourish. */}
+      {/* Outer decorative gilt ring a single hairline flourish. */}
       <View
         pointerEvents="none"
         style={{
@@ -89,7 +89,7 @@ export function WarehouseMark({ size = "lg" }: WarehouseMarkProps): ReactNode {
         }}
       />
 
-      {/* Inner ink hairline, just inside the gilt — a second concentric line
+      {/* Inner ink hairline, just inside the gilt a second concentric line
           that gives the medallion engraved depth. */}
       <View
         pointerEvents="none"

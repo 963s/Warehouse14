@@ -47,7 +47,7 @@ export interface GoldFloodProps {
 
 // A quiet translucent gilt wash — decorative, never under text. Low alpha so
 // content stays readable through it.
-const VEIL_ALPHA = "14" // ~8% — a gentle stamp, not a flood
+const VEIL_ALPHA = "14" // ~8% a gentle stamp, not a flood
 
 export function GoldFlood({ visible, onReachPeak, onDone }: GoldFloodProps): ReactNode {
   const t = useW14Theme()

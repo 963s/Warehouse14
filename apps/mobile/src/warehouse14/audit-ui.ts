@@ -58,11 +58,11 @@ export type BadgeVariant = NonNullable<BadgeProps["variant"]>
 // Unbekannte fällt ehrlich in „Sonstiges", statt eine falsche Heimat zu erfinden.
 
 export type EventCategory =
-  | "sales" // Verkauf / Storno / Rückgabe / Ankauf — der fiskalische Kern
+  | "sales" // Verkauf / Storno / Rückgabe / Ankauf der fiskalische Kern
   | "inventory" // Artikel: angelegt, geändert, reserviert, archiviert
   | "customers" // Kunden + KYC/GwG-Stammdaten
   | "fiscal" // Tagesabschluss, Belegtexte, Metallpreise, Schicht/Kasse
-  | "security" // alert.* + security.* — Sicherheits- & Compliance-Signale
+  | "security" // alert.* + security.* Sicherheits- & Compliance-Signale
   | "approvals" // Freigaben (command.approval_*)
   | "appointments" // Termine
   | "system" // Auth, Einstellungen, Hintergrund-Jobs, Foto-Pipeline
@@ -92,7 +92,7 @@ const CATEGORY_META: Readonly<Record<EventCategory, CategoryMeta>> = {
     icon: Receipt,
     variant: "default",
     emphasis: false,
-    hint: "Verkäufe, Stornos, Rückgaben und Ankäufe — der fiskalische Kern.",
+    hint: "Verkäufe, Stornos, Rückgaben und Ankäufe der fiskalische Kern.",
   },
   inventory: {
     category: "inventory",
@@ -502,9 +502,9 @@ export function toSnakeKey(key: string): string {
  */
 function warnUntranslated(kind: "Schlüssel" | "Wert", raw: string, key?: string): void {
   if (typeof __DEV__ !== "undefined" && __DEV__) {
-    const where = key ? ` (Feld „${key}")` : ""
+    const where = key ? ` (Feld ${key}")` : ""
     console.warn(
-      `[audit-ui] Kein kuratiertes deutsches Label für ${kind} „${raw}"${where} — ` +
+      `[audit-ui] Kein kuratiertes deutsches Label für ${kind} ${raw}"${where} ` +
         `Fallback-Humanisierung greift. Bitte in audit-ui.ts ergänzen.`,
     )
   }

@@ -133,7 +133,7 @@ export function FiscalConfirmSheet({
           contentContainerStyle={{ gap: 16 }}
           showsVerticalScrollIndicator={false}
         >
-          {/* The amount — the single hero number, big TABULAR MONO. This is the
+          {/* The amount the single hero number, big TABULAR MONO. This is the
               cross-app money rule: the single biggest money figure is mono in
               BOTH apps (matches the cashier "Zu zahlen" anchor in
               apps/tauri-pos BezahlenDialog). Serif is reserved for titles. */}
@@ -149,7 +149,7 @@ export function FiscalConfirmSheet({
 
           {children}
 
-          {/* The fiscal weight — made visible, never hidden. */}
+          {/* The fiscal weight made visible, never hidden. */}
           <View
             className="flex-row items-start gap-2.5 rounded-xl px-3.5 py-3"
             style={{ backgroundColor: t.colors.primary + "14" }}
@@ -165,7 +165,7 @@ export function FiscalConfirmSheet({
           ) : null}
         </ScrollView>
 
-        {/* Actions — confirm is a 48px money target. */}
+        {/* Actions confirm is a 48px money target. */}
         <View className="gap-2">
           <Button
             size="xl"
