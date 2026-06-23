@@ -19,6 +19,7 @@ import { createFileReadCachePersistence, installReadCachePersistence } from "@/w
 import { useSession } from "@/warehouse14/session"
 import { StepUpDialogHost } from "@/warehouse14/StepUpDialog"
 import { darkPalette, lightPalette } from "@/warehouse14/theme"
+import { installThemePreferencePersistence } from "@/warehouse14/theme-preference"
 import { ConnectionBannerHost } from "@/warehouse14/ui"
 import { modalPresent, stackPush } from "@/warehouse14/ui/motion/nav-transitions"
 
@@ -41,6 +42,7 @@ installReadCachePersistence(createFileReadCachePersistence())
 const appStatePersistence = createAppStatePersistence()
 void installOnboardingPersistence(appStatePersistence)
 void installPreferencesPersistence(appStatePersistence)
+void installThemePreferencePersistence(appStatePersistence)
 
 /** Redirect to /login when there is no session, and away from it once there is. */
 function useAuthRedirect(): void {

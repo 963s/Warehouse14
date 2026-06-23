@@ -20,6 +20,8 @@
  */
 import { useColorScheme } from "react-native"
 
+import { useThemeMode } from "./theme-preference"
+
 export interface Palette {
   /** app background — warm cream parchment (--w14-parchment) */
   background: string
@@ -226,11 +228,13 @@ export interface Theme {
   type: typeof type
 }
 
-/** Active theme. Follows the system colour scheme (light default, dark when
- *  the OS is dark). Both palettes are on the same design system. */
+/** Active theme. Respects the owner's explicit choice (Hell/Dunkel/System):
+ *  when 'system' it follows useColorScheme; when 'light' or 'dark' it overrides.
+ *  Both palettes are on the same design system. */
 export function useW14Theme(): Theme {
   const scheme = useColorScheme()
-  const isDark = scheme === "dark"
+  const mode = useThemeMode()
+  const isDark = mode === "dark" || (mode === "system" && scheme === "dark")
   return {
     colors: isDark ? darkPalette : lightPalette,
     isDark,

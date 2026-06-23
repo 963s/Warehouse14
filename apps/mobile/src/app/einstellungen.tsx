@@ -92,6 +92,7 @@ import { clearSession, useSession } from "@/warehouse14/session"
 import { SettingsBelegtextSection } from "@/warehouse14/SettingsBelegtextSection"
 import { SettingsCategoriesSection } from "@/warehouse14/SettingsCategoriesSection"
 import { useW14Theme } from "@/warehouse14/theme"
+import { setThemeMode as setThemeModeBound, useThemeMode, type ThemeMode } from "@/warehouse14/theme-preference"
 import {
   InlineError,
   KeyboardAvoidingScreen,
@@ -629,66 +630,65 @@ function DeviceSection() {
 
 function AppearanceSection() {
   const t = useW14Theme()
-  const scheme = useColorScheme()
   const reduceMotion = useReducedMotion()
+  const mode = useThemeMode()
+  const setMode = setThemeModeBound
 
-  const isDark = scheme === "dark"
-  const SchemeIcon = isDark ? Moon : SunMedium
-
-  const openSystemSettings = useCallback(() => {
-    haptics.selection()
-    // RN's Linking.openSettings() opens THIS app's settings page on both
-    // platforms; it is the honest place to change appearance / reduce motion.
-    void Linking.openSettings().catch(() => {})
-  }, [])
+  const options: { id: ThemeMode; label: string; icon: typeof SunMedium }[] = [
+    { id: "system", label: "System", icon: Smartphone },
+    { id: "light", label: "Hell", icon: SunMedium },
+    { id: "dark", label: "Dunkel", icon: Moon },
+  ]
 
   return (
     <SectionCard
       title="Darstellung"
-      subtitle="Folgt den Systemeinstellungen deines Geräts."
+      subtitle="Erscheinungsbild der App."
       icon={Settings2}
     >
-      <View className="min-h-[40px] flex-row items-center gap-3 py-2">
-        <View
-          className="h-8 w-8 items-center justify-center rounded-md"
-          style={{ backgroundColor: t.colors.primary + "1f" }}
-        >
-          <SchemeIcon size={t.icon.md} color={t.colors.primary} />
-        </View>
-        <Text className="text-muted-foreground flex-1 text-sm">Erscheinungsbild</Text>
-        <Text className="text-sm font-medium">{isDark ? "Dunkel" : "Hell"}</Text>
+      {/* The theme mode segmented control — three calm pills, the active one
+          filled with ink. Bare icons (no tinted chips), design-law compliant. */}
+      <View className="flex-row gap-2 py-1">
+        {options.map((opt) => {
+          const active = mode === opt.id
+          const Icon = opt.icon
+          return (
+            <PressableScale
+              key={opt.id}
+              onPress={() => {
+                haptics.selection()
+                setMode(opt.id)
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={opt.label}
+              className="flex-1"
+              style={{
+                paddingVertical: 10,
+                borderRadius: t.radii.button,
+                backgroundColor: active ? t.colors.foreground : "transparent",
+                borderWidth: 1,
+                borderColor: active ? t.colors.foreground : t.colors.border,
+              }}
+            >
+              <View className="flex-row items-center justify-center gap-1.5">
+                <Icon size={t.icon.sm} color={active ? t.colors.card : t.colors.foreground} />
+                <Text
+                  className="text-sm font-semibold"
+                  style={{ color: active ? t.colors.card : t.colors.foreground }}
+                >
+                  {opt.label}
+                </Text>
+              </View>
+            </PressableScale>
+          )
+        })}
       </View>
       <RowDivider />
       <View className="min-h-[40px] flex-row items-center gap-3 py-2">
-        <View
-          className="h-8 w-8 items-center justify-center rounded-md"
-          style={{ backgroundColor: t.colors.primary + "1f" }}
-        >
-          <Sparkles size={t.icon.md} color={t.colors.primary} />
-        </View>
+        <Sparkles size={t.icon.sm} color={t.colors.foreground} />
         <Text className="text-muted-foreground flex-1 text-sm">Bewegung reduzieren</Text>
         <Text className="text-sm font-medium">{reduceMotion ? "An" : "Aus"}</Text>
       </View>
-      <RowDivider />
-      <PressableScale
-        onPress={openSystemSettings}
-        accessibilityRole="button"
-        accessibilityLabel="Systemeinstellungen öffnen"
-      >
-        <View className="min-h-[44px] flex-row items-center gap-3 py-2">
-          <Text className="text-primary flex-1 text-sm font-medium">
-            Systemeinstellungen öffnen
-          </Text>
-          <ChevronRight size={t.icon.md} color={t.colors.primary} />
-        </View>
-      </PressableScale>
-      <Text
-        className="text-muted-foreground mt-1 pt-2 text-2xs"
-        style={{ borderTopWidth: 1, borderColor: t.colors.border }}
-      >
-        {"Hell/Dunkel und Bewegung reduzieren steuerst du im System; die App folgt dieser " +
-          "Wahl. Eine separate App-Umschaltung gibt es bewusst nicht."}
-      </Text>
     </SectionCard>
   )
 }

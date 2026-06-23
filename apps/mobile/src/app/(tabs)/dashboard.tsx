@@ -46,6 +46,7 @@ import type {
 } from "@warehouse14/api-client"
 import { type Href, useRouter } from "expo-router"
 import {
+  ArrowUp,
   BadgeEuro,
   CalendarClock,
   ChevronRight,
@@ -124,7 +125,6 @@ import {
   SectionCard,
   SectionHeader,
   Skeleton,
-  Sparkline,
   StaggerItem,
   StatTile,
   useMultiQuery,
@@ -1057,24 +1057,24 @@ function MetalRateRow({
   const t = useW14Theme()
   const avgN = Number(avg)
   const curN = Number(current)
-  const delta = pctDelta(avgN, curN)
+  const rising = curN > avgN
+  const falling = curN < avgN
+  const arrowColor = rising ? t.colors.verdigris : falling ? t.colors.destructive : t.colors.mutedForeground
   return (
-    <View className="gap-1.5 py-1">
-      <View className="flex-row items-baseline justify-between">
-        <Text className="text-sm font-semibold">{label}</Text>
-        <Text className="font-mono-medium text-base" style={{ color: t.colors.foreground }}>
+    // ONE calm line per metal: name on the left, price + arrow on the right.
+    // No sparkline, no nested boxes, no over-heavy visual. Just the honest data.
+    <View className="flex-row items-center justify-between py-1.5">
+      <Text className="text-sm font-medium">{label}</Text>
+      <View className="flex-row items-center gap-2">
+        <ArrowUp
+          size={t.icon.sm}
+          color={arrowColor}
+          style={{ transform: [{ rotate: rising ? "0deg" : falling ? "180deg" : "90deg" }] }}
+        />
+        <Text className="font-mono-medium text-sm" style={{ color: t.colors.foreground }}>
           {pricePerGram(current)}
         </Text>
       </View>
-      <Sparkline
-        data={[avgN, curN]}
-        height={24}
-        delta={delta ?? undefined}
-        accessibilityLabel={`${label}: 10-Tage-Schnitt ${pricePerGram(avg)}, aktuell ${pricePerGram(current)}`}
-      />
-      <Text className="text-muted-foreground text-2xs">
-        10-Tage-Schnitt {pricePerGram(avg)}
-      </Text>
     </View>
   )
 }
