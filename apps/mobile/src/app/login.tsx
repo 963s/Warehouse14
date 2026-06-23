@@ -44,20 +44,17 @@ import Animated from "react-native-reanimated"
 
 import { Text } from "@/components/ui/text"
 import { API_BASE_URL, describeError, pinLogin } from "@/warehouse14/api"
-import { replayOnboarding, useOnboardingSeen } from "@/warehouse14/onboarding"
 import { setSession } from "@/warehouse14/session"
 import { useW14Theme } from "@/warehouse14/theme"
 import {
   haptics,
   itemEnter,
   PaperGrain,
-  PressableScale,
   screenEnter,
   useReduceMotion,
   useScreenInsets,
 } from "@/warehouse14/ui"
 
-import { OnboardingIntro } from "./_login/OnboardingIntro"
 import { PinPad } from "./_login/PinPad"
 import { WarehouseMark } from "./_login/WarehouseMark"
 
@@ -103,7 +100,6 @@ export default function LoginScreen(): ReactNode {
   const t = useW14Theme()
   const insets = useScreenInsets()
   const reduceMotion = useReduceMotion()
-  const seenIntro = useOnboardingSeen()
   const { height } = useWindowDimensions()
 
   const [pin, setPin] = useState("")
@@ -174,10 +170,9 @@ export default function LoginScreen(): ReactNode {
     setPin((prev) => prev.slice(0, -1))
   }, [])
 
-  // First cold open → the calm intro takes the whole screen, then hands back.
-  if (!seenIntro) {
-    return <OnboardingIntro onDone={() => setPin("")} />
-  }
+  // The intro is DISABLED — the owner wants to go straight to the PIN pad.
+  // (if (!seenIntro) return <OnboardingIntro ... /> was here; removed per owner
+  // request: no splash/intro, just the lock screen.)
 
   // Compact phones tighten the internal gaps so the centred group breathes
   // without overflowing on a short screen.
@@ -274,18 +269,9 @@ export default function LoginScreen(): ReactNode {
           className="w-full items-center"
           style={{ maxWidth: 420, gap: t.space.x3, paddingTop: t.space.x4 }}
         >
-          <PressableScale
-            onPress={() => {
-              haptics.selection()
-              replayOnboarding()
-            }}
-            accessibilityRole="button"
-            accessibilityLabel="App kennenlernen Einführung erneut ansehen"
-            hitSlop={12}
-            style={{ minHeight: 44, justifyContent: "center", paddingHorizontal: t.space.x2 }}
-          >
-            <Text className="text-primary text-sm font-medium">App kennenlernen</Text>
-          </PressableScale>
+          {/* The "App kennenlernen" replay link was REMOVED — it overlapped the
+              PIN pad and caused touch-target collisions. The owner wants only the
+              PIN pad, nothing else. */}
 
           {/* Honest DEV-only convenience hint the backend it talks to and the
               seeded owner credentials. Gated to dev builds so a real owner on a
