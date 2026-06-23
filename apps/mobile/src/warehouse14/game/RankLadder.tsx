@@ -2,8 +2,8 @@
  * RankLadder — the full Aufstiegs-Leiter, every tier on one card.
  *
  * Where RankBadge is the compact crest, this is the WHOLE ladder for the Erfolge
- * surface: a row per rank (Lehrling → Schatzmeister), the held tier lit brass and
- * marked „Aktuell", reached tiers in full ink, locked tiers dimmed with the streak
+ * surface: a row per rank (Lehrling → Schatzmeister), the held tier lit ink and
+ * marked Aktuell, reached tiers in full ink, locked tiers dimmed with the streak
  * they unlock at. The held row carries a real progress gauge toward the next tier
  * (straight from rankProgress — never fabricated), and an honest „noch X Tage"
  * line. At the top rank the gauge is full and the line reads „Höchster Rang".
@@ -117,13 +117,8 @@ function RankRow({
   const reduceMotion = useReduceMotion()
   const Icon = RANK_ICON[rankId]
 
-  // The crest tint: held + reached are brass; locked tiers are muted.
-  const crestColor = reached ? t.colors.primary : t.colors.mutedForeground
-  const crestBg = held
-    ? t.colors.primary + "29"
-    : reached
-      ? t.colors.primary + "14"
-      : t.colors.border + "66"
+  // The crest tint: held + reached are ink; locked tiers are muted.
+  const crestColor = reached ? t.colors.foreground : t.colors.mutedForeground
 
   // One-shot promotion pop on the held crest (emphasis spring), reduce-motion safe.
   const pop = useSharedValue(1)
@@ -145,13 +140,13 @@ function RankRow({
       className="flex-row items-center gap-3 rounded-md px-2 py-1.5"
       style={
         held
-          ? { backgroundColor: t.colors.primary + "0f", borderWidth: 1, borderColor: t.colors.primary + "33" }
+          ? { backgroundColor: t.colors.raised, borderRadius: t.radii.button }
           : undefined
       }
     >
       <Animated.View
-        className="h-9 w-9 items-center justify-center rounded-md"
-        style={[{ backgroundColor: crestBg }, popStyle]}
+        className="h-8 w-8 items-center justify-center"
+        style={[popStyle]}
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants"
       >
@@ -168,11 +163,17 @@ function RankRow({
             {title}
           </Text>
           {held ? (
+            // Fixed-size pill — never stretches vertically (the stretched pill
+            // was the visual bug). Hard-capped height + self-center.
             <View
-              className="rounded-md px-1.5 py-0.5"
-              style={{ backgroundColor: t.colors.primary + "1f" }}
+              className="self-center items-center justify-center rounded-md"
+              style={{
+                backgroundColor: t.colors.primary + "1f",
+                paddingHorizontal: 6,
+                height: 20,
+              }}
             >
-              <Text className="text-2xs font-semibold" style={{ color: t.colors.primary }}>
+              <Text className="text-2xs font-bold" style={{ color: t.colors.primary }}>
                 Aktuell
               </Text>
             </View>
@@ -180,7 +181,7 @@ function RankRow({
         </View>
         <Text
           className="text-muted-foreground text-2xs"
-          numberOfLines={1}
+          numberOfLines={2}
         >
           {reached ? description : `Ab ${minStreak} ${minStreak === 1 ? "Tag" : "Tagen"} Serie`}
         </Text>
@@ -190,7 +191,7 @@ function RankRow({
           a still-locked one; the held tier needs no glyph (its Aktuell" pill says it). */}
       {!held ? (
         reached ? (
-          <Check size={t.icon.sm} color={t.colors.primary} />
+          <Check size={t.icon.sm} color={t.colors.foreground} />
         ) : (
           <Lock size={t.icon.sm} color={t.colors.mutedForeground} />
         )
