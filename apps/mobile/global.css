@@ -81,8 +81,41 @@
   --w14-gold: #2e2b26;
 }
 
-/* NOTE: no @media (prefers-color-scheme: dark) block. The official store has
- * no dark mode; the app is LIGHT ONLY. */
+/* DARK MODE — a warm dark canvas on the same design system. Deep umber ground
+ * (never pure black), warm parchment text, gilt lifted for visibility, functional
+ * green/red lifted for AA. Follows the system scheme automatically. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --w14-background: #1a1712;
+    --w14-foreground: #efece3;
+    --w14-card: #232019;
+    --w14-card-foreground: #efece3;
+    --w14-popover: #232019;
+    --w14-popover-foreground: #efece3;
+    --w14-ink-aged: #c4bfb2;
+    --w14-ink-faded: #a39d90;
+    --w14-primary: #efece3;
+    --w14-primary-foreground: #1a1712;
+    --w14-secondary: #100e0a;
+    --w14-secondary-foreground: #efece3;
+    --w14-muted: #100e0a;
+    --w14-muted-foreground: #a39d90;
+    --w14-accent: #7bc4a0;
+    --w14-accent-foreground: #1a1712;
+    --w14-destructive: #e07a5e;
+    --w14-destructive-foreground: #1a1712;
+    --w14-border: #3a342a;
+    --w14-input: #100e0a;
+    --w14-ring: #efece3;
+
+    --w14-gilt: #c9a55c;
+    --w14-gilt-deep: #a3823b;
+    --w14-raised: #100e0a;
+    --w14-forest: #7bc4a0;
+    --w14-terra: #d49a6e;
+    --w14-gold: #1a1712;
+  }
+}
 
 
 @theme inline {

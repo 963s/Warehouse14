@@ -94,11 +94,32 @@ export const lightPalette: Palette = {
 }
 
 /**
- * Kept as a stable alias so the rest of the app can import `darkPalette`
- * without a break — but it resolves to the LIGHT palette. The store has no
- * dark mode; this guarantees we never render a different theme than the store.
+ * DARK — a warm dark mode on the SAME design system. Deep umber ground (never
+ * pure black), warm parchment-tinted text, gilt as thread/edge/seal only,
+ * functional green/red lifted for AA contrast on the dark canvas. Mirrors the
+ * light palette's structure 1:1 so every surface renders correctly in both
+ * modes via the same tokens.
  */
-export const darkPalette: Palette = lightPalette
+export const darkPalette: Palette = {
+  background: "#1a1712", // deep warm umber, never pure #000
+  card: "#232019", // raised umber leaf (half-step lighter)
+  raised: "#100e0a", // sunken well / hover (deeper than the ground)
+  foreground: "#efece3", // warm parchment text (the light ink)
+  inkAged: "#c4bfb2", // secondary text
+  mutedForeground: "#a39d90", // faint / meta text
+  // Primary action = warm parchment (the dark-mode ink: light on dark).
+  primary: "#efece3",
+  primaryForeground: "#1a1712",
+  verdigris: "#7bc4a0", // sage green lifted for AA on dark
+  destructive: "#e07a5e", // wax-red lifted for AA on dark
+  border: "#3a342a", // warm umber hairline
+  ring: "#efece3", // light focus ring on dark
+  gilt: "#c9a55c", // gilt lifted slightly for visibility on dark
+  giltDeep: "#a3823b",
+  gold: "#1a1712", // legacy alias mirrors the ground (quiet, not yellow)
+  forest: "#7bc4a0",
+  terra: "#d49a6e",
+}
 
 /**
  * Radii — ONE system. button 8 / card 12 / xl2 20. The official store scale.
@@ -205,12 +226,13 @@ export interface Theme {
   type: typeof type
 }
 
-/** Active theme. The store is LIGHT ONLY; isDark is always false. */
+/** Active theme. Follows the system colour scheme (light default, dark when
+ *  the OS is dark). Both palettes are on the same design system. */
 export function useW14Theme(): Theme {
   const scheme = useColorScheme()
-  const isDark = false // the official store has no dark mode
+  const isDark = scheme === "dark"
   return {
-    colors: lightPalette,
+    colors: isDark ? darkPalette : lightPalette,
     isDark,
     radii,
     space,
