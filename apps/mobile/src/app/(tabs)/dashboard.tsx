@@ -131,6 +131,7 @@ import {
   useRefreshControl,
   useScreenInsets,
 } from "@/warehouse14/ui"
+import { SteampunkGrid, SteampunkTile, SteampunkLockedTile } from "@/warehouse14/game/steampunk"
 
 function heuteLabel(now: Date): string {
   return now.toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" })
@@ -537,107 +538,55 @@ export default function SchatzkammerScreen() {
           </View>
         </StaggerItem>
 
-        {/* e) Finance gauges each tile lights up only when its endpoint is live.
-            Un-boxed: SectionHeader on the canvas, tiles directly below (one border
-            layer, not SectionCard>Card>tile = box-in-box). */}
+        {/* e) Finanzen — steampunk panels with real data. */}
         <StaggerItem index={7}>
           <SectionHeader title="Finanzen" subtitle="Gewinn, Umsatz und Lagerwert live aus dem System." />
-          <View className="flex-row flex-wrap justify-between" style={{ rowGap: 10 }}>
-              {profitDay ? (
-                <CountTile
-                  label="Gewinn heute"
-                  value={profitDay.netProfitCents}
-                  format={formatCents}
-                  ratio={profitDayEur / targets.netProfitDayEur}
-                  tone={profitDay.netProfitCents >= 0 ? "accent" : "muted"}
-                  hint={`Ziel ${targets.netProfitDayEur} €`}
-                />
-              ) : (
-                <LockedTile label="Gewinn heute" />
-              )}
-              {monthRev ? (
-                <CountTile
-                  label="Monatsumsatz"
-                  value={monthRev.monthToDateRevenueCents}
-                  format={formatCents}
-                  ratio={monthRevEur / targets.monthRevenueEur}
-                  hint={`Ziel ${targets.monthRevenueEur} €`}
-                />
-              ) : (
-                <LockedTile label="Monatsumsatz" />
-              )}
-              {invValue ? (
-                <CountTile
-                  label="Lagerwert"
-                  value={invValue.listValueCents}
-                  format={formatCents}
-                  ratio={invValueEur / GAUGE_TARGETS.inventoryValueEur}
-                  tone="accent"
-                  hint={`${invValue.availableCount} Artikel`}
-                />
-              ) : (
-                <LockedTile label="Lagerwert" />
-              )}
-              {map ? (
-                <StatTile
-                  label="Fixkosten gedeckt"
-                  value={`${Math.round(map.coverage * 100)} %`}
-                  ratio={map.coverage}
-                  tone={map.brokeEven ? "accent" : "primary"}
-                  hint={
-                    map.brokeEven ? "Break-even erreicht" : `noch ${formatCents(map.toBreakEvenCents)}`
-                  }
-                />
-              ) : (
-                <LockedTile label="Fixkosten gedeckt" />
-              )}
-          </View>
+          <SteampunkGrid>
+            {profitDay ? (
+              <SteampunkTile label="Gewinn heute" value={profitDay.netProfitCents} format={formatCents} target={`${targets.netProfitDayEur} €`} ratio={profitDayEur / targets.netProfitDayEur} />
+            ) : (
+              <SteampunkLockedTile label="Gewinn heute" />
+            )}
+            {monthRev ? (
+              <SteampunkTile label="Monatsumsatz" value={monthRev.monthToDateRevenueCents} format={formatCents} target={`${targets.monthRevenueEur} €`} ratio={monthRevEur / targets.monthRevenueEur} />
+            ) : (
+              <SteampunkLockedTile label="Monatsumsatz" />
+            )}
+            {invValue ? (
+              <SteampunkTile label="Lagerwert" value={invValue.listValueCents} format={formatCents} target={`${GAUGE_TARGETS.inventoryValueEur} €`} ratio={invValueEur / GAUGE_TARGETS.inventoryValueEur} />
+            ) : (
+              <SteampunkLockedTile label="Lagerwert" />
+            )}
+            {map ? (
+              <SteampunkTile label="Fixkosten" value={map.coverage * 100} format={(v: number) => `${Math.round(v)} %`} target="100 %" ratio={map.coverage} />
+            ) : (
+              <SteampunkLockedTile label="Fixkosten" />
+            )}
+          </SteampunkGrid>
         </StaggerItem>
 
-        {/* f) Edelmetallbestand Gold + Silber in grams. Un-boxed (SectionHeader
-            on canvas, tiles directly below). */}
+        {/* f) Edelmetallbestand — steampunk panels with real weights. */}
         <StaggerItem index={8}>
           <SectionHeader title="Edelmetallbestand" subtitle="Gewichte aus dem Lager, in Gramm." />
-          <View className="flex-row flex-wrap justify-between" style={{ rowGap: 10 }}>
-              {metals ? (
-                <>
-                  <StatTile
-                    label="Goldbestand"
-                    value={gramm(metals.goldGrams)}
-                    ratio={metals.goldGrams / GAUGE_TARGETS.goldGrams}
-                    hint={`Referenz ${GAUGE_TARGETS.goldGrams} g`}
-                  />
-                  <StatTile
-                    label="Silberbestand"
-                    value={gramm(metals.silverGrams)}
-                    ratio={metals.silverGrams / GAUGE_TARGETS.silverGrams}
-                    tone="accent"
-                    hint={`Referenz ${GAUGE_TARGETS.silverGrams} g`}
-                  />
-                  {metals.platinumGrams > 0 ? (
-                    <StatTile
-                      label="Platinbestand"
-                      value={gramm(metals.platinumGrams)}
-                      tone="muted"
-                      hint="Bestand"
-                    />
-                  ) : null}
-                  {metals.palladiumGrams > 0 ? (
-                    <StatTile
-                      label="Palladiumbestand"
-                      value={gramm(metals.palladiumGrams)}
-                      tone="muted"
-                      hint="Bestand"
-                    />
-                  ) : null}
-                </>
-              ) : (
-                <>
-                  <LockedTile label="Goldbestand" />
-                  <LockedTile label="Silberbestand" />
-                </>
-              )}
-          </View>
+          <SteampunkGrid>
+            {metals ? (
+              <>
+                <SteampunkTile label="Goldbestand" value={metals.goldGrams} format={(v: number) => gramm(v)} target={`${GAUGE_TARGETS.goldGrams} g`} ratio={metals.goldGrams / GAUGE_TARGETS.goldGrams} />
+                <SteampunkTile label="Silberbestand" value={metals.silverGrams} format={(v: number) => gramm(v)} target={`${GAUGE_TARGETS.silverGrams} g`} ratio={metals.silverGrams / GAUGE_TARGETS.silverGrams} />
+                {metals.platinumGrams > 0 ? (
+                  <SteampunkTile label="Platinbestand" value={metals.platinumGrams} format={(v: number) => gramm(v)} target="Bestand" ratio={1} />
+                ) : null}
+                {metals.palladiumGrams > 0 ? (
+                  <SteampunkTile label="Palladiumbestand" value={metals.palladiumGrams} format={(v: number) => gramm(v)} target="Bestand" ratio={1} />
+                ) : null}
+              </>
+            ) : (
+              <>
+                <SteampunkLockedTile label="Goldbestand" />
+                <SteampunkLockedTile label="Silberbestand" />
+              </>
+            )}
+          </SteampunkGrid>
         </StaggerItem>
 
         {/* f2) Edelmetall-Kurse the spot vs the time-weighted 10-day average per
