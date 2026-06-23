@@ -29,10 +29,12 @@ import {
   Banknote,
   Camera,
   Coins,
+  Globe,
   MapPin,
   Pencil,
   RefreshCw,
   ShieldAlert,
+  Store,
   Warehouse,
   Weight,
 } from "lucide-react-native"
@@ -59,6 +61,7 @@ import {
   relocateProduct,
   removeProduct,
   setPhotoPrimary,
+  updateProduct,
 } from "@/warehouse14/api"
 import {
   conditionLabel,
@@ -601,9 +604,20 @@ export default function ProductDetailScreen() {
           )}
         </StaggerItem>
 
+        {/* ── Veröffentlichung — channel control from the phone (the owner's
+            core ask: publish/draft, Im Laden / Online, all from here). ── */}
+        <StaggerItem index={6}>
+          <PublishPanel
+            productId={product.id}
+            status={product.status}
+            listedOnStorefront={product.listedOnStorefront}
+            listedOnEbay={product.listedOnEbay}
+          />
+        </StaggerItem>
+
         {/* Entwurf löschen only unsold DRAFTs, confirmed in a dialog first. */}
         {isDeletableDraft ? (
-          <StaggerItem index={6}>
+          <StaggerItem index={7}>
             <Button
               variant="destructive"
               size="xl"
@@ -705,5 +719,92 @@ function DetailSkeleton() {
         </Card>
       ))}
     </View>
+  )
+}
+
+// ── PublishPanel — channel + status control from the phone ───────────────────
+/**
+ * The owner's core mobile workflow: control where a product is listed (Im Laden
+ * = storefront, Online = eBay) and its status (Draft = not sellable, Available =
+ * sellable). All toggles hit the REAL updateProduct endpoint.
+ */
+function PublishPanel({
+  productId,
+  status,
+  listedOnStorefront,
+  listedOnEbay,
+}: {
+  productId: string
+  status: string
+  listedOnStorefront: boolean
+  listedOnEbay: boolean
+}): React.ReactNode {
+  const t = useW14Theme()
+
+  const toggle = useMutation(
+    async (patch: { listedOnStorefront?: boolean; listedOnEbay?: boolean; status?: "DRAFT" | "AVAILABLE" }) =>
+      updateProduct(productId, patch),
+    {
+      onSuccess: () => haptics.success(),
+      onError: () => haptics.error(),
+    },
+  )
+
+  const isAvailable = status === "AVAILABLE"
+
+  const Switch = ({ on, label, icon, onPress }: { on: boolean; label: string; icon: React.ReactNode; onPress: () => void }) => (
+    <View className="flex-row items-center justify-between py-2">
+      <View className="flex-row items-center gap-2">
+        {icon}
+        <Text className="text-sm font-medium">{label}</Text>
+      </View>
+      <PressableScale
+        onPress={onPress}
+        accessibilityRole="switch"
+        accessibilityLabel={label}
+        accessibilityState={{ checked: on }}
+        style={{
+          width: 48, height: 28, borderRadius: 14,
+          backgroundColor: on ? t.colors.verdigris : t.colors.raised,
+          borderWidth: 1,
+          borderColor: on ? t.colors.verdigris : t.colors.border,
+          justifyContent: "center", paddingHorizontal: 2,
+        }}
+      >
+        <View style={{
+          width: 22, height: 22, borderRadius: 11,
+          backgroundColor: t.colors.card,
+          transform: [{ translateX: on ? 20 : 0 }],
+        }} />
+      </PressableScale>
+    </View>
+  )
+
+  return (
+    <SectionCard title="Veröffentlichung" subtitle="Wo und ob der Artikel verkaufbar ist.">
+      <Switch
+        on={isAvailable}
+        label="Verkaufstatus"
+        icon={<Text className="text-sm">{isAvailable ? "✓" : "○"}</Text>}
+        onPress={() => { haptics.selection(); void toggle.mutate({ status: isAvailable ? "DRAFT" : "AVAILABLE" }) }}
+      />
+      <View className="h-px w-full" style={{ backgroundColor: t.colors.border }} />
+      <Switch
+        on={listedOnStorefront}
+        label="Im Laden"
+        icon={<Store size={t.icon.sm} color={t.colors.foreground} />}
+        onPress={() => { haptics.selection(); void toggle.mutate({ listedOnStorefront: !listedOnStorefront }) }}
+      />
+      <View className="h-px w-full" style={{ backgroundColor: t.colors.border }} />
+      <Switch
+        on={listedOnEbay}
+        label="Online"
+        icon={<Globe size={t.icon.sm} color={t.colors.foreground} />}
+        onPress={() => { haptics.selection(); void toggle.mutate({ listedOnEbay: !listedOnEbay }) }}
+      />
+      {toggle.error != null ? (
+        <InlineError message="Änderung konnte nicht gespeichert werden." onRetry={() => toggle.reset()} />
+      ) : null}
+    </SectionCard>
   )
 }
