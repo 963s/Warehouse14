@@ -192,8 +192,8 @@ export default function LoginScreen(): ReactNode {
   // home bar. Here the brand + pad live in a single `justify-center` column that
   // stays composed at any device height, and the footer is a separate,
   // non-growing element pinned just above the home indicator.
-  const heroGap = compact ? t.space.x5 : t.space.x6
-  const groupGap = compact ? t.space.x6 : t.space.x8
+  const heroGap = compact ? t.space.x2_5 : t.space.x4_5
+  const groupGap = compact ? t.space.x3_5 : t.space.x5
 
   return (
     <View className="bg-background flex-1">
@@ -201,16 +201,12 @@ export default function LoginScreen(): ReactNode {
           fill (DESIGN.md §1, §5). Sits first, behind all content; pure
           decoration, never under text it must contrast against. */}
       <PaperGrain />
-      {/* No glow/bloom: the official store motion language forbids it. The login
-          rests on the warm paper ground alone. BrassCanvas is now a no-op kept
-          only so the call site compiles during the migration. */}
-      <BrassCanvas />
 
       <View
-        className="flex-1 items-center"
+        className="flex-1 items-center justify-center"
         style={{
           paddingTop: insets.screen.top + t.space.x2,
-          paddingBottom: insets.stickyBottom,
+          paddingBottom: insets.stickyBottom + t.space.x2,
           paddingHorizontal: t.space.x6,
         }}
       >
@@ -306,15 +302,3 @@ export default function LoginScreen(): ReactNode {
   )
 }
 
-/**
- * BrassCanvas — REMOVED. The old login painted a stack of large translucent
- * brass/verdigris discs behind the lock screen (a "bloom" glow). The official
- * store motion language forbids glow/bloom, and the layered discs were the
- * visual noise the owner flagged. The login now rests on the warm paper ground
- * alone (PaperGrain gives the subtle aged tooth); depth comes from hierarchy +
- * a hairline, never from a glow. Kept as a no-op so existing call sites compile
- * while they migrate to the bare-paper composition.
- */
-function BrassCanvas(): ReactNode {
-  return null
-}

@@ -992,12 +992,9 @@ function QuickActions({ onOpen }: { onOpen: (route: string) => void }) {
             style={{ width: "48%" }}
           >
             <Card className="min-h-[44px] flex-row items-center gap-3 px-3 py-3">
-              <View
-                className="h-9 w-9 items-center justify-center rounded-md"
-                style={{ backgroundColor: t.colors.primary + "14" }}
-              >
-                <Icon size={t.icon.md} color={t.colors.primary} />
-              </View>
+              {/* Bare icon — no tinted chip (the chip was offset/clipped on some
+                  devices). Ink glyph, calm, matches ListRow + SectionCard. */}
+              <Icon size={t.icon.md} color={t.colors.foreground} />
               <Text className="flex-1 text-sm font-semibold" numberOfLines={1}>
                 {a.label}
               </Text>

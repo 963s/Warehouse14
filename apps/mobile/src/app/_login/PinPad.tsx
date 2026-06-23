@@ -121,7 +121,7 @@ export function PinPad({
   }
 
   return (
-    <View className="items-center" style={{ gap: t.space.x8 }}>
+    <View className="items-center" style={{ gap: t.space.x5 }}>
       {/* PIN dots — fill with a settled spring pop; flash wax-red on a wrong PIN. */}
       <Animated.View
         style={dotsRowStyle}
