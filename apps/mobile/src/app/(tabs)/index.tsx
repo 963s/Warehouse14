@@ -25,7 +25,7 @@ import {
 import { useNavigation, useRouter } from "expo-router"
 import { ApiOfflineQueuedError } from "@warehouse14/api-client"
 import type { Metal, ProductListRow, ProductStatus } from "@warehouse14/api-client"
-import { Boxes, MapPin, PackagePlus, Plus, RefreshCw, Search, X } from "lucide-react-native"
+import { Boxes, Globe, MapPin, PackagePlus, Plus, RefreshCw, Search, Store, X } from "lucide-react-native"
 
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -507,6 +507,25 @@ function ProductRow({ item, onPress }: { item: ProductListRow; onPress: () => vo
           <Badge variant={statusVariant(item.status)} dot>
             <Text>{statusLabel(item.status)}</Text>
           </Badge>
+          {/* Sale-channel indicators — real data from listedOnStorefront /
+              listedOnEbay. Micro icons + labels, calm ink-faded, never pushing
+              the price/name out of alignment. */}
+          {(item.listedOnStorefront || item.listedOnEbay) ? (
+            <View className="flex-row items-center gap-2 pt-0.5">
+              {item.listedOnStorefront ? (
+                <View className="flex-row items-center gap-0.5">
+                  <Store size={10} color={t.colors.mutedForeground} />
+                  <Text className="text-muted-foreground text-2xs">Im Laden</Text>
+                </View>
+              ) : null}
+              {item.listedOnEbay ? (
+                <View className="flex-row items-center gap-0.5">
+                  <Globe size={10} color={t.colors.mutedForeground} />
+                  <Text className="text-muted-foreground text-2xs">Online</Text>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
         </View>
       </View>
     </PressableScale>
