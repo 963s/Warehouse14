@@ -32,6 +32,7 @@ import {
   Globe,
   MapPin,
   Pencil,
+  Printer,
   RefreshCw,
   ShieldAlert,
   Store,
@@ -63,6 +64,7 @@ import {
   setPhotoPrimary,
   updateProduct,
 } from "@/warehouse14/api"
+import { buildLabelHtml } from "@/warehouse14/print/label-html"
 import {
   conditionLabel,
   formatGrams,
@@ -604,8 +606,7 @@ export default function ProductDetailScreen() {
           )}
         </StaggerItem>
 
-        {/* ── Veröffentlichung — channel control from the phone (the owner's
-            core ask: publish/draft, Im Laden / Online, all from here). ── */}
+        {/* ── Veröffentlichung — channel control from the phone ── */}
         <StaggerItem index={6}>
           <PublishPanel
             productId={product.id}
@@ -615,9 +616,20 @@ export default function ProductDetailScreen() {
           />
         </StaggerItem>
 
+        {/* ── Etikett drucken — barcode label via the OS print dialog ── */}
+        <StaggerItem index={7}>
+          <LabelPrintButton
+            name={product.name}
+            sku={product.sku ?? ""}
+            barcode={product.barcode}
+            priceEur={formatEur(product.listPriceEur)}
+            location={product.locationStorageUnit ?? ""}
+          />
+        </StaggerItem>
+
         {/* Entwurf löschen only unsold DRAFTs, confirmed in a dialog first. */}
         {isDeletableDraft ? (
-          <StaggerItem index={7}>
+          <StaggerItem index={8}>
             <Button
               variant="destructive"
               size="xl"
@@ -806,5 +818,56 @@ function PublishPanel({
         <InlineError message="Änderung konnte nicht gespeichert werden." onRetry={() => toggle.reset()} />
       ) : null}
     </SectionCard>
+  )
+}
+
+// ── LabelPrintButton — print a barcode label via the OS print dialog ──────────
+/**
+ * The owner taps this on the product detail → the OS print dialog opens with a
+ * 58mm label (barcode + price + name + location) → prints to any label printer
+ * the OS knows (AirPrint, Mopria). Uses expo-print (available in this build).
+ */
+function LabelPrintButton({
+  name,
+  sku,
+  barcode,
+  priceEur,
+  location,
+}: {
+  name: string
+  sku: string
+  barcode: string | null
+  priceEur: string
+  location: string
+}): React.ReactNode {
+  const [busy, setBusy] = useState(false)
+
+  const onPrint = useCallback(async () => {
+    haptics.selection()
+    setBusy(true)
+    try {
+      const html = buildLabelHtml({ name, sku, barcode, priceEur, location: location || null })
+      // expo-print is available via the print/capabilities module; use it directly.
+      const { printAsync } = await import("expo-print")
+      await printAsync({ html })
+    } catch {
+      haptics.error()
+    } finally {
+      setBusy(false)
+    }
+  }, [name, sku, barcode, priceEur, location])
+
+  return (
+    <Button
+      variant="ghost"
+      size="xl"
+      className="h-12"
+      onPress={onPrint}
+      disabled={busy}
+      accessibilityLabel="Etikett drucken"
+    >
+      <Printer size={18} color={undefined} />
+      <Text>{busy ? "Drucke…" : "Etikett drucken"}</Text>
+    </Button>
   )
 }
