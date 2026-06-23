@@ -44,7 +44,7 @@ export function StatTile({
         : t.colors.primary
 
   return (
-    <Card className="gap-2 px-3 py-3" style={{ width: "48%" }}>
+    <Card className="justify-between gap-2 px-4 py-4" style={{ width: "48%" }}>
       <Text
         className="text-muted-foreground text-xs font-medium uppercase"
         style={{ letterSpacing: 0.4 }}

@@ -810,7 +810,7 @@ function CountTile({
   const clamped = Number.isFinite(ratio) ? Math.max(0, Math.min(1, ratio)) : 0
 
   return (
-    <Card className="gap-2 px-3 py-3" style={{ width: "48%" }}>
+    <Card className="justify-between gap-2 px-4 py-4" style={{ width: "48%" }}>
       <Text
         className="text-muted-foreground text-xs font-medium uppercase"
         style={{ letterSpacing: 0.4 }}

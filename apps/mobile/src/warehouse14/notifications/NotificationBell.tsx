@@ -49,25 +49,28 @@ export function NotificationBell({ size, href }: NotificationBellProps) {
       }
     >
       {/* Bare bell (no tinted disc — box-free). The unread count sits as a
-          fixed-size circular badge on top, never stretched by the parent. */}
+          SMALL fixed-size circular badge at the top-right corner, never
+          covering the bell itself. Hard-capped dimensions so it can't grow. */}
       <View className="h-10 w-10 items-center justify-center">
         <Icon size={iconSize} color={tint} />
         {unread > 0 ? (
           <View
-            className="absolute items-center justify-center rounded-full"
+            className="absolute items-center justify-center overflow-hidden rounded-full"
             style={{
-              top: 2,
-              right: 2,
-              minWidth: 18,
-              height: 18,
-              paddingHorizontal: 4,
+              top: 4,
+              right: 4,
+              width: 16,
+              height: 16,
               backgroundColor: tint,
               borderWidth: 1.5,
               borderColor: t.colors.background,
             }}
           >
-            <Text className="text-2xs font-bold" style={{ color: t.colors.card }}>
-              {unread > 99 ? "99+" : unread}
+            <Text
+              className="font-bold"
+              style={{ color: t.colors.card, fontSize: 9, lineHeight: 11 }}
+            >
+              {unread > 9 ? "9+" : unread}
             </Text>
           </View>
         ) : null}
