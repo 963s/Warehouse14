@@ -9,7 +9,7 @@
  * unmount / route-dismissal while previewing discards it too (the effect below)
  * — an Ausweis must never linger on the device, on ANY path.
  */
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { AppState, Image, Pressable, StyleSheet, View } from "react-native"
 import { useIsFocused } from "expo-router"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
@@ -19,7 +19,9 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Text } from "@/components/ui/text"
 import { type CapturedPhoto, discardCapture } from "@/warehouse14/photo-pipeline"
+import { rotatePhoto } from "@/warehouse14/photo-studio"
 import { useW14Theme } from "@/warehouse14/theme"
+import { haptics } from "@/warehouse14/ui"
 
 function previewUri(uri: string): string {
   return uri.startsWith("file://") || uri.startsWith("content://") ? uri : `file://${uri}`
@@ -43,6 +45,23 @@ export function CapturePhotoScreen({ onConfirm, onCancel, busy, error }: Capture
   const camera = useRef<Camera>(null)
   const [captured, setCaptured] = useState<CapturedPhoto | null>(null)
   const [capturing, setCapturing] = useState(false)
+  const [rotating, setRotating] = useState(false)
+
+  // The studio: rotate the captured photo 90° on-device (expo-image-manipulator).
+  // The owner taps "Drehen" to fix orientation before upload.
+  const onRotate = useCallback(async () => {
+    if (!captured) return
+    haptics.selection()
+    setRotating(true)
+    try {
+      const newUri = await rotatePhoto(captured.uri)
+      setCaptured({ ...captured, uri: newUri, mime: "image/jpeg" })
+    } catch {
+      // best-effort — keep the original
+    } finally {
+      setRotating(false)
+    }
+  }, [captured])
 
   // Release the camera the moment this screen loses focus (navigated away) or the
   // app leaves the foreground. On Android a hard-coded `isActive` keeps the camera
@@ -145,8 +164,12 @@ export function CapturePhotoScreen({ onConfirm, onCancel, busy, error }: Capture
             <Text className="mb-2 text-center text-sm text-destructive">{error}</Text>
           ) : null}
           <View className="flex-row gap-3">
-            <Button variant="outline" className="flex-1" onPress={retake} disabled={busy}>
+            <Button variant="outline" onPress={retake} disabled={busy}>
               <Text>Wiederholen</Text>
+            </Button>
+            {/* Photo studio: rotate 90° on-device before upload */}
+            <Button variant="outline" onPress={onRotate} disabled={busy || rotating}>
+              <Text>{rotating ? "…" : "Drehen"}</Text>
             </Button>
             <Button className="flex-1" onPress={() => void onConfirm(captured)} disabled={busy}>
               <Text>{busy ? "Hochladen…" : "Verwenden"}</Text>
