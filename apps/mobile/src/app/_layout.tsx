@@ -2,7 +2,7 @@
 // component (NOT in index.js — that breaks Fast Refresh).
 import "../../global.css"
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { StatusBar, useColorScheme } from "react-native"
 import { useFonts } from "expo-font"
 import { Stack, useRouter, useSegments } from "expo-router"
@@ -61,13 +61,26 @@ export default function RootLayout() {
   const scheme = useColorScheme()
   const colors = scheme === "dark" ? darkPalette : lightPalette
 
+  // TIMEOUT FALLBACK: if fonts don't load in 5s (a device issue, a network
+  // block on the expo-google-fonts fetch, a bundling gap), force the app to
+  // show anyway with system fonts. Better to show the login screen with
+  // fallback fonts than to hang on the splash forever.
+  const [fontTimeout, setFontTimeout] = useState(false)
   useEffect(() => {
-    if (fontsLoaded || fontError) SplashScreen.hideAsync()
+    if (fontsLoaded || fontError) return
+    const timer = setTimeout(() => setFontTimeout(true), 5000)
+    return () => clearTimeout(timer)
   }, [fontsLoaded, fontError])
+
+  const ready = fontsLoaded || fontError || fontTimeout
+
+  useEffect(() => {
+    if (ready) SplashScreen.hideAsync()
+  }, [ready])
 
   useAuthRedirect()
 
-  if (!fontsLoaded && !fontError) return null
+  if (!ready) return null
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
