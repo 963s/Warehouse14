@@ -240,7 +240,7 @@ function BelegtextRowItem({
       >
         {/* A small preview of exactly what will be stored. */}
         <View className="gap-1 rounded-xl border border-border bg-card px-3.5 py-3">
-          <Text className="text-muted-foreground text-2xs uppercase tracking-wide">Neuer Text</Text>
+          <Text className="text-muted-foreground text-2xs">Neuer Text</Text>
           <Text className="text-sm leading-5" numberOfLines={8}>
             {draft.trim()}
           </Text>

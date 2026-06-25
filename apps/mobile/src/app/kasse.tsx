@@ -279,7 +279,7 @@ function FiscalOverviewPanel({ closings, today }: { closings: ClosingListItem[];
         />
         <Card className="gap-2 px-3 py-3" style={{ width: "48%" }}>
           <Text
-            className="text-muted-foreground text-xs font-medium uppercase"
+            className="text-muted-foreground text-xs font-medium"
             style={{ letterSpacing: 0.4 }}
             numberOfLines={1}
           >
@@ -864,7 +864,7 @@ export default function KasseScreen() {
             {todayIsOpen ? (
               <View className="gap-3">
                 <Text
-                  className="text-muted-foreground text-2xs font-semibold uppercase"
+                  className="text-muted-foreground text-2xs font-semibold"
                   style={{ letterSpacing: 0.5 }}
                 >
                   Heutiger Geschäftstag
@@ -891,7 +891,7 @@ export default function KasseScreen() {
 
             <View className="gap-3">
               <Text
-                className="text-muted-foreground text-2xs font-semibold uppercase"
+                className="text-muted-foreground text-2xs font-semibold"
                 style={{ letterSpacing: 0.5 }}
               >
                 Tagesabschlüsse

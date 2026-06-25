@@ -188,8 +188,8 @@ export function OnboardingIntro({ onDone }: OnboardingIntroProps): ReactNode {
 
             <View className="items-center" style={{ gap: t.space.x3 }}>
               <Text
-                className="text-primary text-2xs font-semibold uppercase"
-                style={{ letterSpacing: 1.5 }}
+                className="text-foreground text-xs font-medium"
+                style={{ letterSpacing: 0.3 }}
               >
                 {slide.overline}
               </Text>

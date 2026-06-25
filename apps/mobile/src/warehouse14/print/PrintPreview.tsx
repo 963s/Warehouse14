@@ -63,7 +63,7 @@ function ReceiptCard({ doc }: { doc: ReceiptDoc }): ReactNode {
     <View className="rounded-xl border border-border bg-card p-4 gap-3">
       <View className="items-center gap-0.5">
         {doc.shopName ? <Text className="text-base font-semibold">{doc.shopName}</Text> : null}
-        <Text className="text-muted-foreground text-xs uppercase tracking-wide">{stamp}</Text>
+        <Text className="text-muted-foreground text-xs">{stamp}</Text>
         <Text className="text-muted-foreground font-mono text-2xs">{dateTime(doc.issuedAt)}</Text>
       </View>
 

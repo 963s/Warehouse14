@@ -115,7 +115,7 @@ function BaldTile({ icon: Icon, copy }: { icon: LucideIcon; copy: BaldTileCopy }
             style={{ backgroundColor: t.colors.mutedForeground + "14" }}
           >
             <Text
-              className="text-2xs font-semibold uppercase"
+              className="text-2xs font-semibold"
               style={{ color: t.colors.mutedForeground, letterSpacing: 0.4 }}
             >
               bald
@@ -242,7 +242,7 @@ function InventorySnapshotCard({ inv }: { inv: InventoryValueResponse }) {
         <View className="flex-row items-end justify-between">
           <View>
             <Text
-              className="text-muted-foreground text-xs font-medium uppercase"
+              className="text-muted-foreground text-xs font-medium"
               style={{ letterSpacing: 0.4 }}
             >
               {COPY.listValueLabel}

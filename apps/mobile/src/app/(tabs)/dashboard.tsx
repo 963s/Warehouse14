@@ -149,7 +149,7 @@ function LockedTile({ label }: { label: string }) {
   return (
     <Card className="gap-2 px-3 py-3" style={{ width: "48%" }}>
       <Text
-        className="text-muted-foreground text-xs font-medium uppercase"
+        className="text-muted-foreground text-xs font-medium"
         style={{ letterSpacing: 0.4 }}
         numberOfLines={1}
       >
@@ -721,7 +721,7 @@ function CountTile({
   return (
     <Card className="justify-between gap-2 px-4 py-4" style={{ width: "48%" }}>
       <Text
-        className="text-muted-foreground text-xs font-medium uppercase"
+        className="text-muted-foreground text-xs font-medium"
         style={{ letterSpacing: 0.4 }}
         numberOfLines={1}
       >

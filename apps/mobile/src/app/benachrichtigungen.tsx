@@ -275,7 +275,7 @@ function DetailSheet({ item, onClose }: { item: NotificationItem; onClose: () =>
               </Text>
               <View className="flex-row items-center gap-2">
                 <Text
-                  className="text-2xs font-semibold uppercase"
+                  className="text-2xs font-semibold"
                   style={{ color: accent, letterSpacing: 0.5 }}
                 >
                   {SEVERITY_LABEL[item.severity]}

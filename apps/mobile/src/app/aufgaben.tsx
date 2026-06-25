@@ -854,7 +854,7 @@ export default function AufgabenScreen() {
               style={{ paddingTop: index === 0 ? 0 : 8 }}
             >
               <Text
-                className="text-muted-foreground text-2xs font-semibold uppercase"
+                className="text-muted-foreground text-2xs font-semibold"
                 style={{ letterSpacing: 0.5 }}
               >
                 {item.label}

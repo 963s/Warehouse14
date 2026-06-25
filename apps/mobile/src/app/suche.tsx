@@ -112,7 +112,7 @@ function SectionHeaderRow({ item }: { item: HeaderItem }) {
     <View className="flex-row items-center gap-2 px-1 pb-1 pt-3">
       <Icon size={t.icon.sm} color={t.colors.mutedForeground} />
       <Text
-        className="text-muted-foreground text-xs font-semibold uppercase"
+        className="text-muted-foreground text-xs font-semibold"
         style={{ letterSpacing: 0.8 }}
       >
         {item.meta.label}

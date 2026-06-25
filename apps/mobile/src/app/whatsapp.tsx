@@ -134,7 +134,7 @@ function InboxHeader({ counts }: { counts: InboxCounts }) {
       {tiles.map((tile) => (
         <Card key={tile.label} className="flex-1 gap-1.5 px-3 py-3">
           <Text
-            className="text-muted-foreground text-2xs font-medium uppercase"
+            className="text-muted-foreground text-2xs font-medium"
             style={{ letterSpacing: 0.4 }}
             numberOfLines={1}
           >

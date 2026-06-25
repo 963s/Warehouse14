@@ -372,7 +372,7 @@ function OpenShiftSheet({
           className="items-center gap-1 rounded-xl border border-border bg-card py-4"
           accessibilityRole="summary"
         >
-          <Text className="text-muted-foreground text-xs uppercase tracking-wide">
+          <Text className="text-muted-foreground text-xs">
             {OPEN_SHIFT_COPY.amountCaption}
           </Text>
           <Text className="font-mono-medium text-2xl">{amountLabel}</Text>

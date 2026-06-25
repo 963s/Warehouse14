@@ -125,7 +125,7 @@ function RegisterHeader({ summary }: { summary: RegisterSummary }) {
       {tiles.map((tile) => (
         <Card key={tile.label} className="flex-1 gap-1.5 px-3 py-3">
           <Text
-            className="text-muted-foreground text-2xs font-medium uppercase"
+            className="text-muted-foreground text-2xs font-medium"
             style={{ letterSpacing: 0.4 }}
             numberOfLines={1}
           >
@@ -320,7 +320,7 @@ function DocumentCard({ doc, meta }: { doc: DocumentRow; meta: CategoryMeta }) {
               </Badge>
             </View>
             <View className="flex-row flex-wrap items-center gap-x-2 gap-y-0.5">
-              <Text className="text-muted-foreground text-2xs font-medium uppercase" style={{ letterSpacing: 0.3 }}>
+              <Text className="text-muted-foreground text-2xs font-medium" style={{ letterSpacing: 0.3 }}>
                 {kind}
               </Text>
               {size != null ? (

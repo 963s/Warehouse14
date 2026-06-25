@@ -76,3 +76,4 @@ tauri-updater-key.*
 
 # mTLS dev certs — never commit (rotate any leaked key)
 apps/api-cloud/dev-certs/
+.claude/skills/impeccable/

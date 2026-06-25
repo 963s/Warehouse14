@@ -152,7 +152,7 @@ function NetProfitHero({ profit, periodLabel }: { profit: ProfitResponse; period
   return (
     <Card className="gap-1.5 px-4 py-4">
       <Text
-        className="text-muted-foreground text-xs font-medium uppercase"
+        className="text-muted-foreground text-xs font-medium"
         style={{ letterSpacing: 0.4 }}
         numberOfLines={1}
       >

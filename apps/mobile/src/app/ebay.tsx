@@ -174,7 +174,7 @@ function PhaseTiles({ counts }: { counts: PipelineCounts }) {
         return (
           <Card key={p.phase} className="gap-1.5 px-3 py-3" style={{ width: "47.5%" }}>
             <Text
-              className="text-muted-foreground text-xs font-medium uppercase"
+              className="text-muted-foreground text-xs font-medium"
               style={{ letterSpacing: 0.4 }}
               numberOfLines={1}
             >
@@ -425,7 +425,7 @@ function ListingDetailSheet({
             <InlineError message={detail.error} onRetry={() => void detail.refetch()} />
           ) : (
             <View className="items-center gap-1.5 rounded-xl border border-border bg-card py-4">
-              <Text className="text-muted-foreground text-xs uppercase tracking-wide">
+              <Text className="text-muted-foreground text-xs">
                 Aktueller Zustand
               </Text>
               <Badge variant={stateVariant(state)} dot>

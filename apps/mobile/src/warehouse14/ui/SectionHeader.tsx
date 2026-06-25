@@ -51,7 +51,7 @@ export function SectionHeader({
     return (
       <View className="flex-row items-center justify-between gap-3">
         <Text
-          className="text-muted-foreground text-xs font-semibold uppercase"
+          className="text-muted-foreground text-xs font-semibold"
           style={{ letterSpacing: 0.8 }}
           numberOfLines={1}
         >

@@ -222,7 +222,7 @@ export default function LoginScreen(): ReactNode {
             <WarehouseMark size="lg" />
             <View className="items-center" style={{ gap: t.space.x2 }}>
               <Text
-                className="text-primary text-2xs font-semibold uppercase"
+                className="text-primary text-2xs font-semibold"
                 style={{ letterSpacing: 2 }}
               >
                 Warehouse 14

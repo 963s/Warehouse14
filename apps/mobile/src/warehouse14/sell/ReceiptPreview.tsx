@@ -77,7 +77,7 @@ export function ReceiptPreview({
       {/* Head */}
       <View className="items-center gap-0.5">
         {shopName ? <Text className="text-base font-semibold">{shopName}</Text> : null}
-        <Text className="text-muted-foreground text-xs uppercase tracking-wide">
+        <Text className="text-muted-foreground text-xs">
           {kind} · Vorschau
         </Text>
       </View>

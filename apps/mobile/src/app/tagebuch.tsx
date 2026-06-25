@@ -105,7 +105,7 @@ function RegisterHeader({
     <View className="flex-row gap-2.5">
       <Card className="flex-1 gap-1.5 px-3 py-3">
         <Text
-          className="text-muted-foreground text-2xs font-medium uppercase"
+          className="text-muted-foreground text-2xs font-medium"
           style={{ letterSpacing: 0.4 }}
           numberOfLines={1}
         >
@@ -125,7 +125,7 @@ function RegisterHeader({
       </Card>
       <Card className="flex-[1.4] gap-1.5 px-3 py-3">
         <Text
-          className="text-muted-foreground text-2xs font-medium uppercase"
+          className="text-muted-foreground text-2xs font-medium"
           style={{ letterSpacing: 0.4 }}
           numberOfLines={1}
         >
@@ -452,7 +452,7 @@ function EventDetailDialog({
           {showPayload ? (
             <View className="gap-1.5">
               <Text
-                className="text-muted-foreground px-1 text-2xs font-medium uppercase"
+                className="text-muted-foreground px-1 text-2xs font-medium"
                 style={{ letterSpacing: 0.4 }}
               >
                 Details
@@ -632,7 +632,7 @@ export default function TagebuchScreen() {
               {groups.map((group, gi) => (
                 <View key={group.key} className="gap-2.5">
                   <Text
-                    className="text-muted-foreground px-1 text-2xs font-medium uppercase"
+                    className="text-muted-foreground px-1 text-2xs font-medium"
                     style={{ letterSpacing: 0.4 }}
                   >
                     {group.heading}
