@@ -77,6 +77,12 @@ export interface ProductListRow {
   descriptionDe: string | null;
   listedOnStorefront: boolean;
   listedOnEbay: boolean;
+  /**
+   * The real Webshop gate the storefront catalog filters on
+   * (`is_published_to_web = TRUE AND status = 'AVAILABLE'`). Drive any „Online"
+   * indicator off THIS, not the legacy listedOnStorefront flag.
+   */
+  isPublishedToWeb: boolean;
   isCommission: boolean;
   /** Day-9 additions: Lagerort triplet for the Lager table. */
   locationStorageUnit: string | null;

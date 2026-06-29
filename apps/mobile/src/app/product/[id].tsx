@@ -33,12 +33,12 @@ import { deriveSizeClass, sizeClassLabel } from "@warehouse14/domain"
 import Svg, { Path } from "react-native-svg"
 import {
   Camera,
+  ChevronRight,
   Globe,
   Pencil,
   Printer,
   RefreshCw,
   ShieldAlert,
-  Store,
   Tag,
   Warehouse,
 } from "lucide-react-native"
@@ -622,9 +622,8 @@ export default function ProductDetailScreen() {
           <PublishPanel
             productId={product.id}
             status={product.status}
-            listedOnStorefront={product.listedOnStorefront}
-            listedOnEbay={product.listedOnEbay}
             isPublishedToWeb={product.isPublishedToWeb}
+            ebayState={product.ebayState}
           />
         </StaggerItem>
 
@@ -957,36 +956,36 @@ function DetailSkeleton(): ReactNode {
 
 // ── PublishPanel — Kanal- + Status-Steuerung vom Telefon ─────────────────────
 /**
- * Der Kern-Workflow des Betreibers: steuern, wo ein Artikel gelistet ist (Im
- * Laden = Ladentheke; Im Online-Shop = öffentlicher Webshop, gesteuert über das
- * Feld `is_published_to_web`; eBay = Marktplatz-Kanal) und sein Status (Entwurf =
- * nicht verkaufbar, Verfügbar = verkaufbar). Ein Artikel erscheint im Online-Shop
- * NUR, wenn „Im Online-Shop" AN ist UND der Status „Verfügbar" ist — genau der
- * Filter der Storefront-API (`is_published_to_web = TRUE AND status = 'AVAILABLE'`).
- * Alle Schalter treffen das ECHTE updateProduct-Endpunkt.
+ * Der Kern-Workflow des Betreibers: steuern, OB und WO ein Artikel verkäuflich
+ * ist. Nur ECHTE Schalter — jeder trifft genau das Feld, das die Wirkung steuert:
+ *   • „Verkaufsstatus" → status (Entwurf = nicht verkaufbar, Verfügbar = verkaufbar)
+ *   • „Im Online-Shop" → is_published_to_web; ein Artikel erscheint im Webshop NUR,
+ *     wenn dieser Schalter AN ist UND der Status „Verfügbar" ist — exakt der Filter
+ *     der Storefront-API (`is_published_to_web = TRUE AND status = 'AVAILABLE'`).
+ *   • „eBay" → KEIN Schalter, sondern eine Lese-Zeile, die den echten eBay-Status
+ *     (`ebay_state`) zeigt und in den eBay-Bereich führt, wo das Listing wirklich
+ *     passiert. (Die alten Schalter „Im Laden"/`listed_on_storefront` und der freie
+ *     `listed_on_ebay`-Schalter wurden entfernt: sie schrieben Felder, die keine
+ *     Verkaufsfläche liest — ein Schalter, der nichts bewirkt, lügt.)
  *
- * Form: nackte Schalter-Reihen direkt auf dem Papier, getrennt durch die
- * Haarlinie — keine Karte, kein getöntes Chip-Kästchen ums Glyph.
+ * Form: nackte Reihen direkt auf dem Papier, getrennt durch die Haarlinie.
  */
 function PublishPanel({
   productId,
   status,
-  listedOnStorefront,
-  listedOnEbay,
   isPublishedToWeb,
+  ebayState,
 }: {
   productId: string
   status: string
-  listedOnStorefront: boolean
-  listedOnEbay: boolean
   isPublishedToWeb: boolean
+  ebayState: string | null
 }): ReactNode {
   const t = useW14Theme()
+  const router = useRouter()
 
   const toggle = useMutation(
     async (patch: {
-      listedOnStorefront?: boolean
-      listedOnEbay?: boolean
       isPublishedToWeb?: boolean
       status?: "DRAFT" | "AVAILABLE"
     }) => updateProduct(productId, patch),
@@ -1046,6 +1045,45 @@ function PublishPanel({
     </View>
   )
 
+  // A read-only navigation row — used where the real action lives on another
+  // screen (so a row never pretends to be a switch that does nothing).
+  const NavRow = ({
+    label,
+    hint,
+    icon,
+    onPress,
+  }: {
+    label: string
+    hint: string
+    icon: ReactNode
+    onPress: () => void
+  }) => (
+    <PressableScale
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      className="min-h-[44px] flex-row items-center gap-3 py-1"
+    >
+      <View className="h-7 w-7 items-center justify-center">{icon}</View>
+      <View className="flex-1 gap-0.5">
+        <Text className="text-base font-medium">{label}</Text>
+        <Text className="text-muted-foreground text-2xs">{hint}</Text>
+      </View>
+      <ChevronRight size={t.icon.md} color={t.colors.mutedForeground} />
+    </PressableScale>
+  )
+
+  const ebayHint =
+    ebayState == null
+      ? "Nicht bei eBay — im eBay-Bereich verwalten"
+      : ebayState === "ONLINE"
+        ? "Online bei eBay gelistet"
+        : ebayState === "ENTWURF" || ebayState === "GEPRUEFT"
+          ? "eBay-Vorbereitung läuft"
+          : ebayState === "REKLAMIERT" || ebayState === "RETOURNIERT"
+            ? "eBay-Reklamation"
+            : "Bei eBay verkauft"
+
   return (
     <View className="gap-3">
       <GroupLabel>Veröffentlichung</GroupLabel>
@@ -1057,17 +1095,6 @@ function PublishPanel({
         onPress={() => {
           haptics.selection()
           void toggle.mutate({ status: isAvailable ? "DRAFT" : "AVAILABLE" })
-        }}
-      />
-      <Hairline inset={40} />
-      <Row
-        on={listedOnStorefront}
-        label="Im Laden"
-        hint="Auf der Ladentheke sichtbar"
-        icon={<Store size={t.icon.md} color={t.colors.foreground} />}
-        onPress={() => {
-          haptics.selection()
-          void toggle.mutate({ listedOnStorefront: !listedOnStorefront })
         }}
       />
       <Hairline inset={40} />
@@ -1088,14 +1115,13 @@ function PublishPanel({
         }}
       />
       <Hairline inset={40} />
-      <Row
-        on={listedOnEbay}
+      <NavRow
         label="eBay"
-        hint="Im eBay-Kanal gelistet"
+        hint={ebayHint}
         icon={<Tag size={t.icon.md} color={t.colors.foreground} />}
         onPress={() => {
           haptics.selection()
-          void toggle.mutate({ listedOnEbay: !listedOnEbay })
+          router.push("/ebay")
         }}
       />
       {toggle.error != null ? (

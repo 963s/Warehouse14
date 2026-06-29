@@ -27,6 +27,12 @@ COPY --from=build /app ./
 # user, which silently breaks ESM `exports` resolution. Make all readable.
 RUN chmod -R go+rX /app
 EXPOSE 3100
+# Same persistent data dirs as the api (named volumes photosdata→/data/photos,
+# kycdata→/data/kyc). Own them as node (uid 1000) before dropping privileges so
+# the GDPR-cleanup job can prune photo/KYC shards on a fresh volume. KYC 0700.
+RUN mkdir -p /data/photos /data/kyc \
+  && chown -R 1000:1000 /data \
+  && chmod 700 /data/kyc
 USER node
 # The worker binds its /health to 127.0.0.1:METRICS_PORT (same container).
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

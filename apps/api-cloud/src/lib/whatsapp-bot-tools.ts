@@ -62,7 +62,11 @@ export function createWhatsAppBotTools(ctx: BotToolsContext): BotTools {
         SELECT id::text AS id, name, list_price_eur::text AS list_price_eur, metal
         FROM products
         WHERE status = 'AVAILABLE'
-          AND listed_on_storefront = TRUE
+          -- Same gate as the public storefront catalog (is_published_to_web), so
+          -- the WhatsApp assistant recommends exactly what a customer can find +
+          -- buy online. (Was the deprecated listed_on_storefront, which the
+          -- publish flow never set → the bot hid every web-published item.)
+          AND is_published_to_web = TRUE
           AND (name ILIKE ${pattern} OR description_de ILIKE ${pattern})
         ORDER BY created_at DESC
         LIMIT ${n}

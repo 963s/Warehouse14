@@ -220,11 +220,50 @@ build_android() {
   cd "$MOBILE_DIR"
 }
 
+# ── Android: signed Play-Store bundle (.aab) ──────────────────────────────────
+# Produces an UPLOAD-key-signed .aab for Google Play Console (Play App Signing
+# re-signs with the app key). Signing creds are read from a protected env file
+# (never printed); the upload keystore is YOUR irreplaceable key — back it up.
+# Injected signing (-Pandroid.injected.signing.*) survives `expo prebuild --clean`,
+# so no generated build.gradle needs editing.
+build_aab() {
+  echo "=== Android Play-Store bundle (.aab, signed + prod-baked) ==="
+  export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
+  export JAVA_HOME="${JAVA_HOME:-/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home}"
+  local SIGN_ENV="${W14_SIGNING_ENV:-$HOME/Desktop/onlineApps/keystores/warehouse14-play-signing.env}"
+  [ -f "$SIGN_ENV" ] || { echo "❌ signing env not found: $SIGN_ENV"; exit 1; }
+  set -a; . "$SIGN_ENV"; set +a
+  [ -f "$W14_UPLOAD_STORE_FILE" ] || { echo "❌ keystore not found: $W14_UPLOAD_STORE_FILE"; exit 1; }
+  rm -rf android
+  npx expo prebuild --platform android --clean
+  cd android
+  ./gradlew :app:bundleRelease --no-daemon \
+    -Pandroid.injected.signing.store.file="$W14_UPLOAD_STORE_FILE" \
+    -Pandroid.injected.signing.store.password="$W14_UPLOAD_STORE_PASSWORD" \
+    -Pandroid.injected.signing.key.alias="$W14_UPLOAD_KEY_ALIAS" \
+    -Pandroid.injected.signing.key.password="$W14_UPLOAD_KEY_PASSWORD" 2>&1 | tail -4
+  local aab
+  aab=$(find . -name "*.aab" -path "*release*" 2>/dev/null | head -1)
+  [ -n "$aab" ] || { echo "❌ no release .aab produced"; exit 1; }
+  cp "$aab" "$DESKTOP_OUT/Warehouse14-PlayStore.aab"
+  echo "  → $DESKTOP_OUT/Warehouse14-PlayStore.aab"
+  # Verify the prod origin is baked in (AAB keeps the JS bundle under base/assets/).
+  verify_bundle "Android AAB" <(unzip -p "$aab" base/assets/index.android.bundle 2>/dev/null)
+  # Confirm the .aab carries a signature block (upload-key signed, not unsigned).
+  if unzip -l "$aab" 2>/dev/null | grep -qE 'META-INF/.*\.(RSA|EC|DSA)'; then
+    echo "  ✓ signed with the upload key (META-INF key block present)"
+  else
+    echo "  ⚠️ no signature block found in the .aab — Play will reject it"; exit 1
+  fi
+  cd "$MOBILE_DIR"
+}
+
 case "${1:-all}" in
   ios) build_ios ;;
   android) build_android ;;
+  aab|playstore) build_aab ;;
   all) build_ios; build_android ;;
-  *) echo "usage: $0 {ios|android|all}"; exit 1 ;;
+  *) echo "usage: $0 {ios|android|aab|all}"; exit 1 ;;
 esac
 
 echo ""

@@ -34,7 +34,7 @@ import {
 import { useNavigation, useRouter } from "expo-router"
 import { ApiOfflineQueuedError } from "@warehouse14/api-client"
 import type { Metal, ProductListRow, ProductStatus } from "@warehouse14/api-client"
-import { Globe, MapPin, PackagePlus, Plus, RefreshCw, Search, Store, X } from "lucide-react-native"
+import { Globe, MapPin, PackagePlus, Plus, RefreshCw, Search, Tag, X } from "lucide-react-native"
 
 import { Input } from "@/components/ui/input"
 import { Text } from "@/components/ui/text"
@@ -700,21 +700,22 @@ function ProductRow({ item, onPress }: { item: ProductListRow; onPress: () => vo
               {status}
             </Text>
           </View>
-          {/* Sale-channel indicators — real data from listedOnStorefront /
-              listedOnEbay. Micro icons + labels, calm ink-faded, never pushing
-              the price/name out of alignment. */}
-          {item.listedOnStorefront || item.listedOnEbay ? (
+          {/* Sale-channel indicators — truthful: „Online" reflects is_published_to_web
+              (the real Webshop gate the storefront filters on); „eBay" reflects
+              listed_on_ebay, which only a real marketplace publish sets. The legacy
+              listed_on_storefront badge was removed (nothing customer-facing reads it). */}
+          {item.isPublishedToWeb || item.listedOnEbay ? (
             <View className="flex-row items-center gap-2 pt-0.5">
-              {item.listedOnStorefront ? (
+              {item.isPublishedToWeb ? (
                 <View className="flex-row items-center gap-0.5">
-                  <Store size={10} color={t.colors.mutedForeground} />
-                  <Text className="text-muted-foreground text-2xs">Im Laden</Text>
+                  <Globe size={10} color={t.colors.mutedForeground} />
+                  <Text className="text-muted-foreground text-2xs">Online</Text>
                 </View>
               ) : null}
               {item.listedOnEbay ? (
                 <View className="flex-row items-center gap-0.5">
-                  <Globe size={10} color={t.colors.mutedForeground} />
-                  <Text className="text-muted-foreground text-2xs">Online</Text>
+                  <Tag size={10} color={t.colors.mutedForeground} />
+                  <Text className="text-muted-foreground text-2xs">eBay</Text>
                 </View>
               ) : null}
             </View>

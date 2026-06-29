@@ -36,6 +36,14 @@ COPY --from=build /app ./
 # breaks ESM `exports` resolution. Make everything world-readable.
 RUN chmod -R go+rX /app
 EXPOSE 3001
+# Persistent data dirs (mounted as named volumes in prod: photosdata→/data/photos,
+# kycdata→/data/kyc). Create + own them as the node user (uid 1000) BEFORE dropping
+# privileges so a fresh/empty volume mounts node-writable instead of root:root 0755
+# — otherwise writeKycImage / photo-store hit 500 EACCES (mkdir denied) on first use
+# after a clean deploy or DR restore. KYC shards stay private (0700).
+RUN mkdir -p /data/photos /data/kyc \
+  && chown -R 1000:1000 /data \
+  && chmod 700 /data/kyc
 USER node
 # /health is the readiness probe (no DB dependency).
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
