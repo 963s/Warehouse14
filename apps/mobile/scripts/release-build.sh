@@ -193,8 +193,8 @@ PY
   # Pack the unsigned .ipa.
   rm -rf /tmp/w14-ipa && mkdir -p /tmp/w14-ipa/Payload
   cp -R "$app" /tmp/w14-ipa/Payload/
-  ( cd /tmp/w14-ipa && zip -qr "$DESKTOP_OUT/Warehouse14.ipa" Payload )
-  echo "  → $DESKTOP_OUT/Warehouse14.ipa"
+  ( cd /tmp/w14-ipa && zip -qr "$DESKTOP_OUT/Warehouse14-Admin.ipa" Payload )
+  echo "  → $DESKTOP_OUT/Warehouse14-Admin.ipa"
   # Verify the baked bundle.
   verify_bundle "iOS" "$app/main.jsbundle"
   echo "  RCTNewArchEnabled: $(plutil -p "$app/Info.plist" 2>/dev/null | grep -i RCTNewArch | head -1)"
@@ -213,8 +213,8 @@ build_android() {
   local apk
   apk=$(find . -name "*.apk" -path "*release*" 2>/dev/null | head -1)
   [ -n "$apk" ] || { echo "❌ no release apk produced"; exit 1; }
-  cp "$apk" "$DESKTOP_OUT/Warehouse14.apk"
-  echo "  → $DESKTOP_OUT/Warehouse14.apk"
+  cp "$apk" "$DESKTOP_OUT/Warehouse14-Admin.apk"
+  echo "  → $DESKTOP_OUT/Warehouse14-Admin.apk"
   # Verify the baked bundle.
   verify_bundle "Android" <(unzip -p "$apk" assets/index.android.bundle 2>/dev/null)
   cd "$MOBILE_DIR"
@@ -237,23 +237,26 @@ build_aab() {
   rm -rf android
   npx expo prebuild --platform android --clean
   cd android
-  ./gradlew :app:bundleRelease --no-daemon \
-    -Pandroid.injected.signing.store.file="$W14_UPLOAD_STORE_FILE" \
-    -Pandroid.injected.signing.store.password="$W14_UPLOAD_STORE_PASSWORD" \
-    -Pandroid.injected.signing.key.alias="$W14_UPLOAD_KEY_ALIAS" \
-    -Pandroid.injected.signing.key.password="$W14_UPLOAD_KEY_PASSWORD" 2>&1 | tail -4
+  ./gradlew :app:bundleRelease --no-daemon 2>&1 | tail -4
   local aab
   aab=$(find . -name "*.aab" -path "*release*" 2>/dev/null | head -1)
   [ -n "$aab" ] || { echo "❌ no release .aab produced"; exit 1; }
-  cp "$aab" "$DESKTOP_OUT/Warehouse14-PlayStore.aab"
-  echo "  → $DESKTOP_OUT/Warehouse14-PlayStore.aab"
+  local out="$DESKTOP_OUT/Warehouse14-Admin.aab"
+  cp "$aab" "$out"
+  # bundleRelease leaves the .aab UNSIGNED (the -Pandroid.injected.signing.* props
+  # apply to APK assembly, NOT to bundles), so sign it explicitly with the upload
+  # key via jarsigner — the standard, Play-accepted way to sign an .aab.
+  "$JAVA_HOME/bin/jarsigner" -keystore "$W14_UPLOAD_STORE_FILE" \
+    -storepass "$W14_UPLOAD_STORE_PASSWORD" -keypass "$W14_UPLOAD_KEY_PASSWORD" \
+    -sigalg SHA256withRSA -digestalg SHA-256 "$out" "$W14_UPLOAD_KEY_ALIAS" >/dev/null 2>&1
+  echo "  → $out"
   # Verify the prod origin is baked in (AAB keeps the JS bundle under base/assets/).
-  verify_bundle "Android AAB" <(unzip -p "$aab" base/assets/index.android.bundle 2>/dev/null)
-  # Confirm the .aab carries a signature block (upload-key signed, not unsigned).
-  if unzip -l "$aab" 2>/dev/null | grep -qE 'META-INF/.*\.(RSA|EC|DSA)'; then
-    echo "  ✓ signed with the upload key (META-INF key block present)"
+  verify_bundle "Android AAB" <(unzip -p "$out" base/assets/index.android.bundle 2>/dev/null)
+  # Confirm the .aab is validly signed with the upload key.
+  if "$JAVA_HOME/bin/jarsigner" -verify "$out" 2>&1 | grep -q 'jar verified'; then
+    echo "  ✓ signed with the upload key (jar verified)"
   else
-    echo "  ⚠️ no signature block found in the .aab — Play will reject it"; exit 1
+    echo "  ⚠️ .aab failed signature verification — Play will reject it"; exit 1
   fi
   cd "$MOBILE_DIR"
 }
@@ -268,4 +271,5 @@ esac
 
 echo ""
 echo "✓ release build(s) complete. Prod-baked artifacts on the Desktop:"
-ls -lh "$DESKTOP_OUT"/Warehouse14.ipa "$DESKTOP_OUT"/Warehouse14.apk 2>/dev/null
+# Summary only — never fail the script if some artifact wasn't built this run.
+ls -lh "$DESKTOP_OUT"/Warehouse14*.ipa "$DESKTOP_OUT"/Warehouse14*.apk "$DESKTOP_OUT"/Warehouse14*.aab 2>/dev/null || true

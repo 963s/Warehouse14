@@ -59,3 +59,19 @@ instantly on hard refresh). No change needed.
 ## Rollback
 `sudo cp /opt/warehouse14/docker-compose.prod.yml.bak-prekyc /opt/warehouse14/docker-compose.prod.yml && docker compose up -d --no-deps api worker`
 (the `kycdata` volume persists and is harmless if unmounted).
+
+## Deferred audit findings (P2/P1 — follow-up, not yet fixed)
+The 2026-06-29 latent-bug audit confirmed 9 issues. Fixed this session: storefront
+publish toggle, KYC volume, the two truthless channel toggles, dashboard badges,
+WhatsApp-bot gate, durable /data Dockerfile perms. **Still open:**
+- **P1 — tauri-pos document capture 500s**: `Dokumente.tsx` posts to the R2 presign
+  route, but prod `R2_BUCKET` is empty → `getR2Client()` throws 500. Repoint it at the
+  working local route `POST /api/photos/upload` (product photos already use it). Cashier
+  app only — not in the admin build.
+- **P2 — SOLD-but-published PDP 404**: `storefront-catalog.ts` detail keeps
+  `AND status='AVAILABLE'`, so a sold item's public page hard-404s (bad SEO). Return a
+  200 „verkauft" state or 410 Gone instead.
+- **P2 — ProductListRow under-declares 7 stamp/collector fields** the list route already
+  returns (typed-away Briefmarken data). Add them to the api-client type.
+- **P2 — category facet ignores `hidden_from_storefront`**: `?category=<hidden-slug>` can
+  surface internal-only products. Exclude hidden categories in the descendant CTE.
