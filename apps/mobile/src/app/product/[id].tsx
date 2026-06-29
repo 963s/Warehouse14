@@ -39,6 +39,7 @@ import {
   RefreshCw,
   ShieldAlert,
   Store,
+  Tag,
   Warehouse,
 } from "lucide-react-native"
 
@@ -623,6 +624,7 @@ export default function ProductDetailScreen() {
             status={product.status}
             listedOnStorefront={product.listedOnStorefront}
             listedOnEbay={product.listedOnEbay}
+            isPublishedToWeb={product.isPublishedToWeb}
           />
         </StaggerItem>
 
@@ -956,8 +958,12 @@ function DetailSkeleton(): ReactNode {
 // ── PublishPanel — Kanal- + Status-Steuerung vom Telefon ─────────────────────
 /**
  * Der Kern-Workflow des Betreibers: steuern, wo ein Artikel gelistet ist (Im
- * Laden = Storefront, Online = eBay) und sein Status (Entwurf = nicht verkaufbar,
- * Verfügbar = verkaufbar). Alle Schalter treffen das ECHTE updateProduct-Endpunkt.
+ * Laden = Ladentheke; Im Online-Shop = öffentlicher Webshop, gesteuert über das
+ * Feld `is_published_to_web`; eBay = Marktplatz-Kanal) und sein Status (Entwurf =
+ * nicht verkaufbar, Verfügbar = verkaufbar). Ein Artikel erscheint im Online-Shop
+ * NUR, wenn „Im Online-Shop" AN ist UND der Status „Verfügbar" ist — genau der
+ * Filter der Storefront-API (`is_published_to_web = TRUE AND status = 'AVAILABLE'`).
+ * Alle Schalter treffen das ECHTE updateProduct-Endpunkt.
  *
  * Form: nackte Schalter-Reihen direkt auf dem Papier, getrennt durch die
  * Haarlinie — keine Karte, kein getöntes Chip-Kästchen ums Glyph.
@@ -967,11 +973,13 @@ function PublishPanel({
   status,
   listedOnStorefront,
   listedOnEbay,
+  isPublishedToWeb,
 }: {
   productId: string
   status: string
   listedOnStorefront: boolean
   listedOnEbay: boolean
+  isPublishedToWeb: boolean
 }): ReactNode {
   const t = useW14Theme()
 
@@ -979,6 +987,7 @@ function PublishPanel({
     async (patch: {
       listedOnStorefront?: boolean
       listedOnEbay?: boolean
+      isPublishedToWeb?: boolean
       status?: "DRAFT" | "AVAILABLE"
     }) => updateProduct(productId, patch),
     {
@@ -1063,10 +1072,27 @@ function PublishPanel({
       />
       <Hairline inset={40} />
       <Row
-        on={listedOnEbay}
-        label="Online"
-        hint="Im Online-Kanal gelistet"
+        on={isPublishedToWeb}
+        label="Im Online-Shop"
+        hint={
+          isPublishedToWeb
+            ? isAvailable
+              ? "Für Kunden im Online-Shop sichtbar"
+              : "Sichtbar, sobald der Artikel verfügbar ist"
+            : "Nicht im Online-Shop sichtbar"
+        }
         icon={<Globe size={t.icon.md} color={t.colors.foreground} />}
+        onPress={() => {
+          haptics.selection()
+          void toggle.mutate({ isPublishedToWeb: !isPublishedToWeb })
+        }}
+      />
+      <Hairline inset={40} />
+      <Row
+        on={listedOnEbay}
+        label="eBay"
+        hint="Im eBay-Kanal gelistet"
+        icon={<Tag size={t.icon.md} color={t.colors.foreground} />}
         onPress={() => {
           haptics.selection()
           void toggle.mutate({ listedOnEbay: !listedOnEbay })

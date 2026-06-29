@@ -80,8 +80,14 @@ services:
       # volume below, and the SAME volume the worker mounts (so the purge job
       # can reclaim disk). PHOTO_STORE_MAX_BYTES defaults to 20 GiB in code.
       PHOTOS_DIR: /data/photos
+      # Encrypted KYC / identity-document store (AES-256 .enc shards). MUST be a
+      # SEPARATE persistent volume from product photos — these are never served
+      # publicly and carry their own legal retention. The worker mounts the SAME
+      # volume so the GDPR-cleanup job can prune expired shards.
+      KYC_PHOTOS_DIR: /data/kyc
     volumes:
       - photosdata:/data/photos
+      - kycdata:/data/kyc
     # Reached only by cloudflared on the internal network (no host port).
 
   worker:
@@ -104,8 +110,12 @@ services:
       # SAME photo store as the api — the product_photo_purge job reclaims disk
       # from sold/archived/deleted product photos here.
       PHOTOS_DIR: /data/photos
+      # SAME encrypted KYC store as the api — the GDPR-cleanup job prunes
+      # expired identity-document shards here.
+      KYC_PHOTOS_DIR: /data/kyc
     volumes:
       - photosdata:/data/photos
+      - kycdata:/data/kyc
 
   # Cloudflare Tunnel — public TLS + mTLS for api.warehouse14.de → api:3001.
   # Configure the route (api.warehouse14.de → http://api:3001) in the Cloudflare
@@ -128,3 +138,8 @@ volumes:
   # (PHOTO_STORE_MAX_BYTES) — keep an eye on the host disk it lives on.
   photosdata:
     name: warehouse14-photosdata
+  # Encrypted KYC / identity-document store (AES-256 .enc shards). Separate from
+  # product photos — never served publicly, own legal retention. Shared by api
+  # (writes/reads) and worker (GDPR-cleanup purge). Survives container recreation.
+  kycdata:
+    name: warehouse14-kycdata
