@@ -77,9 +77,12 @@ export function PinPad({
 
   // Responsive key size: comfortable on a phone, generous on a tablet, but the
   // 3-up row (+ gaps + page padding) always fits the viewport.
-  const gap = t.space.x4
-  const maxKey = 84
-  const minKey = 64
+  const gap = t.space.x3
+  // The hero medallion + welcome + 4 keypad rows must clear a compact phone
+  // without the centred group overflowing (which would clip the medallion at
+  // the top). 74 keeps a generous, money-grade target (>=64) while fitting.
+  const maxKey = 68
+  const minKey = 60
   const fitKey = Math.floor((Math.min(width, 460) - t.space.x6 * 2 - gap * 2) / 3)
   const keySize = Math.max(minKey, Math.min(maxKey, fitKey))
 
@@ -271,7 +274,21 @@ function Key({ label, glyph, accessibilityLabel, onPress, disabled, ghost, size 
         ]}
       >
         {glyph ?? (
-          <Text className="text-foreground font-semibold" style={{ fontSize: size >= 76 ? 30 : 26 }}>
+          <Text
+            className="text-foreground font-semibold"
+            allowFontScaling={false}
+            style={{
+              fontSize: size >= 76 ? 30 : 26,
+              // Explicit line-height ≥ font-size: the inherited text-* line-height
+              // is shorter than this inline font-size, which clipped the digits'
+              // tops/bottoms ("number heads cut off"). A line-box taller than the
+              // glyph, centred in the round key, fixes it at the root.
+              lineHeight: size >= 76 ? 40 : 34,
+              textAlign: "center",
+              textAlignVertical: "center",
+              includeFontPadding: false,
+            }}
+          >
             {label}
           </Text>
         )}

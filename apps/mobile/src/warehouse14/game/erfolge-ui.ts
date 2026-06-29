@@ -128,7 +128,7 @@ export function buildMilestoneTimeline(
       key: `seal-${s.sealId}-${s.businessDay}`,
       kind: "seal",
       businessDay: s.businessDay,
-      title: `Siegel ${sealTitle(s.sealId)}" verdient`,
+      title: `Siegel „${sealTitle(s.sealId)}" verdient`,
       detail: sealDescription(s.sealId),
     })
   }

@@ -97,6 +97,11 @@ export const CreateProductBody = Type.Object({
   ),
   finenessDecimal: Type.Optional(FinenessString),
   weightGrams: Type.Optional(DecimalString),
+  // Outer packing dimensions in cm. Optional; feed the derived S/M/L/XL size
+  // class (@warehouse14/domain deriveSizeClass) used to standardise cartons.
+  lengthCm: Type.Optional(DecimalString),
+  widthCm: Type.Optional(DecimalString),
+  heightCm: Type.Optional(DecimalString),
   hallmarkStamps: Type.Array(Type.String({ maxLength: 64 }), { default: [], maxItems: 16 }),
 
   // Pricing (acquisitionCostEur is intake-locked for §25a integrity)
@@ -157,6 +162,11 @@ export const UpdateProductBody = Type.Object(
     // All fields optional — caller sends only what changes.
     condition: Type.Optional(ProductCondition),
     listPriceEur: Type.Optional(DecimalString),
+    // Outer packing dimensions in cm — re-measurable, never intake-locked. `null`
+    // clears a measurement. They re-derive the size class on read.
+    lengthCm: Type.Optional(Type.Union([DecimalString, Type.Null()])),
+    widthCm: Type.Optional(Type.Union([DecimalString, Type.Null()])),
+    heightCm: Type.Optional(Type.Union([DecimalString, Type.Null()])),
     name: Type.Optional(Type.String({ minLength: 1, maxLength: 256 })),
     /** Omit = keep current; `null` clears (matches descriptionEn). */
     descriptionDe: Type.Optional(Type.Union([Type.String({ maxLength: 8192 }), Type.Null()])),

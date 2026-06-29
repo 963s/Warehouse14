@@ -232,11 +232,14 @@ export interface Theme {
  *  when 'system' it follows useColorScheme; when 'light' or 'dark' it overrides.
  *  Both palettes are on the same design system. */
 export function useW14Theme(): Theme {
-  const scheme = useColorScheme()
-  const mode = useThemeMode()
-  const isDark = mode === "dark" || (mode === "system" && scheme === "dark")
+  // LIGHT ONLY — owner directive: the app uses the parchment palette everywhere
+  // and never follows the system dark scheme. The hooks stay called (rules-of-hooks)
+  // but their result is intentionally ignored.
+  void useColorScheme()
+  void useThemeMode()
+  const isDark = false
   return {
-    colors: isDark ? darkPalette : lightPalette,
+    colors: lightPalette,
     isDark,
     radii,
     space,

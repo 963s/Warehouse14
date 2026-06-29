@@ -3,7 +3,7 @@
 import "../../global.css"
 
 import { useEffect, useState } from "react"
-import { StatusBar, useColorScheme } from "react-native"
+import { StatusBar } from "react-native"
 import { useFonts } from "expo-font"
 import { Stack, useRouter, useSegments } from "expo-router"
 import * as SplashScreen from "expo-splash-screen"
@@ -18,12 +18,25 @@ import { installPreferencesPersistence } from "@/warehouse14/preferences"
 import { createFileReadCachePersistence, installReadCachePersistence } from "@/warehouse14/offline"
 import { useSession } from "@/warehouse14/session"
 import { StepUpDialogHost } from "@/warehouse14/StepUpDialog"
-import { darkPalette, lightPalette } from "@/warehouse14/theme"
+import { lightPalette } from "@/warehouse14/theme"
 import { installThemePreferencePersistence } from "@/warehouse14/theme-preference"
 import { ConnectionBannerHost } from "@/warehouse14/ui"
 import { modalPresent, stackPush } from "@/warehouse14/ui/motion/nav-transitions"
 
 SplashScreen.preventAutoHideAsync()
+
+// Root error boundary: if a route throws while rendering, expo-router shows this
+// error screen (and dismisses the splash) instead of leaving an unmounted tree
+// behind the logo. Re-exported from expo-router's built-in boundary.
+export { ErrorBoundary } from "expo-router"
+
+// Failsafe: never hang on the native splash. If RootLayout has not mounted and
+// dismissed it within 8 s (slow device, font stall, a route that errored during
+// its first render), force the splash away so the owner sees the app — or an
+// error screen — instead of an endless logo.
+setTimeout(() => {
+  SplashScreen.hideAsync().catch(() => {})
+}, 8000)
 
 // Turn the read cache durable across COLD STARTS: install the on-disk adapter
 // once, before React mounts, so the very first cached read on a fresh launch can
@@ -58,8 +71,8 @@ function useAuthRedirect(): void {
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts(warehouse14Fonts)
-  const scheme = useColorScheme()
-  const colors = scheme === "dark" ? darkPalette : lightPalette
+  // LIGHT ONLY (owner directive): the app shell is always parchment.
+  const colors = lightPalette
 
   // TIMEOUT FALLBACK: if fonts don't load in 5s (a device issue, a network
   // block on the expo-google-fonts fetch, a bundling gap), force the app to
@@ -93,13 +106,17 @@ export default function RootLayout() {
          * both Android and iOS. `translucent` is left to the plugin; setting it
          * here would fight edge-to-edge.
          */}
-        <StatusBar barStyle={scheme === "dark" ? "light-content" : "dark-content"} animated />
+        <StatusBar barStyle="dark-content" animated />
         <Stack
           screenOptions={{
             headerStyle: { backgroundColor: colors.card },
             headerTintColor: colors.foreground,
             headerTitleStyle: { fontFamily: "Inter_600SemiBold" },
             contentStyle: { backgroundColor: colors.background },
+            // The back button must never leak a raw route name like "(tabs)";
+            // show only the chevron.
+            headerBackButtonDisplayMode: "minimal",
+            headerBackTitle: "",
           }}
         >
           <Stack.Screen name="login" options={{ headerShown: false }} />
@@ -113,7 +130,6 @@ export default function RootLayout() {
           <Stack.Screen name="aufgaben" options={{ title: "Aufgaben", ...stackPush() }} />
           <Stack.Screen name="benachrichtigungen" options={{ title: "Benachrichtigungen", ...stackPush() }} />
           <Stack.Screen name="kasse" options={{ title: "Kasse", ...stackPush() }} />
-          <Stack.Screen name="verkauf" options={{ title: "Verkauf", ...stackPush() }} />
           <Stack.Screen name="ankauf" options={{ title: "Ankauf", ...stackPush() }} />
           <Stack.Screen name="drucken" options={{ title: "Drucken", ...stackPush() }} />
           <Stack.Screen name="ebay" options={{ title: "eBay-Kanal", ...stackPush() }} />
@@ -126,6 +142,7 @@ export default function RootLayout() {
           <Stack.Screen name="tagebuch" options={{ title: "Tagebuch", ...stackPush() }} />
           <Stack.Screen name="suche" options={{ title: "Suche", ...stackPush() }} />
           <Stack.Screen name="erfolge" options={{ title: "Erfolge", ...stackPush() }} />
+          <Stack.Screen name="zielkarte" options={{ headerShown: false, ...stackPush() }} />
           <Stack.Screen name="einstellungen" options={{ title: "Einstellungen", ...stackPush() }} />
           <Stack.Screen
             name="ausgaben/ausgabe"

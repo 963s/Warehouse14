@@ -14,16 +14,26 @@
  *     the SSE + APNs transports are documented seams in the store.
  *   • channel filter chips (Alle · Freigaben · Fiskal · …) with per-tab unread
  *     dots, in the sticky header that never scrolls away.
- *   • each row carries a severity accent rail + a soft-disc channel glyph + an
- *     unread dot + a relative German timestamp — the calm, scannable list shape.
- *   • the clean LIST→DETAIL pattern: tapping a row opens a spine-native bottom
- *     sheet with the full title/body, the source event meta, and a deep-link CTA
- *     („Öffnen") that routes to the relevant surface (Freigaben → Kasse,
- *     a Kunde/Artikel → its detail). Opening a row marks it read.
- *   • the four list states render through the same skeleton/empty/error vocabulary
- *     every surface uses; pull-to-refresh forces a one-shot live fetch.
- *   • §7 haptics: selection on a filter / row open, success on „Alles gelesen",
- *     impactLight on opening the sheet.
+ *
+ * THE FORM (DESIGN-SYSTEM.md §1, §9 — boxes inside boxes are forbidden):
+ *   The list is NOT a stack of cards. It is a single sheet of aged paper: bare
+ *   rows breathing on the parchment ground, separated by ONE warm hairline. Depth
+ *   comes from the parchment-step (a pressed row settles onto the raised leaf),
+ *   never from a stacked card with its own border. Each row carries a FIXED
+ *   circular channel badge — a perfect disc, never a rectangle vertically
+ *   stretched by a tall body — an unread seal dot, and a relative de-DE timestamp.
+ *   A critical-unread row earns a single gilt edge-seal: the gold thread, used as
+ *   a seal only, never a fill.
+ *
+ *   The clean LIST→DETAIL pattern: tapping a row opens a spine-native bottom
+ *   sheet with the full title/body, the source event meta as hairline-separated
+ *   rows (not a box), and a deep-link CTA („Öffnen") that routes to the relevant
+ *   surface. Opening a row marks it read.
+ *
+ *   The four list states render through the same skeleton/empty/error vocabulary
+ *   every surface uses; pull-to-refresh forces a one-shot live fetch.
+ *   §7 haptics: selection on a filter / row open, success on „Alles gelesen",
+ *   impactLight on opening the sheet.
  *
  * Honesty rule: an empty feed shows the calm EmptyState, never an invented alert;
  * read-state is per-device UI state (the store's watermark), explicitly modelled
@@ -48,9 +58,9 @@ import {
   type LucideIcon,
 } from "lucide-react-native"
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated"
+import Svg, { Path } from "react-native-svg"
 
 import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
 import { Text } from "@/components/ui/text"
 import {
   CHANNEL_LABELS,
@@ -66,6 +76,7 @@ import { useW14Theme } from "@/warehouse14/theme"
 import {
   EmptyState,
   haptics,
+  Hairline,
   PaperGrain,
   PressableScale,
   Skeleton,
@@ -73,8 +84,47 @@ import {
   useScreenInsets,
 } from "@/warehouse14/ui"
 
+// ── A bespoke seal mark — the gilt ◆ opener (DESIGN-SYSTEM.md §6) ──────────────
+/**
+ * SealMark — a tiny hand-drawn wax-seal diamond, the gilt thread that opens the
+ * „Verlauf" group. A faceted lozenge (outer cut + inner light) so the gold reads
+ * as an engraved seal, never a flat fill. `currentColor` so it tints from the
+ * parent (always gilt here). Decorative — hidden from accessibility.
+ */
+function SealMark({ size = 12, color }: { size?: number; color: string }) {
+  return (
+    <Svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+    >
+      {/* Outer faceted lozenge */}
+      <Path
+        d="M12 2 L21 12 L12 22 L3 12 Z"
+        stroke={color}
+        strokeWidth={1.6}
+        strokeLinejoin="round"
+        fill={color}
+        fillOpacity={0.12}
+      />
+      {/* Inner light cut */}
+      <Path
+        d="M12 7 L16.5 12 L12 17 L7.5 12 Z"
+        stroke={color}
+        strokeWidth={1}
+        strokeLinejoin="round"
+        strokeOpacity={0.7}
+        fill="none"
+      />
+    </Svg>
+  )
+}
+
 // ── View mappings (presentation only — model holds no colours/icons) ──────────
-/** The soft-disc glyph for a channel. */
+/** The channel glyph carried in each row's fixed circular badge. */
 const CHANNEL_ICON: Record<NotificationChannel, LucideIcon> = {
   approvals: Gavel,
   appointments: CalendarClock,
@@ -85,7 +135,7 @@ const CHANNEL_ICON: Record<NotificationChannel, LucideIcon> = {
   channels: Megaphone,
 }
 
-/** Severity → the theme token a row's accent rail + glyph tint pulls from. */
+/** Severity → the theme token a row's badge tint + seal dot pulls from. */
 function severityColor(severity: NotificationSeverity, t: ReturnType<typeof useW14Theme>): string {
   switch (severity) {
     case "critical":
@@ -146,11 +196,18 @@ function deepLink(item: NotificationItem): { href: Href; label: string } | null 
   }
 }
 
-// ── Row ───────────────────────────────────────────────────────────────────────
+// Fixed circular badge geometry — a PERFECT disc that a tall two-line body can
+// never stretch (DESIGN goal: never vertically stretched). width === height and
+// `aspectRatio: 1` double-guards the square; `rounded-full` makes it a circle.
+const BADGE = 40
+
+// ── Row — a BARE row on the parchment sheet (no per-row card) ─────────────────
 function NotificationRow({ item, onOpen }: { item: NotificationItem; onOpen: () => void }) {
   const t = useW14Theme()
   const accent = severityColor(item.severity, t)
   const Icon = CHANNEL_ICON[item.channel]
+  const unread = !item.read
+  const critical = item.severity === "critical" && unread
 
   return (
     <PressableScale
@@ -158,60 +215,90 @@ function NotificationRow({ item, onOpen }: { item: NotificationItem; onOpen: () 
       accessibilityRole="button"
       accessibilityLabel={`${item.title}. ${item.body}. ${item.read ? "Gelesen" : "Ungelesen"}.`}
     >
-      <Card className="overflow-hidden p-0">
-        <View className="flex-row">
-          {/* Severity accent rail. */}
-          <View style={{ width: 4, backgroundColor: accent }} />
-          <View className="flex-1 flex-row items-start gap-3 px-4 py-3.5">
-            {/* Channel glyph in a soft disc tinted to severity. */}
-            <View
-              className="h-9 w-9 items-center justify-center rounded-md"
-              style={{ backgroundColor: accent + "1f" }}
+      {/* A bare row: parchment-step depth on press (the raised leaf), one warm
+          hairline below — NOT a stacked card with its own border. An unread row
+          rests a hair higher on the card surface so it lifts off the canvas; a
+          read row sits flush on the ground. A critical-unread row earns a single
+          gilt edge-seal at the leading edge — the gold thread used as a seal. */}
+      <View
+        className="flex-row items-center gap-3 rounded-xl px-3 py-3.5"
+        style={{
+          backgroundColor: unread ? t.colors.card : "transparent",
+          borderLeftWidth: critical ? 2 : 0,
+          borderLeftColor: critical ? t.colors.gilt : "transparent",
+        }}
+      >
+        {/* Fixed circular channel badge — a perfect disc tinted to severity. */}
+        <View
+          className="items-center justify-center rounded-full"
+          style={{
+            width: BADGE,
+            height: BADGE,
+            aspectRatio: 1,
+            backgroundColor: accent + "14",
+            borderWidth: 1,
+            borderColor: accent + "33",
+          }}
+        >
+          <Icon size={t.icon.lg} color={accent} />
+        </View>
+
+        <View className="flex-1 gap-0.5">
+          <View className="flex-row items-center gap-2">
+            <Text
+              className={unread ? "text-base font-semibold" : "text-base font-medium"}
+              numberOfLines={1}
+              style={{ flexShrink: 1, color: unread ? t.colors.foreground : t.colors.inkAged }}
             >
-              <Icon size={t.icon.md} color={accent} />
-            </View>
-
-            <View className="flex-1 gap-0.5">
-              <View className="flex-row items-center gap-2">
-                <Text
-                  className={item.read ? "text-base font-medium" : "text-base font-semibold"}
-                  numberOfLines={1}
-                  style={{ flexShrink: 1 }}
-                >
-                  {item.title}
-                </Text>
-                {/* Unread dot the calm "neu" marker, no loud fill. */}
-                {!item.read ? (
-                  <View
-                    className="h-2 w-2 rounded-full"
-                    style={{ backgroundColor: accent }}
-                    accessibilityLabel="ungelesen"
-                  />
-                ) : null}
-              </View>
-              <Text className="text-muted-foreground text-sm" numberOfLines={2}>
-                {item.body}
-              </Text>
-              <View className="flex-row items-center gap-2 pt-0.5">
-                <Text className="text-muted-foreground text-2xs">
-                  {CHANNEL_LABELS[item.channel]}
-                </Text>
-                <Text className="text-muted-foreground text-2xs">·</Text>
-                <Text className="text-muted-foreground text-2xs">
-                  {relativeTime(item.createdAt)}
-                </Text>
-              </View>
-            </View>
-
-            <ChevronRight size={t.icon.md} color={t.colors.mutedForeground} />
+              {item.title}
+            </Text>
+            {/* The unread seal — a calm dot, no loud fill. */}
+            {unread ? (
+              <View
+                className="h-2 w-2 rounded-full"
+                style={{ backgroundColor: accent }}
+                accessibilityLabel="ungelesen"
+              />
+            ) : null}
+          </View>
+          <Text className="text-muted-foreground text-sm leading-5" numberOfLines={2}>
+            {item.body}
+          </Text>
+          <View className="flex-row items-center gap-1.5 pt-0.5">
+            <Text className="text-muted-foreground text-2xs">{CHANNEL_LABELS[item.channel]}</Text>
+            <Text className="text-muted-foreground text-2xs">·</Text>
+            <Text className="text-muted-foreground text-2xs">{relativeTime(item.createdAt)}</Text>
           </View>
         </View>
-      </Card>
+
+        <ChevronRight size={t.icon.md} color={t.colors.mutedForeground} />
+      </View>
     </PressableScale>
   )
 }
 
 // ── Detail sheet (the LIST→DETAIL pattern) ────────────────────────────────────
+/** One hairline-separated meta line in the sheet — a bare row, not a boxed cell. */
+function MetaRow({
+  label,
+  children,
+  first = false,
+}: {
+  label: string
+  children: React.ReactNode
+  first?: boolean
+}) {
+  return (
+    <View>
+      {first ? null : <Hairline />}
+      <View className="flex-row items-center justify-between gap-3 py-2.5">
+        <Text className="text-muted-foreground text-xs">{label}</Text>
+        {children}
+      </View>
+    </View>
+  )
+}
+
 function DetailSheet({ item, onClose }: { item: NotificationItem; onClose: () => void }) {
   const t = useW14Theme()
   const router = useRouter()
@@ -240,8 +327,7 @@ function DetailSheet({ item, onClose }: { item: NotificationItem; onClose: () =>
         className="flex-1 justify-end"
         // The scrim is a WARM aged-ink dim (the walnut near-black of the
         // palette), never a cold pure black (DESIGN §5 — depth from a warm
-        // layered scrim, not a flat black drop). Theme-stable: a darkening
-        // layer reads the same warmth in light and dark.
+        // layered scrim, not a flat black drop).
         style={{ backgroundColor: "rgba(23,21,15,0.5)" }}
         accessibilityRole="button"
         accessibilityLabel="Schließen"
@@ -250,7 +336,7 @@ function DetailSheet({ item, onClose }: { item: NotificationItem; onClose: () =>
         {/* Inner Pressable swallows taps so a tap inside the sheet never dismisses. */}
         <Pressable
           onPress={() => {}}
-          className="bg-background border-border gap-4 overflow-hidden rounded-t-2xl border-t px-5 pt-5"
+          className="bg-background border-border gap-4 overflow-hidden rounded-t-2xl border-t px-5 pt-4"
           style={{ paddingBottom: insets.stickyBottom }}
         >
           {/* The floating leaf carries the fainter card-surface grain so the
@@ -261,15 +347,23 @@ function DetailSheet({ item, onClose }: { item: NotificationItem; onClose: () =>
           </View>
 
           <View className="flex-row items-start gap-3">
+            {/* The sheet badge echoes the row's fixed disc, one step larger. */}
             <View
-              className="h-11 w-11 items-center justify-center rounded-lg"
-              style={{ backgroundColor: accent + "1f" }}
+              className="items-center justify-center rounded-full"
+              style={{
+                width: 48,
+                height: 48,
+                aspectRatio: 1,
+                backgroundColor: accent + "14",
+                borderWidth: 1,
+                borderColor: accent + "33",
+              }}
             >
-              <Icon size={t.icon.lg} color={accent} />
+              <Icon size={t.icon.xl} color={accent} />
             </View>
-            <View className="flex-1 gap-1">
-              {/* The sheet's title speaks the display voice Bricolage Grotesque
-                  Garamond at the screen-title step (DESIGN §3). */}
+            <View className="flex-1 gap-1 pt-0.5">
+              {/* The sheet's title speaks the display voice — Bricolage Grotesque
+                  at the screen-title step (DESIGN §3). */}
               <Text className="text-xl font-display-semibold leading-tight" numberOfLines={2}>
                 {item.title}
               </Text>
@@ -290,10 +384,11 @@ function DetailSheet({ item, onClose }: { item: NotificationItem; onClose: () =>
 
           <Text className="text-foreground text-base leading-6">{item.body}</Text>
 
-          {/* Source meta the honest provenance: this is event #N from the ledger. */}
-          <View className="bg-card border-border gap-1.5 rounded-xl border px-4 py-3">
-            <View className="flex-row items-center justify-between">
-              <Text className="text-muted-foreground text-xs">Zeitpunkt</Text>
+          {/* Source meta — the honest provenance: this is event #N from the
+              ledger. Rendered as bare hairline-separated rows on the sheet's own
+              surface, NOT a bordered box-within-the-box. */}
+          <View>
+            <MetaRow label="Zeitpunkt" first>
               <Text className="text-sm font-medium">
                 {new Date(item.createdAt).toLocaleString("de-DE", {
                   day: "2-digit",
@@ -303,17 +398,15 @@ function DetailSheet({ item, onClose }: { item: NotificationItem; onClose: () =>
                   minute: "2-digit",
                 })}
               </Text>
-            </View>
-            <View className="flex-row items-center justify-between gap-3">
-              <Text className="text-muted-foreground text-xs">Ereignis</Text>
+            </MetaRow>
+            <MetaRow label="Ereignis">
               <Text className="text-sm font-medium" numberOfLines={1} style={{ flexShrink: 1 }}>
                 {eventLabel(item.eventType)}
               </Text>
-            </View>
-            <View className="flex-row items-center justify-between">
-              <Text className="text-muted-foreground text-xs">Beleg-Nr.</Text>
+            </MetaRow>
+            <MetaRow label="Beleg-Nr.">
               <Text className="font-mono-medium text-xs">#{item.id}</Text>
-            </View>
+            </MetaRow>
           </View>
 
           <View className="flex-row gap-3 pt-1">
@@ -378,8 +471,9 @@ function ChannelFilter({
               </Text>
               {opt.unread > 0 ? (
                 <View
-                  className="min-w-[18px] items-center justify-center rounded-full px-1"
+                  className="items-center justify-center rounded-full px-1"
                   style={{
+                    minWidth: 18,
                     height: 18,
                     backgroundColor: active ? t.colors.primaryForeground : t.colors.primary,
                   }}
@@ -400,19 +494,22 @@ function ChannelFilter({
   )
 }
 
-// ── First-load skeleton — the feed's own shape ────────────────────────────────
+// ── First-load skeleton — the feed's own BARE-ROW shape ───────────────────────
 function FeedSkeleton() {
   return (
-    <View className="gap-3 pt-1">
+    <View className="pt-1">
       {Array.from({ length: 6 }).map((_, i) => (
-        <Card key={i} className="flex-row gap-3 px-4 py-3.5">
-          <Skeleton width={36} height={36} radius="button" />
-          <View className="flex-1 gap-2">
-            <Skeleton width="58%" height={14} />
-            <Skeleton width="82%" height={12} />
-            <Skeleton width="34%" height={10} />
+        <View key={i}>
+          {i === 0 ? null : <Hairline inset={64} />}
+          <View className="flex-row items-center gap-3 px-3 py-3.5">
+            <Skeleton width={BADGE} height={BADGE} radius="full" />
+            <View className="flex-1 gap-2">
+              <Skeleton width="58%" height={14} />
+              <Skeleton width="82%" height={12} />
+              <Skeleton width="34%" height={10} />
+            </View>
           </View>
-        </Card>
+        </View>
       ))}
     </View>
   )
@@ -492,37 +589,53 @@ export default function BenachrichtigungenScreen() {
   )
 
   // The scrolling top block: the live „Jetzt" status section (bridge-derived
-  // owner alerts — approvals waiting, next Termin, DLQ, TSE headroom) over the
-  // sticky filter header. The live section scrolls away; the filter row sticks.
+  // owner alerts — approvals waiting, next Termin, DLQ, TSE headroom). The live
+  // section scrolls away; the filter row sticks.
   const topBlock = useMemo(
     () => (
-      <View className="gap-3 pb-3">
+      <View className="pb-3">
         <LiveAlertsSection />
       </View>
     ),
     [],
   )
 
-  // Sticky header — the live unread summary line + the filter chips.
+  // Sticky header — the gilt-sealed „Verlauf" opener + the live unread summary
+  // line + the filter chips. The whole header sits on a single warm hairline; the
+  // gilt seal is the one gold thread on the screen (DESIGN §1, §6).
   const header = useMemo(
     () => (
-      <View className="bg-background border-border gap-2 border-b pb-2.5 pt-2">
+      <View className="bg-background gap-2.5 pb-2.5 pt-1">
         {feed.items.length > 0 ? (
           <Animated.View
             entering={FadeIn.duration(160)}
             exiting={FadeOut.duration(160)}
-            className="flex-row items-center gap-2 px-4 pb-0.5"
+            className="gap-2 px-4"
           >
-            {feed.hasCriticalUnread ? (
-              <BellRing size={t.icon.sm} color={t.colors.destructive} />
-            ) : (
-              <Bell size={t.icon.sm} color={t.colors.mutedForeground} />
-            )}
-            <Text className="text-muted-foreground text-xs">
-              {feed.unread > 0
-                ? `${feed.unread} ungelesen · ${feed.items.length} gesamt`
-                : `Alles gelesen · ${feed.items.length} gesamt`}
-            </Text>
+            <View className="flex-row items-center gap-2">
+              <SealMark size={12} color={t.colors.gilt} />
+              <Text
+                className="font-display-semibold text-xs"
+                style={{ color: t.colors.inkAged, letterSpacing: 1.4, textTransform: "uppercase" }}
+              >
+                Verlauf
+              </Text>
+              <View className="flex-1">
+                <Hairline />
+              </View>
+            </View>
+            <View className="flex-row items-center gap-2">
+              {feed.hasCriticalUnread ? (
+                <BellRing size={t.icon.sm} color={t.colors.destructive} />
+              ) : (
+                <Bell size={t.icon.sm} color={t.colors.mutedForeground} />
+              )}
+              <Text className="text-muted-foreground text-xs">
+                {feed.unread > 0
+                  ? `${feed.unread} ungelesen · ${feed.items.length} gesamt`
+                  : `Alles gelesen · ${feed.items.length} gesamt`}
+              </Text>
+            </View>
           </Animated.View>
         ) : null}
         <ChannelFilter value={filter} options={options} onChange={setFilter} />
@@ -538,7 +651,7 @@ export default function BenachrichtigungenScreen() {
         data={visible}
         keyExtractor={(it) => String(it.id)}
         ListHeaderComponent={
-          <View className="gap-1">
+          <View>
             {topBlock}
             {header}
           </View>
@@ -547,7 +660,6 @@ export default function BenachrichtigungenScreen() {
           paddingHorizontal: 16,
           paddingTop: 12,
           paddingBottom: insets.contentBottom,
-          gap: 10,
         }}
         refreshControl={
           <RefreshControl
@@ -559,6 +671,10 @@ export default function BenachrichtigungenScreen() {
             progressViewOffset={8}
           />
         }
+        // One warm hairline between rows is the ONLY divider — bare rows on a
+        // single sheet, never stacked cards (DESIGN §1, §9). Inset so the rule
+        // begins under the title, not under the circular badge.
+        ItemSeparatorComponent={() => <Hairline inset={64} />}
         renderItem={({ item, index }) => (
           <StaggerItem index={Math.min(index, 8)} exit={false}>
             <NotificationRow item={item} onOpen={() => onOpen(item)} />
@@ -579,7 +695,7 @@ export default function BenachrichtigungenScreen() {
                 }
                 description={
                   filter == null
-                    ? "Sobald etwas passiert eine Freigabe, ein Termin, ein Hinweis erscheint es hier."
+                    ? "Sobald etwas geschieht, eine Freigabe, ein Termin oder ein Hinweis, erscheint es hier."
                     : "In diesem Kanal liegt gerade nichts an. Wähle Alle, um den ganzen Verlauf zu sehen."
                 }
                 actionLabel={filter == null ? undefined : "Alle anzeigen"}

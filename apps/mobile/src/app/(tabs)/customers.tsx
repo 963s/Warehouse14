@@ -19,9 +19,11 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react"
 import { FlatList, Pressable, RefreshControl, View } from "react-native"
 import { useNavigation, useRouter } from "expo-router"
+import Svg, { Path } from "react-native-svg"
 import type { CustomerListRow } from "@warehouse14/api-client"
 import {
   BadgeCheck,
+  ShieldAlert,
   UserPlus,
   UserSearch,
   X,
@@ -53,6 +55,25 @@ import {
 /** Trust levels worth surfacing on the row — NEW/VERIFIED are the quiet default. */
 const TRUST_FLAGGED = new Set<CustomerListRow["trustLevel"]>(["VIP", "SUSPICIOUS", "BANNED"])
 
+/**
+ * The house seal — a small gilt diamond ◆, the design-system kicker mark
+ * (DESIGN-SYSTEM.md §6: gilt as a seal only, never a fill). Drawn inline so the
+ * directory opens with the same diamond that opens every section of the store.
+ */
+function SealDiamond({ size, color }: { size: number; color: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 12 12" fill="none">
+      <Path d="M6 1 L11 6 L6 11 L1 6 Z" fill={color} />
+    </Svg>
+  )
+}
+
+/** N Kunden / N Treffer with grammatical singular — never a bare number. */
+function countLabel(n: number, searching: boolean): string {
+  const noun = searching ? "Treffer" : n === 1 ? "Kunde" : "Kunden"
+  return `${n} ${noun}`
+}
+
 /** Hold a value until it stops changing for `ms` — the search debounce, inline so
  *  this surface adds no shared module. Returns the settled value. */
 function useDebouncedValue<T>(value: T, ms: number): T {
@@ -78,7 +99,7 @@ function hasTurnover(eur: string): boolean {
   return Number.isFinite(n) && n > 0
 }
 
-/** One customer row — avatar · name · Kundennummer · the flags an operator scans. */
+/** One customer row — seal · name · Kundennummer · the flags an operator scans. */
 function KundenRow({
   row,
   onPress,
@@ -88,7 +109,13 @@ function KundenRow({
 }) {
   const t = useW14Theme()
   const showTrust = TRUST_FLAGGED.has(row.trustLevel)
+  // A precious-metals shop reads Ankauf turnover first; fall back to spend so the
+  // meta line always carries the real figure that exists, never a fabricated 0.
+  const ankauf = hasTurnover(row.cumulativeAnkaufEur) ? row.cumulativeAnkaufEur : null
   const spend = hasTurnover(row.cumulativeSpendEur) ? row.cumulativeSpendEur : null
+  // The gilt ring is a SEAL with meaning: it appears only on a verified customer
+  // (DESIGN-SYSTEM.md §1 — gilt as an edge/seal, never decoration).
+  const sealed = row.kycStatus === "VERIFIED"
 
   return (
     <PressableScale
@@ -96,15 +123,24 @@ function KundenRow({
       accessibilityRole="button"
       accessibilityLabel={`${row.fullName}, Kundennummer ${row.customerNumber}`}
     >
-      {/* Box-free row on the parchment canvas no Card border, separated from
+      {/* Box-free row on the parchment canvas — no Card border, separated from
           the next row by a single warm hairline below. */}
-      <View className="hairline-b flex-row items-center gap-3 px-4 py-3">
-        {/* Avatar monogram in a soft raised disc the calm leading anchor. */}
+      <View className="hairline-b flex-row items-center gap-3 px-4 py-3.5">
+        {/* Monogram seal — a parchment disc carrying a single hairline ring.
+            The ring gilds for a geprüfter Kunde; otherwise it is the quiet
+            rule, so the gold reads as an earned seal, not a fill. */}
         <View
           className="h-11 w-11 items-center justify-center rounded-full"
-          style={{ backgroundColor: t.colors.raised }}
+          style={{
+            backgroundColor: t.colors.card,
+            borderWidth: sealed ? 1.5 : 1,
+            borderColor: sealed ? t.colors.gilt : t.colors.border,
+          }}
         >
-          <Text className="text-sm font-semibold" style={{ color: t.colors.foreground }}>
+          <Text
+            className="text-sm font-semibold"
+            style={{ color: sealed ? t.colors.giltDeep : t.colors.foreground }}
+          >
             {initialsOf(row.fullName)}
           </Text>
         </View>
@@ -117,9 +153,13 @@ function KundenRow({
             <Text className="text-muted-foreground font-mono text-xs" numberOfLines={1}>
               {row.customerNumber}
             </Text>
-            {spend != null ? (
-              <Text className="text-muted-foreground text-xs" numberOfLines={1}>
-                · {formatEur(spend)}
+            {ankauf != null ? (
+              <Text className="text-muted-foreground font-mono text-xs" numberOfLines={1}>
+                · Ankauf {formatEur(ankauf)}
+              </Text>
+            ) : spend != null ? (
+              <Text className="text-muted-foreground font-mono text-xs" numberOfLines={1}>
+                · Umsatz {formatEur(spend)}
               </Text>
             ) : null}
           </View>
@@ -132,7 +172,8 @@ function KundenRow({
           {row.sanctionsMatch || showTrust ? (
             <View className="flex-row items-center gap-1.5">
               {row.sanctionsMatch ? (
-                <Badge variant="destructive" dot>
+                <Badge variant="destructive">
+                  <ShieldAlert size={t.icon.xs} color={t.colors.primaryForeground} />
                   <Text>Sanktion</Text>
                 </Badge>
               ) : null}
@@ -152,10 +193,12 @@ function KundenRow({
 /** The first-load placeholder — the list's own shape, never a mid-screen spinner. */
 function KundenSkeleton() {
   return (
-    <View className="gap-2.5">
+    // No gap — the skeleton butts together exactly like the real ledger, so the
+    // first paint and the loaded list share one rhythm (no layout jump).
+    <View>
       {Array.from({ length: 7 }).map((_, i) => (
         // Box-free skeleton row — matches the real KundenRow (hairline-b, no Card).
-        <View key={i} className="hairline-b flex-row items-center gap-3 px-4 py-3">
+        <View key={i} className="hairline-b flex-row items-center gap-3 px-4 py-3.5">
           <Skeleton width={44} height={44} radius="full" />
           <View className="flex-1 gap-2">
             <Skeleton width="58%" height={14} />
@@ -214,6 +257,12 @@ export default function KundenScreen() {
 
   const rows = customers.data?.items ?? null
   const isSearching = debouncedQ.length > 0 || kycOnly
+  // Honest count: the server `total` for the active query — shown only once real
+  // rows have loaded, so it never reads a fabricated 0 while the list is empty
+  // (the EmptyState owns the no-result case).
+  const total = customers.data?.total ?? null
+  const countText =
+    rows != null && rows.length > 0 && total != null ? countLabel(total, isSearching) : null
 
   const openCustomer = useCallback(
     (id: string) => {
@@ -233,11 +282,12 @@ export default function KundenScreen() {
     setKycOnly(next)
   }, [])
 
-  // Header (search + filter chips) is sticky above the list so it never scrolls
-  // away — the directory's controls stay reachable.
+  // Header (search + filter chips + the honest count) is sticky above the list
+  // so it never scrolls away — the directory's controls stay reachable. The
+  // hairline-b caps it as a bar so the first row reads as separated, not flush.
   const header = useMemo(
     () => (
-      <View className="gap-3 bg-background px-4 pb-3 pt-3">
+      <View className="hairline-b gap-3 bg-background px-4 pb-3 pt-3">
         <View className="justify-center">
           <Input
             value={q}
@@ -269,32 +319,48 @@ export default function KundenScreen() {
             </Pressable>
           ) : null}
         </View>
-        <View className="flex-row flex-wrap gap-2">
-          <Pressable
-            onPress={() => toggleKyc(false)}
-            accessibilityRole="button"
-            accessibilityState={{ selected: !kycOnly }}
-          >
-            <Badge variant={!kycOnly ? "default" : "outline"}>
-              <Text>Alle</Text>
-            </Badge>
-          </Pressable>
-          <Pressable
-            onPress={() => toggleKyc(true)}
-            accessibilityRole="button"
-            accessibilityState={{ selected: kycOnly }}
-          >
-            <Badge variant={kycOnly ? "success" : "outline"} dot={kycOnly}>
-              {!kycOnly ? (
-                <BadgeCheck size={t.icon.xs} color={t.colors.mutedForeground} />
-              ) : null}
-              <Text>KYC bestätigt</Text>
-            </Badge>
-          </Pressable>
+        <View className="flex-row items-center justify-between gap-3">
+          <View className="flex-row flex-wrap items-center gap-2">
+            <Pressable
+              onPress={() => toggleKyc(false)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: !kycOnly }}
+            >
+              <Badge variant={!kycOnly ? "default" : "outline"}>
+                <Text>Alle</Text>
+              </Badge>
+            </Pressable>
+            <Pressable
+              onPress={() => toggleKyc(true)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: kycOnly }}
+            >
+              <Badge variant={kycOnly ? "success" : "outline"} dot={kycOnly}>
+                {!kycOnly ? (
+                  <BadgeCheck size={t.icon.xs} color={t.colors.mutedForeground} />
+                ) : null}
+                <Text>KYC bestätigt</Text>
+              </Badge>
+            </Pressable>
+          </View>
+          {/* The directory's header voice — a gilt seal ◆ + the honest count.
+              The diamond is the design-system kicker; the number is mono. */}
+          {countText != null ? (
+            <View className="flex-row items-center gap-1.5">
+              <SealDiamond size={8} color={t.colors.gilt} />
+              <Text
+                className="text-muted-foreground font-mono text-xs"
+                numberOfLines={1}
+                accessibilityLabel={countText}
+              >
+                {countText}
+              </Text>
+            </View>
+          ) : null}
         </View>
       </View>
     ),
-    [q, kycOnly, clearSearch, toggleKyc, t.colors, t.icon.sm, t.icon.xs],
+    [q, kycOnly, clearSearch, toggleKyc, countText, t.colors, t.icon.sm, t.icon.xs],
   )
 
   return (
@@ -307,10 +373,11 @@ export default function KundenScreen() {
         keyExtractor={(c) => c.id}
         stickyHeaderIndices={[0]}
         ListHeaderComponent={header}
+        // No inter-row gap and no container side padding: the rows butt directly
+        // together so the single warm hairline is the ONLY divider — a continuous
+        // parchment ledger, not detached strips. Each row owns its own px-4.
         contentContainerStyle={{
-          paddingHorizontal: 16,
           paddingBottom: insets.contentBottom,
-          gap: 10,
         }}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
@@ -328,11 +395,7 @@ export default function KundenScreen() {
           // case never reaches here (FlatList drives those via data/renderItem).
           <QueryBoundary
             query={customers}
-            loading={
-              <View className="pt-1">
-                <KundenSkeleton />
-              </View>
-            }
+            loading={<KundenSkeleton />}
             isEmpty={(d) => d.items.length === 0}
             empty={
               isSearching

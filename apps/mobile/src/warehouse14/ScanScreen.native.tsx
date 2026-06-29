@@ -1,31 +1,31 @@
 /**
- * Scan (iOS/Android) — the native vision-camera barcode scanner, promoted to a
- * world-class owner surface. On a code it calls the authenticated
- * productsApi.list ({ q: code }) and classifies it with the ported
- * classifyScanMatch, giving the FULL verdict (found / sold / reserved / draft /
- * not-found). A found row opens the Lager detail.
+ * Scan (iOS/Android) — der native vision-camera Barcode-Scanner, als Owner-
+ * Fläche geführt. Auf einen Code ruft er das authentifizierte productsApi.list
+ * ({ q: code }) und ordnet ihn mit dem portierten classifyScanMatch ein und gibt
+ * den VOLLEN Befund (gefunden / verkauft / reserviert / Entwurf / nicht im
+ * Lager). Eine Trefferzeile öffnet das Lager-Detail.
  *
- * Craft (DESIGN.md): a calm dark scrim around a centred framing reticle with
- * brass corner brackets and a reduced-motion-aware scan sweep; an instant
- * verdict card that animates in (spine motion) with one deliberate haptic per
- * resolution (success on a hit, warning on a miss, error on a failure); and
- * graceful permission / no-camera / error+retry states. Every colour, radius,
- * spacing and motion value comes from the theme + the shared spine — no
- * hardcoded hex, no hand-rolled animation, no fabricated number.
+ * Form (DESIGN-SYSTEM.md): keine Kästen in Kästen. Die Kamera ist notwendig eine
+ * dunkle Szene — der ruhige Sucher trägt ein Tinten-Fenster mit einem Gilt-Faden
+ * an jeder Ecke und einer reduce-motion-bewussten Lese-Linie. Der Befund liegt
+ * auf EINEM warmen Papier-Blatt (kein Kasten im Kasten): eine führende Tinten-/
+ * Gilt-Marke statt gestapelter Scheiben, eine einzige Haarlinie trennt Befund von
+ * Aktion. Die Erlaubnis-/Keine-Kamera-/Fehler-Zustände leben boxlos auf dem
+ * Pergament mit dem bespoke Sucher-Siegel, einem Kicker und der Bricolage-Stimme.
+ * Jede Farbe, jeder Radius, jeder Abstand und jede Bewegung kommt aus dem Theme +
+ * dem geteilten Spine — kein hartes Hex, keine erfundene Zahl. Deutsche UI.
  *
  * This file is `.native` only — Metro never bundles vision-camera for web.
  */
-import { useCallback, useEffect, useRef, useState } from "react"
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react"
 import { AppState, type AppStateStatus, StyleSheet, View } from "react-native"
 import { useRouter } from "expo-router"
 import { useIsFocused } from "@react-navigation/native"
 import {
   CameraOff,
-  Lock,
   PackageCheck,
   PackageX,
   RotateCcw,
-  ScanLine,
   Tag,
   WifiOff,
   type LucideIcon,
@@ -39,6 +39,7 @@ import Animated, {
   withSequence,
   withTiming,
 } from "react-native-reanimated"
+import Svg, { Circle, Line, Path, Rect } from "react-native-svg"
 import {
   Camera,
   useCameraDevice,
@@ -49,7 +50,6 @@ import {
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
 import { Text } from "@/components/ui/text"
 import { describeError, formatEur, resolveScannedCode } from "@/warehouse14/api"
 import { statusLabel, statusVariant } from "@/warehouse14/product-ui"
@@ -58,6 +58,7 @@ import { useW14Theme } from "@/warehouse14/theme"
 import {
   duration,
   easing,
+  Hairline,
   haptics,
   itemEnter,
   itemExit,
@@ -155,7 +156,7 @@ export function ScanScreen() {
   if (!hasPermission) {
     return (
       <PermissionGate
-        icon={Lock}
+        kicker="Sucher gesperrt"
         title="Kamerazugriff benötigt"
         description="Zum Scannen von Barcodes braucht die App Zugriff auf die Kamera. Du kannst den Zugriff jederzeit in den Einstellungen ändern."
         actionLabel="Zugriff erlauben"
@@ -170,9 +171,10 @@ export function ScanScreen() {
   if (device == null) {
     return (
       <PermissionGate
-        icon={CameraOff}
+        kicker="Kein Sucher"
         title="Keine Kamera gefunden"
         description="Auf diesem Gerät ist keine Rückkamera verfügbar. Der Barcode-Scanner braucht eine Kamera."
+        fallbackIcon={CameraOff}
       />
     )
   }
@@ -327,29 +329,22 @@ function ScanOverlay({ scanning, insets }: { scanning: boolean; insets: number }
           <Corner style={{ bottom: 0, left: 0, borderBottomWidth: thick, borderLeftWidth: thick }} size={corner} color={bracket} radius={t.radii.card} />
           <Corner style={{ bottom: 0, right: 0, borderBottomWidth: thick, borderRightWidth: thick }} size={corner} color={bracket} radius={t.radii.card} />
 
-          {/* Quiet hint, pinned just below the window. */}
+          {/* Ruhiger Hinweis, knapp unter dem Fenster — ein Gilt-Punkt + eine
+              Zeile auf der Szene, kein getöntes Kästchen mit Rand. */}
           <View
             style={{
               position: "absolute",
-              top: size + t.space.x5,
+              top: size + t.space.x4,
               left: 0,
               right: 0,
               alignItems: "center",
             }}
           >
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: t.space.x2,
-                backgroundColor: "#0007",
-                borderRadius: t.radii.button,
-                paddingHorizontal: t.space.x3,
-                paddingVertical: t.space.x2,
-              }}
-            >
-              <ScanLine size={t.icon.sm} color="#fff" />
-              <Text style={{ color: "#fff" }} className="text-sm">
+            <View style={{ flexDirection: "row", alignItems: "center", gap: t.space.x1 }}>
+              <View
+                style={{ height: 5, width: 5, borderRadius: 3, backgroundColor: t.colors.gilt }}
+              />
+              <Text style={{ color: "#fff", letterSpacing: 0.2 }} className="text-sm">
                 Barcode in den Rahmen halten
               </Text>
             </View>
@@ -457,33 +452,48 @@ function VerdictBody({
 }) {
   const t = useW14Theme()
 
+  // Der Leerlauf-Hinweis ist die leiseste Stufe: nur ein Gilt-Punkt + eine Zeile
+  // auf dem warmen Blatt — keine eigene Karte, kein Rand.
   if (lookup.status === "idle") {
     return (
-      <Card className="px-4 py-3">
-        <Text className="text-muted-foreground text-center text-sm">
-          Bereit zum Scannen
-        </Text>
-      </Card>
+      <VerdictSheet>
+        <View className="flex-row items-center justify-center gap-2 py-1">
+          <View
+            style={{ height: 5, width: 5, borderRadius: 3, backgroundColor: t.colors.gilt }}
+          />
+          <Text className="text-muted-foreground text-center text-sm" style={{ letterSpacing: 0.2 }}>
+            Bereit zum Scannen
+          </Text>
+        </View>
+      </VerdictSheet>
     )
   }
 
   if (lookup.status === "looking") {
     return (
-      <Card className="gap-1 px-4 py-3">
-        <CodeLine code={lookup.code} />
-        <Pulse>
-          <Text className="text-muted-foreground text-sm">Suche im Lager…</Text>
-        </Pulse>
-      </Card>
+      <VerdictSheet>
+        <View className="flex-row items-center gap-3">
+          <VerdictMark tone={t.colors.gilt} loading />
+          <View className="flex-1 gap-0.5">
+            <Pulse>
+              <Text className="text-base font-semibold" style={{ color: t.colors.foreground }}>
+                Suche im Lager
+              </Text>
+            </Pulse>
+            <CodeLine code={lookup.code} />
+          </View>
+        </View>
+      </VerdictSheet>
     )
   }
 
   if (lookup.status === "error") {
     const offline = /verbindung|netzwerk|network|timeout|zeitüberschreitung/i.test(lookup.message)
+    const ErrIcon: LucideIcon = offline ? WifiOff : PackageX
     return (
-      <Card className="gap-3 px-4 py-4" style={{ borderColor: t.colors.destructive }}>
+      <VerdictSheet>
         <View className="flex-row items-start gap-3">
-          <VerdictDisc icon={offline ? WifiOff : PackageX} color={t.colors.destructive} />
+          <VerdictMark tone={t.colors.destructive} icon={ErrIcon} />
           <View className="flex-1 gap-1">
             <Text className="text-xl font-display-semibold leading-tight">
               {offline ? "Keine Verbindung" : "Suche fehlgeschlagen"}
@@ -494,45 +504,42 @@ function VerdictBody({
             <CodeLine code={lookup.code} />
           </View>
         </View>
-        <Button variant="outline" accessibilityLabel="Erneut scannen" onPress={onRescan}>
-          <RotateCcw size={t.icon.sm} color={t.colors.foreground} />
-          <Text>Erneut scannen</Text>
-        </Button>
-      </Card>
+        <Hairline />
+        <RescanButton onPress={onRescan} />
+      </VerdictSheet>
     )
   }
 
   // status === "done"
   if (lookup.match.kind === "not-found") {
     return (
-      <Card className="gap-3 px-4 py-4">
+      <VerdictSheet>
         <View className="flex-row items-center gap-3">
-          <VerdictDisc icon={PackageX} color={t.colors.destructive} />
+          <VerdictMark tone={t.colors.destructive} icon={PackageX} />
           <View className="flex-1 gap-1">
             <Text className="text-xl font-display-semibold leading-tight">Nicht im Lager</Text>
             <CodeLine code={lookup.code} />
           </View>
         </View>
-        <Button variant="outline" accessibilityLabel="Erneut scannen" onPress={onRescan}>
-          <RotateCcw size={t.icon.sm} color={t.colors.foreground} />
-          <Text>Erneut scannen</Text>
-        </Button>
-      </Card>
+        <Hairline />
+        <RescanButton onPress={onRescan} />
+      </VerdictSheet>
     )
   }
 
   const p = lookup.match.product
   const found = lookup.match.kind === "found"
-  // A found (AVAILABLE) product is the happy path → verdigris check. Sold /
-  // reserved / draft are real-but-flagged → brass tag, with the status badge
-  // carrying the precise meaning. Never colour a non-available state green.
+  // Ein gefundenes (AVAILABLE) Produkt ist der gute Pfad → Verdigris-Haken.
+  // Verkauft / reserviert / Entwurf sind echt-aber-markiert → Tinten-Tag, das
+  // Status-Badge trägt die genaue Bedeutung. Ein nicht-verfügbarer Zustand wird
+  // NIE grün gefärbt.
   const tone = found ? t.colors.verdigris : t.colors.primary
   const Icon: LucideIcon = found ? PackageCheck : Tag
 
   return (
-    <Card className="gap-3 px-4 py-4">
+    <VerdictSheet>
       <View className="flex-row items-center gap-3">
-        <VerdictDisc icon={Icon} color={tone} />
+        <VerdictMark tone={tone} icon={Icon} />
         <View className="flex-1 gap-1">
           <Text className="text-xl font-display-semibold leading-tight" numberOfLines={2}>
             {p.name}
@@ -550,6 +557,7 @@ function VerdictBody({
           {formatEur(p.listPriceEur)}
         </Text>
       </View>
+      <Hairline />
       <View className="flex-row gap-3">
         <Button
           variant="outline"
@@ -579,20 +587,106 @@ function VerdictBody({
           </Text>
         </PressableScale>
       </View>
-    </Card>
+    </VerdictSheet>
   )
 }
 
-/** The icon disc that leads every verdict — a soft tinted circle (DESIGN.md §3). */
-function VerdictDisc({ icon: Icon, color }: { icon: LucideIcon; color: string }) {
+/**
+ * VerdictSheet — EIN warmes Papier-Blatt, das den Befund über die dunkle Szene
+ * hebt. Tiefe kommt aus dem geschichteten Pergament (card) + einer einzigen
+ * warmen Haarlinie als Rand, nie aus einem kalten Schlagschatten oder einem
+ * Kasten im Kasten. Der Befund ist die einzige bewusste Fläche dieser Szene.
+ */
+function VerdictSheet({ children }: { children: ReactNode }): ReactNode {
   const t = useW14Theme()
   return (
     <View
-      className="h-10 w-10 items-center justify-center rounded-full"
-      style={{ backgroundColor: color + "1f" }}
+      className="gap-3"
+      style={{
+        backgroundColor: t.colors.card,
+        borderColor: t.colors.border,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderRadius: t.radii.card,
+        paddingHorizontal: t.space.x2,
+        paddingVertical: t.space.x2,
+      }}
     >
-      <Icon size={t.icon.lg} color={color} />
+      {children}
     </View>
+  )
+}
+
+/** „Erneut scannen" — die eine ruhige Outline-Aktion unter einem Befund. */
+function RescanButton({ onPress }: { onPress: () => void }): ReactNode {
+  const t = useW14Theme()
+  return (
+    <Button variant="outline" accessibilityLabel="Erneut scannen" onPress={onPress}>
+      <RotateCcw size={t.icon.sm} color={t.colors.foreground} />
+      <Text>Erneut scannen</Text>
+    </Button>
+  )
+}
+
+/**
+ * VerdictMark — die führende Marke jedes Befunds: ein bare Glyph auf einem
+ * dünnen, ton-gefärbten Ring (KEINE gefüllte Scheibe-im-Kasten). Beim Suchen
+ * trägt der Ring statt eines Glyphs einen ruhigen Gilt-Bogen, der sich dreht.
+ */
+function VerdictMark({
+  tone,
+  icon: Icon,
+  loading = false,
+}: {
+  tone: string
+  icon?: LucideIcon
+  loading?: boolean
+}): ReactNode {
+  const t = useW14Theme()
+  return (
+    <View className="h-10 w-10 items-center justify-center">
+      {loading ? (
+        <Spinner color={tone} />
+      ) : (
+        <>
+          <View
+            style={[
+              StyleSheet.absoluteFillObject,
+              { borderRadius: 999, borderWidth: 1.5, borderColor: tone, opacity: 0.5 },
+            ]}
+          />
+          {Icon ? <Icon size={t.icon.lg} color={tone} /> : null}
+        </>
+      )}
+    </View>
+  )
+}
+
+/** Ein ruhiger Gilt-Bogen, der den „Suche"-Ring dreht (still bei reduce motion). */
+function Spinner({ color }: { color: string }): ReactNode {
+  const reduceMotion = useReduceMotion()
+  const r = useSharedValue(0)
+  useEffect(() => {
+    if (reduceMotion) {
+      r.value = 0
+      return
+    }
+    r.value = withRepeat(withTiming(1, { duration: 900, easing: Easing.linear }), -1, false)
+    return () => cancelAnimation(r)
+  }, [reduceMotion, r])
+  const style = useAnimatedStyle(() => ({ transform: [{ rotate: `${r.value * 360}deg` }] }))
+  return (
+    <Animated.View style={style}>
+      <Svg width={28} height={28} viewBox="0 0 24 24" fill="none">
+        <Circle cx={12} cy={12} r={9} stroke={color} strokeWidth={1.5} strokeOpacity={0.25} />
+        <Path
+          d="M12 3 A9 9 0 0 1 21 12"
+          stroke={color}
+          strokeWidth={1.8}
+          strokeLinecap="round"
+          fill="none"
+        />
+      </Svg>
+    </Animated.View>
   )
 }
 
@@ -628,21 +722,70 @@ function Pulse({ children }: { children: React.ReactNode }) {
   return <Animated.View style={style}>{children}</Animated.View>
 }
 
-// ── Permission / no-camera gate — themed, on the parchment canvas ─────────────
+// ── Bespoke Sucher-Siegel — ein gestempelter Tinten-Ring um einen Mess-Rahmen
+// mit vier Gilt-Eck-Fäden und einer Lese-Linie: die ruhige Marke des Scanners.
+// Der Ring bleibt Tinte, die vier Eck-Fäden und die Linie tönen in Gilt (Gold
+// nur als Faden / Kante / Siegel). Ist der Sucher gesperrt, schließt ein leiser
+// Tinten-Riegel das Fenster.
+// ────────────────────────────────────────────────────────────────────────────
+
+function ScanMark({
+  size = 64,
+  ink,
+  gilt,
+  locked = false,
+}: {
+  size?: number
+  ink: string
+  gilt: string
+  locked?: boolean
+}): ReactNode {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 48 48" fill="none" accessibilityElementsHidden>
+      {/* Gestempelter Tinten-Ring — die Siegel-Tinte. */}
+      <Circle cx={24} cy={24} r={21} stroke={ink} strokeWidth={1.4} fill="none" />
+      <Circle cx={24} cy={24} r={18} stroke={ink} strokeWidth={0.7} strokeOpacity={0.35} fill="none" />
+      {/* Vier Gilt-Eck-Fäden — der Mess-Rahmen im Siegel. */}
+      <Path d="M15 18 L15 15 L18 15" stroke={gilt} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      <Path d="M30 15 L33 15 L33 18" stroke={gilt} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      <Path d="M33 30 L33 33 L30 33" stroke={gilt} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      <Path d="M18 33 L15 33 L15 30" stroke={gilt} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      {locked ? (
+        // Gesperrt: ein Tinten-Riegel mittig im Fenster (kein Gilt-Faden quer).
+        <>
+          <Rect x={20.5} y={23.5} width={7} height={5.5} rx={1} stroke={ink} strokeWidth={1.3} fill="none" />
+          <Path d="M21.6 23.5 L21.6 21.5 A2.4 2.4 0 0 1 26.4 21.5 L26.4 23.5" stroke={ink} strokeWidth={1.3} fill="none" />
+        </>
+      ) : (
+        // Bereit: die Gilt-Lese-Linie quer durchs Fenster.
+        <Line x1={17} y1={24} x2={31} y2={24} stroke={gilt} strokeWidth={1.4} strokeLinecap="round" />
+      )}
+    </Svg>
+  )
+}
+
+// ── Erlaubnis- / Keine-Kamera-Tor — boxlos auf dem Pergament ──────────────────
+// Kein gestapeltes Scheiben-Kästchen mehr: das bespoke Sucher-Siegel bare auf
+// dem Papier, ein Kicker (Gilt-Diamant + Kapitälchen), ein Bricolage-Titel,
+// großzügiger Weißraum und — wenn gegeben — die eine ruhige Aktion. Die ehrlichen
+// Zustände leben direkt auf dem warmen Grund.
 
 function PermissionGate({
-  icon: Icon,
+  kicker,
   title,
   description,
   actionLabel,
   onAction,
+  fallbackIcon: FallbackIcon,
 }: {
-  icon: LucideIcon
+  kicker: string
   title: string
   description: string
   actionLabel?: string
   onAction?: () => void
-}) {
+  /** Wird statt des Siegels für den Keine-Kamera-Zustand genutzt. */
+  fallbackIcon?: LucideIcon
+}): ReactNode {
   const t = useW14Theme()
   return (
     <View
@@ -651,27 +794,45 @@ function PermissionGate({
         backgroundColor: t.colors.background,
         alignItems: "center",
         justifyContent: "center",
-        padding: t.space.x6,
-        gap: t.space.x4,
+        paddingHorizontal: t.space.x4,
+        gap: t.space.x3,
       }}
     >
       <PaperGrain />
-      <View
-        className="h-16 w-16 items-center justify-center rounded-full"
-        style={{
-          backgroundColor: t.colors.raised,
-          borderColor: t.colors.border,
-          borderWidth: 1,
-        }}
-      >
-        <Icon size={t.icon.xl} color={t.colors.primary} />
+
+      {/* Das bespoke Siegel — bare auf dem Papier, kein getöntes Scheiben-Kästchen. */}
+      <View style={{ marginBottom: t.space.x1 }}>
+        {FallbackIcon ? (
+          <FallbackIcon size={t.icon.xl + 8} color={t.colors.primary} strokeWidth={1.6} />
+        ) : (
+          <ScanMark size={68} ink={t.colors.primary} gilt={t.colors.gilt} locked />
+        )}
       </View>
+
+      {/* Kicker — Gilt-Diamant + Kapitälchen-Zeile (DESIGN-SYSTEM.md §6). */}
+      <View className="flex-row items-center gap-2">
+        <View
+          style={{
+            height: 6,
+            width: 6,
+            backgroundColor: t.colors.gilt,
+            transform: [{ rotate: "45deg" }],
+          }}
+        />
+        <Text
+          className="text-muted-foreground text-2xs font-semibold"
+          style={{ letterSpacing: 1.4 }}
+        >
+          {kicker.toUpperCase()}
+        </Text>
+      </View>
+
       <Text className="text-center text-2xl font-display-semibold leading-tight">{title}</Text>
       <Text className="text-muted-foreground max-w-xs text-center text-sm leading-5">
         {description}
       </Text>
       {actionLabel && onAction ? (
-        <Button onPress={onAction} className="mt-2">
+        <Button onPress={onAction} className="mt-3" style={{ minHeight: t.touch.comfortable }}>
           <Text>{actionLabel}</Text>
         </Button>
       ) : null}

@@ -114,12 +114,27 @@ export function computeStreak(closings: ClosingListItem[], todayBusinessDay = ""
   return streak
 }
 
-/** Local business day as YYYY-MM-DD (device tz ≈ Europe/Berlin in this app). */
+/**
+ * The Berlin business day as YYYY-MM-DD. The server keys the open/finalize day
+ * off Berlin time (`berlin_business_day`), so a device in another tz (travel /
+ * misconfig) or near the midnight/DST edge must NOT read its local day — that
+ * would show/hide the wrong day's Z-Bon affordance. `en-CA` emits YYYY-MM-DD.
+ * Falls back to the device-local day if a Hermes build lacks Intl tz support.
+ */
 export function todayBusinessDay(now: Date): string {
-  const y = now.getFullYear()
-  const m = String(now.getMonth() + 1).padStart(2, "0")
-  const d = String(now.getDate()).padStart(2, "0")
-  return `${y}-${m}-${d}`
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Europe/Berlin",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(now)
+  } catch {
+    const y = now.getFullYear()
+    const m = String(now.getMonth() + 1).padStart(2, "0")
+    const d = String(now.getDate()).padStart(2, "0")
+    return `${y}-${m}-${d}`
+  }
 }
 
 // ── Finanz-Modul derivations (pure; no fabrication) ──────────────────────────

@@ -71,5 +71,5 @@ export function useSession(): SessionState {
     () => token,
     () => token,
   )
-  return { token: t, actor, expiresAt, isAuthenticated: t != null }
+  return { token: t, actor, expiresAt, isAuthenticated: hasSession() }
 }

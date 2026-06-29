@@ -8,6 +8,8 @@ import type {
 } from "@warehouse14/api-client"
 
 import type { BadgeProps } from "@/components/ui/badge"
+import { deriveSizeClass, type SizeClass } from "@warehouse14/domain"
+
 import { germanLabel } from "@/warehouse14/german-text"
 
 export const STATUS_LABEL: Record<ProductStatus, string> = {
@@ -185,6 +187,10 @@ export interface ProductIntakeForm {
   metal: Metal | null
   weightGrams: string
   fineness: string
+  // Outer packing dimensions in cm → derived S/M/L/XL size class.
+  lengthCm: string
+  widthCm: string
+  heightCm: string
   condition: ProductConditionCode | null
   taxCode: TaxTreatmentCode | null
   acquisition: string
@@ -203,6 +209,9 @@ export const EMPTY_PRODUCT_INTAKE: ProductIntakeForm = {
   metal: null,
   weightGrams: "",
   fineness: "",
+  lengthCm: "",
+  widthCm: "",
+  heightCm: "",
   condition: "USED_GOOD",
   taxCode: "MARGIN_25A",
   acquisition: "",
@@ -223,6 +232,9 @@ export type ProductIntakeFieldKey =
   | "listPrice"
   | "weightGrams"
   | "fineness"
+  | "lengthCm"
+  | "widthCm"
+  | "heightCm"
 
 export type ProductIntakeErrors = Partial<Record<ProductIntakeFieldKey, string>>
 
@@ -247,7 +259,33 @@ export function validateProductIntake(s: ProductIntakeForm): ProductIntakeErrors
   if (s.fineness.trim() && !FINENESS_RE.test(s.fineness.trim()))
     errors.fineness = "Feinheit als Dezimalzahl 0–1 angeben (z. B. 0.585)."
 
+  const dimMsg = "Maß als Zahl in cm angeben (z. B. 12.5)."
+  if (s.lengthCm.trim() && !DECIMAL_RE.test(s.lengthCm.trim())) errors.lengthCm = dimMsg
+  if (s.widthCm.trim() && !DECIMAL_RE.test(s.widthCm.trim())) errors.widthCm = dimMsg
+  if (s.heightCm.trim() && !DECIMAL_RE.test(s.heightCm.trim())) errors.heightCm = dimMsg
+
   return errors
+}
+
+/**
+ * Live packing size class (S/M/L/XL) for the intake form, derived from the
+ * entered cm dimensions + gram weight via the shared `@warehouse14/domain` rule
+ * (the same one the server applies). Returns `null` until a dimension is set, so
+ * the form shows „—" rather than a guessed size.
+ */
+export function intakeSizeClass(s: ProductIntakeForm): SizeClass | null {
+  const num = (v: string): number | null => {
+    const t = v.trim()
+    if (!t) return null
+    const n = Number(t)
+    return Number.isFinite(n) ? n : null
+  }
+  return deriveSizeClass({
+    lengthCm: num(s.lengthCm),
+    widthCm: num(s.widthCm),
+    heightCm: num(s.heightCm),
+    weightGrams: num(s.weightGrams),
+  })
 }
 
 export function isProductIntakeValid(errors: ProductIntakeErrors): boolean {
@@ -275,16 +313,26 @@ export function firstProductIntakeError(errors: ProductIntakeErrors): string | n
 
 // ── Artikel bearbeiten (edit — only the PUT-allowed fields) ──────────────────
 
-export type ProductEditFieldKey = "name" | "listPrice"
+export type ProductEditFieldKey = "name" | "listPrice" | "lengthCm" | "widthCm" | "heightCm"
 export type ProductEditErrors = Partial<Record<ProductEditFieldKey, string>>
 
-/** Field-level guard for the edit draft (Name + Listenpreis are validated). */
-export function validateProductEdit(name: string, listPrice: string): ProductEditErrors {
+/** Field-level guard for the edit draft (Name + Listenpreis, plus optional Maße). */
+export function validateProductEdit(
+  name: string,
+  listPrice: string,
+  dims?: { lengthCm: string; widthCm: string; heightCm: string },
+): ProductEditErrors {
   const errors: ProductEditErrors = {}
   if (!name.trim()) errors.name = "Name ist erforderlich."
   else if (name.trim().length < 2) errors.name = "Name ist zu kurz."
   if (!isPositivePrice(listPrice))
     errors.listPrice = "Listenpreis als Betrag angeben (z. B. 349.00)."
+  if (dims) {
+    const dimMsg = "Maß als Zahl in cm angeben (z. B. 12.5)."
+    if (dims.lengthCm.trim() && !DECIMAL_RE.test(dims.lengthCm.trim())) errors.lengthCm = dimMsg
+    if (dims.widthCm.trim() && !DECIMAL_RE.test(dims.widthCm.trim())) errors.widthCm = dimMsg
+    if (dims.heightCm.trim() && !DECIMAL_RE.test(dims.heightCm.trim())) errors.heightCm = dimMsg
+  }
   return errors
 }
 
@@ -293,5 +341,7 @@ export function isProductEditValid(errors: ProductEditErrors): boolean {
 }
 
 export function firstProductEditError(errors: ProductEditErrors): string | null {
-  return errors.name ?? errors.listPrice ?? null
+  return (
+    errors.name ?? errors.listPrice ?? errors.lengthCm ?? errors.widthCm ?? errors.heightCm ?? null
+  )
 }

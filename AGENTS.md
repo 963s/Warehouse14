@@ -71,6 +71,51 @@ every checkpoint.
 output, and a live check. False "green" claims are the fastest way to lose trust
 here.
 
+**(e) HARD RULES FOR BUILD + VERIFY (read this even if you are a simulator-only agent like ZCode).**
+These exist because real failures hid behind green command output and simulator builds.
+- **iOS builds must be DEVICE builds, never simulator.** Always `xcodebuild -sdk iphoneos`
+  (the default is the simulator, which CANNOT install on a real iPhone and crashes at
+  launch with `dyld: Library not loaded: libc++.1.dylib (wrong platform)`). Before placing
+  any `.ipa` on the Desktop, prove it: `vtool -show-build <Payload/*.app/binary>` must print
+  `platform IOS`, NOT `IOSSIMULATOR`. On Apple Silicon `lipo -info` says `arm64` for BOTH —
+  it cannot tell them apart; use `vtool`. If you are simulator-only, do NOT ship an `.ipa` —
+  hand the device build to the manager and say so plainly.
+- **Verify a dependency change by re-reading the artifact, not the command output.**
+  `expo install` can print "already installed" and silently change nothing. After any version
+  bump, open `node_modules/<pkg>/package.json` (and the lockfile) and confirm the number before
+  reporting. Build only after the number is confirmed.
+- **A build is not "fixed" until it runs clean on the physical iPhone** (`idevicecrashreport`
+  clean across the reproduced flow). A green binary that still crashes on device is NOT done.
+  If you cannot reach the real device (simulator-only), explicitly say "NOT device-verified"
+  and defer that step to the manager — never imply you tested on the device.
+- **Always apply `verification-before-completion`:** re-read the shipped artifact / source from
+  an independent source before claiming done. Never claim done on exit-code 0 alone.
+
+**(f) OPERATING PROTOCOL FOR THE GLM EXECUTOR (ZCode).** ZCode confirmed these about itself across
+a four-round interrogation; they are now binding because ZCode reads this file every session.
+- **Read `./.zcode/checkpoint.json` FIRST at the start of every wave** (strict JSON: `task`,
+  `last_completed`, `next_action`, `pending_background`, `plan[]`, `verify_rule`). Update it at the
+  end of every wave. There is no cross-wave memory except files — this file IS the memory.
+- **The verification gate (the exact wording ZCode obeys):** "Before you claim done, open the file
+  you changed, read the changed line, and paste its literal contents in your reply. Do not accept any
+  command's output (exit 0, 'already installed') as evidence. Any claim without an actual read =
+  failure." Vague words ("be careful", "verify well", "do your best") are ignored — use the gate.
+- **ZCode is SIMULATOR-ONLY and cannot reach a real iPhone.** It may build + run + screenshot on the
+  iOS Simulator (its real eyes work there once an app is rendered), but it must NEVER claim a device
+  test. Real-device builds, crash-log pulls, symbolication, and device verification belong to the
+  manager (Claude) + the owner's connected phone. iOS builds: `-sdk iphoneos`, then `vtool -show-build`
+  must say `platform IOS`.
+- **No infinite loop.** Each task is ONE completable wave; chain long/build work via
+  `run_in_background` (the harness re-invokes ZCode when it exits) + the checkpoint. A wave that ends
+  with no pending background task and no new user message is the end of the chain. Plan for 3–8 chained
+  waves, not "forever".
+- **Subagents are read-only Explore, 2–3 in parallel.** No parallel code-writers; writing is ZCode
+  alone, sequentially. Do not ask it for "hundreds of agents".
+- **Never trust ZCode without pasted evidence on:** any version/number, any "installed/upgraded", any
+  "the UI looks good" (without a screenshot it actually read), any promise of future behaviour.
+- **`DEVELOPER_DIR=/Applications/Xcode-26.5.0.app/Contents/Developer`** bypasses a broken
+  `xcode-select` without `sudo` — export it for any iOS build/simulator/screenshot work.
+
 **(e) The app icon is the real shop logo** `apps/tauri-pos/public/shop-logo.svg`
 (the WAREHOUSE 14 brass wordmark). Never invent a logo.
 

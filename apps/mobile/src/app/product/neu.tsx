@@ -10,22 +10,32 @@
  *
  * Step 2 (Fotos): once the product exists it is a real milestone — the create
  *   lands with the Success haptic and a single gold flood (DESIGN.md §6/§7),
- *   then a native success card routes into the existing capture pipeline
+ *   then a native success state routes into the existing capture pipeline
  *   (/capture?productId=…) where the first photo becomes the primary, or straight
  *   to the fresh Artikel.
  *
+ * Form (DESIGN-SYSTEM.md §1/§9): KEINE Kästen in Kästen. Das Formular lebt direkt
+ * auf dem warmen Papier — kein Stapel aus Karten. Jede Gruppe öffnet mit einer
+ * ruhigen Kapitälchen-Überzeile (ein Gilt-Punkt als Faden), darunter nackte
+ * Felder. Tiefe kommt aus dem geschichteten Papier und einer einzigen warmen
+ * Haarlinie zwischen den Gruppen, nie aus gestapelten Karten. Gold bleibt Faden,
+ * Kante, Siegel.
+ *
  * Built on the shared spine: FormScreen scaffold (sticky save + transparent
- * step-up), SectionCard groups, the product-form controls (ChipSelect / MoneyField
- * / MetalWeightField / CategoryPicker), field-level validation that paints the
- * offending input red + fires the Error haptic, and the theme tokens throughout.
+ * step-up + error/success banner), the product-form controls (ChipSelect /
+ * MoneyField / MetalWeightField / CategoryPicker), field-level validation that
+ * paints the offending input red + fires the Error haptic, and the theme tokens
+ * throughout.
  */
-import { useEffect, useRef, useState } from "react"
+import { type ReactNode, useEffect, useRef, useState } from "react"
 import { ScrollView, View } from "react-native"
 import { router, useNavigation } from "expo-router"
 import type { CreateProductBody } from "@warehouse14/api-client"
-import { Camera, CheckCircle2, PackagePlus } from "lucide-react-native"
+import Svg, { Path, Rect } from "react-native-svg"
+import { Camera, CheckCircle2 } from "lucide-react-native"
 
 import { Button } from "@/components/ui/button"
+
 import { Input } from "@/components/ui/input"
 import { Text } from "@/components/ui/text"
 import { categoryTree, createProduct } from "@/warehouse14/api"
@@ -33,11 +43,13 @@ import {
   CategoryPicker,
   type CategoryChoice,
   ChipSelect,
+  WheelPicker,
   Field,
   type InputRef,
   MetalWeightField,
   MoneyField,
 } from "@/warehouse14/product-form"
+import { MasseField } from "@/warehouse14/masse-field"
 import {
   CONDITION_OPTIONS,
   EMPTY_PRODUCT_INTAKE,
@@ -53,8 +65,61 @@ import {
   validateProductIntake,
 } from "@/warehouse14/product-ui"
 import { useW14Theme } from "@/warehouse14/theme"
-import { GoldFlood, haptics, PaperGrain, SectionCard, useScreenInsets } from "@/warehouse14/ui"
+import {
+  GoldFlood,
+  Hairline,
+  haptics,
+  PaperGrain,
+  StaggerItem,
+  useScreenInsets,
+} from "@/warehouse14/ui"
 import { FormScreen } from "@/warehouse14/ui/FormScreen"
+
+// ── TagSeal — ein bespoke Etiketten-Siegel (react-native-svg) ────────────────
+// Ein Anhänger/Schmuck-Etikett mit einer Loch-Öse: die ruhige Marke des Intake.
+// Der Etiketten-Körper bleibt Tinte, die Öse + der Faden tönen in Gilt — Gold
+// nur als Faden/Siegel (DESIGN-SYSTEM.md §1).
+function TagSeal({ size = 26, ink, gilt }: { size?: number; ink: string; gilt: string }): ReactNode {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" accessibilityElementsHidden>
+      {/* Etiketten-Körper — die Tinte. */}
+      <Path
+        d="M5 8.5 L13 8.5 L19 14.5 L13 20.5 L5 20.5 Z"
+        stroke={ink}
+        strokeWidth={1.4}
+        strokeLinejoin="round"
+        fill="none"
+      />
+      {/* Preis-Linien auf dem Etikett. */}
+      <Path d="M8 12.5 L13 12.5 M8 15 L11.5 15" stroke={ink} strokeWidth={1} strokeLinecap="round" strokeOpacity={0.5} />
+      {/* Öse + Faden — der Gilt-Faden im Siegel. */}
+      <Rect x={14.4} y={11.4} width={2.4} height={2.4} rx={1.2} stroke={gilt} strokeWidth={1.2} fill="none" />
+      <Path d="M16.6 9.4 L20 6.4" stroke={gilt} strokeWidth={1.2} strokeLinecap="round" />
+    </Svg>
+  )
+}
+
+// ── GroupHead — eine boxlose Kapitälchen-Überzeile mit Gilt-Punkt ────────────
+// Öffnet eine Feld-Gruppe direkt auf dem Papier (kein Karten-Kopf). Der Gilt-
+// Punkt ist der Faden; ein optionaler Hinweis steht leise daneben.
+function GroupHead({ overline, hint }: { overline: string; hint?: string }): ReactNode {
+  const t = useW14Theme()
+  return (
+    <View className="gap-1">
+      <View className="flex-row items-center gap-2">
+        <View style={{ height: 4, width: 4, borderRadius: 2, backgroundColor: t.colors.gilt }} />
+        <Text
+          className="text-muted-foreground text-2xs font-semibold"
+          style={{ letterSpacing: 1.2 }}
+          numberOfLines={1}
+        >
+          {overline}
+        </Text>
+      </View>
+      {hint != null ? <Text className="text-muted-foreground text-xs leading-5">{hint}</Text> : null}
+    </View>
+  )
+}
 
 export default function NeuerArtikelScreen() {
   const navigation = useNavigation()
@@ -136,6 +201,9 @@ export default function NeuerArtikelScreen() {
       ...(form.metal ? { metal: form.metal } : {}),
       ...(form.weightGrams.trim() ? { weightGrams: form.weightGrams.trim() } : {}),
       ...(form.fineness.trim() ? { finenessDecimal: form.fineness.trim() } : {}),
+      ...(form.lengthCm.trim() ? { lengthCm: form.lengthCm.trim() } : {}),
+      ...(form.widthCm.trim() ? { widthCm: form.widthCm.trim() } : {}),
+      ...(form.heightCm.trim() ? { heightCm: form.heightCm.trim() } : {}),
       ...(form.categoryId ? { primaryCategoryId: form.categoryId } : {}),
       ...(form.unit.trim() ? { locationStorageUnit: form.unit.trim() } : {}),
       ...(form.drawer.trim() ? { locationDrawer: form.drawer.trim() } : {}),
@@ -153,59 +221,93 @@ export default function NeuerArtikelScreen() {
   }
 
   // ── Erfolg: Fotos anhängen oder zum Artikel ─────────────────────────────────
+  // Boxlos auf dem Papier — ein verdigris-getöntes Siegel, der Name + die SKU in
+  // Mono, dann die zwei Wege. Kein Stapel aus Karten.
   if (created) {
     return (
       <View className="flex-1 bg-background">
         <PaperGrain />
         <ScrollView
           className="flex-1"
-          contentContainerStyle={{ padding: 16, paddingBottom: insets.contentBottom, gap: 14 }}
+          contentContainerStyle={{
+            paddingHorizontal: 16,
+            paddingTop: 8,
+            paddingBottom: insets.contentBottom,
+            gap: 22,
+          }}
+          showsVerticalScrollIndicator={false}
         >
-          <View className="items-center gap-3 pb-1 pt-6">
-            <View
-              className="h-16 w-16 items-center justify-center rounded-full"
-              style={{ backgroundColor: t.colors.verdigris + "1f" }}
-            >
-              <CheckCircle2 size={t.icon.xl} color={t.colors.verdigris} />
+          <StaggerItem index={0} exit={false}>
+            <View className="items-center gap-3 pb-1 pt-8">
+              <View
+                className="h-16 w-16 items-center justify-center rounded-full"
+                style={{ backgroundColor: t.colors.verdigris + "1f" }}
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+              >
+                <CheckCircle2 size={t.icon.xl} color={t.colors.verdigris} />
+              </View>
+              <View className="items-center gap-1.5">
+                <Text
+                  className="text-2xl font-display-semibold leading-tight"
+                  accessibilityRole="header"
+                >
+                  Artikel angelegt
+                </Text>
+                <Text className="text-muted-foreground text-center text-sm" numberOfLines={2}>
+                  {form.name.trim()}
+                </Text>
+                <View className="flex-row items-center gap-1.5">
+                  <View
+                    style={{ height: 4, width: 4, borderRadius: 2, backgroundColor: t.colors.gilt }}
+                  />
+                  <Text className="font-mono text-xs" style={{ color: t.colors.inkAged }}>
+                    {created.sku}
+                  </Text>
+                </View>
+              </View>
             </View>
-            <View className="items-center gap-1">
-              <Text className="text-2xl font-display-semibold leading-tight">Artikel angelegt</Text>
-              <Text className="text-muted-foreground text-center text-sm" numberOfLines={2}>
-                {form.name.trim()}
-              </Text>
-              <Text className="text-muted-foreground font-mono text-xs">{created.sku}</Text>
-            </View>
-          </View>
+          </StaggerItem>
 
-          <SectionCard
-            title="Fotos hinzufügen"
-            subtitle="Das erste Foto wird automatisch zum Hauptbild. Als Entwurf gespeichert."
-            icon={Camera}
-          >
-            <Button
-              size="xl"
-              className="h-12"
-              onPress={() => {
-                haptics.selection()
-                router.replace({ pathname: "/capture", params: { productId: created.id } })
-              }}
-              accessibilityLabel="Foto aufnehmen"
-            >
-              <Text>Foto aufnehmen</Text>
-            </Button>
-            <Button
-              variant="outline"
-              size="xl"
-              className="h-12"
-              onPress={() => {
-                haptics.selection()
-                router.replace({ pathname: "/product/[id]", params: { id: created.id } })
-              }}
-              accessibilityLabel="Zum Artikel"
-            >
-              <Text>Zum Artikel</Text>
-            </Button>
-          </SectionCard>
+          <Hairline />
+
+          {/* Fotos — die Wahl steht boxlos auf dem Papier, kein Karten-Kopf. */}
+          <StaggerItem index={1} exit={false}>
+            <View className="gap-3">
+              <GroupHead
+                overline="FOTOS HINZUFÜGEN"
+                hint="Das erste Foto wird automatisch zum Hauptbild. Als Entwurf gespeichert."
+              />
+              <View className="gap-2.5">
+                <Button
+                  size="xl"
+                  className="h-12"
+                  onPress={() => {
+                    haptics.selection()
+                    router.replace({ pathname: "/capture", params: { productId: created.id } })
+                  }}
+                  accessibilityLabel="Foto aufnehmen"
+                >
+                  <View className="flex-row items-center gap-2">
+                    <Camera size={t.icon.sm} color={t.colors.primaryForeground} />
+                    <Text>Foto aufnehmen</Text>
+                  </View>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="xl"
+                  className="h-12"
+                  onPress={() => {
+                    haptics.selection()
+                    router.replace({ pathname: "/product/[id]", params: { id: created.id } })
+                  }}
+                  accessibilityLabel="Zum Artikel"
+                >
+                  <Text>Zum Artikel</Text>
+                </Button>
+              </View>
+            </View>
+          </StaggerItem>
         </ScrollView>
 
         {/* The new-article milestone flood visual only (the Success haptic
@@ -216,16 +318,30 @@ export default function NeuerArtikelScreen() {
   }
 
   // ── Stammdaten-Formular ─────────────────────────────────────────────────────
+  // Boxlos: jede Gruppe ist eine Kapitälchen-Überzeile + nackte Felder direkt auf
+  // dem Papier, getrennt nur durch eine warme Haarlinie. Kein SectionCard-Stapel.
   return (
     <FormScreen
       title="Neuer Artikel"
       subtitle="Stammdaten erfassen. SKU und Einkaufspreis werden bei Anlage festgelegt."
       submitLabel="Anlegen"
+      submitBusyLabel="Wird angelegt…"
       successMessage="Artikel angelegt."
       submitDisabled={!form.name.trim() || !form.acquisition.trim() || !form.listPrice.trim()}
       onSubmit={submit}
     >
-      <SectionCard title="Stammdaten" icon={PackagePlus}>
+      {/* Kicker — der Intake-Faden öffnet mit dem bespoke Etiketten-Siegel. */}
+      <View className="flex-row items-center gap-2.5 pb-0.5">
+        <TagSeal size={24} ink={t.colors.primary} gilt={t.colors.gilt} />
+        <Text className="text-muted-foreground text-xs leading-5">
+          Pflichtfelder sind mit einem Stern markiert.
+        </Text>
+      </View>
+
+      {/* ── Stammdaten ──────────────────────────────────────────────────────── */}
+      <View className="gap-3.5">
+        <GroupHead overline="STAMMDATEN" />
+
         <Field label="Name" required error={errors.name}>
           <Input
             value={form.name}
@@ -239,14 +355,31 @@ export default function NeuerArtikelScreen() {
         </Field>
 
         <Field label="Artikelart" required error={errors.itemType}>
-          <ChipSelect
+          <WheelPicker
             options={ITEM_TYPE_OPTIONS}
             value={form.itemType}
             onChange={(v) => patch("itemType", v)}
+            defaultToFirst={false}
+            placeholder="Artikelart wählen"
           />
         </Field>
 
-        <Field label="Edelmetall" hint="Optional nur bei Edelmetallware.">
+        <Field label="Zustand" required error={errors.condition}>
+          <WheelPicker
+            options={CONDITION_OPTIONS}
+            value={form.condition}
+            onChange={(v) => patch("condition", v)}
+          />
+        </Field>
+      </View>
+
+      <Hairline />
+
+      {/* ── Edelmetall (optional) ───────────────────────────────────────────── */}
+      <View className="gap-3.5">
+        <GroupHead overline="EDELMETALL" hint="Nur bei Edelmetallware ausfüllen." />
+
+        <Field label="Metall">
           <ChipSelect
             options={METAL_OPTIONS}
             value={form.metal}
@@ -267,20 +400,17 @@ export default function NeuerArtikelScreen() {
           onWeightSubmit={() => finenessRef.current?.focus()}
           onFinenessSubmit={() => acquisitionRef.current?.focus()}
         />
+      </View>
 
-        <Field label="Zustand" required error={errors.condition}>
-          <ChipSelect
-            options={CONDITION_OPTIONS}
-            value={form.condition}
-            onChange={(v) => patch("condition", v)}
-          />
-        </Field>
-      </SectionCard>
+      <Hairline />
 
-      <SectionCard
-        title="Steuer + Preise"
-        subtitle="Einkaufspreis wird bei Anlage festgelegt (§25a-Integrität)."
-      >
+      {/* ── Steuer + Preise ─────────────────────────────────────────────────── */}
+      <View className="gap-3.5">
+        <GroupHead
+          overline="STEUER + PREISE"
+          hint="Der Einkaufspreis wird bei Anlage festgelegt (§25a-Integrität)."
+        />
+
         <Field label="Steuerbehandlung" required error={errors.taxCode}>
           <ChipSelect
             options={TAX_TREATMENT_OPTIONS}
@@ -317,50 +447,89 @@ export default function NeuerArtikelScreen() {
             />
           </View>
         </View>
-      </SectionCard>
+      </View>
 
       {categories.length > 0 ? (
-        <SectionCard title="Kategorie" subtitle="Optional bestimmt die Storefront-Einordnung.">
-          <CategoryPicker
-            options={categories}
-            value={form.categoryId}
-            onChange={(v) => patch("categoryId", v)}
-          />
-        </SectionCard>
+        <>
+          <Hairline />
+          {/* ── Kategorie (optional) ──────────────────────────────────────────── */}
+          <View className="gap-3.5">
+            <GroupHead
+              overline="KATEGORIE"
+              hint="Bestimmt die Einordnung in der Storefront."
+            />
+            <CategoryPicker
+              options={categories}
+              value={form.categoryId}
+              onChange={(v) => patch("categoryId", v)}
+            />
+          </View>
+        </>
       ) : null}
 
-      <SectionCard title="Lagerort" subtitle="Optional Tresor, Fach und Position.">
-        <Input
-          value={form.unit}
-          onChangeText={(v) => patch("unit", v)}
-          placeholder="Tresor / Lagereinheit"
-          accessibilityLabel="Lagereinheit"
-        />
-        <Input
-          value={form.drawer}
-          onChangeText={(v) => patch("drawer", v)}
-          placeholder="Fach / Schublade"
-          accessibilityLabel="Fach"
-        />
-        <Input
-          value={form.position}
-          onChangeText={(v) => patch("position", v)}
-          placeholder="Position"
-          accessibilityLabel="Position"
-        />
-      </SectionCard>
+      <Hairline />
 
-      <SectionCard title="SKU" subtitle="Leer lassen für automatische Vergabe.">
-        <Input
-          value={form.sku}
-          onChangeText={(v) => patch("sku", v)}
-          placeholder="Automatisch"
-          autoCapitalize="characters"
-          autoCorrect={false}
-          className="font-mono"
-          accessibilityLabel="SKU"
-        />
-      </SectionCard>
+      {/* ── Lagerort (optional) ─────────────────────────────────────────────── */}
+      <View className="gap-3.5">
+        <GroupHead overline="LAGERORT" hint="Wo der Artikel physisch liegt, optional." />
+        <Field label="Tresor / Lagereinheit">
+          <Input
+            value={form.unit}
+            onChangeText={(v) => patch("unit", v)}
+            placeholder="z. B. Tresor A"
+            accessibilityLabel="Lagereinheit"
+          />
+        </Field>
+        <Field label="Fach / Schublade">
+          <Input
+            value={form.drawer}
+            onChangeText={(v) => patch("drawer", v)}
+            placeholder="z. B. Schublade 3"
+            accessibilityLabel="Fach"
+          />
+        </Field>
+        <Field label="Position">
+          <Input
+            value={form.position}
+            onChangeText={(v) => patch("position", v)}
+            placeholder="z. B. Pos 12"
+            accessibilityLabel="Position"
+          />
+        </Field>
+      </View>
+
+      <Hairline />
+
+      {/* ── Maße & Verpackung (optional) — geteilt mit der Bearbeitung ──────── */}
+      <MasseField
+        lengthCm={form.lengthCm}
+        widthCm={form.widthCm}
+        heightCm={form.heightCm}
+        weightGrams={form.weightGrams}
+        onChange={(key, value) => patch(key, value)}
+        errors={{ lengthCm: errors.lengthCm, widthCm: errors.widthCm, heightCm: errors.heightCm }}
+      />
+
+      <Hairline />
+
+      {/* ── SKU ─────────────────────────────────────────────────────────────── */}
+      <View className="gap-3.5">
+        <GroupHead overline="SKU" />
+        <Field
+          label="Artikelnummer"
+          hint="Leer lassen für eine automatische Vergabe bei Anlage."
+        >
+          <Input
+            value={form.sku}
+            onChangeText={(v) => patch("sku", v)}
+            placeholder="Automatisch"
+            autoCapitalize="characters"
+            autoCorrect={false}
+            className="font-mono"
+            accessibilityLabel="Artikelnummer"
+          />
+        </Field>
+      </View>
     </FormScreen>
   )
 }

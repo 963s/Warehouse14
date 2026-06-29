@@ -26,6 +26,7 @@
     "typescript": "5.7.2"
   },
   "pnpm": {
+    "allowNonAppliedPatches": true,
     "overrides": {
       "lightningcss": "1.30.1"
     },

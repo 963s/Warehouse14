@@ -200,10 +200,16 @@ export const DEV_DEVICE_FINGERPRINT =
  * here — reads that can't reach the cloud surface as a calm offline state, not
  * a queued mutation.
  *
- * maxDelayMs is raised to 8s (vs the package default 4s) because the api-cloud
- * read budget is a sliding 10/min window: when it answers 429 without a precise
- * Retry-After, a longer cap keeps the backoff comfortably inside the budget so
- * the retry actually clears instead of re-tripping it.
+ * Retry budget — FAIL FAST over a slow LTE link. Only reads (GET/HEAD) are
+ * retried; a write is never silently re-sent. We keep retries SHORT (2 attempts
+ * = 1 retry, ≤4s cap) for two reasons the owner felt directly on his phone:
+ *   1. a 4-attempt × up-to-8s backoff turned a single failing tap into a 6-14s
+ *      silent freeze — a fast honest "offline, showing cached" beats a long stall.
+ *   2. each retried read spends another request against the per-actor rate
+ *      budget; 4× retries on a fan-out of polls is exactly what tripped the
+ *      "Zu viele Versuche" 429. Halving the retries halves that burn.
+ * The circuit breaker + the offline read-cache + the server's Retry-After carry
+ * resilience; the retry layer no longer has to brute-force through a slow link.
  */
 export const apiClient: ApiClient = createApiClient({
   baseUrl: API_BASE_URL,
@@ -212,7 +218,7 @@ export const apiClient: ApiClient = createApiClient({
   getAuthToken: getSessionToken,
   middlewares: [
     stepUpMiddleware(stepUpService),
-    retryMiddleware({ maxAttempts: 4, baseDelayMs: 400, maxDelayMs: 8_000 }),
+    retryMiddleware({ maxAttempts: 2, baseDelayMs: 300, maxDelayMs: 4_000 }),
     circuitBreakerMiddleware(),
     inflightDedupMiddleware(),
   ],
@@ -234,6 +240,14 @@ export function pinLogin(pin: string): Promise<PinLoginResponse> {
 /** PIN step-up — refreshes the session's step-up window (used by the Dialog). */
 export function pinStepUp(pin: string): Promise<unknown> {
   return authPin.stepUp(apiClient, { pin })
+}
+
+/** Revoke the current session on the SERVER (POST /api/auth/sign-out) before the
+ *  local wipe. Best-effort: the caller still clears the device session if this
+ *  fails (offline / flap) so logout never blocks — but on success the token can
+ *  never be replayed if the phone is later lost or stolen. */
+export function signOut(): Promise<unknown> {
+  return authPin.signOut(apiClient)
 }
 
 // ── Staff products (the authenticated path — not the public storefront) ──────

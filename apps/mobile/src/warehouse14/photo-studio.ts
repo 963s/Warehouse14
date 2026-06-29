@@ -10,6 +10,13 @@
  */
 import { manipulateAsync, SaveFormat, type Action } from "expo-image-manipulator"
 
+/** Re-encode any picked image (HEIC, PNG, …) to JPEG so the upload pipeline
+ *  always sends one predictable mime. No crop; light compression. */
+export async function normalizeToJpeg(uri: string): Promise<string> {
+  const result = await manipulateAsync(uri, [], { compress: 0.9, format: SaveFormat.JPEG })
+  return result.uri
+}
+
 /**
  * Rotate the image 90° clockwise on-device. Returns the new local URI.
  * Idempotent: four rotations bring you back to the original orientation.
@@ -23,20 +30,22 @@ export async function rotatePhoto(uri: string): Promise<string> {
 }
 
 /**
- * Crop the image to a centered square on-device. Reads the image dimensions via
- * expo-image, then crops to the smaller dimension centered. Returns the new URI.
+ * Crop the image to a CENTERED square on-device, using the REAL source
+ * dimensions. A no-op manipulate pass returns the true width/height; we then
+ * take the smaller edge as the square side and crop from the center.
+ *
+ * (The previous version cropped a fixed 1000×1000 box from the top-left, which
+ * simply FAILED on any photo smaller than 1000 px — that's why "Zuschneiden"
+ * appeared to do nothing for the owner.)
  */
 export async function cropToSquare(uri: string): Promise<string> {
-  // Get image dimensions via expo-image's Image module.
-  const { Image } = await import("expo-image")
-  // expo-image doesn't expose a synchronous dimension reader, so we use the
-  // manipulator's crop with a reasonable default: crop from center, take the
-  // smaller dimension as the square side. The compress step handles the rest.
-  // For a precise crop we'd need the source dimensions; the server already
-  // creates a square thumb, so this is the owner-facing quick-crop.
+  const info = await manipulateAsync(uri, [], { format: SaveFormat.JPEG })
+  const side = Math.min(info.width, info.height)
+  const originX = Math.round((info.width - side) / 2)
+  const originY = Math.round((info.height - side) / 2)
   const result = await manipulateAsync(
     uri,
-    [{ crop: { originX: 0, originY: 0, width: 1000, height: 1000 } }],
+    [{ crop: { originX, originY, width: side, height: side } }],
     { compress: 0.85, format: SaveFormat.JPEG },
   )
   return result.uri

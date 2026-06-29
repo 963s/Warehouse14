@@ -1,9 +1,15 @@
 /**
  * Die Schatzkammer — the owner productivity dashboard (Owner OS), the showpiece
- * surface. A gamified, gauges-on-the-books board where EVERY number is a real
- * value from a real endpoint. No fabrication: a gauge lights up ONLY when its own
- * endpoint returns real data; anything missing falls back to a locked "bald"
- * placeholder, never a fake number (DESIGN.md §4 — the honesty rule).
+ * surface. A calm, ledger-on-parchment command center where EVERY number is a
+ * real value from a real endpoint. No fabrication: a row lights up ONLY when its
+ * own endpoint returns real data; anything missing falls to a quiet locked
+ * „bald" line, never a fake number (DESIGN.md §4 — the honesty rule).
+ *
+ * Composition (DESIGN-SYSTEM.md §1, §9 — kill boxes-in-boxes): depth comes from
+ * the layered parchment + a single warm hairline, never stacked bordered tiles.
+ * Each KPI is a BARE ledger row (eyebrow label · mono value · thin honest bar),
+ * grouped under one un-carded SectionHeader and divided by Hairlines. Generous
+ * whitespace, real hierarchy, intentional rhythm — a museum label, not a poster.
  *
  * Live via the shared data layer: one `useMultiQuery` fans out over every source
  * with `Promise.allSettled` semantics (a failed finance read never blanks the
@@ -13,25 +19,28 @@
  * Sources (each settled independently):
  *   • bridgeApi.summary       — Tagesumsatz, Ankäufe heute, Verkäufe heute (core).
  *   • dashboard.summary       — Expertisen (pendingAppraisals).
- *   • closingsApi.list        — the streak + the "Schlage gestern" anchor quest.
+ *   • closingsApi.list        — the streak + the „Schlage gestern" anchor quest.
  *   • financeApi.profit(day)  — Gewinn heute (netProfit, period=day).
  *   • financeApi.profit(month)+ fixedCostsApi.list — the monthly treasure map
  *     (cumulative net profit vs the month's fixed costs → break-even crossing).
  *   • financeApi.monthRevenue — Monatsumsatz.
  *   • financeApi.inventoryValue — Lagerwert (Listenwert).
  *   • financeApi.metalWeights — Gold-/Silberbestand (Gramm).
+ *   • financeApi.metalRates   — Edelmetall-Kurse (Spot gegen 10-Tage-Schnitt).
  *
  * Gamification (the shared «Spielwirtschaft»): `useGameState` folds the already
  * fetched real values into the streak · rank · seals · daily quest; the day's
- * quest is the hero, the rank + streak read as one card, and the seal wall shows
- * earned-vs-locked honestly. The monthly break-even crossing arms <GoldFlood>
- * exactly once via `useBreakEvenCelebration`, paired with the single Heavy haptic.
+ * quest is the hero, the rank + streak read as one calm group, and the seal wall
+ * shows earned-vs-locked honestly. The monthly break-even crossing arms
+ * <GoldFlood> exactly once via `useBreakEvenCelebration`, paired with the single
+ * Heavy haptic.
  *
  * Built entirely on the shared spine — motion (CountUp, Stagger, GoldFlood),
- * components (StatTile/SectionCard/RingGauge/Skeleton/InlineError), the live-data
- * hooks, haptics, and the game module. Tokens only; de-DE money/dates; German UI.
+ * components (SectionHeader/Hairline/RingGauge/Skeleton/InlineError), the bespoke
+ * MetalIcons, the live-data hooks, haptics, and the game module. Tokens only;
+ * de-DE money/dates; German UI.
  */
-import { useCallback, useMemo } from "react"
+import { type ReactNode, useCallback, useMemo } from "react"
 import { RefreshControl, ScrollView, View } from "react-native"
 import type {
   BridgeSummary,
@@ -52,25 +61,23 @@ import {
   ChevronRight,
   CloudOff,
   Gavel,
-  Gem,
   Hourglass,
   type LucideIcon,
   Lock,
-  MapPin,
   Megaphone,
   Radio,
   Receipt,
   ScrollText,
   Search,
   Server,
+  Gauge,
   ShoppingBag,
-  ShoppingCart,
   Trophy,
   UserPlus,
   Vault,
 } from "lucide-react-native"
+import Svg, { Path } from "react-native-svg"
 
-import { Card } from "@/components/ui/card"
 import { Text } from "@/components/ui/text"
 import {
   bridgeSummary,
@@ -114,24 +121,22 @@ import {
   CountUp,
   EmptyState,
   GoldFlood,
+  Hairline,
   haptics,
   InlineError,
   isConnectionError,
   isRateLimited,
   ListRow,
+  MetalIcon,
   PaperGrain,
   PressableScale,
-  RingGauge,
-  SectionCard,
   SectionHeader,
   Skeleton,
   StaggerItem,
-  StatTile,
   useMultiQuery,
   useRefreshControl,
   useScreenInsets,
 } from "@/warehouse14/ui"
-import { SteampunkGrid, SteampunkTile, SteampunkLockedTile, SteampunkTreasureMap } from "@/warehouse14/game/steampunk"
 
 function heuteLabel(now: Date): string {
   return now.toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" })
@@ -143,33 +148,168 @@ function gramm(g: number): string {
 
 const POLL_MS = 30_000
 
-/** A locked "bald verfügbar" StatTile clone for a finance gauge with no data. */
-function LockedTile({ label }: { label: string }) {
-  const t = useW14Theme()
+/**
+ * The house seal — a small gilt diamond ◆. The ONE sanctioned decorative use of
+ * gilt (DESIGN-SYSTEM.md §1, §6: a thread / an edge / a seal). It opens the
+ * Kicker line and never sits behind text.
+ */
+function Diamond({ size = 8, color }: { size?: number; color: string }): ReactNode {
   return (
-    <Card className="gap-2 px-3 py-3" style={{ width: "48%" }}>
-      <Text
-        className="text-muted-foreground text-xs font-medium"
-        style={{ letterSpacing: 0.4 }}
-        numberOfLines={1}
-      >
-        {label}
-      </Text>
-      <View className="flex-row items-center gap-1.5 py-1.5">
-        <Lock size={t.icon.xs} color={t.colors.mutedForeground} />
-        <Text className="text-muted-foreground text-xs">bald verfügbar</Text>
-      </View>
-    </Card>
+    <Svg width={size} height={size} viewBox="0 0 10 10">
+      <Path d="M5 0 L10 5 L5 10 L0 5 Z" fill={color} />
+    </Svg>
   )
 }
 
 /**
- * The header search action — a calm brass disc that opens the global search
+ * The Kicker — a gilt diamond + a small-caps tracked eyebrow. Every region opens
+ * with one (DESIGN-SYSTEM.md §6). Sits directly on the canvas, no box.
+ */
+function Kicker({ label }: { label: string }): ReactNode {
+  const t = useW14Theme()
+  return (
+    <View className="flex-row items-center gap-2">
+      <Diamond color={t.colors.gilt} />
+      <Text
+        className="text-muted-foreground text-2xs font-semibold uppercase"
+        style={{ letterSpacing: 1.4 }}
+        numberOfLines={1}
+      >
+        {label}
+      </Text>
+    </View>
+  )
+}
+
+/**
+ * One KPI ledger row — the de-boxed unit (DESIGN-SYSTEM.md §9). A bare line:
+ * a tracked eyebrow label + an optional leading glyph on the left, the mono
+ * value count-up on the right, and a single thin honest progress bar beneath.
+ * No card, no border — rows are separated by the parent's Hairlines alone, so
+ * a column of metrics reads as one ledger, never a wall of tiles.
+ *
+ * `ratio` lights the bar: verdigris at/over the mark, gilt as it nears, ink
+ * while it builds (functional colour carries meaning only). The value rolls,
+ * never snaps (CountUp). A row is only ever rendered with real data; the locked
+ * fallback is its own quiet line below.
+ */
+function LedgerRow({
+  label,
+  value,
+  format,
+  ratio,
+  hint,
+  glyph,
+}: {
+  label: string
+  value: number
+  format?: (n: number) => string
+  ratio?: number
+  hint?: string
+  glyph?: ReactNode
+}): ReactNode {
+  const t = useW14Theme()
+  const hasBar = ratio != null && Number.isFinite(ratio)
+  const clamped = hasBar ? Math.max(0, Math.min(1, ratio as number)) : 0
+  // Functional tone only: met → verdigris (alive), nearing → gilt (seal), else
+  // quiet ink. Never decoration.
+  const barColor =
+    clamped >= 1 ? t.colors.verdigris : clamped >= 0.7 ? t.colors.gilt : t.colors.foreground
+
+  return (
+    <View className="gap-2 py-2.5">
+      <View className="flex-row items-end justify-between gap-3">
+        <View className="flex-1 flex-row items-center gap-2">
+          {glyph != null ? glyph : null}
+          <Text
+            className="text-muted-foreground text-2xs font-semibold uppercase"
+            style={{ letterSpacing: 1 }}
+            numberOfLines={1}
+          >
+            {label}
+          </Text>
+        </View>
+        <CountUp
+          value={value}
+          format={format}
+          className="font-mono-medium text-xl"
+          style={{ color: t.colors.foreground }}
+        />
+      </View>
+      {hasBar ? (
+        <View className="gap-1">
+          <View
+            className="w-full overflow-hidden rounded-full"
+            style={{ height: 4, backgroundColor: t.colors.border }}
+            accessibilityRole="progressbar"
+            accessibilityValue={{ now: Math.round(clamped * 100), min: 0, max: 100 }}
+          >
+            <View
+              style={{ height: "100%", width: `${clamped * 100}%`, backgroundColor: barColor }}
+            />
+          </View>
+          {hint != null ? (
+            <Text className="text-muted-foreground text-2xs" numberOfLines={1}>
+              {hint}
+            </Text>
+          ) : null}
+        </View>
+      ) : hint != null ? (
+        <Text className="text-muted-foreground text-2xs" numberOfLines={1}>
+          {hint}
+        </Text>
+      ) : null}
+    </View>
+  )
+}
+
+/** A locked ledger line — a quiet „bald verfügbar", never a fabricated value. */
+function LockedRow({ label }: { label: string }): ReactNode {
+  const t = useW14Theme()
+  return (
+    <View className="flex-row items-center justify-between gap-3 py-2.5">
+      <Text
+        className="text-muted-foreground text-2xs font-semibold uppercase"
+        style={{ letterSpacing: 1 }}
+        numberOfLines={1}
+      >
+        {label}
+      </Text>
+      <View className="flex-row items-center gap-1.5">
+        <Lock size={t.icon.xs} color={t.colors.mutedForeground} />
+        <Text className="text-muted-foreground text-xs">bald verfügbar</Text>
+      </View>
+    </View>
+  )
+}
+
+/**
+ * A run of ledger rows under one SectionHeader, divided by a single Hairline —
+ * the de-boxed group. The whole region sits on the parchment canvas with NO
+ * outer card; depth is the layered ground + the rule, never a border box
+ * (DESIGN-SYSTEM.md §1, §5, §9).
+ */
+function Ledger({ children }: { children: ReactNode }): ReactNode {
+  const items = Array.isArray(children) ? children.filter(Boolean) : [children]
+  return (
+    <View>
+      {items.map((child, i) => (
+        <View key={i}>
+          {i > 0 ? <Hairline /> : null}
+          {child}
+        </View>
+      ))}
+    </View>
+  )
+}
+
+/**
+ * The header search action — a calm raised disc that opens the global search
  * (Artikel · Kunden · Belege in one field). Mirrors the NotificationBell's
  * weight so the two header glyphs read as a pair. Spine: press-scale + the §7
  * selection haptic on navigate; tokens only.
  */
-function SearchAction() {
+function SearchAction(): ReactNode {
   const t = useW14Theme()
   const router = useRouter()
   return (
@@ -191,24 +331,24 @@ function SearchAction() {
   )
 }
 
-/** The first-load skeleton — the board's shape, never a mid-screen spinner. */
-function SchatzkammerSkeleton() {
+/** The first-load skeleton — the board's de-boxed shape, never a mid-screen spinner. */
+function SchatzkammerSkeleton(): ReactNode {
   return (
-    <View className="gap-3.5">
+    <View className="gap-7">
       {/* header */}
       <View className="flex-row items-center justify-between">
-        <View className="flex-row items-center gap-2.5">
-          <Skeleton width={24} height={24} radius="button" />
-          <View className="gap-1.5">
-            <Skeleton width={170} height={24} />
-            <Skeleton width={110} height={11} />
+        <View className="flex-1 flex-row items-center gap-3">
+          <Skeleton width={26} height={26} radius="button" />
+          <View className="gap-2">
+            <Skeleton width={180} height={26} />
+            <Skeleton width={120} height={11} />
           </View>
         </View>
         <Skeleton width={96} height={26} radius="full" />
       </View>
-      {/* hero quest */}
-      <Card className="gap-3 px-4 py-4">
-        <View className="flex-row items-center gap-2.5">
+      {/* hero quest — the one raised leaf kept */}
+      <View className="gap-3">
+        <View className="flex-row items-center gap-3">
           <Skeleton width={32} height={32} radius="button" />
           <View className="flex-1 gap-2">
             <Skeleton width="55%" height={15} />
@@ -217,33 +357,25 @@ function SchatzkammerSkeleton() {
         </View>
         <Skeleton width="40%" height={22} />
         <Skeleton height={8} radius="full" />
-      </Card>
-      {/* rank + streak */}
-      <Card className="flex-row gap-3 px-4 py-4">
-        <View className="flex-1 gap-2">
-          <Skeleton width="60%" height={16} />
-          <Skeleton width="80%" height={11} />
-        </View>
-        <View className="flex-1 gap-2">
-          <Skeleton width="50%" height={16} />
-          <Skeleton width="70%" height={11} />
-        </View>
-      </Card>
-      {/* gauge grid */}
-      <View className="flex-row flex-wrap justify-between" style={{ rowGap: 10 }}>
+      </View>
+      {/* ledger run */}
+      <View className="gap-5">
+        <Skeleton width={130} height={18} />
         {[0, 1, 2, 3].map((i) => (
-          <Card key={i} className="gap-2 px-3 py-3" style={{ width: "48%" }}>
-            <Skeleton width="55%" height={11} />
-            <Skeleton width="70%" height={22} />
-            <Skeleton height={8} radius="full" />
-          </Card>
+          <View key={i} className="gap-2">
+            <View className="flex-row items-center justify-between">
+              <Skeleton width="40%" height={11} />
+              <Skeleton width="28%" height={20} />
+            </View>
+            <Skeleton height={4} radius="full" />
+          </View>
         ))}
       </View>
     </View>
   )
 }
 
-export default function SchatzkammerScreen() {
+export default function SchatzkammerScreen(): ReactNode {
   const t = useW14Theme()
   const router = useRouter()
   const insets = useScreenInsets()
@@ -283,15 +415,19 @@ export default function SchatzkammerScreen() {
   const rates = q.results.rates.data as MetalRatesResponse | null
   const fixedCosts = q.results.fixedCosts.data?.items ?? null
 
-  const now = useMemo(() => new Date(), [])
+  // Re-stamp on every successful fetch (q.updatedAt) so a long-lived board does
+  // not freeze its „today": across midnight/month the business day, month start,
+  // date label and alert phrasing advance on the next poll instead of going stale.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const now = useMemo(() => new Date(), [q.updatedAt])
   const biz = todayBusinessDay(now)
   const monthStart = monthStartDay(now)
 
   // The monthly treasure map needs BOTH the month's profit AND configured fixed
   // costs to be honest. fixedCostsApi.list returns an EMPTY ARRAY (not null) when a
-  // shop has no fixed costs configured — so an empty list means "not yet set up",
-  // NOT "0 € of fixed costs". Without a real break-even line the card renders the
-  // locked "bald" placeholder rather than a contradictory 0 % / "noch 0,00 €".
+  // shop has no fixed costs configured — so an empty list means „not yet set up",
+  // NOT „0 € of fixed costs". Without a real break-even line the row renders the
+  // locked „bald" placeholder rather than a contradictory 0 % / „noch 0,00 €".
   const fixedCostCents = fixedCosts ? monthlyFixedCostCents(fixedCosts, monthStart) : 0
   const hasMap = profitMonth !== null && fixedCosts !== null && fixedCostCents > 0
   const profitTargetCents = Math.round(targets.monthlyProfitTargetEur * 100)
@@ -315,7 +451,7 @@ export default function SchatzkammerScreen() {
 
   // Arm the gold flood on the real false→true break-even crossing, once per month.
   // Gated until the map has actually settled, so a transient first-load false never
-  // counts as the "before" state. Pairs the bloom's peak with the single Heavy haptic.
+  // counts as the „before" state. Pairs the bloom's peak with the single Heavy haptic.
   const flood = useBreakEvenCelebration(map ? map.brokeEven : false, monthStart, {
     enabled: map !== null,
   })
@@ -326,7 +462,7 @@ export default function SchatzkammerScreen() {
   // and the thresholds mirror the server's deriveStatus — so the bell, the badge,
   // and this strip can never disagree about what „dringend" means. Honest by
   // construction: an alert exists only because a real field crossed a real
-  // threshold; zero crossings → the calm „alles ruhig" line, never an invented row.
+  // threshold; zero crossings → no strip at all, never an invented row.
   const alerts = useMemo(() => (bridge ? deriveLiveAlerts(bridge, now) : []), [bridge, now])
   const alertPeak = useMemo(() => peakSeverity(alerts), [alerts])
 
@@ -343,7 +479,7 @@ export default function SchatzkammerScreen() {
         <PaperGrain />
         <ScrollView
           className="flex-1"
-          contentContainerStyle={{ padding: 16, paddingBottom: insets.contentBottom, gap: 14 }}
+          contentContainerStyle={{ padding: 20, paddingBottom: insets.contentBottom, gap: 28 }}
         >
           <SchatzkammerSkeleton />
         </ScrollView>
@@ -360,7 +496,7 @@ export default function SchatzkammerScreen() {
     const cause = q.results.bridge.errorCause
     const waiting = isRateLimited(cause) || isConnectionError(cause)
     return (
-      <View className="flex-1 justify-center bg-background px-4">
+      <View className="flex-1 justify-center bg-background px-5">
         <PaperGrain />
         {waiting ? (
           <EmptyState
@@ -368,7 +504,7 @@ export default function SchatzkammerScreen() {
             title={isRateLimited(cause) ? "Einen Moment" : "Keine Verbindung"}
             description={
               isRateLimited(cause)
-                ? "Gerade sehr viele Anfragen die Schatzkammer lädt gleich von selbst. Du kannst es auch jetzt erneut versuchen."
+                ? "Gerade sehr viele Anfragen. Die Schatzkammer lädt gleich von selbst. Du kannst es auch jetzt erneut versuchen."
                 : "Die Cloud ist gerade nicht erreichbar. Sobald die Verbindung steht, hier erneut versuchen."
             }
             actionLabel="Erneut versuchen"
@@ -399,23 +535,50 @@ export default function SchatzkammerScreen() {
     q.results.metals.error ??
     null
 
+  // The overall goal achievement — the honest average of only the live ratios we
+  // actually have (never zero-filled). Used by the closing „Zielerreichung" line.
+  const overallRatios = [
+    profitDay ? profitDayEur / targets.netProfitDayEur : null,
+    monthRev ? monthRevEur / targets.monthRevenueEur : null,
+    invValue ? invValueEur / GAUGE_TARGETS.inventoryValueEur : null,
+    map ? map.coverage : null,
+    metals ? metals.goldGrams / GAUGE_TARGETS.goldGrams : null,
+    metals ? metals.silverGrams / GAUGE_TARGETS.silverGrams : null,
+    // Source presence already gates each ratio to null when absent, so a kept
+    // value of exactly 0 is a REAL measurement (0 € profit, 0 g metal) — drop the
+    // `> 0` that silently biased the Gesamtübersicht upward.
+  ].filter((r): r is number => r != null && Number.isFinite(r))
+  const overallPct =
+    overallRatios.length > 0
+      ? overallRatios.reduce((sum, r) => sum + r, 0) / overallRatios.length
+      : 0
+  const overallClamped = Math.max(0, Math.min(1, overallPct))
+
   return (
     <View className="flex-1 bg-background">
       <PaperGrain />
       <ScrollView
         className="flex-1"
-        contentContainerStyle={{ padding: 16, paddingBottom: insets.contentBottom, gap: 14 }}
+        contentContainerStyle={{ padding: 20, paddingBottom: insets.contentBottom, gap: 28 }}
         refreshControl={<RefreshControl {...rc} />}
       >
-        {/* a) Header title + live rank/streak chips */}
+        {/* a) Header — the Kicker, the display hero title, the live chips */}
         <StaggerItem index={0}>
-          <View className="flex-row items-center justify-between">
-            <View className="flex-1 flex-row items-center gap-2.5">
-              <Vault size={t.icon.xl - 2} color={t.colors.primary} />
+          <View className="gap-2.5">
+            <View className="flex-row items-center justify-between">
+              <Kicker label="Schatzkammer" />
+              <View className="flex-row items-center gap-1.5">
+                <StreakFlame streak={game.streak} size="sm" />
+                <SearchAction />
+                <NotificationBell />
+              </View>
+            </View>
+            <View className="flex-row items-center gap-3">
+              <Vault size={t.icon.xl} color={t.colors.primary} />
               <View className="flex-1">
                 {/* The screen's hero title speaks the antique DISPLAY voice —
                     Bricolage Grotesque at the screen-title step (DESIGN-SYSTEM.md §3). */}
-                <Text className="text-2xl font-display-semibold leading-tight" numberOfLines={1}>
+                <Text className="text-3xl font-display-bold leading-tight" numberOfLines={1}>
                   Die Schatzkammer
                 </Text>
                 <Text className="text-muted-foreground text-xs" numberOfLines={1}>
@@ -423,18 +586,13 @@ export default function SchatzkammerScreen() {
                 </Text>
               </View>
             </View>
-            <View className="flex-row items-center gap-1.5">
-              <StreakFlame streak={game.streak} size="sm" />
-              <SearchAction />
-              <NotificationBell />
-            </View>
           </View>
         </StaggerItem>
 
         {/* Offline note over the last-good board self-subscribes to the
             connection store and shows ONLY while the cloud is unreachable. The
-            gauges below keep their last real values (the data layer holds them on
-            a background failure); this is the honest letzter bekannter Stand"
+            ledger below keeps its last real values (the data layer holds them on
+            a background failure); this is the honest „letzter bekannter Stand"
             marker above them, the in-context sibling of the global banner. */}
         <OfflineNotice />
 
@@ -444,11 +602,12 @@ export default function SchatzkammerScreen() {
           </StaggerItem>
         ) : null}
 
-        {/* a2) Brücken-Alarme the Jetzt"-Schicht: what needs the owner RIGHT NOW
-            (a Freigabe waiting, the next Termin, a stuck Hintergrund-Job, the TSE
-            Vorlauf). Same derivation + thresholds as the Notifications Center, so
-            the two never disagree. Only rendered when something actually crossed a
-            threshold silence is honest, not an invented alles ruhig" card. */}
+        {/* a2) Brücken-Alarme — the „Jetzt"-Schicht: what needs the owner RIGHT
+            NOW (a Freigabe waiting, the next Termin, a stuck Hintergrund-Job, the
+            TSE Vorlauf). Same derivation + thresholds as the Notifications Center,
+            so the two never disagree. Only rendered when something actually
+            crossed a threshold — silence is honest, not an invented „alles ruhig"
+            card. De-boxed: a Kicker over bare alert rows, no outer panel. */}
         {alerts.length > 0 ? (
           <StaggerItem index={2}>
             <BridgeAlertsStrip
@@ -463,24 +622,18 @@ export default function SchatzkammerScreen() {
           </StaggerItem>
         ) : null}
 
-        {/* a3) Schnellzugriff the owner's most-used money-movement + intake
-            actions, one tap from the board. Pure navigation: the fiscal weight
-            lives behind each surface's own step-up + confirm, never here. */}
+        {/* b) Hero — today's quest (the deterministic, real-metric daily quest).
+            The ONE raised leaf the board keeps: the hero earns the card weight. */}
         <StaggerItem index={3}>
-          <QuickActions
-            onOpen={(route) => {
-              haptics.selection()
-              router.push(route as Href)
-            }}
-          />
-        </StaggerItem>
-
-        {/* b) Hero today's quest (the deterministic, real-metric daily quest) */}
-        <StaggerItem index={4}>
-          <View className="gap-1.5">
+          <View className="gap-2">
             <QuestCard quest={game.quest} />
             <View className="flex-row items-center justify-between px-1">
-              <Text className="text-muted-foreground text-2xs">Tagesumsatz heute</Text>
+              <Text
+                className="text-muted-foreground text-2xs font-semibold uppercase"
+                style={{ letterSpacing: 1 }}
+              >
+                Tagesumsatz heute
+              </Text>
               <CountUp
                 value={bridge.todayRevenueCents}
                 format={formatCents}
@@ -492,249 +645,315 @@ export default function SchatzkammerScreen() {
           </View>
         </StaggerItem>
 
-        {/* c) Rank + streak the standing, read as one card */}
-        <StaggerItem index={5}>
-          <Card className="gap-4 px-4 py-4">
-            <RankBadge rank={game.rank} />
-            <View className="h-px w-full" style={{ backgroundColor: t.colors.border }} />
-            <StreakFlame streak={game.streak} />
-          </Card>
-        </StaggerItem>
-
-        {/* d) Live gauge grid (2×2) from bridge + dashboard, count-up magnitudes */}
-        <StaggerItem index={6}>
-          <View className="flex-row flex-wrap justify-between" style={{ rowGap: 10 }}>
-            <CountTile
-              label="Tagesumsatz"
-              value={bridge.todayRevenueCents}
-              format={formatCents}
-              ratio={revenueEur / targets.revenueEur}
-              hint={`Ziel ${targets.revenueEur} €`}
-            />
-            <CountTile
-              label="Ankäufe heute"
-              value={bridge.todayAnkaufCount}
-              ratio={bridge.todayAnkaufCount / GAUGE_TARGETS.ankaufCount}
-              tone="accent"
-              hint={`Orientierung ${GAUGE_TARGETS.ankaufCount}`}
-            />
-            <CountTile
-              label="Verkäufe heute"
-              value={bridge.todaySalesCount}
-              ratio={bridge.todaySalesCount / GAUGE_TARGETS.soldCount}
-              hint={`Orientierung ${GAUGE_TARGETS.soldCount}`}
-            />
-            {dash ? (
-              <CountTile
-                label="Expertisen"
-                value={dash.pendingAppraisals}
-                ratio={dash.pendingAppraisals / GAUGE_TARGETS.appraisals}
-                tone="accent"
-                hint={`Orientierung ${GAUGE_TARGETS.appraisals}`}
-              />
-            ) : (
-              <LockedTile label="Expertisen" />
-            )}
+        {/* a3) Schnellzugriff — the owner's most-used money-movement + intake
+            actions, one tap from the board. De-boxed: bare icon rows under a
+            Kicker, divided by Hairlines — no grid of bordered cards. Pure
+            navigation: the fiscal weight lives behind each surface's own
+            step-up + confirm, never here. */}
+        <StaggerItem index={4}>
+          <View className="gap-3">
+            <Kicker label="Schnellzugriff" />
+            <Ledger>
+              {QUICK_ACTIONS.map((a) => (
+                <ListRow
+                  key={a.id}
+                  icon={a.icon}
+                  title={a.label}
+                  onPress={() => {
+                    haptics.selection()
+                    router.push(a.route as Href)
+                  }}
+                />
+              ))}
+            </Ledger>
           </View>
         </StaggerItem>
 
-        {/* e) Finanzen — steampunk panels with real data. */}
+        {/* c) Standing — rank + streak read as one calm group (no nested box;
+            a single Hairline divides the two readings). */}
+        <StaggerItem index={5}>
+          <View className="gap-4">
+            <SectionHeader title="Dein Stand" subtitle="Rang und Serie aus echten Tagesabschlüssen." />
+            <RankBadge rank={game.rank} />
+            <Hairline />
+            <StreakFlame streak={game.streak} />
+          </View>
+        </StaggerItem>
+
+        {/* d) Heute — the live day ledger from bridge + dashboard. Bare rows,
+            count-up magnitudes, one honest bar each, divided by Hairlines. */}
+        <StaggerItem index={6}>
+          <View className="gap-4">
+            <SectionHeader title="Heute" subtitle="Umsatz, Ankäufe und Verkäufe live aus dem System." />
+            <Ledger>
+              <LedgerRow
+                label="Tagesumsatz"
+                value={bridge.todayRevenueCents}
+                format={formatCents}
+                ratio={revenueEur / targets.revenueEur}
+                hint={`Ziel ${targets.revenueEur} €`}
+              />
+              <LedgerRow
+                label="Ankäufe heute"
+                value={bridge.todayAnkaufCount}
+                ratio={bridge.todayAnkaufCount / GAUGE_TARGETS.ankaufCount}
+                hint={`Orientierung ${GAUGE_TARGETS.ankaufCount}`}
+              />
+              <LedgerRow
+                label="Verkäufe heute"
+                value={bridge.todaySalesCount}
+                ratio={bridge.todaySalesCount / GAUGE_TARGETS.soldCount}
+                hint={`Orientierung ${GAUGE_TARGETS.soldCount}`}
+              />
+              {dash ? (
+                <LedgerRow
+                  label="Expertisen"
+                  value={dash.pendingAppraisals}
+                  ratio={dash.pendingAppraisals / GAUGE_TARGETS.appraisals}
+                  hint={`Orientierung ${GAUGE_TARGETS.appraisals}`}
+                />
+              ) : (
+                <LockedRow label="Expertisen" />
+              )}
+            </Ledger>
+          </View>
+        </StaggerItem>
+
+        {/* e) Finanzen — the money ledger: real profit, revenue, inventory value,
+            and the month's fixed-cost coverage. Bare rows, no panels. */}
         <StaggerItem index={7}>
-          <SectionHeader title="Finanzen" subtitle="Gewinn, Umsatz und Lagerwert live aus dem System." />
-          <SteampunkGrid>
-            {profitDay ? (
-              <SteampunkTile label="Gewinn heute" value={profitDay.netProfitCents} format={formatCents} target={`${targets.netProfitDayEur} €`} ratio={profitDayEur / targets.netProfitDayEur} />
-            ) : (
-              <SteampunkLockedTile label="Gewinn heute" />
-            )}
-            {monthRev ? (
-              <SteampunkTile label="Monatsumsatz" value={monthRev.monthToDateRevenueCents} format={formatCents} target={`${targets.monthRevenueEur} €`} ratio={monthRevEur / targets.monthRevenueEur} />
-            ) : (
-              <SteampunkLockedTile label="Monatsumsatz" />
-            )}
-            {invValue ? (
-              <SteampunkTile label="Lagerwert" value={invValue.listValueCents} format={formatCents} target={`${GAUGE_TARGETS.inventoryValueEur} €`} ratio={invValueEur / GAUGE_TARGETS.inventoryValueEur} />
-            ) : (
-              <SteampunkLockedTile label="Lagerwert" />
-            )}
-            {map ? (
-              <SteampunkTile label="Fixkosten" value={map.coverage * 100} format={(v: number) => `${Math.round(v)} %`} target="100 %" ratio={map.coverage} />
-            ) : (
-              <SteampunkLockedTile label="Fixkosten" />
-            )}
-          </SteampunkGrid>
+          <View className="gap-4">
+            <SectionHeader title="Finanzen" subtitle="Gewinn, Umsatz und Lagerwert live aus dem System." />
+            <Ledger>
+              {profitDay ? (
+                <LedgerRow
+                  label="Gewinn heute"
+                  value={profitDay.netProfitCents}
+                  format={formatCents}
+                  ratio={profitDayEur / targets.netProfitDayEur}
+                  hint={`Ziel ${targets.netProfitDayEur} €`}
+                />
+              ) : (
+                <LockedRow label="Gewinn heute" />
+              )}
+              {monthRev ? (
+                <LedgerRow
+                  label="Monatsumsatz"
+                  value={monthRev.monthToDateRevenueCents}
+                  format={formatCents}
+                  ratio={monthRevEur / targets.monthRevenueEur}
+                  hint={`Ziel ${targets.monthRevenueEur} €`}
+                />
+              ) : (
+                <LockedRow label="Monatsumsatz" />
+              )}
+              {invValue ? (
+                <LedgerRow
+                  label="Lagerwert"
+                  value={invValue.listValueCents}
+                  format={formatCents}
+                  ratio={invValueEur / GAUGE_TARGETS.inventoryValueEur}
+                  hint={`Orientierung ${GAUGE_TARGETS.inventoryValueEur} €`}
+                />
+              ) : (
+                <LockedRow label="Lagerwert" />
+              )}
+              {map ? (
+                <LedgerRow
+                  label="Fixkosten gedeckt"
+                  value={map.coverage * 100}
+                  format={(v: number) => `${Math.round(v)} %`}
+                  ratio={map.coverage}
+                  hint={
+                    map.brokeEven
+                      ? "Diesen Monat gedeckt"
+                      : `Noch ${formatCents(map.toBreakEvenCents)} bis zur Deckung`
+                  }
+                />
+              ) : (
+                <LockedRow label="Fixkosten gedeckt" />
+              )}
+            </Ledger>
+          </View>
         </StaggerItem>
 
-        {/* f) Edelmetallbestand — steampunk panels with real weights. */}
+        {/* f) Edelmetallbestand — real weights in grams, each opened by its
+            bespoke MetalIcon glyph (DESIGN-SYSTEM.md §6 — the engraved domain
+            mark adds clarity). Bare rows, gilt only on the gold mark. */}
         <StaggerItem index={8}>
-          <SectionHeader title="Edelmetallbestand" subtitle="Gewichte aus dem Lager, in Gramm." />
-          <SteampunkGrid>
-            {metals ? (
-              <>
-                <SteampunkTile label="Goldbestand" value={metals.goldGrams} format={(v: number) => gramm(v)} target={`${GAUGE_TARGETS.goldGrams} g`} ratio={metals.goldGrams / GAUGE_TARGETS.goldGrams} />
-                <SteampunkTile label="Silberbestand" value={metals.silverGrams} format={(v: number) => gramm(v)} target={`${GAUGE_TARGETS.silverGrams} g`} ratio={metals.silverGrams / GAUGE_TARGETS.silverGrams} />
-                {metals.platinumGrams > 0 ? (
-                  <SteampunkTile label="Platinbestand" value={metals.platinumGrams} format={(v: number) => gramm(v)} target="Bestand" ratio={1} />
-                ) : null}
-                {metals.palladiumGrams > 0 ? (
-                  <SteampunkTile label="Palladiumbestand" value={metals.palladiumGrams} format={(v: number) => gramm(v)} target="Bestand" ratio={1} />
-                ) : null}
-              </>
-            ) : (
-              <>
-                <SteampunkLockedTile label="Goldbestand" />
-                <SteampunkLockedTile label="Silberbestand" />
-              </>
-            )}
-          </SteampunkGrid>
+          <View className="gap-4">
+            <SectionHeader title="Edelmetallbestand" subtitle="Gewichte aus dem Lager, in Gramm." />
+            <Ledger>
+              {metals ? (
+                [
+                  <LedgerRow
+                    key="gold"
+                    label="Goldbestand"
+                    value={metals.goldGrams}
+                    format={gramm}
+                    ratio={metals.goldGrams / GAUGE_TARGETS.goldGrams}
+                    hint={`Orientierung ${GAUGE_TARGETS.goldGrams} g`}
+                    glyph={<MetalIcon metal="GOLD" size={t.icon.md} color={t.colors.gilt} />}
+                  />,
+                  <LedgerRow
+                    key="silber"
+                    label="Silberbestand"
+                    value={metals.silverGrams}
+                    format={gramm}
+                    ratio={metals.silverGrams / GAUGE_TARGETS.silverGrams}
+                    hint={`Orientierung ${GAUGE_TARGETS.silverGrams} g`}
+                    glyph={<MetalIcon metal="SILBER" size={t.icon.md} color={t.colors.mutedForeground} />}
+                  />,
+                  metals.platinumGrams > 0 ? (
+                    <LedgerRow
+                      key="platin"
+                      label="Platinbestand"
+                      value={metals.platinumGrams}
+                      format={gramm}
+                      glyph={<MetalIcon metal="PLATIN" size={t.icon.md} color={t.colors.mutedForeground} />}
+                    />
+                  ) : null,
+                  metals.palladiumGrams > 0 ? (
+                    <LedgerRow
+                      key="palladium"
+                      label="Palladiumbestand"
+                      value={metals.palladiumGrams}
+                      format={gramm}
+                      glyph={<MetalIcon metal="PALLADIUM" size={t.icon.md} color={t.colors.mutedForeground} />}
+                    />
+                  ) : null,
+                ]
+              ) : (
+                [<LockedRow key="gold" label="Goldbestand" />, <LockedRow key="silber" label="Silberbestand" />]
+              )}
+            </Ledger>
+          </View>
         </StaggerItem>
 
-        {/* f2) Edelmetall-Kurse — steampunk metal price panel. */}
+        {/* f2) Edelmetall-Kurse — spot vs the 10-day average, per gram. Bare
+            metal rows, the arrow + colour carrying direction (meaning only). */}
         <StaggerItem index={9}>
-          <SectionHeader title="Edelmetall-Kurse" subtitle="Spot gegen 10-Tage-Schnitt, je Gramm." />
-          <SteampunkGrid>
-            <View style={{ width: "100%", padding: 4 }}>
-              <MetalRatesStrip rates={rates} />
-            </View>
-          </SteampunkGrid>
+          <View className="gap-4">
+            <SectionHeader title="Edelmetall-Kurse" subtitle="Spot gegen 10-Tage-Schnitt, je Gramm." />
+            <MetalRatesStrip rates={rates} />
+          </View>
         </StaggerItem>
 
-        {/* g) Schatzkarte — steampunk break-even panel. */}
-        <StaggerItem index={10}>
-          {map ? (
-            <SectionHeader title="Schatzkarte des Monats" subtitle="Erst Kosten decken, dann Gewinn heben." />
-          ) : null}
-          <SteampunkGrid>
-            {map ? (
-              <>
-                <SteampunkTile
+        {/* g) Schatzkarte des Monats — the break-even crossing, then the goal.
+            Bare rows; only shown when the map has a real fixed-cost line. */}
+        {map ? (
+          <StaggerItem index={10}>
+            <View className="gap-4">
+              <SectionHeader
+                title="Schatzkarte des Monats"
+                subtitle="Erst Kosten decken, dann Gewinn heben."
+              />
+              <Ledger>
+                <LedgerRow
                   label={map.brokeEven ? "Monatsgewinn" : "Fixkosten gedeckt"}
                   value={map.brokeEven ? map.netProfitCents : map.coverage * 100}
                   format={map.brokeEven ? formatCents : (v: number) => `${Math.round(v)} %`}
-                  target={map.brokeEven ? formatCents(profitTargetCents) : "100 %"}
                   ratio={map.brokeEven ? map.targetProgress : map.coverage}
+                  hint={
+                    map.brokeEven
+                      ? `Ziel ${formatCents(profitTargetCents)}`
+                      : `Noch ${formatCents(map.toBreakEvenCents)} bis zur Deckung`
+                  }
                 />
-                <SteampunkTile
-                  label="Fixkosten"
+                <LedgerRow
+                  label="Fixkosten im Monat"
                   value={map.fixedCostCents}
                   format={formatCents}
-                  target={map.brokeEven ? "Gedeckt" : `${formatCents(map.toBreakEvenCents)}`}
                   ratio={map.coverage}
+                  hint={map.brokeEven ? "Vollständig gedeckt" : "Die Break-even-Linie"}
                 />
-              </>
-            ) : (
-              <SteampunkLockedTile label="Schatzkarte des Monats" />
-            )}
-          </SteampunkGrid>
+              </Ledger>
+            </View>
+          </StaggerItem>
+        ) : null}
+
+        {/* h) Siegel der Werkstatt — earned vs locked, honestly. De-boxed: a
+            Kicker + count over the bare seal grid, no outer panel. */}
+        <StaggerItem index={11}>
+          <View className="gap-4">
+            <SectionHeader
+              title="Siegel der Werkstatt"
+              subtitle="Echte Meilensteine verdient, nie geschenkt."
+              action={
+                <Text className="font-mono-medium text-muted-foreground text-xs">
+                  {earnedSeals} / {game.seals.length}
+                </Text>
+              }
+            />
+            <SealGrid seals={game.seals} />
+            <Hairline />
+            <ListRow
+              icon={Trophy}
+              title="Erfolge ansehen"
+              subtitle="Aufstieg, Serien-Historie und Meilensteine im Detail."
+              onPress={() => {
+                haptics.selection()
+                router.push("/erfolge" as Href)
+              }}
+            />
+          </View>
         </StaggerItem>
 
-        {/* h) Siegelwand earned vs locked, honestly */}
-        <StaggerItem index={11}>
-          <SectionCard
-            title="Siegel der Werkstatt"
-            subtitle="Echte Meilensteine verdient, nie geschenkt."
-            action={
-              <Text className="text-muted-foreground text-xs">
-                {earnedSeals} / {game.seals.length}
+        {/* i) Zielerreichung — the overall standing as one honest figure, from
+            only the live ratios we have. A single hero number, no box, the bar
+            beneath. */}
+        <StaggerItem index={12}>
+          <View className="gap-4">
+            <SectionHeader
+              title="Zielerreichung"
+              subtitle="Der Schnitt aus deinen echten Tageswerten."
+            />
+            <View className="flex-row items-end justify-between">
+              <Text
+                className="text-muted-foreground text-2xs font-semibold uppercase"
+                style={{ letterSpacing: 1 }}
+              >
+                Gesamtübersicht
               </Text>
-            }
-          >
-            <SealGrid seals={game.seals} />
-            <View style={{ marginTop: 4 }}>
-              <ListRow
-                icon={Trophy}
-                title="Erfolge ansehen"
-                subtitle="Aufstieg, Serien-Historie und Meilensteine im Detail."
-                onPress={() => {
-                  haptics.selection()
-                  router.push("/erfolge" as Href)
+              <CountUp
+                value={Math.round(overallClamped * 100)}
+                format={(v: number) => `${Math.round(v)} %`}
+                className="font-mono-medium text-3xl"
+                style={{ color: overallClamped >= 1 ? t.colors.verdigris : t.colors.foreground }}
+              />
+            </View>
+            <View
+              className="w-full overflow-hidden rounded-full"
+              style={{ height: 6, backgroundColor: t.colors.border }}
+              accessibilityRole="progressbar"
+              accessibilityValue={{ now: Math.round(overallClamped * 100), min: 0, max: 100 }}
+            >
+              <View
+                style={{
+                  height: "100%",
+                  width: `${overallClamped * 100}%`,
+                  backgroundColor: overallClamped >= 1 ? t.colors.verdigris : t.colors.gilt,
                 }}
               />
             </View>
-          </SectionCard>
+          </View>
         </StaggerItem>
 
-        {/* i) Treasure map — the overall goal achievement, steampunk. */}
-        <StaggerItem index={12}>
-          <SteampunkTreasureMap
-            pct={
-              // Average of the live ratios we have (honest, not fabricated).
-              [
-                profitDay ? profitDayEur / targets.netProfitDayEur : null,
-                monthRev ? monthRevEur / targets.monthRevenueEur : null,
-                invValue ? invValueEur / GAUGE_TARGETS.inventoryValueEur : null,
-                map ? map.coverage : null,
-                metals ? metals.goldGrams / GAUGE_TARGETS.goldGrams : null,
-                metals ? metals.silverGrams / GAUGE_TARGETS.silverGrams : null,
-              ]
-                .filter((r): r is number => r != null && r > 0)
-                .reduce((sum, r, _, arr) => sum + r / arr.length, 0)
-            }
-            label="Zielerreichung aus echten Tagesabschlüssen"
-          />
-        </StaggerItem>
-
-        {/* j) Trust line */}
-        <StaggerItem index={12}>
-          <Text className="text-muted-foreground text-center text-2xs">
-            Jeder Wert ist eine echte Zahl aus dem System.
-          </Text>
+        {/* j) Trust line — the board's one promise, restated quietly. */}
+        <StaggerItem index={13}>
+          <View className="flex-row items-center justify-center gap-2">
+            <Diamond color={t.colors.gilt} />
+            <Text className="text-muted-foreground text-center text-2xs">
+              Jeder Wert ist eine echte Zahl aus dem System.
+            </Text>
+          </View>
         </StaggerItem>
       </ScrollView>
 
-      {/* Break-even celebration the gold flood, once per month, on the real
+      {/* Break-even celebration — the gold flood, once per month, on the real
           false→true crossing. Sits above content, never blocks a tap. */}
       <GoldFlood visible={flood.visible} onReachPeak={flood.onReachPeak} onDone={flood.onDone} />
     </View>
-  )
-}
-
-/**
- * A StatTile whose value count-ups to the live magnitude (DESIGN.md §6 — "let it
- * land", never snap a KPI). The bar fill already springs inside RingGauge; this
- * rolls the displayed figure, kept honest by the caller's de-DE formatter.
- */
-function CountTile({
-  label,
-  value,
-  format,
-  ratio,
-  hint,
-  tone = "primary",
-}: {
-  label: string
-  value: number
-  format?: (n: number) => string
-  ratio: number
-  hint?: string
-  tone?: "primary" | "accent" | "muted"
-}) {
-  const t = useW14Theme()
-  const toneColor =
-    tone === "accent"
-      ? t.colors.verdigris
-      : tone === "muted"
-        ? t.colors.mutedForeground
-        : t.colors.primary
-  const clamped = Number.isFinite(ratio) ? Math.max(0, Math.min(1, ratio)) : 0
-
-  return (
-    <Card className="justify-between gap-2 px-4 py-4" style={{ width: "48%" }}>
-      <Text
-        className="text-muted-foreground text-xs font-medium"
-        style={{ letterSpacing: 0.4 }}
-        numberOfLines={1}
-      >
-        {label}
-      </Text>
-      <CountUp
-        value={value}
-        format={format}
-        className="font-mono-medium text-2xl"
-        style={{ color: toneColor }}
-      />
-      <RingGauge value={clamped} color={toneColor} caption={hint} />
-    </Card>
   )
 }
 
@@ -769,7 +988,7 @@ function alertSeverityColor(
 }
 
 /** One compact live-alert row — severity rail, channel disc, count chip, chevron. */
-function BridgeAlertRow({ alert, onPress }: { alert: LiveAlert; onPress: () => void }) {
+function BridgeAlertRow({ alert, onPress }: { alert: LiveAlert; onPress: () => void }): ReactNode {
   const t = useW14Theme()
   const accent = alertSeverityColor(alert.severity, t)
   const Icon = ALERT_CHANNEL_ICON[alert.channel]
@@ -813,7 +1032,7 @@ function BridgeAlertRow({ alert, onPress }: { alert: LiveAlert; onPress: () => v
   )
 
   return (
-    <View className="flex-row overflow-hidden rounded-md">
+    <View className="flex-row">
       <View style={{ width: 3, borderRadius: 2, backgroundColor: accent }} />
       <View className="flex-1 pl-3">
         {tappable ? (
@@ -833,9 +1052,10 @@ function BridgeAlertRow({ alert, onPress }: { alert: LiveAlert; onPress: () => v
 /**
  * The dashboard's „Jetzt"-strip — the live owner alerts the board surfaces from
  * the bridge snapshot it already holds. Same `deriveLiveAlerts` + thresholds as
- * the Notifications Center, so the two can never disagree. The caller only
- * renders this when `alerts` is non-empty, so there is no fabricated „all calm"
- * row here — silence on the board IS the calm state.
+ * the Notifications Center, so the two can never disagree. De-boxed: a Kicker +
+ * count over bare alert rows divided by Hairlines, no outer panel. The caller
+ * only renders this when `alerts` is non-empty, so there is no fabricated „all
+ * calm" row here — silence on the board IS the calm state.
  */
 function BridgeAlertsStrip({
   alerts,
@@ -845,18 +1065,23 @@ function BridgeAlertsStrip({
   alerts: readonly LiveAlert[]
   peak: NotificationSeverity | null
   onOpen: (alert: LiveAlert) => void
-}) {
+}): ReactNode {
   const t = useW14Theme()
   const peakColor = peak ? alertSeverityColor(peak, t) : t.colors.verdigris
   return (
-    <SectionCard
-      title="Jetzt"
-      subtitle="Was gerade deine Aufmerksamkeit braucht live aus dem System."
-      icon={Radio}
-      action={
-        // Fixed-size circular badge — self-center so the parent's flex never
-        // stretches it vertically. Fixed height + aspect ratio guarantees a
-        // perfect circle regardless of the parent's align-items.
+    <View className="gap-3">
+      <View className="flex-row items-center justify-between">
+        <View className="flex-1 flex-row items-center gap-2.5">
+          <Radio size={t.icon.md} color={t.colors.primary} />
+          <View className="flex-1">
+            <Text className="text-lg font-display-semibold leading-tight" numberOfLines={1}>
+              Jetzt
+            </Text>
+            <Text className="text-muted-foreground text-xs" numberOfLines={2}>
+              Was gerade deine Aufmerksamkeit braucht live aus dem System.
+            </Text>
+          </View>
+        </View>
         <View
           className="flex-row items-center justify-center self-center rounded-full"
           style={{
@@ -866,16 +1091,22 @@ function BridgeAlertsStrip({
             paddingHorizontal: 8,
           }}
         >
-          <Text className="text-2xs font-bold" style={{ color: peakColor }}>
+          <Text className="font-mono-medium text-2xs font-bold" style={{ color: peakColor }}>
             {alerts.length}
           </Text>
         </View>
-      }
-    >
-      {alerts.map((alert) => (
-        <BridgeAlertRow key={alert.kind} alert={alert} onPress={() => onOpen(alert)} />
-      ))}
-    </SectionCard>
+      </View>
+      <View>
+        {alerts.map((alert, i) => (
+          <View key={alert.kind}>
+            {i > 0 ? <Hairline /> : null}
+            <View className="py-2">
+              <BridgeAlertRow alert={alert} onPress={() => onOpen(alert)} />
+            </View>
+          </View>
+        ))}
+      </View>
+    </View>
   )
 }
 
@@ -883,44 +1114,15 @@ function BridgeAlertsStrip({
 /**
  * The owner's most-used jumps, one tap from the board. Pure navigation — the
  * fiscal weight (TSE/§25a, step-up + confirm) lives entirely behind each target
- * surface, never fired from here. A 2×2 grid of tap targets ≥ 44 px, each a soft
- * brass disc + label, pressed with the spine's one feedback.
+ * surface, never fired from here. Rendered as bare `ListRow`s under a Kicker,
+ * divided by Hairlines (no grid of bordered cards).
  */
 const QUICK_ACTIONS: readonly { id: string; route: string; label: string; icon: LucideIcon }[] = [
-  { id: "verkauf", route: "/verkauf", label: "Verkauf", icon: ShoppingCart },
+  { id: "zielkarte", route: "/zielkarte", label: "Zielkarte", icon: Gauge },
   { id: "ankauf", route: "/ankauf", label: "Ankauf", icon: ShoppingBag },
   { id: "kasse", route: "/kasse", label: "Kasse & Z-Bon", icon: Receipt },
   { id: "kunde-neu", route: "/customer/neu", label: "Neuer Kunde", icon: UserPlus },
 ]
-
-function QuickActions({ onOpen }: { onOpen: (route: string) => void }) {
-  const t = useW14Theme()
-  return (
-    <View className="flex-row flex-wrap justify-between" style={{ rowGap: 10 }}>
-      {QUICK_ACTIONS.map((a) => {
-        const Icon = a.icon
-        return (
-          <PressableScale
-            key={a.id}
-            onPress={() => onOpen(a.route)}
-            accessibilityRole="button"
-            accessibilityLabel={`${a.label} öffnen`}
-            style={{ width: "48%" }}
-          >
-            <Card className="min-h-[44px] flex-row items-center gap-3 px-3 py-3">
-              {/* Bare icon no tinted chip (the chip was offset/clipped on some
-                  devices). Ink glyph, calm, matches ListRow + SectionCard. */}
-              <Icon size={t.icon.md} color={t.colors.foreground} />
-              <Text className="flex-1 text-sm font-semibold" numberOfLines={1}>
-                {a.label}
-              </Text>
-            </Card>
-          </PressableScale>
-        )
-      })}
-    </View>
-  )
-}
 
 // ── Edelmetall-Kurse (spot vs 10-day average) ────────────────────────────────
 /** German metal labels, local to the board (no cross-feature import). */
@@ -931,49 +1133,58 @@ const METAL_LABEL_DE: Record<MetalKind, string> = {
   palladium: "Palladium",
 }
 
+/** The bespoke MetalIcon kind per wire MetalKind, so each rate row is engraved. */
+const METAL_ICON_KIND: Record<MetalKind, "GOLD" | "SILBER" | "PLATIN" | "PALLADIUM"> = {
+  gold: "GOLD",
+  silver: "SILBER",
+  platinum: "PLATIN",
+  palladium: "PALLADIUM",
+}
+
 /** Format a €/g decimal string as de-DE „12,3456 €/g" (4 dp matches the wire). */
 function pricePerGram(decimal: string): string {
   const n = Number(decimal)
-  if (!Number.isFinite(n)) return "—"
+  if (!Number.isFinite(n)) return "kein Kurs"
   return `${n.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 4 })} €/g`
 }
 
-/** Signed de-DE percent delta of `current` vs `avg`, e.g. „+1,4 %" — or null. */
-function pctDelta(avg: number, current: number): string | null {
-  if (!Number.isFinite(avg) || !Number.isFinite(current) || avg <= 0) return null
-  const pct = ((current - avg) / avg) * 100
-  const sign = pct > 0 ? "+" : pct < 0 ? "−" : ""
-  return `${sign}${Math.abs(pct).toLocaleString("de-DE", { maximumFractionDigits: 1 })} %`
-}
-
 /**
- * One metal's rate row: the spot per gram, an honest two-point sparkline of the
- * time-weighted 10-day average → the current spot, and the signed de-DE delta.
- * Both points are REAL numbers from /api/metal-prices/rates — the sparkline is a
- * true two-point silhouette, never an invented curve. A metal whose spot or
- * average is unreadable is skipped by the caller, so this only ever renders a
- * fully-known row.
+ * One metal's rate row: the bespoke metal glyph + German name on the left, the
+ * spot per gram + a direction arrow on the right. Both points are REAL numbers
+ * from /api/metal-prices/rates — the arrow + colour carry the spot-vs-average
+ * direction (meaning only). A metal whose spot or average is unreadable is
+ * skipped by the caller, so this only ever renders a fully-known row.
  */
 function MetalRateRow({
+  metal,
   label,
   avg,
   current,
 }: {
+  metal: MetalKind
   label: string
   avg: string
   current: string
-}) {
+}): ReactNode {
   const t = useW14Theme()
   const avgN = Number(avg)
   const curN = Number(current)
   const rising = curN > avgN
   const falling = curN < avgN
-  const arrowColor = rising ? t.colors.verdigris : falling ? t.colors.destructive : t.colors.mutedForeground
+  const arrowColor = rising
+    ? t.colors.verdigris
+    : falling
+      ? t.colors.destructive
+      : t.colors.mutedForeground
+  const glyphColor = metal === "gold" ? t.colors.gilt : t.colors.mutedForeground
   return (
-    // ONE calm line per metal: name on the left, price + arrow on the right.
-    // No sparkline, no nested boxes, no over-heavy visual. Just the honest data.
-    <View className="flex-row items-center justify-between py-1.5">
-      <Text className="text-sm font-medium">{label}</Text>
+    // ONE calm line per metal: engraved glyph + name on the left, price + arrow
+    // on the right. No nested boxes — the honest data only.
+    <View className="flex-row items-center justify-between py-2.5">
+      <View className="flex-row items-center gap-2">
+        <MetalIcon metal={METAL_ICON_KIND[metal]} size={t.icon.md} color={glyphColor} />
+        <Text className="text-sm font-medium">{label}</Text>
+      </View>
       <View className="flex-row items-center gap-2">
         <ArrowUp
           size={t.icon.sm}
@@ -988,10 +1199,10 @@ function MetalRateRow({
   )
 }
 
-function MetalRatesStrip({ rates }: { rates: MetalRatesResponse | null }) {
+function MetalRatesStrip({ rates }: { rates: MetalRatesResponse | null }): ReactNode {
   const t = useW14Theme()
   // Only rows where BOTH the spot AND the 10-day average are readable — those are
-  // the only ones we can draw an honest avg→spot trend for. Everything else is
+  // the only ones we can draw an honest avg→spot direction for. Everything else is
   // simply absent (no fabricated price, no flat zero baseline).
   const rows = useMemo(
     () =>
@@ -1007,7 +1218,7 @@ function MetalRatesStrip({ rates }: { rates: MetalRatesResponse | null }) {
       <View className="flex-row items-center gap-1.5 py-1">
         <Lock size={t.icon.xs} color={t.colors.mutedForeground} />
         <Text className="text-muted-foreground text-sm" style={{ flexShrink: 1 }}>
-          bald verfügbar Kurse werden geladen.
+          Kurse werden geladen, bald verfügbar.
         </Text>
       </View>
     )
@@ -1017,19 +1228,18 @@ function MetalRatesStrip({ rates }: { rates: MetalRatesResponse | null }) {
     // The endpoint answered but no metal has both a spot and a 10-day average yet.
     return (
       <Text className="text-muted-foreground text-sm">
-        Noch keine Kurse mit Vergleichswert sobald genug Verlauf vorliegt, erscheint der Trend hier.
+        Noch keine Kurse mit Vergleichswert. Sobald genug Verlauf vorliegt, erscheint der Trend hier.
       </Text>
     )
   }
 
   return (
-    <View className="gap-1">
+    <View>
       {rows.map((r, i) => (
         <View key={r.metal}>
-          {i > 0 ? (
-            <View className="h-px w-full" style={{ backgroundColor: t.colors.border, marginVertical: 4 }} />
-          ) : null}
+          {i > 0 ? <Hairline /> : null}
           <MetalRateRow
+            metal={r.metal}
             label={METAL_LABEL_DE[r.metal]}
             avg={r.avg10dPricePerGramEur as string}
             current={r.currentPricePerGramEur as string}

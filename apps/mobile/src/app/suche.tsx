@@ -29,9 +29,10 @@
  * row — the Listenpreis, the Beleg total, the Kundennummer — formatted through
  * the shared de-DE helpers, never fabricated. Tokens only; German throughout.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { FlatList, Pressable, View } from "react-native"
 import { type Href, useRouter } from "expo-router"
+import Svg, { Circle, Line, Path } from "react-native-svg"
 import type {
   CustomerListRow,
   ProductListRow,
@@ -60,6 +61,7 @@ import { useW14Theme } from "@/warehouse14/theme"
 import {
   EmptyState,
   ErrorState,
+  Hairline,
   haptics,
   PaperGrain,
   PressableScale,
@@ -68,6 +70,30 @@ import {
   useMultiQuery,
   useScreenInsets,
 } from "@/warehouse14/ui"
+
+// ── SearchSeal — ein bespoke Such-Siegel (react-native-svg) ──────────────────────
+// Eine gestempelte Lupe: der Ring + der Griff sind Tinte, die Fadenkreuz-Linsen im
+// Inneren tönen in Gilt — Gold nur als Faden im Siegel, nie als Fläche. Die ruhige
+// Marke, mit der die Suche öffnet (DESIGN-SYSTEM.md §1, §6).
+
+function SearchSeal({ size = 26, ink, gilt }: { size?: number; ink: string; gilt: string }): ReactNode {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" accessibilityElementsHidden>
+      {/* Die Linse — der gestempelte Ring in Tinte. */}
+      <Circle cx={10.5} cy={10.5} r={6.6} stroke={ink} strokeWidth={1.5} fill="none" />
+      <Circle cx={10.5} cy={10.5} r={4.4} stroke={ink} strokeWidth={0.7} strokeOpacity={0.35} fill="none" />
+      {/* Der Griff der Lupe — Tinte. */}
+      <Line x1={15.4} y1={15.4} x2={20} y2={20} stroke={ink} strokeWidth={1.7} strokeLinecap="round" />
+      {/* Das Fadenkreuz in der Linse — der Gilt-Faden (Gold nur als Faden). */}
+      <Path
+        d="M10.5 7.6 L10.5 13.4 M7.6 10.5 L13.4 10.5"
+        stroke={gilt}
+        strokeWidth={1.1}
+        strokeLinecap="round"
+      />
+    </Svg>
+  )
+}
 
 // ── Beleg time + storno line ────────────────────────────────────────────────────
 
@@ -104,34 +130,41 @@ type ListItem = HeaderItem | HitItem
 
 // ── Rows ────────────────────────────────────────────────────────────────────────
 
-/** A section header — the section icon, its German label, and a live count. */
+/** A section header — a quiet gilt thread, the section icon, its German label,
+ *  and a live count. Boxless: it sits bare on the paper, an overline that names
+ *  the group, never a tinted bar (DESIGN-SYSTEM.md §1, §6). */
 function SectionHeaderRow({ item }: { item: HeaderItem }) {
   const t = useW14Theme()
   const Icon = item.meta.icon
   return (
-    <View className="flex-row items-center gap-2 px-1 pb-1 pt-3">
+    <View className="flex-row items-center gap-2 px-1 pb-1.5 pt-4">
+      {/* Der Gilt-Faden öffnet die Sektion — Gold nur als Punkt/Kante. */}
+      <View style={{ height: 4, width: 4, borderRadius: 2, backgroundColor: t.colors.gilt }} />
       <Icon size={t.icon.sm} color={t.colors.mutedForeground} />
       <Text
-        className="text-muted-foreground text-xs font-semibold"
-        style={{ letterSpacing: 0.8 }}
+        className="text-muted-foreground text-2xs font-semibold"
+        style={{ letterSpacing: 1.1 }}
       >
-        {item.meta.label}
+        {item.meta.label.toUpperCase()}
       </Text>
       {item.error == null && item.count > 0 ? (
-        <Text className="text-muted-foreground text-xs">· {item.count}</Text>
+        <Text className="text-muted-foreground font-mono text-2xs">· {item.count}</Text>
       ) : null}
     </View>
   )
 }
 
-/** A leading visual per hit: a typed disc (Artikel/Beleg) or an initials avatar. */
+/** The leading visual per hit — BARE on the paper, never a tinted chip box
+ *  (DESIGN-SYSTEM.md §1). A Kunde reads as a monogram inside a thin gilt ring
+ *  (gold as an edge/seal only); an Artikel / Beleg is a quiet engraved glyph
+ *  standing free in ink, separated from the text by whitespace alone. */
 function HitLeading({ hit }: { hit: SearchHit }) {
   const t = useW14Theme()
   if (hit.kind === "customer") {
     return (
       <View
-        className="h-11 w-11 items-center justify-center rounded-full"
-        style={{ backgroundColor: t.colors.raised }}
+        className="h-10 w-10 items-center justify-center rounded-full"
+        style={{ borderWidth: 1, borderColor: t.colors.gilt }}
       >
         <Text className="text-sm font-semibold" style={{ color: t.colors.foreground }}>
           {initialsOf(hit.title)}
@@ -141,11 +174,8 @@ function HitLeading({ hit }: { hit: SearchHit }) {
   }
   const Icon = hit.kind === "transaction" ? Receipt : SEARCH_SECTIONS[0].icon
   return (
-    <View
-      className="h-11 w-11 items-center justify-center rounded-xl"
-      style={{ backgroundColor: t.colors.raised }}
-    >
-      <Icon size={t.icon.lg} color={t.colors.primary} />
+    <View className="h-10 w-10 items-center justify-center">
+      <Icon size={t.icon.lg} color={t.colors.foreground} strokeWidth={1.6} />
     </View>
   )
 }
@@ -161,11 +191,11 @@ function HitRow({ hit, onPress }: { hit: SearchHit; onPress: () => void }) {
   const navigable = hit.route != null
 
   const body = (
- <View className="flex-row items-center gap-3 hairline-b px-4 py-3">
+    <View className="flex-row items-center gap-3 px-1 py-3">
       <HitLeading hit={hit} />
-      <View className="flex-1 gap-1">
+      <View className="flex-1 gap-0.5">
         <Text
-          className={titleMono ? "font-mono-medium text-sm" : "text-base font-semibold"}
+          className={titleMono ? "font-mono-medium text-sm" : "text-base font-semibold leading-tight"}
           numberOfLines={1}
         >
           {hit.title}
@@ -177,7 +207,7 @@ function HitRow({ hit, onPress }: { hit: SearchHit; onPress: () => void }) {
         ) : null}
       </View>
       {hit.trailingEur != null ? (
-        <Text className="text-sm font-semibold" numberOfLines={1}>
+        <Text className="font-mono-medium text-sm" numberOfLines={1}>
           {formatEur(hit.trailingEur)}
         </Text>
       ) : null}
@@ -217,21 +247,27 @@ function SectionErrorNote({ message }: { message: string }) {
   )
 }
 
-/** The first-load placeholder — three section-shaped blocks, never a spinner. */
+/** The first-load placeholder — two section-shaped blocks of bare rows split by
+ *  the inset hairline, never a spinner and never a stack of cards. */
 function SearchSkeleton() {
   return (
-    <View className="gap-4 pt-3">
+    <View className="gap-5 pt-4" accessibilityElementsHidden>
       {Array.from({ length: 2 }).map((_, s) => (
-        <View key={s} className="gap-2.5">
-          <Skeleton width="32%" height={11} />
+        <View key={s} className="gap-1">
+          <View className="px-1 pb-1.5">
+            <Skeleton width="28%" height={10} />
+          </View>
           {Array.from({ length: 3 }).map((__, i) => (
- <View key={i} className="flex-row items-center gap-3 hairline-b px-4 py-3">
-              <Skeleton width={44} height={44} radius="card" />
-              <View className="flex-1 gap-2">
-                <Skeleton width="62%" height={14} />
-                <Skeleton width="38%" height={11} />
+            <View key={i}>
+              {i > 0 ? <Hairline inset={52} /> : null}
+              <View className="flex-row items-center gap-3 px-1 py-3">
+                <Skeleton width={40} height={40} radius="full" />
+                <View className="flex-1 gap-2">
+                  <Skeleton width="62%" height={14} />
+                  <Skeleton width="38%" height={11} />
+                </View>
+                <Skeleton width={56} height={14} />
               </View>
-              <Skeleton width={56} height={14} />
             </View>
           ))}
         </View>
@@ -364,13 +400,32 @@ export default function SucheScreen() {
   const header = useMemo(
     () => (
       <View className="bg-background px-4 pb-3 pt-3">
-        {/* Bildschirmtitel in der Bricolage-Display-Stimme (DESIGN-SYSTEM.md §3) —
-            das Suchfeld ist der Held dieser Fläche, der Titel gibt ihr Ruhe. */}
-        <View className="mb-3 flex-row items-center gap-2.5">
-          <Search size={t.icon.lg} color={t.colors.primary} />
-          <Text className="text-2xl font-display-semibold leading-tight" numberOfLines={1}>
-            Suche
-          </Text>
+        {/* Museums-Tafel-Auftakt: Kicker (Gilt-Diamant + Kapitälchen), das bespoke
+            Such-Siegel + der Bricolage-Titel (DESIGN-SYSTEM.md §3, §6). Das Suchfeld
+            bleibt der Held der Fläche; der Kopf gibt ihr Ruhe, boxlos auf dem Papier. */}
+        <View className="mb-3 gap-1.5">
+          <View className="flex-row items-center gap-2">
+            <View
+              style={{
+                height: 6,
+                width: 6,
+                backgroundColor: t.colors.gilt,
+                transform: [{ rotate: "45deg" }],
+              }}
+            />
+            <Text
+              className="text-muted-foreground text-2xs font-semibold"
+              style={{ letterSpacing: 1.2 }}
+            >
+              GLOBALE SUCHE
+            </Text>
+          </View>
+          <View className="flex-row items-center gap-2.5">
+            <SearchSeal size={26} ink={t.colors.primary} gilt={t.colors.gilt} />
+            <Text className="text-2xl font-display-semibold leading-tight" numberOfLines={1}>
+              Suche
+            </Text>
+          </View>
         </View>
         <View className="justify-center">
           <Input
@@ -394,24 +449,19 @@ export default function SucheScreen() {
               accessibilityLabel="Suche löschen"
               hitSlop={10}
               className="absolute right-2 h-7 w-7 items-center justify-center rounded-full"
-              style={{ backgroundColor: t.colors.border }}
+              style={{ backgroundColor: t.colors.raised }}
             >
               <X size={t.icon.xs} color={t.colors.mutedForeground} />
             </Pressable>
           ) : null}
         </View>
+        {/* Eine warme Haarlinie kappt den fixierten Kopf von der Liste darunter. */}
+        <View className="pt-3">
+          <Hairline />
+        </View>
       </View>
     ),
-    [
-      q,
-      clearQuery,
-      t.colors.border,
-      t.colors.mutedForeground,
-      t.colors.primary,
-      t.icon.lg,
-      t.icon.sm,
-      t.icon.xs,
-    ],
+    [q, clearQuery, t.colors.gilt, t.colors.primary, t.colors.raised, t.colors.mutedForeground, t.icon.sm, t.icon.xs],
   )
 
   return (
@@ -430,7 +480,6 @@ export default function SucheScreen() {
         contentContainerStyle={{
           paddingHorizontal: 16,
           paddingBottom: insets.contentBottom,
-          gap: 8,
         }}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
@@ -443,8 +492,15 @@ export default function SucheScreen() {
               </View>
             )
           }
+          // A row that follows another row in the SAME section carries a single
+          // inset hairline above it (the line starts under the text, not under the
+          // leading glyph) — the only divider weight. The first row after a header
+          // never gets one, so a section opens clean (DESIGN-SYSTEM.md §1, §5).
+          const prev = shownItems[index - 1]
+          const withinSection = prev != null && prev.type === "hit"
           return (
             <StaggerItem index={Math.min(index, 10)} exit={false}>
+              {withinSection ? <Hairline inset={52} /> : null}
               <HitRow hit={item.hit} onPress={() => openHit(item.hit)} />
             </StaggerItem>
           )

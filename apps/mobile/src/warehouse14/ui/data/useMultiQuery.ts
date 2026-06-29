@@ -18,7 +18,7 @@
  * as `useQuery` — it is literally a `useQuery` over a combined fetcher — so
  * multi-source surfaces behave identically to single-source ones.
  */
-import { useMemo } from "react"
+import { useMemo, useRef } from "react"
 import { ApiOfflineQueuedError } from "@warehouse14/api-client"
 
 import { readGate } from "./gate"
@@ -76,6 +76,23 @@ export function useMultiQuery<M extends FetcherMap>(
   const keys = Object.keys(fetchers)
   const keysSig = keys.join("|")
 
+  // Last good value PER SOURCE, kept across polls. A single source failing a 30s
+  // poll round must not blank a gauge that loaded a moment ago — the board keeps
+  // its last real values and only a NEVER-resolved source reads empty. (The error
+  // is still surfaced so the background „konnte nicht aktualisiert werden" banner
+  // stays honest.) Keyed by source name; a source that has never resolved is absent.
+  const lastGoodRef = useRef<Record<string, unknown>>({})
+
+  // Reset the carry-forward store when the query KEY changes. Static-key boards
+  // (dashboard, kasse, team, analytics) never hit this. Global Search re-keys per
+  // query (`suche:<q>`) — without the reset a transient per-source miss while
+  // refining would carry the PREVIOUS query's hits forward under the new query.
+  const lastKeyRef = useRef(options.key)
+  if (lastKeyRef.current !== options.key) {
+    lastGoodRef.current = {}
+    lastKeyRef.current = options.key
+  }
+
   // One combined fetcher: settle every source, never throw, so `useQuery`
   // always lands in "success" and we expose per-source errors ourselves.
   //
@@ -94,14 +111,18 @@ export function useMultiQuery<M extends FetcherMap>(
       keys.forEach((k, i) => {
         const r = settled[i]
         if (r.status === "fulfilled") {
+          lastGoodRef.current[k] = r.value
           out[k] = { data: r.value, error: null, errorCause: null, isSettled: true }
-        } else if (r.reason instanceof ApiOfflineQueuedError) {
-          // Offline-queued read → treat as "no fresh data", not an error.
-          out[k] = { data: null, error: null, errorCause: r.reason, isSettled: true }
         } else {
+          // Failed (or offline-queued) this round → carry forward the last good
+          // value so the gauge/board never blanks on a transient hiccup. Offline
+          // is „no fresh data" (no error); a real failure keeps its error for the
+          // background banner. A source that has NEVER resolved stays null.
+          const prior = k in lastGoodRef.current ? lastGoodRef.current[k] : null
+          const offline = r.reason instanceof ApiOfflineQueuedError
           out[k] = {
-            data: null,
-            error: describeError(r.reason),
+            data: prior,
+            error: offline ? null : describeError(r.reason),
             errorCause: r.reason,
             isSettled: true,
           }

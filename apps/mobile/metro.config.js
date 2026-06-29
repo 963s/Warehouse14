@@ -43,6 +43,25 @@ config.resolver.unstable_conditionNames = ["require", "default", "browser"]
 // Support libraries (e.g. Firebase) that ship `.cjs`.
 config.resolver.sourceExts.push("cjs")
 
+// ── Numeric module IDs (production hygiene) ────────────────────────────────
+// Metro defaults to using the module's full request URL (e.g.
+// `http://localhost:8081/path/to/file.bundle?platform=ios`) as its module
+// identifier. When Hermes compiles the bundle, those URL strings land in the
+// bytecode string table — so a production .ipa greps positive for
+// `localhost:8081` even though nothing fetches it. Replacing the ID factory
+// with a stable numeric scheme keeps the URLs out of the bytecode entirely.
+// (IDs only need to be unique + stable within a single bundle build.)
+const moduleIdCache = new Map()
+let moduleIdCounter = 0
+config.serializer.createModuleIdFactory = () => {
+  return (path) => {
+    if (!moduleIdCache.has(path)) {
+      moduleIdCache.set(path, moduleIdCounter++)
+    }
+    return moduleIdCache.get(path)
+  }
+}
+
 // ── NativeWind v5 ───────────────────────────────────────────────────────────
 // Wrap the FINAL config so all monorepo settings above are preserved (the
 // wrapper mutates + returns the same object). NativeWind v5's withNativeWind

@@ -174,12 +174,20 @@ const productsRoutes: FastifyPluginAsync<ProductsRoutesOpts> = async (app, opts)
           .insert(products)
           .values({
             sku: body.sku,
-            barcode: body.barcode ?? null,
+            // Auto-assign a scannable barcode at intake so EVERY product can be
+            // labelled + scanned at the till. Per the design ("SKU IS the
+            // barcode"), default the barcode to the unique SKU when the owner
+            // doesn't supply one — encodes cleanly as Code128 and is already
+            // unique (products_barcode_uq holds because SKUs are unique).
+            barcode: body.barcode ?? body.sku,
             itemType: body.itemType,
             metal: body.metal ?? null,
             karatCode: body.karatCode ?? null,
             finenessDecimal: body.finenessDecimal ?? null,
             weightGrams: body.weightGrams ?? null,
+            lengthCm: body.lengthCm ?? null,
+            widthCm: body.widthCm ?? null,
+            heightCm: body.heightCm ?? null,
             hallmarkStamps: body.hallmarkStamps,
             acquisitionCostEur: body.acquisitionCostEur,
             listPriceEur: body.listPriceEur,
@@ -335,6 +343,11 @@ const productsRoutes: FastifyPluginAsync<ProductsRoutesOpts> = async (app, opts)
 
         maybe('condition', body.condition, before.condition);
         maybe('listPriceEur', body.listPriceEur, before.listPriceEur);
+        // Outer packing dimensions (cm) — re-measurable; `undefined` keeps,
+        // explicit `null` clears. They re-derive the size class on read.
+        maybe('lengthCm', body.lengthCm, before.lengthCm);
+        maybe('widthCm', body.widthCm, before.widthCm);
+        maybe('heightCm', body.heightCm, before.heightCm);
         maybe('name', body.name, before.name);
         // NOTE: no `?? null` here — the old coercion turned EVERY partial PUT
         // that omitted descriptionDe into a wipe (caught by taxonomy.test.ts:

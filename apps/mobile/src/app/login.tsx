@@ -38,12 +38,12 @@
  * `describeError` message, never a guess.
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
-import { useWindowDimensions, View } from "react-native"
+import { ScrollView, useWindowDimensions, View } from "react-native"
 import { ApiError } from "@warehouse14/api-client"
 import Animated from "react-native-reanimated"
 
 import { Text } from "@/components/ui/text"
-import { API_BASE_URL, describeError, pinLogin } from "@/warehouse14/api"
+import { describeError, pinLogin } from "@/warehouse14/api"
 import { setSession } from "@/warehouse14/session"
 import { useW14Theme } from "@/warehouse14/theme"
 import {
@@ -187,7 +187,7 @@ export default function LoginScreen(): ReactNode {
   // home bar. Here the brand + pad live in a single `justify-center` column that
   // stays composed at any device height, and the footer is a separate,
   // non-growing element pinned just above the home indicator.
-  const heroGap = compact ? t.space.x2_5 : t.space.x4_5
+  const heroGap = compact ? t.space.x2 : t.space.x3
   const groupGap = compact ? t.space.x3_5 : t.space.x5
 
   return (
@@ -197,93 +197,96 @@ export default function LoginScreen(): ReactNode {
           decoration, never under text it must contrast against. */}
       <PaperGrain />
 
-      <View
-        className="flex-1 items-center justify-center"
-        style={{
+      <ScrollView
+        className="flex-1"
+        contentContainerStyle={{
+          flexGrow: 1,
+          // Hero up top, keypad anchored toward the bottom (the flexible spacer in
+          // the column does the pushing). The bottom padding keeps the "0" row a
+          // comfortable, balanced inset above the home indicator — never pinned to
+          // the screen edge — and the horizontal padding gives equal left/right
+          // margins so the centred pad sits square on screen.
           paddingTop: insets.screen.top + t.space.x2,
-          paddingBottom: insets.stickyBottom + t.space.x2,
+          paddingBottom: insets.stickyBottom + 32,
           paddingHorizontal: t.space.x6,
         }}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        bounces={false}
       >
-        {/* The centred brand + PIN group. `flex-1 justify-center` optically
-            balances it in the space the footer leaves, on every screen height;
-            the max width keeps it composed on tablets. */}
+        {/* Owner directive: the whole lock template — logo, welcome, dots and
+            keypad — rides ONE upward lift so it sits higher on the screen as a
+            single unit, with the freed breathing room dropping to the bottom. The
+            lift is translateY only, so the column stays perfectly centred. */}
         <View
-          className="w-full flex-1 items-center justify-center"
-          style={{ maxWidth: 420, gap: groupGap }}
+          style={{
+            flex: 1,
+            width: "100%",
+            alignItems: "center",
+            // Owner zoom: scale the whole lock template up 7% on top of the lift,
+            // so logo, welcome, dots and keypad all grow as one.
+            transform: [{ translateY: -height * 0.08 }, { scale: 1.07 }],
+          }}
         >
-          {/* Hero the real brand mark + a calm welcome. Settles with the spine's
-              screen-enter; the mark itself breathes in once. */}
-          <Animated.View
-            entering={screenEnter(reduceMotion)}
-            className="items-center"
-            style={{ gap: heroGap }}
+        {/* Hero the real brand mark (optically centred) + a calm welcome, seated
+            in the upper area. Settles with the spine's screen-enter; the mark
+            breathes in once. */}
+        <Animated.View
+          entering={screenEnter(reduceMotion)}
+          className="w-full items-center"
+          style={{ maxWidth: 420, gap: heroGap, marginTop: compact ? 0 : t.space.x1 }}
+        >
+          <WarehouseMark size="lg" />
+          {/* Owner: lift the word up from its place (the logo above stays put). */}
+          <Text
+            className="text-foreground font-display-bold text-center text-4xl leading-tight"
+            style={{ transform: [{ translateY: -height * 0.05 }] }}
           >
-            <WarehouseMark size="lg" />
-            <View className="items-center" style={{ gap: t.space.x2 }}>
-              <Text
-                className="text-primary text-2xs font-semibold"
-                style={{ letterSpacing: 2 }}
-              >
-                Warehouse 14
-              </Text>
-              <Text className="text-foreground font-display-bold text-center text-4xl leading-tight">
-                Willkommen zurück
-              </Text>
-            </View>
-          </Animated.View>
+            Willkommen zurück
+          </Text>
+        </Animated.View>
 
-          {/* PIN entry dots + the clean ink keypad. Carries the shake + flash on error. */}
-          <View className="w-full items-center" style={{ gap: t.space.x5 }}>
-            <PinPad
-              filled={pin.length}
-              length={PIN_LENGTH}
-              onDigit={onDigit}
-              onBackspace={onBackspace}
-              errorNonce={errorNonce}
-              disabled={busy}
-            />
+        {/* Flexible breathing space pushes the PIN block to the lower third, so the
+            keypad rests under the thumb while the welcome stays well clear above
+            the dots. */}
+        <View style={{ flexGrow: 1 }} />
 
-            {/* One reserved status line so the keypad never jumps; it carries the
-                calm prompt, the signing-in state, or the themed error in place. */}
-            <View
-              style={{ minHeight: 22, paddingHorizontal: t.space.x2 }}
-              className="items-center justify-center"
-            >
-              <Animated.View key={statusLabel} entering={itemEnter(0, reduceMotion)}>
-                <Text
-                  className={`text-center text-sm font-medium ${error ? "text-destructive" : "text-muted-foreground"}`}
-                  numberOfLines={2}
-                >
-                  {statusLabel}
-                </Text>
-              </Animated.View>
-            </View>
-          </View>
-        </View>
-
-        {/* Footer re-open the intro + the honest DEV connection hint. Lives
-            outside the centred group as a fixed-height element pinned above the
-            home indicator, so it never tugs the brand/pad off centre. */}
+        {/* PIN entry dots + the clean ink keypad, anchored near the bottom with a
+            balanced inset (equal to the side padding, clear of the home bar).
+            Carries the shake + flash on error. */}
         <View
           className="w-full items-center"
-          style={{ maxWidth: 420, gap: t.space.x3, paddingTop: t.space.x4 }}
+          style={{ maxWidth: 420, gap: t.space.x4, transform: [{ translateY: -height * 0.05 }] }}
         >
-          {/* The "App kennenlernen" replay link was REMOVED — it overlapped the
-              PIN pad and caused touch-target collisions. The owner wants only the
-              PIN pad, nothing else. */}
+          {/* One reserved status line ABOVE the pad — the calm prompt, the
+              signing-in state, or the themed error — in a fixed-height slot so the
+              keypad never jumps and stays the bottom-most element with a clean,
+              balanced margin to the home bar. */}
+          <View
+            style={{ minHeight: 22, paddingHorizontal: t.space.x2 }}
+            className="items-center justify-center"
+          >
+            <Animated.View key={statusLabel} entering={itemEnter(0, reduceMotion)}>
+              <Text
+                className={`text-center text-sm font-medium ${error ? "text-destructive" : "text-muted-foreground"}`}
+                numberOfLines={2}
+              >
+                {statusLabel}
+              </Text>
+            </Animated.View>
+          </View>
 
-          {/* Honest DEV-only convenience hint the backend it talks to and the
-              seeded owner credentials. Gated to dev builds so a real owner on a
-              release build never sees a developer string or a plaintext PIN. */}
-          {__DEV__ ? (
-            <Text className="text-muted-foreground text-2xs text-center">
-              Dev-Backend · {API_BASE_URL}
-              {"\n"}Owner basel@warehouse14.local · PIN 0000
-            </Text>
-          ) : null}
+          <PinPad
+            filled={pin.length}
+            length={PIN_LENGTH}
+            onDigit={onDigit}
+            onBackspace={onBackspace}
+            errorNonce={errorNonce}
+            disabled={busy}
+          />
         </View>
-      </View>
+        </View>
+      </ScrollView>
     </View>
   )
 }

@@ -20,14 +20,13 @@
  * copy a screen reader announces.
  */
 import { useEffect, type ReactNode } from "react"
-import { Image, View } from "react-native"
+import { Image } from "react-native"
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
 } from "react-native-reanimated"
 
-import { useW14Theme } from "@/warehouse14/theme"
 import { emphasisSpring, useReduceMotion } from "@/warehouse14/ui"
 
 // The genuine shop mark, brass on transparent (same asset as the splash) — the
@@ -40,14 +39,13 @@ export interface WarehouseMarkProps {
 }
 
 export function WarehouseMark({ size = "lg" }: WarehouseMarkProps): ReactNode {
-  const t = useW14Theme()
   const reduceMotion = useReduceMotion()
   const lg = size === "lg"
 
-  // Sizing scale — the hero is generous; the bar mark is compact.
-  const disc = lg ? 132 : 44
-  const ring = lg ? 150 : 50
-  const logo = lg ? 92 : 30
+  // No medallion frame — the owner asked for the genuine WAREHOUSE 14 mark on
+  // its own, not a disc or gilt ring around it. The asset is the framed brass
+  // emblem; it carries itself on the warm paper ground.
+  const mark = lg ? 251 : 48
 
   // Entrance: the disc settles with one emphasis spring (hero only). Static on
   // reduce-motion. Never loops — premium is calm, not busy.
@@ -65,73 +63,20 @@ export function WarehouseMark({ size = "lg" }: WarehouseMarkProps): ReactNode {
   })
 
   return (
-    <View
+    <Animated.View
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
-      style={{ width: ring, height: ring, alignItems: "center", justifyContent: "center" }}
+      style={discStyle}
     >
-      {/* Bloom REMOVED the layered brass discs read as a glow behind the
-          medallion, which the official store motion language forbids. The
-          medallion now sits on the warm paper ground; depth comes from the
-          concentric hairline rings below, never from a glow. */}
-      {lg ? null : null}
-
-      {/* Outer decorative gilt ring a single hairline flourish. */}
-      <View
-        pointerEvents="none"
-        style={{
-          position: "absolute",
-          width: ring,
-          height: ring,
-          borderRadius: ring / 2,
-          borderWidth: lg ? 1.5 : 1,
-          borderColor: `${t.colors.gilt}59`,
-        }}
+      {/* The genuine WAREHOUSE 14 mark on its own — no disc, no gilt ring. The
+          asset is the framed brass emblem; it carries itself on the warm paper
+          ground and breathes in once on mount (hero only). */}
+      <Image
+        source={LOGO}
+        accessibilityIgnoresInvertColors
+        resizeMode="contain"
+        style={{ width: mark, height: mark }}
       />
-
-      {/* Inner ink hairline, just inside the gilt a second concentric line
-          that gives the medallion engraved depth. */}
-      <View
-        pointerEvents="none"
-        style={{
-          position: "absolute",
-          width: ring - (lg ? 9 : 4),
-          height: ring - (lg ? 9 : 4),
-          borderRadius: ring / 2,
-          borderWidth: 1,
-          borderColor: `${t.colors.foreground}26`,
-        }}
-      />
-
-      {/* The parchment disc that seats the real logo. */}
-      <Animated.View
-        style={[
-          discStyle,
-          {
-            width: disc,
-            height: disc,
-            borderRadius: disc / 2,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: t.colors.card,
-            borderWidth: 1,
-            borderColor: t.colors.border,
-          },
-        ]}
-      >
-        <Image
-          source={LOGO}
-          accessibilityIgnoresInvertColors
-          resizeMode="contain"
-          style={{
-            width: logo,
-            height: logo,
-            // The asset is already brass; in light mode it carries itself, in
-            // dark mode it reads warmly against the card. No tint so the genuine
-            // mark stays exactly the colour the shop knows.
-          }}
-        />
-      </Animated.View>
-    </View>
+    </Animated.View>
   )
 }

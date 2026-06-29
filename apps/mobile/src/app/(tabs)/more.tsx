@@ -1,17 +1,24 @@
 /**
- * Mehr — the Owner OS hub. A scannable launcher grid onto every secondary owner
+ * Mehr — the Owner OS hub. A calm, scannable launcher onto every secondary owner
  * surface, grouped into labelled sections, fully driven by the OWNER_SURFACES
  * registry (src/warehouse14/owner-surfaces.ts). A later agent adds a screen by
  * appending ONE entry there and flipping its `available` flag — this screen
  * needs no edit and goes live the moment the registry says the route exists.
  *
- * Honesty rule (DESIGN.md §4): an `available` card has a real, built route, so it
- * presses, fires the selection haptic, and pushes. A not-yet-built surface
- * (`available: false`) renders as a calm, dashed locked tile labelled
- * „bald verfügbar", does NOT animate a press, and does NOT navigate — so the hub
- * can never route into a missing screen and never implies a feature exists before
- * it does. The three Finanzen/System cards flip to live automatically once their
- * route files land this phase.
+ * Composition (DESIGN-SYSTEM.md §1, §9 — kill boxes-inside-boxes):
+ *   Not a wall of two-column cards. Each section is a small-caps OVERLINE label
+ *   with a gilt diamond seal, over ONE half-step parchment leaf (parchment-2)
+ *   framed by a single warm hairline. Inside the leaf the surfaces are BARE rows
+ *   — a leading ink glyph (no tinted chip), the German label + one-line meaning,
+ *   then a chevron — divided only by an inset hairline. Depth is the parchment
+ *   step + that one rule, never a stack of cards or a heavier shadow.
+ *
+ * Honesty rule (DESIGN.md §4): an `available` row has a real, built route, so it
+ * presses (the spine press-scale), fires the selection haptic, and pushes. A
+ * not-yet-built surface (`available: false`) is a calm muted row sealed with the
+ * bespoke gilt diamond and the honest bald-verfügbar caption. It does NOT
+ * press and does NOT navigate, so the hub can never route into a missing screen
+ * and never implies a feature exists before it does.
  *
  * Spine: the §6 motion vocabulary (PressableScale + a capped StaggerItem
  * cascade), the §7 haptic vocabulary (selection on a navigate), the type ramp +
@@ -21,9 +28,9 @@
 import { useMemo } from "react"
 import { ScrollView, View } from "react-native"
 import { type Href, useRouter } from "expo-router"
-import { ChevronRight, Lock } from "lucide-react-native"
+import { ChevronRight } from "lucide-react-native"
+import Svg, { Path } from "react-native-svg"
 
-import { Card } from "@/components/ui/card"
 import { Text } from "@/components/ui/text"
 import {
   OWNER_SURFACES,
@@ -33,6 +40,7 @@ import {
 } from "@/warehouse14/owner-surfaces"
 import { useW14Theme } from "@/warehouse14/theme"
 import {
+  Hairline,
   haptics,
   PaperGrain,
   PressableScale,
@@ -42,97 +50,118 @@ import {
 } from "@/warehouse14/ui"
 
 /**
- * One launcher card. Available cards are a `PressableScale` (spine press-scale +
- * selection haptic + push); locked cards are a static, dashed tile with a lock
- * badge and the honest „bald verfügbar" caption — no press, no navigation.
- *
- * Both branches own the 48% grid width on the outer wrapper so the two layouts
- * line up identically across a row regardless of availability.
+ * The house seal — a small gilt diamond, the §6 "Kicker" mark ported to native.
+ * Hairline-stroked (the gilt is a thread/edge/seal, never a fill), so it opens a
+ * section the way the storefront's ◆ opens a region. Decorative → a11y-hidden.
  */
-function HubCard({ surface, index }: { surface: OwnerSurface; index: number }) {
+function DiamondSeal({ size, color }: { size: number; color: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 12 12" fill="none" accessibilityElementsHidden>
+      <Path
+        d="M6 1 L11 6 L6 11 L1 6 Z"
+        stroke={color}
+        strokeWidth={1.2}
+        strokeLinejoin="round"
+        fill="none"
+      />
+    </Svg>
+  )
+}
+
+/**
+ * One launcher row — bare, never a card. Leading ink glyph (no tinted chip box),
+ * the German label + a one-line meaning, then the affordance:
+ *   • available → a chevron; the whole row is a PressableScale (press-scale +
+ *     selection haptic + push).
+ *   • locked    → muted text + the gilt diamond seal and the bald-verfügbar
+ *     caption; no press, no navigation. The seal alone tells the story.
+ *
+ * `last` drops the trailing inset hairline so a group's final row has no rule
+ * under it — the parchment leaf already ends there.
+ */
+function HubRow({
+  surface,
+  last,
+}: {
+  surface: OwnerSurface
+  last: boolean
+}) {
   const t = useW14Theme()
   const router = useRouter()
   const Icon = surface.icon
   const available = surface.available === true
 
-  const iconTint = available ? t.colors.primary : t.colors.mutedForeground
+  const titleColor = available ? t.colors.foreground : t.colors.mutedForeground
+  const iconColor = available ? t.colors.foreground : t.colors.mutedForeground
 
   const body = (
-    <Card
-      className="w-full gap-3 px-4 py-4"
-      style={available ? undefined : { borderStyle: "dashed", opacity: 0.9 }}
-    >
-      <View className="flex-row items-start justify-between">
-        {/* Leading icon disc a soft brass-tinted square so the glyph reads as a
-            launcher target. The tint carries no text, so brass is correct here. */}
-        <View
-          className="items-center justify-center rounded-xl"
-          style={{
-            width: 44,
-            height: 44,
-            backgroundColor: iconTint + "1f", // ~12% tint of the role colour
-          }}
-        >
-          <Icon size={t.icon.lg} color={iconTint} />
+    <View>
+      <View
+        className="min-h-[56px] flex-row items-center px-4"
+        style={{ paddingVertical: t.space.x1_5, gap: t.space.x2 }}
+      >
+        {/* Leading glyph sits directly on the leaf — no tinted chip box. A bare
+            ink mark reads as a calm, native launcher target (DESIGN-SYSTEM.md §9). */}
+        <View className="h-7 w-7 items-center justify-center">
+          <Icon size={t.icon.lg} color={iconColor} strokeWidth={1.7} />
         </View>
+
+        <View className="flex-1 gap-0.5">
+          <Text
+            className="text-base font-medium"
+            style={{ color: titleColor }}
+            numberOfLines={1}
+          >
+            {surface.label}
+          </Text>
+          <Text className="text-muted-foreground text-xs" numberOfLines={1}>
+            {available ? surface.description : "bald verfügbar"}
+          </Text>
+        </View>
+
         {available ? (
           <ChevronRight size={t.icon.md} color={t.colors.mutedForeground} />
         ) : (
-          <View
-            className="flex-row items-center gap-1 rounded-md px-2 py-1"
-            style={{ backgroundColor: t.colors.mutedForeground + "14" }}
-          >
-            <Lock size={t.icon.xs} color={t.colors.mutedForeground} />
+          // Locked: the gilt diamond seal as a quiet edge/seal accent (never a
+          // fill), so the row reads as held-back, not broken.
+          <View className="h-7 w-7 items-center justify-center">
+            <DiamondSeal size={t.icon.sm} color={t.colors.gilt} />
           </View>
         )}
       </View>
 
-      <View className="gap-1">
-        <Text
-          className="text-base font-semibold"
-          style={available ? undefined : { color: t.colors.mutedForeground }}
-          numberOfLines={1}
-        >
-          {surface.label}
-        </Text>
-        <Text className="text-muted-foreground text-xs" numberOfLines={2}>
-          {available ? surface.description : "bald verfügbar"}
-        </Text>
-      </View>
-    </Card>
+      {/* The ONE divider weight — a warm hairline, inset under the text so it
+          starts past the glyph (row pad 16 + glyph 28 + gap 16), list-style. */}
+      {!last ? <Hairline inset={t.space.x5 - t.space.x1_2} /> : null}
+    </View>
   )
 
-  // Locked: a static tile, no press feedback, no navigation, no haptic — nothing
-  // happened, so nothing is signalled. The lock badge already tells the story.
+  // Locked: a static row, no press feedback, no navigation, no haptic — nothing
+  // happened, so nothing is signalled.
   if (!available) {
     return (
-      <StaggerItem
-        index={Math.min(index, 8)}
-        exit={false}
-        style={{ width: "48%" }}
+      <View
         accessibilityRole="summary"
         accessibilityLabel={`${surface.label}, bald verfügbar`}
       >
         {body}
-      </StaggerItem>
+      </View>
     )
   }
 
   return (
-    <StaggerItem index={Math.min(index, 8)} exit={false} style={{ width: "48%" }}>
-      <PressableScale
-        // The registry holds plain route strings (some not yet built); only
-        // `available` ones reach this branch. Cast to Href at this boundary.
-        onPress={() => {
-          haptics.selection()
-          router.push(surface.route as Href)
-        }}
-        accessibilityRole="button"
-        accessibilityLabel={`${surface.label}. ${surface.description}`}
-      >
-        {body}
-      </PressableScale>
-    </StaggerItem>
+    <PressableScale
+      // The registry holds plain route strings (some not yet built); only
+      // `available` ones reach this branch. Cast to Href at this boundary.
+      onPress={() => {
+        haptics.selection()
+        router.push(surface.route as Href)
+      }}
+      accessibilityRole="button"
+      accessibilityLabel={`${surface.label}. ${surface.description}`}
+    >
+      {body}
+    </PressableScale>
   )
 }
 
@@ -155,28 +184,35 @@ export default function MehrScreen() {
   }, [])
 
   // A single running index across all sections drives one continuous cascade so
-  // the grid settles in top-to-bottom as one motion, not section-by-section.
-  let cardIndex = 0
+  // the hub settles in top-to-bottom as one motion, not section-by-section.
+  let rowIndex = 0
 
   return (
     <View className="flex-1 bg-background">
-      {/* Die gealterte Papier-Maserung als Leinwand Tiefe aus dem geschichteten
+      {/* Die gealterte Papier-Maserung als Leinwand-Tiefe aus dem geschichteten
           Creme plus dieser feinen warmen Struktur, nie eine flache Fläche
           (DESIGN.md §1, §5). */}
       <PaperGrain />
       <ScrollView
         className="flex-1"
         contentContainerStyle={{
-          paddingTop: insets.screen.top + t.space.x4,
-          paddingHorizontal: t.space.x4,
+          // The tab header already clears the safe area; adding insets.screen.top
+          // here double-counted it and left a tall empty band under the header.
+          // A small top breath lets the hero title sit right below the header and
+          // uses the space, matching the other tabs.
+          paddingTop: t.space.x2,
+          paddingHorizontal: t.space.x3,
           paddingBottom: insets.contentBottom,
-          gap: t.space.x6,
+          gap: t.space.x4,
         }}
         showsVerticalScrollIndicator={false}
       >
-        <View className="gap-1">
+        <View className="gap-1" style={{ paddingHorizontal: t.space.x1 }}>
           {/* Bildschirmtitel in der Bricolage-Display-Stimme (DESIGN-SYSTEM.md §3). */}
-          <Text className="text-2xl font-display-semibold leading-tight" numberOfLines={1}>
+          <Text
+            className="text-3xl font-display-semibold leading-tight"
+            numberOfLines={1}
+          >
             Mehr
           </Text>
           <Text className="text-muted-foreground text-sm" numberOfLines={2}>
@@ -185,13 +221,33 @@ export default function MehrScreen() {
         </View>
 
         {sections.map((section) => (
-          <View key={section.group} className="gap-3">
-            {/* Section label the shared overline (small-caps eyebrow), not a
-                hand-rolled uppercase Text. One identity across the app. */}
-            <SectionHeader title={section.label} emphasis="overline" />
-            <View className="flex-row flex-wrap justify-between" style={{ rowGap: t.space.x3 }}>
-              {section.items.map((s) => (
-                <HubCard key={s.id} surface={s} index={cardIndex++} />
+          <View key={section.group} className="gap-2.5">
+            {/* Section opener: a gilt diamond seal + the shared small-caps
+                overline (DESIGN-SYSTEM.md §6 Kicker), set on the canvas — not a
+                boxed chip header. */}
+            <View
+              className="flex-row items-center gap-2"
+              style={{ paddingHorizontal: t.space.x1 }}
+            >
+              <DiamondSeal size={10} color={t.colors.gilt} />
+              <SectionHeader title={section.label} emphasis="overline" />
+            </View>
+
+            {/* ONE half-step parchment leaf per section, framed by a single warm
+                hairline. The bare rows live on it, divided only by inset rules —
+                parchment-step depth, not a stack of cards (DESIGN-SYSTEM.md §9). */}
+            <View
+              className="overflow-hidden bg-card"
+              style={{
+                borderRadius: t.radii.card,
+                borderWidth: 1,
+                borderColor: t.colors.border,
+              }}
+            >
+              {section.items.map((s, i) => (
+                <StaggerItem key={s.id} index={Math.min(rowIndex++, 8)} exit={false}>
+                  <HubRow surface={s} last={i === section.items.length - 1} />
+                </StaggerItem>
               ))}
             </View>
           </View>

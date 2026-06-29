@@ -27,11 +27,14 @@
  * (the sell fiscal primitives, the product-form controls, the §6 motion + §7
  * haptic vocabulary, W14 theme tokens only). German UI, de-DE money.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Pressable, ScrollView, View } from "react-native"
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { Modal, Pressable, ScrollView, View } from "react-native"
+import { GestureHandlerRootView } from "react-native-gesture-handler"
+import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { useFocusEffect, useRouter } from "expo-router"
 import type {
   AnkaufItemType,
+  AnkaufMetal,
   AnkaufPayoutMethod,
   CustomerListRow,
   MetalRatesResponse,
@@ -39,10 +42,12 @@ import type {
 import {
   Banknote,
   Check,
+  ChevronRight,
   FileText,
   IdCard,
   Info,
   Landmark,
+  type LucideIcon,
   Monitor,
   Plus,
   Printer,
@@ -55,10 +60,10 @@ import {
   UserRound,
   X,
 } from "lucide-react-native"
+import Svg, { Path } from "react-native-svg"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
 import {
   Dialog,
   DialogContent,
@@ -90,7 +95,6 @@ import {
   metalFromItemType,
   PAYOUT_METHOD_LABEL,
 } from "@/warehouse14/ankauf-ui"
-import { germanLabel } from "@/warehouse14/german-text"
 import {
   ankaufTransaction,
   formatCents,
@@ -105,15 +109,7 @@ import {
   TRUST_LEVEL_LABEL,
   TRUST_LEVEL_VARIANT,
 } from "@/warehouse14/customer-ui"
-import { ChipSelect, Field, MetalWeightField, MoneyField } from "@/warehouse14/product-form"
-import {
-  buildReceiptDoc,
-  FiscalConfirmSheet,
-  newIdempotencyKey,
-  PAYMENT_METHOD_LABELS,
-  ReceiptPreview,
-  type CartTotals,
-} from "@/warehouse14/sell"
+import { germanLabel } from "@/warehouse14/german-text"
 import {
   escposRequirement,
   getPrintCapabilities,
@@ -122,14 +118,34 @@ import {
   sharePdfPrintable,
   type ReceiptDoc,
 } from "@/warehouse14/print"
+import {
+  ChipSelect,
+  Field,
+  MetalWeightField,
+  MoneyField,
+  WheelPicker,
+} from "@/warehouse14/product-form"
+import {
+  buildReceiptDoc,
+  FiscalConfirmSheet,
+  newIdempotencyKey,
+  ReceiptPreview,
+  type CartTotals,
+} from "@/warehouse14/sell"
 import { useW14Theme } from "@/warehouse14/theme"
 import {
+  CoinIcon,
+  CountUp,
   EmptyState,
+  Hairline,
   haptics,
   InlineError,
+  type MetalKind,
+  MetalIcon,
   PaperGrain,
   PressableScale,
   Skeleton,
+  StampIcon,
   StaggerItem,
   useQuery,
   useScreenInsets,
@@ -138,7 +154,7 @@ import {
 const DEBOUNCE_MS = 300
 
 /** The two payout rails the Ankauf route accepts. */
-const PAYOUTS: { method: AnkaufPayoutMethod; icon: typeof Banknote }[] = [
+const PAYOUTS: { method: AnkaufPayoutMethod; icon: LucideIcon }[] = [
   { method: "CASH", icon: Banknote },
   { method: "BANK_TRANSFER", icon: Landmark },
 ]
@@ -149,6 +165,83 @@ function initialsOf(fullName: string): string {
   if (parts.length === 0) return "?"
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}
+
+/** Lowercase wire metal (`gold`) → the bespoke MetalIcon's uppercase kind. */
+const METAL_ICON_KIND: Readonly<Record<AnkaufMetal, MetalKind>> = {
+  gold: "GOLD",
+  silver: "SILBER",
+  platinum: "PLATIN",
+  palladium: "PALLADIUM",
+}
+
+/**
+ * Pick the bespoke SVG mark for an intake line: the metal ingot when a metal is
+ * known, a coin for numismatic types, a stamp for philatelic/antique pieces, and
+ * a calm shopping-bag fallback otherwise. The glyph tints from `currentColor` /
+ * the passed `color`, so it stays ink on the parchment.
+ */
+function IntakeGlyph({
+  line,
+  size,
+  color,
+}: {
+  line: IntakeLine
+  size: number
+  color: string
+}): ReactNode {
+  if (line.metal) {
+    return <MetalIcon metal={METAL_ICON_KIND[line.metal]} size={size} color={color} />
+  }
+  if (line.itemType.endsWith("coin")) return <CoinIcon size={size} color={color} />
+  if (line.itemType === "antique") return <StampIcon size={size} color={color} />
+  return <ShoppingBag size={size} color={color} />
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Kicker — the gilt diamond ◆ that opens every section (DESIGN-SYSTEM.md §6).
+// A bespoke 8×8 react-native-svg lozenge in the gilt thread colour — the one
+// place gold appears on this screen, as a seal, never a fill behind text.
+// ────────────────────────────────────────────────────────────────────────────
+
+function GiltDiamond({ size = 8 }: { size?: number }): ReactNode {
+  const t = useW14Theme()
+  return (
+    <Svg width={size} height={size} viewBox="0 0 8 8" accessibilityElementsHidden>
+      <Path d="M4 0 L8 4 L4 8 L0 4 Z" fill={t.colors.gilt} />
+    </Svg>
+  )
+}
+
+/**
+ * SectionLead — an un-carded section opener that sits directly on the parchment:
+ * the gilt diamond seal + a Lucide mark + the Bricolage display title, with an
+ * optional right-hand slot (a count Badge, a „Leeren" link). De-boxed: the old
+ * numbered raised-circle chip is gone; hierarchy now comes from the display
+ * voice + whitespace + a single warm hairline, never a nested box.
+ */
+function SectionLead({
+  icon: Icon,
+  title,
+  trailing,
+}: {
+  icon: LucideIcon
+  title: string
+  trailing?: ReactNode
+}): ReactNode {
+  const t = useW14Theme()
+  return (
+    <View className="flex-row items-center justify-between gap-3">
+      <View className="flex-1 flex-row items-center gap-2.5">
+        <GiltDiamond />
+        <Icon size={t.icon.md} color={t.colors.primary} />
+        <Text className="flex-1 text-lg font-display-semibold leading-tight" numberOfLines={1}>
+          {title}
+        </Text>
+      </View>
+      {trailing != null ? <View>{trailing}</View> : null}
+    </View>
+  )
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -226,6 +319,12 @@ export default function AnkaufScreen() {
       haptics.error()
       return
     }
+    // Fresh idempotency key per sheet-open: a prior attempt that failed (cancelled
+    // step-up / server refusal), then got EDITED and resubmitted, must NOT reuse
+    // the old key — the server would dedupe to the stale attempt and silently drop
+    // the edits. A double-tap WITHIN one open still shares this key (the sheet owns
+    // the confirm), so the at-most-once guard for the same payout is preserved.
+    setIdempotencyKey(newIdempotencyKey())
     haptics.impactLight()
     setConfirmOpen(true)
   }, [canCommit])
@@ -255,8 +354,8 @@ export default function AnkaufScreen() {
       kind: "Ankauf",
       receiptLocator: res.receiptLocator,
       issuedAt: res.finalizedAt,
-      // payoutMethod ⊂ PaymentMethod (CASH | BANK_TRANSFER); PAYMENT_METHOD_LABELS
-      // carries the German label for both — so the Beleg shows „Bar" / „Überweisung".
+      // payoutMethod ⊂ PaymentMethod (CASH | BANK_TRANSFER); the receipt builder
+      // resolves the German label for both, so the Beleg shows Bar / Überweisung.
       payment: { method: res.payoutMethod },
     })
     setDone({
@@ -314,9 +413,12 @@ export default function AnkaufScreen() {
       >
         {/* ── 1 · Verkäufer ──────────────────────────────────────────────────── */}
         <View className="gap-3">
-          <SectionTitle icon={UserRound} index={1} title="Verkäufer" />
+          <SectionLead icon={UserRound} title="Verkäufer" />
 
           {customerId == null ? (
+            // De-boxed: a bare tappable row on a single warm hairline, not a
+            // tinted card. The leading mark sits directly (no chip box); the eye
+            // reads it as a calm native target.
             <PressableScale
               accessibilityRole="button"
               accessibilityLabel="Verkäufer auswählen"
@@ -325,29 +427,19 @@ export default function AnkaufScreen() {
                 setPickerOpen(true)
               }}
             >
-              <Card
-                className="min-h-[56px] flex-row items-center gap-3 rounded-xl border px-4 py-3"
-                style={{
-                  borderColor: t.colors.border,
-                  backgroundColor: t.colors.raised,
-                }}
-              >
-                <View
-                  className="h-9 w-9 items-center justify-center rounded-md"
-                  style={{ backgroundColor: t.colors.raised }}
-                >
-                  <Search size={t.icon.md} color={t.colors.primary} />
-                </View>
+              <View className="hairline-b min-h-[56px] flex-row items-center gap-3 py-3">
+                <Search size={t.icon.md} color={t.colors.primary} />
                 <View className="flex-1">
                   <Text className="text-base font-semibold">Verkäufer auswählen</Text>
                   <Text className="text-muted-foreground text-xs">
                     Pflicht der Ankauf verlangt eine geprüfte Identität.
                   </Text>
                 </View>
-              </Card>
+                <Plus size={t.icon.sm} color={t.colors.mutedForeground} />
+              </View>
             </PressableScale>
           ) : customerQ.isLoading && customer == null ? (
- <View className="flex-row items-center gap-3 hairline-b px-4 py-3">
+            <View className="hairline-b flex-row items-center gap-3 py-3">
               <Skeleton width={44} height={44} radius="full" />
               <View className="flex-1 gap-2">
                 <Skeleton width="56%" height={14} />
@@ -390,10 +482,9 @@ export default function AnkaufScreen() {
             <ComplianceStop sanctions={customer.sanctionsMatch} />
           ) : null}
           {customer != null && kyc.kycVerified ? (
-            <View
-              className="flex-row items-center gap-2 rounded-xl px-3 py-2"
-              style={{ backgroundColor: t.colors.verdigris + "12" }}
-            >
+            // De-boxed: the „geprüft" confirmation is a bare verdigris row, the
+            // functional colour carrying meaning, no tinted card.
+            <View className="flex-row items-center gap-2 px-0.5">
               <ShieldCheck size={t.icon.sm} color={t.colors.verdigris} />
               <Text className="text-xs font-medium" style={{ color: t.colors.verdigris }}>
                 Identität geprüft Ankauf zulässig.
@@ -404,36 +495,46 @@ export default function AnkaufScreen() {
 
         {/* ── 2 · Stücke ─────────────────────────────────────────────────────── */}
         <View className="gap-3">
-          <View className="flex-row items-center justify-between">
-            <SectionTitle icon={ShoppingBag} index={2} title="Stücke" count={lot.lines.length} />
-            {!lot.isEmpty ? (
-              <Pressable
-                onPress={() => {
-                  haptics.selection()
-                  lot.clear()
-                }}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="Alle Stücke entfernen"
-                className="flex-row items-center gap-1 px-1.5 py-1"
-              >
-                <Trash2 size={t.icon.xs} color={t.colors.mutedForeground} />
-                <Text className="text-muted-foreground text-xs">Leeren</Text>
-              </Pressable>
-            ) : null}
-          </View>
+          <SectionLead
+            icon={ShoppingBag}
+            title="Stücke"
+            trailing={
+              !lot.isEmpty ? (
+                <View className="flex-row items-center gap-3">
+                  <Text className="text-muted-foreground font-mono text-xs">
+                    {lot.lines.length}
+                  </Text>
+                  <Pressable
+                    onPress={() => {
+                      haptics.selection()
+                      lot.clear()
+                    }}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Alle Stücke entfernen"
+                    className="flex-row items-center gap-1 py-1"
+                  >
+                    <Trash2 size={t.icon.xs} color={t.colors.mutedForeground} />
+                    <Text className="text-muted-foreground text-xs">Leeren</Text>
+                  </Pressable>
+                </View>
+              ) : undefined
+            }
+          />
 
           {lot.isEmpty ? (
-            <Card className="px-4 py-6">
-              <View className="items-center gap-1.5">
-                <ShoppingBag size={t.icon.xl} color={t.colors.mutedForeground} />
-                <Text className="text-muted-foreground text-center text-sm">
-                  Noch kein Stück erfasst. Stück hinzufügen unten beginnt die Bewertung.
-                </Text>
-              </View>
-            </Card>
+            // De-boxed empty state: a calm centred placeholder on the bare
+            // parchment ruled by a single warm hairline, never a card.
+            <View className="hairline-t hairline-b items-center gap-2 py-8">
+              <ShoppingBag size={t.icon.xl} color={t.colors.mutedForeground} />
+              <Text className="text-muted-foreground max-w-[260px] text-center text-sm leading-5">
+                Noch kein Stück erfasst. Tippe auf Stück hinzufügen, um die Bewertung zu beginnen.
+              </Text>
+            </View>
           ) : (
-            <View className="gap-2.5">
+            // The lot is a ruled ledger: each line sits on one shared warm
+            // hairline, not in its own stacked card (de-boxed).
+            <View className="hairline-t">
               {lot.lines.map((line, index) => (
                 <StaggerItem key={line.id} index={Math.min(index, 8)} exit={false}>
                   <IntakeRow
@@ -466,37 +567,8 @@ export default function AnkaufScreen() {
         {!lot.isEmpty ? (
           <>
             <View className="gap-3">
-              <SectionTitle icon={Banknote} index={3} title="Auszahlung" />
-              <View className="flex-row gap-2">
-                {PAYOUTS.map(({ method: m, icon: Icon }) => {
-                  const active = method === m
-                  return (
-                    <PressableScale
-                      key={m}
-                      onPress={() => {
-                        haptics.selection()
-                        setMethod(m)
-                      }}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: active }}
-                      accessibilityLabel={`Auszahlung ${PAYOUT_METHOD_LABEL[m]}`}
-                      style={{ minHeight: t.touch.comfortable }}
-                      className="flex-1 items-center justify-center gap-1 rounded-md border px-2 py-2"
-                    >
-                      <Icon
-                        size={t.icon.md}
-                        color={active ? t.colors.primary : t.colors.mutedForeground}
-                      />
-                      <Text
-                        className="text-xs font-medium"
-                        style={{ color: active ? t.colors.primary : t.colors.mutedForeground }}
-                      >
-                        {PAYOUT_METHOD_LABEL[m]}
-                      </Text>
-                    </PressableScale>
-                  )
-                })}
-              </View>
+              <SectionLead icon={Banknote} title="Auszahlung" />
+              <PayoutPicker method={method} onPick={setMethod} />
 
               {method === "BANK_TRANSFER" ? (
                 <Field
@@ -517,28 +589,36 @@ export default function AnkaufScreen() {
                   />
                 </Field>
               ) : (
-                <Card className="px-4 py-3">
-                  <Text className="text-muted-foreground text-sm leading-5">
+                // De-boxed: a calm bare note on a single warm hairline, not a card.
+                <View className="hairline-t flex-row items-start gap-2.5 pt-3">
+                  <Info size={t.icon.sm} color={t.colors.mutedForeground} />
+                  <Text className="text-muted-foreground flex-1 text-sm leading-5">
                     Der Betrag wird bar aus der Kasse ausgezahlt. Der Ankauf wird als Barauszahlung
                     in der Schicht erfasst.
                   </Text>
-                </Card>
+                </View>
               )}
             </View>
 
-            <Card className="gap-2 px-4 py-4">
-              <View className="flex-row items-center justify-between">
-                <Text className="text-muted-foreground text-sm">Auszahlung gesamt</Text>
-                <Text className="font-mono-medium text-2xl" style={{ color: t.colors.foreground }}>
-                  {formatCents(Number(totalCents))}
-                </Text>
-              </View>
-            </Card>
+            {/* The payout total ruled by a single warm hairline above, not boxed.
+                The figure rolls to its new sum with the calm emphasis spring
+                (CountUp formats through formatCents — honest, never a fake
+                number). */}
+            <View className="hairline-t flex-row items-baseline justify-between pt-3.5">
+              <Text className="text-muted-foreground text-sm">Auszahlung gesamt</Text>
+              <CountUp
+                value={Number(totalCents)}
+                format={(n) => formatCents(n)}
+                className="font-mono-medium text-3xl"
+                style={{ color: t.colors.foreground }}
+                accessibilityLabel={`Auszahlung gesamt ${formatCents(Number(totalCents))}`}
+              />
+            </View>
 
             {/* The fiscal gate opener NEVER the commit itself. */}
             <View className="gap-2 pt-1">
               <View className="flex-row items-center gap-1.5">
-                <ShieldCheck size={t.icon.xs} color={t.colors.primary} />
+                <GiltDiamond />
                 <Text className="text-xs font-semibold" style={{ color: t.colors.foreground }}>
                   Fiskalische Aktion
                 </Text>
@@ -558,6 +638,8 @@ export default function AnkaufScreen() {
                 <GateHint text="Identität des Verkäufers zuerst prüfen (KYC)." />
               ) : refMissing ? (
                 <GateHint text="Referenz für die Überweisung eingeben." />
+              ) : customer == null ? (
+                <GateHint text="Verkäuferdaten werden geladen …" />
               ) : null}
             </View>
           </>
@@ -615,38 +697,48 @@ export default function AnkaufScreen() {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Section title — a numbered step header
+// Payout picker — the two rails (Bar · Überweisung) as bare segmented targets
 // ────────────────────────────────────────────────────────────────────────────
 
-function SectionTitle({
-  icon: Icon,
-  index,
-  title,
-  count,
+function PayoutPicker({
+  method,
+  onPick,
 }: {
-  icon: typeof Banknote
-  index: number
-  title: string
-  count?: number
+  method: AnkaufPayoutMethod
+  onPick: (m: AnkaufPayoutMethod) => void
 }) {
   const t = useW14Theme()
   return (
-    <View className="flex-row items-center gap-2">
-      <View
-        className="h-6 w-6 items-center justify-center rounded-full"
-        style={{ backgroundColor: t.colors.raised }}
-      >
-        <Text className="text-2xs font-bold" style={{ color: t.colors.foreground }}>
-          {index}
-        </Text>
-      </View>
-      <Icon size={t.icon.md} color={t.colors.primary} />
-      <Text className="text-base font-semibold">{title}</Text>
-      {count != null && count > 0 ? (
-        <Badge variant="outline">
-          <Text>{count}</Text>
-        </Badge>
-      ) : null}
+    <View className="flex-row gap-2">
+      {PAYOUTS.map(({ method: m, icon: Icon }) => {
+        const active = method === m
+        return (
+          <PressableScale
+            key={m}
+            onPress={() => {
+              haptics.selection()
+              onPick(m)
+            }}
+            accessibilityRole="button"
+            accessibilityState={{ selected: active }}
+            accessibilityLabel={`Auszahlung ${PAYOUT_METHOD_LABEL[m]}`}
+            style={{
+              minHeight: t.touch.comfortable,
+              borderColor: active ? t.colors.primary : t.colors.border,
+              backgroundColor: active ? t.colors.raised : undefined,
+            }}
+            className="flex-1 flex-row items-center justify-center gap-2 rounded-md border px-2 py-2"
+          >
+            <Icon size={t.icon.md} color={active ? t.colors.primary : t.colors.mutedForeground} />
+            <Text
+              className="text-sm font-medium"
+              style={{ color: active ? t.colors.primary : t.colors.mutedForeground }}
+            >
+              {PAYOUT_METHOD_LABEL[m]}
+            </Text>
+          </PressableScale>
+        )
+      })}
     </View>
   )
 }
@@ -675,8 +767,11 @@ function SellerCard({
   onChange: () => void
 }) {
   const t = useW14Theme()
+  // De-boxed: the chosen seller is a bare row ruled by a single warm hairline,
+  // not a stacked card. The monogram is a quiet raised disc (an avatar, not a
+  // chip), and the flags sit as a calm badge run beneath the name.
   return (
-    <Card className="gap-3 rounded-xl border px-4 py-3">
+    <View className="hairline-t hairline-b gap-3 py-3">
       <View className="flex-row items-center gap-3">
         <View
           className="h-11 w-11 items-center justify-center rounded-full"
@@ -716,7 +811,7 @@ function SellerCard({
           </Badge>
         ) : null}
       </View>
-    </Card>
+    </View>
   )
 }
 
@@ -736,12 +831,12 @@ function KycGateBanner({
   onVerify: () => void
 }) {
   const t = useW14Theme()
+  // An honest legal block. De-boxed to a bare alert ruled by a single warm
+  // hairline above + below (not a tinted bordered card): the IdCard mark sits
+  // directly, the copy carries the weight, and a calm ink primary button leads
+  // to the Ausweis stamp. The one place this surface raises its voice.
   return (
-    <Card
-      className="gap-3 rounded-xl border px-4 py-3.5"
-      style={{ borderColor: t.colors.border, backgroundColor: t.colors.primary + "0F" }}
-      accessibilityRole="alert"
-    >
+    <View className="hairline-t hairline-b gap-3 py-3.5" accessibilityRole="alert">
       <View className="flex-row items-start gap-2.5">
         <View className="pt-0.5">
           <IdCard size={t.icon.md} color={t.colors.primary} />
@@ -756,8 +851,8 @@ function KycGateBanner({
           </Text>
           {aggregateReached ? (
             <Text className="text-muted-foreground text-2xs leading-4">
-              Hinweis: Die Ankäufe dieses Verkäufers überschreiten im Fenster der letzten{" "}
-              {windowDays} Tage die GwG-Schwelle (§ 10) verknüpfte Transaktionen.
+              Hinweis: Die Ankäufe dieses Verkäufers überschreiten als verknüpfte Transaktionen im
+              Fenster der letzten {windowDays} Tage die GwG-Schwelle (§ 10).
             </Text>
           ) : null}
         </View>
@@ -766,19 +861,19 @@ function KycGateBanner({
         <ScanFace size={t.icon.sm} color={t.colors.primaryForeground} />
         <Text>Identität prüfen</Text>
       </Button>
-    </Card>
+    </View>
   )
 }
 
 function ComplianceStop({ sanctions }: { sanctions: boolean }) {
   const t = useW14Theme()
+  // The hard compliance stop. A bare destructive-led row on a single warm
+  // hairline — the wax-red carries the meaning, no tinted bordered box. The
+  // left edge is a thin wax-red seal so the eye lands on the legal weight.
   return (
-    <Card
-      className="flex-row items-start gap-2.5 rounded-xl px-4 py-3.5"
-      style={{
-        borderColor: t.colors.destructive + "55",
-        backgroundColor: t.colors.destructive + "0D",
-      }}
+    <View
+      className="flex-row items-start gap-2.5 py-3.5 pl-3"
+      style={{ borderLeftWidth: 2, borderLeftColor: t.colors.destructive }}
       accessibilityRole="alert"
     >
       <View className="pt-0.5">
@@ -792,7 +887,7 @@ function ComplianceStop({ sanctions }: { sanctions: boolean }) {
           Erhöhte Sorgfaltspflicht (GwG). Ankauf nur nach interner Prüfung fortsetzen.
         </Text>
       </View>
-    </Card>
+    </View>
   )
 }
 
@@ -806,8 +901,26 @@ function IntakeRow({ line, onRemove }: { line: IntakeLine; onRemove: () => void 
   // the raw lower_snake token if a future backend enum ever arrives unmapped, so
   // a developer string can never surface in the lot row.
   const itemTypeLabel = germanLabel(ITEM_TYPE_LABEL, line.itemType)
+  // The optional weight·fineness suffix the operator typed — shown only when both
+  // are real (no fabricated „0 g"), so the row reads richer when measured.
+  const weight = line.weightGrams.trim()
+  const fineness = line.finenessDecimal.trim()
+  // Comma-tolerant: a German keyboard types „0,585"; Number(„0,585") is NaN, so
+  // the row would print „NaN" per mille. Parse with a dot + guard finiteness.
+  const finenessNum = Number(fineness.replace(",", "."))
+  const measure =
+    weight && Number.isFinite(finenessNum)
+      ? `${weight} g · ${(finenessNum * 1000).toFixed(0)}`
+      : weight
+        ? `${weight} g`
+        : null
   return (
- <View className="flex-row items-center gap-3 hairline-b px-3 py-3">
+    <View className="hairline-b flex-row items-center gap-3 py-3">
+      {/* The bespoke domain mark — a metal ingot / coin / stamp glyph (SVG),
+          ink on the parchment, so the lot reads as carved articles. */}
+      <View className="h-9 w-9 items-center justify-center">
+        <IntakeGlyph line={line} size={t.icon.lg} color={t.colors.inkAged} />
+      </View>
       <View className="flex-1 gap-1">
         <Text className="text-base font-semibold" numberOfLines={1}>
           {line.name || "Unbenanntes Stück"}
@@ -818,10 +931,11 @@ function IntakeRow({ line, onRemove }: { line: IntakeLine; onRemove: () => void 
           </Text>
           <Text className="text-muted-foreground text-2xs" numberOfLines={1}>
             · {itemTypeLabel}
+            {measure ? ` · ${measure}` : ""}
           </Text>
         </View>
       </View>
-      <Text className="text-primary font-mono-medium text-base">
+      <Text className="text-foreground font-mono-medium text-base">
         {formatEur(line.negotiatedPriceEur || "0")}
       </Text>
       <Pressable
@@ -830,9 +944,8 @@ function IntakeRow({ line, onRemove }: { line: IntakeLine; onRemove: () => void 
         accessibilityRole="button"
         accessibilityLabel={`${line.name || "Stück"} entfernen`}
         className="h-8 w-8 items-center justify-center rounded-md"
-        style={{ backgroundColor: t.colors.destructive + "12" }}
       >
-        <Trash2 size={t.icon.sm} color={t.colors.destructive} />
+        <Trash2 size={t.icon.sm} color={t.colors.mutedForeground} />
       </Pressable>
     </View>
   )
@@ -916,7 +1029,7 @@ function CustomerPicker({
           {results.status === "loading" && results.data == null ? (
             <View className="gap-2">
               {[0, 1, 2, 3].map((i) => (
- <View key={i} className="flex-row items-center gap-3 hairline-b px-3 py-3">
+                <View key={i} className="flex-row items-center gap-3 hairline-b px-3 py-3">
                   <Skeleton width={40} height={40} radius="full" />
                   <View className="flex-1 gap-2">
                     <Skeleton width="58%" height={13} />
@@ -943,7 +1056,7 @@ function CustomerPicker({
                 accessibilityLabel={`${row.fullName}, ${KYC_STATUS_LABEL[row.kycStatus]}`}
                 onPress={() => onPick(row)}
               >
- <View className="flex-row items-center gap-3 hairline-b px-3 py-3">
+                <View className="flex-row items-center gap-3 hairline-b px-3 py-3">
                   <View
                     className="h-10 w-10 items-center justify-center rounded-full"
                     style={{ backgroundColor: t.colors.raised }}
@@ -1002,6 +1115,7 @@ function ItemEntrySheet({
   onAdd: (line: IntakeLine) => void
 }) {
   const t = useW14Theme()
+  const insets = useSafeAreaInsets()
 
   // A fresh draft each time the sheet opens; reset on close.
   const [draft, setDraft] = useState<IntakeLine>(() => emptyIntakeLine())
@@ -1056,26 +1170,44 @@ function ItemEntrySheet({
   )
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="gap-4">
-        <DialogHeader>
-          <DialogTitle>Stück bewerten</DialogTitle>
-          <DialogDescription>
-            Warenart, Edelmetall und den gezahlten Preis erfassen.
-          </DialogDescription>
-        </DialogHeader>
+    <Modal
+      visible={open}
+      animationType="slide"
+      presentationStyle="fullScreen"
+      onRequestClose={() => onOpenChange(false)}
+    >
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <View style={{ flex: 1, backgroundColor: t.colors.background, paddingTop: insets.top }}>
+          <View className="hairline-b flex-row items-start justify-between gap-3 px-5 pb-3 pt-1">
+            <View className="flex-1">
+              <Text className="text-foreground font-display-semibold text-lg leading-tight">
+                Stück bewerten
+              </Text>
+              <Text className="text-muted-foreground mt-0.5 text-sm leading-snug">
+                Warenart, Edelmetall und den gezahlten Preis erfassen.
+              </Text>
+            </View>
+            <PressableScale
+              accessibilityRole="button"
+              accessibilityLabel="Schließen"
+              onPress={() => onOpenChange(false)}
+              hitSlop={12}
+            >
+              <X size={t.icon.md} color={t.colors.mutedForeground} />
+            </PressableScale>
+          </View>
 
-        <ScrollView
-          className="max-h-[460px]"
-          contentContainerStyle={{ gap: 14 }}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
+          <ScrollView
+            className="flex-1 px-5"
+            contentContainerStyle={{ gap: 14, paddingTop: 14, paddingBottom: 16 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
           <Field label="Warenart" required>
-            <ChipSelect
+            <WheelPicker
               options={ITEM_TYPE_OPTIONS}
               value={draft.itemType}
-              onChange={(v) => v && onItemType(v)}
+              onChange={(v) => onItemType(v)}
             />
           </Field>
 
@@ -1167,10 +1299,10 @@ function ItemEntrySheet({
           />
 
           <Field label="Zustand">
-            <ChipSelect
+            <WheelPicker
               options={CONDITION_OPTIONS}
               value={draft.condition}
-              onChange={(v) => v && patch({ condition: v })}
+              onChange={(v) => patch({ condition: v })}
             />
           </Field>
 
@@ -1224,24 +1356,28 @@ function ItemEntrySheet({
               onChange={(v) => patch({ publishImmediately: v === "available" })}
             />
           </Field>
-        </ScrollView>
+          </ScrollView>
 
-        <View className="gap-2">
-          <Button size="xl" onPress={submit} accessibilityLabel="Stück hinzufügen">
-            <Check size={t.icon.sm} color={t.colors.primaryForeground} />
-            <Text>Stück hinzufügen</Text>
-          </Button>
-          <Button
-            variant="outline"
-            size="xl"
-            onPress={() => onOpenChange(false)}
-            accessibilityLabel="Abbrechen"
+          <View
+            className="hairline-t gap-2 px-5"
+            style={{ paddingTop: 12, paddingBottom: insets.bottom + 12 }}
           >
-            <Text>Abbrechen</Text>
-          </Button>
+            <Button size="xl" onPress={submit} accessibilityLabel="Stück hinzufügen">
+              <Check size={t.icon.sm} color={t.colors.primaryForeground} />
+              <Text>Stück hinzufügen</Text>
+            </Button>
+            <Button
+              variant="outline"
+              size="xl"
+              onPress={() => onOpenChange(false)}
+              accessibilityLabel="Abbrechen"
+            >
+              <Text>Abbrechen</Text>
+            </Button>
+          </View>
         </View>
-      </DialogContent>
-    </Dialog>
+      </GestureHandlerRootView>
+    </Modal>
   )
 }
 
@@ -1257,14 +1393,13 @@ function ValuationHintCard({
   onUseSuggestion: (eur: string) => void
 }) {
   const t = useW14Theme()
-  // Honest: nothing to show until a real rate can compute at least the melt.
+  // Honest: nothing to show until a real rate can compute at least the melt. A
+  // bare ruled note, not a boxed card.
   if (hint.meltCents == null && hint.suggestedCents == null) {
     return (
-      <View
-        className="rounded-xl border px-3 py-2.5"
-        style={{ backgroundColor: t.colors.card, borderColor: t.colors.border }}
-      >
-        <Text className="text-muted-foreground text-2xs leading-4">
+      <View className="hairline-t flex-row items-start gap-2 pt-2.5">
+        <Info size={t.icon.xs} color={t.colors.mutedForeground} />
+        <Text className="text-muted-foreground flex-1 text-2xs leading-4">
           Bewertungshilfe erscheint, sobald Gewicht, Feinheit und ein aktueller Metallkurs
           vorliegen.
         </Text>
@@ -1277,15 +1412,17 @@ function ValuationHintCard({
       : hint.basis === "margin"
         ? "Schmelzwert abzüglich Sicherheitsmarge"
         : "Schmelzwert"
+  // De-boxed: the live valuation assist sits on a single warm hairline, opened
+  // by the gilt diamond seal — the melt + suggested figures in mono, never a
+  // tinted box.
   return (
-    <View
-      className="gap-2 rounded-xl px-3 py-3"
-      style={{
-        backgroundColor: t.colors.primary + "0F",
-        borderColor: t.colors.primary + "26",
-        borderWidth: 1,
-      }}
-    >
+    <View className="hairline-t gap-2 pt-3">
+      <View className="flex-row items-center gap-2">
+        <GiltDiamond />
+        <Text className="text-xs font-semibold" style={{ color: t.colors.foreground }}>
+          Bewertungshilfe
+        </Text>
+      </View>
       {hint.meltCents != null ? (
         <View className="flex-row items-center justify-between">
           <Text className="text-muted-foreground text-xs">Schmelzwert (Kurs aktuell)</Text>
@@ -1390,18 +1527,26 @@ function AnkaufDoneScreen({
         className="flex-1"
         contentContainerStyle={{
           paddingHorizontal: 24,
-          paddingTop: insets.screen.top + t.space.x6,
+          // The "Ankauf" stack header already clears the safe area; adding
+          // insets.screen.top here double-counted it and opened an empty band
+          // under the header. A small top breath is enough.
+          paddingTop: t.space.x4,
           paddingBottom: insets.contentBottom,
           gap: 20,
         }}
         showsVerticalScrollIndicator={false}
       >
         <View className="items-center gap-4 pt-2">
-          {/* The sealed-receipt mark a verdigris seal ringed by a fine gold
-              hairline, the antique "festgeschrieben" flourish. */}
+          {/* The sealed-receipt mark a verdigris seal ringed by a fine gilt
+              hairline, the antique „festgeschrieben" flourish — gold as a seal,
+              the one place it appears on this screen. */}
           <View
-            className="h-20 w-20 items-center justify-center rounded-full border"
-            style={{ backgroundColor: t.colors.verdigris + "1f", borderColor: t.colors.border }}
+            className="h-20 w-20 items-center justify-center rounded-full"
+            style={{
+              backgroundColor: t.colors.verdigris + "1f",
+              borderWidth: 1,
+              borderColor: t.colors.gilt,
+            }}
           >
             <Check size={36} color={t.colors.verdigris} />
           </View>
@@ -1415,25 +1560,24 @@ function AnkaufDoneScreen({
             </Text>
           </View>
 
-          <Card className="w-full gap-2 px-4 py-4">
+          {/* De-boxed receipt summary: two bare rows ruled by a single warm
+              hairline, the payout in display-scale mono — not a stacked card. */}
+          <View className="hairline-t hairline-b w-full gap-2.5 py-3.5">
             <View className="flex-row items-center justify-between">
               <Text className="text-muted-foreground text-sm">Beleg-Nr.</Text>
               <Text className="font-mono-medium text-sm">{receiptLocator}</Text>
             </View>
-            <View className="h-px bg-border" />
-            <View className="flex-row items-center justify-between">
+            <Hairline />
+            <View className="flex-row items-baseline justify-between">
               <Text className="text-base font-semibold">Auszahlung</Text>
-              <Text className="font-mono-medium text-xl">{formatEur(totalEur)}</Text>
+              <Text className="font-mono-medium text-2xl">{formatEur(totalEur)}</Text>
             </View>
-          </Card>
+          </View>
         </View>
 
         {/* ── Beleg: a faithful copy of exactly this buy-in, to share/print ───── */}
         <View className="gap-3">
-          <View className="flex-row items-center gap-2">
-            <Receipt size={t.icon.md} color={t.colors.primary} />
-            <Text className="text-base font-semibold">Beleg</Text>
-          </View>
+          <SectionLead icon={Receipt} title="Beleg" />
 
           {/* The on-screen Beleg the same lines and payout that were booked. A
               tap reveals the full receipt as it will be shared/printed. */}
@@ -1448,19 +1592,17 @@ function AnkaufDoneScreen({
                 setPreviewOpen(true)
               }}
             >
- <View className="flex-row items-center gap-3 hairline-b px-4 py-3.5">
-                <View
-                  className="h-9 w-9 items-center justify-center rounded-md"
-                  style={{ backgroundColor: t.colors.raised }}
-                >
-                  <Receipt size={t.icon.md} color={t.colors.primary} />
-                </View>
+              {/* De-boxed: a bare tappable row on a single warm hairline, the
+                  leading Receipt mark sitting directly (no tinted chip box). */}
+              <View className="hairline-t hairline-b flex-row items-center gap-3 py-3.5">
+                <Receipt size={t.icon.md} color={t.colors.primary} />
                 <View className="flex-1">
                   <Text className="text-sm font-semibold">Beleg-Vorschau anzeigen</Text>
                   <Text className="text-muted-foreground text-xs">
                     Die Belegkopie genau so, wie sie geteilt oder gedruckt wird.
                   </Text>
                 </View>
+                <ChevronRight size={t.icon.md} color={t.colors.mutedForeground} />
               </View>
             </PressableScale>
           )}
@@ -1526,24 +1668,20 @@ function AnkaufDoneScreen({
  */
 function DesktopBelegNote() {
   const t = useW14Theme()
+  // De-boxed: the honest „print lives on the Desktop-Kasse" note is a run of bare
+  // rows ruled by a single warm hairline above + below, the marks sitting
+  // directly — no card, no nested tinted boxes.
   return (
-    <Card className="gap-3 px-4 py-3.5">
+    <View className="hairline-t hairline-b gap-3 py-3.5">
       <View className="flex-row items-center gap-2.5">
-        <View
-          className="h-8 w-8 items-center justify-center rounded-md"
-          style={{ backgroundColor: t.colors.mutedForeground + "1f" }}
-        >
-          <Monitor size={t.icon.md} color={t.colors.mutedForeground} />
-        </View>
+        <Monitor size={t.icon.md} color={t.colors.mutedForeground} />
         <View className="flex-1">
           <Text className="text-sm font-semibold">Beleg über den Desktop-Kassenplatz</Text>
           <Text className="text-muted-foreground text-xs">{escposRequirement.summary}</Text>
         </View>
       </View>
-      <View
-        className="flex-row items-start gap-2.5 rounded-xl px-3.5 py-3"
-        style={{ backgroundColor: t.colors.mutedForeground + "12" }}
-      >
+      <Hairline inset={28} />
+      <View className="flex-row items-start gap-2.5">
         <View className="pt-0.5">
           <Info size={t.icon.md} color={t.colors.mutedForeground} />
         </View>
@@ -1560,7 +1698,7 @@ function DesktopBelegNote() {
           {escposRequirement.alternative}
         </Text>
       </View>
-    </Card>
+    </View>
   )
 }
 

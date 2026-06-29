@@ -7,20 +7,28 @@
  * (r2-Schlüssel + sha256 für die GoBD-Unveränderlichkeit). Diese Fläche zeigt
  * nur, was wirklich da ist, und erfindet nichts.
  *
+ * Form (DESIGN-SYSTEM.md): keine Kästen in Kästen. Das Register lebt direkt auf
+ * dem warmen Papier — eine ruhige Kopf-Bilanz, eine boxlose Filter-Reihe mit
+ * einem Gilt-Faden unter der aktiven Kategorie, und die Belege als nackte Zeilen,
+ * getrennt nur durch eine einzige warme Haarlinie. Tiefe kommt aus dem geschich-
+ * teten Papier und der Linie, nie aus gestapelten Karten.
+ *
  * Aufbau:
  *   • Register-Kopf — echte Summen aus echten Belegen (gesamt, fiskalisch
- *     relevant, archiviert). Nichts da → ehrlicher leerer Zustand.
- *   • Kategorie-Filter — eine ruhige Chip-Reihe (Alle + je Kategorie mit echter
- *     Anzahl). Der Filter läuft serverseitig über den `category`-Parameter.
- *   • Beleg-Zeilen — je Beleg die Kategorie-Badge, der Dateityp, die echte
- *     Dateigröße, die Verknüpfung (Vorgang/Kunde/…), das Datum und — als
- *     Vertrauens-Signal — der verkürzte sha256-Integritäts-Hash. Archivierte
- *     Belege sind ehrlich markiert (GoBD-soft-deleted, nicht versteckt).
+ *     relevant, archiviert) als boxlose Bilanz. Nichts da → ehrlicher leerer
+ *     Zustand.
+ *   • Kategorie-Filter — eine ruhige, boxlose Reihe (Alle + je Kategorie mit
+ *     echter Anzahl). Die aktive Kategorie trägt einen Gilt-Faden. Der Filter
+ *     läuft serverseitig über den `category`-Parameter.
+ *   • Beleg-Zeilen — je Beleg ein ruhiges Kategorie-Glyph, der Dateiname, eine
+ *     leise Meta-Zeile (Typ · Größe · Datum · Verknüpfung) und — als Vertrauens-
+ *     Signal — der verkürzte sha256-Integritäts-Hash. Archivierte Belege sind
+ *     ehrlich markiert (GoBD-soft-deleted, nicht versteckt).
  *
  * Ehrlichkeitsregel (absolut): jede Zahl ist eine echte Summe aus einer echten
  * Antwort. Der Byte-Strom eines Belegs liegt im Objekt-Speicher; die App hat
  * KEINEN Download-Endpunkt darauf — also bleibt das Öffnen ehrlich GESPERRT
- * („im Kassensystem öffnen") statt einen Link vorzutäuschen. Die steuerlichen
+ * (im Kassensystem öffnen) statt einen Link vorzutäuschen. Die steuerlichen
  * GoBD-Exporte (DATEV, Kassenbericht) leben am Tagesabschluss in der Kasse und
  * werden von dort geteilt; ein ruhiger Hinweis verlinkt dorthin. Gebaut auf dem
  * geteilten Spine (UI-Primitive, §6-Motion + §7-Haptik, nur W14-Theme-Tokens).
@@ -29,19 +37,17 @@
 import { type ReactNode, useCallback, useMemo, useState } from "react"
 import { Pressable, RefreshControl, ScrollView, View } from "react-native"
 import { type Href, useRouter } from "expo-router"
+import Svg, { Circle, Path } from "react-native-svg"
 import {
+  FileArchive,
   FileText,
   Hash,
   Link2,
   Lock,
-  type LucideIcon,
-  Receipt,
 } from "lucide-react-native"
 
-import { Badge } from "@/components/ui/badge"
-import { Card } from "@/components/ui/card"
 import { Text } from "@/components/ui/text"
-import { describeError, listDocuments } from "@/warehouse14/api"
+import { listDocuments } from "@/warehouse14/api"
 import {
   type CategoryMeta,
   categoryMeta,
@@ -61,6 +67,7 @@ import {
 import { useW14Theme } from "@/warehouse14/theme"
 import {
   EmptyState,
+  Hairline,
   haptics,
   InlineError,
   PaperGrain,
@@ -81,21 +88,54 @@ const PAGE_LIMIT = 100
 type Filter = "ALL" | DocumentCategory
 
 // ────────────────────────────────────────────────────────────────────────────
-// Register-Kopf — die echten Beleg-Summen
+// SealMark — ein bespoke Register-Siegel (react-native-svg). Ein gestempelter
+// Kreis mit einem Beleg-/Buch-Falz: die ruhige Marke des GoBD-Registers. Der
+// Faden (Falz) tönt in Gilt, der Ring bleibt Tinte — Gold nur als Faden/Siegel.
 // ────────────────────────────────────────────────────────────────────────────
 
-function RegisterHeader({ summary }: { summary: RegisterSummary }) {
+function SealMark({
+  size = 22,
+  ink,
+  gilt,
+}: {
+  size?: number
+  ink: string
+  gilt: string
+}): ReactNode {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" accessibilityElementsHidden>
+      {/* Gestempelter Ring — die Siegel-Tinte. */}
+      <Circle cx={12} cy={12} r={8.4} stroke={ink} strokeWidth={1.4} fill="none" />
+      <Circle cx={12} cy={12} r={6.2} stroke={ink} strokeWidth={0.7} strokeOpacity={0.4} fill="none" />
+      {/* Beleg-Falz — der Gilt-Faden im Siegel (Gold nur als Faden). */}
+      <Path
+        d="M9 9 L13.4 9 L15 10.6 L15 15 L9 15 Z"
+        stroke={gilt}
+        strokeWidth={1.3}
+        strokeLinejoin="round"
+        fill="none"
+      />
+      <Path d="M13.2 9 L13.2 10.8 L15 10.8" stroke={gilt} strokeWidth={1} strokeLinejoin="round" fill="none" />
+      <Path d="M10.4 12 L13.6 12 M10.4 13.4 L12.6 13.4" stroke={gilt} strokeWidth={0.9} strokeLinecap="round" />
+    </Svg>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Register-Kopf — die echten Beleg-Summen als boxlose Bilanz (keine Karten)
+// ────────────────────────────────────────────────────────────────────────────
+
+function RegisterBalance({ summary }: { summary: RegisterSummary }) {
   const t = useW14Theme()
-  // The "Belege" tile is the server's exact total (precise at any register size).
-  // "Fiskalisch"/"Archiviert" are derived from the loaded rows; if the server
-  // holds more than we loaded (`truncated`) they are lower bounds, so we mark
-  // them with a „≥" prefix rather than printing a precise number that undercounts.
-  const tiles: {
+  // Die „Belege"-Spalte ist die exakte Server-Gesamtzahl (genau bei jeder
+  // Registergröße). „Fiskalisch"/„Archiviert" sind aus den geladenen Zeilen
+  // abgeleitet; hält der Server mehr als geladen (`truncated`), sind sie untere
+  // Schranken und tragen den „≥"-Marker statt einer falschen genauen Zahl.
+  const cells: {
     label: string
     value: number
     active: boolean
     color: string
-    /** Whether this tile is a derived lower bound (not the exact server count). */
     approx: boolean
   }[] = [
     {
@@ -121,33 +161,37 @@ function RegisterHeader({ summary }: { summary: RegisterSummary }) {
     },
   ]
   return (
-    <View className="flex-row gap-2.5">
-      {tiles.map((tile) => (
-        <Card key={tile.label} className="flex-1 gap-1.5 px-3 py-3">
-          <Text
-            className="text-muted-foreground text-2xs font-medium"
-            style={{ letterSpacing: 0.4 }}
-            numberOfLines={1}
-          >
-            {tile.label}
-          </Text>
-          <Text
-            className="font-mono-medium text-2xl"
-            style={{ color: tile.active ? tile.color : t.colors.mutedForeground }}
-            accessibilityLabel={
-              tile.approx ? `${tile.label}, mindestens ${tile.value}` : undefined
-            }
-          >
-            {tile.approx ? `≥${tile.value}` : tile.value}
-          </Text>
-        </Card>
+    <View className="flex-row items-stretch">
+      {cells.map((cell, i) => (
+        <View key={cell.label} className="flex-1 flex-row">
+          {i > 0 ? <Hairline vertical length={36} /> : null}
+          <View className="flex-1 gap-1" style={{ paddingLeft: i > 0 ? 16 : 0 }}>
+            <Text
+              className="text-muted-foreground text-2xs font-medium"
+              style={{ letterSpacing: 0.6 }}
+              numberOfLines={1}
+            >
+              {cell.label}
+            </Text>
+            <Text
+              className="font-mono-medium text-3xl leading-none"
+              style={{ color: cell.active ? cell.color : t.colors.mutedForeground }}
+              accessibilityLabel={
+                cell.approx ? `${cell.label}, mindestens ${cell.value}` : undefined
+              }
+            >
+              {cell.approx ? `≥${cell.value}` : cell.value}
+            </Text>
+          </View>
+        </View>
       ))}
     </View>
   )
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Kategorie-Filter — eine ruhige Chip-Reihe (Alle + je Kategorie)
+// Kategorie-Filter — eine boxlose Reihe; die aktive Kategorie trägt einen Gilt-
+// Faden (DESIGN-SYSTEM.md §1: Gold als Faden/Kante). Keine Pillen, keine Kästen.
 // ────────────────────────────────────────────────────────────────────────────
 
 function FilterChip({
@@ -169,7 +213,7 @@ function FilterChip({
   return (
     <Pressable
       onPress={onPress}
-      accessibilityRole="button"
+      accessibilityRole="tab"
       accessibilityState={{ selected: active }}
       accessibilityLabel={
         count != null
@@ -178,30 +222,36 @@ function FilterChip({
       }
       style={{ minHeight: t.touch.min, justifyContent: "center" }}
     >
-      <View
-        className="flex-row items-center gap-1.5 rounded-md border px-3 py-1.5"
-        style={{
-          backgroundColor: active ? t.colors.primary : t.colors.card,
-          borderColor: active ? t.colors.primary : t.colors.border,
-        }}
-      >
-        <Text
-          className="text-sm font-medium"
-          style={{ color: active ? t.colors.primaryForeground : t.colors.foreground }}
-          numberOfLines={1}
-        >
-          {label}
-        </Text>
-        {countText != null ? (
+      <View className="items-center gap-1.5 px-0.5 pb-1">
+        <View className="flex-row items-center gap-1.5">
           <Text
-            className="font-mono text-2xs"
+            className="text-sm"
             style={{
-              color: active ? t.colors.primaryForeground : t.colors.mutedForeground,
+              color: active ? t.colors.foreground : t.colors.mutedForeground,
+              fontFamily: active ? t.fonts.semibold : t.fonts.medium,
             }}
+            numberOfLines={1}
           >
-            {countText}
+            {label}
           </Text>
-        ) : null}
+          {countText != null ? (
+            <Text
+              className="font-mono text-2xs"
+              style={{ color: active ? t.colors.foreground : t.colors.mutedForeground }}
+            >
+              {countText}
+            </Text>
+          ) : null}
+        </View>
+        {/* Der Gilt-Faden unter der aktiven Kategorie — Gold nur als Kante. */}
+        <View
+          style={{
+            height: 2,
+            width: "100%",
+            borderRadius: 1,
+            backgroundColor: active ? t.colors.gilt : "transparent",
+          }}
+        />
       </View>
     </Pressable>
   )
@@ -237,7 +287,7 @@ function FilterRow({
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      contentContainerStyle={{ gap: 8, paddingRight: 4 }}
+      contentContainerStyle={{ gap: 18, paddingRight: 8 }}
       accessibilityRole="tablist"
     >
       <FilterChip
@@ -262,20 +312,18 @@ function FilterRow({
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Eine Beleg-Zeile — echte Metadaten + GoBD-Integrität, Öffnen ehrlich gesperrt
+// Eine Beleg-Zeile — eine NACKTE Zeile auf dem Papier (kein Kasten). Ein ruhiges
+// Kategorie-Glyph, der Dateiname, eine leise Meta-Zeile + der Integritäts-Hash.
+// Öffnen bleibt ehrlich gesperrt (kein Byte-Endpunkt). Getrennt nur durch eine
+// einzige warme Haarlinie zwischen den Zeilen.
 // ────────────────────────────────────────────────────────────────────────────
 
-function DocumentMetaRow({ icon: Icon, children }: { icon: LucideIcon; children: ReactNode }) {
+function MetaDot() {
   const t = useW14Theme()
-  return (
-    <View className="flex-row items-center gap-1.5">
-      <Icon size={t.icon.xs} color={t.colors.mutedForeground} />
-      {children}
-    </View>
-  )
+  return <Text className="text-2xs" style={{ color: t.colors.mutedForeground }}>·</Text>
 }
 
-function DocumentCard({ doc, meta }: { doc: DocumentRow; meta: CategoryMeta }) {
+function DocumentRow({ doc, meta }: { doc: DocumentRow; meta: CategoryMeta }) {
   const t = useW14Theme()
   const archived = isArchived(doc)
   const size = formatFileSize(doc.sizeBytes)
@@ -299,73 +347,89 @@ function DocumentCard({ doc, meta }: { doc: DocumentRow; meta: CategoryMeta }) {
         archived ? ", archiviert" : ""
       }. Öffnen ist in dieser App nicht verfügbar bitte im Kassensystem öffnen.`}
     >
-      <Card
-        className="gap-3 rounded-xl border px-3.5 py-3"
-        style={{ opacity: archived ? 0.6 : 1 }}
+      <View
+        className="flex-row items-start gap-3 py-3.5"
+        style={{ opacity: archived ? 0.55 : 1 }}
       >
-        <View className="flex-row items-start gap-3">
-          <View
-            className="h-10 w-10 items-center justify-center rounded-xl"
-            style={{ backgroundColor: t.colors.raised }}
-          >
-            <Icon size={t.icon.md} color={t.colors.primary} />
-          </View>
-          <View className="flex-1 gap-1">
-            <View className="flex-row items-center gap-2">
-              <Text className="flex-1 text-base font-semibold" numberOfLines={1}>
-                {doc.fileName}
-              </Text>
-              <Badge variant={meta.variant}>
-                <Text>{meta.label}</Text>
-              </Badge>
-            </View>
-            <View className="flex-row flex-wrap items-center gap-x-2 gap-y-0.5">
-              <Text className="text-muted-foreground text-2xs font-medium" style={{ letterSpacing: 0.3 }}>
-                {kind}
-              </Text>
-              {size != null ? (
-                <>
-                  <Text className="text-muted-foreground text-2xs">·</Text>
-                  <Text className="text-muted-foreground font-mono text-2xs">{size}</Text>
-                </>
-              ) : null}
-              {created != null ? (
-                <>
-                  <Text className="text-muted-foreground text-2xs">·</Text>
-                  <Text className="text-muted-foreground text-2xs">{created}</Text>
-                </>
-              ) : null}
-            </View>
-          </View>
+        {/* Das Kategorie-Glyph sitzt bare — kein getöntes Chip-Kästchen. */}
+        <View className="h-9 w-9 items-center justify-center" style={{ marginTop: 1 }}>
+          <Icon size={t.icon.lg} color={t.colors.foreground} />
         </View>
 
-        {/* Verknüpfung + Integrität die ruhige Vertrauens-Zeile. */}
-        <View className="gap-1.5 border-t pt-2.5" style={{ borderColor: t.colors.border }}>
-          <DocumentMetaRow icon={Link2}>
-            <Text className="text-muted-foreground text-xs" numberOfLines={1}>
-              {link}
+        <View className="flex-1 gap-1">
+          {/* Titel-Zeile: Dateiname + leiser Kategorie-Faden (Gilt-Punkt). */}
+          <View className="flex-row items-center gap-2">
+            <Text className="flex-1 text-base font-semibold leading-tight" numberOfLines={1}>
+              {doc.fileName}
             </Text>
-          </DocumentMetaRow>
-          {hash != null ? (
-            <DocumentMetaRow icon={Hash}>
-              <Text className="text-muted-foreground font-mono text-2xs" numberOfLines={1}>
-                {hash}
+            <View className="flex-row items-center gap-1.5">
+              <View
+                style={{ height: 5, width: 5, borderRadius: 3, backgroundColor: t.colors.gilt }}
+              />
+              <Text
+                className="text-2xs font-medium"
+                style={{ color: t.colors.inkAged, letterSpacing: 0.2 }}
+                numberOfLines={1}
+              >
+                {meta.label}
               </Text>
-              <Text className="text-muted-foreground text-2xs">· GoBD-geprüft</Text>
-            </DocumentMetaRow>
-          ) : null}
-        </View>
+            </View>
+          </View>
 
-        {/* Öffnen ehrlich gesperrt: kein Byte-Endpunkt → kein vorgetäuschter Link. */}
-        <View className="bg-muted flex-row items-center gap-1.5 rounded-md px-2.5 py-1.5">
-          <Lock size={t.icon.xs} color={t.colors.mutedForeground} />
-          <Text className="text-muted-foreground flex-1 text-2xs leading-4">
-            {archived
-              ? "Archiviert Beleg bleibt revisionssicher im Kassensystem."
-              : "Öffnen/Teilen erfolgt im Kassensystem (kein App-Download)."}
-          </Text>
+          {/* Leise Meta-Zeile — Typ · Größe · Datum, alles in einer ruhigen Reihe. */}
+          <View className="flex-row flex-wrap items-center gap-x-1.5 gap-y-0.5">
+            <Text
+              className="text-muted-foreground text-2xs font-medium"
+              style={{ letterSpacing: 0.3 }}
+            >
+              {kind}
+            </Text>
+            {size != null ? (
+              <>
+                <MetaDot />
+                <Text className="text-muted-foreground font-mono text-2xs">{size}</Text>
+              </>
+            ) : null}
+            {created != null ? (
+              <>
+                <MetaDot />
+                <Text className="text-muted-foreground text-2xs">{created}</Text>
+              </>
+            ) : null}
+          </View>
+
+          {/* Verknüpfung + Integrität — die ruhige Vertrauens-Zeile, ohne Kasten. */}
+          <View className="mt-0.5 flex-row flex-wrap items-center gap-x-2 gap-y-0.5">
+            <View className="flex-row items-center gap-1">
+              <Link2 size={t.icon.xs} color={t.colors.mutedForeground} />
+              <Text className="text-muted-foreground text-xs" numberOfLines={1}>
+                {link}
+              </Text>
+            </View>
+            {hash != null ? (
+              <View className="flex-row items-center gap-1">
+                <Hash size={t.icon.xs} color={t.colors.mutedForeground} />
+                <Text className="text-muted-foreground font-mono text-2xs" numberOfLines={1}>
+                  {hash}
+                </Text>
+                <Text className="text-2xs" style={{ color: t.colors.verdigris }}>
+                  GoBD-geprüft
+                </Text>
+              </View>
+            ) : null}
+          </View>
+
+          {/* Öffnen ehrlich gesperrt — eine leise Inline-Zeile, kein Kasten. */}
+          <View className="mt-1 flex-row items-center gap-1.5">
+            <Lock size={t.icon.xs} color={t.colors.mutedForeground} />
+            <Text className="text-muted-foreground flex-1 text-2xs leading-4">
+              {archived
+                ? "Archiviert bleibt revisionssicher im Kassensystem."
+                : "Öffnen und Teilen erfolgt im Kassensystem."}
+            </Text>
+          </View>
         </View>
-      </Card>
+      </View>
     </PressableScale>
   )
 }
@@ -382,12 +446,12 @@ export default function BelegeScreen() {
   const [filter, setFilter] = useState<Filter>("ALL")
 
   // ── Register-Übersicht — eine eigene, filter-FREIE Abfrage ──────────────────
-  // Die Kopf-Kacheln und die „Alle"-/Kategorie-Chip-Zahlen müssen filter-
-  // unabhängig sein und die ganze Register-Wahrheit zeigen. Würden sie aus der
-  // unten gefilterten Listen-Abfrage kommen, läse die „Alle"-Chip unter dem
-  // Filter „Rechnung" die Rechnungs-Zahl, und die Kacheln würden jenseits einer
-  // Seite unterzählen. Diese Abfrage trägt deshalb NIE einen `category`-Filter:
-  // ihr Server-`total` ist die exakte Gesamtzahl bei jeder Registergröße; die
+  // Die Kopf-Bilanz und die „Alle"-/Kategorie-Zahlen müssen filter-unabhängig
+  // sein und die ganze Register-Wahrheit zeigen. Würden sie aus der unten
+  // gefilterten Listen-Abfrage kommen, läse die „Alle"-Zahl unter dem Filter
+  // „Rechnung" die Rechnungs-Zahl, und die Bilanz würde jenseits einer Seite
+  // unterzählen. Diese Abfrage trägt deshalb NIE einen `category`-Filter: ihr
+  // Server-`total` ist die exakte Gesamtzahl bei jeder Registergröße; die
   // abgeleiteten Teil-Summen (fiskalisch/archiviert/je Kategorie) sind exakt,
   // solange das Register auf eine Seite passt, und werden sonst ehrlich als
   // untere Schranken markiert. Der Schlüssel hängt NICHT vom Filter ab, damit
@@ -441,7 +505,7 @@ export default function BelegeScreen() {
     () => (docs.data ? sortDocuments(docs.data.items) : []),
     [docs.data],
   )
-  // The register summary (header tiles + true "Alle" total + per-category chip
+  // The register summary (header balance + true "Alle" total + per-category
   // counts) is derived from the filter-free query, so it is honest regardless of
   // the active filter and reports the real server total at any register size.
   const summary = useMemo<RegisterSummary | null>(
@@ -458,10 +522,24 @@ export default function BelegeScreen() {
   const total = summary?.total ?? 0
   const hasDocs = sorted.length > 0
   const firstLoading = docs.status === "loading" && docs.data == null
-  // The header tiles + chips track the filter-free summary query independently of
-  // the (filter-keyed) rows query, so switching categories never re-skeletons the
-  // header — it only ever loads once on first paint.
+  // The header balance + chips track the filter-free summary query independently
+  // of the (filter-keyed) rows query, so switching categories never re-skeletons
+  // the header — it only ever loads once on first paint.
   const summaryFirstLoading = summaryQuery.status === "loading" && summary == null
+
+  // ── Ein einziger, ruhiger Fehlerzustand ─────────────────────────────────────
+  // Früher konnten ZWEI Fehlerkarten gleichzeitig stehen (Übersicht + Liste).
+  // Wir fassen das zu EINER Karte zusammen: solange die Übersicht nie geladen
+  // hat, ist ihr Fehler der eine, der zählt (ohne sie steht der Kopf leer); sonst
+  // trägt der Listen-Fehler die eine Karte. So sieht der Owner nie zwei Kästen.
+  const summaryHardError =
+    summaryQuery.error != null && summary == null ? summaryQuery.error : null
+  const listHardError = docs.error != null && docs.data == null ? docs.error : null
+  const oneError = summaryHardError ?? listHardError
+  const retryAll = useCallback(() => {
+    if (summaryHardError != null) void summaryQuery.refetch()
+    void docs.refetch()
+  }, [summaryHardError, summaryQuery, docs])
 
   // Empty per-category chip counts while the summary is still loading (the chips
   // simply show no number until the real, filter-free counts arrive).
@@ -475,11 +553,12 @@ export default function BelegeScreen() {
   }
 
   const emptyForFilter = filter !== "ALL"
+  const showFilterRow = oneError == null && (summary != null || summaryFirstLoading)
 
   return (
     <View className="flex-1 bg-background">
-      {/* The aged-paper grain canvas depth from the layered cream plus this
-          faint warm tooth, never a flat fill (DESIGN.md §1, §5). */}
+      {/* The aged-paper grain canvas: depth from the layered cream plus this
+          faint warm tooth, never a flat fill (DESIGN-SYSTEM.md §1, §5). */}
       <PaperGrain />
       <ScrollView
         className="flex-1"
@@ -487,96 +566,118 @@ export default function BelegeScreen() {
           paddingHorizontal: 16,
           paddingTop: 12,
           paddingBottom: insets.contentBottom,
-          gap: 20,
+          gap: 24,
         }}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl {...rc} />}
       >
         {/* ── Register-Kopf ──────────────────────────────────────────────────── */}
-        <View className="gap-3">
-          <View className="flex-row items-center gap-2">
-            <Receipt size={t.icon.lg} color={t.colors.primary} />
-            {/* Screen title in the Bricolage Grotesque display voice (DESIGN-SYSTEM.md §3). */}
-            <Text className="text-2xl font-display-semibold leading-tight" numberOfLines={1}>
-              Belege & Dokumente
-            </Text>
+        <View className="gap-4">
+          {/* Kicker + Titel — der Register-Faden öffnet mit dem bespoke Siegel. */}
+          <View className="gap-1.5">
+            <View className="flex-row items-center gap-2">
+              <View style={{ height: 4, width: 4, borderRadius: 2, backgroundColor: t.colors.gilt }} />
+              <Text
+                className="text-muted-foreground text-2xs font-semibold"
+                style={{ letterSpacing: 1.2 }}
+              >
+                GOBD-REGISTER
+              </Text>
+            </View>
+            <View className="flex-row items-center gap-2.5">
+              <SealMark size={26} ink={t.colors.primary} gilt={t.colors.gilt} />
+              {/* Bricolage Grotesque display voice (DESIGN-SYSTEM.md §3). */}
+              <Text className="text-2xl font-display-semibold leading-tight" numberOfLines={1}>
+                Belege & Dokumente
+              </Text>
+            </View>
           </View>
 
           {summaryFirstLoading ? (
-            <View className="flex-row gap-2.5" accessibilityElementsHidden>
+            <View className="flex-row items-stretch" accessibilityElementsHidden>
               {Array.from({ length: 3 }).map((_, i) => (
-                <Card key={i} className="flex-1 gap-2 px-3 py-3">
-                  <Skeleton width="60%" height={10} />
-                  <Skeleton width="40%" height={24} />
-                </Card>
+                <View key={i} className="flex-1 flex-row">
+                  {i > 0 ? <Hairline vertical length={36} /> : null}
+                  <View className="flex-1 gap-2" style={{ paddingLeft: i > 0 ? 16 : 0 }}>
+                    <Skeleton width="55%" height={9} />
+                    <Skeleton width="40%" height={26} />
+                  </View>
+                </View>
               ))}
             </View>
-          ) : summaryQuery.error != null && summary == null ? (
-            <InlineError
-              message={summaryQuery.error}
-              onRetry={() => void summaryQuery.refetch()}
-            />
+          ) : oneError != null ? (
+            // EIN ruhiger Fehlerzustand für das ganze Register (nie zwei Kästen).
+            <InlineError message={oneError} onRetry={retryAll} />
           ) : summary != null ? (
-            <RegisterHeader summary={summary} />
+            <RegisterBalance summary={summary} />
           ) : null}
 
-          {/* Kategorie-Filter Zahlen stets aus der filter-freien Übersicht. */}
-          <FilterRow
-            filter={filter}
-            onChange={setFilter}
-            byCategory={summary?.byCategory ?? emptyByCategory}
-            total={total}
-            approxCategory={summary?.truncated ?? false}
-          />
+          {/* Die warme Haarlinie kappt den Kopf vom Filter — die einzige Linie. */}
+          {showFilterRow ? (
+            <View className="gap-1">
+              <Hairline />
+              <FilterRow
+                filter={filter}
+                onChange={setFilter}
+                byCategory={summary?.byCategory ?? emptyByCategory}
+                total={total}
+                approxCategory={summary?.truncated ?? false}
+              />
+            </View>
+          ) : null}
         </View>
 
         {/* ── Beleg-Zeilen ───────────────────────────────────────────────────── */}
-        <View className="gap-3">
-          {firstLoading ? (
-            <View className="gap-2.5" accessibilityElementsHidden>
-              {Array.from({ length: 4 }).map((_, i) => (
-                <Card key={i} className="gap-3 rounded-xl border px-3.5 py-3">
-                  <View className="flex-row items-center gap-3">
-                    <Skeleton width={40} height={40} radius="card" />
-                    <View className="flex-1 gap-2">
-                      <Skeleton width="70%" height={14} />
-                      <Skeleton width="45%" height={11} />
+        {oneError == null ? (
+          <View>
+            {firstLoading ? (
+              <View accessibilityElementsHidden>
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <View key={i}>
+                    {i > 0 ? <Hairline inset={48} /> : null}
+                    <View className="flex-row items-center gap-3 py-3.5">
+                      <Skeleton width={36} height={36} radius="card" />
+                      <View className="flex-1 gap-2">
+                        <Skeleton width="70%" height={14} />
+                        <Skeleton width="50%" height={10} />
+                        <Skeleton width="40%" height={10} />
+                      </View>
                     </View>
                   </View>
-                  <Skeleton width="100%" height={28} radius="button" />
-                </Card>
-              ))}
-            </View>
-          ) : docs.error != null && docs.data == null ? (
-            <InlineError message={docs.error} onRetry={() => void docs.refetch()} />
-          ) : !hasDocs && docs.data != null ? (
-            <EmptyState
-              icon={emptyForFilter ? FileText : Receipt}
-              title={emptyForFilter ? "Keine Belege in dieser Kategorie" : "Noch keine Belege"}
-              description={
-                emptyForFilter
-                  ? "In dieser Kategorie liegt noch kein Beleg. Wähle Alle oder eine andere Kategorie."
-                  : "Sobald am POS ein Verkauf oder Ankauf einen Beleg erzeugt, erscheint er hier revisionssicher und nach Kategorie geordnet."
-              }
-            />
-          ) : (
-            <View className="gap-2.5">
-              {sorted.map((doc, index) => (
-                <StaggerItem key={doc.id} index={Math.min(index, 8)} exit={false}>
-                  <DocumentCard doc={doc} meta={categoryMeta(doc.category)} />
-                </StaggerItem>
-              ))}
-              {/* Ehrliche Seiten-Notiz: der Server hält mehr als wir geladen haben. */}
-              {docs.data != null && docs.data.hasMore ? (
-                <Text className="text-muted-foreground px-1 pt-1 text-center text-2xs">
-                  {`Es werden die ${sorted.length} neuesten Belege gezeigt. Weitere liegen im Kassensystem.`}
-                </Text>
-              ) : null}
-            </View>
-          )}
-        </View>
+                ))}
+              </View>
+            ) : !hasDocs && docs.data != null ? (
+              <EmptyState
+                icon={emptyForFilter ? FileText : FileArchive}
+                title={emptyForFilter ? "Keine Belege in dieser Kategorie" : "Noch keine Belege"}
+                description={
+                  emptyForFilter
+                    ? "In dieser Kategorie liegt noch kein Beleg. Wähle Alle oder eine andere Kategorie."
+                    : "Sobald an der Kasse ein Verkauf oder Ankauf einen Beleg erzeugt, erscheint er hier revisionssicher und nach Kategorie geordnet."
+                }
+              />
+            ) : (
+              <View>
+                {sorted.map((doc, index) => (
+                  <StaggerItem key={doc.id} index={Math.min(index, 8)} exit={false}>
+                    {index > 0 ? <Hairline inset={48} /> : null}
+                    <DocumentRow doc={doc} meta={categoryMeta(doc.category)} />
+                  </StaggerItem>
+                ))}
+                {/* Ehrliche Seiten-Notiz: der Server hält mehr als wir geladen haben. */}
+                {docs.data != null && docs.data.hasMore ? (
+                  <Text className="text-muted-foreground px-1 pt-3 text-center text-2xs">
+                    {`Es werden die ${sorted.length} neuesten Belege gezeigt. Weitere liegen im Kassensystem.`}
+                  </Text>
+                ) : null}
+              </View>
+            )}
+          </View>
+        ) : null}
 
         {/* ── Ehrlicher Scope-Hinweis + Verweis auf die steuerlichen Exporte ─── */}
+        {/* Die EINE bewusste Karte auf dieser Fläche — eine Museums-Tafel, die das
+            Register erklärt. Sonst lebt alles boxlos auf dem Papier. */}
         <SectionCard
           title="So funktioniert das Belegregister"
           subtitle="Belege liegen revisionssicher im Kassensystem; hier siehst du sie geordnet."
@@ -584,20 +685,22 @@ export default function BelegeScreen() {
         >
           <Text className="text-muted-foreground text-xs leading-5">
             Jeder Beleg verweist auf eine unveränderliche Datei mit Prüfsumme (sha256) für die
-            GoBD-Konformität. Das Öffnen und Teilen der Datei selbst erfolgt im Kassensystem —
+            GoBD-Konformität. Das Öffnen und Teilen der Datei selbst erfolgt im Kassensystem;
             diese App zeigt das Register ehrlich an, ohne einen Download vorzutäuschen.
           </Text>
+          {/* Der Verweis sitzt als Gilt-gefädelte Zeile, kein getönter Kasten. */}
+          <Hairline />
           <Pressable
             onPress={() => {
               haptics.selection()
               router.push("/kasse" as Href)
             }}
             accessibilityRole="button"
-            accessibilityLabel="Zur Kasse steuerliche Exporte (DATEV, Kassenbericht)"
-            className="bg-muted mt-1 flex-row items-center gap-1.5 self-start rounded-md px-2.5 py-2"
+            accessibilityLabel="Zur Kasse, steuerliche Exporte (DATEV, Kassenbericht)"
+            className="flex-row items-center gap-2 self-start py-1"
             style={{ minHeight: t.touch.min }}
           >
-            <Receipt size={t.icon.sm} color={t.colors.primary} />
+            <View style={{ height: 5, width: 5, borderRadius: 3, backgroundColor: t.colors.gilt }} />
             <Text className="text-sm font-medium" style={{ color: t.colors.foreground }}>
               Steuerliche Exporte (DATEV, Kassenbericht) in der Kasse
             </Text>

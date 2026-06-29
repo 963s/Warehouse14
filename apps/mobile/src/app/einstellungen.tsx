@@ -1,7 +1,11 @@
 /**
  * Einstellungen — the System surface of the Owner OS. One calm, scannable column
  * of the few things an owner actually changes or checks, each section honest
- * about where its truth comes from:
+ * about where its truth comes from. De-boxed (DESIGN-SYSTEM.md §9): the owner-
+ * owned regions sit as BARE rows directly on the parchment canvas under an un-
+ * carded SectionHeader, separated by the single warm hairline — no card box
+ * around a card. Only the two genuinely interactive editor panels (Belegtexte,
+ * Sammlungen) keep their SectionCard leaf, because each owns a stateful form.
  *
  *   • Ankauf-Margen — the per-metal + global safety margin that the Ankauf rate
  *     is built from (Ankaufkurs = 10-Tage-Schnitt × (1 − Marge)). Read LIVE from
@@ -30,23 +34,24 @@
  *   • Gerät & Sitzung — read-only facts from the live session (Rolle, Sitzung
  *     läuft ab, Geräte-Fingerprint, API-Server). Honest; never editable here.
  *
- *   • Darstellung — the live OS appearance + reduced-motion state (read straight
- *     from useColorScheme / useReducedMotion), with a real deep link into the
- *     system settings. Reflections, not fake toggles: the app follows the system,
- *     and the screen says exactly that rather than implying an override it lacks.
+ *   • Darstellung — honest reflection of the live appearance. The app is LIGHT
+ *     ONLY (theme.ts) — there is no dark mode, so there is no Hell/Dunkel toggle
+ *     to fake. We state the fixed parchment theme and the real reduced-motion
+ *     state (read straight from useReducedMotion), nothing the app cannot honour.
  *
  *   • Abmelden — clears the in-memory session; the root auth gate then redirects
  *     to /login. A destructive, confirmed action (DESIGN.md §4 wax-red).
  *
- * Spine only (DESIGN.md): SectionCard / FormField for structure, the §6 motion
- * (screen-enter + a capped StaggerItem cascade, PressableScale), §7 haptics
- * (selection on a control, Success on a saved margin, Error on a blocked save),
- * InlineError for a non-blocking failure, the theme tokens for every colour /
- * radius / space / icon — no hardcoded hex. German throughout; de-DE numbers.
- * Reached from the „Mehr"-Hub (/einstellungen).
+ * Spine only (DESIGN.md): SectionHeader + bare rows + the single Hairline for
+ * structure (no box-in-box), SectionCard kept only for the two stateful editor
+ * panels, the §6 motion (screen-enter + a capped StaggerItem cascade,
+ * PressableScale), §7 haptics (selection on a control, Success on a saved margin,
+ * Error on a blocked save), InlineError for a non-blocking failure, the theme
+ * tokens for every colour / radius / space / icon — no hardcoded hex. German
+ * throughout; de-DE numbers. Reached from the Mehr-Hub (/einstellungen).
  */
 import { useCallback, useMemo, useState } from "react"
-import { Linking, useColorScheme, View } from "react-native"
+import { View } from "react-native"
 import {
   type ActorRole,
   metalPricesApi,
@@ -57,10 +62,7 @@ import {
   Check,
   ChevronRight,
   Coins,
-  Gauge,
   LogOut,
-  Moon,
-  Settings2,
   Smartphone,
   Sparkles,
   SunMedium,
@@ -68,6 +70,7 @@ import {
   X,
 } from "lucide-react-native"
 import { useReducedMotion } from "react-native-reanimated"
+import Svg, { Circle, Path } from "react-native-svg"
 
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -77,6 +80,7 @@ import {
   API_BASE_URL,
   apiClient,
   DEV_DEVICE_FINGERPRINT,
+  signOut,
   updateMetalMargin,
 } from "@/warehouse14/api"
 import { ACTOR_ROLE_LABEL } from "@/warehouse14/german-text"
@@ -92,18 +96,45 @@ import { clearSession, useSession } from "@/warehouse14/session"
 import { SettingsBelegtextSection } from "@/warehouse14/SettingsBelegtextSection"
 import { SettingsCategoriesSection } from "@/warehouse14/SettingsCategoriesSection"
 import { useW14Theme } from "@/warehouse14/theme"
-import { setThemeMode as setThemeModeBound, useThemeMode, type ThemeMode } from "@/warehouse14/theme-preference"
 import {
+  Hairline,
   InlineError,
   KeyboardAvoidingScreen,
   PressableScale,
-  SectionCard,
+  SectionHeader,
   Skeleton,
   StaggerItem,
   haptics,
   useMutation,
   useQuery,
 } from "@/warehouse14/ui"
+
+// ── Bespoke header seal ───────────────────────────────────────────────────────
+
+/**
+ * A small wax-seal SVG for the screen header — a struck disc with an engraved
+ * gear/cog notch ring, the System mark. Drawn with `currentColor` so it inherits
+ * the ink text colour; the design law keeps gilt to the thread, so the seal is
+ * ink with one faint gilt centre dot passed explicitly.
+ */
+function SystemSeal({ size, color, gilt }: { size: number; color: string; gilt: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Circle cx={12} cy={12} r={9} stroke={color} strokeWidth={1.4} fill="none" />
+      <Circle cx={12} cy={12} r={5.4} stroke={color} strokeWidth={1.2} fill="none" strokeOpacity={0.7} />
+      {/* eight engraved notches around the rim — the cog read */}
+      <Path
+        d="M12 3 L12 5 M12 19 L12 21 M3 12 L5 12 M19 12 L21 12 M5.6 5.6 L7 7 M17 17 L18.4 18.4 M18.4 5.6 L17 7 M7 17 L5.6 18.4"
+        stroke={color}
+        strokeWidth={1.2}
+        strokeLinecap="round"
+        strokeOpacity={0.55}
+      />
+      {/* the gilt seal centre — the one gold accent (thread/seal only) */}
+      <Circle cx={12} cy={12} r={1.6} fill={gilt} />
+    </Svg>
+  )
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -122,9 +153,9 @@ function formatDe(value: number, fractionDigits = 0): string {
   })
 }
 
-/** A fraction (0.12) → a de-DE percent label ("12 %"); null → an em-free dash. */
+/** A fraction (0.12) → a de-DE percent label ("12 %"); null → a German marker. */
 function fractionToPercentLabel(fraction: number | null | undefined): string {
-  if (fraction == null || !Number.isFinite(fraction)) return "–"
+  if (fraction == null || !Number.isFinite(fraction)) return "k. A."
   const pct = fraction * 100
   // Most margins are whole percents; keep one decimal only when it carries info.
   const digits = Number.isInteger(pct) ? 0 : 1
@@ -302,26 +333,24 @@ function MarginRow({
   )
 }
 
-/** A 1px hairline divider between rows in a section (the only divider weight). */
-function RowDivider() {
-  const t = useW14Theme()
-  return <View style={{ height: 1, backgroundColor: t.colors.border }} />
+/** The one divider weight: the shared warm hairline, inset under the row text. */
+function RowDivider({ inset = 0 }: { inset?: number }) {
+  return <Hairline inset={inset} />
 }
 
 function MarginsSection() {
-  const t = useW14Theme()
-
   // Live margins from the rates endpoint — the real safetyMarginPct in effect.
   const q = useQuery(() => metalPricesApi.rates(apiClient), { key: "settings:margins" })
 
   const refetch = useCallback(() => void q.refetch(), [q])
 
   return (
-    <SectionCard
-      title="Ankauf-Margen"
-      subtitle="Ankaufkurs = 10-Tage-Schnitt × (1 − Marge). Pro Metall oder global."
-      icon={Coins}
-    >
+    <View className="gap-3">
+      <SectionHeader
+        title="Ankauf-Margen"
+        subtitle="Ankaufkurs = 10-Tage-Schnitt × (1 − Marge). Pro Metall oder global."
+        icon={Coins}
+      />
       {q.isLoading && q.data == null ? (
         <View className="gap-3">
           {Array.from({ length: 4 }).map((_, i) => (
@@ -356,16 +385,13 @@ function MarginsSection() {
               />
             </View>
           ))}
-          <Text
-            className="text-muted-foreground mt-1 pt-2 text-2xs"
-            style={{ borderTopWidth: 1, borderColor: t.colors.border }}
-          >
+          <Text className="text-muted-foreground pt-3 text-2xs">
             Fenster: {q.data.windowDays}-Tage-Durchschnitt. Änderungen sind PIN-bestätigt und werden
             protokolliert.
           </Text>
         </View>
       ) : null}
-    </SectionCard>
+    </View>
   )
 }
 
@@ -499,52 +525,55 @@ function TargetsSection() {
   const set = useCallback((patch: Partial<DashboardTargets>) => setDashboardTargets(patch), [])
 
   return (
-    <SectionCard
-      title="Dashboard-Ziele"
-      subtitle="Die Zielwerte hinter den Ringen auf der Schatzkammer."
-      icon={Target}
-      action={
-        isDefault ? undefined : (
-          <PressableScale
-            onPress={() => {
-              haptics.selection()
-              resetDashboardTargets()
-            }}
-            accessibilityRole="button"
-            accessibilityLabel="Ziele auf Standard zurücksetzen"
-            hitSlop={8}
-          >
-            <Text className="text-primary text-xs font-medium">Zurücksetzen</Text>
-          </PressableScale>
-        )
-      }
-    >
-      <TargetRow
-        label="Tagesumsatz"
-        hint="Ziel für den Umsatz-Ring (heute)"
-        value={targets.revenueEur}
-        onCommit={(eur) => set({ revenueEur: eur })}
+    <View className="gap-3">
+      <SectionHeader
+        title="Dashboard-Ziele"
+        subtitle="Die Zielwerte hinter den Ringen auf der Schatzkammer."
+        icon={Target}
+        action={
+          isDefault ? undefined : (
+            <PressableScale
+              onPress={() => {
+                haptics.selection()
+                resetDashboardTargets()
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Ziele auf Standard zurücksetzen"
+              hitSlop={8}
+            >
+              <Text className="text-primary text-xs font-medium">Zurücksetzen</Text>
+            </PressableScale>
+          )
+        }
       />
-      <TargetRow
-        label="Tagesgewinn"
-        hint="Ziel für den Gewinn-Ring (heute)"
-        value={targets.netProfitDayEur}
-        onCommit={(eur) => set({ netProfitDayEur: eur })}
-      />
-      <TargetRow
-        label="Monatsumsatz"
-        hint="Ziel für den Monatsumsatz-Ring"
-        value={targets.monthRevenueEur}
-        onCommit={(eur) => set({ monthRevenueEur: eur })}
-      />
-      <TargetRow
-        label="Monatsgewinn"
-        hint="Die Truhe am Ende der Schatzkarte"
-        value={targets.monthlyProfitTargetEur}
-        onCommit={(eur) => set({ monthlyProfitTargetEur: eur })}
-        last
-      />
-    </SectionCard>
+      <View>
+        <TargetRow
+          label="Tagesumsatz"
+          hint="Ziel für den Umsatz-Ring (heute)"
+          value={targets.revenueEur}
+          onCommit={(eur) => set({ revenueEur: eur })}
+        />
+        <TargetRow
+          label="Tagesgewinn"
+          hint="Ziel für den Gewinn-Ring (heute)"
+          value={targets.netProfitDayEur}
+          onCommit={(eur) => set({ netProfitDayEur: eur })}
+        />
+        <TargetRow
+          label="Monatsumsatz"
+          hint="Ziel für den Monatsumsatz-Ring"
+          value={targets.monthRevenueEur}
+          onCommit={(eur) => set({ monthRevenueEur: eur })}
+        />
+        <TargetRow
+          label="Monatsgewinn"
+          hint="Die Truhe am Ende der Schatzkarte"
+          value={targets.monthlyProfitTargetEur}
+          onCommit={(eur) => set({ monthlyProfitTargetEur: eur })}
+          last
+        />
+      </View>
+    </View>
   )
 }
 
@@ -552,12 +581,12 @@ function TargetsSection() {
 
 /**
  * The honest role line for the signed-in account. The role comes from the
- * canonical text spine (`ACTOR_ROLE_LABEL`) — never a developer token — and an
- * „· Inhaber"-Zusatz is appended only when the session's real `isOwner` flag is
- * set, so the marker reflects truth rather than being baked into a label.
+ * canonical text spine (`ACTOR_ROLE_LABEL`), never a developer token, and a
+ * mittiger-Punkt-Zusatz (· Inhaber) is appended only when the session's real
+ * `isOwner` flag is set, so the marker reflects truth rather than a baked label.
  */
 function roleFactLabel(actor: { role: ActorRole; isOwner: boolean } | null): string {
-  if (actor == null) return "–"
+  if (actor == null) return "k. A."
   const label = ACTOR_ROLE_LABEL[actor.role]
   return actor.isOwner ? `${label} · Inhaber` : label
 }
@@ -595,9 +624,9 @@ function DeviceSection() {
   const { actor, expiresAt } = useSession()
 
   const expiryLabel = useMemo(() => {
-    if (!expiresAt) return "—"
+    if (!expiresAt) return "k. A."
     const d = new Date(expiresAt)
-    if (Number.isNaN(d.getTime())) return "—"
+    if (Number.isNaN(d.getTime())) return "k. A."
     return d.toLocaleString("de-DE", {
       day: "2-digit",
       month: "2-digit",
@@ -613,83 +642,66 @@ function DeviceSection() {
   const apiHost = API_BASE_URL.replace(/^https?:\/\//, "")
 
   return (
-    <SectionCard
-      title="Gerät & Sitzung"
-      subtitle="Angemeldetes Konto und das verbundene Backend."
-      icon={Smartphone}
-    >
-      <FactRow label="Rolle" value={roleFactLabel(actor)} />
-      <FactRow label="Sitzung läuft ab" value={expiryLabel} mono />
-      <FactRow label="Geräte-Fingerprint" value={fingerprintShort} mono />
-      <FactRow label="API-Server" value={apiHost} mono last />
-    </SectionCard>
+    <View className="gap-3">
+      <SectionHeader
+        title="Gerät & Sitzung"
+        subtitle="Angemeldetes Konto und das verbundene Backend."
+        icon={Smartphone}
+      />
+      <View>
+        <FactRow label="Rolle" value={roleFactLabel(actor)} />
+        <FactRow label="Sitzung läuft ab" value={expiryLabel} mono />
+        <FactRow label="Geräte-Fingerprint" value={fingerprintShort} mono />
+        <FactRow label="API-Server" value={apiHost} mono last />
+      </View>
+    </View>
   )
 }
 
 // ── Darstellung ─────────────────────────────────────────────────────────────--
 
+/**
+ * Darstellung — honest reflection only. The app is LIGHT ONLY (theme.ts: the
+ * parchment palette everywhere, the system scheme deliberately ignored), so
+ * there is no Hell/Dunkel/System choice to surface — offering one would imply an
+ * override the app does not have. Instead two read rows: the fixed theme and the
+ * live reduced-motion state. Each row carries a bare ink glyph, no tinted chip.
+ */
 function AppearanceSection() {
   const t = useW14Theme()
   const reduceMotion = useReducedMotion()
-  const mode = useThemeMode()
-  const setMode = setThemeModeBound
-
-  const options: { id: ThemeMode; label: string; icon: typeof SunMedium }[] = [
-    { id: "system", label: "System", icon: Smartphone },
-    { id: "light", label: "Hell", icon: SunMedium },
-    { id: "dark", label: "Dunkel", icon: Moon },
-  ]
 
   return (
-    <SectionCard
-      title="Darstellung"
-      subtitle="Erscheinungsbild der App."
-      icon={Settings2}
-    >
-      {/* The theme mode segmented control — three calm pills, the active one
-          filled with ink. Bare icons (no tinted chips), design-law compliant. */}
-      <View className="flex-row gap-2 py-1">
-        {options.map((opt) => {
-          const active = mode === opt.id
-          const Icon = opt.icon
-          return (
-            <PressableScale
-              key={opt.id}
-              onPress={() => {
-                haptics.selection()
-                setMode(opt.id)
-              }}
-              accessibilityRole="button"
-              accessibilityLabel={opt.label}
-              className="flex-1"
-              style={{
-                paddingVertical: 10,
-                borderRadius: t.radii.button,
-                backgroundColor: active ? t.colors.foreground : "transparent",
-                borderWidth: 1,
-                borderColor: active ? t.colors.foreground : t.colors.border,
-              }}
-            >
-              <View className="flex-row items-center justify-center gap-1.5">
-                <Icon size={t.icon.sm} color={active ? t.colors.card : t.colors.foreground} />
-                <Text
-                  className="text-sm font-semibold"
-                  style={{ color: active ? t.colors.card : t.colors.foreground }}
-                >
-                  {opt.label}
-                </Text>
-              </View>
-            </PressableScale>
-          )
-        })}
+    <View className="gap-3">
+      <SectionHeader
+        title="Darstellung"
+        subtitle="Das Erscheinungsbild der App. Fest auf hell eingestellt."
+        icon={SunMedium}
+      />
+      <View>
+        <View className="min-h-[44px] flex-row items-center gap-3 py-2">
+          <View className="h-7 w-7 items-center justify-center">
+            <SunMedium size={t.icon.md} color={t.colors.foreground} />
+          </View>
+          <View className="flex-1">
+            <Text className="text-base font-medium">Erscheinungsbild</Text>
+            <Text className="text-muted-foreground text-xs">Warmes Pergament, durchgehend hell</Text>
+          </View>
+          <Text className="text-sm font-medium">Hell</Text>
+        </View>
+        <RowDivider inset={40} />
+        <View className="min-h-[44px] flex-row items-center gap-3 py-2">
+          <View className="h-7 w-7 items-center justify-center">
+            <Sparkles size={t.icon.md} color={t.colors.foreground} />
+          </View>
+          <View className="flex-1">
+            <Text className="text-base font-medium">Bewegung reduzieren</Text>
+            <Text className="text-muted-foreground text-xs">Folgt der Systemeinstellung</Text>
+          </View>
+          <Text className="text-sm font-medium">{reduceMotion ? "An" : "Aus"}</Text>
+        </View>
       </View>
-      <RowDivider />
-      <View className="min-h-[40px] flex-row items-center gap-3 py-2">
-        <Sparkles size={t.icon.sm} color={t.colors.foreground} />
-        <Text className="text-muted-foreground flex-1 text-sm">Bewegung reduzieren</Text>
-        <Text className="text-sm font-medium">{reduceMotion ? "An" : "Aus"}</Text>
-      </View>
-    </SectionCard>
+    </View>
   )
 }
 
@@ -699,8 +711,16 @@ function LogoutSection() {
   const t = useW14Theme()
   const [confirming, setConfirming] = useState(false)
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
     haptics.success()
+    // Revoke the session on the SERVER first so a lost or stolen phone can never
+    // replay the token after sign-out. Best-effort: if the call fails (offline /
+    // flap) we still wipe locally below — logout must never hang or block.
+    try {
+      await signOut()
+    } catch {
+      // Local wipe proceeds regardless; the token lapses at its natural expiry.
+    }
     // Wipe the last-good read cache FIRST (memory + persisted snapshots), so the
     // next actor to sign in never briefly sees the previous actor's cached
     // finance figures — the honesty rule across sign-ins. Reads only ever; no
@@ -784,11 +804,24 @@ export default function EinstellungenScreen() {
       contentContainerStyle={{ gap: t.space.x4 }}
       scrollViewProps={{ showsVerticalScrollIndicator: false }}
     >
-      <View className="gap-1">
+      <View className="gap-1.5">
+        {/* Kicker — the gilt diamond ◆ + small-caps line (DESIGN-SYSTEM.md §6). */}
         <View className="flex-row items-center gap-2">
-          <Gauge size={t.icon.lg} color={t.colors.primary} />
+          <Text className="text-xs" style={{ color: t.colors.gilt }}>
+            ◆
+          </Text>
+          <Text
+            className="text-muted-foreground text-2xs font-semibold uppercase"
+            style={{ letterSpacing: 1.4 }}
+          >
+            System
+          </Text>
+        </View>
+        <View className="flex-row items-center gap-2.5">
+          {/* Bespoke struck seal — ink body, one gilt centre (thread/seal only). */}
+          <SystemSeal size={t.icon.xl} color={t.colors.foreground} gilt={t.colors.gilt} />
           {/* Bildschirmtitel in der Bricolage-Display-Stimme (DESIGN-SYSTEM.md §3). */}
-          <Text className="text-2xl font-display-semibold leading-tight">Einstellungen</Text>
+          <Text className="text-3xl font-display-semibold leading-tight">Einstellungen</Text>
         </View>
         <Text className="text-muted-foreground text-sm">
           Margen, Belegtexte, Sammlungen, Ziele und Gerät an einem Ort.

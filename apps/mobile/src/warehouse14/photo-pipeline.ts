@@ -63,6 +63,15 @@ function toFileUri(uri: string): string {
   return uri.startsWith("file://") || uri.startsWith("content://") ? uri : `file://${uri}`
 }
 
+/**
+ * Read a captured photo as base64 (transient, in-memory, never logged). The
+ * caller uploads the bytes and discards the temp file — used by the optimistic
+ * product path so the screen can return BEFORE the network upload finishes.
+ */
+export async function readCaptureBase64(photo: CapturedPhoto): Promise<string> {
+  return await new File(toFileUri(photo.uri)).base64()
+}
+
 /** Discard the temp capture file. Best-effort, NEVER throws (no-persist cleanup). */
 export function discardCapture(photo: CapturedPhoto): void {
   try {

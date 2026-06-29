@@ -1,16 +1,25 @@
 /**
- * Lager — the staff catalog (authenticated productsApi, NOT the public
- * storefront). Native-grade list: fluid debounced search with a clear button,
- * horizontally-scrolling status filter chips, a fast FlatList with a
- * shape-faithful skeleton + honest empty/error states, refined rows that show
- * the real primary photo (or a typed fallback disc), Lagerort, metal/weight, the
- * Listenpreis and a status Badge. Tapping a row opens the detail/relocate modal.
+ * Lager — der Personal-Katalog (authentifizierte productsApi, NICHT der
+ * öffentliche Storefront) und die meistgenutzte Fläche der App. Native-Grad:
+ * flüssige, entprellte Suche mit Lösch-Knopf, eine boxlose Gilt-gefädelte
+ * Status-Filterreihe, eine schnelle FlatList mit formtreuem Skelett + ehrlichen
+ * Leer-/Fehlerzuständen, und nackte Artikel-Zeilen, die das echte Primärfoto (oder
+ * eine getypte Material-Scheibe), den Lagerort, Metall/Gewicht und den Listenpreis
+ * in Mono-Ziffern tragen. Tippen öffnet die Detail-/Umlagern-Maske.
  *
- * Built on the shared spine — the live-data hook (useQuery: refetch-on-focus,
- * pull-to-refresh, in-flight de-dupe), QueryBoundary (loading/empty/error+retry),
- * PressableScale rows + StaggerItem entrance, selection haptics on every tap and
- * filter change, and W14 theme tokens throughout. Every shown value is real from
- * the endpoint; nothing is fabricated.
+ * Form (DESIGN-SYSTEM.md): keine Kästen in Kästen. Der Katalog lebt direkt auf
+ * dem warmen Papier — eine boxlose Verfügbarkeits-Bilanz im Kopf (Verfügbar ·
+ * Reserviert · Verkauft, getrennt nur durch eine warme Senk-Haarlinie), eine
+ * boxlose Filterreihe mit einem Gilt-Faden unter der aktiven Kategorie, und die
+ * Artikel als nackte Zeilen, getrennt nur durch eine einzige warme Haarlinie.
+ * Tiefe kommt aus dem geschichteten Papier und der Linie, nie aus gestapelten
+ * Karten.
+ *
+ * Gebaut auf dem geteilten Spine — die Live-Daten-Schicht (useQuery: refetch-on-
+ * focus, pull-to-refresh, in-flight de-dupe), QueryBoundary (laden/leer/fehler+
+ * erneut), PressableScale-Zeilen + StaggerItem-Eintritt, Auswahl-Haptik bei jedem
+ * Tippen und jedem Filterwechsel, und W14-Theme-Tokens durchgehend. Jeder gezeigte
+ * Wert ist echt vom Endpunkt; nichts wird erfunden.
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { Image } from "expo-image"
@@ -25,9 +34,8 @@ import {
 import { useNavigation, useRouter } from "expo-router"
 import { ApiOfflineQueuedError } from "@warehouse14/api-client"
 import type { Metal, ProductListRow, ProductStatus } from "@warehouse14/api-client"
-import { Boxes, Globe, MapPin, PackagePlus, Plus, RefreshCw, Search, Store, X } from "lucide-react-native"
+import { Globe, MapPin, PackagePlus, Plus, RefreshCw, Search, Store, X } from "lucide-react-native"
 
-import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Text } from "@/components/ui/text"
 import { absoluteUrl, describeError, formatEur, listProducts } from "@/warehouse14/api"
@@ -39,10 +47,13 @@ import {
 } from "@/warehouse14/availability-ui"
 import { useInventoryCounts } from "@/warehouse14/use-inventory-counts"
 import { OfflineNotice, StaleBadge, useCachedQuery } from "@/warehouse14/offline"
-import { formatLocation, STATUS_FILTERS, statusLabel, statusVariant } from "@/warehouse14/product-ui"
+import { formatLocation, STATUS_FILTERS, statusLabel } from "@/warehouse14/product-ui"
 import { useW14Theme } from "@/warehouse14/theme"
 import {
+  Hairline,
   haptics,
+  MetalIcon,
+  type MetalKind,
   PaperGrain,
   PressableScale,
   QueryBoundary,
@@ -67,7 +78,15 @@ const METAL_SHORT: Record<Metal, string> = {
   palladium: "Palladium",
 }
 
-/** "12,4 g Gold" / "Gold" / null — the compact material line under a row. */
+/** Map a wire metal to the bespoke MetalIcon's kind (the typed material disc). */
+const METAL_TO_KIND: Record<Metal, MetalKind> = {
+  gold: "GOLD",
+  silver: "SILBER",
+  platinum: "PLATIN",
+  palladium: "PALLADIUM",
+}
+
+/** "12,4 g · Gold" / "Gold" / null — the compact material line under a row. */
 function materialLine(metal: Metal | null, weightGrams: string | null): string | null {
   const m = metal ? METAL_SHORT[metal] : null
   const w =
@@ -99,8 +118,8 @@ export default function LagerScreen() {
   const t = useW14Theme()
   const insets = useScreenInsets()
 
-  // Header add button → the „Neuer Artikel"-Formular (mirrors the Kunden tab),
-  // freeing the body of a duplicate title since the tab already shows „Lager".
+  // Header add button → das „Neuer Artikel"-Formular (spiegelt den Kunden-Tab),
+  // sodass der Körper keinen doppelten Titel braucht — der Tab zeigt schon „Lager".
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
@@ -124,9 +143,9 @@ export default function LagerScreen() {
   const [filter, setFilter] = useState<Filter>("ALL")
 
   // Live availability counts for the whole catalog — the real per-status totals
-  // that label the filter chips („Verfügbar 11") and the summary line. Read
-  // unfiltered (not keyed to the search) so the chip badges are a stable, honest
-  // picture of the whole Lager regardless of what's typed in the search box.
+  // that feed the boxless balance and label the filter rail („Verfügbar 11"). Read
+  // unfiltered (not keyed to the search) so the balance + chip counts are a stable,
+  // honest picture of the whole Lager regardless of what's typed in the search box.
   const counts = useInventoryCounts()
 
   // The debounced query inputs — the text input updates `q` instantly (so the
@@ -228,22 +247,24 @@ export default function LagerScreen() {
   }, [debouncedQ, filter])
 
   const onPickFilter = useCallback((next: Filter) => {
+    if (next === filter) return
     haptics.selection()
     setFilter(next)
-  }, [])
+  }, [filter])
 
   const total = products.data?.total ?? 0
   const hasQuery = debouncedQ.length > 0 || filter !== "ALL"
 
-  // The live counts snapshot the chips + summary read. Null until the first real
+  // The live counts snapshot the balance + chips read. Null until the first real
   // response lands (honesty rule — no count shows until we have one).
   const countsData = counts.data
   const summaryLine = availabilitySummaryLine(countsData)
 
+  // ── Kopf: Suche + boxlose Verfügbarkeits-Bilanz + Gilt-gefädelte Filterreihe ──
   const headerControls = useMemo(
     () => (
-      <View className="gap-3 px-4 pb-1 pt-2">
-        {/* Search field with a leading glyph + a clear button. */}
+      <View className="gap-4 px-4 pb-2 pt-2">
+        {/* Suchfeld mit führendem Glyph + Lösch-Knopf. */}
         <View className="relative justify-center">
           <View className="absolute left-3 z-10">
             <Search size={t.icon.sm} color={t.colors.mutedForeground} />
@@ -274,42 +295,36 @@ export default function LagerScreen() {
           ) : null}
         </View>
 
-        {/* Status filter chips a single horizontal rail (never wraps/jumps). */}
+        {/* Boxlose Verfügbarkeits-Bilanz — die echte „was ist verkäuflich"-Wahrheit
+            als drei nackte Spalten auf dem Papier, getrennt nur durch eine warme
+            Senk-Haarlinie. Keine Karte, keine Kacheln. Stille Skelette bis die
+            echten Zahlen landen (keine erfundene Null). */}
+        <AvailabilityBalance counts={countsData} />
+
+        {/* Die warme Haarlinie kappt die Bilanz von der Filterreihe. */}
+        <Hairline />
+
+        {/* Status-Filter — eine boxlose Reihe; die aktive Kategorie trägt einen
+            Gilt-Faden (DESIGN-SYSTEM.md §1: Gold als Faden/Kante). Keine Pillen. */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ gap: 8, paddingRight: 4 }}
+          contentContainerStyle={{ gap: 18, paddingRight: 8 }}
+          accessibilityRole="tablist"
         >
-          {STATUS_FILTERS.map((opt) => {
-            const active = filter === opt.value
-            // The live count for this chip: an availability bucket (Verfügbar/
-            // Reserviert/Verkauft) shows its real total, „Alle" shows the in-stock
-            // sum. „Entwurf" is not an availability bucket → no count (we never
-            // print a fabricated „0" for a number we didn't read).
-            const count = chipCount(opt.value, countsData)
-            const label = count != null ? `${opt.label} ${count.toLocaleString("de-DE")}` : opt.label
-            return (
-              <Pressable
-                key={opt.value}
-                onPress={() => onPickFilter(opt.value)}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-                accessibilityLabel={
-                  count != null ? `Filter ${opt.label}, ${count}` : `Filter ${opt.label}`
-                }
-                // The chip is visually compact, so lift the tappable area to the
-                // ≥44px minimum (DESIGN.md §8) with vertical hit-slop — the rail
-                // still reads as a slim row of chips.
-                hitSlop={{ top: 11, bottom: 11 }}
-                className="py-1"
-              >
-                <Badge variant={active ? "default" : "outline"} dot={active && opt.value !== "ALL"}>
-                  <Text>{label}</Text>
-                </Badge>
-              </Pressable>
-            )
-          })}
+          {STATUS_FILTERS.map((opt) => (
+            <FilterTab
+              key={opt.value}
+              label={opt.label}
+              // The live count for this chip: an availability bucket (Verfügbar/
+              // Reserviert/Verkauft) shows its real total, „Alle" the in-stock sum.
+              // „Entwurf" is not an availability bucket → no count (never a faked 0).
+              count={chipCount(opt.value, countsData)}
+              active={filter === opt.value}
+              onPress={() => onPickFilter(opt.value)}
+            />
+          ))}
         </ScrollView>
       </View>
     ),
@@ -318,6 +333,8 @@ export default function LagerScreen() {
 
   return (
     <View className="flex-1 bg-background">
+      {/* Die gealterte Papier-Maserung: Tiefe aus dem geschichteten Cream plus
+          diese feine warme Zahnung, nie ein flacher Fill (DESIGN-SYSTEM.md §1). */}
       <PaperGrain />
       {headerControls}
 
@@ -367,13 +384,13 @@ export default function LagerScreen() {
           const moreRemain = !exhausted && rows.length < total
           return (
             <FlatList
+              style={{ flex: 1 }}
               data={rows}
               keyExtractor={(p) => p.id}
               contentContainerStyle={{
                 paddingHorizontal: 16,
-                paddingTop: 8,
+                paddingTop: 2,
                 paddingBottom: insets.contentBottom,
-                gap: 10,
               }}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
@@ -384,26 +401,19 @@ export default function LagerScreen() {
                 if (moreRemain && !paging.loading && paging.error == null) void loadMore()
               }}
               ListHeaderComponent={
-                <View className="gap-0.5 pb-1">
-                  <View className="flex-row items-center justify-between">
-                    <Text className="text-muted-foreground text-xs">
-                      {total === 1 ? "1 Artikel" : `${total.toLocaleString("de-DE")} Artikel`}
-                      {moreRemain ? ` · ${rows.length.toLocaleString("de-DE")} geladen` : ""}
-                    </Text>
-                    {/* When the list is the cached seed (live page not yet landed),
-                        pin the honest Stand vor … "-Marker so the count never reads
-                        as live. Hidden the instant the real page replaces it. */}
-                    {products.fromCache ? (
-                      <StaleBadge cachedAt={products.cachedAt} stale={products.isStale} />
-                    ) : null}
-                  </View>
-                  {/* The live availability triad 11 verfügbar · 6 reserviert · 5
-                      verkauft" the honest at-a-glance picture of what can be sold.
-                      Hidden until the real counts land (no fabricated zeros). */}
-                  {summaryLine ? (
-                    <Text className="text-muted-foreground text-2xs" numberOfLines={1}>
-                      {summaryLine}
-                    </Text>
+                <View className="flex-row items-center justify-between pb-1.5 pt-1">
+                  <Text
+                    className="text-muted-foreground text-2xs font-medium"
+                    style={{ letterSpacing: 0.4 }}
+                  >
+                    {total === 1 ? "1 Artikel" : `${total.toLocaleString("de-DE")} Artikel`}
+                    {moreRemain ? ` · ${rows.length.toLocaleString("de-DE")} geladen` : ""}
+                  </Text>
+                  {/* When the list is the cached seed (live page not yet landed),
+                      pin the honest „Stand vor …"-Marker so the count never reads
+                      as live. Hidden the instant the real page replaces it. */}
+                  {products.fromCache ? (
+                    <StaleBadge cachedAt={products.cachedAt} stale={products.isStale} />
                   ) : null}
                 </View>
               }
@@ -412,11 +422,13 @@ export default function LagerScreen() {
                   loading={paging.loading}
                   error={paging.error}
                   moreRemain={moreRemain}
+                  summaryLine={!moreRemain && rows.length > 0 ? summaryLine : null}
                   onRetry={() => void loadMore()}
                 />
               }
               renderItem={({ item, index }) => (
-                <StaggerItem index={index} exit={false}>
+                <StaggerItem index={Math.min(index, 8)} exit={false}>
+                  {index > 0 ? <Hairline inset={68} /> : null}
                   <ProductRow
                     item={item}
                     onPress={() => {
@@ -434,8 +446,148 @@ export default function LagerScreen() {
   )
 }
 
-/** A single Lager row — real photo (or typed fallback), name, SKU, Lagerort,
- *  material, Listenpreis + status. Presses with the spine's one feedback. */
+// ────────────────────────────────────────────────────────────────────────────
+// Verfügbarkeits-Bilanz — die echten Live-Zahlen als boxlose Spalten-Bilanz
+// (kein Kasten, keine Kacheln). Verfügbar trägt die Patina-Grün-Bedeutung, die
+// anderen bleiben ruhige Tinte. Getrennt nur durch eine warme Senk-Haarlinie.
+// ────────────────────────────────────────────────────────────────────────────
+
+function AvailabilityBalance({ counts }: { counts: InventoryCounts | null }) {
+  const t = useW14Theme()
+
+  // Honesty: no number prints until the real fan-out lands — show calm skeletons
+  // in the exact shape, never a fabricated „0 verfügbar".
+  if (counts == null) {
+    return (
+      <View className="flex-row items-stretch" accessibilityElementsHidden>
+        {Array.from({ length: 3 }).map((_, i) => (
+          <View key={i} className="flex-1 flex-row">
+            {i > 0 ? <Hairline vertical length={34} /> : null}
+            <View className="flex-1 gap-2" style={{ paddingLeft: i > 0 ? 16 : 0 }}>
+              <Skeleton width="58%" height={9} />
+              <Skeleton width="42%" height={24} />
+            </View>
+          </View>
+        ))}
+      </View>
+    )
+  }
+
+  const cells: { label: string; value: number; color: string }[] = [
+    { label: "Verfügbar", value: counts.available, color: t.colors.verdigris },
+    { label: "Reserviert", value: counts.reserved, color: t.colors.foreground },
+    { label: "Verkauft", value: counts.sold, color: t.colors.mutedForeground },
+  ]
+  return (
+    <View className="flex-row items-stretch">
+      {cells.map((cell, i) => (
+        <View key={cell.label} className="flex-1 flex-row">
+          {i > 0 ? <Hairline vertical length={34} /> : null}
+          <View className="flex-1 gap-1" style={{ paddingLeft: i > 0 ? 16 : 0 }}>
+            <Text
+              className="text-muted-foreground text-2xs font-medium"
+              style={{ letterSpacing: 0.6 }}
+              numberOfLines={1}
+              accessibilityLabel={`${cell.label}, ${cell.value}`}
+            >
+              {cell.label}
+            </Text>
+            <Text
+              className="font-mono-medium text-3xl leading-none"
+              style={{ color: cell.value > 0 ? cell.color : t.colors.mutedForeground }}
+            >
+              {cell.value.toLocaleString("de-DE")}
+            </Text>
+          </View>
+        </View>
+      ))}
+    </View>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Filter-Tab — eine boxlose Reihe; die aktive Kategorie trägt einen Gilt-Faden
+// (DESIGN-SYSTEM.md §1: Gold als Faden/Kante). Keine Pillen, keine Kästen.
+// ────────────────────────────────────────────────────────────────────────────
+
+function FilterTab({
+  label,
+  count,
+  active,
+  onPress,
+}: {
+  label: string
+  count: number | null
+  active: boolean
+  onPress: () => void
+}) {
+  const t = useW14Theme()
+  const countText = count != null ? count.toLocaleString("de-DE") : null
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="tab"
+      accessibilityState={{ selected: active }}
+      accessibilityLabel={count != null ? `Filter ${label}, ${count}` : `Filter ${label}`}
+      style={{ minHeight: t.touch.min, justifyContent: "center" }}
+    >
+      <View className="items-center gap-1.5 px-0.5 pb-1">
+        <View className="flex-row items-center gap-1.5">
+          <Text
+            className="text-sm"
+            style={{
+              color: active ? t.colors.foreground : t.colors.mutedForeground,
+              fontFamily: active ? t.fonts.semibold : t.fonts.medium,
+            }}
+            numberOfLines={1}
+          >
+            {label}
+          </Text>
+          {countText != null ? (
+            <Text
+              className="font-mono text-2xs"
+              style={{ color: active ? t.colors.foreground : t.colors.mutedForeground }}
+            >
+              {countText}
+            </Text>
+          ) : null}
+        </View>
+        {/* Der Gilt-Faden unter der aktiven Kategorie — Gold nur als Kante. */}
+        <View
+          style={{
+            height: 2,
+            width: "100%",
+            borderRadius: 1,
+            backgroundColor: active ? t.colors.gilt : "transparent",
+          }}
+        />
+      </View>
+    </Pressable>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Eine Lager-Zeile — eine NACKTE Zeile auf dem Papier (kein Kasten). Echtes
+// Primärfoto (oder eine getypte Material-Scheibe), Name, SKU, Lagerort, Material,
+// Listenpreis in Mono + ein ruhiger Verfügbarkeits-Punkt. Getrennt von der
+// nächsten Zeile nur durch eine einzige warme Haarlinie.
+// ────────────────────────────────────────────────────────────────────────────
+
+/** Status → der ruhige Punkt-Farbton (Bedeutung): Verfügbar grün, Verkauft rot,
+ *  Reserviert/Entwurf neutrale Tinte. Nie Dekoration. */
+function statusDotColor(status: ProductStatus | string, t: ReturnType<typeof useW14Theme>): string {
+  switch (status) {
+    case "AVAILABLE":
+      return t.colors.verdigris
+    case "SOLD":
+      return t.colors.destructive
+    case "RESERVED":
+      return t.colors.inkAged
+    default:
+      return t.colors.mutedForeground
+  }
+}
+
 function ProductRow({ item, onPress }: { item: ProductListRow; onPress: () => void }) {
   const t = useW14Theme()
   const material = materialLine(item.metal, item.weightGrams)
@@ -445,20 +597,31 @@ function ProductRow({ item, onPress }: { item: ProductListRow; onPress: () => vo
     item.locationPosition,
   )
   const hasLocation = !!(item.locationStorageUnit || item.locationDrawer || item.locationPosition)
+  const metalKind = item.metal ? METAL_TO_KIND[item.metal] : null
+  const dotColor = statusDotColor(item.status, t)
+  const status = statusLabel(item.status)
+  // The status reads as a quiet dot + word, not a filled pill — except SOLD,
+  // which earns the wax-red badge tone so a gone article stands out at a glance.
+  const soldOff = item.status === "SOLD"
 
   return (
     <PressableScale onPress={onPress} accessibilityRole="button" accessibilityLabel={item.name}>
-      {/* Box-free row on the parchment canvas no Card border, separated from
-          the next row by a single warm hairline below. Comfortable density. */}
-      <View className="hairline-b flex-row items-center gap-3 px-3 py-3">
-        {/* Thumbnail the real primary photo, or a typed ink fallback disc. */}
+      {/* Box-free row directly on the parchment — no Card border. The single warm
+          hairline lives between rows (rendered by the list, inset under the photo). */}
+      <View
+        className="flex-row items-center gap-3 py-3"
+        style={{ opacity: soldOff ? 0.7 : 1 }}
+      >
+        {/* Thumbnail — das echte Primärfoto, sonst eine getypte Material-Scheibe
+            mit dem bespoke MetalIcon (Gold/Silber/Platin/Palladium), sonst der
+            ruhige Karton-Glyph. Die Scheibe sitzt auf der erhabenen Papierstufe. */}
         {item.primaryPhotoThumbUrl ? (
           <Image
             source={{ uri: absoluteUrl(item.primaryPhotoThumbUrl) }}
             style={{
-              width: 52,
-              height: 52,
-              borderRadius: t.radii.button,
+              width: 56,
+              height: 56,
+              borderRadius: t.radii.card,
               backgroundColor: t.colors.raised,
             }}
             contentFit="cover"
@@ -468,29 +631,40 @@ function ProductRow({ item, onPress }: { item: ProductListRow; onPress: () => vo
           />
         ) : (
           <View
-            className="items-center justify-center rounded-md"
-            style={{ width: 52, height: 52, backgroundColor: t.colors.raised }}
+            className="items-center justify-center"
+            style={{
+              width: 56,
+              height: 56,
+              borderRadius: t.radii.card,
+              backgroundColor: t.colors.raised,
+            }}
           >
-            <Boxes size={t.icon.lg} color={t.colors.foreground} />
+            {metalKind ? (
+              <MetalIcon metal={metalKind} size={30} color={t.colors.inkAged} />
+            ) : (
+              <FallbackGlyph color={t.colors.inkAged} />
+            )}
           </View>
         )}
 
         <View className="flex-1 gap-1">
-          <Text className="text-base font-semibold" numberOfLines={1}>
+          <Text className="text-base font-semibold leading-tight" numberOfLines={1}>
             {item.name}
           </Text>
-          <Text className="text-muted-foreground font-mono text-xs" numberOfLines={1}>
+          {/* SKU in Mono — die ruhige Identitäts-Zeile. */}
+          <Text className="text-muted-foreground font-mono text-2xs" numberOfLines={1}>
             {item.sku}
           </Text>
+          {/* Lagerort · Material — eine leise Meta-Reihe in einer Zeile. */}
           <View className="flex-row items-center gap-1">
             <MapPin
               size={t.icon.xs}
-              color={hasLocation ? t.colors.foreground : t.colors.mutedForeground}
+              color={hasLocation ? t.colors.inkAged : t.colors.mutedForeground}
             />
             <Text
-              className={hasLocation ? "text-xs text-foreground" : "text-muted-foreground text-xs"}
+              className="text-xs"
+              style={{ color: hasLocation ? t.colors.inkAged : t.colors.mutedForeground, flexShrink: 1 }}
               numberOfLines={1}
-              style={{ flexShrink: 1 }}
             >
               {location}
             </Text>
@@ -503,17 +677,33 @@ function ProductRow({ item, onPress }: { item: ProductListRow; onPress: () => vo
           </View>
         </View>
 
+        {/* Preis in Mono-Ziffern (rechtsbündig) + ruhiger Verfügbarkeits-Punkt
+            mit Wort + die echten Verkaufskanäle. Keine Karte, keine Pille — bis
+            auf den einen wax-roten Verkauft-Marker (Bedeutung, kein Schmuck). */}
         <View className="items-end gap-1.5">
-          <Text className="text-foreground font-mono-medium text-base" numberOfLines={1}>
+          <Text
+            className="font-mono-medium text-base"
+            style={{ color: soldOff ? t.colors.mutedForeground : t.colors.foreground }}
+            numberOfLines={1}
+          >
             {formatEur(item.listPriceEur)}
           </Text>
-          <Badge variant={statusVariant(item.status)} dot>
-            <Text>{statusLabel(item.status)}</Text>
-          </Badge>
+          <View className="flex-row items-center gap-1.5">
+            <View
+              style={{ height: 6, width: 6, borderRadius: 3, backgroundColor: dotColor }}
+            />
+            <Text
+              className="text-2xs font-medium"
+              style={{ color: soldOff ? t.colors.destructive : t.colors.inkAged, letterSpacing: 0.2 }}
+              numberOfLines={1}
+            >
+              {status}
+            </Text>
+          </View>
           {/* Sale-channel indicators — real data from listedOnStorefront /
               listedOnEbay. Micro icons + labels, calm ink-faded, never pushing
               the price/name out of alignment. */}
-          {(item.listedOnStorefront || item.listedOnEbay) ? (
+          {item.listedOnStorefront || item.listedOnEbay ? (
             <View className="flex-row items-center gap-2 pt-0.5">
               {item.listedOnStorefront ? (
                 <View className="flex-row items-center gap-0.5">
@@ -532,6 +722,49 @@ function ProductRow({ item, onPress }: { item: ProductListRow; onPress: () => vo
         </View>
       </View>
     </PressableScale>
+  )
+}
+
+/** The typed fallback disc glyph — a calm carton mark drawn inline so a photo-
+ *  less article still reads as a real object, not an empty box. */
+function FallbackGlyph({ color }: { color: string }) {
+  // A small parcel/box silhouette — the neutral „Artikel ohne Foto" mark.
+  return (
+    <View
+      style={{
+        width: 26,
+        height: 22,
+        borderRadius: 3,
+        borderWidth: 1.4,
+        borderColor: color,
+        opacity: 0.85,
+      }}
+    >
+      {/* Der Deckel-Falz — eine waagerechte Linie oben drittel. */}
+      <View
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          top: 6,
+          height: 1,
+          backgroundColor: color,
+          opacity: 0.6,
+        }}
+      />
+      {/* Die senkrechte Mittellinie — die zweite Falz. */}
+      <View
+        style={{
+          position: "absolute",
+          top: 6,
+          bottom: 0,
+          left: "50%",
+          width: 1,
+          backgroundColor: color,
+          opacity: 0.6,
+        }}
+      />
+    </View>
   )
 }
 
@@ -559,23 +792,26 @@ function dedupeById(
 
 /** The paging footer: a quiet spinner while the next page loads, an honest
  *  retry chip if it failed (a load FAILURE is never shown as „end of list"),
- *  and nothing once everything is on screen. */
+ *  and — once the whole Lager is on screen — the calm availability triad as a
+ *  full-stop, so the operator sees the at-a-glance picture at the list's foot. */
 function LagerListFooter({
   loading,
   error,
   moreRemain,
+  summaryLine,
   onRetry,
 }: {
   loading: boolean
   error: string | null
   moreRemain: boolean
+  summaryLine: string | null
   onRetry: () => void
 }) {
   const t = useW14Theme()
 
   if (error != null) {
     return (
-      <View className="items-center px-4 pt-3">
+      <View className="items-center px-4 pt-4">
         <Text className="text-muted-foreground pb-2 text-center text-xs">{error}</Text>
         <Pressable
           onPress={() => {
@@ -596,15 +832,31 @@ function LagerListFooter({
 
   if (loading) {
     return (
-      <View className="items-center py-4" accessibilityElementsHidden>
+      <View className="items-center py-5" accessibilityElementsHidden>
         <ActivityIndicator color={t.colors.mutedForeground} />
       </View>
     )
   }
 
-  // A calm full-stop once the whole Lager is on screen (only worth showing for
-  // a list long enough to have paged at all — `moreRemain` is already false).
-  if (!moreRemain) return <View className="h-1" />
+  // A calm full-stop once the whole Lager is on screen — the live availability
+  // triad as the closing line (only when the counts are real, never a faked 0).
+  if (!moreRemain && summaryLine) {
+    return (
+      <View className="items-center pb-1 pt-5">
+        <View className="flex-row items-center gap-2">
+          <View style={{ height: 4, width: 4, borderRadius: 2, backgroundColor: t.colors.gilt }} />
+          <Text
+            className="text-muted-foreground text-2xs"
+            style={{ letterSpacing: 0.2 }}
+            numberOfLines={1}
+          >
+            {summaryLine}
+          </Text>
+        </View>
+      </View>
+    )
+  }
+  if (!moreRemain) return <View className="h-2" />
   return null
 }
 
@@ -612,20 +864,26 @@ function LagerListFooter({
  *  loading cross-fades into data instead of popping a spinner. */
 function LagerSkeleton() {
   return (
-    <View className="gap-2.5 px-4 pt-2" accessibilityElementsHidden>
-      <Skeleton width={64} height={11} />
-      {Array.from({ length: 7 }).map((_, i) => (
-        // Box-free skeleton row — matches the real ProductRow (hairline-b, no Card).
-        <View key={i} className="hairline-b flex-row items-center gap-3 px-3 py-3">
-          <Skeleton width={52} height={52} radius="button" />
-          <View className="flex-1 gap-2">
-            <Skeleton width="70%" height={14} />
-            <Skeleton width="36%" height={11} />
-            <Skeleton width="52%" height={11} />
-          </View>
-          <View className="items-end gap-2">
-            <Skeleton width={62} height={14} />
-            <Skeleton width={70} height={18} radius="full" />
+    <View className="px-4 pt-1" accessibilityElementsHidden>
+      <View className="pb-2">
+        <Skeleton width={64} height={10} />
+      </View>
+      {Array.from({ length: 8 }).map((_, i) => (
+        // Box-free skeleton row — matches the real ProductRow (hairline between,
+        // inset under the photo; no Card).
+        <View key={i}>
+          {i > 0 ? <Hairline inset={68} /> : null}
+          <View className="flex-row items-center gap-3 py-3">
+            <Skeleton width={56} height={56} radius="card" />
+            <View className="flex-1 gap-2">
+              <Skeleton width="68%" height={14} />
+              <Skeleton width="34%" height={10} />
+              <Skeleton width="52%" height={11} />
+            </View>
+            <View className="items-end gap-2">
+              <Skeleton width={62} height={14} />
+              <Skeleton width={56} height={10} />
+            </View>
           </View>
         </View>
       ))}

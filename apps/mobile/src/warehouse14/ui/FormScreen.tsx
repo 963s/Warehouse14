@@ -16,7 +16,7 @@
  * The caller renders FormFields as `children` and does the actual api-client
  * call inside `onSubmit`.
  */
-import { type ReactNode, useState } from "react"
+import { type ReactNode, useRef, useState } from "react"
 import { KeyboardAvoidingView, Platform, ScrollView, View } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 
@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button"
 import { Text } from "@/components/ui/text"
 import { describeError } from "@/warehouse14/api"
 import { useW14Theme } from "@/warehouse14/theme"
+import { error as hapticError, selection, success as hapticSuccess } from "@/warehouse14/ui/native/haptics"
 
 export interface FormScreenProps {
   title: string
@@ -39,6 +40,12 @@ export interface FormScreenProps {
   onSubmit: () => Promise<void | boolean>
   /** Save-button label (default "Speichern"). */
   submitLabel?: string
+  /**
+   * In-flight button label (default "Speichern…"). Set it to the verb of the
+   * flow so the moment of action matches the rest of the copy — e.g. a create
+   * screen passes "Wird angelegt…" instead of the save-an-edit "Speichern…".
+   */
+  submitBusyLabel?: string
   /** German success line under the banner (default "Gespeichert."). */
   successMessage?: string
   /** Disable the save action (e.g. client-side validation not yet satisfied). */
@@ -53,6 +60,7 @@ export function FormScreen({
   children,
   onSubmit,
   submitLabel = "Speichern",
+  submitBusyLabel = "Speichern…",
   successMessage = "Gespeichert.",
   submitDisabled = false,
   money = false,
@@ -63,7 +71,16 @@ export function FormScreen({
   const [error, setError] = useState<string | null>(null)
   const [ok, setOk] = useState(false)
 
+  // Synchronous double-tap guard. `busy` only disables the button AFTER React
+  // re-renders (~100 ms on LTE), so an impatient second tap in that gap would
+  // fire a second request — doubling the load AND the rate-limit budget spend
+  // (a real cause of the "Zu viele Versuche" the owner saw). The ref blocks the
+  // re-entry on the SAME tick, before any await.
+  const submittingRef = useRef(false)
+
   const handleSubmit = async (): Promise<void> => {
+    if (submittingRef.current) return
+    submittingRef.current = true
     setError(null)
     setOk(false)
     setBusy(true)
@@ -72,10 +89,15 @@ export function FormScreen({
       // its message inline; show no success banner (and no error banner — the
       // caller returned rather than threw). Any other resolution is a success.
       const result = await onSubmit()
-      if (result !== false) setOk(true)
+      if (result !== false) {
+        setOk(true)
+        hapticSuccess()
+      }
     } catch (e) {
       setError(describeError(e))
+      hapticError()
     } finally {
+      submittingRef.current = false
       setBusy(false)
     }
   }
@@ -133,10 +155,14 @@ export function FormScreen({
       >
         <Button
           onPress={() => void handleSubmit()}
+          // Instant tactile confirmation on the press itself — fires on the same
+          // touch tick, BEFORE the async busy re-render, so the tap never feels
+          // ignored even when the network round-trip is slow.
+          onPressIn={() => selection()}
           disabled={submitDisabled || busy}
           size={money ? "xl" : "default"}
         >
-          <Text>{busy ? "Speichern…" : submitLabel}</Text>
+          <Text>{busy ? submitBusyLabel : submitLabel}</Text>
         </Button>
       </View>
     </KeyboardAvoidingView>

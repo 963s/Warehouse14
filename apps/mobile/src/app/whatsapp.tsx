@@ -5,14 +5,21 @@
  * Nachricht (queued → sent → delivered → read → failed). Diese Fläche zeigt nur,
  * was wirklich da ist, und löst nur Aktionen aus, die der Server akzeptieren wird.
  *
+ * Form (DESIGN-SYSTEM.md): keine Kästen in Kästen. Der Posteingang lebt direkt
+ * auf dem warmen Papier — ein ruhiger Kopf mit einem Gilt-Faden öffnet das
+ * Siegel, die Kopf-Bilanz steht boxlos zwischen warmen Haarlinien, und die
+ * Konversationen sind nackte Zeilen, getrennt nur durch eine einzige Haarlinie.
+ * Tiefe kommt aus dem geschichteten Papier und der Linie, nie aus gestapelten
+ * Karten. Gold bleibt Faden, Kante, Siegel — nie eine Füllung.
+ *
  * Aufbau:
  *   • Posteingang-Kopf — echte Summen aus echten Threads (ungelesene gesamt,
  *     Chats mit offenen Eingängen). Nichts da → ehrlicher leerer Zustand.
- *   • Threads — die Konversationen als Zeilen, ungelesene zuerst; eine Badge mit
- *     der echten ungelesenen Anzahl. Tippen öffnet den Chat.
+ *   • Threads — die Konversationen als nackte Zeilen, ungelesene zuerst; eine
+ *     Badge mit der echten ungelesenen Anzahl. Tippen öffnet den Chat.
  *   • Chat-Detail — der Nachrichten-Verlauf in Blasen (eingehend links,
  *     ausgehend rechts mit ehrlichem Status), der KI-/Mensch-Umschalter, das
- *     „als erledigt"-Markieren eingehender Nachrichten, die Kunden-Verknüpfung
+ *     Erledigt-Markieren eingehender Nachrichten, die Kunden-Verknüpfung
  *     und der Sende-Verfasser mit ausdrücklicher Bestätigung (Step-up ist
  *     transparent über den globalen Host).
  *   • Neue Nachricht — an eine beliebige Nummer schreiben (gleicher Sende-Pfad,
@@ -20,12 +27,13 @@
  *
  * Ehrlichkeitsregel: jede Zahl ist eine echte Summe aus einer echten Antwort,
  * jeder Status ein echtes Feld vom Server. Eine Sendung ohne Meta-Zugang sagt
- * „in Warteschlange" — nie „gesendet". Ein Provider-Reject sagt ehrlich, dass
- * nichts rausging. Gebaut auf dem geteilten Spine (die UI-Primitive, das §6-
- * Motion- + §7-Haptik-Vokabular, nur W14-Theme-Tokens). Deutsche UI.
+ * ehrlich in Warteschlange — nie gesendet. Ein Provider-Reject sagt ehrlich,
+ * dass nichts rausging. Gebaut auf dem geteilten Spine (die UI-Primitive, das
+ * §6-Motion- + §7-Haptik-Vokabular, nur W14-Theme-Tokens). Deutsche UI.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, View } from "react-native"
+import Svg, { Circle, Path } from "react-native-svg"
 import type {
   WhatsAppMessage,
   WhatsAppSendResponse,
@@ -35,7 +43,6 @@ import {
   ArrowRight,
   Bot,
   CheckCheck,
-  ChevronRight,
   Link2,
   MessageCircle,
   MessageSquarePlus,
@@ -48,7 +55,6 @@ import {
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
 import {
   Dialog,
   DialogContent,
@@ -81,12 +87,12 @@ import {
   type SendMeta,
   sortThreads,
   statusLabel,
-  statusVariant,
   threadDisplayName,
   validateSend,
 } from "@/warehouse14/whatsapp-ui"
 import {
   EmptyState,
+  Hairline,
   haptics,
   InlineError,
   PaperGrain,
@@ -104,12 +110,48 @@ const DEBOUNCE_MS = 300
 const CUSTOMER_SEARCH_LIMIT = 8
 
 // ────────────────────────────────────────────────────────────────────────────
-// Inbox header — the real unread/thread tallies
+// ChatSeal — ein bespoke Posteingang-Siegel (react-native-svg). Ein gestempelter
+// Kreis mit einer Sprechblasen-Falte: die ruhige Marke des Posteingangs. Die
+// Blase (der Faden) tönt in Gilt, der Ring bleibt Tinte — Gold nur als Faden /
+// Siegel, nie als Füllung (DESIGN-SYSTEM.md §1, §6).
 // ────────────────────────────────────────────────────────────────────────────
 
-function InboxHeader({ counts }: { counts: InboxCounts }) {
+function ChatSeal({
+  size = 26,
+  ink,
+  gilt,
+}: {
+  size?: number
+  ink: string
+  gilt: string
+}): ReactNode {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" accessibilityElementsHidden>
+      {/* Gestempelter Ring — die Siegel-Tinte. */}
+      <Circle cx={12} cy={12} r={8.4} stroke={ink} strokeWidth={1.4} fill="none" />
+      <Circle cx={12} cy={12} r={6.2} stroke={ink} strokeWidth={0.7} strokeOpacity={0.4} fill="none" />
+      {/* Sprechblase — der Gilt-Faden im Siegel (Gold nur als Faden). */}
+      <Path
+        d="M8.2 10.4 C8.2 9.5 8.9 8.9 9.8 8.9 L14.2 8.9 C15.1 8.9 15.8 9.5 15.8 10.4 L15.8 12.6 C15.8 13.5 15.1 14.1 14.2 14.1 L11.4 14.1 L9.4 15.6 L9.4 14.1 C8.8 13.9 8.2 13.3 8.2 12.6 Z"
+        stroke={gilt}
+        strokeWidth={1.3}
+        strokeLinejoin="round"
+        fill="none"
+      />
+      <Path d="M10.2 11.4 L13.8 11.4 M10.2 12.5 L12.6 12.5" stroke={gilt} strokeWidth={0.9} strokeLinecap="round" />
+    </Svg>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Posteingang-Kopf — die echten Thread-Summen als boxlose Bilanz (keine Karten).
+// Drei Spalten, getrennt durch eine warme Haarlinie; aktive Spalten tragen Tinte
+// bzw. ihre Funktions-Farbe, sonst bleibt die Zahl leise.
+// ────────────────────────────────────────────────────────────────────────────
+
+function InboxBalance({ counts }: { counts: InboxCounts }) {
   const t = useW14Theme()
-  const tiles: { label: string; value: number; active: boolean; color: string }[] = [
+  const cells: { label: string; value: number; active: boolean; color: string }[] = [
     {
       label: "Ungelesen",
       value: counts.unreadTotal,
@@ -130,30 +172,36 @@ function InboxHeader({ counts }: { counts: InboxCounts }) {
     },
   ]
   return (
-    <View className="flex-row gap-2.5">
-      {tiles.map((tile) => (
-        <Card key={tile.label} className="flex-1 gap-1.5 px-3 py-3">
-          <Text
-            className="text-muted-foreground text-2xs font-medium"
-            style={{ letterSpacing: 0.4 }}
-            numberOfLines={1}
-          >
-            {tile.label}
-          </Text>
-          <Text
-            className="font-mono-medium text-2xl"
-            style={{ color: tile.active ? tile.color : t.colors.mutedForeground }}
-          >
-            {tile.value}
-          </Text>
-        </Card>
+    <View className="flex-row items-stretch">
+      {cells.map((cell, i) => (
+        <View key={cell.label} className="flex-1 flex-row">
+          {i > 0 ? <Hairline vertical length={36} /> : null}
+          <View className="flex-1 gap-1" style={{ paddingLeft: i > 0 ? 16 : 0 }}>
+            <Text
+              className="text-muted-foreground text-2xs font-medium"
+              style={{ letterSpacing: 0.6 }}
+              numberOfLines={1}
+            >
+              {cell.label}
+            </Text>
+            <Text
+              className="font-mono-medium text-3xl leading-none"
+              style={{ color: cell.active ? cell.color : t.colors.mutedForeground }}
+            >
+              {cell.value}
+            </Text>
+          </View>
+        </View>
       ))}
     </View>
   )
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// One conversation row
+// Eine Konversations-Zeile — eine NACKTE Zeile auf dem Papier (kein Kasten). Ein
+// ruhiges Glyph, der Name, eine leise Vorschau, der Zeitstempel und entweder die
+// ungelesen-Badge oder ein Gilt-Punkt als ruhiger Faden. Getrennt von der
+// nächsten nur durch eine einzige warme Haarlinie (im Bildschirm gesetzt).
 // ────────────────────────────────────────────────────────────────────────────
 
 function ThreadRow({
@@ -175,32 +223,46 @@ function ThreadRow({
         unread ? `, ${thread.unreadCount} ungelesen` : ""
       }`}
     >
- <View className="flex-row items-center gap-3 hairline-b px-3 py-3">
-        <View
-          className="h-10 w-10 items-center justify-center rounded-full"
-          style={{ backgroundColor: t.colors.primary + (unread ? "29" : "14") }}
-        >
+      <View className="flex-row items-start gap-3 py-3.5">
+        {/* Das Glyph sitzt bare — kein getöntes Chip-Kästchen. Ungelesene Chats
+            tragen es in Tinte, gelesene leiser; ein verknüpfter Kunde wird zum
+            Personen-Glyph. */}
+        <View className="h-9 w-9 items-center justify-center" style={{ marginTop: 1 }}>
           {fromCustomer ? (
-            <User size={t.icon.md} color={t.colors.primary} />
+            <User
+              size={t.icon.lg}
+              color={unread ? t.colors.foreground : t.colors.mutedForeground}
+            />
           ) : (
-            <MessageCircle size={t.icon.md} color={t.colors.primary} />
+            <MessageCircle
+              size={t.icon.lg}
+              color={unread ? t.colors.foreground : t.colors.mutedForeground}
+            />
           )}
         </View>
+
         <View className="flex-1 gap-1">
+          {/* Titel-Zeile: Name + (bei verknüpftem Kunden) die leise Nummer. */}
           <View className="flex-row items-center gap-2">
             <Text
-              className={unread ? "text-base font-semibold" : "text-base font-medium"}
+              className={unread ? "text-base font-semibold leading-tight" : "text-base font-medium leading-tight"}
               numberOfLines={1}
               style={{ flexShrink: 1 }}
             >
               {name}
             </Text>
             {fromCustomer ? (
-              <Text className="text-muted-foreground text-2xs" numberOfLines={1}>
+              <Text
+                className="text-muted-foreground font-mono text-2xs"
+                numberOfLines={1}
+                style={{ flexShrink: 0 }}
+              >
                 {formatPhone(thread.phone)}
               </Text>
             ) : null}
           </View>
+
+          {/* Vorschau der letzten Nachricht — ungelesen in Tinte, sonst leise. */}
           <Text
             className={
               unread
@@ -213,7 +275,8 @@ function ThreadRow({
             {thread.lastMessagePreview}
           </Text>
         </View>
-        <View className="items-end gap-1.5">
+
+        <View className="items-end gap-1.5" style={{ marginTop: 1 }}>
           <Text className="text-muted-foreground text-2xs">
             {relativeTime(thread.lastMessageAt)}
           </Text>
@@ -222,7 +285,10 @@ function ThreadRow({
               <Text>{thread.unreadCount}</Text>
             </Badge>
           ) : (
-            <ChevronRight size={t.icon.sm} color={t.colors.mutedForeground} />
+            // Ein ruhiger Gilt-Punkt als Faden statt einer schweren Chevron-Kante.
+            <View
+              style={{ height: 5, width: 5, borderRadius: 3, backgroundColor: t.colors.gilt }}
+            />
           )}
         </View>
       </View>
@@ -231,7 +297,10 @@ function ThreadRow({
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// One message bubble
+// Eine Nachrichten-Blase. Ausgehend rechts auf dem gehobenen Papier (kein
+// Rahmen), eingehend links mit einer einzigen Haarlinie. Der Status trägt seine
+// Funktions-Farbe (gelesen = Patina-Grün, fehlgeschlagen = Wachs-Rot), sonst
+// leise — nie eine erfundene Bestätigung.
 // ────────────────────────────────────────────────────────────────────────────
 
 function MessageBubble({
@@ -280,7 +349,8 @@ function MessageBubble({
           ) : null}
         </View>
       </View>
-      {/* Inbound messages can be triaged as handled (honest: a real PATCH). */}
+      {/* Eingehende Nachrichten lassen sich als erledigt markieren (ehrlich: ein
+          echtes PATCH). */}
       {!outbound ? (
         message.handledAt != null ? (
           <View className="mt-1 flex-row items-center gap-1 pl-1">
@@ -311,20 +381,21 @@ function MessageBubble({
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// The send-result banner (sent / queued — honest, never a faked "sent")
+// Das Sende-Ergebnis — eine boxlose, Gilt-/Funktions-gefädelte Zeile (sent /
+// queued), ehrlich, nie ein vorgetäuschtes „gesendet". Eine echte Abgabe trägt
+// die Patina (verdigris), eine Warteschlange bleibt leise.
 // ────────────────────────────────────────────────────────────────────────────
 
-function SendBanner({ meta }: { meta: SendMeta }) {
+function SendResult({ meta }: { meta: SendMeta }) {
   const t = useW14Theme()
   const color = meta.isLive ? t.colors.verdigris : t.colors.mutedForeground
   const Icon = meta.isLive ? CheckCheck : Send
   return (
-    <View
-      className="flex-row items-start gap-2.5 rounded-xl px-3.5 py-3"
-      style={{ backgroundColor: color + "14" }}
-      accessibilityRole="alert"
-    >
-      <View className="pt-0.5">
+    <View className="flex-row items-start gap-2.5 py-1" accessibilityRole="alert">
+      <View
+        className="h-7 w-7 items-center justify-center"
+        style={{ marginTop: 1 }}
+      >
         <Icon size={t.icon.md} color={color} />
       </View>
       <View className="flex-1 gap-0.5">
@@ -338,7 +409,9 @@ function SendBanner({ meta }: { meta: SendMeta }) {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// The send composer + explicit confirm gate (shared by detail + new message)
+// Der Sende-Verfasser + die ausdrückliche Bestätigung (geteilt von Detail + Neue
+// Nachricht). Der zweite Druck ist der Riegel vor dem Provider-Aufruf; Step-up
+// (403) ist transparent über den globalen StepUpDialogHost.
 // ────────────────────────────────────────────────────────────────────────────
 
 function SendComposer({
@@ -443,11 +516,18 @@ function SendComposer({
         <InlineError message={sendM.error} onDismiss={sendM.reset} />
       ) : null}
 
-      {/* The explicit confirm gate a second press before the provider call.
-          Step-up (403) is transparent via the global StepUpDialogHost. */}
+      {/* Die ausdrückliche Bestätigung ein zweiter Druck vor dem Provider-Aufruf.
+          Step-up (403) ist transparent über den globalen StepUpDialogHost. Sie
+          steht boxlos über einer warmen Haarlinie, kein Kasten im Kasten. */}
       {pending ? (
-        <View className="gap-2 rounded-xl border border-border bg-card p-3">
-          <Text className="text-sm font-semibold">Nachricht senden?</Text>
+        <View className="gap-2 pt-1">
+          <Hairline />
+          <View className="flex-row items-center gap-2 pt-1.5">
+            <View
+              style={{ height: 5, width: 5, borderRadius: 3, backgroundColor: t.colors.gilt }}
+            />
+            <Text className="text-sm font-semibold">Nachricht senden?</Text>
+          </View>
           <Text className="text-muted-foreground text-xs leading-5">
             An {formatPhone(toPhone)}. Ist noch kein WhatsApp-Zugang hinterlegt, wird sie nur in
             die Warteschlange gelegt und noch nicht zugestellt.
@@ -491,7 +571,9 @@ function SendComposer({
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Link-customer picker (search known customers, attach to the last inbound msg)
+// Kunden-Verknüpfung — bekannte Kunden suchen, an die letzte eingehende Nachricht
+// hängen. Boxlos über einer Haarlinie; die Treffer sind nackte, Haarlinie-
+// getrennte Zeilen, kein Kasten im Kasten.
 // ────────────────────────────────────────────────────────────────────────────
 
 function LinkCustomerPicker({
@@ -543,9 +625,15 @@ function LinkCustomerPicker({
   )
 
   return (
-    <View className="gap-2.5 rounded-xl border border-border bg-card p-3">
-      <View className="flex-row items-center justify-between">
-        <Text className="text-sm font-semibold">Kunde verknüpfen</Text>
+    <View className="gap-2.5 pt-1">
+      <Hairline />
+      <View className="flex-row items-center justify-between pt-1">
+        <View className="flex-row items-center gap-2">
+          <View
+            style={{ height: 5, width: 5, borderRadius: 3, backgroundColor: t.colors.gilt }}
+          />
+          <Text className="text-sm font-semibold">Kunde verknüpfen</Text>
+        </View>
         <Pressable
           onPress={onCancel}
           hitSlop={8}
@@ -587,30 +675,32 @@ function LinkCustomerPicker({
           Kein passender Kunde gefunden.
         </Text>
       ) : search.data != null ? (
-        <View className="gap-1.5">
-          {search.data.items.map((c) => (
-            <Pressable
-              key={c.id}
-              onPress={() => void link(c.id)}
-              disabled={linkingId != null}
-              accessibilityRole="button"
-              accessibilityLabel={`${c.fullName} verknüpfen`}
-              className="flex-row items-center gap-3 rounded-lg border border-border px-3 py-2.5"
-              style={{ opacity: linkingId != null && linkingId !== c.id ? 0.5 : 1 }}
-            >
-              <UserCheck size={t.icon.sm} color={t.colors.primary} />
-              <View className="flex-1">
-                <Text className="text-sm font-medium" numberOfLines={1}>
-                  {c.fullName}
-                </Text>
-                <Text className="text-muted-foreground text-2xs">{c.customerNumber}</Text>
-              </View>
-              {linkingId === c.id ? (
-                <Text className="text-muted-foreground text-2xs">Wird verknüpft…</Text>
-              ) : (
-                <ArrowRight size={t.icon.sm} color={t.colors.mutedForeground} />
-              )}
-            </Pressable>
+        <View>
+          {search.data.items.map((c, i) => (
+            <View key={c.id}>
+              {i > 0 ? <Hairline inset={0} /> : null}
+              <Pressable
+                onPress={() => void link(c.id)}
+                disabled={linkingId != null}
+                accessibilityRole="button"
+                accessibilityLabel={`${c.fullName} verknüpfen`}
+                className="flex-row items-center gap-3 py-2.5"
+                style={{ opacity: linkingId != null && linkingId !== c.id ? 0.5 : 1 }}
+              >
+                <UserCheck size={t.icon.sm} color={t.colors.foreground} />
+                <View className="flex-1">
+                  <Text className="text-sm font-medium" numberOfLines={1}>
+                    {c.fullName}
+                  </Text>
+                  <Text className="text-muted-foreground font-mono text-2xs">{c.customerNumber}</Text>
+                </View>
+                {linkingId === c.id ? (
+                  <Text className="text-muted-foreground text-2xs">Wird verknüpft…</Text>
+                ) : (
+                  <ArrowRight size={t.icon.sm} color={t.colors.mutedForeground} />
+                )}
+              </Pressable>
+            </View>
           ))}
         </View>
       ) : null}
@@ -619,7 +709,7 @@ function LinkCustomerPicker({
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Chat detail sheet — messages, AI toggle, send, mark-handled, link
+// Chat-Detail — Nachrichten, KI-Umschalter, Senden, Erledigt-Markieren, Verknüpfen
 // ────────────────────────────────────────────────────────────────────────────
 
 function ChatDetailSheet({
@@ -669,7 +759,7 @@ function ChatDetailSheet({
     },
   )
 
-  // Marking an inbound message „erledigt" is an IDEMPOTENT, NON-FISCAL admin write
+  // Marking an inbound message erledigt is an IDEMPOTENT, NON-FISCAL admin write
   // (PATCH …/handled just stamps handled_at = now()). Route it through useSafeRetry
   // so a transport drop mid-tap doesn't lose the operator's triage: the policy
   // classifies it `safe`, and the moment the LAN returns the hook re-fires the
@@ -707,6 +797,7 @@ function ChatDetailSheet({
   const aiActive = data?.aiActive ?? false
   const aiMeta = describeAiStatus(aiActive)
   const messages = data?.messages ?? []
+  const messagesRef = useRef<ScrollView>(null)
   const linkedName = data?.linkedCustomerName ?? null
   const linkedId = data?.linkedCustomerId ?? null
 
@@ -743,40 +834,40 @@ function ChatDetailSheet({
         </DialogHeader>
 
         <ScrollView
+          ref={messagesRef}
           className="max-h-[420px]"
-          contentContainerStyle={{ gap: 12 }}
+          contentContainerStyle={{ gap: 14 }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          onContentSizeChange={() => messagesRef.current?.scrollToEnd({ animated: false })}
         >
-          {/* AI / human toggle */}
+          {/* KI- / Mensch-Umschalter — boxlos: ein bare Glyph, der Status, der
+              Knopf, gekappt von einer Haarlinie. Kein Kasten im Kasten. */}
           {data != null ? (
-            <View className="flex-row items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5">
-              <View
-                className="h-8 w-8 items-center justify-center rounded-md"
-                style={{
-                  backgroundColor:
-                    (aiActive ? t.colors.verdigris : t.colors.primary) + "1f",
-                }}
-              >
-                {aiActive ? (
-                  <Bot size={t.icon.sm} color={t.colors.verdigris} />
-                ) : (
-                  <User size={t.icon.sm} color={t.colors.primary} />
-                )}
+            <View className="gap-2.5">
+              <View className="flex-row items-center gap-3">
+                <View className="h-9 w-9 items-center justify-center">
+                  {aiActive ? (
+                    <Bot size={t.icon.lg} color={t.colors.verdigris} />
+                  ) : (
+                    <User size={t.icon.lg} color={t.colors.foreground} />
+                  )}
+                </View>
+                <View className="flex-1">
+                  <Text className="text-sm font-semibold">{aiMeta.title}</Text>
+                  <Text className="text-muted-foreground text-2xs leading-4">{aiMeta.hint}</Text>
+                </View>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onPress={() => void aiM.mutate({ aiActive: !aiActive })}
+                  disabled={aiM.isPending}
+                  accessibilityLabel={aiMeta.toggleLabel}
+                >
+                  <Text>{aiM.isPending ? "…" : aiMeta.toggleLabel}</Text>
+                </Button>
               </View>
-              <View className="flex-1">
-                <Text className="text-sm font-semibold">{aiMeta.title}</Text>
-                <Text className="text-muted-foreground text-2xs leading-4">{aiMeta.hint}</Text>
-              </View>
-              <Button
-                variant="outline"
-                size="sm"
-                onPress={() => void aiM.mutate({ aiActive: !aiActive })}
-                disabled={aiM.isPending}
-                accessibilityLabel={aiMeta.toggleLabel}
-              >
-                <Text>{aiM.isPending ? "…" : aiMeta.toggleLabel}</Text>
-              </Button>
+              <Hairline />
             </View>
           ) : null}
 
@@ -848,25 +939,28 @@ function ChatDetailSheet({
                 }}
                 accessibilityLabel="Kunde verknüpfen"
               >
-                <Link2 size={t.icon.sm} color={t.colors.primary} />
+                <Link2 size={t.icon.sm} color={t.colors.foreground} />
                 <Text>Kunde verknüpfen</Text>
               </Button>
             )
           ) : null}
 
-          {/* Send result + composer */}
-          {sendMeta != null ? <SendBanner meta={sendMeta} /> : null}
+          {/* Send result + composer — gekappt von einer warmen Haarlinie. */}
+          {sendMeta != null ? <SendResult meta={sendMeta} /> : null}
           {phone != null ? (
-            <View className="gap-2 border-t border-border pt-3">
-              <SendComposer
-                toPhone={phone}
-                phoneLocked
-                onSent={(res) => {
-                  setSendMeta(describeSend(res))
-                  void detail.refetch()
-                  onChanged()
-                }}
-              />
+            <View className="gap-2.5 pt-1">
+              <Hairline />
+              <View className="pt-1.5">
+                <SendComposer
+                  toPhone={phone}
+                  phoneLocked
+                  onSent={(res) => {
+                    setSendMeta(describeSend(res))
+                    void detail.refetch()
+                    onChanged()
+                  }}
+                />
+              </View>
             </View>
           ) : null}
         </ScrollView>
@@ -887,7 +981,7 @@ function ChatDetailSheet({
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// New-message sheet (outbound to an arbitrary number)
+// Neue Nachricht — ausgehend an eine beliebige Nummer
 // ────────────────────────────────────────────────────────────────────────────
 
 function NewMessageSheet({
@@ -927,7 +1021,7 @@ function NewMessageSheet({
           </DialogDescription>
         </DialogHeader>
 
-        {sendMeta != null ? <SendBanner meta={sendMeta} /> : null}
+        {sendMeta != null ? <SendResult meta={sendMeta} /> : null}
 
         <SendComposer
           toPhone={phone}
@@ -953,7 +1047,7 @@ function NewMessageSheet({
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Screen
+// Bildschirm
 // ────────────────────────────────────────────────────────────────────────────
 
 export default function WhatsAppScreen() {
@@ -986,11 +1080,13 @@ export default function WhatsAppScreen() {
     [threads.data],
   )
   const hasThreads = sorted.length > 0
+  const firstLoading = threads.status === "loading" && threads.data == null
+  const hardError = threads.error != null && threads.data == null ? threads.error : null
 
   return (
     <View className="flex-1 bg-background">
       {/* The aged-paper grain canvas depth from the layered cream plus this
-          faint warm tooth, never a flat fill (DESIGN.md §1, §5). */}
+          faint warm tooth, never a flat fill (DESIGN-SYSTEM.md §1, §5). */}
       <PaperGrain />
       <ScrollView
         className="flex-1"
@@ -998,7 +1094,7 @@ export default function WhatsAppScreen() {
           paddingHorizontal: 16,
           paddingTop: 12,
           paddingBottom: insets.contentBottom,
-          gap: 20,
+          gap: 24,
         }}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
@@ -1006,81 +1102,105 @@ export default function WhatsAppScreen() {
         refreshControl={<RefreshControl {...rc} />}
       >
         {/* ── Posteingang-Kopf ─────────────────────────────────────────────── */}
-        <View className="gap-3">
-          <View className="flex-row items-center justify-between gap-2">
-            <View className="flex-1 flex-row items-center gap-2">
-              <MessageCircle size={t.icon.lg} color={t.colors.primary} />
-              {/* Screen title in the Bricolage Grotesque display voice (DESIGN-SYSTEM.md §3). */}
-              <Text
-                className="flex-1 text-2xl font-display-semibold leading-tight"
-                numberOfLines={1}
+        <View className="gap-4">
+          {/* Kicker + Titel — der Posteingang öffnet mit dem bespoke Siegel und
+              dem Gilt-Faden (DESIGN-SYSTEM.md §6: jede Sektion öffnet mit dem
+              Gilt-Diamanten + einer Small-Caps-Zeile). */}
+          <View className="gap-1.5">
+            <View className="flex-row items-center justify-between gap-2">
+              <View className="flex-row items-center gap-2">
+                <View style={{ height: 4, width: 4, borderRadius: 2, backgroundColor: t.colors.gilt }} />
+                <Text
+                  className="text-muted-foreground text-2xs font-semibold"
+                  style={{ letterSpacing: 1.2 }}
+                >
+                  WHATSAPP
+                </Text>
+              </View>
+              <Button
+                size="sm"
+                onPress={() => {
+                  haptics.selection()
+                  setNewOpen(true)
+                }}
+                accessibilityLabel="Neue Nachricht schreiben"
               >
-                WhatsApp-Posteingang
+                <MessageSquarePlus size={t.icon.sm} color={t.colors.primaryForeground} />
+                <Text>Neu</Text>
+              </Button>
+            </View>
+            <View className="flex-row items-center gap-2.5">
+              <ChatSeal size={26} ink={t.colors.primary} gilt={t.colors.gilt} />
+              {/* Bricolage Grotesque display voice (DESIGN-SYSTEM.md §3). */}
+              <Text className="flex-1 text-2xl font-display-semibold leading-tight" numberOfLines={1}>
+                Posteingang
               </Text>
             </View>
-            <Button
-              size="sm"
-              onPress={() => {
-                haptics.selection()
-                setNewOpen(true)
-              }}
-              accessibilityLabel="Neue Nachricht schreiben"
-            >
-              <MessageSquarePlus size={t.icon.sm} color={t.colors.primaryForeground} />
-              <Text>Neu</Text>
-            </Button>
           </View>
 
-          {threads.status === "loading" && threads.data == null ? (
-            <View className="flex-row gap-2.5" accessibilityElementsHidden>
+          {firstLoading ? (
+            <View className="flex-row items-stretch" accessibilityElementsHidden>
               {Array.from({ length: 3 }).map((_, i) => (
-                <Card key={i} className="flex-1 gap-2 px-3 py-3">
-                  <Skeleton width="60%" height={10} />
-                  <Skeleton width="40%" height={24} />
-                </Card>
+                <View key={i} className="flex-1 flex-row">
+                  {i > 0 ? <Hairline vertical length={36} /> : null}
+                  <View className="flex-1 gap-2" style={{ paddingLeft: i > 0 ? 16 : 0 }}>
+                    <Skeleton width="55%" height={9} />
+                    <Skeleton width="40%" height={26} />
+                  </View>
+                </View>
               ))}
             </View>
-          ) : threads.error != null && threads.data == null ? (
-            <InlineError message={threads.error} onRetry={() => void threads.refetch()} />
+          ) : hardError != null ? (
+            <InlineError message={hardError} onRetry={() => void threads.refetch()} />
           ) : counts != null ? (
-            <InboxHeader counts={counts} />
+            <InboxBalance counts={counts} />
           ) : null}
         </View>
 
         {/* ── Konversationen ───────────────────────────────────────────────── */}
-        <View className="gap-3">
-          {threads.status === "loading" && threads.data == null ? (
-            <View className="gap-2.5" accessibilityElementsHidden>
-              {Array.from({ length: 4 }).map((_, i) => (
- <View key={i} className="flex-row items-center gap-3 hairline-b px-3 py-3">
-                  <Skeleton width={40} height={40} radius="full" />
-                  <View className="flex-1 gap-2">
-                    <Skeleton width="55%" height={14} />
-                    <Skeleton width="75%" height={12} />
+        {hardError == null ? (
+          <View>
+            {firstLoading ? (
+              <View accessibilityElementsHidden>
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <View key={i}>
+                    {i > 0 ? <Hairline inset={48} /> : null}
+                    <View className="flex-row items-center gap-3 py-3.5">
+                      <Skeleton width={36} height={36} radius="full" />
+                      <View className="flex-1 gap-2">
+                        <Skeleton width="55%" height={14} />
+                        <Skeleton width="75%" height={12} />
+                      </View>
+                      <Skeleton width={36} height={20} radius="button" />
+                    </View>
                   </View>
-                  <Skeleton width={36} height={20} radius="button" />
-                </View>
-              ))}
-            </View>
-          ) : !hasThreads && threads.data != null ? (
-            <EmptyState
-              icon={MessageCircle}
-              title="Noch keine Konversation"
-              description="Eingehende WhatsApp-Nachrichten erscheinen hier. Oben rechts kannst du selbst eine neue Nachricht schreiben."
-            />
-          ) : (
-            <View className="gap-2.5">
-              {sorted.map((th, index) => (
-                <StaggerItem key={th.phone} index={Math.min(index, 8)} exit={false}>
-                  <ThreadRow thread={th} onPress={() => openThread(th)} />
-                </StaggerItem>
-              ))}
-            </View>
-          )}
-        </View>
+                ))}
+              </View>
+            ) : !hasThreads && threads.data != null ? (
+              <EmptyState
+                icon={MessageCircle}
+                title="Noch keine Konversation"
+                description="Eingehende WhatsApp-Nachrichten erscheinen hier. Oben rechts kannst du selbst eine neue Nachricht schreiben."
+              />
+            ) : (
+              <View>
+                {sorted.map((th, index) => (
+                  <StaggerItem key={th.phone} index={Math.min(index, 8)} exit={false}>
+                    {/* Eine einzige warme Haarlinie zwischen den Zeilen, eingerückt
+                        unter dem Glyph — kein Kasten je Konversation. */}
+                    {index > 0 ? <Hairline inset={48} /> : null}
+                    <ThreadRow thread={th} onPress={() => openThread(th)} />
+                  </StaggerItem>
+                ))}
+              </View>
+            )}
+          </View>
+        ) : null}
 
         {/* A calm honest note on scope: the AI assistant + provider live on the
-            server; this surface reads + sends over those endpoints. */}
+            server; this surface reads + sends over those endpoints. Die EINE
+            bewusste Karte auf dieser Fläche — eine Museums-Tafel. Sonst lebt alles
+            boxlos auf dem Papier. */}
         <SectionCard
           title="So funktioniert der Posteingang"
           subtitle="Der WhatsApp-Zugang und der KI-Assistent laufen serverseitig."

@@ -6,26 +6,34 @@
  * besitzt den echten Marktplatz-Push. Diese Fläche zeigt nur, was wirklich da
  * ist, und löst nur Aktionen aus, die der Server akzeptieren wird.
  *
+ * Form (DESIGN-SYSTEM.md §1, §9): keine Kästen in Kästen. Der Kanal lebt direkt
+ * auf dem warmen Papier — eine boxlose Phasen-Bilanz, die durch je eine vertikale
+ * Haarlinie geteilt ist, die Listungen als nackte Zeilen mit einer einzigen
+ * warmen Haarlinie dazwischen, und im Detail-Sheet hairline-geteilte Abschnitte
+ * statt gestapelter Rahmen. Gold erscheint nur als Faden: das Kanal-Siegel im
+ * Kopf, der Phasen-Punkt, die Kante unter der aktiven Stufe.
+ *
  * Aufbau:
- *   • Pipeline-Übersicht — Phasen-Kacheln mit ECHTEN Zählungen (aus den
- *     Detail-Zuständen der eingebuchten Artikel). Nichts eingebucht → ehrlicher
- *     leerer Zustand, kein erfundener Bestand.
- *   • Listungen — die eingebuchten Artikel als Zeilen; Tippen öffnet das Detail-
- *     Sheet mit Zustands-Badge, Verlauf, den erlaubten Übergangs-Aktionen
+ *   • Pipeline-Übersicht — eine boxlose Phasen-Bilanz mit ECHTEN Zählungen (aus
+ *     den Detail-Zuständen der eingebuchten Artikel). Nichts eingebucht →
+ *     ehrlicher leerer Zustand, kein erfundener Bestand.
+ *   • Listungen — die eingebuchten Artikel als nackte Zeilen; Tippen öffnet das
+ *     Detail-Sheet mit Zustands-Faden, Verlauf, den erlaubten Übergangs-Aktionen
  *     (Schritt-Bestätigung mit transparentem Step-up), der Veröffentlichungs-
- *     Aktion mit ehrlichem „Token ausstehend", und der Konflikt-Anzeige.
+ *     Aktion mit ehrlichem Token-ausstehend-Zustand, und der Konflikt-Anzeige.
  *   • Einbuchen — Suche nach verfügbaren, noch nicht eingebuchten Artikeln, um
  *     sie als Entwurf in die eBay-Pipeline aufzunehmen (NULL → ENTWURF).
  *
  * Ehrlichkeitsregel: jede Zahl ist eine echte Summe aus einer echten Antwort,
  * jeder Zustand ein echtes Feld vom Server. Ein Übergang, der den Bestand
  * berührt (Verkauft-Cluster), zeigt seinen serverseitigen Nebeneffekt sichtbar
- * an. Eine Veröffentlichung ohne Token sagt „Token ausstehend" — nie „gelistet".
- * Gebaut auf dem geteilten Spine (Suche wie im Lager, die UI-Primitive, das §6-
- * Motion- + §7-Haptik-Vokabular, nur W14-Theme-Tokens). Deutsche UI.
+ * an. Eine Veröffentlichung ohne Token sagt ehrlich Token ausstehend, nie
+ * gelistet. Gebaut auf dem geteilten Spine (Suche wie im Lager, die UI-Primitive,
+ * das §6-Motion- + §7-Haptik-Vokabular, nur W14-Theme-Tokens). Deutsche UI.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Pressable, RefreshControl, ScrollView, View } from "react-native"
+import Svg, { Circle, Path } from "react-native-svg"
 import type { EbayState, ProductDetail, ProductListRow } from "@warehouse14/api-client"
 import {
   AlertTriangle,
@@ -36,7 +44,6 @@ import {
   PackagePlus,
   Search,
   ShoppingBag,
-  Store,
   Tag,
   Upload,
   X,
@@ -44,7 +51,6 @@ import {
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
 import {
   Dialog,
   DialogContent,
@@ -70,6 +76,7 @@ import {
   EBAY_PHASES,
   entersSoldCluster,
   type EbayPhase,
+  type EbayPhaseMeta,
   type EbayTransitionOption,
   nextTransitions,
   phaseOf,
@@ -78,13 +85,13 @@ import {
   type SideEffectMeta,
   sourceLabel,
   stateLabel,
-  stateVariant,
 } from "@/warehouse14/ebay-ui"
 import { relativeTime } from "@/warehouse14/notifications"
 import { STATUS_LABEL, STATUS_VARIANT } from "@/warehouse14/product-ui"
 import { useW14Theme } from "@/warehouse14/theme"
 import {
   EmptyState,
+  Hairline,
   haptics,
   InlineError,
   PaperGrain,
@@ -154,42 +161,96 @@ async function fetchPipeline(): Promise<PipelineData> {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Pipeline overview — the four phase tiles, real counts only
+// ChannelSeal — ein bespoke Kanal-Siegel (react-native-svg). Ein gestempelter
+// Ring mit einem Preis-Anhänger im Inneren: die ruhige Marke des eBay-Kanals.
+// Der Ring bleibt Tinte, der Anhänger-Faden tönt in Gilt — Gold nur als Siegel.
 // ────────────────────────────────────────────────────────────────────────────
 
-function PhaseTiles({ counts }: { counts: PipelineCounts }) {
+function ChannelSeal({
+  size = 26,
+  ink,
+  gilt,
+}: {
+  size?: number
+  ink: string
+  gilt: string
+}): ReactNode {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" accessibilityElementsHidden>
+      {/* Gestempelter Ring — die Siegel-Tinte. */}
+      <Circle cx={12} cy={12} r={8.4} stroke={ink} strokeWidth={1.4} fill="none" />
+      <Circle cx={12} cy={12} r={6.2} stroke={ink} strokeWidth={0.7} strokeOpacity={0.4} fill="none" />
+      {/* Preis-Anhänger — der Gilt-Faden im Siegel (Gold nur als Faden). */}
+      <Path
+        d="M8.6 11.6 L11.6 8.6 L15.2 8.6 L15.2 12.2 L12.2 15.2 Z"
+        stroke={gilt}
+        strokeWidth={1.3}
+        strokeLinejoin="round"
+        fill="none"
+      />
+      <Circle cx={13.4} cy={10.4} r={0.95} fill={gilt} />
+    </Svg>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Phasen-Farbe — funktionale Bedeutung je Phase (Bedeutung, nie Dekoration).
+// ────────────────────────────────────────────────────────────────────────────
+
+function usePhaseColors(): Record<EbayPhase, string> {
   const t = useW14Theme()
-  const phaseColor: Record<EbayPhase, string> = {
+  return {
     vorbereitung: t.colors.mutedForeground,
     online: t.colors.verdigris,
     verkauft: t.colors.primary,
     reklamation: t.colors.destructive,
   }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Pipeline-Bilanz — die vier Phasen als boxlose Reihe, durch je eine vertikale
+// Haarlinie geteilt (wie der Register-Kopf in belege.tsx). Keine Karten, keine
+// Kästen in Kästen — Tiefe aus Papier + Linie. Nur echte Zählungen.
+// ────────────────────────────────────────────────────────────────────────────
+
+function PhaseBalance({ counts }: { counts: PipelineCounts }) {
+  const t = useW14Theme()
+  const phaseColor = usePhaseColors()
   return (
-    <View className="flex-row flex-wrap gap-2.5">
-      {EBAY_PHASES.map((p) => {
+    <View className="flex-row items-stretch">
+      {EBAY_PHASES.map((p: EbayPhaseMeta, i) => {
         const n = counts.byPhase[p.phase]
         const color = phaseColor[p.phase]
         const active = n > 0
         return (
-          <Card key={p.phase} className="gap-1.5 px-3 py-3" style={{ width: "47.5%" }}>
-            <Text
-              className="text-muted-foreground text-xs font-medium"
-              style={{ letterSpacing: 0.4 }}
-              numberOfLines={1}
-            >
-              {p.label}
-            </Text>
-            <Text
-              className="font-mono-medium text-2xl"
-              style={{ color: active ? color : t.colors.mutedForeground }}
-            >
-              {n}
-            </Text>
-            <Text className="text-muted-foreground text-2xs leading-4" numberOfLines={2}>
-              {p.description}
-            </Text>
-          </Card>
+          <View key={p.phase} className="flex-1 flex-row">
+            {i > 0 ? <Hairline vertical length={40} /> : null}
+            <View className="flex-1 gap-1" style={{ paddingLeft: i > 0 ? 14 : 0 }}>
+              <View className="flex-row items-center gap-1.5">
+                <View
+                  style={{
+                    height: 5,
+                    width: 5,
+                    borderRadius: 3,
+                    backgroundColor: active ? color : t.colors.border,
+                  }}
+                />
+                <Text
+                  className="text-muted-foreground text-2xs font-medium"
+                  style={{ letterSpacing: 0.4 }}
+                  numberOfLines={1}
+                >
+                  {p.label}
+                </Text>
+              </View>
+              <Text
+                className="font-mono-medium text-3xl leading-none"
+                style={{ color: active ? color : t.colors.mutedForeground }}
+              >
+                {n}
+              </Text>
+            </View>
+          </View>
         )
       })}
     </View>
@@ -208,32 +269,51 @@ function ListingRow({
   onPress: () => void
 }) {
   const t = useW14Theme()
+  const phaseColor = usePhaseColors()
   const { row, state, stateChangedAt } = listing
+  // Der Zustand trägt seine Phasen-Farbe als ruhiger Faden — ein kleiner Punkt
+  // plus das deutsche Label, kein gefüllter Badge-Kasten in der Zeile.
+  const dot = state == null ? t.colors.border : phaseColor[phaseOf(state)]
   return (
     <PressableScale
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`${row.name}, eBay-Zustand ${stateLabel(state)}`}
     >
- <View className="flex-row items-center gap-3 hairline-b px-3 py-3">
+      {/* Eine NACKTE Zeile auf dem Papier — getrennt nur durch die Haarlinie
+          zwischen den Zeilen (DESIGN-SYSTEM.md §1). Kein Rahmen, kein Chip. */}
+      <View className="flex-row items-center gap-3 py-3.5">
         <View className="flex-1 gap-1">
-          <Text className="text-base font-semibold" numberOfLines={1}>
+          <Text className="text-base font-semibold leading-tight" numberOfLines={1}>
             {row.name}
           </Text>
-          <View className="flex-row items-center gap-2">
+          <View className="flex-row flex-wrap items-center gap-x-2 gap-y-0.5">
             <Text className="text-muted-foreground font-mono text-xs" numberOfLines={1}>
               {row.sku}
             </Text>
             {stateChangedAt != null ? (
-              <Text className="text-muted-foreground text-2xs" numberOfLines={1}>
-                {relativeTime(stateChangedAt)}
-              </Text>
+              <>
+                <Text className="text-2xs" style={{ color: t.colors.mutedForeground }}>
+                  ·
+                </Text>
+                <Text className="text-muted-foreground text-2xs" numberOfLines={1}>
+                  {relativeTime(stateChangedAt)}
+                </Text>
+              </>
             ) : null}
           </View>
         </View>
-        <Badge variant={stateVariant(state)} dot>
-          <Text>{stateLabel(state)}</Text>
-        </Badge>
+        {/* Zustands-Faden: Punkt + Label, getönt nach Phase — kein Kasten. */}
+        <View className="flex-row items-center gap-1.5">
+          <View style={{ height: 6, width: 6, borderRadius: 3, backgroundColor: dot }} />
+          <Text
+            className="text-2xs font-medium"
+            style={{ color: t.colors.inkAged, letterSpacing: 0.2 }}
+            numberOfLines={1}
+          >
+            {stateLabel(state)}
+          </Text>
+        </View>
         <ChevronRight size={t.icon.md} color={t.colors.mutedForeground} />
       </View>
     </PressableScale>
@@ -244,28 +324,46 @@ function ListingRow({
 // The conflict / side-effect banner (shown after a sold-cluster transition)
 // ────────────────────────────────────────────────────────────────────────────
 
-function SideEffectBanner({ meta }: { meta: SideEffectMeta }) {
+/**
+ * Ein ruhiger Ergebnis-Hinweis ohne Kasten: ein farbiger Faden (Bedeutung) an der
+ * Kante, ein Glyph, Titel + Text. Kein gefülltes Rechteck — die Tiefe kommt aus
+ * dem Faden und der Typo, nicht aus einer getönten Box (DESIGN-SYSTEM.md §1).
+ */
+function ResultNote({
+  color,
+  Icon,
+  title,
+  message,
+}: {
+  color: string
+  Icon: typeof CheckCircle2
+  title: string
+  message: string
+}) {
   const t = useW14Theme()
-  if (!meta.show) return null
-  const color = meta.isConflict ? t.colors.destructive : t.colors.primary
-  const Icon = meta.isConflict ? AlertTriangle : CheckCircle2
   return (
-    <View
-      className="flex-row items-start gap-2.5 rounded-xl px-3.5 py-3"
-      style={{ backgroundColor: color + "14" }}
-      accessibilityRole="alert"
-    >
+    <View className="flex-row items-start gap-3" accessibilityRole="alert">
+      {/* Der farbige Bedeutungs-Faden an der Kante — kein Kasten. */}
+      <View style={{ width: 2.5, borderRadius: 2, backgroundColor: color, alignSelf: "stretch" }} />
       <View className="pt-0.5">
         <Icon size={t.icon.md} color={color} />
       </View>
       <View className="flex-1 gap-0.5">
         <Text className="text-sm font-semibold" style={{ color }}>
-          {meta.title}
+          {title}
         </Text>
-        <Text className="text-muted-foreground text-xs leading-5">{meta.message}</Text>
+        <Text className="text-muted-foreground text-xs leading-5">{message}</Text>
       </View>
     </View>
   )
+}
+
+function SideEffectBanner({ meta }: { meta: SideEffectMeta }) {
+  const t = useW14Theme()
+  if (!meta.show) return null
+  const color = meta.isConflict ? t.colors.destructive : t.colors.verdigris
+  const Icon = meta.isConflict ? AlertTriangle : CheckCircle2
+  return <ResultNote color={color} Icon={Icon} title={meta.title} message={meta.message} />
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -276,21 +374,27 @@ function PublishBanner({ meta }: { meta: PublishMeta }) {
   const t = useW14Theme()
   const color = meta.isLive ? t.colors.verdigris : t.colors.mutedForeground
   const Icon = meta.isLive ? CheckCircle2 : Upload
+  return <ResultNote color={color} Icon={Icon} title={meta.title} message={meta.message} />
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// SheetGroupTitle — die ruhige Gruppen-Überschrift im Detail-Sheet: small-caps
+// Inter mit einem leisen Gilt-Punkt davor (Gold nur als Faden). Ersetzt die
+// fetten Inline-Titel, damit die Abschnitte ohne Kästen sauber lesbar bleiben.
+// ────────────────────────────────────────────────────────────────────────────
+
+function SheetGroupTitle({ children }: { children: string }): ReactNode {
+  const t = useW14Theme()
   return (
-    <View
-      className="flex-row items-start gap-2.5 rounded-xl px-3.5 py-3"
-      style={{ backgroundColor: color + "14" }}
-      accessibilityRole="alert"
-    >
-      <View className="pt-0.5">
-        <Icon size={t.icon.md} color={color} />
-      </View>
-      <View className="flex-1 gap-0.5">
-        <Text className="text-sm font-semibold" style={{ color }}>
-          {meta.title}
-        </Text>
-        <Text className="text-muted-foreground text-xs leading-5">{meta.message}</Text>
-      </View>
+    <View className="flex-row items-center gap-2">
+      <View style={{ height: 4, width: 4, borderRadius: 2, backgroundColor: t.colors.gilt }} />
+      <Text
+        className="text-muted-foreground text-2xs font-semibold"
+        style={{ letterSpacing: 1 }}
+        numberOfLines={1}
+      >
+        {children.toUpperCase()}
+      </Text>
     </View>
   )
 }
@@ -342,6 +446,9 @@ function ListingDetailSheet({
 
   const state = detail.data?.ebayState ?? null
   const transitions = useMemo(() => nextTransitions(state), [state])
+  // Die Phasen-Farbe des aktuellen Zustands — Bedeutung als Faden/Tönung.
+  const phaseColor = usePhaseColors()
+  const stateColor = state == null ? t.colors.mutedForeground : phaseColor[phaseOf(state)]
 
   const transitionM = useMutation(
     (vars: { to: EbayState }) => transitionEbayState(productId as string, { toState: vars.to }),
@@ -415,27 +522,42 @@ function ListingDetailSheet({
           contentContainerStyle={{ gap: 16 }}
           showsVerticalScrollIndicator={false}
         >
-          {/* Current state */}
+          {/* Aktueller Zustand — eine boxlose, mittige Stufe: das deutsche Label
+              in der Display-Stimme, getönt nach Phase, darunter eine warme
+              Haarlinie als einzige Trennung (kein Karten-Kasten). */}
           {detail.status === "loading" && detail.data == null ? (
-            <View className="gap-2">
-              <Skeleton width="40%" height={14} />
-              <Skeleton width="60%" height={28} radius="button" />
+            <View className="items-center gap-2 py-1">
+              <Skeleton width="35%" height={11} />
+              <Skeleton width="55%" height={26} radius="button" />
             </View>
           ) : detail.error != null && detail.data == null ? (
             <InlineError message={detail.error} onRetry={() => void detail.refetch()} />
           ) : (
-            <View className="items-center gap-1.5 rounded-xl border border-border bg-card py-4">
-              <Text className="text-muted-foreground text-xs">
-                Aktueller Zustand
+            <View className="items-center gap-2">
+              <Text
+                className="text-muted-foreground text-2xs font-semibold"
+                style={{ letterSpacing: 1 }}
+              >
+                AKTUELLER ZUSTAND
               </Text>
-              <Badge variant={stateVariant(state)} dot>
-                <Text>{stateLabel(state)}</Text>
-              </Badge>
+              <View className="flex-row items-center gap-2">
+                <View
+                  style={{ height: 7, width: 7, borderRadius: 4, backgroundColor: stateColor }}
+                />
+                <Text
+                  className="text-2xl font-display-semibold leading-tight"
+                  style={{ color: stateColor }}
+                  numberOfLines={1}
+                >
+                  {stateLabel(state)}
+                </Text>
+              </View>
               {detail.data?.ebayStateChangedAt != null ? (
                 <Text className="text-muted-foreground text-2xs">
                   geändert {relativeTime(detail.data.ebayStateChangedAt)}
                 </Text>
               ) : null}
+              <Hairline length="55%" />
             </View>
           )}
 
@@ -451,13 +573,14 @@ function ListingDetailSheet({
             <InlineError message={publishM.error} onDismiss={publishM.reset} />
           ) : null}
 
-          {/* Publish action honest token-pending state lives in the result */}
+          {/* Veröffentlichen — der ehrliche Token-ausstehend-Zustand lebt im
+              Ergebnis-Hinweis darüber, nie als vorgetäuschtes Gelistet. */}
           {canPublish ? (
-            <View className="gap-2">
-              <Text className="text-sm font-semibold">Bei eBay veröffentlichen</Text>
+            <View className="gap-2.5">
+              <SheetGroupTitle>Bei eBay veröffentlichen</SheetGroupTitle>
               <Text className="text-muted-foreground text-xs leading-5">
                 Schiebt den Artikel als Listung zum Marktplatz. Ist noch kein eBay-Zugang
-                hinterlegt, passiert nichts Echtes du siehst dann Token ausstehend".
+                hinterlegt, passiert nichts Echtes, du siehst dann den Hinweis Token ausstehend.
               </Text>
               <Button
                 variant="outline"
@@ -471,55 +594,57 @@ function ListingDetailSheet({
             </View>
           ) : null}
 
-          {/* Transition actions exactly the server-allowed next steps */}
-          <View className="gap-2">
-            <Text className="text-sm font-semibold">Nächster Schritt</Text>
+          {/* Nächster Schritt — genau die serverseitig erlaubten Übergänge, als
+              nackte Zeilen mit einer Haarlinie dazwischen (kein Kasten je Zeile). */}
+          <View className="gap-1">
+            <SheetGroupTitle>Nächster Schritt</SheetGroupTitle>
             {transitions.length === 0 ? (
-              <Text className="text-muted-foreground text-xs leading-5">
+              <Text className="text-muted-foreground pt-1 text-xs leading-5">
                 Diese Listung ist am Ende der Pipeline kein weiterer Schritt möglich.
               </Text>
             ) : (
-              transitions.map((opt) => (
-                <Pressable
-                  key={opt.to}
-                  onPress={() => requestTransition(opt)}
-                  disabled={busy}
-                  accessibilityRole="button"
-                  accessibilityLabel={opt.actionLabel}
-                  className="flex-row items-center gap-3 rounded-xl border border-border px-3 py-3"
-                  style={{ opacity: busy ? 0.5 : 1 }}
-                >
-                  <View
-                    className="h-8 w-8 items-center justify-center rounded-md"
-                    style={{
-                      backgroundColor:
-                        (opt.isRevert ? t.colors.mutedForeground : t.colors.primary) + "1f",
-                    }}
-                  >
-                    <ArrowRight
-                      size={t.icon.sm}
-                      color={opt.isRevert ? t.colors.mutedForeground : t.colors.primary}
-                    />
-                  </View>
-                  <View className="flex-1 gap-0.5">
-                    <Text className="text-sm font-medium">{opt.actionLabel}</Text>
-                    <Text className="text-muted-foreground text-2xs leading-4" numberOfLines={2}>
-                      {opt.hint}
-                      {entersSoldCluster(opt.to)
-                        ? " Reserviert den Bestand serverseitig."
-                        : ""}
-                    </Text>
-                  </View>
-                </Pressable>
-              ))
+              <View>
+                {transitions.map((opt, i) => {
+                  const c = opt.isRevert ? t.colors.mutedForeground : phaseColor[phaseOf(opt.to)]
+                  return (
+                    <View key={opt.to}>
+                      {i > 0 ? <Hairline inset={28} /> : null}
+                      <Pressable
+                        onPress={() => requestTransition(opt)}
+                        disabled={busy}
+                        accessibilityRole="button"
+                        accessibilityLabel={opt.actionLabel}
+                        className="flex-row items-center gap-3 py-3"
+                        style={{ opacity: busy ? 0.5 : 1, minHeight: t.touch.min }}
+                      >
+                        {/* Ein bare Pfeil-Glyph, getönt nach Zielphase — kein Chip. */}
+                        <ArrowRight size={t.icon.md} color={c} />
+                        <View className="flex-1 gap-0.5">
+                          <Text className="text-sm font-medium">{opt.actionLabel}</Text>
+                          <Text
+                            className="text-muted-foreground text-2xs leading-4"
+                            numberOfLines={2}
+                          >
+                            {opt.hint}
+                            {entersSoldCluster(opt.to)
+                              ? " Reserviert den Bestand serverseitig."
+                              : ""}
+                          </Text>
+                        </View>
+                        <ChevronRight size={t.icon.sm} color={t.colors.mutedForeground} />
+                      </Pressable>
+                    </View>
+                  )
+                })}
+              </View>
             )}
           </View>
 
-          {/* History the append-only event log */}
-          <View className="gap-2">
+          {/* Verlauf the append-only event log — eine ruhige Zeitachse. */}
+          <View className="gap-2.5">
             <View className="flex-row items-center gap-2">
               <History size={t.icon.sm} color={t.colors.mutedForeground} />
-              <Text className="text-sm font-semibold">Verlauf</Text>
+              <SheetGroupTitle>Verlauf</SheetGroupTitle>
             </View>
             {history.status === "loading" && history.data == null ? (
               <View className="gap-2">
@@ -533,12 +658,14 @@ function ListingDetailSheet({
                 Noch kein Eintrag. Schritte erscheinen hier, sobald du sie ausführst.
               </Text>
             ) : history.data != null ? (
-              <View className="gap-2">
+              <View className="gap-2.5">
                 {history.data.items.map((ev) => (
                   <View key={ev.id} className="flex-row items-start gap-2.5">
+                    {/* Der Punkt trägt die Phasen-Farbe des Zielzustands — der
+                        ruhige Faden statt eines neutralen Tinten-Punkts. */}
                     <View
                       className="mt-1 h-2 w-2 rounded-full"
-                      style={{ backgroundColor: t.colors.primary }}
+                      style={{ backgroundColor: phaseColor[phaseOf(ev.toState)] }}
                     />
                     <View className="flex-1">
                       <Text className="text-xs font-medium">
@@ -557,19 +684,36 @@ function ListingDetailSheet({
           </View>
         </ScrollView>
 
-        {/* The transition confirm gate an explicit second press before a step
-            that the server may have inventory side effects for. Step-up (403)
-            is transparent via the global host. */}
+        {/* Die Übergangs-Bestätigung ein bewusster zweiter Druck vor einem
+            Schritt mit serverseitigem Bestands-Nebeneffekt. Step-up (403) ist
+            transparent über den globalen Host. Eine boxlose, hairline-gekappte
+            Stufe statt eines harten Rahmens; ein farbiger Faden warnt, wenn der
+            Schritt den Bestand berührt. */}
         {pending != null ? (
-          <View className="gap-2 rounded-xl border border-border bg-card p-3">
-            <Text className="text-sm font-semibold">{pending.actionLabel}?</Text>
-            <Text className="text-muted-foreground text-xs leading-5">
-              {pending.hint}
-              {entersSoldCluster(pending.to)
-                ? " Dieser Schritt reserviert den Bestand serverseitig und kann einen " +
-                  "Konflikt mit dem Ladenbestand melden."
-                : ""}
-            </Text>
+          <View className="gap-2.5 pt-1">
+            <Hairline />
+            <View className="flex-row items-start gap-3 pt-1">
+              <View
+                style={{
+                  width: 2.5,
+                  borderRadius: 2,
+                  alignSelf: "stretch",
+                  backgroundColor: entersSoldCluster(pending.to)
+                    ? t.colors.terra
+                    : t.colors.gilt,
+                }}
+              />
+              <View className="flex-1 gap-1">
+                <Text className="text-sm font-semibold">{pending.actionLabel}?</Text>
+                <Text className="text-muted-foreground text-xs leading-5">
+                  {pending.hint}
+                  {entersSoldCluster(pending.to)
+                    ? " Dieser Schritt reserviert den Bestand serverseitig und kann einen " +
+                      "Konflikt mit dem Ladenbestand melden."
+                    : ""}
+                </Text>
+              </View>
+            </View>
             <View className="flex-row gap-2 pt-1">
               <Button
                 className="flex-1"
@@ -631,9 +775,11 @@ function EnrollRow({
       accessibilityLabel={`${item.name} als eBay-Entwurf einbuchen`}
       style={{ opacity: enrolling ? 0.55 : 1 }}
     >
- <View className="flex-row items-center gap-3 hairline-b px-3 py-3">
+      {/* Eine nackte Einbuch-Zeile — die Trennung kommt aus der Haarlinie der
+          Eltern-Liste, nicht aus einem Rahmen oder einem getönten Glyph-Kasten. */}
+      <View className="flex-row items-center gap-3 py-3">
         <View className="flex-1 gap-1">
-          <Text className="text-base font-semibold" numberOfLines={1}>
+          <Text className="text-base font-semibold leading-tight" numberOfLines={1}>
             {item.name}
           </Text>
           <View className="flex-row items-center gap-2">
@@ -648,12 +794,8 @@ function EnrollRow({
         <Text className="text-foreground font-mono-medium text-base" numberOfLines={1}>
           {formatEur(item.listPriceEur)}
         </Text>
-        <View
-          className="h-8 w-8 items-center justify-center rounded-md"
-          style={{ backgroundColor: t.colors.raised }}
-        >
-          <PackagePlus size={t.icon.sm} color={t.colors.primary} />
-        </View>
+        {/* Das Einbuch-Glyph sitzt bare — kein getöntes Chip-Kästchen. */}
+        <PackagePlus size={t.icon.md} color={t.colors.primary} />
       </View>
     </PressableScale>
   )
@@ -755,31 +897,45 @@ export default function EbayScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl {...rc} />}
       >
-        {/* ── Pipeline-Übersicht ─────────────────────────────────────────────── */}
-        <View className="gap-3">
-          <View className="flex-row items-center gap-2">
-            <Store size={t.icon.lg} color={t.colors.primary} />
-            {/* Screen title in the Bricolage Grotesque display voice (DESIGN-SYSTEM.md §3). */}
-            <Text className="text-2xl font-display-semibold leading-tight" numberOfLines={1}>
-              eBay-Pipeline
-            </Text>
+        {/* ── Kanal-Kopf + Pipeline-Bilanz ───────────────────────────────────── */}
+        <View className="gap-4">
+          {/* Kicker + Titel — der Kanal-Faden öffnet mit dem bespoke Siegel. */}
+          <View className="gap-1.5">
+            <View className="flex-row items-center gap-2">
+              <View style={{ height: 4, width: 4, borderRadius: 2, backgroundColor: t.colors.gilt }} />
+              <Text
+                className="text-muted-foreground text-2xs font-semibold"
+                style={{ letterSpacing: 1.2 }}
+              >
+                EBAY-KANAL
+              </Text>
+            </View>
+            <View className="flex-row items-center gap-2.5">
+              <ChannelSeal size={26} ink={t.colors.primary} gilt={t.colors.gilt} />
+              {/* Bricolage Grotesque display voice (DESIGN-SYSTEM.md §3). */}
+              <Text className="text-2xl font-display-semibold leading-tight" numberOfLines={1}>
+                Verkaufskanal
+              </Text>
+            </View>
           </View>
 
           {pipeline.status === "loading" && pipeline.data == null ? (
-            <View className="flex-row flex-wrap gap-2.5" accessibilityElementsHidden>
+            <View className="flex-row items-stretch" accessibilityElementsHidden>
               {Array.from({ length: 4 }).map((_, i) => (
-                <Card key={i} className="gap-2 px-3 py-3" style={{ width: "47.5%" }}>
-                  <Skeleton width="50%" height={11} />
-                  <Skeleton width="30%" height={24} />
-                  <Skeleton width="80%" height={10} />
-                </Card>
+                <View key={i} className="flex-1 flex-row">
+                  {i > 0 ? <Hairline vertical length={40} /> : null}
+                  <View className="flex-1 gap-2" style={{ paddingLeft: i > 0 ? 14 : 0 }}>
+                    <Skeleton width="65%" height={9} />
+                    <Skeleton width="40%" height={26} />
+                  </View>
+                </View>
               ))}
             </View>
           ) : pipeline.error != null && pipeline.data == null ? (
             <InlineError message={pipeline.error} onRetry={() => void pipeline.refetch()} />
           ) : counts != null ? (
             <>
-              <PhaseTiles counts={counts} />
+              <PhaseBalance counts={counts} />
               {pipeline.data?.partial ? (
                 <Text className="text-muted-foreground text-2xs leading-4">
                   Für einzelne Listungen ließ sich der Zustand gerade nicht laden. Zum
@@ -790,27 +946,28 @@ export default function EbayScreen() {
           ) : null}
         </View>
 
-        {/* ── Listungen ──────────────────────────────────────────────────────── */}
-        <View className="gap-3">
+        {/* ── Listungen — nackte Zeilen, durch eine Haarlinie getrennt ───────── */}
+        <View className="gap-2">
           <View className="flex-row items-center gap-2">
             <Tag size={t.icon.md} color={t.colors.primary} />
             <Text className="text-base font-semibold">Listungen</Text>
             {hasListings ? (
-              <Badge variant="outline">
-                <Text>{listings.length}</Text>
-              </Badge>
+              <Text className="text-muted-foreground font-mono text-xs">{listings.length}</Text>
             ) : null}
           </View>
 
           {pipeline.status === "loading" && pipeline.data == null ? (
-            <View className="gap-2.5" accessibilityElementsHidden>
+            <View accessibilityElementsHidden>
               {Array.from({ length: 3 }).map((_, i) => (
- <View key={i} className="flex-row items-center gap-3 hairline-b px-3 py-3">
-                  <View className="flex-1 gap-2">
-                    <Skeleton width="60%" height={14} />
-                    <Skeleton width="35%" height={11} />
+                <View key={i}>
+                  {i > 0 ? <Hairline /> : null}
+                  <View className="flex-row items-center gap-3 py-3.5">
+                    <View className="flex-1 gap-2">
+                      <Skeleton width="60%" height={14} />
+                      <Skeleton width="35%" height={11} />
+                    </View>
+                    <Skeleton width={80} height={12} />
                   </View>
-                  <Skeleton width={70} height={22} radius="button" />
                 </View>
               ))}
             </View>
@@ -821,9 +978,10 @@ export default function EbayScreen() {
               description="Es ist noch kein Artikel in der eBay-Pipeline. Unten einen verfügbaren Artikel als Entwurf einbuchen."
             />
           ) : (
-            <View className="gap-2.5">
+            <View>
               {listings.map((l, index) => (
                 <StaggerItem key={l.row.id} index={Math.min(index, 8)} exit={false}>
+                  {index > 0 ? <Hairline /> : null}
                   <ListingRow listing={l} onPress={() => openListing(l)} />
                 </StaggerItem>
               ))}
@@ -872,15 +1030,18 @@ export default function EbayScreen() {
           ) : null}
 
           {search.status === "loading" && search.data == null ? (
-            <View className="gap-2.5" accessibilityElementsHidden>
+            <View accessibilityElementsHidden>
               {Array.from({ length: 3 }).map((_, i) => (
- <View key={i} className="flex-row items-center gap-3 hairline-b px-3 py-3">
-                  <View className="flex-1 gap-2">
-                    <Skeleton width="60%" height={14} />
-                    <Skeleton width="35%" height={11} />
+                <View key={i}>
+                  {i > 0 ? <Hairline /> : null}
+                  <View className="flex-row items-center gap-3 py-3">
+                    <View className="flex-1 gap-2">
+                      <Skeleton width="60%" height={14} />
+                      <Skeleton width="35%" height={11} />
+                    </View>
+                    <Skeleton width={56} height={14} />
+                    <Skeleton width={20} height={20} radius="button" />
                   </View>
-                  <Skeleton width={56} height={14} />
-                  <Skeleton width={32} height={32} radius="button" />
                 </View>
               ))}
             </View>
@@ -895,14 +1056,16 @@ export default function EbayScreen() {
               }
             />
           ) : search.data != null ? (
-            <View className="gap-2.5">
-              {search.data.items.map((item) => (
-                <EnrollRow
-                  key={item.id}
-                  item={item}
-                  enrolling={enrollingId === item.id}
-                  onEnroll={() => void enroll(item)}
-                />
+            <View>
+              {search.data.items.map((item, i) => (
+                <View key={item.id}>
+                  {i > 0 ? <Hairline /> : null}
+                  <EnrollRow
+                    item={item}
+                    enrolling={enrollingId === item.id}
+                    onEnroll={() => void enroll(item)}
+                  />
+                </View>
               ))}
             </View>
           ) : search.error != null ? (
@@ -910,12 +1073,18 @@ export default function EbayScreen() {
           ) : null}
         </SectionCard>
 
-        {/* A calm honest note on scope: inbound order sync is server-side and not
-            part of this client surface. */}
-        <Text className="text-muted-foreground text-2xs leading-4">
-          Eingehende eBay-Bestellungen werden serverseitig abgeglichen und erscheinen im
-          Verlauf der jeweiligen Listung. Diese Ansicht steuert den Listungs-Status.
-        </Text>
+        {/* Ein ruhiger, ehrlicher Scope-Hinweis: der Eingangs-Abgleich läuft
+            serverseitig und ist nicht Teil dieser Client-Fläche. Eine museums-
+            tafel-leise Zeile mit Gilt-Faden, kein getönter Kasten. */}
+        <View className="flex-row items-start gap-2 pt-1">
+          <View
+            style={{ marginTop: 5, height: 5, width: 5, borderRadius: 3, backgroundColor: t.colors.gilt }}
+          />
+          <Text className="text-muted-foreground flex-1 text-2xs leading-4">
+            Eingehende eBay-Bestellungen werden serverseitig abgeglichen und erscheinen im
+            Verlauf der jeweiligen Listung. Diese Ansicht steuert den Listungs-Status.
+          </Text>
+        </View>
       </ScrollView>
 
       <ListingDetailSheet

@@ -75,6 +75,9 @@ export { FormScreen, type FormScreenProps } from "./FormScreen"
 // period switcher), built on the spine + honest empty/locked states.
 export * from "./charts"
 
+// Bespoke domain SVG icons — metals, coins, stamps (react-native-svg based)
+export { MetalIcon, CoinIcon, StampIcon, type MetalKind } from "./MetalIcons"
+
 // Motion system — the shared reanimated-v4 vocabulary every surface moves with.
 export * from "./motion"
 

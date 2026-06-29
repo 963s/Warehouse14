@@ -6,17 +6,26 @@
  * verändert nichts. Anders als die Benachrichtigungszentrale (die nur die
  * lautesten Ereignisse kuratiert) zeigt das Tagebuch das VOLLSTÄNDIGE Protokoll.
  *
+ * Form (DESIGN-SYSTEM.md): keine Kästen in Kästen. Das Protokoll lebt direkt auf
+ * dem warmen Papier — ein Kicker mit bespoke Journal-Siegel, eine boxlose
+ * Kopf-Bilanz, boxlose Filter-Reihen mit einem Gilt-Faden unter dem aktiven Chip,
+ * und die Ereignisse als nackte Zeilen, nach Tag gruppiert und getrennt nur durch
+ * eine einzige warme Haarlinie. Tiefe kommt aus dem geschichteten Papier und der
+ * Linie, nie aus gestapelten Karten.
+ *
  * Aufbau:
  *   • Register-Kopf — die echte Gesamtzahl der Einträge im gewählten Zeitraum
- *     (vom Server, nicht aus der geladenen Seite geraten) + der jüngste Eintrag.
+ *     (vom Server, nicht aus der geladenen Seite geraten) + der jüngste Eintrag,
+ *     als boxlose Bilanz mit einer warmen Trennlinie.
  *   • Zeitraum-Filter — ehrlich serverseitig über `fromBusinessDay`/`toBusinessDay`
  *     (Heute · 7 Tage · 30 Tage · Alle). Das treibt die echte Gesamtzahl.
- *   • Kategorie-Filter — eine ruhige Chip-Reihe. Der Endpunkt filtert NICHT nach
- *     unserer Kategorie (er kennt nur exakte Ereignistypen), darum filtert diese
- *     Reihe die GELADENEN Einträge clientseitig — die Zähler sind ehrlich als
- *     „in den geladenen Einträgen" zu lesen, nie als Server-Gesamtsumme getarnt.
- *   • Ereignis-Zeilen — nach Tag gruppiert (Heute/Gestern/…), je Zeile die
- *     deutsche Überschrift, der Akteur (wer), die Entität (woran) und die Uhrzeit.
+ *   • Kategorie-Filter — eine ruhige, boxlose Chip-Reihe. Der Endpunkt filtert
+ *     NICHT nach unserer Kategorie (er kennt nur exakte Ereignistypen), darum
+ *     filtert diese Reihe die GELADENEN Einträge clientseitig — die Zähler sind
+ *     ehrlich als in den geladenen Einträgen zu lesen, nie als Server-Summe.
+ *   • Ereignis-Zeilen — nach Tag gruppiert (Heute/Gestern/…), je Zeile ein ruhiges
+ *     Kategorie-Glyph, die deutsche Überschrift, der Akteur (wer), die Entität
+ *     (woran) und die Uhrzeit. Getrennt nur durch eine warme Haarlinie.
  *   • Tippen → Detail — die rohe Wahrheit eines Eintrags: voller Ereignistyp,
  *     Akteur-/Geräte-/Entitäts-IDs, der Zeilen-Hash (Forensik) und die komplette
  *     Payload als lesbare Schlüssel/Wert-Liste. Nichts wird erfunden.
@@ -28,10 +37,9 @@
  */
 import { type ReactNode, useCallback, useMemo, useState } from "react"
 import { Pressable, RefreshControl, ScrollView, View } from "react-native"
-import { Activity, type LucideIcon } from "lucide-react-native"
+import Svg, { Circle, Path } from "react-native-svg"
+import { type LucideIcon } from "lucide-react-native"
 
-import { Badge } from "@/components/ui/badge"
-import { Card } from "@/components/ui/card"
 import {
   Dialog,
   DialogContent,
@@ -67,6 +75,7 @@ import {
 import { useW14Theme } from "@/warehouse14/theme"
 import {
   EmptyState,
+  Hairline,
   haptics,
   InlineError,
   PaperGrain,
@@ -87,10 +96,52 @@ const PAGE_LIMIT = 150
 type CategoryFilter = "ALL" | EventCategory
 
 // ────────────────────────────────────────────────────────────────────────────
-// Register-Kopf — die echte Gesamtzahl + der jüngste Eintrag
+// LedgerSeal — ein bespoke Journal-Siegel (react-native-svg). Ein gestempelter
+// Ring (die Siegel-Tinte) mit zwei verketteten Gliedern im Inneren: die ruhige
+// Marke des hash-verketteten GoBD-Protokolls — jeder Eintrag mit dem vorherigen
+// verbunden. Der Faden (die Kette) tönt in Gilt, der Ring bleibt Tinte: Gold nur
+// als Faden/Siegel (DESIGN-SYSTEM.md §1).
 // ────────────────────────────────────────────────────────────────────────────
 
-function RegisterHeader({
+function LedgerSeal({
+  size = 26,
+  ink,
+  gilt,
+}: {
+  size?: number
+  ink: string
+  gilt: string
+}): ReactNode {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" accessibilityElementsHidden>
+      {/* Gestempelter Ring — die Siegel-Tinte. */}
+      <Circle cx={12} cy={12} r={8.4} stroke={ink} strokeWidth={1.4} fill="none" />
+      <Circle cx={12} cy={12} r={6.2} stroke={ink} strokeWidth={0.7} strokeOpacity={0.4} fill="none" />
+      {/* Zwei verkettete Glieder — der Gilt-Faden der Signaturkette. */}
+      <Path
+        d="M9.4 13.2 a1.9 1.9 0 1 1 1.5 -3 a1.9 1.9 0 0 1 0 2.2"
+        stroke={gilt}
+        strokeWidth={1.3}
+        strokeLinecap="round"
+        fill="none"
+      />
+      <Path
+        d="M14.6 10.8 a1.9 1.9 0 1 1 -1.5 3 a1.9 1.9 0 0 1 0 -2.2"
+        stroke={gilt}
+        strokeWidth={1.3}
+        strokeLinecap="round"
+        fill="none"
+      />
+    </Svg>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Register-Kopf — die echte Gesamtzahl + der jüngste Eintrag als boxlose Bilanz
+// (keine Karten). Zwei Spalten, getrennt durch eine einzige warme Haarlinie.
+// ────────────────────────────────────────────────────────────────────────────
+
+function RegisterBalance({
   total,
   loadedCount,
   latestIso,
@@ -102,17 +153,17 @@ function RegisterHeader({
   const t = useW14Theme()
   const latest = latestIso ? relativeTime(latestIso) : null
   return (
-    <View className="flex-row gap-2.5">
-      <Card className="flex-1 gap-1.5 px-3 py-3">
+    <View className="flex-row items-stretch">
+      <View className="flex-1 gap-1">
         <Text
           className="text-muted-foreground text-2xs font-medium"
-          style={{ letterSpacing: 0.4 }}
+          style={{ letterSpacing: 0.6 }}
           numberOfLines={1}
         >
           Einträge
         </Text>
         <Text
-          className="font-mono-medium text-2xl"
+          className="font-mono-medium text-3xl leading-none"
           style={{ color: total > 0 ? t.colors.primary : t.colors.mutedForeground }}
         >
           {total.toLocaleString("de-DE")}
@@ -122,29 +173,32 @@ function RegisterHeader({
             {`${loadedCount.toLocaleString("de-DE")} geladen`}
           </Text>
         ) : null}
-      </Card>
-      <Card className="flex-[1.4] gap-1.5 px-3 py-3">
+      </View>
+      <Hairline vertical length={40} />
+      <View className="flex-[1.3] gap-1" style={{ paddingLeft: 16 }}>
         <Text
           className="text-muted-foreground text-2xs font-medium"
-          style={{ letterSpacing: 0.4 }}
+          style={{ letterSpacing: 0.6 }}
           numberOfLines={1}
         >
           Jüngster Eintrag
         </Text>
         <Text
-          className="text-base font-semibold"
+          className="text-lg font-semibold leading-tight"
           style={{ color: latest ? t.colors.foreground : t.colors.mutedForeground }}
-          numberOfLines={1}
+          numberOfLines={2}
         >
-          {latest ?? "—"}
+          {latest ?? "Noch keiner"}
         </Text>
-      </Card>
+      </View>
     </View>
   )
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Filter-Chips (Zeitraum: serverseitig · Kategorie: clientseitig)
+// Filter-Chips — boxlos; der aktive Chip trägt einen Gilt-Faden (DESIGN-SYSTEM.md
+// §1: Gold als Faden/Kante). Keine Pillen, keine Kästen, kein getönter Fill.
+// (Zeitraum: serverseitig · Kategorie: clientseitig über die geladene Seite.)
 // ────────────────────────────────────────────────────────────────────────────
 
 function FilterChip({
@@ -162,35 +216,41 @@ function FilterChip({
   return (
     <Pressable
       onPress={onPress}
-      accessibilityRole="button"
+      accessibilityRole="tab"
       accessibilityState={{ selected: active }}
       accessibilityLabel={count != null ? `${label}, ${count}` : label}
       style={{ minHeight: t.touch.min, justifyContent: "center" }}
     >
-      <View
-        className="flex-row items-center gap-1.5 rounded-md border px-3 py-1.5"
-        style={{
-          backgroundColor: active ? t.colors.primary : t.colors.card,
-          borderColor: active ? t.colors.primary : t.colors.border,
-        }}
-      >
-        <Text
-          className="text-sm font-medium"
-          style={{ color: active ? t.colors.primaryForeground : t.colors.foreground }}
-          numberOfLines={1}
-        >
-          {label}
-        </Text>
-        {count != null ? (
+      <View className="items-center gap-1.5 px-0.5 pb-1">
+        <View className="flex-row items-center gap-1.5">
           <Text
-            className="font-mono text-2xs"
+            className="text-sm"
             style={{
-              color: active ? t.colors.primaryForeground : t.colors.mutedForeground,
+              color: active ? t.colors.foreground : t.colors.mutedForeground,
+              fontFamily: active ? t.fonts.semibold : t.fonts.medium,
             }}
+            numberOfLines={1}
           >
-            {count}
+            {label}
           </Text>
-        ) : null}
+          {count != null ? (
+            <Text
+              className="font-mono text-2xs"
+              style={{ color: active ? t.colors.foreground : t.colors.mutedForeground }}
+            >
+              {count}
+            </Text>
+          ) : null}
+        </View>
+        {/* Der Gilt-Faden unter dem aktiven Chip — Gold nur als Kante. */}
+        <View
+          style={{
+            height: 2,
+            width: "100%",
+            borderRadius: 1,
+            backgroundColor: active ? t.colors.gilt : "transparent",
+          }}
+        />
       </View>
     </Pressable>
   )
@@ -215,7 +275,7 @@ function DateRangeRow({
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      contentContainerStyle={{ gap: 8, paddingRight: 4 }}
+      contentContainerStyle={{ gap: 18, paddingRight: 8 }}
       accessibilityRole="tablist"
     >
       {DATE_RANGE_ORDER.map((r) => (
@@ -257,7 +317,7 @@ function CategoryRow({
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      contentContainerStyle={{ gap: 8, paddingRight: 4 }}
+      contentContainerStyle={{ gap: 18, paddingRight: 8 }}
       accessibilityRole="tablist"
     >
       <FilterChip
@@ -280,8 +340,17 @@ function CategoryRow({
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Eine Ereignis-Zeile (tippbar → Detail)
+// Eine Ereignis-Zeile — eine NACKTE Zeile auf dem Papier (kein Kasten, kein
+// getöntes Glyph-Chip). Ein ruhiges Kategorie-Glyph, die deutsche Überschrift,
+// die Uhrzeit, und eine leise Meta-Zeile (Entität · Akteur). Ein Sicherheits-
+// Signal trägt einen leisen wax-roten Faden (die einzige laute Kategorie).
+// Getrennt nur durch eine warme Haarlinie zwischen den Zeilen.
 // ────────────────────────────────────────────────────────────────────────────
+
+function MetaDot() {
+  const t = useW14Theme()
+  return <Text className="text-2xs" style={{ color: t.colors.mutedForeground }}>·</Text>
+}
 
 function EventRow({ row, onPress }: { row: LedgerListRow; onPress: () => void }) {
   const t = useW14Theme()
@@ -291,7 +360,9 @@ function EventRow({ row, onPress }: { row: LedgerListRow; onPress: () => void })
   const actor = actorInfo(row.actorUserId, row.payload)
   const entity = entityLabel(row.entityTable)
   const time = formatEventTime(row.createdAt)
-  const tint = meta.emphasis ? t.colors.destructive : t.colors.primary
+  // Ein Sicherheits-Signal trägt echte Bedeutung — wax-rot. Sonst bleibt das
+  // Glyph ruhige Tinte (Funktionsfarbe nur für Bedeutung, DESIGN-SYSTEM.md §1).
+  const tint = meta.emphasis ? t.colors.destructive : t.colors.foreground
 
   return (
     <PressableScale
@@ -302,30 +373,41 @@ function EventRow({ row, onPress }: { row: LedgerListRow; onPress: () => void })
       accessibilityRole="button"
       accessibilityLabel={`${title}. ${entity}. ${actor.label}. ${time ?? ""}. Details öffnen.`}
     >
- <View className="flex-row items-center gap-3 hairline-b px-3.5 py-3">
-        <View
-          className="h-9 w-9 items-center justify-center rounded-xl"
-          style={{ backgroundColor: tint + "14" }}
-        >
-          <Icon size={t.icon.md} color={tint} />
+      <View className="flex-row items-start gap-3 py-3.5">
+        {/* Das Kategorie-Glyph sitzt bare — kein getöntes Chip-Kästchen. */}
+        <View className="h-9 w-9 items-center justify-center" style={{ marginTop: 1 }}>
+          <Icon size={t.icon.lg} color={tint} />
         </View>
-        <View className="flex-1 gap-0.5">
+
+        <View className="flex-1 gap-1">
+          {/* Titel-Zeile: Überschrift + die Uhrzeit als ruhiger Mono-Stempel. */}
           <View className="flex-row items-center gap-2">
-            <Text className="flex-1 text-base font-semibold" numberOfLines={1}>
+            <Text className="flex-1 text-base font-semibold leading-tight" numberOfLines={1}>
               {title}
             </Text>
+            {meta.emphasis ? (
+              <View
+                style={{ height: 5, width: 5, borderRadius: 3, backgroundColor: t.colors.destructive }}
+              />
+            ) : null}
             {time ? (
               <Text className="text-muted-foreground font-mono text-2xs">{time}</Text>
             ) : null}
           </View>
-          <View className="flex-row flex-wrap items-center gap-x-1.5">
-            <Text className="text-muted-foreground text-xs" numberOfLines={1}>
+
+          {/* Leise Meta-Zeile — Entität · Akteur, in einer ruhigen Reihe. */}
+          <View className="flex-row flex-wrap items-center gap-x-1.5 gap-y-0.5">
+            <Text
+              className="text-muted-foreground text-2xs font-medium"
+              style={{ letterSpacing: 0.3 }}
+              numberOfLines={1}
+            >
               {entity}
             </Text>
-            <Text className="text-muted-foreground text-2xs">·</Text>
+            <MetaDot />
             <Text
-              className="text-xs"
-              style={{ color: actor.isHuman ? t.colors.foreground : t.colors.mutedForeground }}
+              className="text-2xs"
+              style={{ color: actor.isHuman ? t.colors.inkAged : t.colors.mutedForeground }}
               numberOfLines={1}
             >
               {actor.label}
@@ -338,12 +420,14 @@ function EventRow({ row, onPress }: { row: LedgerListRow; onPress: () => void })
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Detail — die rohe Wahrheit eines Eintrags (Forensik + Payload)
+// Detail — die rohe Wahrheit eines Eintrags (Forensik + Payload), boxlos. Die
+// Schlüssel/Wert-Paare leben als nackte Zeilen, getrennt nur durch eine warme
+// Haarlinie — kein bordierter Kasten in der Karte.
 // ────────────────────────────────────────────────────────────────────────────
 
 function DetailRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <View className="flex-row items-start justify-between gap-3 py-1">
+    <View className="flex-row items-start justify-between gap-3 py-2">
       <Text className="text-muted-foreground text-xs" style={{ maxWidth: "42%" }} numberOfLines={2}>
         {label}
       </Text>
@@ -368,6 +452,18 @@ function PlainValue({ children }: { children: ReactNode }) {
   )
 }
 
+/** Eine leise Bereichs-Überschrift im Detail (Forensik / Details). */
+function DetailGroupLabel({ children }: { children: ReactNode }) {
+  return (
+    <Text
+      className="text-muted-foreground px-0.5 text-2xs font-semibold"
+      style={{ letterSpacing: 0.8 }}
+    >
+      {children}
+    </Text>
+  )
+}
+
 function EventDetailDialog({
   row,
   open,
@@ -382,7 +478,7 @@ function EventDetailDialog({
 
   const meta = categoryMeta(eventCategory(row.eventType))
   const Icon: LucideIcon = meta.icon
-  const tint = meta.emphasis ? t.colors.destructive : t.colors.primary
+  const tint = meta.emphasis ? t.colors.destructive : t.colors.foreground
   const actor = actorInfo(row.actorUserId, row.payload)
   const fullDate = formatEventDate(row.createdAt)
   const entries = payloadEntries(row.payload)
@@ -397,89 +493,116 @@ function EventDetailDialog({
       <DialogContent className="gap-4">
         <DialogHeader>
           <View className="flex-row items-center gap-2.5">
-            <View
-              className="h-9 w-9 items-center justify-center rounded-xl"
-              style={{ backgroundColor: tint + "14" }}
-            >
-              <Icon size={t.icon.md} color={tint} />
-            </View>
+            {/* Das Glyph sitzt bare — kein getönter Disc-Kasten. */}
+            <Icon size={t.icon.lg} color={tint} />
             <View className="flex-1">
               <DialogTitle>{eventLabel(row.eventType)}</DialogTitle>
               <DialogDescription>{fullDate ?? "Zeitpunkt unbekannt"}</DialogDescription>
             </View>
-            <Badge variant={meta.variant}>
-              <Text>{meta.label}</Text>
-            </Badge>
+            {/* Die Kategorie als leise Gilt-gefädelte Marke, kein Pillen-Kasten. */}
+            <View className="flex-row items-center gap-1.5">
+              <View
+                style={{
+                  height: 5,
+                  width: 5,
+                  borderRadius: 3,
+                  backgroundColor: meta.emphasis ? t.colors.destructive : t.colors.gilt,
+                }}
+              />
+              <Text
+                className="text-2xs font-medium"
+                style={{ color: t.colors.inkAged, letterSpacing: 0.2 }}
+              >
+                {meta.label}
+              </Text>
+            </View>
           </View>
         </DialogHeader>
 
         <ScrollView
           className="max-h-[440px]"
-          contentContainerStyle={{ gap: 14 }}
+          contentContainerStyle={{ gap: 18 }}
           showsVerticalScrollIndicator={false}
         >
-          {/* ── Forensik (wer · woran · welches Gerät · Signatur) ──────────── */}
-          <View className="gap-0.5 rounded-xl border bg-card px-3.5 py-2.5" style={{ borderColor: t.colors.border }}>
-            <DetailRow label="Akteur">
-              <PlainValue>{actor.label}</PlainValue>
-            </DetailRow>
-            {actorShort != null ? (
-              <DetailRow label="Benutzer-ID">
-                <MonoValue>{actorShort}</MonoValue>
+          {/* ── Forensik (wer · woran · welches Gerät · Signatur) — boxlos ─────── */}
+          <View className="gap-1">
+            <DetailGroupLabel>Forensik</DetailGroupLabel>
+            <View>
+              <DetailRow label="Akteur">
+                <PlainValue>{actor.label}</PlainValue>
               </DetailRow>
-            ) : null}
-            <DetailRow label="Entität">
-              <PlainValue>{entityLabel(row.entityTable)}</PlainValue>
-            </DetailRow>
-            {entityShort != null ? (
-              <DetailRow label="Entitäts-ID">
-                <MonoValue>{entityShort}</MonoValue>
+              {actorShort != null ? (
+                <>
+                  <Hairline />
+                  <DetailRow label="Benutzer-Kennung">
+                    <MonoValue>{actorShort}</MonoValue>
+                  </DetailRow>
+                </>
+              ) : null}
+              <Hairline />
+              <DetailRow label="Entität">
+                <PlainValue>{entityLabel(row.entityTable)}</PlainValue>
               </DetailRow>
-            ) : null}
-            {deviceShort != null ? (
-              <DetailRow label="Gerät">
-                <MonoValue>{deviceShort}</MonoValue>
-              </DetailRow>
-            ) : null}
-            {hash != null ? (
-              <DetailRow label="Zeilen-Signatur">
-                <MonoValue>{hash}</MonoValue>
-              </DetailRow>
-            ) : null}
+              {entityShort != null ? (
+                <>
+                  <Hairline />
+                  <DetailRow label="Entitäts-Kennung">
+                    <MonoValue>{entityShort}</MonoValue>
+                  </DetailRow>
+                </>
+              ) : null}
+              {deviceShort != null ? (
+                <>
+                  <Hairline />
+                  <DetailRow label="Gerät">
+                    <MonoValue>{deviceShort}</MonoValue>
+                  </DetailRow>
+                </>
+              ) : null}
+              {hash != null ? (
+                <>
+                  <Hairline />
+                  <DetailRow label="Zeilen-Signatur">
+                    <MonoValue>{hash}</MonoValue>
+                  </DetailRow>
+                </>
+              ) : null}
+            </View>
           </View>
 
-          {/* ── Payload (die echten Felder, lesbar; nie erfunden) ──────────── */}
+          {/* ── Payload (die echten Felder, lesbar; nie erfunden) — boxlos ─────── */}
           {showPayload ? (
-            <View className="gap-1.5">
-              <Text
-                className="text-muted-foreground px-1 text-2xs font-medium"
-                style={{ letterSpacing: 0.4 }}
-              >
-                Details
-              </Text>
-              <View
-                className="gap-0.5 rounded-xl border bg-card px-3.5 py-2.5"
-                style={{ borderColor: t.colors.border }}
-              >
-                {entries.map((e) => (
-                  <DetailRow key={e.key} label={e.label}>
-                    {e.mono ? <MonoValue>{e.value}</MonoValue> : <PlainValue>{e.value}</PlainValue>}
-                  </DetailRow>
+            <View className="gap-1">
+              <DetailGroupLabel>Details</DetailGroupLabel>
+              <View>
+                {entries.map((e, i) => (
+                  <View key={e.key}>
+                    {i > 0 ? <Hairline /> : null}
+                    <DetailRow label={e.label}>
+                      {e.mono ? (
+                        <MonoValue>{e.value}</MonoValue>
+                      ) : (
+                        <PlainValue>{e.value}</PlainValue>
+                      )}
+                    </DetailRow>
+                  </View>
                 ))}
               </View>
             </View>
           ) : (
-            <Text className="text-muted-foreground px-1 text-xs leading-5">
-              Dieser Eintrag trägt keine zusätzlichen Felder Typ, Akteur und Zeitpunkt oben sind
+            <Text className="text-muted-foreground px-0.5 text-xs leading-5">
+              Dieser Eintrag trägt keine zusätzlichen Felder. Typ, Akteur und Zeitpunkt oben sind
               die vollständige Wahrheit.
             </Text>
           )}
 
           {/* Ehrlicher Hinweis: revisionssicher, unveränderlich. */}
-          <Text className="text-muted-foreground px-1 text-2xs leading-4">
-            Eintrag #{row.id} · revisionssicher und unveränderlich im Protokoll. Die Zeilen-Signatur
-            verkettet jeden Eintrag mit dem vorherigen (GoBD).
-          </Text>
+          <View className="gap-1.5 pt-1">
+            <Hairline />
+            <Text className="text-muted-foreground px-0.5 pt-1.5 text-2xs leading-4">
+              {`Eintrag Nr. ${row.id} · revisionssicher und unveränderlich im Protokoll. Die Zeilen-Signatur verkettet jeden Eintrag mit dem vorherigen (GoBD).`}
+            </Text>
+          </View>
         </ScrollView>
       </DialogContent>
     </Dialog>
@@ -535,6 +658,7 @@ export default function TagebuchScreen() {
   const firstLoading = ledger.status === "loading" && ledger.data == null
   const hasRows = visible.length > 0
   const categoryActive = effectiveCategory !== "ALL"
+  const hardError = ledger.error != null && ledger.data == null
 
   const openDetail = useCallback((row: LedgerListRow) => {
     setSelected(row)
@@ -543,9 +667,9 @@ export default function TagebuchScreen() {
 
   return (
     <View className="flex-1 bg-background">
-      {/* Die gealterte Papier-Maserung als Leinwand Tiefe aus dem geschichteten
+      {/* Die gealterte Papier-Maserung als Leinwand: Tiefe aus dem geschichteten
           Creme plus dieser feinen warmen Struktur, nie eine flache Fläche
-          (DESIGN.md §1, §5). */}
+          (DESIGN-SYSTEM.md §1, §5). */}
       <PaperGrain />
       <ScrollView
         className="flex-1"
@@ -553,121 +677,146 @@ export default function TagebuchScreen() {
           paddingHorizontal: 16,
           paddingTop: 12,
           paddingBottom: insets.contentBottom,
-          gap: 20,
+          gap: 24,
         }}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl {...rc} />}
       >
         {/* ── Register-Kopf ──────────────────────────────────────────────────── */}
-        <View className="gap-3">
-          <View className="flex-row items-center gap-2.5">
-            <Activity size={t.icon.lg} color={t.colors.primary} />
-            {/* Bildschirmtitel in der Bricolage-Display-Stimme (DESIGN-SYSTEM.md §3). */}
-            <Text className="text-2xl font-display-semibold leading-tight" numberOfLines={1}>
-              Tagebuch
-            </Text>
+        <View className="gap-4">
+          {/* Kicker + Titel — der Protokoll-Faden öffnet mit dem bespoke Siegel. */}
+          <View className="gap-1.5">
+            <View className="flex-row items-center gap-2">
+              <View style={{ height: 4, width: 4, borderRadius: 2, backgroundColor: t.colors.gilt }} />
+              <Text
+                className="text-muted-foreground text-2xs font-semibold"
+                style={{ letterSpacing: 1.2 }}
+              >
+                GOBD-PROTOKOLL
+              </Text>
+            </View>
+            <View className="flex-row items-center gap-2.5">
+              <LedgerSeal size={26} ink={t.colors.primary} gilt={t.colors.gilt} />
+              {/* Bricolage Grotesque display voice (DESIGN-SYSTEM.md §3). */}
+              <Text className="text-2xl font-display-semibold leading-tight" numberOfLines={1}>
+                Tagebuch
+              </Text>
+            </View>
           </View>
 
           {firstLoading ? (
-            <View className="flex-row gap-2.5" accessibilityElementsHidden>
-              {[0, 1].map((i) => (
-                <Card key={i} className={`${i === 0 ? "flex-1" : "flex-[1.4]"} gap-2 px-3 py-3`}>
-                  <Skeleton width="60%" height={10} />
-                  <Skeleton width="45%" height={24} />
-                </Card>
-              ))}
+            <View className="flex-row items-stretch" accessibilityElementsHidden>
+              <View className="flex-1 gap-2">
+                <Skeleton width="50%" height={9} />
+                <Skeleton width="40%" height={28} />
+              </View>
+              <Hairline vertical length={40} />
+              <View className="flex-[1.3] gap-2" style={{ paddingLeft: 16 }}>
+                <Skeleton width="55%" height={9} />
+                <Skeleton width="60%" height={20} />
+              </View>
             </View>
-          ) : ledger.error != null && ledger.data == null ? (
-            <InlineError message={ledger.error} onRetry={() => void ledger.refetch()} />
+          ) : hardError ? (
+            <InlineError message={ledger.error ?? ""} onRetry={() => void ledger.refetch()} />
           ) : ledger.data != null ? (
-            <RegisterHeader total={total} loadedCount={items.length} latestIso={latestIso} />
+            <RegisterBalance total={total} loadedCount={items.length} latestIso={latestIso} />
           ) : null}
 
-          {/* Zeitraum (serverseitig) */}
-          <DateRangeRow range={range} onChange={setRange} />
-
-          {/* Kategorie (clientseitig über die geladene Seite) */}
-          {items.length > 0 ? (
-            <CategoryRow
-              filter={effectiveCategory}
-              onChange={setCategory}
-              byCategory={byCategory}
-              total={items.length}
-            />
-          ) : null}
-        </View>
-
-        {/* ── Ereignis-Zeilen (nach Tag gruppiert) ───────────────────────────── */}
-        <View className="gap-4">
-          {firstLoading ? (
-            <View className="gap-2.5" accessibilityElementsHidden>
-              {Array.from({ length: 6 }).map((_, i) => (
- <View key={i} className="flex-row items-center gap-3 hairline-b px-3.5 py-3">
-                  <Skeleton width={36} height={36} radius="card" />
-                  <View className="flex-1 gap-2">
-                    <Skeleton width="65%" height={14} />
-                    <Skeleton width="40%" height={11} />
-                  </View>
-                </View>
-              ))}
-            </View>
-          ) : ledger.error != null && ledger.data == null ? (
-            <InlineError message={ledger.error} onRetry={() => void ledger.refetch()} />
-          ) : !hasRows && ledger.data != null ? (
-            <EmptyState
-              icon={Activity}
-              title={
-                categoryActive ? "Keine Einträge in dieser Kategorie" : "Noch keine Einträge"
-              }
-              description={
-                categoryActive
-                  ? "In den geladenen Einträgen liegt nichts in dieser Kategorie. Wähle Alle oder einen größeren Zeitraum."
-                  : range === "all"
-                    ? "Sobald im Betrieb etwas passiert ein Verkauf, eine Änderung, eine Anmeldung erscheint es hier, lückenlos und in der echten Reihenfolge."
-                    : "In diesem Zeitraum wurde nichts protokolliert. Wähle einen größeren Zeitraum."
-              }
-            />
-          ) : (
-            <View className="gap-4">
-              {groups.map((group, gi) => (
-                <View key={group.key} className="gap-2.5">
-                  <Text
-                    className="text-muted-foreground px-1 text-2xs font-medium"
-                    style={{ letterSpacing: 0.4 }}
-                  >
-                    {group.heading}
-                  </Text>
-                  <View className="gap-2.5">
-                    {group.items.map((row, ri) => (
-                      <StaggerItem key={row.id} index={Math.min(gi * 4 + ri, 8)} exit={false}>
-                        <EventRow row={row} onPress={() => openDetail(row)} />
-                      </StaggerItem>
-                    ))}
-                  </View>
-                </View>
-              ))}
-
-              {/* Ehrliche Seiten-Notiz: der Server hält mehr, als wir geladen haben. */}
-              {ledger.data != null && ledger.data.hasMore ? (
-                <Text className="text-muted-foreground px-1 pt-1 text-center text-2xs">
-                  {`Es werden die ${items.length.toLocaleString("de-DE")} jüngsten Einträge dieses Zeitraums gezeigt. Ältere liegen im Protokoll.`}
-                </Text>
+          {/* Die warme Haarlinie kappt den Kopf von den Filtern — die eine Linie. */}
+          {hardError ? null : (
+            <View className="gap-2.5">
+              <Hairline />
+              {/* Zeitraum (serverseitig) */}
+              <DateRangeRow range={range} onChange={setRange} />
+              {/* Kategorie (clientseitig über die geladene Seite) */}
+              {items.length > 0 ? (
+                <CategoryRow
+                  filter={effectiveCategory}
+                  onChange={setCategory}
+                  byCategory={byCategory}
+                  total={items.length}
+                />
               ) : null}
             </View>
           )}
         </View>
 
+        {/* ── Ereignis-Zeilen (nach Tag gruppiert) ───────────────────────────── */}
+        {hardError ? null : (
+          <View className="gap-5">
+            {firstLoading ? (
+              <View accessibilityElementsHidden>
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <View key={i}>
+                    {i > 0 ? <Hairline inset={48} /> : null}
+                    <View className="flex-row items-start gap-3 py-3.5">
+                      <Skeleton width={36} height={36} radius="card" />
+                      <View className="flex-1 gap-2">
+                        <Skeleton width="65%" height={14} />
+                        <Skeleton width="40%" height={10} />
+                      </View>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            ) : !hasRows && ledger.data != null ? (
+              <EmptyState
+                icon={categoryMeta(effectiveCategory === "ALL" ? "system" : effectiveCategory).icon}
+                title={
+                  categoryActive ? "Keine Einträge in dieser Kategorie" : "Noch keine Einträge"
+                }
+                description={
+                  categoryActive
+                    ? "In den geladenen Einträgen liegt nichts in dieser Kategorie. Wähle Alle oder einen größeren Zeitraum."
+                    : range === "all"
+                      ? "Sobald im Betrieb etwas passiert, ein Verkauf, eine Änderung, eine Anmeldung, erscheint es hier: lückenlos und in der echten Reihenfolge."
+                      : "In diesem Zeitraum wurde nichts protokolliert. Wähle einen größeren Zeitraum."
+                }
+              />
+            ) : (
+              <View className="gap-5">
+                {groups.map((group, gi) => (
+                  <View key={group.key} className="gap-0.5">
+                    {/* Tages-Überschrift — eine ruhige Overline auf dem Papier. */}
+                    <Text
+                      className="text-muted-foreground px-0.5 pb-1 text-2xs font-semibold"
+                      style={{ letterSpacing: 0.8 }}
+                    >
+                      {group.heading}
+                    </Text>
+                    {group.items.map((row, ri) => (
+                      <StaggerItem key={row.id} index={Math.min(gi * 4 + ri, 8)} exit={false}>
+                        {ri > 0 ? <Hairline inset={48} /> : null}
+                        <EventRow row={row} onPress={() => openDetail(row)} />
+                      </StaggerItem>
+                    ))}
+                  </View>
+                ))}
+
+                {/* Ehrliche Seiten-Notiz: der Server hält mehr als wir geladen haben. */}
+                {ledger.data != null && ledger.data.hasMore ? (
+                  <Text className="text-muted-foreground px-1 pt-1 text-center text-2xs">
+                    {`Es werden die ${items.length.toLocaleString("de-DE")} jüngsten Einträge dieses Zeitraums gezeigt. Ältere liegen im Protokoll.`}
+                  </Text>
+                ) : null}
+              </View>
+            )}
+          </View>
+        )}
+
         {/* ── Ehrlicher Scope-Hinweis ────────────────────────────────────────── */}
+        {/* Die EINE bewusste Karte auf dieser Fläche — eine Museums-Tafel, die das
+            Protokoll erklärt. Sonst lebt alles boxlos auf dem Papier. */}
         <SectionCard
           title="So funktioniert das Tagebuch"
-          subtitle="Ein lückenloses, unveränderliches Protokoll gelesen, nie verändert."
-          icon={Activity}
+          subtitle="Ein lückenloses, unveränderliches Protokoll, gelesen und nie verändert."
+          icon={categoryMeta("fiscal").icon}
         >
           <Text className="text-muted-foreground text-xs leading-5">
             Jede bedeutsame Handlung im Betrieb schreibt einen unveränderlichen, hash-verketteten
-            Eintrag (GoBD). Diese App zeigt das Protokoll ehrlich an wer, was, wann und
-            verändert nichts daran. Der Zeitraum-Filter läuft serverseitig; der Kategorie-Filter
-            ordnet die geladenen Einträge.
+            Eintrag (GoBD). Diese App zeigt das Protokoll ehrlich an, wer, was, wann, und verändert
+            nichts daran. Der Zeitraum-Filter läuft serverseitig; der Kategorie-Filter ordnet die
+            geladenen Einträge.
           </Text>
         </SectionCard>
       </ScrollView>

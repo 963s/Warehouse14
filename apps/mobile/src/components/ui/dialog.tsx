@@ -21,12 +21,18 @@ const FullWindowOverlay = Platform.OS === 'ios' ? RNFullWindowOverlay : React.Fr
 function DialogOverlay({
   className,
   children,
+  useFullWindowOverlay = true,
   ...props
 }: Omit<React.ComponentProps<typeof DialogPrimitive.Overlay>, 'asChild'> & {
     children?: React.ReactNode;
+    // Content that needs reanimated / gesture-handler (e.g. a spin-wheel) cannot
+    // scroll inside the iOS FullWindowOverlay window. Such dialogs opt out and
+    // render in the normal React portal instead, where those work.
+    useFullWindowOverlay?: boolean;
   }) {
+  const OverlayWrapper = useFullWindowOverlay ? FullWindowOverlay : React.Fragment;
   return (
-    <FullWindowOverlay>
+    <OverlayWrapper>
       <DialogPrimitive.Overlay
         className={cn(
           'absolute bottom-0 left-0 right-0 top-0 flex items-center justify-center bg-black/50 p-2',
@@ -43,20 +49,22 @@ function DialogOverlay({
           </NativeOnlyAnimatedView>
         </NativeOnlyAnimatedView>
       </DialogPrimitive.Overlay>
-    </FullWindowOverlay>
+    </OverlayWrapper>
   );
 }
 function DialogContent({
   className,
   portalHost,
   children,
+  useFullWindowOverlay,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
     portalHost?: string;
+    useFullWindowOverlay?: boolean;
   }) {
   return (
     <DialogPortal hostName={portalHost}>
-      <DialogOverlay>
+      <DialogOverlay useFullWindowOverlay={useFullWindowOverlay}>
         <DialogPrimitive.Content
           className={cn(
             // Floating layer = the card fill inside a fine gold hairline at the

@@ -4,15 +4,16 @@
  * drucken" on the product detail → the OS print dialog opens (AirPrint on iOS,
  * Android print framework) → prints to any label printer the OS knows.
  *
- * The barcode is rendered as a CSS-striped Code128-style bar pattern (honest:
- * it encodes the SKU/barcode value as vertical bars of varying width that a
- * standard barcode scanner reads). For a certified GS1/EAN-13 barcode, the
- * desktop cashier's ESC/POS path is the authoritative source.
+ * The barcode is a REAL, scannable Code 128-B symbol of the product's barcode
+ * (or its SKU as the fallback), drawn as inline SVG bars by the shared pure
+ * encoder (./code128). Any 1-D scanner reads it. For a certified GS1/EAN-13
+ * symbol, the desktop cashier's ESC/POS path remains the authoritative source.
  *
  * The label is sized for a standard 58mm thermal label roll (the width most
  * Brother/Dymo label printers use). The @media print CSS strips the screen
  * chrome so only the label prints.
  */
+import { code128Svg } from "./code128"
 
 /**
  * Build the self-contained label HTML for a product.
@@ -27,15 +28,9 @@ export function buildLabelHtml(opts: {
   const { name, sku, barcode, priceEur, location } = opts
   // The barcode value: use the product barcode if set, otherwise the SKU.
   const codeValue = barcode || sku
-  // Generate CSS bars from the code value (each char → a bar of proportional width).
-  const bars = codeValue
-    .split("")
-    .map((ch) => {
-      const w = 1 + (ch.charCodeAt(0) % 4) // 1-4px width per bar
-      const gap = 1 + ((ch.charCodeAt(0) >> 2) % 3) // 1-3px gap
-      return `<span style="display:inline-block;width:${w}px;height:48px;background:#000;margin-right:${gap}px"></span>`
-    })
-    .join("")
+  // A real, scannable Code 128-B symbol as inline SVG (shared pure encoder) —
+  // stretched to the label width by the `.barcode svg` rule below.
+  const barcodeSvg = code128Svg(codeValue, { height: 48, moduleWidth: 1.4 })
 
   return `<!DOCTYPE html>
 <html lang="de">
@@ -72,11 +67,9 @@ export function buildLabelHtml(opts: {
   }
   .barcode {
     height: 48px;
-    line-height: 48px;
-    white-space: nowrap;
-    overflow: hidden;
     margin-bottom: 1mm;
   }
+  .barcode svg { display: block; width: 100%; height: 48px; }
   .code {
     font-size: 9px;
     text-align: center;
@@ -88,7 +81,7 @@ export function buildLabelHtml(opts: {
   <div class="name">${escapeHtml(name)}</div>
   <div class="price">${escapeHtml(priceEur)}</div>
   ${location ? `<div class="meta">${escapeHtml(location)}</div>` : ""}
-  <div class="barcode">${bars}</div>
+  <div class="barcode">${barcodeSvg}</div>
   <div class="code">${escapeHtml(codeValue)}</div>
 </body>
 </html>`

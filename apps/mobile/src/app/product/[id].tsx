@@ -1,49 +1,49 @@
 /**
- * Artikel — Detail + Fotos + Umlagern. The product's identity, status, the
- * Lagerort triplet, the prices, and the live Schmelzwert (Feingewicht × aktueller
- * Kurs), all from `productsApi.get` (live via the shared `useQuery`: refetch-on-
- * focus so a freshly captured photo / relocation shows the moment you return,
- * pull-to-refresh, in-flight de-dupe). The metal price is a second live read so
- * the Schmelzwert is a real number or a muted „—", never fabricated (honesty rule).
+ * Artikel — Detail. Ein Hero-Foto, dann nackte beschriftete Zeilen auf dem
+ * warmen Papier (keine Kästen in Kästen), die Preise und Gewichte in den
+ * Mono-Ziffern, ehrliche Zustände und echte Aktionen (bearbeiten, verkaufbar
+ * schalten, umlagern, drucken, löschen). Alles aus `productsApi.get` (live über
+ * den geteilten `useQuery`: refetch-on-focus, sodass ein frisch aufgenommenes
+ * Foto oder eine Umlagerung sofort erscheint, Pull-to-refresh, in-flight-Dedupe).
+ * Der Metallkurs ist ein zweiter Live-Read, damit der Schmelzwert eine echte Zahl
+ * oder ein ruhiges „—" ist, nie eine erfundene Ziffer (Ehrlichkeitsregel).
  *
- * Two step-up-gated actions, each surfaced through the shared spine:
- *   • „Umlagern" (LOCATION_CHANGE) → writes audit_log AND requires step-up; the
- *     global StepUpDialogHost fires the PIN transparently and the call retries.
- *     A success lands with the Success haptic + the verdigris banner.
- *   • „Entwurf löschen" → only unsold DRAFTs; an irreversible-feeling action, so
- *     it is confirmed in a themed Dialog first and lands with the Error/Success
- *     haptic. The DELETE also 403s with STEP_UP_REQUIRED and auto-retries.
+ * Form (DESIGN-SYSTEM.md): Tiefe kommt aus dem geschichteten Papier und einer
+ * einzigen warmen Haarlinie, nie aus gestapelten Karten. Der Lagerort, die Werte,
+ * der Kanal — alles lebt boxlos als Reihen, getrennt durch die Linie. Gold tritt
+ * nur als Faden auf (der Kicker-Punkt, die aktive Kante). Münzziffern in Mono.
  *
- * Photos: the grid lists the product's photos (primary first); tapping a non-
- * primary thumb promotes it. „Foto hinzufügen" routes into the capture pipeline.
+ * Zwei step-up-geschützte Aktionen über den geteilten Spine:
+ *   • „Umlagern" (LOCATION_CHANGE) → schreibt audit_log UND verlangt step-up; der
+ *     globale StepUpDialogHost fragt die PIN transparent ab und wiederholt den
+ *     Aufruf. Ein Erfolg landet mit der Success-Haptik + dem Verdigris-Hinweis.
+ *   • „Entwurf löschen" → nur unverkaufte Entwürfe; eine unumkehrbare Aktion, also
+ *     erst im Dialog bestätigt, dann mit der Error/Success-Haptik. Das DELETE
+ *     antwortet ebenfalls mit STEP_UP_REQUIRED und wiederholt automatisch.
  *
- * Built entirely on the shared spine — the state system (Skeleton in the detail's
- * shape · ErrorState+Retry · InlineError), SectionCard/ListRow/CountUp,
- * StaggerItem + PressableScale motion, the haptic vocabulary, and theme tokens.
+ * Fotos: das Hauptbild führt; ein Tipp auf eine andere Miniatur befördert sie.
+ * „Foto hinzufügen" führt in die Aufnahme. Gebaut auf dem geteilten Spine.
  */
-import { useCallback, useState } from "react"
+import { type ReactNode, useCallback, useEffect, useState } from "react"
 import { RefreshControl, ScrollView, View } from "react-native"
 import { Image } from "expo-image"
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router"
-import type { CurrentMetalPrice, PhotoRow } from "@warehouse14/api-client"
+import type { CurrentMetalPrice, Metal, PhotoRow } from "@warehouse14/api-client"
+import { deriveSizeClass, sizeClassLabel } from "@warehouse14/domain"
+import Svg, { Path } from "react-native-svg"
 import {
-  Banknote,
   Camera,
-  Coins,
   Globe,
-  MapPin,
   Pencil,
   Printer,
   RefreshCw,
   ShieldAlert,
   Store,
   Warehouse,
-  Weight,
 } from "lucide-react-native"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
 import {
   Dialog,
   DialogContent,
@@ -66,25 +66,29 @@ import {
   updateProduct,
 } from "@/warehouse14/api"
 import { buildLabelHtml } from "@/warehouse14/print/label-html"
+import { clearProductUploadError, useProductUpload } from "@/warehouse14/photo-upload-store"
 import {
   conditionLabel,
   formatGrams,
   formatLocation,
+  ITEM_TYPE_OPTIONS,
   METAL_LABEL,
   statusLabel,
   statusVariant,
 } from "@/warehouse14/product-ui"
 import { useW14Theme } from "@/warehouse14/theme"
 import {
+  CoinIcon,
   CountUp,
   ErrorState,
+  Hairline,
   haptics,
   InlineError,
   isNotFoundError,
-  ListRow,
+  MetalIcon,
+  type MetalKind,
   PaperGrain,
   PressableScale,
-  SectionCard,
   Skeleton,
   StaggerItem,
   useMutation,
@@ -95,11 +99,27 @@ import {
 
 const RELOCATE_NOTE_MIN = 8
 
+/** Der Edelmetall-Code vom Draht (klein) → die Mark-Variante (groß) der bespoke
+ *  MetalIcon. Ohne Metall trägt der Platzhalter das ruhige Münz-Glyph. */
+const METAL_KIND: Record<Metal, MetalKind> = {
+  gold: "GOLD",
+  silver: "SILBER",
+  platinum: "PLATIN",
+  palladium: "PALLADIUM",
+}
+
+/** Die Artikelart vom Draht (loser String) → ihr deutsches Label, oder `null`,
+ *  wenn unbekannt — nie der rohe Token (Reinheitsregel). */
+function itemTypeLabel(value: string | null | undefined): string | null {
+  if (!value) return null
+  return ITEM_TYPE_OPTIONS.find((o) => o.value === value)?.label ?? null
+}
+
 /**
- * The melt value in integer CENTS = Feingewicht (g) × aktueller Kurs (€/g), or
- * `null` when either input is missing (honesty rule — no fabricated figure). The
- * formatted string version (`schmelzwertEur`) is the source of truth for display
- * text; this gives the count-up an honest magnitude without re-parsing it.
+ * Der Schmelzwert in ganzen CENT = Feingewicht (g) × aktueller Kurs (€/g), oder
+ * `null`, wenn eine der Eingaben fehlt (Ehrlichkeitsregel — keine erfundene
+ * Zahl). Die formatierte Anzeige ist die Quelle der Wahrheit; dies gibt dem
+ * Count-up eine ehrliche Größenordnung, ohne sie neu zu parsen.
  */
 function schmelzCents(
   feingewichtGrams: string | null,
@@ -120,14 +140,22 @@ export default function ProductDetailScreen() {
   const t = useW14Theme()
   const insets = useScreenInsets()
 
-  // One live read drives loading/error/refetch; refetch-on-focus keeps a freshly
-  // captured photo / relocation visible the moment you return.
+  // Ein Live-Read trägt Laden/Fehler/Refetch; refetch-on-focus hält ein frisch
+  // aufgenommenes Foto / eine Umlagerung sichtbar, sobald man zurückkehrt.
   const productQ = useQuery(() => getProduct(id), { key: `product:${id}`, enabled: !!id })
   const pricesQ = useQuery(() => currentMetalPrices(), { key: "metal-prices", staleTimeMs: 60_000 })
   const photosQ = useQuery(() => listProductPhotos(id), {
     key: `product-photos:${id}`,
     enabled: !!id,
   })
+  // Optimistic background photo upload (capture returns instantly) — slot the new
+  // photo in the moment it lands, and surface any failure in the Fotos section.
+  const upload = useProductUpload(id)
+  useEffect(() => {
+    if (upload.tick > 0) void photosQ.refetch()
+    // refetch identity is stable for a fixed key
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [upload.tick])
   const rc = useRefreshControl(productQ)
   const product = productQ.data
 
@@ -142,10 +170,10 @@ export default function ProductDetailScreen() {
     }, [id]),
   )
 
-  // ── Action feedback ─────────────────────────────────────────────────────────
+  // ── Aktions-Feedback ────────────────────────────────────────────────────────
   const [okMsg, setOkMsg] = useState<string | null>(null)
 
-  // ── Relocate sheet ──────────────────────────────────────────────────────────
+  // ── Umlagern-Formular ───────────────────────────────────────────────────────
   const [editing, setEditing] = useState(false)
   const [unit, setUnit] = useState("")
   const [drawer, setDrawer] = useState("")
@@ -153,20 +181,21 @@ export default function ProductDetailScreen() {
   const [notes, setNotes] = useState("")
   const [formError, setFormError] = useState<string | null>(null)
 
-  // ── Delete confirm ──────────────────────────────────────────────────────────
+  // ── Löschen bestätigen ──────────────────────────────────────────────────────
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   const prices: readonly CurrentMetalPrice[] = pricesQ.data?.prices ?? []
   const photos: PhotoRow[] = sortPhotos(photosQ.data?.items ?? [])
-  // Honesty: an empty `photos` array is only a real „keine Fotos" once the read
-  // has SUCCEEDED. While it is still loading, or if it failed, the section must
-  // not assert a confirmed-empty count — it shows a skeleton / a retry instead.
+  // Ehrlichkeit: ein leeres `photos`-Array ist erst dann ein echtes „keine Fotos",
+  // wenn der Read GELUNGEN ist. Solange er lädt oder scheiterte, behauptet der
+  // Abschnitt keine bestätigte Null — er zeigt einen Platzhalter / einen Retry.
   const photosErrored = photosQ.status === "error" && photosQ.data == null
   const photosFirstLoad = photosQ.isLoading && photosQ.data == null
   const photosConfirmed = !photosErrored && !photosFirstLoad
-  const photoCountLabel = photosConfirmed ? ` (${photos.length})` : ""
+  const photoCount = photosConfirmed ? photos.length : null
+  const heroPhoto = photos.find((p) => p.isPrimary) ?? photos[0] ?? null
 
-  // ── Mutations (step-up is transparent in the api layer) ─────────────────────
+  // ── Mutationen (step-up ist in der api-Schicht transparent) ──────────────────
   const setPrimaryM = useMutation((photoId: string) => setPhotoPrimary(photoId), {
     onSuccess: () => {
       haptics.selection()
@@ -187,7 +216,7 @@ export default function ProductDetailScreen() {
     {
       onSuccess: (res) => {
         haptics.success()
-        setOkMsg(res ? `Umgelagert · Protokoll ${res.auditLogId.slice(0, 8)}…` : "Umgelagert")
+        setOkMsg(res ? `Umgelagert · Protokoll ${res.auditLogId.slice(0, 8)}` : "Umgelagert")
         setEditing(false)
         setNotes("")
         void productQ.refetch()
@@ -249,30 +278,34 @@ export default function ProductDetailScreen() {
     void deleteM.mutate()
   }
 
-  // ── States ──────────────────────────────────────────────────────────────────
+  // ── Zustände ────────────────────────────────────────────────────────────────
   if (productQ.isLoading && product == null) {
     return (
-      <ScrollView
-        className="flex-1 bg-background"
-        contentContainerStyle={{ padding: 16, paddingBottom: insets.contentBottom }}
-      >
-        <DetailSkeleton />
-      </ScrollView>
+      <View className="flex-1 bg-background">
+        <PaperGrain />
+        <ScrollView
+          className="flex-1"
+          contentContainerStyle={{ padding: 16, paddingBottom: insets.contentBottom }}
+        >
+          <DetailSkeleton />
+        </ScrollView>
+      </View>
     )
   }
 
   if (product == null) {
-    // A 404 here is normal (a deleted/merged article reached via a deep-link or a
-    // stale list) — let ErrorState render its calm muted „nicht gefunden" frame
-    // with a domain title, never the red „konnte nicht geladen werden" card.
+    // Ein 404 ist hier normal (ein gelöschter/zusammengeführter Artikel über
+    // einen Deep-Link oder eine veraltete Liste) — der ErrorState zeigt seinen
+    // ruhigen „nicht gefunden"-Rahmen, nie die rote „konnte nicht geladen"-Karte.
     const productMissing = isNotFoundError(productQ.errorCause)
     return (
       <View className="flex-1 justify-center bg-background px-4">
+        <PaperGrain />
         <ErrorState
           title={productMissing ? "Artikel nicht gefunden" : undefined}
           message={
             productMissing
-              ? "Dieser Artikel ist nicht mehr vorhanden er wurde vermutlich gelöscht."
+              ? "Dieser Artikel ist nicht mehr vorhanden, er wurde vermutlich gelöscht."
               : (productQ.error ?? "Der Artikel konnte nicht geladen werden.")
           }
           cause={productQ.errorCause}
@@ -286,82 +319,78 @@ export default function ProductDetailScreen() {
   const schmelz = schmelzCents(product.feingewichtGrams, product.metal, prices)
   const isDeletableDraft = product.status === "DRAFT" && !product.archivedAt
   const actionError = relocateM.error ?? deleteM.error ?? setPrimaryM.error
+  const artLabel = itemTypeLabel(product.itemType)
 
   return (
     <View className="flex-1 bg-background">
       <PaperGrain />
       <ScrollView
         className="flex-1"
-        contentContainerStyle={{ padding: 16, paddingBottom: insets.contentBottom, gap: 12 }}
+        contentContainerStyle={{
+          paddingHorizontal: 16,
+          paddingTop: 12,
+          paddingBottom: insets.contentBottom,
+          gap: 22,
+        }}
+        showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl {...rc} />}
       >
-        {/* Identity header name · SKU · status, with a leading article disc. */}
+        {/* ── Hero ── Das Hauptbild führt den Artikel ein. Ein echtes Foto in
+            einem warmen Haarlinien-Rahmen, oder ein ehrlicher Papier-Platzhalter
+            mit dem bespoke Edelmetall-/Münz-Glyph. Darunter steht die Identität
+            nackt: Kicker-Faden, Name in der Display-Stimme, SKU + Status. */}
         <StaggerItem index={0}>
-          <View className="flex-row items-center gap-3">
-            <View
-              className="h-14 w-14 items-center justify-center rounded-xl"
-              style={{ backgroundColor: t.colors.raised }}
-            >
-              <Coins size={t.icon.xl} color={t.colors.primary} />
-            </View>
-            <View className="flex-1 gap-1">
-              <Text className="text-2xl font-display-semibold leading-tight" numberOfLines={2}>
+          <View className="gap-3.5">
+            <HeroPhoto
+              photo={heroPhoto}
+              metal={product.metal}
+              loading={photosFirstLoad}
+            />
+            <View className="gap-2">
+              {/* Kicker — der Gilt-Faden + die Artikelart in Kapitälchen. */}
+              <View className="flex-row items-center gap-2">
+                <View
+                  style={{ height: 4, width: 4, borderRadius: 2, backgroundColor: t.colors.gilt }}
+                />
+                <Text
+                  className="text-muted-foreground text-2xs font-semibold"
+                  style={{ letterSpacing: 1.2 }}
+                  numberOfLines={1}
+                >
+                  {(artLabel ?? "Artikel").toUpperCase()}
+                </Text>
+              </View>
+              <Text className="text-3xl font-display-semibold leading-tight" numberOfLines={3}>
                 {product.name}
               </Text>
               <View className="flex-row flex-wrap items-center gap-2">
-                <Text className="text-muted-foreground font-mono text-xs" numberOfLines={1}>
-                  {product.sku}
-                </Text>
                 <Badge variant={statusVariant(product.status)} dot>
                   <Text>{statusLabel(product.status)}</Text>
                 </Badge>
+                <Text className="text-muted-foreground font-mono text-xs" numberOfLines={1}>
+                  {product.sku}
+                </Text>
               </View>
             </View>
           </View>
         </StaggerItem>
 
-        {/* Bearbeiten the one calm primary nav off this screen. */}
-        <StaggerItem index={1}>
-          <PressableScale
-            accessibilityRole="button"
-            accessibilityLabel="Artikel bearbeiten"
-            onPress={() => {
-              haptics.selection()
-              router.push({ pathname: "/product/edit", params: { id } })
-            }}
-          >
-            <Card className="min-h-[48px] flex-row items-center gap-3 px-4 py-3">
-              <View
-                className="h-8 w-8 items-center justify-center rounded-md"
-                style={{ backgroundColor: t.colors.raised }}
-              >
-                <Pencil size={t.icon.md} color={t.colors.primary} />
-              </View>
-              <Text className="flex-1 text-base font-medium">Bearbeiten</Text>
-            </Card>
-          </PressableScale>
-        </StaggerItem>
-
-        {/* Action feedback the verdigris success / the unified error card. */}
+        {/* Aktions-Feedback — der Verdigris-Erfolg / die eine Fehler-Karte. */}
         {okMsg ? (
-          <StaggerItem index={2} exit>
-            <Card
-              className="flex-row items-center gap-2.5 px-4 py-3.5"
-              style={{
-                borderColor: t.colors.verdigris + "66",
-                backgroundColor: t.colors.verdigris + "12",
-              }}
+          <StaggerItem index={1} exit>
+            <View
+              className="flex-row items-center gap-2.5 py-1"
               accessibilityRole="alert"
             >
               <Warehouse size={t.icon.sm} color={t.colors.verdigris} />
               <Text className="flex-1 text-sm font-semibold" style={{ color: t.colors.verdigris }}>
                 {okMsg}
               </Text>
-            </Card>
+            </View>
           </StaggerItem>
         ) : null}
         {actionError ? (
-          <StaggerItem index={2} exit>
+          <StaggerItem index={1} exit>
             <InlineError
               message={actionError}
               onDismiss={() => {
@@ -373,80 +402,127 @@ export default function ProductDetailScreen() {
           </StaggerItem>
         ) : null}
 
-        {/* Werte Schmelzwert (live count-up) + the prices + Lagerort. */}
-        <StaggerItem index={3}>
-          <SectionCard title="Werte" icon={Banknote}>
-            <View className="flex-row items-center justify-between py-1">
-              <View className="flex-row items-center gap-2.5">
-                <View
-                  className="h-8 w-8 items-center justify-center rounded-md"
-                  style={{ backgroundColor: t.colors.raised }}
-                >
-                  <Weight size={t.icon.md} color={t.colors.primary} />
-                </View>
-                <View>
-                  <Text className="text-base font-medium">Schmelzwert</Text>
-                  <Text className="text-muted-foreground text-2xs">
-                    {pricesQ.isLoading ? "Kurs wird geladen …" : "Feingewicht × aktueller Kurs"}
-                  </Text>
-                </View>
+        {/* ── Werte ── Der Schmelzwert führt als großer Mono-Count-up, dann die
+            Preise, das Gewicht, der Lagerort und der Zustand als nackte Zeilen,
+            getrennt nur durch die warme Haarlinie (keine Karte). */}
+        <StaggerItem index={2}>
+          <View className="gap-3">
+            <GroupLabel>Werte</GroupLabel>
+
+            {/* Schmelzwert — die ruhige Bilanz-Zeile, mono + groß. */}
+            <View className="flex-row items-end justify-between">
+              <View className="gap-0.5">
+                <Text className="text-base font-semibold">Schmelzwert</Text>
+                <Text className="text-muted-foreground text-2xs">
+                  {pricesQ.isLoading ? "Kurs wird geladen" : "Feingewicht × aktueller Kurs"}
+                </Text>
               </View>
               <SchmelzValue cents={schmelz} />
             </View>
-            <ListRow
-              icon={Banknote}
-              title="Listenpreis"
-              value={formatEur(product.listPriceEur)}
-              mono
-            />
-            <ListRow
-              icon={Coins}
-              title="Einkaufspreis"
-              value={formatEur(product.acquisitionCostEur)}
-              mono
-            />
+
+            <Hairline />
+
+            <ValueRow label="Listenpreis" value={formatEur(product.listPriceEur)} mono />
+            <Hairline inset={0} />
+            <ValueRow label="Einkaufspreis" value={formatEur(product.acquisitionCostEur)} mono />
             {product.feingewichtGrams && product.metal ? (
-              <ListRow
-                icon={Weight}
-                title="Feingewicht"
-                value={`${formatGrams(product.feingewichtGrams)} g · ${METAL_LABEL[product.metal]}`}
-              />
+              <>
+                <Hairline />
+                <ValueRow
+                  label="Feingewicht"
+                  value={`${formatGrams(product.feingewichtGrams) ?? "—"} g · ${METAL_LABEL[product.metal]}`}
+                  mono
+                />
+              </>
             ) : null}
-            <ListRow
-              icon={MapPin}
-              title="Lagerort"
+            <Hairline />
+            <ValueRow
+              label="Lagerort"
               value={formatLocation(
                 product.locationStorageUnit,
                 product.locationDrawer,
                 product.locationPosition,
               )}
             />
-            <ListRow title="Zustand" value={conditionLabel(product.condition)} />
-          </SectionCard>
+            {/* Maße + abgeleitete Größenklasse — bleiben am Produkt fürs Packen. */}
+            {(() => {
+              const dims = [product.lengthCm, product.widthCm, product.heightCm]
+              if (!dims.some((d) => d != null && d !== "")) return null
+              const fmt = dims.map((d) => (d ? String(Number(d)) : "—")).join(" × ")
+              const sc = deriveSizeClass({
+                lengthCm: product.lengthCm ? Number(product.lengthCm) : null,
+                widthCm: product.widthCm ? Number(product.widthCm) : null,
+                heightCm: product.heightCm ? Number(product.heightCm) : null,
+                weightGrams: product.weightGrams ? Number(product.weightGrams) : null,
+              })
+              return (
+                <>
+                  <Hairline />
+                  <ValueRow label="Maße" value={`${fmt} cm`} />
+                  {sc != null ? (
+                    <>
+                      <Hairline inset={0} />
+                      <ValueRow label="Größe" value={sizeClassLabel(sc)} />
+                    </>
+                  ) : null}
+                </>
+              )
+            })()}
+            <Hairline />
+            <ValueRow label="Zustand" value={conditionLabel(product.condition)} />
+          </View>
         </StaggerItem>
 
-        {/* Fotos primary first; tap a non-primary thumb to promote it. */}
-        <StaggerItem index={4}>
-          <SectionCard
-            title={`Fotos${photoCountLabel}`}
-            icon={Camera}
-            action={
-              <Button
-                variant="ghost"
-                size="sm"
+        {/* ── Fotos ── Das Hauptbild führt; ein Tipp auf eine andere Miniatur
+            befördert sie. Boxloser Abschnitts-Kopf mit echter Anzahl. */}
+        <StaggerItem index={3}>
+          <View className="gap-3">
+            <View className="flex-row items-center justify-between">
+              <View className="flex-row items-center gap-2">
+                <GroupLabel>Fotos</GroupLabel>
+                {photoCount != null ? (
+                  <Text className="text-muted-foreground font-mono text-2xs">{photoCount}</Text>
+                ) : null}
+                {upload.uploading > 0 ? (
+                  <Text className="text-muted-foreground text-2xs">· wird hochgeladen…</Text>
+                ) : null}
+              </View>
+              <PressableScale
+                accessibilityRole="button"
+                accessibilityLabel="Foto hinzufügen"
                 onPress={() => {
                   haptics.selection()
                   router.push({ pathname: "/capture", params: { productId: id } })
                 }}
-                accessibilityLabel="Foto hinzufügen"
               >
-                <Text className="text-primary">Hinzufügen</Text>
-              </Button>
-            }
-          >
+                <View className="flex-row items-center gap-1.5 py-1">
+                  <Camera size={t.icon.sm} color={t.colors.foreground} />
+                  <Text className="text-sm font-semibold">Hinzufügen</Text>
+                </View>
+              </PressableScale>
+            </View>
+
+            {upload.error ? (
+              // Hintergrund-Upload gescheitert — ehrlich melden (kein stilles
+              // Verschlucken). Die Bytes sind weg (no-persist), darum erneut
+              // aufnehmen statt „erneut senden". Ein Tipp schließt den Hinweis.
+              <PressableScale
+                accessibilityRole="button"
+                accessibilityLabel="Upload-Hinweis schließen"
+                onPress={() => {
+                  haptics.selection()
+                  clearProductUploadError(id)
+                }}
+              >
+                <Text className="text-sm" style={{ color: t.colors.destructive }}>
+                  Foto-Upload fehlgeschlagen: {upload.error}. Bitte erneut aufnehmen.
+                </Text>
+              </PressableScale>
+            ) : null}
+
             {photosErrored ? (
-              // A load FAILURE — never claim „keine Fotos" when the truth is
-              // „konnte nicht geladen werden". Offer an honest retry instead.
+              // Ein Lade-FEHLER — nie „keine Fotos" behaupten, wenn die Wahrheit
+              // „konnte nicht geladen werden" ist. Ein ehrlicher Retry stattdessen.
               <View className="gap-2.5">
                 <Text className="text-muted-foreground text-sm">
                   {photosQ.error ?? "Fotos konnten nicht geladen werden."}
@@ -463,80 +539,100 @@ export default function ProductDetailScreen() {
                     className="flex-row items-center gap-1.5 self-start rounded-full border px-3.5 py-2"
                     style={{ borderColor: t.colors.border }}
                   >
-                    <RefreshCw size={t.icon.xs} color={t.colors.primary} />
-                    <Text className="text-primary text-sm font-medium">
-                      {photosQ.isFetching ? "Wird geladen…" : "Erneut laden"}
+                    <RefreshCw size={t.icon.xs} color={t.colors.foreground} />
+                    <Text className="text-sm font-semibold">
+                      {photosQ.isFetching ? "Wird geladen" : "Erneut laden"}
                     </Text>
                   </View>
                 </PressableScale>
               </View>
             ) : photosFirstLoad ? (
-              // First read still in flight — a shape-faithful placeholder, not a
-              // premature „keine Fotos".
+              // Erster Read noch unterwegs — ein formtreuer Platzhalter, kein
+              // voreiliges „keine Fotos".
               <View className="flex-row gap-2" accessibilityElementsHidden>
                 {[0, 1, 2].map((i) => (
-                  <Skeleton key={i} width={84} height={84} radius="button" />
+                  <Skeleton key={i} width={84} height={84} radius="card" />
                 ))}
               </View>
             ) : photos.length === 0 ? (
-              <Text className="text-muted-foreground text-sm">
-                Noch keine Fotos. Hinzufügen", um das erste aufzunehmen es wird zum Hauptbild.
+              <Text className="text-muted-foreground text-sm leading-5">
+                Noch keine Fotos. Tippe auf Hinzufügen, um das erste aufzunehmen, es wird zum
+                Hauptbild.
               </Text>
             ) : (
-              <View className="flex-row flex-wrap gap-2">
-                {photos.map((ph) => (
-                  <PressableScale
-                    key={ph.id}
-                    accessibilityRole="button"
-                    accessibilityLabel={ph.isPrimary ? "Hauptbild" : "Als Hauptbild setzen"}
-                    accessibilityState={{ selected: ph.isPrimary }}
-                    disabled={ph.isPrimary || setPrimaryM.isPending}
-                    onPress={() => {
-                      if (!ph.isPrimary) void setPrimaryM.mutate(ph.id)
-                    }}
-                  >
-                    <View className="items-center gap-1">
-                      <View
-                        className="rounded-xl p-0.5"
-                        style={{
-                          borderWidth: ph.isPrimary ? 2 : 1,
-                          borderColor: ph.isPrimary ? t.colors.primary : t.colors.border,
-                        }}
-                      >
-                        <Image
-                          source={{ uri: absoluteUrl(ph.thumbUrl ?? `/api/photos/${ph.id}/thumb`) }}
+              <View className="flex-row flex-wrap gap-2.5">
+                {photos.map((ph) => {
+                  const isHero = ph.id === heroPhoto?.id
+                  return (
+                    <PressableScale
+                      key={ph.id}
+                      accessibilityRole="button"
+                      accessibilityLabel={ph.isPrimary ? "Hauptbild" : "Als Hauptbild setzen"}
+                      accessibilityState={{ selected: ph.isPrimary }}
+                      disabled={ph.isPrimary || setPrimaryM.isPending}
+                      onPress={() => {
+                        if (!ph.isPrimary) void setPrimaryM.mutate(ph.id)
+                      }}
+                    >
+                      <View className="gap-1.5">
+                        <View
+                          className="overflow-hidden"
                           style={{
-                            width: 96,
-                            height: 96,
-                            borderRadius: t.radii.button,
-                            backgroundColor: t.colors.raised,
+                            borderRadius: t.radii.card,
+                            borderWidth: 1,
+                            borderColor: ph.isPrimary ? t.colors.gilt : t.colors.border,
                           }}
-                          contentFit="cover"
-                          transition={180}
-                          recyclingKey={ph.id}
-                          cachePolicy="memory-disk"
-                        />
+                        >
+                          <Image
+                            source={{
+                              uri: absoluteUrl(ph.thumbUrl ?? `/api/photos/${ph.id}/thumb`),
+                            }}
+                            style={{
+                              width: 88,
+                              height: 88,
+                              backgroundColor: t.colors.raised,
+                            }}
+                            contentFit="cover"
+                            transition={180}
+                            recyclingKey={ph.id}
+                            cachePolicy="memory-disk"
+                          />
+                        </View>
+                        <Text
+                          className="text-2xs font-medium"
+                          style={{
+                            color: isHero ? t.colors.foreground : t.colors.mutedForeground,
+                          }}
+                        >
+                          {ph.isPrimary ? "Hauptbild" : "Als Hauptbild"}
+                        </Text>
                       </View>
-                      <Text
-                        className="text-2xs"
-                        style={{
-                          color: ph.isPrimary ? t.colors.primary : t.colors.mutedForeground,
-                        }}
-                      >
-                        {ph.isPrimary ? "Hauptbild" : "Als Hauptbild"}
-                      </Text>
-                    </View>
-                  </PressableScale>
-                ))}
+                    </PressableScale>
+                  )
+                })}
               </View>
             )}
-          </SectionCard>
+          </View>
         </StaggerItem>
 
-        {/* Umlagern the relocate sheet (a real audit_log write + step-up). */}
+        {/* ── Veröffentlichung ── Wo und ob der Artikel verkaufbar ist, als nackte
+            Schalter-Reihen mit der Haarlinie dazwischen (keine Karte). */}
+        <StaggerItem index={4}>
+          <PublishPanel
+            productId={product.id}
+            status={product.status}
+            listedOnStorefront={product.listedOnStorefront}
+            listedOnEbay={product.listedOnEbay}
+          />
+        </StaggerItem>
+
+        {/* ── Umlagern ── Das Umlagern-Formular (ein echter audit_log-Eintrag +
+            step-up). Eingeklappt eine ruhige Aktions-Zeile, ausgeklappt das
+            Formular direkt auf dem Papier. */}
         <StaggerItem index={5}>
           {editing ? (
-            <SectionCard title="Umlagern" icon={Warehouse}>
+            <View className="gap-2.5">
+              <GroupLabel>Umlagern</GroupLabel>
               <Input
                 value={unit}
                 onChangeText={setUnit}
@@ -577,7 +673,7 @@ export default function ProductDetailScreen() {
                   {formError}
                 </Text>
               ) : (
-                <Text className="text-muted-foreground text-2xs">
+                <Text className="text-muted-foreground text-2xs leading-4">
                   Jede Umlagerung wird im Prüfprotokoll vermerkt und ist PIN-bestätigt.
                 </Text>
               )}
@@ -600,56 +696,76 @@ export default function ProductDetailScreen() {
                   disabled={relocateM.isPending}
                   accessibilityLabel="Umlagern bestätigen"
                 >
-                  <Text>{relocateM.isPending ? "Speichern…" : "Bestätigen"}</Text>
+                  <Text>{relocateM.isPending ? "Speichern" : "Bestätigen"}</Text>
                 </Button>
               </View>
-            </SectionCard>
-          ) : (
-            <Button size="xl" className="h-12" onPress={openRelocate} accessibilityLabel="Umlagern">
-              <Text>Umlagern</Text>
-            </Button>
-          )}
+            </View>
+          ) : null}
         </StaggerItem>
 
-        {/* ── Veröffentlichung — channel control from the phone ── */}
-        <StaggerItem index={6}>
-          <PublishPanel
-            productId={product.id}
-            status={product.status}
-            listedOnStorefront={product.listedOnStorefront}
-            listedOnEbay={product.listedOnEbay}
-          />
-        </StaggerItem>
+        {/* ── Aktionen ── Bearbeiten führt; Umlagern + Etikett drucken sind ruhige
+            Sekundär-Aktionen; Entwurf löschen steht abgesetzt unten. */}
+        {!editing ? (
+          <StaggerItem index={6}>
+            <View className="gap-3">
+              <GroupLabel>Aktionen</GroupLabel>
+              <Button
+                size="xl"
+                className="h-12"
+                onPress={() => {
+                  haptics.selection()
+                  router.push({ pathname: "/product/edit", params: { id } })
+                }}
+                accessibilityLabel="Artikel bearbeiten"
+              >
+                <Pencil size={t.icon.sm} color={t.colors.primaryForeground} />
+                <Text>Bearbeiten</Text>
+              </Button>
+              <View className="flex-row gap-2">
+                <Button
+                  variant="outline"
+                  className="h-12 flex-1"
+                  onPress={openRelocate}
+                  accessibilityLabel="Umlagern"
+                >
+                  <Warehouse size={t.icon.sm} color={t.colors.foreground} />
+                  <Text>Umlagern</Text>
+                </Button>
+                <LabelPrintButton
+                  name={product.name}
+                  sku={product.sku ?? ""}
+                  barcode={product.barcode}
+                  priceEur={formatEur(product.listPriceEur)}
+                  location={product.locationStorageUnit ?? ""}
+                />
+              </View>
+            </View>
+          </StaggerItem>
+        ) : null}
 
-        {/* ── Etikett drucken — barcode label via the OS print dialog ── */}
-        <StaggerItem index={7}>
-          <LabelPrintButton
-            name={product.name}
-            sku={product.sku ?? ""}
-            barcode={product.barcode}
-            priceEur={formatEur(product.listPriceEur)}
-            location={product.locationStorageUnit ?? ""}
-          />
-        </StaggerItem>
-
-        {/* Entwurf löschen only unsold DRAFTs, confirmed in a dialog first. */}
-        {isDeletableDraft ? (
-          <StaggerItem index={8}>
-            <Button
-              variant="destructive"
-              size="xl"
-              className="h-12"
-              onPress={askDelete}
-              disabled={deleteM.isPending}
-              accessibilityLabel="Entwurf löschen"
-            >
-              <Text>{deleteM.isPending ? "Löschen…" : "Entwurf löschen"}</Text>
-            </Button>
+        {/* Entwurf löschen — nur unverkaufte Entwürfe, abgesetzt + dialog-bestätigt. */}
+        {isDeletableDraft && !editing ? (
+          <StaggerItem index={7}>
+            <View className="gap-2 pt-1">
+              <Hairline />
+              <PressableScale
+                accessibilityRole="button"
+                accessibilityLabel="Entwurf löschen"
+                disabled={deleteM.isPending}
+                onPress={askDelete}
+              >
+                <View className="flex-row items-center justify-center gap-2 py-3">
+                  <Text className="text-sm font-semibold" style={{ color: t.colors.destructive }}>
+                    {deleteM.isPending ? "Wird gelöscht" : "Entwurf löschen"}
+                  </Text>
+                </View>
+              </PressableScale>
+            </View>
           </StaggerItem>
         ) : null}
       </ScrollView>
 
-      {/* Delete confirm irreversible, so make the operator mean it. */}
+      {/* Löschen bestätigen — unumkehrbar, also soll der Betreiber es meinen. */}
       <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <DialogContent>
           <DialogHeader>
@@ -663,8 +779,8 @@ export default function ProductDetailScreen() {
               <DialogTitle>Artikel löschen?</DialogTitle>
             </View>
             <DialogDescription>
-              {product.name}" wird unwiderruflich gelöscht. Nur unverkaufte Entwürfe können
-              gelöscht werden die Aktion kann nicht rückgängig gemacht werden.
+              {product.name} wird unwiderruflich gelöscht. Nur unverkaufte Entwürfe können gelöscht
+              werden, die Aktion kann nicht rückgängig gemacht werden.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -692,13 +808,113 @@ function sortPhotos(items: readonly PhotoRow[]): PhotoRow[] {
   )
 }
 
-/** The Schmelzwert read-out: a brass count-up to the live melt value (in cents),
- *  but only when it is a real number — otherwise a muted „—" (honesty rule). */
-function SchmelzValue({ cents }: { cents: number | null }) {
+/** Ein boxloser Gruppen-Kopf — Inter semibold in der Sektions-Stufe. */
+function GroupLabel({ children }: { children: ReactNode }): ReactNode {
+  return (
+    <Text className="text-base font-semibold" numberOfLines={1}>
+      {children}
+    </Text>
+  )
+}
+
+/** Eine nackte Wert-Zeile: Label links (gedämpft) · Wert rechts (Mono optional). */
+function ValueRow({
+  label,
+  value,
+  mono = false,
+}: {
+  label: string
+  value: string
+  mono?: boolean
+}): ReactNode {
+  return (
+    <View className="min-h-[36px] flex-row items-center justify-between gap-4 py-1">
+      <Text className="text-muted-foreground text-sm">{label}</Text>
+      <Text
+        className={mono ? "font-mono-medium text-sm" : "text-sm font-medium"}
+        numberOfLines={1}
+        style={{ flexShrink: 1, textAlign: "right" }}
+      >
+        {value}
+      </Text>
+    </View>
+  )
+}
+
+/**
+ * HeroPhoto — das Hauptbild des Artikels in einem warmen Haarlinien-Rahmen, oder
+ * ein ehrlicher Papier-Platzhalter mit dem bespoke Edelmetall-/Münz-Glyph, wenn
+ * noch kein Foto da ist. Kein Foto erfinden — der Platzhalter sagt es ruhig.
+ */
+function HeroPhoto({
+  photo,
+  metal,
+  loading,
+}: {
+  photo: PhotoRow | null
+  metal: Metal | null
+  loading: boolean
+}): ReactNode {
+  const t = useW14Theme()
+  const radius = t.radii.xl2
+
+  if (loading) {
+    return <Skeleton width="100%" height={232} radius="card" />
+  }
+
+  if (photo) {
+    return (
+      <View
+        className="overflow-hidden"
+        style={{ borderRadius: radius, borderWidth: 1, borderColor: t.colors.border }}
+      >
+        <Image
+          source={{ uri: absoluteUrl(photo.publicUrl ?? `/api/photos/${photo.id}`) }}
+          style={{ width: "100%", height: 232, backgroundColor: t.colors.raised }}
+          contentFit="cover"
+          transition={220}
+          recyclingKey={photo.id}
+          cachePolicy="memory-disk"
+        />
+      </View>
+    )
+  }
+
+  // Ehrlicher Platzhalter — warmes Papier, ein ruhiges bespoke Glyph, kein
+  // erfundenes Bild. Das Glyph trägt das Metall, sonst die Münze.
+  return (
+    <View
+      className="items-center justify-center gap-2"
+      style={{
+        height: 232,
+        borderRadius: radius,
+        borderWidth: 1,
+        borderColor: t.colors.border,
+        backgroundColor: t.colors.card,
+      }}
+      accessibilityElementsHidden
+    >
+      <View style={{ opacity: 0.4 }}>
+        {metal ? (
+          <MetalIcon metal={METAL_KIND[metal]} size={56} color={t.colors.foreground} />
+        ) : (
+          <CoinIcon size={56} color={t.colors.foreground} />
+        )}
+      </View>
+      <Text className="text-muted-foreground text-2xs font-medium" style={{ letterSpacing: 0.4 }}>
+        Noch kein Foto
+      </Text>
+    </View>
+  )
+}
+
+/** Der Schmelzwert-Ablesewert: ein Mono-Count-up zum Live-Schmelzwert (in Cent),
+ *  aber nur, wenn es eine echte Zahl ist — sonst ein gedämpftes „—" (Ehrlichkeit). */
+function SchmelzValue({ cents }: { cents: number | null }): ReactNode {
   const t = useW14Theme()
   if (cents == null) {
     return (
-      <Text className="font-mono-medium text-lg" style={{ color: t.colors.mutedForeground }}>
+      <Text className="font-mono-medium text-2xl leading-none" style={{ color: t.colors.mutedForeground }}>
         —
       </Text>
     )
@@ -708,42 +924,43 @@ function SchmelzValue({ cents }: { cents: number | null }) {
       value={cents}
       format={(c) => formatEur((c / 100).toFixed(2))}
       motion="timing"
-      className="font-mono-medium text-lg"
+      className="font-mono-medium text-2xl leading-none"
       style={{ color: t.colors.foreground }}
     />
   )
 }
 
-/** The first-load placeholder — the detail's own shape, never a mid-screen spinner. */
-function DetailSkeleton() {
-  const t = useW14Theme()
+/** Der Erst-Lade-Platzhalter — die eigene Form des Details, nie ein Spinner. */
+function DetailSkeleton(): ReactNode {
   return (
-    <View className="gap-3">
-      <View className="flex-row items-center gap-3">
-        <Skeleton width={56} height={56} radius="card" />
-        <View className="flex-1 gap-2">
-          <Skeleton width="66%" height={20} />
-          <Skeleton width="44%" height={12} />
-        </View>
+    <View className="gap-5">
+      <Skeleton width="100%" height={232} radius="card" />
+      <View className="gap-2">
+        <Skeleton width="40%" height={12} />
+        <Skeleton width="78%" height={28} />
+        <Skeleton width="50%" height={14} />
       </View>
-      <Skeleton width="100%" height={48} radius="card" />
-      {[0, 1].map((i) => (
-        <Card key={i} className="gap-3 px-4 py-4" style={{ borderColor: t.colors.border }}>
-          <Skeleton width="40%" height={16} />
-          <Skeleton width="86%" height={12} />
-          <Skeleton width="74%" height={12} />
-          <Skeleton width="60%" height={12} />
-        </Card>
-      ))}
+      <View className="gap-3 pt-2">
+        <Skeleton width="30%" height={16} />
+        {[0, 1, 2, 3].map((i) => (
+          <View key={i} className="flex-row items-center justify-between">
+            <Skeleton width="34%" height={12} />
+            <Skeleton width="24%" height={12} />
+          </View>
+        ))}
+      </View>
     </View>
   )
 }
 
-// ── PublishPanel — channel + status control from the phone ───────────────────
+// ── PublishPanel — Kanal- + Status-Steuerung vom Telefon ─────────────────────
 /**
- * The owner's core mobile workflow: control where a product is listed (Im Laden
- * = storefront, Online = eBay) and its status (Draft = not sellable, Available =
- * sellable). All toggles hit the REAL updateProduct endpoint.
+ * Der Kern-Workflow des Betreibers: steuern, wo ein Artikel gelistet ist (Im
+ * Laden = Storefront, Online = eBay) und sein Status (Entwurf = nicht verkaufbar,
+ * Verfügbar = verkaufbar). Alle Schalter treffen das ECHTE updateProduct-Endpunkt.
+ *
+ * Form: nackte Schalter-Reihen direkt auf dem Papier, getrennt durch die
+ * Haarlinie — keine Karte, kein getöntes Chip-Kästchen ums Glyph.
  */
 function PublishPanel({
   productId,
@@ -755,12 +972,15 @@ function PublishPanel({
   status: string
   listedOnStorefront: boolean
   listedOnEbay: boolean
-}): React.ReactNode {
+}): ReactNode {
   const t = useW14Theme()
 
   const toggle = useMutation(
-    async (patch: { listedOnStorefront?: boolean; listedOnEbay?: boolean; status?: "DRAFT" | "AVAILABLE" }) =>
-      updateProduct(productId, patch),
+    async (patch: {
+      listedOnStorefront?: boolean
+      listedOnEbay?: boolean
+      status?: "DRAFT" | "AVAILABLE"
+    }) => updateProduct(productId, patch),
     {
       onSuccess: () => haptics.success(),
       onError: () => haptics.error(),
@@ -769,11 +989,24 @@ function PublishPanel({
 
   const isAvailable = status === "AVAILABLE"
 
-  const Switch = ({ on, label, icon, onPress }: { on: boolean; label: string; icon: React.ReactNode; onPress: () => void }) => (
-    <View className="flex-row items-center justify-between py-2">
-      <View className="flex-row items-center gap-2">
-        {icon}
-        <Text className="text-sm font-medium">{label}</Text>
+  const Row = ({
+    on,
+    label,
+    hint,
+    icon,
+    onPress,
+  }: {
+    on: boolean
+    label: string
+    hint: string
+    icon: ReactNode
+    onPress: () => void
+  }) => (
+    <View className="min-h-[44px] flex-row items-center gap-3 py-1">
+      <View className="h-7 w-7 items-center justify-center">{icon}</View>
+      <View className="flex-1 gap-0.5">
+        <Text className="text-base font-medium">{label}</Text>
+        <Text className="text-muted-foreground text-2xs">{hint}</Text>
       </View>
       <PressableScale
         onPress={onPress}
@@ -781,56 +1014,105 @@ function PublishPanel({
         accessibilityLabel={label}
         accessibilityState={{ checked: on }}
         style={{
-          width: 48, height: 28, borderRadius: 14,
+          width: 48,
+          height: 28,
+          borderRadius: 14,
           backgroundColor: on ? t.colors.verdigris : t.colors.raised,
           borderWidth: 1,
           borderColor: on ? t.colors.verdigris : t.colors.border,
-          justifyContent: "center", paddingHorizontal: 2,
+          justifyContent: "center",
+          paddingHorizontal: 2,
         }}
       >
-        <View style={{
-          width: 22, height: 22, borderRadius: 11,
-          backgroundColor: t.colors.card,
-          transform: [{ translateX: on ? 20 : 0 }],
-        }} />
+        <View
+          style={{
+            width: 22,
+            height: 22,
+            borderRadius: 11,
+            backgroundColor: t.colors.card,
+            transform: [{ translateX: on ? 20 : 0 }],
+          }}
+        />
       </PressableScale>
     </View>
   )
 
   return (
-    <SectionCard title="Veröffentlichung" subtitle="Wo und ob der Artikel verkaufbar ist.">
-      <Switch
+    <View className="gap-3">
+      <GroupLabel>Veröffentlichung</GroupLabel>
+      <Row
         on={isAvailable}
-        label="Verkaufstatus"
-        icon={<Text className="text-sm">{isAvailable ? "✓" : "○"}</Text>}
-        onPress={() => { haptics.selection(); void toggle.mutate({ status: isAvailable ? "DRAFT" : "AVAILABLE" }) }}
+        label="Verkaufsstatus"
+        hint={isAvailable ? "Verfügbar, kann verkauft werden" : "Entwurf, noch nicht verkaufbar"}
+        icon={<StatusGlyph on={isAvailable} ink={t.colors.foreground} gilt={t.colors.gilt} />}
+        onPress={() => {
+          haptics.selection()
+          void toggle.mutate({ status: isAvailable ? "DRAFT" : "AVAILABLE" })
+        }}
       />
-      <View className="h-px w-full" style={{ backgroundColor: t.colors.border }} />
-      <Switch
+      <Hairline inset={40} />
+      <Row
         on={listedOnStorefront}
         label="Im Laden"
-        icon={<Store size={t.icon.sm} color={t.colors.foreground} />}
-        onPress={() => { haptics.selection(); void toggle.mutate({ listedOnStorefront: !listedOnStorefront }) }}
+        hint="Auf der Ladentheke sichtbar"
+        icon={<Store size={t.icon.md} color={t.colors.foreground} />}
+        onPress={() => {
+          haptics.selection()
+          void toggle.mutate({ listedOnStorefront: !listedOnStorefront })
+        }}
       />
-      <View className="h-px w-full" style={{ backgroundColor: t.colors.border }} />
-      <Switch
+      <Hairline inset={40} />
+      <Row
         on={listedOnEbay}
         label="Online"
-        icon={<Globe size={t.icon.sm} color={t.colors.foreground} />}
-        onPress={() => { haptics.selection(); void toggle.mutate({ listedOnEbay: !listedOnEbay }) }}
+        hint="Im Online-Kanal gelistet"
+        icon={<Globe size={t.icon.md} color={t.colors.foreground} />}
+        onPress={() => {
+          haptics.selection()
+          void toggle.mutate({ listedOnEbay: !listedOnEbay })
+        }}
       />
       {toggle.error != null ? (
-        <InlineError message="Änderung konnte nicht gespeichert werden." onRetry={() => toggle.reset()} />
+        <InlineError
+          message="Änderung konnte nicht gespeichert werden."
+          onRetry={() => toggle.reset()}
+        />
       ) : null}
-    </SectionCard>
+    </View>
   )
 }
 
-// ── LabelPrintButton — print a barcode label via the OS print dialog ──────────
+/** Ein bespoke Status-Glyph (react-native-svg): ein Häkchen-Siegel, wenn
+ *  verfügbar (der Faden tönt in Gilt), sonst ein offener Tinten-Ring (Entwurf). */
+function StatusGlyph({ on, ink, gilt }: { on: boolean; ink: string; gilt: string }): ReactNode {
+  return (
+    <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" accessibilityElementsHidden>
+      <Path
+        d="M12 3.5 a 8.5 8.5 0 1 0 0.001 0 Z"
+        stroke={ink}
+        strokeWidth={on ? 1.4 : 1.2}
+        strokeOpacity={on ? 1 : 0.45}
+        fill="none"
+      />
+      {on ? (
+        <Path
+          d="M8.4 12.2 L11 14.7 L15.8 9.4"
+          stroke={gilt}
+          strokeWidth={1.7}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          fill="none"
+        />
+      ) : null}
+    </Svg>
+  )
+}
+
+// ── LabelPrintButton — ein Barcode-Etikett über den OS-Druckdialog drucken ────
 /**
- * The owner taps this on the product detail → the OS print dialog opens with a
- * 58mm label (barcode + price + name + location) → prints to any label printer
- * the OS knows (AirPrint, Mopria). Uses expo-print (available in this build).
+ * Der Betreiber tippt dies auf dem Artikel-Detail → der OS-Druckdialog öffnet
+ * sich mit einem 58mm-Etikett (Barcode + Preis + Name + Lagerort) → druckt auf
+ * jeden Etikettendrucker, den das OS kennt (AirPrint, Mopria). Nutzt expo-print.
  */
 function LabelPrintButton({
   name,
@@ -844,7 +1126,8 @@ function LabelPrintButton({
   barcode: string | null
   priceEur: string
   location: string
-}): React.ReactNode {
+}): ReactNode {
+  const t = useW14Theme()
   const [busy, setBusy] = useState(false)
 
   const onPrint = useCallback(async () => {
@@ -864,15 +1147,14 @@ function LabelPrintButton({
 
   return (
     <Button
-      variant="ghost"
-      size="xl"
-      className="h-12"
+      variant="outline"
+      className="h-12 flex-1"
       onPress={onPrint}
       disabled={busy}
       accessibilityLabel="Etikett drucken"
     >
-      <Printer size={18} color={undefined} />
-      <Text>{busy ? "Drucke…" : "Etikett drucken"}</Text>
+      <Printer size={t.icon.sm} color={t.colors.foreground} />
+      <Text>{busy ? "Drucke" : "Etikett"}</Text>
     </Button>
   )
 }

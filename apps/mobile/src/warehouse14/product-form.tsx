@@ -33,16 +33,37 @@
  * API takes „199.90", not cents) — `MoneyField` keeps that contract and we never
  * fabricate a value (DESIGN.md honesty rule): an empty optional field stays empty.
  */
-import { type ComponentRef, type ReactNode, type RefObject, useMemo, useState } from "react"
-import { View, type TextInputProps } from "react-native"
-import { Check, Search, X } from "lucide-react-native"
+import {
+  type ComponentRef,
+  type ReactNode,
+  type RefObject,
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react"
+import { ScrollView, View, type TextInputProps } from "react-native"
+import Animated, {
+  Extrapolation,
+  FadeIn,
+  interpolate,
+  runOnJS,
+  type SharedValue,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated"
+import { ChevronDown } from "lucide-react-native"
 
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Text } from "@/components/ui/text"
 import { useW14Theme } from "@/warehouse14/theme"
 import { FormField } from "@/warehouse14/ui"
-import { PressableScale } from "@/warehouse14/ui/motion"
+import { duration, PressableScale, timingHover, useReduceMotion } from "@/warehouse14/ui/motion"
 import * as haptics from "@/warehouse14/ui/native/haptics"
 
 /** The imperative handle of the spine's `Input` wrapper — a TextInput instance,
@@ -109,6 +130,11 @@ export function ChipSelect<T extends string>({
   allowClear?: boolean
   clearLabel?: string
 }): ReactNode {
+  const t = useW14Theme()
+  // The visible pill stays small (Badge px-2.5 py-0.5), but the TAP surface must
+  // clear the 44px WCAG floor — minHeight on the wrapper grows the hit area, not
+  // the chip. minHeight (not hitSlop) keeps vertical precision inside the wrap.
+  const tapFloor = { minHeight: t.touch.min, justifyContent: "center" as const }
   const pick = (next: T | null) => {
     haptics.selection()
     onChange(next)
@@ -121,6 +147,7 @@ export function ChipSelect<T extends string>({
           accessibilityLabel={clearLabel}
           accessibilityState={{ selected: value === null }}
           onPress={() => pick(null)}
+          style={tapFloor}
         >
           <Badge variant={value === null ? "default" : "outline"}>
             <Text>{clearLabel}</Text>
@@ -134,12 +161,447 @@ export function ChipSelect<T extends string>({
           accessibilityLabel={opt.label}
           accessibilityState={{ selected: value === opt.value }}
           onPress={() => pick(opt.value)}
+          style={tapFloor}
         >
           <Badge variant={value === opt.value ? "default" : "outline"}>
             <Text>{opt.label}</Text>
           </Badge>
         </PressableScale>
       ))}
+    </View>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WheelPicker — an iOS-style rotating wheel for a single choice. A drop-in for
+// ChipSelect when the list is long enough that a wrap of chips becomes a wall of
+// printed text: one value rests under a gilt band, the neighbours recede with
+// depth, and the owner spins to the value instead of reading every option at
+// once. Pure reanimated scroll — no native dependency.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const WHEEL_ITEM_H = 44
+const WHEEL_VISIBLE = 3 // odd → one centred row plus one above + below; compact, not a wall
+const WHEEL_CENTER = Math.floor(WHEEL_VISIBLE / 2)
+
+// Mechanical detent — one selection tick (the subtle iOS "click" + rattle) each
+// time a new row snaps under the band. Fired from the scroll worklet via runOnJS
+// so the wheel feels like a physical dial, not a silent scroll.
+function wheelTick(): void {
+  haptics.selection()
+}
+
+// A wheel inside a Dialog (a separate iOS window where gesture-handler does not
+// coordinate) loses its vertical pan to the enclosing ScrollView. The scroll
+// container provides this setter; an open wheel calls it to freeze the parent
+// scroll so the spin reaches the wheel. No provider → a harmless no-op.
+export const WheelScrollLock = createContext<((locked: boolean) => void) | null>(null)
+
+export function WheelPicker<T extends string>({
+  options,
+  value,
+  onChange,
+  defaultToFirst = true,
+  placeholder = "Wählen",
+}: {
+  options: ReadonlyArray<{ value: T; label: string }>
+  value: T | null
+  onChange: (value: T) => void
+  /**
+   * Auto-commit the first option on mount so a required field always reads a
+   * real value. Set FALSE for fields where the owner must deliberately choose —
+   * a silent default would mis-classify the article (e.g. Artikelart).
+   */
+  defaultToFirst?: boolean
+  /** Collapsed-row prompt shown in muted ink while nothing is chosen yet. */
+  placeholder?: string
+}): ReactNode {
+  const t = useW14Theme()
+  const [open, setOpen] = useState(false)
+  const lockScroll = useContext(WheelScrollLock)
+  // Distinguish "no real choice yet" from "the first option" — Math.max(0, …)
+  // below clamps the wheel position to 0, but the collapsed row must still read
+  // as an empty prompt, not as options[0].
+  const hasValue = value != null && options.some((o) => o.value === value)
+  // Show the prompt ONLY when the field truly has no value and won't auto-fill.
+  // A defaultToFirst field renders options[0] on the very first frame (before the
+  // mount effect commits it) so the placeholder never flashes.
+  const showPlaceholder = !hasValue && !defaultToFirst
+  const selectedIndex = Math.max(
+    0,
+    options.findIndex((o) => o.value === value),
+  )
+  const selected = options[selectedIndex]
+  const scrollY = useSharedValue(selectedIndex * WHEEL_ITEM_H)
+  const lastTick = useSharedValue(selectedIndex)
+  const chevron = useSharedValue(0)
+  const reduceMotion = useReduceMotion()
+
+  const onScroll = useAnimatedScrollHandler({
+    onScroll: (e) => {
+      scrollY.value = e.contentOffset.y
+      const idx = Math.round(e.contentOffset.y / WHEEL_ITEM_H)
+      if (idx !== lastTick.value) {
+        lastTick.value = idx
+        runOnJS(wheelTick)()
+      }
+    },
+  })
+
+  const commit = useCallback(
+    (rawIndex: number) => {
+      const i = Math.min(options.length - 1, Math.max(0, rawIndex))
+      const next = options[i]
+      if (next && next.value !== value) {
+        haptics.selection()
+        onChange(next.value)
+      }
+    },
+    [options, value, onChange],
+  )
+
+  // A required field with an honest default commits its first option on mount so
+  // the collapsed row reads a real value. Fields that must NOT default (the owner
+  // has to choose) opt out with defaultToFirst={false} and show the placeholder.
+  useEffect(() => {
+    if (defaultToFirst && value == null && options[0]) onChange(options[0].value)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const toggle = () => {
+    haptics.selection()
+    const chevronTarget = open ? 0 : 1
+    chevron.value = reduceMotion ? chevronTarget : withTiming(chevronTarget, timingHover("fast"))
+    setOpen((o) => !o)
+    lockScroll?.(!open)
+  }
+  const chevronStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${chevron.value * 180}deg` }],
+  }))
+
+  const pad = WHEEL_ITEM_H * WHEEL_CENTER
+
+  return (
+    <View style={{ gap: 8 }}>
+      {/* Collapsed field — shows the current value; tap reveals the wheel. */}
+      <PressableScale onPress={toggle} accessibilityRole="button" accessibilityState={{ expanded: open }}>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            minHeight: t.touch.min,
+            paddingHorizontal: 14,
+            borderRadius: 10,
+            borderWidth: 1,
+            borderColor: open ? t.colors.gilt : t.colors.border,
+            backgroundColor: t.colors.card,
+          }}
+        >
+          <Text
+            className="font-medium"
+            style={{
+              fontSize: 16,
+              lineHeight: 22,
+              color: showPlaceholder ? t.colors.mutedForeground : t.colors.foreground,
+            }}
+            numberOfLines={1}
+          >
+            {showPlaceholder ? placeholder : (selected?.label ?? placeholder)}
+          </Text>
+          <Animated.View style={chevronStyle}>
+            <ChevronDown size={t.icon.sm} color={t.colors.mutedForeground} />
+          </Animated.View>
+        </View>
+      </PressableScale>
+
+      {open ? (
+        <Animated.View
+          entering={FadeIn.duration(reduceMotion ? 0 : duration.fast)}
+          style={{ height: WHEEL_ITEM_H * WHEEL_VISIBLE }}
+        >
+          {/* The centred selection band — a gilt-edged slot the chosen value rests in. */}
+          <View
+            pointerEvents="none"
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              top: pad,
+              height: WHEEL_ITEM_H,
+              borderRadius: 10,
+              borderTopWidth: 1,
+              borderBottomWidth: 1,
+              borderColor: `${t.colors.gilt}5e`,
+              backgroundColor: `${t.colors.foreground}0a`,
+            }}
+          />
+          <Animated.ScrollView
+            onScroll={onScroll}
+            scrollEventThrottle={16}
+            showsVerticalScrollIndicator={false}
+            snapToInterval={WHEEL_ITEM_H}
+            decelerationRate="fast"
+            bounces={false}
+            nestedScrollEnabled
+            contentOffset={{ x: 0, y: selectedIndex * WHEEL_ITEM_H }}
+            onMomentumScrollEnd={(e) => commit(Math.round(e.nativeEvent.contentOffset.y / WHEEL_ITEM_H))}
+            contentContainerStyle={{ paddingVertical: pad }}
+          >
+            {options.map((opt, i) => (
+              <WheelRow key={opt.value} label={opt.label} index={i} scrollY={scrollY} ink={t.colors.foreground} />
+            ))}
+          </Animated.ScrollView>
+        </Animated.View>
+      ) : null}
+    </View>
+  )
+}
+
+function WheelRow({
+  label,
+  index,
+  scrollY,
+  ink,
+}: {
+  label: string
+  index: number
+  scrollY: SharedValue<number>
+  ink: string
+}): ReactNode {
+  const style = useAnimatedStyle(() => {
+    "worklet"
+    const centred = scrollY.value / WHEEL_ITEM_H
+    const dist = Math.abs(centred - index)
+    return {
+      opacity: interpolate(dist, [0, 1, 2], [1, 0.4, 0.16], Extrapolation.CLAMP),
+      transform: [{ scale: interpolate(dist, [0, 1, 2], [1, 0.84, 0.72], Extrapolation.CLAMP) }],
+    }
+  })
+  return (
+    <Animated.View style={[{ height: WHEEL_ITEM_H, alignItems: "center", justifyContent: "center" }, style]}>
+      <Text className="font-medium" style={{ fontSize: 19, lineHeight: 24, color: ink }} numberOfLines={1}>
+        {label}
+      </Text>
+    </Animated.View>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DateWheel — a tap-to-open day · month · year wheel for a date of birth. Same
+// gilt-band, recede-with-depth feel as WheelPicker, but three columns spinning a
+// `YYYY-MM-DD` wire string. Optional: the collapsed row reads „Datum wählen" until
+// the owner opens it; the first open seats a sensible default to spin from.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const MONTHS_DE = [
+  "Januar", "Februar", "März", "April", "Mai", "Juni",
+  "Juli", "August", "September", "Oktober", "November", "Dezember",
+] as const
+
+const DATE_MIN_YEAR = 1920
+
+function pad2(n: number): string {
+  return n < 10 ? `0${n}` : String(n)
+}
+
+function parseISODate(v: string | null): { y: number; m: number; d: number } | null {
+  if (!v) return null
+  const match = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(v.trim())
+  if (!match) return null
+  const y = Number(match[1])
+  const m = Number(match[2])
+  const d = Number(match[3])
+  if (m < 1 || m > 12 || d < 1 || d > 31) return null
+  return { y, m, d }
+}
+
+/** One spinning column inside the DateWheel — a self-contained wheel over string
+ *  labels that reports the snapped index on momentum end. */
+function WheelColumn({
+  options,
+  selectedIndex,
+  onCommit,
+  flex,
+}: {
+  options: readonly string[]
+  selectedIndex: number
+  onCommit: (index: number) => void
+  flex: number
+}): ReactNode {
+  const t = useW14Theme()
+  const scrollY = useSharedValue(selectedIndex * WHEEL_ITEM_H)
+  const lastTick = useSharedValue(selectedIndex)
+  const onScroll = useAnimatedScrollHandler({
+    onScroll: (e) => {
+      scrollY.value = e.contentOffset.y
+      const idx = Math.round(e.contentOffset.y / WHEEL_ITEM_H)
+      if (idx !== lastTick.value) {
+        lastTick.value = idx
+        runOnJS(wheelTick)()
+      }
+    },
+  })
+  const pad = WHEEL_ITEM_H * WHEEL_CENTER
+  return (
+    <Animated.ScrollView
+      style={{ flex, height: WHEEL_ITEM_H * WHEEL_VISIBLE }}
+      onScroll={onScroll}
+      scrollEventThrottle={16}
+      showsVerticalScrollIndicator={false}
+      snapToInterval={WHEEL_ITEM_H}
+      decelerationRate="fast"
+      bounces={false}
+      nestedScrollEnabled
+      contentOffset={{ x: 0, y: selectedIndex * WHEEL_ITEM_H }}
+      onMomentumScrollEnd={(e) => onCommit(Math.round(e.nativeEvent.contentOffset.y / WHEEL_ITEM_H))}
+      contentContainerStyle={{ paddingVertical: pad }}
+    >
+      {options.map((opt, i) => (
+        <WheelRow key={`${opt}-${i}`} label={opt} index={i} scrollY={scrollY} ink={t.colors.foreground} />
+      ))}
+    </Animated.ScrollView>
+  )
+}
+
+export function DateWheel({
+  value,
+  onChange,
+}: {
+  value: string | null
+  onChange: (value: string) => void
+}): ReactNode {
+  const t = useW14Theme()
+  const [open, setOpen] = useState(false)
+  const lockScroll = useContext(WheelScrollLock)
+  const chevron = useSharedValue(0)
+  const reduceMotion = useReduceMotion()
+
+  const maxYear = new Date().getFullYear()
+  const years = useMemo(
+    () => Array.from({ length: maxYear - DATE_MIN_YEAR + 1 }, (_, i) => DATE_MIN_YEAR + i),
+    [maxYear],
+  )
+  const days = useMemo(() => Array.from({ length: 31 }, (_, i) => i + 1), [])
+
+  const parsed = parseISODate(value)
+  const hasValue = parsed != null
+  const [d, setD] = useState(parsed?.d ?? 1)
+  const [m, setM] = useState(parsed?.m ?? 1)
+  const [y, setY] = useState(parsed?.y ?? 1990)
+
+  const commit = useCallback(
+    (nd: number, nm: number, ny: number) => {
+      onChange(`${ny}-${pad2(nm)}-${pad2(nd)}`)
+    },
+    [onChange],
+  )
+
+  const toggle = () => {
+    haptics.selection()
+    const next = !open
+    chevron.value = reduceMotion ? (next ? 1 : 0) : withTiming(next ? 1 : 0, timingHover("fast"))
+    setOpen(next)
+    lockScroll?.(next)
+    // First open of an empty field seats the shown default so the row stops
+    // reading „Datum wählen" and the wheels have a value to spin from.
+    if (next && !hasValue) commit(d, m, y)
+  }
+  const chevronStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${chevron.value * 180}deg` }],
+  }))
+
+  const display = hasValue ? `${pad2(d)}.${pad2(m)}.${y}` : "Datum wählen"
+  const pad = WHEEL_ITEM_H * WHEEL_CENTER
+
+  return (
+    <View style={{ gap: 8 }}>
+      <PressableScale onPress={toggle} accessibilityRole="button" accessibilityState={{ expanded: open }}>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            minHeight: t.touch.min,
+            paddingHorizontal: 14,
+            borderRadius: 10,
+            borderWidth: 1,
+            borderColor: open ? t.colors.gilt : t.colors.border,
+            backgroundColor: t.colors.card,
+          }}
+        >
+          <Text
+            className="font-medium"
+            style={{
+              fontSize: 16,
+              lineHeight: 22,
+              color: hasValue ? t.colors.foreground : t.colors.mutedForeground,
+            }}
+            numberOfLines={1}
+          >
+            {display}
+          </Text>
+          <Animated.View style={chevronStyle}>
+            <ChevronDown size={t.icon.sm} color={t.colors.mutedForeground} />
+          </Animated.View>
+        </View>
+      </PressableScale>
+
+      {open ? (
+        <Animated.View
+          entering={FadeIn.duration(reduceMotion ? 0 : duration.fast)}
+          style={{ height: WHEEL_ITEM_H * WHEEL_VISIBLE }}
+        >
+          {/* One gilt band spans all three columns — the centred date rests in it. */}
+          <View
+            pointerEvents="none"
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              top: pad,
+              height: WHEEL_ITEM_H,
+              borderRadius: 10,
+              borderTopWidth: 1,
+              borderBottomWidth: 1,
+              borderColor: `${t.colors.gilt}5e`,
+              backgroundColor: `${t.colors.foreground}0a`,
+            }}
+          />
+          <View style={{ flexDirection: "row" }}>
+            <WheelColumn
+              options={days.map((n) => pad2(n))}
+              selectedIndex={d - 1}
+              onCommit={(i) => {
+                const nd = i + 1
+                setD(nd)
+                commit(nd, m, y)
+              }}
+              flex={1}
+            />
+            <WheelColumn
+              options={MONTHS_DE}
+              selectedIndex={m - 1}
+              onCommit={(i) => {
+                const nm = i + 1
+                setM(nm)
+                commit(d, nm, y)
+              }}
+              flex={1.6}
+            />
+            <WheelColumn
+              options={years.map((n) => String(n))}
+              selectedIndex={Math.max(0, y - DATE_MIN_YEAR)}
+              onCommit={(i) => {
+                const ny = DATE_MIN_YEAR + i
+                setY(ny)
+                commit(d, m, ny)
+              }}
+              flex={1.2}
+            />
+          </View>
+        </Animated.View>
+      ) : null}
     </View>
   )
 }
@@ -328,84 +790,276 @@ export function CategoryPicker({
   onChange: (value: string | null) => void
 }): ReactNode {
   const t = useW14Theme()
-  const [query, setQuery] = useState("")
+  const [open, setOpen] = useState(false)
+  const lockScroll = useContext(WheelScrollLock)
+  const chevron = useSharedValue(0)
+  const reduceMotion = useReduceMotion()
 
-  const selected = useMemo(() => options.find((o) => o.value === value) ?? null, [options, value])
+  // Parse the flat "Root" / "Root › Child" labels back into a 2-level tree so the
+  // owner spins a Hauptkategorie wheel, then an Unterkategorie wheel — never a wall
+  // of printed chips.
+  const roots = useMemo(() => {
+    const map = new Map<
+      string,
+      { name: string; value: string | null; children: { name: string; value: string }[] }
+    >()
+    for (const o of options) {
+      const parts = o.label.split("›").map((s) => s.trim())
+      if (parts.length === 1) {
+        const existing = map.get(parts[0])
+        if (existing) existing.value = o.value
+        else map.set(parts[0], { name: parts[0], value: o.value, children: [] })
+      }
+    }
+    for (const o of options) {
+      const parts = o.label.split("›").map((s) => s.trim())
+      if (parts.length >= 2) {
+        let r = map.get(parts[0])
+        if (!r) {
+          r = { name: parts[0], value: null, children: [] }
+          map.set(parts[0], r)
+        }
+        r.children.push({ name: parts[1], value: o.value })
+      }
+    }
+    return Array.from(map.values())
+  }, [options])
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    const pool = q ? options.filter((o) => o.label.toLowerCase().includes(q)) : options
-    // Keep the selected node out of the scroll list (it is pinned above).
-    return pool.filter((o) => o.value !== value).slice(0, 40)
-  }, [options, query, value])
+  const selectedLabel = useMemo(
+    () => options.find((o) => o.value === value)?.label ?? null,
+    [options, value],
+  )
 
-  const pick = (next: string | null) => {
+  // Resolve the current value to a (root, child) index pair for the two wheels.
+  const { rootIndex, childIndex } = useMemo(() => {
+    if (value == null) return { rootIndex: 0, childIndex: 0 }
+    for (let r = 0; r < roots.length; r++) {
+      const root = roots[r]
+      if (root.value === value) return { rootIndex: r + 1, childIndex: 0 }
+      const ci = root.children.findIndex((c) => c.value === value)
+      if (ci >= 0) return { rootIndex: r + 1, childIndex: ci + 1 }
+    }
+    return { rootIndex: 0, childIndex: 0 }
+  }, [roots, value])
+
+  const activeRoot = rootIndex > 0 ? roots[rootIndex - 1] ?? null : null
+  const hasChildren = !!activeRoot && activeRoot.children.length > 0
+
+  const rootLabels = useMemo(() => ["Ohne", ...roots.map((r) => r.name)], [roots])
+  const childLabels = useMemo(
+    () => (activeRoot ? [`Nur ${activeRoot.name}`, ...activeRoot.children.map((c) => c.name)] : []),
+    [activeRoot],
+  )
+
+  const commitRoot = (ri: number) => {
+    if (ri === rootIndex) return
     haptics.selection()
-    onChange(next)
-    setQuery("")
+    if (ri <= 0) {
+      onChange(null)
+      return
+    }
+    const root = roots[ri - 1]
+    if (root) onChange(root.value)
+  }
+  const commitChild = (ci: number) => {
+    if (ci === childIndex) return
+    haptics.selection()
+    if (!activeRoot) return
+    if (ci <= 0) {
+      onChange(activeRoot.value)
+      return
+    }
+    const child = activeRoot.children[ci - 1]
+    if (child) onChange(child.value)
   }
 
+  const toggle = () => {
+    haptics.selection()
+    const next = !open
+    chevron.value = reduceMotion ? (next ? 1 : 0) : withTiming(next ? 1 : 0, timingHover("fast"))
+    setOpen(next)
+    lockScroll?.(next)
+  }
+  const chevronStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${chevron.value * 180}deg` }],
+  }))
+
+  const pad = WHEEL_ITEM_H * WHEEL_CENTER
+
   return (
-    <View className="gap-2">
-      {/* Selected node pinned, with a verdigris check + clear affordance. */}
-      {selected ? (
-        <PressableScale
-          accessibilityRole="button"
-          accessibilityLabel={`Kategorie ${selected.label} entfernen`}
-          onPress={() => pick(null)}
+    <View style={{ gap: 8 }}>
+      <PressableScale onPress={toggle} accessibilityRole="button" accessibilityState={{ expanded: open }}>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            minHeight: t.touch.min,
+            paddingHorizontal: 14,
+            borderRadius: 10,
+            borderWidth: 1,
+            borderColor: open ? t.colors.gilt : t.colors.border,
+            backgroundColor: t.colors.card,
+          }}
         >
-          <View
-            className="min-h-[44px] flex-row items-center gap-2.5 rounded-md px-3 py-2"
+          <Text
+            className="font-medium"
             style={{
-              backgroundColor: t.colors.verdigris + "14",
-              borderColor: t.colors.verdigris + "40",
-              borderWidth: 1,
+              fontSize: 16,
+              lineHeight: 22,
+              color: selectedLabel ? t.colors.foreground : t.colors.mutedForeground,
+            }}
+            numberOfLines={1}
+          >
+            {selectedLabel ?? "Ohne Kategorie"}
+          </Text>
+          <Animated.View style={chevronStyle}>
+            <ChevronDown size={t.icon.sm} color={t.colors.mutedForeground} />
+          </Animated.View>
+        </View>
+      </PressableScale>
+
+      {open ? (
+        <Animated.View
+          entering={FadeIn.duration(reduceMotion ? 0 : duration.fast)}
+          style={{ height: WHEEL_ITEM_H * WHEEL_VISIBLE }}
+        >
+          {/* The gilt band the chosen Haupt- and Unterkategorie rest in. */}
+          <View
+            pointerEvents="none"
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              top: pad,
+              height: WHEEL_ITEM_H,
+              borderRadius: 10,
+              borderTopWidth: 1,
+              borderBottomWidth: 1,
+              borderColor: `${t.colors.gilt}5e`,
+              backgroundColor: `${t.colors.foreground}0a`,
+            }}
+          />
+          <View style={{ flexDirection: "row" }}>
+            <WheelColumn options={rootLabels} selectedIndex={rootIndex} onCommit={commitRoot} flex={1} />
+            {hasChildren ? (
+              <WheelColumn
+                key={activeRoot?.name ?? "none"}
+                options={childLabels}
+                selectedIndex={childIndex}
+                onCommit={commitChild}
+                flex={1.4}
+              />
+            ) : null}
+          </View>
+        </Animated.View>
+      ) : null}
+    </View>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Stepper — a compact − / value / + control for bounded integers (quantity,
+// year, Michel-Nummer). Haptic on each step; respects min/max bounds; the
+// buttons dim at the boundary so the operator never taps into a dead state.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function Stepper({
+  value,
+  onChange,
+  min = 0,
+  max = 9999,
+  step = 1,
+  suffix,
+}: {
+  value: number
+  onChange: (next: number) => void
+  min?: number
+  max?: number
+  step?: number
+  suffix?: string
+}): ReactNode {
+  const { colors } = useW14Theme()
+  const dec = () => { haptics.selection(); onChange(Math.max(min, value - step)) }
+  const inc = () => { haptics.selection(); onChange(Math.min(max, value + step)) }
+  const atMin = value <= min
+  const atMax = value >= max
+  return (
+    <View className="flex-row items-center overflow-hidden rounded-lg" style={{ borderWidth: 1, borderColor: colors.border }}>
+      <PressableScale
+        accessibilityRole="button"
+        accessibilityLabel="Verringern"
+        onPress={dec}
+        disabled={atMin}
+        style={{ opacity: atMin ? 0.35 : 1, paddingHorizontal: 16, paddingVertical: 10 }}
+      >
+        <Text style={{ fontSize: 18, color: colors.foreground, fontFamily: "Inter_600SemiBold" }}>−</Text>
+      </PressableScale>
+      <View style={{ paddingHorizontal: 14, paddingVertical: 10, minWidth: 56, alignItems: "center", borderLeftWidth: 1, borderRightWidth: 1, borderColor: colors.border }}>
+        <Text style={{ fontSize: 16, color: colors.foreground, fontFamily: "JetBrainsMono_500Medium" }}>
+          {value}{suffix ? ` ${suffix}` : ""}
+        </Text>
+      </View>
+      <PressableScale
+        accessibilityRole="button"
+        accessibilityLabel="Erhöhen"
+        onPress={inc}
+        disabled={atMax}
+        style={{ opacity: atMax ? 0.35 : 1, paddingHorizontal: 16, paddingVertical: 10 }}
+      >
+        <Text style={{ fontSize: 18, color: colors.foreground, fontFamily: "Inter_600SemiBold" }}>+</Text>
+      </PressableScale>
+    </View>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SegmentedControl — a compact segmented toggle for 2-4 mutually exclusive
+// options (Ja/Nein, Aktiv/Inaktiv, Postfrisch/Gestempelt). More space-
+// efficient than ChipSelect for short binary/ternary choices. The selected
+// segment fills ink; the others are bare with a hairline divider between.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function SegmentedControl<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: ReadonlyArray<{ value: T; label: string }>
+  value: T
+  onChange: (value: T) => void
+}): ReactNode {
+  const { colors } = useW14Theme()
+  return (
+    <View className="flex-row overflow-hidden rounded-lg" style={{ borderWidth: 1, borderColor: colors.border }}>
+      {options.map((opt, i) => {
+        const selected = opt.value === value
+        return (
+          <PressableScale
+            key={opt.value}
+            accessibilityRole="button"
+            accessibilityLabel={opt.label}
+            accessibilityState={{ selected }}
+            onPress={() => { haptics.selection(); onChange(opt.value) }}
+            style={{
+              flex: 1,
+              paddingVertical: 10,
+              alignItems: "center",
+              backgroundColor: selected ? colors.foreground : colors.card,
+              borderRightWidth: i < options.length - 1 ? 1 : 0,
+              borderRightColor: colors.border,
             }}
           >
-            <Check size={t.icon.sm} color={t.colors.verdigris} />
-            <Text className="flex-1 text-sm font-medium" numberOfLines={1}>
-              {selected.label}
+            <Text style={{
+              fontSize: 14,
+              fontFamily: "Inter_500Medium",
+              color: selected ? colors.primaryForeground : colors.foreground,
+            }}>
+              {opt.label}
             </Text>
-            <X size={t.icon.sm} color={t.colors.mutedForeground} />
-          </View>
-        </PressableScale>
-      ) : null}
-
-      {/* Search box filters the list as you type. */}
-      <View className="relative justify-center">
-        <Input
-          value={query}
-          onChangeText={setQuery}
-          placeholder="Kategorie suchen …"
-          autoCapitalize="none"
-          autoCorrect={false}
-          className="pl-9"
-          accessibilityLabel="Kategorie suchen"
-        />
-        <View className="absolute left-3" pointerEvents="none">
-          <Search size={t.icon.sm} color={t.colors.mutedForeground} />
-        </View>
-      </View>
-
-      {/* Filtered choices chips, capped so the picker never walls the screen. */}
-      {filtered.length > 0 ? (
-        <View className="flex-row flex-wrap gap-2">
-          {filtered.map((opt) => (
-            <PressableScale
-              key={opt.value}
-              accessibilityRole="button"
-              accessibilityLabel={opt.label}
-              onPress={() => pick(opt.value)}
-            >
-              <Badge variant="outline">
-                <Text>{opt.label}</Text>
-              </Badge>
-            </PressableScale>
-          ))}
-        </View>
-      ) : query.trim() ? (
-        <Text className="text-muted-foreground text-xs">Keine Kategorie gefunden.</Text>
-      ) : null}
+          </PressableScale>
+        )
+      })}
     </View>
   )
 }

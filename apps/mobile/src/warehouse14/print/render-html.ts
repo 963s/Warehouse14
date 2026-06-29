@@ -23,6 +23,7 @@ import { Money } from "@warehouse14/domain/money"
 
 import { lightPalette } from "@/warehouse14/theme"
 
+import { code128Svg } from "./code128"
 import type { LabelDoc, Printable, ReceiptDoc } from "./types"
 
 // ── Print colours, SOURCED from the antique theme (DESIGN.md §0) ──────────────
@@ -191,7 +192,9 @@ const LABEL_CSS = `
   .label .note { font-size: 10px; color: ${MUTED}; margin-top: 2px; }
   .label .price { font-size: 18px; font-weight: 700; margin-top: 6px; }
   .label .sku { font-size: 10px; color: ${MUTED}; margin-top: 6px; }
-  .label .barcode { font-size: 11px; letter-spacing: .12em; margin-top: 2px; }
+  .label .barcode { font-size: 11px; letter-spacing: .12em; margin-top: 2px; text-align: center; }
+  .label .barcode-svg { margin-top: 6px; }
+  .label .barcode-svg svg { display: block; width: 100%; height: 40px; }
 `
 
 function labelCard(d: LabelDoc): string {
@@ -200,7 +203,12 @@ function labelCard(d: LabelDoc): string {
     ${d.note ? `<div class="note">${esc(d.note)}</div>` : ""}
     <div class="price mono">${eur(d.priceEur)}</div>
     <div class="sku mono">Art-Nr. ${esc(d.sku)}</div>
-    ${d.barcode ? `<div class="barcode mono">${esc(d.barcode)}</div>` : ""}
+    ${
+      d.barcode
+        ? `<div class="barcode-svg">${code128Svg(d.barcode, { height: 40, moduleWidth: 1.4 })}</div>` +
+          `<div class="barcode mono">${esc(d.barcode)}</div>`
+        : ""
+    }
     ${d.location ? `<div class="sku mono">${esc(d.location)}</div>` : ""}
   </div>`
 }

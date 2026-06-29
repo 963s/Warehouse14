@@ -251,7 +251,7 @@ export function OnboardingIntro({ onDone }: OnboardingIntroProps): ReactNode {
                 style={{
                   width: i === index ? 22 : 7,
                   height: 7,
-                  backgroundColor: i === index ? t.colors.primary : t.colors.border,
+                  backgroundColor: i === index ? t.colors.primary : t.colors.mutedForeground,
                 }}
               />
             ))}

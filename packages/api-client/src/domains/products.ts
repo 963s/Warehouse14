@@ -180,6 +180,10 @@ export interface ProductDetail {
   finenessDecimal: string | null;
   weightGrams: string | null;
   feingewichtGrams: string | null;
+  /** Outer packing dimensions in cm (drive the derived S/M/L/XL size class). */
+  lengthCm: string | null;
+  widthCm: string | null;
+  heightCm: string | null;
   taxTreatmentCode: string;
   acquisitionCostEur: string;
   listPriceEur: string;
@@ -248,6 +252,10 @@ export interface ProductUpdateBody {
   // Existing PUT-allowed fields (intake-locked fields refused by backend).
   condition?: string;
   listPriceEur?: string;
+  /** Outer packing dimensions in cm — re-measurable; `null` clears. */
+  lengthCm?: string | null;
+  widthCm?: string | null;
+  heightCm?: string | null;
   name?: string;
   descriptionDe?: string;
   marketingAttributes?: unknown[];
@@ -335,6 +343,10 @@ export interface CreateProductBody {
   karatCode?: string;
   finenessDecimal?: string;
   weightGrams?: string;
+  /** Outer packing dimensions in cm (drive the derived S/M/L/XL size class). */
+  lengthCm?: string;
+  widthCm?: string;
+  heightCm?: string;
   /** Defaults to [] server-side. */
   hallmarkStamps?: string[];
   // Pricing (acquisitionCostEur intake-locked for §25a integrity)

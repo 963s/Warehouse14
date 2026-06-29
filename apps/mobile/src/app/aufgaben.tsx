@@ -1,36 +1,32 @@
 /**
- * Aufgaben — the Owner to-do list. Real tasks (tasksApi.list) grouped by status
- * into labelled sections (Offen, In Arbeit, Blockiert, Erledigt, Abgebrochen),
- * each row carrying its priority accent, due date, a dotted status badge and a
- * one-tap set of legal state-machine transitions (tasksApi.transition, gated by
- * ALLOWED_TASK_TRANSITIONS). The primary forward move (Starten / Erledigen /
- * Fortsetzen) is also reachable by swiping the row right; the rest stay quiet
- * outline actions. A header „Neue Aufgabe"-Aktion opens the create modal
- * (aufgaben/neu); each row's „Bearbeiten" opens the edit modal (aufgaben/edit).
- * Reached from the „Mehr"-Hub (/aufgaben).
+ * Aufgaben — die Owner-Aufgabenliste. Echte Aufgaben (tasksApi.list), nach Status
+ * in Abschnitte gruppiert (Offen, In Arbeit, Blockiert, Erledigt, Abgebrochen).
+ * Jede Zeile trägt ihren Prioritäts-Faden, das Fälligkeitsdatum, eine ruhige
+ * Status-Marke und einen Satz legaler Zustandsübergänge (tasksApi.transition,
+ * abgesichert über ALLOWED_TASK_TRANSITIONS). Der primäre Schritt nach vorn
+ * (Starten / Erledigen / Fortsetzen) ist auch per Wisch nach rechts erreichbar;
+ * die übrigen bleiben leise Umriss-Aktionen. Die Kopf-Aktion oben rechts öffnet
+ * die Maske für eine neue Aufgabe (aufgaben/neu); je Zeile öffnet „Bearbeiten"
+ * die Bearbeiten-Maske (aufgaben/edit). Erreichbar über den Mehr-Hub (/aufgaben).
  *
- * Built on the shared spine (DESIGN.md): live data through `useQuery` (re-keyed
- * on the active status filter, refetch-on-focus, pull-to-refresh via
- * `useRefreshControl`), one-tap transitions through `useMutation` (the row spins
- * on `busyId`, then the list refetches so badge + grouping reflect server truth,
- * never a guessed local state), the spine's `InlineError` pinned to the failing
- * row, a staggered list entrance, and the §7 haptic vocabulary (selection on a
- * filter / forward step, Light on opening the cancel sheet, Success on a
- * committed transition, Error on a refusal). The filter chips + honest summary
- * sit in a sticky header that never scrolls away; the four list states (skeleton
- * / error+retry / empty / content) render inside the list body so the header
- * stays mounted across every state change.
+ * Form (DESIGN-SYSTEM.md): keine Kästen in Kästen. Die Liste lebt direkt auf dem
+ * warmen Papier — ein ruhiger Kopf mit bespoke Listen-Siegel, eine boxlose
+ * Filter-Reihe mit einem Gilt-Faden unter dem aktiven Status, und die Aufgaben
+ * als nackte Zeilen, getrennt nur durch eine einzige warme Haarlinie. Jede Zeile
+ * trägt vorn einen schmalen Prioritäts-/Dringlichkeits-Faden statt eines Kastens.
+ * Tiefe kommt aus dem geschichteten Papier und der Linie, nie aus gestapelten
+ * Karten.
  *
- * Honesty rule (mirrors Schatzkammer): every row + the summary line are
- * real values from a real endpoint; an empty list shows the EmptyState, never a
- * fabricated to-do. Transitions are step-up gated server-side — the global
- * StepUpDialogHost fires transparently and the middleware retries the PATCH after
- * the PIN. Cancelling needs a reason (≥ 4 chars per the DB CHECK), collected in a
- * small sheet before the transition is sent.
+ * Ehrlichkeitsregel (wie Schatzkammer): jede Zeile und die Kopf-Bilanz sind echte
+ * Werte aus einer echten Antwort; eine leere Liste zeigt den ehrlichen leeren
+ * Zustand, nie eine erfundene Aufgabe. Übergänge sind serverseitig per Step-up
+ * abgesichert — der globale StepUpDialogHost erscheint transparent und das PATCH
+ * läuft nach der PIN weiter. Das Abbrechen braucht einen Grund (≥ 4 Zeichen laut
+ * DB-CHECK), erfasst in einem kleinen Blatt vor dem Übergang.
  *
- * de-DE dates; all labels German; no native deps added.
+ * de-DE-Daten; alle Texte deutsch; keine nativen Abhängigkeiten ergänzt.
  */
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import {
   ActivityIndicator,
   FlatList,
@@ -43,6 +39,7 @@ import {
 } from "react-native"
 import { useNavigation, useRouter } from "expo-router"
 import type { TaskRow, TaskStatus } from "@warehouse14/api-client"
+import Svg, { Circle, Path } from "react-native-svg"
 import {
   AlertTriangle,
   ArrowRight,
@@ -64,9 +61,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated"
 
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Text } from "@/components/ui/text"
 import { describeError, listTasks, transitionTask } from "@/warehouse14/api"
@@ -77,8 +72,6 @@ import {
   isDueToday,
   isOverdue,
   primaryTransition,
-  priorityBadgeVariant,
-  STATUS_BADGE_VARIANT,
   STATUS_GROUP_ORDER,
   summaryLine,
   TASK_PRIORITY_LABELS,
@@ -88,10 +81,12 @@ import {
 } from "@/warehouse14/aufgaben-ui"
 import { useW14Theme } from "@/warehouse14/theme"
 import {
+  EmptyState,
   ErrorState,
   Gesture,
   GestureDetector,
   duration,
+  Hairline,
   haptics,
   hapticOnUI,
   InlineError,
@@ -104,6 +99,28 @@ import {
   useRefreshControl,
   useScreenInsets,
 } from "@/warehouse14/ui"
+
+// ── Bespoke Listen-Siegel (react-native-svg) ──────────────────────────────────
+// Ein gestempelter Ring mit einem eingravierten Häkchen: die ruhige Marke der
+// Aufgabenliste. Der Ring bleibt Tinte, der Haken zieht den Gilt-Faden — Gold
+// nur als Faden/Siegel (DESIGN-SYSTEM.md §1, §6).
+function TaskSeal({ size = 26, ink, gilt }: { size?: number; ink: string; gilt: string }): ReactNode {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" accessibilityElementsHidden>
+      <Circle cx={12} cy={12} r={8.4} stroke={ink} strokeWidth={1.4} fill="none" />
+      <Circle cx={12} cy={12} r={6.2} stroke={ink} strokeWidth={0.7} strokeOpacity={0.4} fill="none" />
+      {/* Das Häkchen — der Gilt-Faden im Siegel. */}
+      <Path
+        d="M8.6 12.2 L11 14.6 L15.4 9.6"
+        stroke={gilt}
+        strokeWidth={1.6}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+    </Svg>
+  )
+}
 
 // The matched glyph for a transition target — the action it performs, not the
 // resulting noun. Forward steps get a confident filled glyph; reopen/cancel a
@@ -166,7 +183,7 @@ function CancelSheet({
       navigationBarTranslucent
     >
       {/* Keyboard avoidance, same per-platform behavior as the spine's
-          KeyboardAvoidingScreen so focusing Grund" lifts the whole sheet
+          KeyboardAvoidingScreen so focusing Grund lifts the whole sheet
           (input + Zurück/Abbrechen) clear of the keyboard on small screens. */}
       <KeyboardAvoidingView
         className="flex-1"
@@ -193,12 +210,7 @@ function CancelSheet({
             </View>
 
             <View className="flex-row items-center gap-2.5">
-              <View
-                className="h-9 w-9 items-center justify-center rounded-md"
-                style={{ backgroundColor: t.colors.destructive + "1f" }}
-              >
-                <Ban size={t.icon.md} color={t.colors.destructive} />
-              </View>
+              <Ban size={t.icon.lg} color={t.colors.destructive} />
               <View className="flex-1">
                 <Text className="text-lg font-display-semibold leading-tight">
                   Aufgabe abbrechen
@@ -255,7 +267,8 @@ function CancelSheet({
 // ── Swipe-to-act backdrop ─────────────────────────────────────────────────────
 /** The verdigris "Erledigen / Starten" affordance revealed behind a row as it is
  *  dragged right — the calm hint that the swipe commits the forward step. Its
- *  opacity tracks how far the row has travelled toward the threshold. */
+ *  opacity tracks how far the row has travelled toward the threshold. A leading
+ *  glyph + verb, on the parchment-raised step, never a heavy filled box. */
 function SwipeBackdrop({
   progress,
   label,
@@ -273,8 +286,8 @@ function SwipeBackdrop({
   return (
     <Animated.View
       pointerEvents="none"
-      className="absolute inset-0 flex-row items-center rounded-xl px-5"
-      style={[{ backgroundColor: t.colors.verdigris + "26" }, style]}
+      className="absolute inset-0 flex-row items-center rounded-xl px-4"
+      style={[{ backgroundColor: t.colors.raised }, style]}
     >
       <Icon size={t.icon.lg} color={t.colors.verdigris} />
       <Text className="font-semibold" style={{ color: t.colors.verdigris, marginLeft: 8 }}>
@@ -284,12 +297,14 @@ function SwipeBackdrop({
   )
 }
 
-// ── Task row ──────────────────────────────────────────────────────────────────
-/** One task row: a leading priority accent rail, the title + description + due
- *  meta, a dotted status badge, and the one-tap action strip (the primary
- *  forward move as a filled brass button, the rest as outline). A live row can
- *  also be swiped right to commit its primary move; terminal rows read quietly. */
-function TaskCard({
+// ── Aufgaben-Zeile ────────────────────────────────────────────────────────────
+/** Eine Aufgabe als NACKTE Zeile auf dem Papier (kein Kasten). Vorn ein schmaler
+ *  Prioritäts-/Dringlichkeits-Faden, dann Titel + Beschreibung + ruhige
+ *  Fälligkeits-Meta, die Status-Marke als leiser Punkt-und-Wort, und der Satz
+ *  legaler Übergänge (der primäre Schritt als gefüllte Tinten-Taste, die übrigen
+ *  als leise Umriss-Aktionen). Eine lebende Zeile lässt sich nach rechts wischen,
+ *  um ihren primären Schritt zu bestätigen; terminale Zeilen lesen ruhig. */
+function TaskRowItem({
   task,
   busy,
   error,
@@ -308,20 +323,37 @@ function TaskCard({
   const due = formatDueDate(task.dueDate)
   const overdue = isOverdue(task)
   const dueToday = isDueToday(task)
-  const priorityVariant = priorityBadgeVariant(task.priority)
   const transitions = allowedTransitions(task.status)
   const primary = primaryTransition(task.status)
+  const terminal = task.status === "DONE" || task.status === "CANCELLED"
 
-  // The accent rail tint: a real loss-of-time signal (overdue) is destructive;
-  // due-today is brass attention; otherwise the priority drives it (urgent red,
-  // high brass), and a calm row gets a hairline border tint.
-  const railColor = overdue
+  // The leading thread tint: a real loss-of-time signal (overdue) is destructive;
+  // due-today / HIGH is the gilt thread of attention; URGENT is destructive;
+  // a calm row keeps a quiet hairline thread. Gold stays a thread, never a fill.
+  const threadColor = overdue
     ? t.colors.destructive
     : task.priority === "URGENT"
       ? t.colors.destructive
       : dueToday || task.priority === "HIGH"
-        ? t.colors.primary
+        ? t.colors.gilt
         : t.colors.border
+
+  // Die Status-Marke: ein kleiner Punkt + das deutsche Statuswort, getönt nach
+  // Bedeutung (erledigt = verdigris, blockiert = wax-red, sonst Tinte/leise).
+  const statusColor =
+    task.status === "DONE"
+      ? t.colors.verdigris
+      : task.status === "BLOCKED"
+        ? t.colors.destructive
+        : task.status === "CANCELLED"
+          ? t.colors.mutedForeground
+          : t.colors.inkAged
+
+  const dueColor = overdue
+    ? t.colors.destructive
+    : dueToday
+      ? t.colors.gilt
+      : t.colors.mutedForeground
 
   // Swipe-to-act: drag right past the threshold to commit the primary move.
   const SWIPE_THRESHOLD = 96
@@ -371,135 +403,161 @@ function TaskCard({
   )
 
   const body = (
-    <Animated.View style={rowStyle}>
-      <Card className="overflow-hidden p-0">
-        <View className="flex-row">
-          {/* Priority / urgency accent rail. */}
-          <View style={{ width: 4, backgroundColor: railColor }} />
+    <Animated.View style={rowStyle} className="bg-background">
+      <View
+        className="flex-row gap-3 py-3.5"
+        style={{ opacity: terminal ? 0.62 : 1 }}
+      >
+        {/* Prioritäts-/Dringlichkeits-Faden — ein schmaler Strich, kein Kasten. */}
+        <View
+          style={{
+            width: 3,
+            borderRadius: 2,
+            backgroundColor: threadColor,
+            marginTop: 2,
+            marginBottom: 2,
+          }}
+        />
 
-          <View className="flex-1 gap-3 px-4 py-4">
-            <View className="flex-row items-start justify-between gap-3">
-              <View className="flex-1 gap-1">
-                <Text className="text-base font-semibold" numberOfLines={2}>
-                  {task.title}
-                </Text>
-                {task.description ? (
-                  <Text className="text-muted-foreground text-sm" numberOfLines={2}>
-                    {task.description}
-                  </Text>
-                ) : null}
-                {due != null ? (
-                  <View className="flex-row items-center gap-1.5 pt-0.5">
-                    <CalendarClock
-                      size={t.icon.xs}
-                      color={
-                        overdue
-                          ? t.colors.destructive
-                          : dueToday
-                            ? t.colors.primary
-                            : t.colors.mutedForeground
-                      }
-                    />
-                    <Text
-                      className="text-sm"
-                      style={{
-                        color: overdue
-                          ? t.colors.destructive
-                          : dueToday
-                            ? t.colors.primary
-                            : t.colors.mutedForeground,
-                      }}
-                    >
-                      {overdue
-                        ? `Überfällig · ${due}`
-                        : dueToday
-                          ? `Heute fällig · ${due}`
-                          : `Fällig · ${due}`}
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
-              <View className="items-end gap-1.5">
-                <Badge variant={STATUS_BADGE_VARIANT[task.status]} dot>
-                  <Text>{TASK_STATUS_LABELS[task.status]}</Text>
-                </Badge>
-                {priorityVariant != null ? (
-                  <Badge variant={priorityVariant}>
-                    <Text>{TASK_PRIORITY_LABELS[task.priority]}</Text>
-                  </Badge>
-                ) : null}
-              </View>
+        <View className="flex-1 gap-1.5">
+          {/* Titel-Zeile: Titel + leise Status-Marke (Punkt + Wort). */}
+          <View className="flex-row items-start justify-between gap-3">
+            <Text className="flex-1 text-base font-semibold leading-snug" numberOfLines={2}>
+              {task.title}
+            </Text>
+            <View className="flex-row items-center gap-1.5 pt-0.5">
+              <View
+                style={{ height: 6, width: 6, borderRadius: 3, backgroundColor: statusColor }}
+              />
+              <Text
+                className="text-2xs font-medium"
+                style={{ color: statusColor, letterSpacing: 0.2 }}
+                numberOfLines={1}
+              >
+                {TASK_STATUS_LABELS[task.status]}
+              </Text>
             </View>
-
-            {error != null ? <InlineError message={error} onDismiss={onDismissError} /> : null}
-
-            {transitions.length > 0 ? (
-              <View className="flex-row flex-wrap gap-2">
-                {/* Primary forward move first, as a filled brass button. */}
-                {primary != null ? (
-                  <Button
-                    size="sm"
-                    className="grow flex-row gap-1.5"
-                    onPress={() => onTransition(primary)}
-                    disabled={busy}
-                    accessibilityLabel={transitionAccessibilityLabel(primary, task.title)}
-                  >
-                    <PrimaryIcon size={t.icon.sm} color={t.colors.primaryForeground} />
-                    <Text>{transitionActionLabel(primary)}</Text>
-                  </Button>
-                ) : null}
-                {/* The remaining legal moves as quiet outline actions. */}
-                {transitions
-                  .filter((target) => target !== primary)
-                  .map((target) => {
-                    const Icon = transitionIcon(target)
-                    return (
-                      <Button
-                        key={target}
-                        size="sm"
-                        variant="outline"
-                        className="flex-row gap-1.5"
-                        onPress={() => onTransition(target)}
-                        disabled={busy}
-                        accessibilityLabel={transitionAccessibilityLabel(target, task.title)}
-                      >
-                        <Icon
-                          size={t.icon.sm}
-                          color={
-                            target === "CANCELLED" ? t.colors.destructive : t.colors.foreground
-                          }
-                        />
-                        <Text>{transitionActionLabel(target)}</Text>
-                      </Button>
-                    )
-                  })}
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onPress={onEdit}
-                  disabled={busy}
-                  accessibilityLabel={`Aufgabe bearbeiten: ${task.title}`}
-                >
-                  <Text>Bearbeiten</Text>
-                </Button>
-              </View>
-            ) : (
-              // Terminal rows: no transitions, but edit is still reachable quietly.
-              <View className="flex-row">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onPress={onEdit}
-                  disabled={busy}
-                  accessibilityLabel={`Aufgabe bearbeiten: ${task.title}`}
-                >
-                  <Text>Bearbeiten</Text>
-                </Button>
-              </View>
-            )}
           </View>
+
+          {task.description ? (
+            <Text className="text-muted-foreground text-sm leading-5" numberOfLines={2}>
+              {task.description}
+            </Text>
+          ) : null}
+
+          {/* Leise Meta-Reihe: Fälligkeit + (nur HIGH/URGENT) ein Prioritäts-Wort. */}
+          {due != null || task.priority === "HIGH" || task.priority === "URGENT" ? (
+            <View className="flex-row flex-wrap items-center gap-x-2.5 gap-y-0.5 pt-0.5">
+              {due != null ? (
+                <View className="flex-row items-center gap-1.5">
+                  <CalendarClock size={t.icon.xs} color={dueColor} />
+                  <Text className="text-xs" style={{ color: dueColor }}>
+                    {overdue
+                      ? `Überfällig · ${due}`
+                      : dueToday
+                        ? `Heute fällig · ${due}`
+                        : `Fällig · ${due}`}
+                  </Text>
+                </View>
+              ) : null}
+              {task.priority === "HIGH" || task.priority === "URGENT" ? (
+                <View className="flex-row items-center gap-1.5">
+                  <View
+                    style={{
+                      height: 5,
+                      width: 5,
+                      borderRadius: 3,
+                      backgroundColor:
+                        task.priority === "URGENT" ? t.colors.destructive : t.colors.gilt,
+                    }}
+                  />
+                  <Text
+                    className="text-2xs font-medium"
+                    style={{
+                      color:
+                        task.priority === "URGENT" ? t.colors.destructive : t.colors.inkAged,
+                      letterSpacing: 0.2,
+                    }}
+                  >
+                    {TASK_PRIORITY_LABELS[task.priority]}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+
+          {error != null ? (
+            <View className="pt-1">
+              <InlineError message={error} onDismiss={onDismissError} />
+            </View>
+          ) : null}
+
+          {transitions.length > 0 ? (
+            <View className="flex-row flex-wrap items-center gap-2 pt-1.5">
+              {/* Primärer Schritt nach vorn zuerst, als gefüllte Tinten-Taste. */}
+              {primary != null ? (
+                <Button
+                  size="sm"
+                  className="flex-row gap-1.5"
+                  onPress={() => onTransition(primary)}
+                  disabled={busy}
+                  accessibilityLabel={transitionAccessibilityLabel(primary, task.title)}
+                >
+                  <PrimaryIcon size={t.icon.sm} color={t.colors.primaryForeground} />
+                  <Text>{transitionActionLabel(primary)}</Text>
+                </Button>
+              ) : null}
+              {/* Die übrigen legalen Schritte als leise Umriss-Aktionen. */}
+              {transitions
+                .filter((target) => target !== primary)
+                .map((target) => {
+                  const Icon = transitionIcon(target)
+                  return (
+                    <Button
+                      key={target}
+                      size="sm"
+                      variant="outline"
+                      className="flex-row gap-1.5"
+                      onPress={() => onTransition(target)}
+                      disabled={busy}
+                      accessibilityLabel={transitionAccessibilityLabel(target, task.title)}
+                    >
+                      <Icon
+                        size={t.icon.sm}
+                        color={
+                          target === "CANCELLED" ? t.colors.destructive : t.colors.foreground
+                        }
+                      />
+                      <Text>{transitionActionLabel(target)}</Text>
+                    </Button>
+                  )
+                })}
+              <Button
+                size="sm"
+                variant="ghost"
+                onPress={onEdit}
+                disabled={busy}
+                accessibilityLabel={`Aufgabe bearbeiten: ${task.title}`}
+              >
+                <Text>Bearbeiten</Text>
+              </Button>
+            </View>
+          ) : (
+            // Terminale Zeilen: keine Übergänge, aber Bearbeiten bleibt leise da.
+            <View className="flex-row pt-1">
+              <Button
+                size="sm"
+                variant="ghost"
+                onPress={onEdit}
+                disabled={busy}
+                accessibilityLabel={`Aufgabe bearbeiten: ${task.title}`}
+              >
+                <Text>Bearbeiten</Text>
+              </Button>
+            </View>
+          )}
         </View>
-      </Card>
+      </View>
     </Animated.View>
   )
 
@@ -517,7 +575,51 @@ function TaskCard({
   )
 }
 
-// ── Status filter chips ───────────────────────────────────────────────────────
+// ── Status-Filter — eine boxlose Reihe; der aktive Status trägt einen Gilt-Faden
+// (DESIGN-SYSTEM.md §1: Gold als Faden/Kante). Keine Pillen, keine Kästen. ──────
+function FilterChip({
+  label,
+  active,
+  onPress,
+}: {
+  label: string
+  active: boolean
+  onPress: () => void
+}) {
+  const t = useW14Theme()
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="tab"
+      accessibilityState={{ selected: active }}
+      accessibilityLabel={`Filter: ${label}`}
+      style={{ minHeight: t.touch.min, justifyContent: "center" }}
+    >
+      <View className="items-center gap-1.5 px-0.5 pb-1">
+        <Text
+          className="text-sm"
+          style={{
+            color: active ? t.colors.foreground : t.colors.mutedForeground,
+            fontFamily: active ? t.fonts.semibold : t.fonts.medium,
+          }}
+          numberOfLines={1}
+        >
+          {label}
+        </Text>
+        {/* Der Gilt-Faden unter dem aktiven Status — Gold nur als Kante. */}
+        <View
+          style={{
+            height: 2,
+            width: "100%",
+            borderRadius: 1,
+            backgroundColor: active ? t.colors.gilt : "transparent",
+          }}
+        />
+      </View>
+    </Pressable>
+  )
+}
+
 function StatusFilter({
   value,
   onChange,
@@ -525,7 +627,6 @@ function StatusFilter({
   value: TaskStatus | null
   onChange: (next: TaskStatus | null) => void
 }) {
-  const t = useW14Theme()
   const options: readonly { key: TaskStatus | null; label: string }[] = [
     { key: null, label: "Alle" },
     ...STATUS_GROUP_ORDER.map((status) => ({ key: status, label: TASK_STATUS_LABELS[status] })),
@@ -536,58 +637,42 @@ function StatusFilter({
       data={options}
       keyExtractor={(opt) => opt.key ?? "ALL"}
       showsHorizontalScrollIndicator={false}
-      contentContainerStyle={{ gap: 8, paddingHorizontal: 16, paddingVertical: 2 }}
-      renderItem={({ item: opt }) => {
-        const active = value === opt.key
-        return (
-          <PressableScale
-            onPress={() => {
-              haptics.selection()
-              onChange(opt.key)
-            }}
-            accessibilityRole="button"
-            accessibilityState={{ selected: active }}
-            accessibilityLabel={`Filter: ${opt.label}`}
-          >
-            <View
-              className="rounded-full border px-3.5 py-1.5"
-              style={{
-                borderColor: active ? t.colors.primary : t.colors.border,
-                backgroundColor: active ? t.colors.primary : t.colors.card,
-              }}
-            >
-              <Text
-                className="text-sm font-medium"
-                style={{ color: active ? t.colors.primaryForeground : t.colors.foreground }}
-              >
-                {opt.label}
-              </Text>
-            </View>
-          </PressableScale>
-        )
-      }}
+      contentContainerStyle={{ gap: 18, paddingHorizontal: 16, paddingRight: 24 }}
+      accessibilityRole="tablist"
+      renderItem={({ item: opt }) => (
+        <FilterChip
+          label={opt.label}
+          active={value === opt.key}
+          onPress={() => {
+            if (value === opt.key) return
+            haptics.selection()
+            onChange(opt.key)
+          }}
+        />
+      )}
     />
   )
 }
 
-// ── First-load skeleton — the list's own shape, never a mid-screen spinner. ────
+// ── First-load skeleton — die nackte Listen-Form, nie ein mittiger Spinner. ────
 function TasksSkeleton() {
   return (
-    <View className="gap-3 pt-1">
+    <View className="pt-1" accessibilityElementsHidden>
       {Array.from({ length: 5 }).map((_, i) => (
-        <Card key={i} className="gap-3 px-4 py-4">
-          <View className="flex-row items-start justify-between gap-3">
+        <View key={i}>
+          {i > 0 ? <Hairline inset={16} /> : null}
+          <View className="flex-row gap-3 py-3.5">
+            <View style={{ width: 3 }} />
             <View className="flex-1 gap-2">
-              <Skeleton width="62%" height={15} />
-              <Skeleton width="44%" height={12} />
+              <Skeleton width="64%" height={15} />
+              <Skeleton width="46%" height={11} />
+              <View className="flex-row gap-2 pt-1">
+                <Skeleton width={104} height={32} radius="button" />
+                <Skeleton width={88} height={32} radius="button" />
+              </View>
             </View>
-            <Skeleton width={72} height={22} radius="button" />
           </View>
-          <View className="flex-row gap-2">
-            <Skeleton width={112} height={36} radius="button" />
-            <Skeleton width={96} height={36} radius="button" />
-          </View>
-        </Card>
+        </View>
       ))}
     </View>
   )
@@ -597,7 +682,7 @@ function TasksSkeleton() {
 // virtualised FlatList keeps the grouped layout while the header stays sticky.
 type ListItem =
   | { kind: "header"; status: TaskStatus; label: string; count: number }
-  | { kind: "task"; task: TaskRow }
+  | { kind: "task"; task: TaskRow; firstInGroup: boolean }
 
 // The list pages by `offset`, since `internal_tasks` is never pruned (forensic +
 // GoBD-relevant) and can outgrow a single page. 200 is the endpoint's max limit.
@@ -695,12 +780,12 @@ export default function AufgabenScreen() {
     const flat: ListItem[] = []
     for (const g of groups) {
       flat.push({ kind: "header", status: g.status, label: g.label, count: g.tasks.length })
-      for (const task of g.tasks) flat.push({ kind: "task", task })
+      g.tasks.forEach((task, i) => flat.push({ kind: "task", task, firstInGroup: i === 0 }))
     }
     return flat
   }, [groups])
 
-  // Header „Neue Aufgabe"-Aktion → the create modal.
+  // Kopf-Aktion „Neue Aufgabe" → die Maske für eine neue Aufgabe.
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
@@ -773,26 +858,46 @@ export default function AufgabenScreen() {
     setFilter(next)
   }, [])
 
-  // Sticky header — the filter chips and an honest summary line derived only
-  // from the fetched rows. Never scrolls away.
+  // Sticky header — der Kicker + das Listen-Siegel, die Filter-Reihe und eine
+  // ehrliche Bilanz-Zeile, abgesetzt durch die einzige warme Haarlinie. Scrollt
+  // nie weg.
   const header = useMemo(
     () => (
-      <View className="bg-background border-border gap-2 border-b pb-2.5 pt-2">
-        <StatusFilter value={filter} onChange={changeFilter} />
-        {rows != null && rows.length > 0 ? (
-          <Animated.View
-            entering={FadeIn.duration(160)}
-            exiting={FadeOut.duration(160)}
-            className="px-4"
-          >
-            <Text className="text-muted-foreground text-xs">
-              {summaryLine(rows, serverTotal ?? undefined)}
+      <View className="bg-background gap-3 pb-2.5 pt-1">
+        {/* Kicker + Titel — der Aufgaben-Faden öffnet mit dem bespoke Siegel. */}
+        <View className="gap-1.5 px-4">
+          <View className="flex-row items-center gap-2">
+            <View style={{ height: 4, width: 4, borderRadius: 2, backgroundColor: t.colors.gilt }} />
+            <Text
+              className="text-muted-foreground text-2xs font-semibold"
+              style={{ letterSpacing: 1.2 }}
+            >
+              AUFGABENLISTE
             </Text>
-          </Animated.View>
-        ) : null}
+          </View>
+          <View className="flex-row items-center gap-2.5">
+            <TaskSeal size={26} ink={t.colors.primary} gilt={t.colors.gilt} />
+            <Text className="text-2xl font-display-semibold leading-tight" numberOfLines={1}>
+              Aufgaben
+            </Text>
+          </View>
+          {rows != null && rows.length > 0 ? (
+            <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(160)}>
+              <Text className="text-muted-foreground text-xs">
+                {summaryLine(rows, serverTotal ?? undefined)}
+              </Text>
+            </Animated.View>
+          ) : null}
+        </View>
+
+        {/* Die warme Haarlinie kappt den Kopf vom Filter — die einzige Linie. */}
+        <View className="gap-1">
+          <Hairline />
+          <StatusFilter value={filter} onChange={changeFilter} />
+        </View>
       </View>
     ),
-    [filter, rows, serverTotal, changeFilter],
+    [filter, rows, serverTotal, changeFilter, t.colors.gilt, t.colors.primary],
   )
 
   // The list footer: a quiet "loading the next page" spinner while a tail page
@@ -827,8 +932,8 @@ export default function AufgabenScreen() {
 
   return (
     <View className="flex-1 bg-background">
-      {/* The aged-paper grain canvas depth from the layered cream plus this
-          faint warm tooth, never a flat fill (DESIGN.md §1, §5). */}
+      {/* The aged-paper grain canvas: depth from the layered cream plus this
+          faint warm tooth, never a flat fill (DESIGN-SYSTEM.md §1, §5). */}
       <PaperGrain />
       <FlatList
         data={items}
@@ -841,29 +946,31 @@ export default function AufgabenScreen() {
         contentContainerStyle={{
           paddingHorizontal: 16,
           paddingBottom: insets.contentBottom,
-          paddingTop: 12,
-          gap: 12,
+          paddingTop: 0,
         }}
         refreshControl={<RefreshControl {...rc} progressViewOffset={8} />}
         renderItem={({ item, index }) =>
           item.kind === "header" ? (
             <View
-              className="flex-row items-center justify-between pb-0.5"
+              className="flex-row items-center justify-between pb-1"
               // The first group header hugs the sticky filter bar; later headers
-              // earn a little extra air above to separate the sections.
-              style={{ paddingTop: index === 0 ? 0 : 8 }}
+              // earn extra air above to separate the sections.
+              style={{ paddingTop: index === 0 ? 12 : 22 }}
             >
               <Text
                 className="text-muted-foreground text-2xs font-semibold"
-                style={{ letterSpacing: 0.5 }}
+                style={{ letterSpacing: 0.8 }}
               >
                 {item.label}
               </Text>
-              <Text className="text-muted-foreground text-2xs">{item.count}</Text>
+              <Text className="text-muted-foreground font-mono text-2xs">{item.count}</Text>
             </View>
           ) : (
             <StaggerItem index={Math.min(index, 8)} exit={false}>
-              <TaskCard
+              {/* Eine einzige warme Haarlinie trennt die Zeilen innerhalb einer
+                  Gruppe — getrennt nur durch die Linie, nie durch Karten. */}
+              {!item.firstInGroup ? <Hairline inset={16} /> : null}
+              <TaskRowItem
                 task={item.task}
                 busy={busyId === item.task.id}
                 error={rowError?.id === item.task.id ? rowError.message : null}
@@ -890,38 +997,23 @@ export default function AufgabenScreen() {
               />
             </View>
           ) : rows != null && rows.length === 0 ? (
-            <View className="items-center justify-center gap-3 px-6 py-12">
-              <View
-                className="h-16 w-16 items-center justify-center rounded-full"
-                style={{
-                  backgroundColor: t.colors.raised,
-                  borderColor: t.colors.border,
-                  borderWidth: 1,
-                }}
-              >
-                <ListChecks size={t.icon.xl} color={t.colors.primary} />
-              </View>
-              <Text className="text-center text-xl font-display-semibold leading-tight">
-                {filter != null
-                  ? `Keine Aufgaben ${TASK_STATUS_LABELS[filter]}`
-                  : "Keine Aufgaben"}
-              </Text>
-              <Text className="text-muted-foreground max-w-xs text-center text-sm leading-5">
-                {filter != null
-                  ? "In diesem Status liegt gerade nichts. Wähle Alle oder lege eine neue Aufgabe an."
-                  : "Lege über das Plus oben rechts eine neue Aufgabe an."}
-              </Text>
-              <Button
-                variant="outline"
-                className="mt-2"
-                onPress={() => {
+            <View className="pt-6">
+              <EmptyState
+                icon={ListChecks}
+                title={
+                  filter != null ? `Keine Aufgaben ${TASK_STATUS_LABELS[filter]}` : "Keine Aufgaben"
+                }
+                description={
+                  filter != null
+                    ? "In diesem Status liegt gerade nichts. Wähle Alle oder lege eine neue Aufgabe an."
+                    : "Lege über das Plus oben rechts eine neue Aufgabe an."
+                }
+                actionLabel="Neue Aufgabe"
+                onAction={() => {
                   haptics.selection()
                   router.push("/aufgaben/neu")
                 }}
-                accessibilityLabel="Neue Aufgabe"
-              >
-                <Text>Neue Aufgabe</Text>
-              </Button>
+              />
             </View>
           ) : null
         }

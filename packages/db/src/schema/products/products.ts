@@ -82,6 +82,14 @@ export const products = pgTable(
     karatCode: text('karat_code').references(() => karatGrades.code),
     finenessDecimal: numeric('fineness_decimal', { precision: 5, scale: 4 }),
     weightGrams: numeric('weight_grams', { precision: 10, scale: 4 }),
+    // Outer packing dimensions in centimetres. Nullable — only set when the
+    // owner measures the item. They feed the derived packing size class
+    // (S/M/L/XL via @warehouse14/domain `deriveSizeClass`) so cartons can be
+    // standardised for packing + shipping. Not stored as a column: the class is
+    // derived on read from these three so the rule lives in exactly one place.
+    lengthCm: numeric('length_cm', { precision: 7, scale: 1 }),
+    widthCm: numeric('width_cm', { precision: 7, scale: 1 }),
+    heightCm: numeric('height_cm', { precision: 7, scale: 1 }),
     hallmarkStamps: text('hallmark_stamps').array().notNull().default(sql`'{}'::text[]`),
 
     // Pricing

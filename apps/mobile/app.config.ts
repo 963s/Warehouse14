@@ -36,6 +36,18 @@ module.exports = ({ config }: ConfigContext): Partial<ExpoConfig> => {
         ],
       },
     },
-    plugins: [...existingPlugins],
+    plugins: [
+      ...existingPlugins,
+      // Gallery / studio photo upload (expo-image-picker) needs the photo-library
+      // permission string; the plugin injects NSPhotoLibraryUsageDescription (iOS)
+      // and the Android read-media permission at prebuild.
+      [
+        "expo-image-picker",
+        {
+          photosPermission:
+            "Warehouse 14 braucht Zugriff auf deine Fotos, um Artikel- und Belegbilder aus dem Studio hochzuladen.",
+        },
+      ],
+    ],
   }
 }

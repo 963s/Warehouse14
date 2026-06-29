@@ -7,9 +7,14 @@
 import { useState } from "react"
 import { router, useLocalSearchParams } from "expo-router"
 
-import { describeError, listProductPhotos } from "@/warehouse14/api"
+import { describeError } from "@/warehouse14/api"
 import { CapturePhotoScreen } from "@/warehouse14/CapturePhotoScreen"
-import { uploadCapturedPhoto, type CapturedPhoto } from "@/warehouse14/photo-pipeline"
+import {
+  type CapturedPhoto,
+  discardCapture,
+  readCaptureBase64,
+} from "@/warehouse14/photo-pipeline"
+import { runProductPhotoUpload } from "@/warehouse14/photo-upload-store"
 
 export default function CaptureRoute() {
   const { productId } = useLocalSearchParams<{ productId: string }>()
@@ -21,10 +26,14 @@ export default function CaptureRoute() {
     setBusy(true)
     setError(null)
     try {
-      // First photo for the product becomes its primary.
-      const existing = await listProductPhotos(productId)
-      const isPrimary = existing.items.length === 0
-      await uploadCapturedPhoto(photo, { kind: "product", productId, isPrimary })
+      // Optimistic: read the bytes into memory (fast), discard the temp file
+      // (no-persist), then return INSTANTLY and upload in the BACKGROUND. The
+      // product detail shows „wird hochgeladen" and slots the photo in when it
+      // lands — so „Verwenden" never blocks on the network (the „Ladehemmung"
+      // the owner felt). The server auto-promotes the first photo to primary.
+      const dataBase64 = await readCaptureBase64(photo)
+      discardCapture(photo)
+      runProductPhotoUpload(productId, dataBase64, photo.mime)
       router.back()
     } catch (e) {
       setError(describeError(e))
