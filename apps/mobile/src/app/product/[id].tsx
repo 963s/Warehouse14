@@ -39,6 +39,7 @@ import {
   Printer,
   RefreshCw,
   ShieldAlert,
+  Store,
   Tag,
   Warehouse,
 } from "lucide-react-native"
@@ -622,6 +623,7 @@ export default function ProductDetailScreen() {
           <PublishPanel
             productId={product.id}
             status={product.status}
+            listedOnStorefront={product.listedOnStorefront}
             isPublishedToWeb={product.isPublishedToWeb}
             ebayState={product.ebayState}
           />
@@ -956,28 +958,31 @@ function DetailSkeleton(): ReactNode {
 
 // ── PublishPanel — Kanal- + Status-Steuerung vom Telefon ─────────────────────
 /**
- * Der Kern-Workflow des Betreibers: steuern, OB und WO ein Artikel verkäuflich
- * ist. Nur ECHTE Schalter — jeder trifft genau das Feld, das die Wirkung steuert:
+ * Der Kern-Workflow des Betreibers: steuern, OB, WO und als WAS ein Artikel
+ * gelistet ist — damit man auf einen Blick sieht, wo ein Stück liegt. Jeder
+ * Schalter trifft genau das Feld, das er benennt:
  *   • „Verkaufsstatus" → status (Entwurf = nicht verkaufbar, Verfügbar = verkaufbar)
+ *   • „Im Laden" → listed_on_storefront. Eine OWNER-Notiz „im Laden ausgestellt".
+ *     Gatet KEINEN Verkauf — sie hilft dem Betreiber, die physische Lage zu
+ *     verfolgen, und erscheint als Kanal-Marker („Laden") in der Lager-Liste.
  *   • „Im Online-Shop" → is_published_to_web; ein Artikel erscheint im Webshop NUR,
  *     wenn dieser Schalter AN ist UND der Status „Verfügbar" ist — exakt der Filter
  *     der Storefront-API (`is_published_to_web = TRUE AND status = 'AVAILABLE'`).
- *   • „eBay" → KEIN Schalter, sondern eine Lese-Zeile, die den echten eBay-Status
- *     (`ebay_state`) zeigt und in den eBay-Bereich führt, wo das Listing wirklich
- *     passiert. (Die alten Schalter „Im Laden"/`listed_on_storefront` und der freie
- *     `listed_on_ebay`-Schalter wurden entfernt: sie schrieben Felder, die keine
- *     Verkaufsfläche liest — ein Schalter, der nichts bewirkt, lügt.)
+ *   • „eBay" → KEIN Schalter, sondern eine Lese-Zeile mit dem echten eBay-Status
+ *     (`ebay_state`), die in den eBay-Bereich führt, wo das Listing wirklich passiert.
  *
  * Form: nackte Reihen direkt auf dem Papier, getrennt durch die Haarlinie.
  */
 function PublishPanel({
   productId,
   status,
+  listedOnStorefront,
   isPublishedToWeb,
   ebayState,
 }: {
   productId: string
   status: string
+  listedOnStorefront: boolean
   isPublishedToWeb: boolean
   ebayState: string | null
 }): ReactNode {
@@ -986,6 +991,7 @@ function PublishPanel({
 
   const toggle = useMutation(
     async (patch: {
+      listedOnStorefront?: boolean
       isPublishedToWeb?: boolean
       status?: "DRAFT" | "AVAILABLE"
     }) => updateProduct(productId, patch),
@@ -1095,6 +1101,17 @@ function PublishPanel({
         onPress={() => {
           haptics.selection()
           void toggle.mutate({ status: isAvailable ? "DRAFT" : "AVAILABLE" })
+        }}
+      />
+      <Hairline inset={40} />
+      <Row
+        on={listedOnStorefront}
+        label="Im Laden"
+        hint={listedOnStorefront ? "Im Laden ausgestellt" : "Nicht im Laden ausgestellt"}
+        icon={<Store size={t.icon.md} color={t.colors.foreground} />}
+        onPress={() => {
+          haptics.selection()
+          void toggle.mutate({ listedOnStorefront: !listedOnStorefront })
         }}
       />
       <Hairline inset={40} />
