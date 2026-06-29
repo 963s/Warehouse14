@@ -60,10 +60,11 @@ const PREFIX_LIMITS: readonly PrefixLimit[] = [
   // storno reverses one. Both are forensically heavy and must not be flooded.
   { prefix: '/api/transactions/finalize', max: 30 },
   { prefix: '/api/transactions/storno', max: 30 },
-  // Auth surface — 10/min/IP. Email/password sign-in + PIN step-up are the
-  // brute-force surface; the DB-side PIN lockout is a backstop, this caps the
-  // HTTP layer (incl. rotating-credential guessing) hard.
-  { prefix: '/api/auth/', max: 10 },
+  // Auth surface — 20/min/IP. Email/password sign-in + PIN step-up are the
+  // brute-force surface; the DB-side PIN lockout (10 tries → 1 min) is the real
+  // backstop. This HTTP cap is generous enough that an owner re-typing his PIN
+  // is never 429'd before the lockout logic even runs, yet still bounds abuse.
+  { prefix: '/api/auth/', max: 20 },
 ];
 
 /** The strictest limit that applies to this path, or `null` for the default. */

@@ -178,8 +178,13 @@ export type AttemptDecision =
   | { kind: 'failed_now_locked'; newState: AttemptState; auditEventType: 'auth.pin_locked' }
   | { kind: 'already_locked'; until: Date };
 
-export const PIN_FAILED_THRESHOLD = 5;
-export const PIN_LOCKOUT_MINUTES = 30;
+// Owner-first tuning: the admin app has a single trusted user behind a
+// device-locked phone, so a fat-fingered PIN must NOT lock him out for half an
+// hour. argon2id already makes every attempt cost ~100 ms, so brute force stays
+// slow even with a generous budget: 10 tries, then a 1-minute cooldown (was
+// 5 / 30 min). Raise these again if the threat model hardens (shared device, etc.).
+export const PIN_FAILED_THRESHOLD = 10;
+export const PIN_LOCKOUT_MINUTES = 1;
 
 /**
  * The pure state machine.
