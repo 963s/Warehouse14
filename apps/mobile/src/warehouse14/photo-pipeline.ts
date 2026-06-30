@@ -18,6 +18,7 @@
  * KYC reuse MUST keep this contract (Ausweis bytes must not linger on a phone).
  */
 import { File } from "expo-file-system"
+import { manipulateAsync, SaveFormat } from "expo-image-manipulator"
 import {
   customersApi,
   photosApi,
@@ -29,6 +30,28 @@ import {
 import { apiClient } from "./api"
 
 export type PhotoMime = "image/jpeg" | "image/png" | "image/webp"
+
+/**
+ * Downscale + compress a captured photo ON-DEVICE before upload (H1, the owner's
+ * "hang"). A modern camera capture is multi-MB; sent raw as base64 (~+33% larger)
+ * it reliably times out the upload window on slow mobile data. We re-encode to a
+ * JPEG bounded at maxWidth so the bytes that go up are a few hundred KB, not
+ * several MB. Product photos: ≤1600px / 0.7. KYC/Ausweis: ≤2000px / 0.85 so the
+ * ID stays legible (the server re-compresses + AES-encrypts regardless). ALWAYS
+ * returns JPEG bytes — callers MUST send contentType "image/jpeg".
+ */
+async function compressToJpegBase64(uri: string, kind: "product" | "kyc"): Promise<string> {
+  const maxWidth = kind === "kyc" ? 2000 : 1600
+  const compress = kind === "kyc" ? 0.85 : 0.7
+  const out = await manipulateAsync(toFileUri(uri), [{ resize: { width: maxWidth } }], {
+    compress,
+    format: SaveFormat.JPEG,
+    base64: true,
+  })
+  // base64:true populates .base64; fall back to the raw read only if a platform
+  // ever returns undefined, so an upload never silently sends nothing.
+  return out.base64 ?? (await new File(toFileUri(uri)).base64())
+}
 
 export interface CapturedPhoto {
   /** Local device file path/URI from vision-camera takePhoto(). */
@@ -69,7 +92,9 @@ function toFileUri(uri: string): string {
  * product path so the screen can return BEFORE the network upload finishes.
  */
 export async function readCaptureBase64(photo: CapturedPhoto): Promise<string> {
-  return await new File(toFileUri(photo.uri)).base64()
+  // Returns COMPRESSED JPEG bytes — the caller must upload as contentType
+  // "image/jpeg" (the optimistic product path passes that literal).
+  return await compressToJpegBase64(photo.uri, "product")
 }
 
 /** Discard the temp capture file. Best-effort, NEVER throws (no-persist cleanup). */
@@ -100,23 +125,26 @@ export async function uploadCapturedPhoto(
   binding: PhotoBinding,
 ): Promise<PhotoDirectUploadResponse | CustomerKycDocumentResponse> {
   try {
-    const dataBase64 = await new File(toFileUri(photo.uri)).base64()
+    // Downscale + compress on-device first (H1) — JPEG bytes, so contentType is
+    // always "image/jpeg" below regardless of the capture's original mime.
+    const dataBase64 = await compressToJpegBase64(photo.uri, binding.kind)
     switch (binding.kind) {
       case "product":
         return await photosApi.uploadDirect(apiClient, {
           dataBase64,
-          contentType: photo.mime,
+          contentType: "image/jpeg",
           productId: binding.productId,
           intent: "product",
           isPrimary: binding.isPrimary ?? false,
         })
       case "kyc":
-        // SERVER KYC store: the raw bytes go up; the server compresses,
-        // computes the sha256, and AES-256-GCM-encrypts at rest (#I-47). ADMIN +
-        // step-up gated — a 403 STEP_UP_REQUIRED drives the PIN dialog + retry.
+        // SERVER KYC store: the (already downscaled) bytes go up; the server
+        // compresses, computes the sha256, and AES-256-GCM-encrypts at rest
+        // (#I-47). ADMIN + step-up gated — a 403 STEP_UP_REQUIRED drives the PIN
+        // dialog + retry.
         return await customersApi.addKycDocument(apiClient, binding.customerId, {
           dataBase64,
-          contentType: photo.mime,
+          contentType: "image/jpeg",
           documentType: binding.documentType,
           issuingCountryIso2: binding.issuingCountryIso2,
           documentNumber: binding.documentNumber,

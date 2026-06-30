@@ -33,7 +33,8 @@ export default function CaptureRoute() {
       // the owner felt). The server auto-promotes the first photo to primary.
       const dataBase64 = await readCaptureBase64(photo)
       discardCapture(photo)
-      runProductPhotoUpload(productId, dataBase64, photo.mime)
+      // readCaptureBase64 re-encodes to JPEG on-device (H1), so upload as image/jpeg.
+      runProductPhotoUpload(productId, dataBase64, "image/jpeg")
       router.back()
     } catch (e) {
       setError(describeError(e))

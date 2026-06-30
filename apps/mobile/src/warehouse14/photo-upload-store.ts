@@ -77,19 +77,29 @@ export function clearProductUploadError(productId: string): void {
 export function runProductPhotoUpload(productId: string, dataBase64: string, mime: PhotoMime): void {
   patch(productId, { uploading: snapshot(productId).uploading + 1, error: null })
   void (async () => {
-    try {
-      await photosApi.uploadDirect(apiClient, {
-        dataBase64,
-        contentType: mime,
-        productId,
-        intent: "product",
-        isPrimary: false,
-      })
-      const cur = snapshot(productId)
-      patch(productId, { uploading: Math.max(0, cur.uploading - 1), tick: cur.tick + 1 })
-    } catch (e) {
-      const cur = snapshot(productId)
-      patch(productId, { uploading: Math.max(0, cur.uploading - 1), error: describeError(e) })
+    // Bounded retry (H1): a brief connectivity dip on a background photo upload
+    // should not surface a red error or lose the photo. Product uploads are not
+    // step-up gated, so any failure is safe to retry with a short backoff.
+    const maxAttempts = 3
+    let lastErr: unknown
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        await photosApi.uploadDirect(apiClient, {
+          dataBase64,
+          contentType: mime,
+          productId,
+          intent: "product",
+          isPrimary: false,
+        })
+        const cur = snapshot(productId)
+        patch(productId, { uploading: Math.max(0, cur.uploading - 1), tick: cur.tick + 1 })
+        return
+      } catch (e) {
+        lastErr = e
+        if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, 1500 * attempt))
+      }
     }
+    const cur = snapshot(productId)
+    patch(productId, { uploading: Math.max(0, cur.uploading - 1), error: describeError(lastErr) })
   })()
 }
