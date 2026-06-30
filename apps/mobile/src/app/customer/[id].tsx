@@ -35,6 +35,7 @@ import type { CustomerTrustLevel } from "@warehouse14/api-client"
 import Svg, { Circle, Path } from "react-native-svg"
 import {
   Ban,
+  Trash2,
   CalendarClock,
   IdCard,
   Mail,
@@ -55,7 +56,14 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Text } from "@/components/ui/text"
-import { formatEur, getCustomer, setCustomerTrust, stampCustomerKyc } from "@/warehouse14/api"
+import {
+  deleteCustomerKycDocuments,
+  eraseCustomer,
+  formatEur,
+  getCustomer,
+  setCustomerTrust,
+  stampCustomerKyc,
+} from "@/warehouse14/api"
 import {
   formatCustomerAddress,
   KYC_STATUS_LABEL,
@@ -303,6 +311,7 @@ export default function CustomerDetailScreen() {
   const [trustNotes, setTrustNotes] = useState("")
   const [noteError, setNoteError] = useState(false)
   const [confirmDanger, setConfirmDanger] = useState(false)
+  const [confirmErase, setConfirmErase] = useState(false)
 
   // ── Mutations (step-up is transparent in the api layer) ─────────────────────
   // The backend audit enum requires `documentType` (omitting it 400s before any
@@ -362,8 +371,30 @@ export default function CustomerDetailScreen() {
     },
   )
 
-  const busy = stampM.isPending || trustM.isPending
-  const actionError = stampM.error ?? trustM.error
+  // DSGVO Art.17 erasure — step-up transparent (the route requires it). On success
+  // the customer is anonymized; there is nothing left to show, so leave the screen.
+  const eraseM = useMutation((_vars: void) => eraseCustomer(id), {
+    onSuccess: () => {
+      haptics.success()
+      router.back()
+    },
+    onError: () => haptics.error(),
+  })
+
+  // Ausweis löschen (C4) — purge the saved ID so a fresh one can be captured
+  // (delete, then „Ausweis erfassen" = replace). Step-up transparent; on success
+  // refetch so the KYC status updates in place.
+  const deleteKycM = useMutation((_vars: void) => deleteCustomerKycDocuments(id), {
+    onSuccess: () => {
+      haptics.success()
+      setOkMsg("Ausweis gelöscht")
+      void customerQ.refetch()
+    },
+    onError: () => haptics.error(),
+  })
+
+  const busy = stampM.isPending || trustM.isPending || eraseM.isPending || deleteKycM.isPending
+  const actionError = stampM.error ?? trustM.error ?? eraseM.error ?? deleteKycM.error
 
   function clearActionState() {
     setOkMsg(null)
@@ -757,6 +788,35 @@ export default function CustomerDetailScreen() {
               </View>
             </PressableScale>
 
+            {/* Ausweis löschen (C4) — only when one is saved. Delete then re-capture
+                = replace. Step-up PIN is the friction; the row becomes a redacted
+                GwG evidence shell server-side. */}
+            {customer.kycCompletedAt != null ? (
+              <PressableScale
+                accessibilityRole="button"
+                accessibilityLabel="Ausweis löschen"
+                disabled={busy}
+                onPress={() => {
+                  haptics.selection()
+                  clearActionState()
+                  void deleteKycM.mutate()
+                }}
+                className="mt-2.5"
+              >
+                <View className="min-h-[44px] flex-row items-center gap-3 rounded-xl px-3.5 py-2.5">
+                  <Trash2 size={t.icon.md} color={t.colors.destructive} />
+                  <View className="flex-1">
+                    <Text className="text-base font-medium" style={{ color: t.colors.destructive }}>
+                      Ausweis löschen
+                    </Text>
+                    <Text className="text-muted-foreground text-xs" numberOfLines={1}>
+                      Gespeicherten Ausweis entfernen, dann neu erfassen
+                    </Text>
+                  </View>
+                </View>
+              </PressableScale>
+            ) : null}
+
             <View className="pt-3">
               <Button
                 variant={kycVerified ? "outline" : "default"}
@@ -941,6 +1001,27 @@ export default function CustomerDetailScreen() {
         </StaggerItem>
 
         <StaggerItem index={8}>
+          <View className="gap-2 pt-2">
+            <Text className="text-sm font-medium">Datenschutz</Text>
+            <Text className="text-muted-foreground text-2xs">
+              DSGVO Art.17: alle persönlichen Daten dieses Kunden unwiderruflich
+              anonymisieren (Name, Kontakt, Ausweis). Steuer- und GoBD-Belege bleiben
+              gesetzlich erhalten — nur geschwärzt.
+            </Text>
+            <Button
+              variant="outline"
+              disabled={busy}
+              onPress={() => setConfirmErase(true)}
+              accessibilityLabel="Kundendaten löschen"
+              style={{ borderColor: t.colors.destructive }}
+            >
+              <Trash2 size={16} color={t.colors.destructive} />
+              <Text style={{ color: t.colors.destructive }}>Daten löschen (DSGVO)</Text>
+            </Button>
+          </View>
+        </StaggerItem>
+
+        <StaggerItem index={9}>
           <View className="flex-row items-center justify-center gap-2 pt-1">
             <TrustSeal size={16} ink={t.colors.mutedForeground} gilt={t.colors.gilt} />
             <Text className="text-muted-foreground text-2xs">
@@ -982,6 +1063,47 @@ export default function CustomerDetailScreen() {
               accessibilityLabel="Kunde sperren"
             >
               <Text>Sperren</Text>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* DSGVO Art.17 erasure — irreversible, so make the operator confirm explicitly. */}
+      <Dialog open={confirmErase} onOpenChange={setConfirmErase}>
+        <DialogContent>
+          <DialogHeader>
+            <View className="flex-row items-center gap-2.5">
+              <View
+                className="h-9 w-9 items-center justify-center rounded-full"
+                style={{ backgroundColor: t.colors.destructive + "1f" }}
+              >
+                <Trash2 size={t.icon.md} color={t.colors.destructive} />
+              </View>
+              <DialogTitle>Kundendaten löschen?</DialogTitle>
+            </View>
+            <DialogDescription>
+              Alle persönlichen Daten von {customer.fullName} werden UNWIDERRUFLICH
+              anonymisiert. Steuer- und GoBD-Belege bleiben geschwärzt erhalten. Dies
+              erfüllt das DSGVO-Löschrecht (Art.17).
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onPress={() => setConfirmErase(false)}
+              accessibilityLabel="Abbrechen"
+            >
+              <Text>Abbrechen</Text>
+            </Button>
+            <Button
+              variant="destructive"
+              onPress={() => {
+                setConfirmErase(false)
+                eraseM.mutate()
+              }}
+              accessibilityLabel="Endgültig löschen"
+            >
+              <Text>Endgültig löschen</Text>
             </Button>
           </DialogFooter>
         </DialogContent>

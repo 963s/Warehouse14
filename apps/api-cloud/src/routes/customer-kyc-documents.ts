@@ -20,7 +20,7 @@ import { randomUUID } from 'node:crypto';
 import { createHash } from 'node:crypto';
 
 import { Type } from '@sinclair/typebox';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 
 import { auditLog, customers, kycDocuments } from '@warehouse14/db/schema';
@@ -278,6 +278,141 @@ const customerKycDocumentsRoute: FastifyPluginAsync<CustomerKycDocumentsOpts> = 
         await deleteKycImage(env.KYC_PHOTOS_DIR, storageKey).catch(() => {});
         throw err;
       }
+    },
+  );
+
+  // ── DELETE /api/customers/:id/kyc-documents ────────────────────────────
+  // Owner-friendly bulk variant (C4): purge ALL live Ausweis documents of a
+  // customer in one action — the UI has no per-document id, and the common case
+  // is "remove the saved ID so I can re-capture". Each row becomes a redacted
+  // evidence shell + its encrypted image file is unlinked. ADMIN + step-up.
+  // Idempotent: returns purgedCount 0 when there is nothing live to purge.
+  app.delete<{ Params: { id: string } }>(
+    '/api/customers/:id/kyc-documents',
+    {
+      schema: {
+        tags: ['customers'],
+        summary: 'Delete (purge) ALL live KYC ID documents of a customer — ADMIN + step-up.',
+        params: Type.Object({ id: Type.String({ format: 'uuid' }) }),
+        response: {
+          200: Type.Object({ purgedCount: Type.Integer() }),
+          401: ErrorResponse,
+          403: ErrorResponse,
+          404: ErrorResponse,
+        },
+      },
+    },
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'ADMIN');
+      requireStepUp(req);
+
+      const { id: customerId } = req.params;
+
+      const live = await app.db
+        .select({ id: kycDocuments.id, storageKey: kycDocuments.documentPhotoStorageKey })
+        .from(kycDocuments)
+        .where(and(eq(kycDocuments.customerId, customerId), isNull(kycDocuments.purgedAt)));
+
+      if (live.length > 0) {
+        await app.db.transaction(async (tx) => {
+          await tx
+            .update(kycDocuments)
+            .set({
+              documentNumberEncrypted: null,
+              documentPhotoSha256: null,
+              documentPhotoStorageKey: null,
+              documentPhotoSizeBytes: null,
+              purgedAt: new Date(),
+              purgedByUserId: req.actor.id,
+            })
+            .where(and(eq(kycDocuments.customerId, customerId), isNull(kycDocuments.purgedAt)));
+          await tx.insert(auditLog).values({
+            eventType: 'customer.kyc_purged',
+            actorUserId: req.actor.id,
+            deviceId: req.deviceId ?? null,
+            ipAddress: req.ip ?? null,
+            payload: { customerId, purgedCount: live.length, reason: 'owner_requested' },
+          });
+        });
+        for (const doc of live) {
+          if (doc.storageKey) await deleteKycImage(env.KYC_PHOTOS_DIR, doc.storageKey).catch(() => {});
+        }
+      }
+
+      return reply.status(200).send({ purgedCount: live.length });
+    },
+  );
+
+  // ── DELETE /api/customers/:id/kyc-documents/:docId ─────────────────────
+  // Replace/delete a saved Ausweis (the owner could not before — C4). The row
+  // is NEVER hard-deleted (GwG / §259 evidence): it becomes a redacted SHELL via
+  // the established GDPR purge (NULL the encrypted number + photo sha/key/size,
+  // stamp purged_at + purged_by) and the encrypted image FILE is unlinked. To
+  // REPLACE, the app deletes here then re-captures via POST. ADMIN + step-up.
+  app.delete<{ Params: { id: string; docId: string } }>(
+    '/api/customers/:id/kyc-documents/:docId',
+    {
+      schema: {
+        tags: ['customers'],
+        summary: 'Delete (purge) a customer KYC ID document — ADMIN + step-up. Row becomes a redacted evidence shell; the encrypted image file is unlinked.',
+        params: Type.Object({
+          id: Type.String({ format: 'uuid' }),
+          docId: Type.String({ format: 'uuid' }),
+        }),
+        response: {
+          200: Type.Object({ id: Type.String({ format: 'uuid' }), purged: Type.Boolean() }),
+          401: ErrorResponse,
+          403: ErrorResponse,
+          404: ErrorResponse,
+        },
+      },
+    },
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'ADMIN');
+      requireStepUp(req);
+
+      const { id: customerId, docId } = req.params;
+
+      // Must exist + be LIVE (not already purged — a shell has purged_at set).
+      const [row] = await app.db
+        .select({ storageKey: kycDocuments.documentPhotoStorageKey, purgedAt: kycDocuments.purgedAt })
+        .from(kycDocuments)
+        .where(and(eq(kycDocuments.id, docId), eq(kycDocuments.customerId, customerId)))
+        .limit(1);
+      if (!row || row.purgedAt !== null) {
+        throw new KycDocumentNotFoundError('KYC document not found.');
+      }
+      const storageKey = row.storageKey;
+
+      // ALL-OR-NOTHING purge per the kyc_documents_purged_consistency CHECK:
+      // null the three PII columns together + stamp purged_at + purged_by.
+      await app.db.transaction(async (tx) => {
+        await tx
+          .update(kycDocuments)
+          .set({
+            documentNumberEncrypted: null,
+            documentPhotoSha256: null,
+            documentPhotoStorageKey: null,
+            documentPhotoSizeBytes: null,
+            purgedAt: new Date(),
+            purgedByUserId: req.actor.id,
+          })
+          .where(and(eq(kycDocuments.id, docId), eq(kycDocuments.customerId, customerId)));
+        await tx.insert(auditLog).values({
+          eventType: 'customer.kyc_purged',
+          actorUserId: req.actor.id,
+          deviceId: req.deviceId ?? null,
+          ipAddress: req.ip ?? null,
+          payload: { customerId, kycDocumentId: docId, reason: 'owner_requested' },
+        });
+      });
+
+      // After commit: unlink the encrypted image bytes (best-effort, never throws).
+      if (storageKey) await deleteKycImage(env.KYC_PHOTOS_DIR, storageKey).catch(() => {});
+
+      return reply.status(200).send({ id: docId, purged: true });
     },
   );
 

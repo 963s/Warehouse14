@@ -388,12 +388,26 @@ export function updateCustomer(
   return customersApi.update(apiClient, id, body)
 }
 
+/**
+ * DSGVO Art.17 (Recht auf Löschung) — anonymisiert den Kunden UNWIDERRUFLICH +
+ * löscht seine Ausweis-Bilder. ADMIN + step-up (automatisch). Steuer-/GoBD-Belege
+ * bleiben (PII geschwärzt); die Kundennummer bleibt als Pseudonym.
+ */
+export function eraseCustomer(id: string): Promise<{ ok: boolean; erasedAt: string }> {
+  return customersApi.erase(apiClient, id)
+}
+
 /** Attach a KYC (GwG) identity document — ADMIN + step-up (auto). */
 export function addCustomerKycDocument(
   customerId: string,
   body: CustomerKycDocumentBody,
 ): Promise<CustomerKycDocumentResponse> {
   return customersApi.addKycDocument(apiClient, customerId, body)
+}
+
+/** Delete (purge) all saved Ausweis documents — ADMIN + step-up (C4). */
+export function deleteCustomerKycDocuments(customerId: string): Promise<{ purgedCount: number }> {
+  return customersApi.deleteKycDocuments(apiClient, customerId)
 }
 
 /** Stamp the operator's KYC (GwG) verification — step-up required (auto).

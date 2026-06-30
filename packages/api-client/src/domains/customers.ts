@@ -336,6 +336,18 @@ export const customersApi = {
       body,
     );
   },
+  /**
+   * GDPR Art.17 (Recht auf Löschung) — anonymize this customer IN PLACE + delete
+   * their KYC images. ADMIN + step-up (a 403 STEP_UP_REQUIRED drives the PIN
+   * dialog + retry). IRREVERSIBLE: PII is scrubbed everywhere; fiscal/GoBD/GwG
+   * records are kept with PII redacted; `customer_number` survives as a pseudonym.
+   */
+  erase(client: ApiClient, id: string): Promise<{ ok: boolean; erasedAt: string }> {
+    return client.request<{ ok: boolean; erasedAt: string }>(
+      'POST',
+      `/api/customers/${encodeURIComponent(id)}/erase`,
+    );
+  },
   stampKyc(
     client: ApiClient,
     id: string,
@@ -356,6 +368,18 @@ export const customersApi = {
       'POST',
       `/api/customers/${encodeURIComponent(customerId)}/kyc-documents`,
       body,
+    );
+  },
+  /**
+   * Purge ALL live KYC ID documents of a customer (C4 — the owner can finally
+   * delete / replace a saved Ausweis). Each row becomes a redacted GwG evidence
+   * shell and its encrypted image file is unlinked. ADMIN + step-up; idempotent
+   * (purgedCount 0 when nothing was live). To REPLACE: delete, then re-capture.
+   */
+  deleteKycDocuments(client: ApiClient, customerId: string): Promise<{ purgedCount: number }> {
+    return client.request<{ purgedCount: number }>(
+      'DELETE',
+      `/api/customers/${encodeURIComponent(customerId)}/kyc-documents`,
     );
   },
   /**
