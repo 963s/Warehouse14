@@ -58,6 +58,7 @@ import categoriesRoutes from './routes/categories.js';
 import closingExportRoute from './routes/closing-export.js';
 import closingsFinalizeRoute from './routes/closings-finalize.js';
 import complianceRoute from './routes/compliance.js';
+import customerErasureRoute from './routes/customer-erasure.js';
 import customerKycDocumentsRoute from './routes/customer-kyc-documents.js';
 // Day 26 — Backend Finale: Customer Trust + Belegtext
 import customerTrustRoutes from './routes/customer-trust.js';
@@ -236,6 +237,7 @@ export async function buildApp(opts: BuildAppOpts): Promise<FastifyInstance> {
   await app.register(customersVerifyVatRoute);
   await app.register(customersCheckSanctionsRoute, { env: opts.env });
   await app.register(customerKycDocumentsRoute, { env: opts.env });
+  await app.register(customerErasureRoute, { env: opts.env });
   await app.register(photoUploadUrlRoute, { env: opts.env });
   await app.register(photoDirectUploadRoute, { env: opts.env });
   await app.register(transactionsFinalize, { env: opts.env });
