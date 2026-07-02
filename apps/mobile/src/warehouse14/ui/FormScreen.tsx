@@ -77,6 +77,10 @@ export function FormScreen({
   // (a real cause of the "Zu viele Versuche" the owner saw). The ref blocks the
   // re-entry on the SAME tick, before any await.
   const submittingRef = useRef(false)
+  // The error banner renders at the TOP of the scroll; on a long form the owner
+  // sits at the bottom (at the save bar) when the server refuses, so the banner
+  // would land off-screen and the tap would look ignored. Scroll it into view.
+  const scrollRef = useRef<ScrollView>(null)
 
   const handleSubmit = async (): Promise<void> => {
     if (submittingRef.current) return
@@ -95,6 +99,8 @@ export function FormScreen({
       }
     } catch (e) {
       setError(describeError(e))
+      // Bring the freshly-shown banner into view (error just went null → set).
+      scrollRef.current?.scrollTo({ y: 0, animated: true })
       hapticError()
     } finally {
       submittingRef.current = false
@@ -112,6 +118,7 @@ export function FormScreen({
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       <ScrollView
+        ref={scrollRef}
         className="flex-1"
         contentContainerStyle={{ padding: 16, paddingBottom: 24, gap: 14 }}
         keyboardShouldPersistTaps="handled"

@@ -16,8 +16,14 @@
  * `StaggerItem`, and a single selection haptic on a navigating tap. Honesty rule
  * holds: every flag and number shown comes from the real list row.
  */
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react"
-import { FlatList, Pressable, RefreshControl, View } from "react-native"
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react"
+import {
+  FlatList,
+  Pressable,
+  RefreshControl,
+  View,
+  type ListRenderItemInfo,
+} from "react-native"
 import { useNavigation, useRouter } from "expo-router"
 import Svg, { Path } from "react-native-svg"
 import type { CustomerListRow } from "@warehouse14/api-client"
@@ -99,13 +105,15 @@ function hasTurnover(eur: string): boolean {
   return Number.isFinite(n) && n > 0
 }
 
-/** One customer row — seal · name · Kundennummer · the flags an operator scans. */
-function KundenRow({
+/** One customer row — seal · name · Kundennummer · the flags an operator scans.
+ *  Memoized (stable `onOpen` from the screen), so a search keystroke re-renders
+ *  the list container only, never every visible directory row. */
+const KundenRow = memo(function KundenRow({
   row,
-  onPress,
+  onOpen,
 }: {
   row: CustomerListRow
-  onPress: () => void
+  onOpen: (id: string) => void
 }) {
   const t = useW14Theme()
   const showTrust = TRUST_FLAGGED.has(row.trustLevel)
@@ -119,7 +127,7 @@ function KundenRow({
 
   return (
     <PressableScale
-      onPress={onPress}
+      onPress={() => onOpen(row.id)}
       accessibilityRole="button"
       accessibilityLabel={`${row.fullName}, Kundennummer ${row.customerNumber}`}
     >
@@ -188,7 +196,7 @@ function KundenRow({
       </View>
     </PressableScale>
   )
-}
+})
 
 /** The first-load placeholder — the list's own shape, never a mid-screen spinner. */
 function KundenSkeleton() {
@@ -251,7 +259,10 @@ export default function KundenScreen() {
         kycVerifiedOnly: kycOnly || undefined,
         limit: 50,
       }),
-    { key: `customers:${debouncedQ}:${kycOnly ? "kyc" : "all"}` },
+    // Search-as-you-type: keep the previous result's rows on screen while the
+    // re-keyed fetch runs, instead of tearing the directory to a skeleton on
+    // every debounced keystroke; the fresh result replaces them when it lands.
+    { key: `customers:${debouncedQ}:${kycOnly ? "kyc" : "all"}`, keepPreviousData: true },
   )
   const rc = useRefreshControl(customers)
 
@@ -270,6 +281,17 @@ export default function KundenScreen() {
       router.push({ pathname: "/customer/[id]", params: { id } })
     },
     [router],
+  )
+
+  // Stable renderItem (memoized KundenRow + the stable `openCustomer` above),
+  // so a keystroke re-renders the list container, not every visible row.
+  const renderRow = useCallback(
+    ({ item, index }: ListRenderItemInfo<CustomerListRow>) => (
+      <StaggerItem index={index} exit={false}>
+        <KundenRow row={item} onOpen={openCustomer} />
+      </StaggerItem>
+    ),
+    [openCustomer],
   )
 
   const clearSearch = useCallback(() => {
@@ -382,11 +404,7 @@ export default function KundenScreen() {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         refreshControl={<RefreshControl {...rc} progressViewOffset={8} />}
-        renderItem={({ item, index }) => (
-          <StaggerItem index={index} exit={false}>
-            <KundenRow row={item} onPress={() => openCustomer(item.id)} />
-          </StaggerItem>
-        )}
+        renderItem={renderRow}
         ListEmptyComponent={
           // The spine owns the four states — loading (the list's shaped
           // skeleton), error (the shared ErrorState + Retry), and the real

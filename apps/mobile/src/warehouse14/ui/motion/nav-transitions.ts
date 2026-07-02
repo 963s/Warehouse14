@@ -4,11 +4,12 @@
  *
  * The native-stack API exposes string `animation` presets + a numeric
  * `animationDuration`, animated on the native thread (react-native-screens) at
- * 60fps. We tune the durations to the house motion language
- * (DESIGN-SYSTEM.md §5): the curator ease (0.16,1,0.3,1) for entrances is the
- * platform default for these presets on iOS, so we only set the *duration* to
- * the official scale (fast 180 / base 420 / slow 650). The presets themselves
- * are platform-correct (iOS slide-up modal, horizontal push, calm fade).
+ * 60fps. The presets themselves are platform-correct (iOS slide-up modal,
+ * horizontal push, calm fade). Durations are tuned to PLATFORM-NATIVE speed,
+ * not the content scale: an earlier build reused the content tokens
+ * (base 420 / slow 650) here, which made every navigation feel slower than
+ * the OS itself — the one place the house calm must NOT win over the
+ * platform's muscle memory (~250ms push, ~300ms modal present).
  *
  * Usage:
  *   import { modalPresent, stackPush, calmFade } from "@/warehouse14/ui/motion/nav-transitions"
@@ -21,26 +22,41 @@
 import { duration } from "./tokens"
 
 /**
- * A modal present tuned to `slow` (650ms) — the sheet settles with the curator
- * deceleration (the platform default easing for `slide_from_bottom` on iOS).
- * Use with `presentation: "modal"` / `"fullScreenModal"`.
+ * Route-transition durations (ms) — deliberately SEPARATE from the content
+ * `duration` tokens. Navigation must match the platform's own tempo (an iOS
+ * push is ~250ms, a modal present ~300ms); the content scale (base 420 /
+ * slow 650) is for elements settling INSIDE a screen, and reusing it here made
+ * the whole app feel slower than the OS.
+ */
+const navDuration = {
+  /** Horizontal stack push / pop. */
+  push: 250,
+  /** Bottom-sheet / modal present + dismiss. */
+  modal: 300,
+} as const
+
+/**
+ * A modal present at platform-native tempo (~300ms) — the sheet settles with
+ * the curator deceleration (the platform default easing for
+ * `slide_from_bottom` on iOS). Use with `presentation: "modal"` /
+ * `"fullScreenModal"`.
  */
 export function modalPresent() {
   return {
     animation: "slide_from_bottom" as const,
-    animationDuration: duration.slow,
+    animationDuration: navDuration.modal,
   }
 }
 
 /**
- * A standard stack push tuned to `base` (420ms) — a calm horizontal slide for
- * the non-modal full-screen surfaces (aufgaben, kasse, verkauf, …). The
- * platform default easing is the curator-like deceleration.
+ * A standard stack push at platform-native tempo (~250ms) — a crisp horizontal
+ * slide for the non-modal full-screen surfaces (aufgaben, kasse, verkauf, …).
+ * The platform default easing is the curator-like deceleration.
  */
 export function stackPush() {
   return {
     animation: "slide_from_right" as const,
-    animationDuration: duration.base,
+    animationDuration: navDuration.push,
   }
 }
 
@@ -57,12 +73,12 @@ export function calmFade() {
 
 /**
  * iOS-native modal presentation (`ios` preset) — the platform's signature
- * card-lift + scrim, tuned to `slow`. Use only on surfaces where the native
- * iOS feel is wanted (the primary detail sheets).
+ * card-lift + scrim at the platform's OWN timing (no duration override; the
+ * system transition is the reference feel). Use only on surfaces where the
+ * native iOS feel is wanted (the primary detail sheets).
  */
 export function iosModal() {
   return {
     animation: "ios" as const,
-    animationDuration: duration.slow,
   }
 }

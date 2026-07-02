@@ -9,8 +9,10 @@
  * Error haptic-friendly destructive tint.
  *
  * It tells the truth about WHY it failed: a transport-level failure (we never
- * reached the cloud) reads as an offline problem ("Keine Verbindung"), while a
- * server refusal shows the themed message from `describeError`. The message is
+ * reached the cloud) reads as an offline problem ("Keine Verbindung"), a
+ * rate-limit refusal (429) reads as a calm neutral "einen Moment" wait (a
+ * transient throttle, not a fault the owner caused), while any other server
+ * refusal shows the themed message from `describeError`. The message is
  * always a real string from a real failure — never a fabricated reassurance.
  *
  * Use it via `QueryBoundary` (which picks it automatically), or directly when a
@@ -19,12 +21,19 @@
 import { type ReactNode } from "react"
 import { View } from "react-native"
 import Animated from "react-native-reanimated"
-import { CloudOff, RefreshCw, SearchX, TriangleAlert, type LucideIcon } from "lucide-react-native"
+import {
+  CloudOff,
+  Hourglass,
+  RefreshCw,
+  SearchX,
+  TriangleAlert,
+  type LucideIcon,
+} from "lucide-react-native"
 
 import { Button } from "@/components/ui/button"
 import { Text } from "@/components/ui/text"
 import { useW14Theme } from "@/warehouse14/theme"
-import { isConnectionError, isNotFoundError } from "./data/connection"
+import { isConnectionError, isNotFoundError, isRateLimited } from "./data/connection"
 import { screenEnter } from "./motion/transitions"
 import { useReduceMotion } from "./motion/useReduceMotion"
 
@@ -63,25 +72,42 @@ export function ErrorState({
   const t = useW14Theme()
   const reduceMotion = useReduceMotion()
   const offline = isConnectionError(cause)
+  // A rate limit (429) is a TRANSIENT throttle, not a fault the owner caused —
+  // render it as a calm neutral „einen Moment" wait, never the destructive red.
+  // The transport layer already backed off and honoured Retry-After before this
+  // ever reached the UI, so the only honest advice is: kurz warten, dann Retry.
+  const rateLimited = !offline && isRateLimited(cause)
   // A missing record is a CALM absence, not a failure — render it in the neutral
   // muted tone with a „nicht gefunden" frame, never the destructive red of a
   // real error. (A surface that wants a richer empty layout should use
   // QueryBoundary's `notFound`; this keeps a direct <ErrorState cause={…}> honest.)
-  const notFound = !offline && isNotFoundError(cause)
+  const notFound = !offline && !rateLimited && isNotFoundError(cause)
 
-  const Icon = icon ?? (offline ? CloudOff : notFound ? SearchX : TriangleAlert)
+  const Icon =
+    icon ?? (offline ? CloudOff : rateLimited ? Hourglass : notFound ? SearchX : TriangleAlert)
   const resolvedTitle =
     title ??
-    (offline ? "Keine Verbindung" : notFound ? "Nicht gefunden" : "Konnte nicht geladen werden")
-  const resolvedMessage =
-    message ??
     (offline
-      ? "Die Cloud ist gerade nicht erreichbar. Sobald die Verbindung steht, hier erneut versuchen."
-      : notFound
-        ? "Dieser Datensatz ist nicht (mehr) vorhanden."
-        : "Beim Laden ist ein Fehler aufgetreten.")
-  // Tint: calm muted disc for a not-found absence, destructive red for a real error.
-  const tint = notFound ? t.colors.mutedForeground : t.colors.destructive
+      ? "Keine Verbindung"
+      : rateLimited
+        ? "Einen Moment bitte"
+        : notFound
+          ? "Nicht gefunden"
+          : "Konnte nicht geladen werden")
+  // For the throttle the calm copy wins even over a passed `message`: the themed
+  // describeError line is written for the red frame, and the wait is the whole
+  // truth here.
+  const resolvedMessage = rateLimited
+    ? "Zu viele Anfragen in kurzer Zeit. Einen Moment warten, gleich geht es hier weiter."
+    : (message ??
+      (offline
+        ? "Die Cloud ist gerade nicht erreichbar. Sobald die Verbindung steht, hier erneut versuchen."
+        : notFound
+          ? "Dieser Datensatz ist nicht (mehr) vorhanden."
+          : "Beim Laden ist ein Fehler aufgetreten."))
+  // Tint: calm muted disc for a not-found absence or a transient throttle,
+  // destructive red for a real error.
+  const tint = notFound || rateLimited ? t.colors.mutedForeground : t.colors.destructive
 
   return (
     <Animated.View

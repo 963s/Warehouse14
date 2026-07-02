@@ -14,7 +14,7 @@
  * vocabulary, and InlineError for an upload failure. Tokens only; German UI.
  */
 import { useMemo, useState } from "react"
-import { ScrollView, View } from "react-native"
+import { View } from "react-native"
 import { router, useLocalSearchParams } from "expo-router"
 import type { KycDocumentType } from "@warehouse14/api-client"
 import { Camera, IdCard, Lock, ShieldCheck } from "lucide-react-native"
@@ -32,11 +32,10 @@ import {
   FormField,
   haptics,
   InlineError,
-  PaperGrain,
+  KeyboardAvoidingScreen,
   PressableScale,
   SectionCard,
   StaggerItem,
-  useScreenInsets,
 } from "@/warehouse14/ui"
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
@@ -53,7 +52,6 @@ function dateError(value: string, { required }: { required: boolean }): string |
 export default function KycCaptureRoute() {
   const { customerId } = useLocalSearchParams<{ customerId: string }>()
   const t = useW14Theme()
-  const insets = useScreenInsets()
 
   const [phase, setPhase] = useState<"form" | "camera">("form")
   const [documentType, setDocumentType] = useState<KycDocumentType>("PERSONALAUSWEIS")
@@ -133,17 +131,11 @@ export default function KycCaptureRoute() {
   }
 
   return (
-    <View className="flex-1 bg-background">
-      {/* The aged-paper grain canvas behind the form the same layered cream
-          depth as the rest of the group (DESIGN.md §5). The camera phase keeps
-          its own dark over-feed chrome and is intentionally ungrained. */}
-      <PaperGrain />
-      <ScrollView
-        className="flex-1"
-        contentContainerStyle={{ padding: 16, paddingBottom: insets.contentBottom, gap: 12 }}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-      >
+    // The shared keyboard-avoidance + scroll scaffold: the focused document
+    // field is never hidden behind the keyboard, taps dismiss it, and the
+    // aged-paper grain rides in via the scaffold's default `grain`. The camera
+    // phase keeps its own dark over-feed chrome and is intentionally ungrained.
+    <KeyboardAvoidingScreen contentPadding={16} contentContainerStyle={{ gap: 12 }}>
       {/* Header */}
       <StaggerItem index={0}>
         <View className="flex-row items-center gap-3">
@@ -319,7 +311,6 @@ export default function KycCaptureRoute() {
           </Text>
         </View>
       </StaggerItem>
-      </ScrollView>
-    </View>
+    </KeyboardAvoidingScreen>
   )
 }

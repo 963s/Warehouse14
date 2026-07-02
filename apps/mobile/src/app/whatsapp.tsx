@@ -599,7 +599,9 @@ function LinkCustomerPicker({
 
   const search = useQuery(
     () => listCustomers({ q: debouncedQ || undefined, limit: CUSTOMER_SEARCH_LIMIT }),
-    { key: `whatsapp:link:${debouncedQ}`, enabled: debouncedQ.length > 0 },
+    // Search-as-you-type: keep the previous matches on screen while the
+    // re-keyed lookup runs — no skeleton teardown per debounced keystroke.
+    { key: `whatsapp:link:${debouncedQ}`, enabled: debouncedQ.length > 0, keepPreviousData: true },
   )
 
   const [linkingId, setLinkingId] = useState<string | null>(null)

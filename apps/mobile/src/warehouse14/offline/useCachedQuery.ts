@@ -88,10 +88,8 @@ export function useCachedQuery<T>(
   // honesty rule. This is React's „adjust state on prop change" pattern; it runs
   // before paint, so there's no flash of the wrong entity.
   const prevKey = useRef(key)
-  const lastWrittenAt = useRef<number | null>(null)
   if (prevKey.current !== key) {
     prevKey.current = key
-    lastWrittenAt.current = null
     setSeed(seedFromMemory(key))
   }
 
@@ -117,10 +115,20 @@ export function useCachedQuery<T>(
 
   // Persist every fresh success. `updatedAt` advances only on a real response,
   // so keying the write to it captures exactly the live payloads and nothing else.
-  // (`lastWrittenAt` is declared above so a key change can reset it.)
+  //
+  // CRITICAL key-change guard: in the very commit where `key` flips A→B, the
+  // inner useQuery still holds A's state (its own reset applies a commit later).
+  // A naive "updatedAt changed" write would store A's payload under B's cache
+  // slot — poisoning B's seed with the previous query's rows. So the guard owns
+  // the (key, updatedAt) PAIR: on a key-change commit we only record, never
+  // write; B's own success then carries a new stamp and persists correctly.
+  const lastPersistRef = useRef<{ key: string; at: number | null }>({ key, at: null })
   useEffect(() => {
-    if (q.data != null && q.updatedAt != null && q.updatedAt !== lastWrittenAt.current) {
-      lastWrittenAt.current = q.updatedAt
+    const prev = lastPersistRef.current
+    const keyChangedThisCommit = prev.key !== key
+    lastPersistRef.current = { key, at: q.updatedAt }
+    if (keyChangedThisCommit) return
+    if (q.data != null && q.updatedAt != null && q.updatedAt !== prev.at) {
       setCachedRead(key, q.data)
       // The live value is now also the freshest seed, so a sibling mount sees it.
       setSeed({ data: q.data, cachedAt: q.updatedAt })

@@ -29,7 +29,7 @@
  * erfundene Zahl.
  */
 import { type ReactNode, useCallback, useState } from "react"
-import { RefreshControl, ScrollView, View } from "react-native"
+import { KeyboardAvoidingView, Platform, RefreshControl, ScrollView, View } from "react-native"
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router"
 import type { CustomerTrustLevel } from "@warehouse14/api-client"
 import Svg, { Circle, Path } from "react-native-svg"
@@ -515,7 +515,14 @@ export default function CustomerDetailScreen() {
   ]
 
   return (
-    <View className="flex-1 bg-background">
+    <KeyboardAvoidingView
+      className="flex-1 bg-background"
+      // Dieselbe Plattform-Kombination wie im geteilten KeyboardAvoidingScreen,
+      // damit die fokussierte Vertrauens-Notiz nie hinter der Tastatur liegt.
+      // Der Bildschirm behält seine eigene ScrollView samt Dialog-Geschwistern,
+      // daher die nackte KeyboardAvoidingView statt des vollen Gerüsts.
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
       {/* Die gealterte Papier-Maserung trägt die Tiefe (DESIGN-SYSTEM.md §1, §5):
           geschichtetes Cremepapier plus diese feine warme Tönung, nie eine flache
           Füllung. */}
@@ -1112,7 +1119,7 @@ export default function CustomerDetailScreen() {
       {/* The KYC-confirmed milestone flood — visual only (the Success haptic already
           fired on the confirm); once per stamp, above content, never blocks a tap. */}
       <GoldFlood visible={celebrate} onDone={() => setCelebrate(false)} />
-    </View>
+    </KeyboardAvoidingView>
   )
 }
 

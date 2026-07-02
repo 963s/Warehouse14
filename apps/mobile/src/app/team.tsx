@@ -33,7 +33,7 @@
  * Aktion ist „Zweitkasse öffnen" (gezählter Anfangsbestand, bewusster Confirm).
  */
 import { type ReactNode, useEffect, useMemo, useState } from "react"
-import { RefreshControl, ScrollView, View } from "react-native"
+import { KeyboardAvoidingView, Platform, RefreshControl, ScrollView, View } from "react-native"
 import { type Href, useRouter } from "expo-router"
 import Svg, { Circle, Path } from "react-native-svg"
 import type { DashboardSummary, ShiftView } from "@warehouse14/api-client"
@@ -607,7 +607,14 @@ export default function TeamScreen() {
   const hardError = q.allFailed && !q.anyData && operator == null
 
   return (
-    <View className="flex-1 bg-background">
+    <KeyboardAvoidingView
+      className="flex-1 bg-background"
+      // Dieselbe Plattform-Kombination wie im geteilten KeyboardAvoidingScreen,
+      // damit das fokussierte Wechselgeld-Feld nie hinter der Tastatur liegt.
+      // Der Bildschirm behält seine eigene ScrollView samt Sheet-Geschwister,
+      // daher die nackte KeyboardAvoidingView statt des vollen Gerüsts.
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
       {/* Die gealterte Papier-Maserung als Leinwand-Tiefe aus dem geschichteten
           Creme plus dieser feinen warmen Struktur, nie eine flache Fläche
           (DESIGN-SYSTEM.md §1, §5). */}
@@ -622,6 +629,11 @@ export default function TeamScreen() {
         }}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl {...rc} progressViewOffset={8} />}
+        // Wie im geteilten KeyboardAvoidingScreen: „handled" lässt den ersten
+        // Tipp auf „Zweitkasse öffnen" den Knopf erreichen statt nur die
+        // Tastatur zu schließen; Ziehen schließt die Tastatur.
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       >
         {/* ── Kopf — Kicker + Bricolage-Titel mit dem bespoke Team-Siegel ────── */}
         <View className="gap-1.5">
@@ -801,6 +813,6 @@ export default function TeamScreen() {
         }}
         onDismissError={() => setOpenError(null)}
       />
-    </View>
+    </KeyboardAvoidingView>
   )
 }

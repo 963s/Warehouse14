@@ -119,6 +119,31 @@ export const ProductListItem = Type.Object({
   catalogReference: Type.Union([Type.String(), Type.Null()]),
   listedOnStorefront: Type.Boolean(),
   listedOnEbay: Type.Boolean(),
+  /**
+   * The real Webshop gate (`is_published_to_web`). The route has mapped this
+   * since Day 14 but it was missing HERE — and fast-json-stringify strips any
+   * property the response schema does not declare, so it never hit the wire.
+   */
+  isPublishedToWeb: Type.Boolean(),
+  /**
+   * Current eBay listing state (9-stage machine); NULL = never enrolled.
+   * Surfaced on the LIST row (mirrors products-detail.ts) so the mobile eBay
+   * pipeline renders from ONE request instead of a per-row detail fan-out.
+   */
+  ebayState: Type.Union([
+    Type.Literal('ENTWURF'),
+    Type.Literal('GEPRUEFT'),
+    Type.Literal('ONLINE'),
+    Type.Literal('VERKAUFT'),
+    Type.Literal('BEZAHLT'),
+    Type.Literal('VERPACKT'),
+    Type.Literal('VERSENDET'),
+    Type.Literal('REKLAMIERT'),
+    Type.Literal('RETOURNIERT'),
+    Type.Null(),
+  ]),
+  /** When `ebay_state` last changed; NULL when never enrolled. */
+  ebayStateChangedAt: Type.Union([Type.String({ format: 'date-time' }), Type.Null()]),
   isCommission: Type.Boolean(),
   /** Day-9 additions: location fields for the Lager Lagerort column. */
   locationStorageUnit: Type.Union([Type.String(), Type.Null()]),

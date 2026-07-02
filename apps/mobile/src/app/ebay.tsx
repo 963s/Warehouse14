@@ -15,8 +15,8 @@
  *
  * Aufbau:
  *   • Pipeline-Übersicht — eine boxlose Phasen-Bilanz mit ECHTEN Zählungen (aus
- *     den Detail-Zuständen der eingebuchten Artikel). Nichts eingebucht →
- *     ehrlicher leerer Zustand, kein erfundener Bestand.
+ *     den `ebayState`-Feldern der Listen-Zeilen, EINE Anfrage). Nichts
+ *     eingebucht → ehrlicher leerer Zustand, kein erfundener Bestand.
  *   • Listungen — die eingebuchten Artikel als nackte Zeilen; Tippen öffnet das
  *     Detail-Sheet mit Zustands-Faden, Verlauf, den erlaubten Übergangs-Aktionen
  *     (Schritt-Bestätigung mit transparentem Step-up), der Veröffentlichungs-
@@ -34,7 +34,7 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Pressable, RefreshControl, ScrollView, View } from "react-native"
 import Svg, { Circle, Path } from "react-native-svg"
-import type { EbayState, ProductDetail, ProductListRow } from "@warehouse14/api-client"
+import type { EbayState, ProductListRow } from "@warehouse14/api-client"
 import {
   AlertTriangle,
   ArrowRight,
@@ -107,33 +107,29 @@ import {
 
 const DEBOUNCE_MS = 300
 const SEARCH_LIMIT = 20
-const PIPELINE_DETAIL_CAP = 60 // safety bound on the per-listing detail fan-out
+const PIPELINE_LIMIT = 60 // page bound on the enrolled-listings board
 
-/** One enrolled listing = a list row enriched with its real eBay state/time. */
+/** One enrolled listing = a list row plus its eBay state/time (same row). */
 interface EnrolledListing {
   row: ProductListRow
   state: EbayState | null
   stateChangedAt: string | null
 }
 
-/** What the pipeline fetcher returns: the enriched listings + derived counts. */
+/** What the pipeline fetcher returns: the listings + derived counts. */
 interface PipelineData {
   listings: EnrolledListing[]
   counts: PipelineCounts
-  /** True if a detail read failed for at least one listing (partial honesty). */
-  partial: boolean
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Pipeline fetcher — enrolled list rows, enriched with their real ebayState
+// Pipeline fetcher — ONE list request; the row carries its own ebayState
 // ────────────────────────────────────────────────────────────────────────────
 
 /**
- * The list row does NOT carry `ebayState` (only the detail does), so we read the
- * detail for each enrolled product to know its phase. The set of eBay-enrolled
- * items is small in practice; we cap the fan-out and de-dupe via the query key.
- * A single failed detail read does not blank the board — that listing is shown
- * with an unknown state and the board is flagged `partial` (honesty rule).
+ * The list row carries `ebayState` + `ebayStateChangedAt` directly (audit H-H),
+ * so the whole board is ONE request — the old per-listing detail fan-out (up to
+ * 61 requests per load, stalling the readGate) is gone.
  *
  * We filter by `enrolledOnEbay: true` (ebay_state IS NOT NULL) — the real
  * pipeline membership — NOT by the legacy `listedOnEbay` flag, which only flips
@@ -141,23 +137,13 @@ interface PipelineData {
  * until a real eBay token is wired up.
  */
 async function fetchPipeline(): Promise<PipelineData> {
-  const list = await listProducts({ enrolledOnEbay: true, limit: PIPELINE_DETAIL_CAP })
-  const rows = list.items
-  const details = await Promise.allSettled(rows.map((r) => getProduct(r.id)))
-
-  let partial = false
-  const listings: EnrolledListing[] = rows.map((row, i) => {
-    const d = details[i]
-    if (d.status === "fulfilled") {
-      const detail: ProductDetail = d.value
-      return { row, state: detail.ebayState, stateChangedAt: detail.ebayStateChangedAt }
-    }
-    partial = true
-    return { row, state: null, stateChangedAt: null }
-  })
-
-  const counts = countPipeline(listings.map((l) => l.state))
-  return { listings, counts, partial }
+  const list = await listProducts({ enrolledOnEbay: true, limit: PIPELINE_LIMIT })
+  const listings: EnrolledListing[] = list.items.map((row) => ({
+    row,
+    state: row.ebayState,
+    stateChangedAt: row.ebayStateChangedAt,
+  }))
+  return { listings, counts: countPipeline(listings.map((l) => l.state)) }
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -810,7 +796,7 @@ export default function EbayScreen() {
   const insets = useScreenInsets()
 
   // ── Pipeline (enrolled listings + counts) ──────────────────────────────────
-  const pipeline = useQuery(fetchPipeline, { key: "ebay:pipeline", staleTimeMs: 5_000 })
+  const pipeline = useQuery(fetchPipeline, { key: "ebay:pipeline", staleTimeMs: 45_000 })
   const rc = useRefreshControl(pipeline)
 
   // ── Detail sheet ────────────────────────────────────────────────────────────
@@ -934,15 +920,7 @@ export default function EbayScreen() {
           ) : pipeline.error != null && pipeline.data == null ? (
             <InlineError message={pipeline.error} onRetry={() => void pipeline.refetch()} />
           ) : counts != null ? (
-            <>
-              <PhaseBalance counts={counts} />
-              {pipeline.data?.partial ? (
-                <Text className="text-muted-foreground text-2xs leading-4">
-                  Für einzelne Listungen ließ sich der Zustand gerade nicht laden. Zum
-                  Aktualisieren nach unten ziehen.
-                </Text>
-              ) : null}
-            </>
+            <PhaseBalance counts={counts} />
           ) : null}
         </View>
 

@@ -44,7 +44,7 @@
  * — formatted with `formatEur`, never `formatCents`. No native deps added — Share +
  * expo-file-system + react-native-svg (already present) only.
  */
-import { useCallback, useState } from "react"
+import { useCallback, useRef, useState } from "react"
 import { Modal, Pressable, RefreshControl, ScrollView, Share, View } from "react-native"
 import { File, Paths } from "expo-file-system"
 import Svg, { Circle, Path } from "react-native-svg"
@@ -797,6 +797,8 @@ export default function KasseScreen() {
   const [confirming, setConfirming] = useState<FinalizeTarget | null>(null)
   const [finalizeError, setFinalizeError] = useState<string | null>(null)
   const [celebrate, setCelebrate] = useState(false)
+  // Synchronous re-entry guard for the Z-Bon write (see runFinalize).
+  const finalizingRef = useRef(false)
 
   // One live fan-out: the shift read is allowed to fail independently (the till
   // may be closed → null), while the closings list is the primary payload.
@@ -879,6 +881,12 @@ export default function KasseScreen() {
   // closing (the list can never offer an open-day row to seal).
   const runFinalize = useCallback(
     async (target: FinalizeTarget) => {
+      // Synchronous double-tap guard for the LEGAL day-seal. `busyId` disables
+      // the sheet's buttons only after the React re-render; a second tap in
+      // that gap would POST the finalize twice. The ref blocks the re-entry on
+      // the SAME tick, before any await, and resets when the attempt settles.
+      if (finalizingRef.current) return
+      finalizingRef.current = true
       const busyKey = target.kind === "closing" ? target.closing.id : TODAY_BUSY_ID
       setBusyId(busyKey)
       setFinalizeError(null)
@@ -898,6 +906,7 @@ export default function KasseScreen() {
         haptics.error()
         setFinalizeError(describeError(e))
       } finally {
+        finalizingRef.current = false
         setBusyId(null)
       }
     },

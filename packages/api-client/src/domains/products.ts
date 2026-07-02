@@ -83,6 +83,25 @@ export interface ProductListRow {
    * indicator off THIS, not the legacy listedOnStorefront flag.
    */
   isPublishedToWeb: boolean;
+  /**
+   * Current eBay listing state (9-stage machine); NULL = never enrolled.
+   * Surfaced on the list row (audit H-H) so the eBay pipeline board renders
+   * from ONE list request instead of a per-row detail fan-out. Same union as
+   * `ProductDetail.ebayState`.
+   */
+  ebayState:
+    | 'ENTWURF'
+    | 'GEPRUEFT'
+    | 'ONLINE'
+    | 'VERKAUFT'
+    | 'BEZAHLT'
+    | 'VERPACKT'
+    | 'VERSENDET'
+    | 'REKLAMIERT'
+    | 'RETOURNIERT'
+    | null;
+  /** When `ebay_state` last changed; NULL when never enrolled. */
+  ebayStateChangedAt: string | null;
   isCommission: boolean;
   /** Day-9 additions: Lagerort triplet for the Lager table. */
   locationStorageUnit: string | null;

@@ -21,7 +21,7 @@
  * Tippen und jedem Filterwechsel, und W14-Theme-Tokens durchgehend. Jeder gezeigte
  * Wert ist echt vom Endpunkt; nichts wird erfunden.
  */
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { Image } from "expo-image"
 import {
   ActivityIndicator,
@@ -30,6 +30,7 @@ import {
   RefreshControl,
   ScrollView,
   View,
+  type ListRenderItemInfo,
 } from "react-native"
 import { useNavigation, useRouter } from "expo-router"
 import { ApiOfflineQueuedError } from "@warehouse14/api-client"
@@ -176,7 +177,10 @@ export default function LagerScreen() {
         status: filter === "ALL" ? undefined : filter,
         limit: PAGE_SIZE,
       }),
-    { key },
+    // Search-as-you-type: keep the previous key's rows on screen while the
+    // re-keyed fetch runs, instead of tearing the list to a skeleton on every
+    // debounced keystroke; the fresh page replaces them the moment it lands.
+    { key, keepPreviousData: true },
   )
   const baseRc = useRefreshControl(products)
   // Pull-to-refresh is the owner explicitly asking for a clean list — drop the
@@ -265,6 +269,37 @@ export default function LagerScreen() {
     setFilter(next)
   }, [filter])
 
+  // First page (live) + the accumulated tail, de-duped by id so a row that
+  // shifted between pages (a concurrent write) is never doubled. Memoized so
+  // the FlatList `data` identity only changes when the rows really do — a
+  // keystroke (which only re-keys the fetch) re-renders the container, not
+  // every visible row.
+  const rows = useMemo(
+    () => (products.data != null ? dedupeById(products.data.items, extra) : []),
+    [products.data, extra],
+  )
+
+  // Stable row plumbing: `openProduct` + `renderRow` keep their identity across
+  // keystrokes, and `ProductRow` is memoized — so typing re-renders the list
+  // container only, not every visible catalog row.
+  const openProduct = useCallback(
+    (id: string) => {
+      haptics.selection()
+      router.push({ pathname: "/product/[id]", params: { id } })
+    },
+    [router],
+  )
+
+  const renderRow = useCallback(
+    ({ item, index }: ListRenderItemInfo<ProductListRow>) => (
+      <StaggerItem index={Math.min(index, 8)} exit={false}>
+        {index > 0 ? <Hairline inset={68} /> : null}
+        <ProductRow item={item} onOpen={openProduct} />
+      </StaggerItem>
+    ),
+    [openProduct],
+  )
+
   const total = products.data?.total ?? 0
   const hasQuery = debouncedQ.length > 0 || filter !== "ALL"
 
@@ -330,12 +365,13 @@ export default function LagerScreen() {
             <FilterTab
               key={opt.value}
               label={opt.label}
+              value={opt.value}
               // The live count for this chip: an availability bucket (Verfügbar/
               // Reserviert/Verkauft) shows its real total, „Alle" the in-stock sum.
               // „Entwurf" is not an availability bucket → no count (never a faked 0).
               count={chipCount(opt.value, countsData)}
               active={filter === opt.value}
-              onPress={() => onPickFilter(opt.value)}
+              onSelect={onPickFilter}
             />
           ))}
         </ScrollView>
@@ -390,10 +426,9 @@ export default function LagerScreen() {
               }
         }
       >
-        {(data) => {
-          // First page (live) + the accumulated tail, de-duped by id so a row
-          // that shifted between pages (a concurrent write) is never doubled.
-          const rows = dedupeById(data.items, extra)
+        {() => {
+          // `rows` (first page + tail) is memoized above so its identity — and
+          // with it every visible row — survives a keystroke re-render.
           const moreRemain = !exhausted && rows.length < total
           return (
             <FlatList
@@ -439,18 +474,7 @@ export default function LagerScreen() {
                   onRetry={() => void loadMore()}
                 />
               }
-              renderItem={({ item, index }) => (
-                <StaggerItem index={Math.min(index, 8)} exit={false}>
-                  {index > 0 ? <Hairline inset={68} /> : null}
-                  <ProductRow
-                    item={item}
-                    onPress={() => {
-                      haptics.selection()
-                      router.push({ pathname: "/product/[id]", params: { id: item.id } })
-                    }}
-                  />
-                </StaggerItem>
-              )}
+              renderItem={renderRow}
             />
           )
         }}
@@ -465,7 +489,11 @@ export default function LagerScreen() {
 // anderen bleiben ruhige Tinte. Getrennt nur durch eine warme Senk-Haarlinie.
 // ────────────────────────────────────────────────────────────────────────────
 
-function AvailabilityBalance({ counts }: { counts: InventoryCounts | null }) {
+const AvailabilityBalance = memo(function AvailabilityBalance({
+  counts,
+}: {
+  counts: InventoryCounts | null
+}) {
   const t = useW14Theme()
 
   // Honesty: no number prints until the real fan-out lands — show calm skeletons
@@ -516,29 +544,33 @@ function AvailabilityBalance({ counts }: { counts: InventoryCounts | null }) {
       ))}
     </View>
   )
-}
+})
 
 // ────────────────────────────────────────────────────────────────────────────
 // Filter-Tab — eine boxlose Reihe; die aktive Kategorie trägt einen Gilt-Faden
 // (DESIGN-SYSTEM.md §1: Gold als Faden/Kante). Keine Pillen, keine Kästen.
+// Memoisiert mit stabilem `onSelect`, damit ein Such-Tastendruck (der nur den
+// Kopf neu rendert) nicht jede Filterlasche mitzieht.
 // ────────────────────────────────────────────────────────────────────────────
 
-function FilterTab({
+const FilterTab = memo(function FilterTab({
   label,
+  value,
   count,
   active,
-  onPress,
+  onSelect,
 }: {
   label: string
+  value: Filter
   count: number | null
   active: boolean
-  onPress: () => void
+  onSelect: (value: Filter) => void
 }) {
   const t = useW14Theme()
   const countText = count != null ? count.toLocaleString("de-DE") : null
   return (
     <Pressable
-      onPress={onPress}
+      onPress={() => onSelect(value)}
       accessibilityRole="tab"
       accessibilityState={{ selected: active }}
       accessibilityLabel={count != null ? `Filter ${label}, ${count}` : `Filter ${label}`}
@@ -577,7 +609,7 @@ function FilterTab({
       </View>
     </Pressable>
   )
-}
+})
 
 // ────────────────────────────────────────────────────────────────────────────
 // Eine Lager-Zeile — eine NACKTE Zeile auf dem Papier (kein Kasten). Echtes
@@ -601,7 +633,13 @@ function statusDotColor(status: ProductStatus | string, t: ReturnType<typeof use
   }
 }
 
-function ProductRow({ item, onPress }: { item: ProductListRow; onPress: () => void }) {
+const ProductRow = memo(function ProductRow({
+  item,
+  onOpen,
+}: {
+  item: ProductListRow
+  onOpen: (id: string) => void
+}) {
   const t = useW14Theme()
   const material = materialLine(item.metal, item.weightGrams)
   const location = formatLocation(
@@ -618,7 +656,11 @@ function ProductRow({ item, onPress }: { item: ProductListRow; onPress: () => vo
   const soldOff = item.status === "SOLD"
 
   return (
-    <PressableScale onPress={onPress} accessibilityRole="button" accessibilityLabel={item.name}>
+    <PressableScale
+      onPress={() => onOpen(item.id)}
+      accessibilityRole="button"
+      accessibilityLabel={item.name}
+    >
       {/* Box-free row directly on the parchment — no Card border. The single warm
           hairline lives between rows (rendered by the list, inset under the photo). */}
       <View
@@ -744,7 +786,7 @@ function ProductRow({ item, onPress }: { item: ProductListRow; onPress: () => vo
       </View>
     </PressableScale>
   )
-}
+})
 
 /** The typed fallback disc glyph — a calm carton mark drawn inline so a photo-
  *  less article still reads as a real object, not an empty box. */

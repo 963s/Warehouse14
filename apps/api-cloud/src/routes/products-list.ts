@@ -153,6 +153,10 @@ const productsListRoute: FastifyPluginAsync = async (app) => {
             listedOnStorefront: products.listedOnStorefront,
             listedOnEbay: products.listedOnEbay,
             isPublishedToWeb: products.isPublishedToWeb,
+            // Audit H-H: surface the eBay pipeline state on the LIST row so the
+            // mobile channel screen renders from ONE request (no detail fan-out).
+            ebayState: products.ebayState,
+            ebayStateChangedAt: products.ebayStateChangedAt,
             isCommission: products.isCommission,
             locationStorageUnit: products.locationStorageUnit,
             locationDrawer: products.locationDrawer,
@@ -256,6 +260,8 @@ const productsListRoute: FastifyPluginAsync = async (app) => {
           listedOnStorefront: r.listedOnStorefront,
           listedOnEbay: r.listedOnEbay,
           isPublishedToWeb: r.isPublishedToWeb,
+          ebayState: r.ebayState,
+          ebayStateChangedAt: r.ebayStateChangedAt ? r.ebayStateChangedAt.toISOString() : null,
           isCommission: r.isCommission,
           locationStorageUnit: r.locationStorageUnit,
           locationDrawer: r.locationDrawer,

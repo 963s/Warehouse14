@@ -21,7 +21,7 @@
  * the legal framing; the surface supplies the amount, the copy specifics, the
  * preview (as children), and the async commit. Verkauf and Ankauf both mount it.
  */
-import { type ReactNode, useEffect, useState } from "react"
+import { type ReactNode, useEffect, useRef, useState } from "react"
 import { ScrollView, View } from "react-native"
 import { ShieldCheck } from "lucide-react-native"
 
@@ -87,6 +87,12 @@ export function FiscalConfirmSheet({
   const t = useW14Theme()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Synchronous double-tap guard for the LEGAL commit. `busy` disables the
+  // button only after the React re-render; a second tap in that gap would fire
+  // `onConfirm` twice — two fiscal writes racing on one idempotency key. The
+  // ref blocks the re-entry on the SAME tick, before any await; it resets when
+  // the attempt settles so an honest retry after a refusal stays possible.
+  const submittingRef = useRef(false)
 
   // Clear any stale error each time the sheet opens fresh.
   useEffect(() => {
@@ -94,6 +100,8 @@ export function FiscalConfirmSheet({
   }, [open])
 
   async function confirm(): Promise<void> {
+    if (submittingRef.current) return
+    submittingRef.current = true
     impactMedium() // money-path commit haptic, on the press (DESIGN.md §7)
     setBusy(true)
     setError(null)
@@ -107,6 +115,7 @@ export function FiscalConfirmSheet({
       // the SAME idempotency key can be retried without double-booking.
       setError(describeError(e))
     } finally {
+      submittingRef.current = false
       setBusy(false)
     }
   }

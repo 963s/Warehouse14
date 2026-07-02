@@ -25,7 +25,7 @@
  * „Foto hinzufügen" führt in die Aufnahme. Gebaut auf dem geteilten Spine.
  */
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react"
-import { RefreshControl, ScrollView, View } from "react-native"
+import { KeyboardAvoidingView, Platform, RefreshControl, ScrollView, View } from "react-native"
 import { Image } from "expo-image"
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router"
 import type { CurrentMetalPrice, Metal, PhotoRow } from "@warehouse14/api-client"
@@ -324,7 +324,14 @@ export default function ProductDetailScreen() {
   const artLabel = itemTypeLabel(product.itemType)
 
   return (
-    <View className="flex-1 bg-background">
+    <KeyboardAvoidingView
+      className="flex-1 bg-background"
+      // Dieselbe Plattform-Kombination wie im geteilten KeyboardAvoidingScreen,
+      // damit das fokussierte Umlagern-Feld nie hinter der Tastatur liegt. Der
+      // Bildschirm behält seine eigene ScrollView samt Dialog-Geschwister,
+      // daher die nackte KeyboardAvoidingView statt des vollen Gerüsts.
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
       <PaperGrain />
       <ScrollView
         className="flex-1"
@@ -336,6 +343,11 @@ export default function ProductDetailScreen() {
         }}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl {...rc} />}
+        // Wie im geteilten KeyboardAvoidingScreen: „handled" lässt den ersten
+        // Tipp auf „Umlagern" den Knopf erreichen statt nur die Tastatur zu
+        // schließen; Ziehen schließt die Tastatur.
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       >
         {/* ── Hero ── Das Hauptbild führt den Artikel ein. Ein echtes Foto in
             einem warmen Haarlinien-Rahmen, oder ein ehrlicher Papier-Platzhalter
@@ -801,7 +813,7 @@ export default function ProductDetailScreen() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </View>
+    </KeyboardAvoidingView>
   )
 }
 

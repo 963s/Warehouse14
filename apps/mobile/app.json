@@ -2,7 +2,7 @@
   "name": "Warehouse14",
   "slug": "warehouse14-mobile",
   "scheme": "warehouse14",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "orientation": "portrait",
   "userInterfaceStyle": "automatic",
   "icon": "./assets/images/app-icon-all.png",
@@ -15,7 +15,7 @@
   "android": {
     "icon": "./assets/images/app-icon-android-legacy.png",
     "package": "de.warehouse14.mobile",
-    "versionCode": 3,
+    "versionCode": 4,
     "adaptiveIcon": {
       "foregroundImage": "./assets/images/app-icon-android-adaptive-foreground.png",
       "backgroundImage": "./assets/images/app-icon-android-adaptive-background.png"
@@ -37,7 +37,7 @@
     "icon": "./assets/images/app-icon-ios.png",
     "supportsTablet": true,
     "bundleIdentifier": "de.warehouse14.mobile",
-    "buildNumber": "3"
+    "buildNumber": "4"
   },
   "web": {
     "favicon": "./assets/images/app-icon-web-favicon.png",

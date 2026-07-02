@@ -28,7 +28,7 @@
  * haptic vocabulary, W14 theme tokens only). German UI, de-DE money.
  */
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Modal, Pressable, ScrollView, View } from "react-native"
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, View } from "react-native"
 import { GestureHandlerRootView } from "react-native-gesture-handler"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { useFocusEffect, useRouter } from "expo-router"
@@ -395,7 +395,14 @@ export default function AnkaufScreen() {
   }
 
   return (
-    <View className="flex-1 bg-background">
+    <KeyboardAvoidingView
+      className="flex-1 bg-background"
+      // The same per-platform combination the shared KeyboardAvoidingScreen
+      // uses, so the focused Referenz field is never hidden behind the keyboard.
+      // The screen keeps its own ScrollView and sheet siblings, hence the bare
+      // KeyboardAvoidingView instead of the full scaffold.
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
       {/* The aged-paper grain canvas depth from the layered cream plus this
           faint warm tooth, never a flat fill (DESIGN.md §1). */}
       <PaperGrain />
@@ -692,7 +699,7 @@ export default function AnkaufScreen() {
           payment={{ method: method === "CASH" ? "CASH" : "BANK_TRANSFER" }}
         />
       </FiscalConfirmSheet>
-    </View>
+    </KeyboardAvoidingView>
   )
 }
 
@@ -1177,7 +1184,14 @@ function ItemEntrySheet({
       onRequestClose={() => onOpenChange(false)}
     >
       <GestureHandlerRootView style={{ flex: 1 }}>
-        <View style={{ flex: 1, backgroundColor: t.colors.background, paddingTop: insets.top }}>
+        {/* An RN Modal sits outside any screen-level scaffold, so the sheet
+            carries its own keyboard avoidance: with the keyboard up, Gezahlter
+            Preis / Verkaufspreis and the footer buttons lift into view instead
+            of being typed blind. */}
+        <KeyboardAvoidingView
+          style={{ flex: 1, backgroundColor: t.colors.background, paddingTop: insets.top }}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
           <View className="hairline-b flex-row items-start justify-between gap-3 px-5 pb-3 pt-1">
             <View className="flex-1">
               <Text className="text-foreground font-display-semibold text-lg leading-tight">
@@ -1375,7 +1389,7 @@ function ItemEntrySheet({
               <Text>Abbrechen</Text>
             </Button>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </GestureHandlerRootView>
     </Modal>
   )
