@@ -198,6 +198,11 @@ export function deriveLiveAlerts(summary: BridgeSummary, now: Date = new Date())
     const mins = minutesUntil(summary.nextAppointmentAt, now)
     if (when != null && mins != null) {
       const imminent = mins <= 60
+      // No CTA: the dedicated Termine screens were removed in the trunk
+      // consolidation, so "/termine" would land on expo-router's raw English
+      // "Unmatched Route" dev screen — a dead-end on the HOME surface. Same
+      // honest-no-CTA precedent as the Artikel-Entwürfe alert below. Restore
+      // the href when an appointments surface exists again.
       alerts.push({
         kind: "next_appointment",
         channel: "appointments",
@@ -208,8 +213,8 @@ export function deriveLiveAlerts(summary: BridgeSummary, now: Date = new Date())
             ? `Der nächste von ${summary.todayAppointmentCount} Terminen heute ist ${when}.`
             : `Der nächste Termin ist ${when}.`,
         count: null,
-        href: "/termine",
-        hrefLabel: "Zu den Terminen",
+        href: null,
+        hrefLabel: null,
       })
     }
   }

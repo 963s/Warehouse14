@@ -72,6 +72,7 @@ function setState(next: ConnectionState): void {
 /** A real request reached the cloud. Clears any offline streak. */
 export function reportOnline(): void {
   setState({ status: "online", lastOnlineAt: Date.now(), offlineSince: null })
+  stopProbe()
 }
 
 /** A real request failed at the transport level. Opens / extends the streak. */
@@ -82,6 +83,54 @@ export function reportOffline(): void {
     // Keep the original streak start so "offline since" doesn't reset on retry.
     offlineSince: state.offlineSince ?? Date.now(),
   })
+  startProbe()
+}
+
+// ── Reconnect probe ──────────────────────────────────────────────────────────
+// Derived-only connectivity has a blind spot: once every surface has failed and
+// gone quiet (non-polling screens make no further requests), NOTHING would ever
+// notice the wifi coming back — the banner and the stale numbers stick forever.
+// So while offline, a lightweight registered probe (a plain /health ping,
+// wired up in api.ts) runs every PROBE_INTERVAL_MS; the first success flips the
+// store online, which stops the probe and lets useQuery's reconnect effect
+// revalidate the focused screen. Still zero fabrication: the flip only ever
+// comes from a REAL round-trip.
+
+const PROBE_INTERVAL_MS = 10_000
+
+type ConnectionProbe = () => Promise<void>
+let probe: ConnectionProbe | null = null
+let probeTimer: ReturnType<typeof setInterval> | null = null
+let probeInFlight = false
+
+/** Register the health-ping used while offline (called once from api.ts). */
+export function setConnectionProbe(fn: ConnectionProbe): void {
+  probe = fn
+  // If we were already offline when the probe got registered, start it now.
+  if (state.status === "offline") startProbe()
+}
+
+function startProbe(): void {
+  if (probeTimer != null || probe == null) return
+  probeTimer = setInterval(() => {
+    if (probeInFlight || probe == null) return
+    probeInFlight = true
+    probe()
+      .then(() => reportOnline())
+      .catch(() => {
+        // Still unreachable — keep probing.
+      })
+      .finally(() => {
+        probeInFlight = false
+      })
+  }, PROBE_INTERVAL_MS)
+}
+
+function stopProbe(): void {
+  if (probeTimer != null) {
+    clearInterval(probeTimer)
+    probeTimer = null
+  }
 }
 
 /**

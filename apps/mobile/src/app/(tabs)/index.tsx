@@ -178,7 +178,19 @@ export default function LagerScreen() {
       }),
     { key },
   )
-  const rc = useRefreshControl(products)
+  const baseRc = useRefreshControl(products)
+  // Pull-to-refresh is the owner explicitly asking for a clean list — drop the
+  // paged tail with it so head + tail can never drift apart or duplicate.
+  const rc = {
+    ...baseRc,
+    onRefresh: () => {
+      setExtra([])
+      setExhausted(false)
+      setPaging({ loading: false, error: null })
+      exhaustedRef.current = false
+      baseRc.onRefresh()
+    },
+  }
 
   // ── Pagination ────────────────────────────────────────────────────────────
   // `useQuery` owns the FIRST page (refetch-on-focus, pull-to-refresh, de-dupe).
@@ -203,15 +215,16 @@ export default function LagerScreen() {
   // ahead of what's reachable (a concurrent delete) and never loop.
   const exhaustedRef = useRef(false)
 
-  // A fresh first page (new key, or a refetch/pull-to-refresh that re-resolved
-  // the head) invalidates any accumulated tail — drop it and clear paging state.
-  const firstPageStamp = products.updatedAt
+  // The accumulated tail resets ONLY on a key change (new search/filter) or an
+  // EXPLICIT pull-to-refresh (below) — NOT on the routine focus refetch. Keying
+  // this off `updatedAt` wiped the tail every time the owner came back from a
+  // product detail: the list snapped from 150 rows to 50 under the thumb.
   useEffect(() => {
     setExtra([])
     setExhausted(false)
     setPaging({ loading: false, error: null })
     exhaustedRef.current = false
-  }, [key, firstPageStamp])
+  }, [key])
 
   const loadMore = useCallback(async () => {
     const myKey = keyRef.current

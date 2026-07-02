@@ -98,4 +98,18 @@ export interface QueryOptions {
    * 10_000. Set `0` to always refetch on focus.
    */
   staleTimeMs?: number
+  /**
+   * Keep showing the PREVIOUS key's data while the new key's fetch is in
+   * flight (search-as-you-type): the list stays put instead of tearing down
+   * to a skeleton on every debounce step. The fresh result replaces it the
+   * moment it lands. Default false.
+   */
+  keepPreviousData?: boolean
+  /**
+   * Feed this query's settle outcomes into the connection store. Default
+   * true. `useMultiQuery` sets false and classifies its PER-SOURCE outcomes
+   * itself — its combined fetcher never throws, so the blanket success
+   * report would claim "online" while every source failed offline.
+   */
+  reportConnection?: boolean
 }

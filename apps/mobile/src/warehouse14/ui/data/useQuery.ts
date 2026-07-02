@@ -22,7 +22,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useFocusEffect } from "expo-router"
 import { ApiOfflineQueuedError } from "@warehouse14/api-client"
 
-import { reportQueryOutcome } from "./connection"
+import { reportQueryOutcome, useConnection } from "./connection"
 import { dedupe } from "./dedupe"
 import type { QueryOptions, QueryResult, QueryState } from "./types"
 import { describeError } from "../../api"
@@ -71,6 +71,8 @@ export function useQuery<T>(fetcher: () => Promise<T>, options: QueryOptions = {
     refetchOnFocus = true,
     pollIntervalMs = 0,
     staleTimeMs = DEFAULT_STALE_MS,
+    keepPreviousData = false,
+    reportConnection = true,
   } = options
 
   const [state, setState] = useState<QueryState<T>>(() => initialState<T>(enabled))
@@ -119,7 +121,9 @@ export function useQuery<T>(fetcher: () => Promise<T>, options: QueryOptions = {
         const data = key ? await dedupe(key, exec) : await exec()
         // A real response landed — the cloud is reachable. Report even if a
         // newer run has superseded us; the wire being up is still true.
-        reportQueryOutcome(null)
+        // (useMultiQuery opts out: its combined fetcher never throws, so it
+        // classifies per-source outcomes itself.)
+        if (reportConnection) reportQueryOutcome(null)
         if (!mounted.current || id !== runId.current) return
         updatedAtRef.current = Date.now()
         setState({
@@ -138,7 +142,7 @@ export function useQuery<T>(fetcher: () => Promise<T>, options: QueryOptions = {
         // superseded run's network signal is never lost. A read that fell
         // through to the offline queue (ApiOfflineQueuedError) is itself
         // classified as a connection error → the banner shows.
-        reportQueryOutcome(err)
+        if (reportConnection) reportQueryOutcome(err)
         if (!mounted.current || id !== runId.current) return
         // A read that got offline-queued is not a failure — keep last good
         // data and just stop the spinners. (Mutations handle this differently.)
@@ -171,15 +175,29 @@ export function useQuery<T>(fetcher: () => Promise<T>, options: QueryOptions = {
         if (id === runId.current) fetchingRef.current = false
       }
     },
-    [enabled, key],
+    [enabled, key, reportConnection],
   )
 
-  // Reset to a clean loading state when the query is keyed and the key changes
-  // or the query is toggled on/off, so we never show entity A's data for B.
+  // Reset when the key changes or the query is toggled on/off, so we never
+  // show entity A's data for B. With `keepPreviousData` (search-as-you-type),
+  // the PREVIOUS key's rows stay on screen while the new key's fetch runs —
+  // no skeleton teardown per keystroke; the fresh result replaces them.
   useEffect(() => {
     runId.current++
     updatedAtRef.current = null
-    setState(initialState<T>(enabled))
+    setState((s) =>
+      keepPreviousData && s.data != null
+        ? {
+            ...s,
+            status: "success",
+            error: null,
+            errorCause: null,
+            isLoading: false,
+            isFetching: enabled,
+            isRefreshing: false,
+          }
+        : initialState<T>(enabled),
+    )
     if (enabled) void run("auto")
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, enabled])
@@ -220,6 +238,33 @@ export function useQuery<T>(fetcher: () => Promise<T>, options: QueryOptions = {
       return () => clearInterval(tick)
     }, [enabled, pollIntervalMs, run]),
   )
+
+  // Reconnect recovery: the OfflineNotice promises "Aktualisierung erfolgt
+  // automatisch" — keep that promise. When the connection store flips back to
+  // online (the health probe or any other request succeeded), the FOCUSED
+  // screen revalidates its stale data immediately instead of sitting on the
+  // pre-outage numbers until the next manual gesture. Blurred screens catch
+  // up through the normal refetch-on-focus path.
+  const focusedRef = useRef(false)
+  useFocusEffect(
+    useCallback(() => {
+      focusedRef.current = true
+      return () => {
+        focusedRef.current = false
+      }
+    }, []),
+  )
+  const connStatus = useConnection().status
+  const prevConnRef = useRef(connStatus)
+  useEffect(() => {
+    const was = prevConnRef.current
+    prevConnRef.current = connStatus
+    if (was !== "offline" || connStatus !== "online") return
+    if (!enabled || !focusedRef.current || fetchingRef.current) return
+    const age = updatedAtRef.current == null ? Infinity : Date.now() - updatedAtRef.current
+    if (age < staleTimeMs) return
+    void run("auto")
+  }, [connStatus, enabled, staleTimeMs, run])
 
   const refetch = useCallback(() => run("auto"), [run])
   const refresh = useCallback(() => run("refresh"), [run])

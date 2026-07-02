@@ -151,6 +151,7 @@ import { Money } from "@warehouse14/domain/money"
 import { classifyScanMatch, type ScanMatch } from "./scan-resolve"
 import { getSessionToken } from "./session"
 import { stepUpService } from "./step-up"
+import { setConnectionProbe } from "./ui/data/connection"
 
 /**
  * The API origin.
@@ -167,6 +168,22 @@ import { stepUpService } from "./step-up"
  * Android. NEVER commit a LAN IP as the fallback — it only works on one network.
  */
 export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? "https://api.warehouse14.de"
+
+// While the app is offline, the connection store pings /health every ~10s so
+// the wifi coming back is NOTICED without any user gesture — the store flips
+// online, focused screens revalidate, the banner clears (its promise of
+// "Aktualisierung erfolgt automatisch" becomes true). Plain fetch, no auth,
+// 5s cap; resolve = reachable, anything else = still offline.
+setConnectionProbe(async () => {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 5_000)
+  try {
+    const res = await fetch(`${API_BASE_URL}/health`, { signal: controller.signal })
+    if (!res.ok) throw new Error(`health ${res.status}`)
+  } finally {
+    clearTimeout(timer)
+  }
+})
 
 /**
  * DEV device fingerprint = SHA-256 of the dev cert seeded by api-cloud's

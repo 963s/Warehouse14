@@ -24,7 +24,7 @@
  * Fotos: das Hauptbild führt; ein Tipp auf eine andere Miniatur befördert sie.
  * „Foto hinzufügen" führt in die Aufnahme. Gebaut auf dem geteilten Spine.
  */
-import { type ReactNode, useCallback, useEffect, useState } from "react"
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react"
 import { RefreshControl, ScrollView, View } from "react-native"
 import { Image } from "expo-image"
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router"
@@ -626,6 +626,7 @@ export default function ProductDetailScreen() {
             listedOnStorefront={product.listedOnStorefront}
             isPublishedToWeb={product.isPublishedToWeb}
             ebayState={product.ebayState}
+            onChanged={() => void productQ.refetch()}
           />
         </StaggerItem>
 
@@ -973,35 +974,65 @@ function DetailSkeleton(): ReactNode {
  *
  * Form: nackte Reihen direkt auf dem Papier, getrennt durch die Haarlinie.
  */
+type PublishPatch = {
+  listedOnStorefront?: boolean
+  isPublishedToWeb?: boolean
+  status?: "DRAFT" | "AVAILABLE"
+}
+
 function PublishPanel({
   productId,
   status,
   listedOnStorefront,
   isPublishedToWeb,
   ebayState,
+  onChanged,
 }: {
   productId: string
   status: string
   listedOnStorefront: boolean
   isPublishedToWeb: boolean
   ebayState: string | null
+  /** Called after a successful write so the parent refetches the real record. */
+  onChanged?: () => void
 }): ReactNode {
   const t = useW14Theme()
   const router = useRouter()
 
+  // Optimistic overlay: the switch flips the INSTANT the owner taps, the server
+  // write runs behind it, and a failure rolls the switch back (with the error
+  // line below). The overlay clears as soon as fresh server props arrive from
+  // the parent's refetch — server truth always wins.
+  const [overlay, setOverlay] = useState<PublishPatch>({})
+  const lastPatchRef = useRef<PublishPatch | null>(null)
+  useEffect(() => {
+    setOverlay({})
+  }, [status, listedOnStorefront, isPublishedToWeb])
+
   const toggle = useMutation(
-    async (patch: {
-      listedOnStorefront?: boolean
-      isPublishedToWeb?: boolean
-      status?: "DRAFT" | "AVAILABLE"
-    }) => updateProduct(productId, patch),
+    async (patch: PublishPatch) => updateProduct(productId, patch),
     {
-      onSuccess: () => haptics.success(),
+      optimistic: {
+        apply: (vars) => {
+          const prev = overlay
+          lastPatchRef.current = vars
+          setOverlay((o) => ({ ...o, ...vars }))
+          return prev
+        },
+        rollback: (prev) => setOverlay(prev),
+      },
+      onSuccess: () => {
+        haptics.success()
+        onChanged?.()
+      },
       onError: () => haptics.error(),
     },
   )
 
-  const isAvailable = status === "AVAILABLE"
+  const shownStatus = overlay.status ?? status
+  const shownStorefront = overlay.listedOnStorefront ?? listedOnStorefront
+  const shownWeb = overlay.isPublishedToWeb ?? isPublishedToWeb
+  const isAvailable = shownStatus === "AVAILABLE"
 
   const Row = ({
     on,
@@ -1099,27 +1130,29 @@ function PublishPanel({
         hint={isAvailable ? "Verfügbar, kann verkauft werden" : "Entwurf, noch nicht verkaufbar"}
         icon={<StatusGlyph on={isAvailable} ink={t.colors.foreground} gilt={t.colors.gilt} />}
         onPress={() => {
+          if (toggle.isPending) return
           haptics.selection()
           void toggle.mutate({ status: isAvailable ? "DRAFT" : "AVAILABLE" })
         }}
       />
       <Hairline inset={40} />
       <Row
-        on={listedOnStorefront}
+        on={shownStorefront}
         label="Im Laden"
-        hint={listedOnStorefront ? "Im Laden ausgestellt" : "Nicht im Laden ausgestellt"}
+        hint={shownStorefront ? "Im Laden ausgestellt" : "Nicht im Laden ausgestellt"}
         icon={<Store size={t.icon.md} color={t.colors.foreground} />}
         onPress={() => {
+          if (toggle.isPending) return
           haptics.selection()
-          void toggle.mutate({ listedOnStorefront: !listedOnStorefront })
+          void toggle.mutate({ listedOnStorefront: !shownStorefront })
         }}
       />
       <Hairline inset={40} />
       <Row
-        on={isPublishedToWeb}
+        on={shownWeb}
         label="Im Online-Shop"
         hint={
-          isPublishedToWeb
+          shownWeb
             ? isAvailable
               ? "Für Kunden im Online-Shop sichtbar"
               : "Sichtbar, sobald der Artikel verfügbar ist"
@@ -1127,8 +1160,9 @@ function PublishPanel({
         }
         icon={<Globe size={t.icon.md} color={t.colors.foreground} />}
         onPress={() => {
+          if (toggle.isPending) return
           haptics.selection()
-          void toggle.mutate({ isPublishedToWeb: !isPublishedToWeb })
+          void toggle.mutate({ isPublishedToWeb: !shownWeb })
         }}
       />
       <Hairline inset={40} />
@@ -1144,7 +1178,12 @@ function PublishPanel({
       {toggle.error != null ? (
         <InlineError
           message="Änderung konnte nicht gespeichert werden."
-          onRetry={() => toggle.reset()}
+          onRetry={() => {
+            // GENUINELY retry the failed write (the old handler only dismissed).
+            const last = lastPatchRef.current
+            toggle.reset()
+            if (last) void toggle.mutate(last)
+          }}
         />
       ) : null}
     </View>
