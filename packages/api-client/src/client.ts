@@ -64,7 +64,12 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
     opts: RequestOptions = {},
   ): Promise<T> {
     const url = `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
-    const { signal, cleanup } = composeSignals(opts.signal, opts.timeoutMs ?? defaultTimeout);
+    // The request-level signal carries ONLY the caller's cancellation. The
+    // timeout travels via meta and is composed PER ATTEMPT in the terminal —
+    // otherwise awaiting the step-up PIN dialog or a retry backoff burns the
+    // network window and the replay aborts instantly (felt as a wrongful
+    // reject after typing the PIN slowly).
+    const signal = opts.signal ?? new AbortController().signal;
 
     const headers: Record<string, string> = {
       Accept: 'application/json',
@@ -92,18 +97,15 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
       meta: {
         attempt: 1,
         startedAt: performance.now(),
+        timeoutMs: opts.timeoutMs ?? defaultTimeout,
         ...(opts.routeTemplate !== undefined ? { routeTemplate: opts.routeTemplate } : {}),
         ...(opts.custom !== undefined ? { custom: opts.custom } : {}),
         ...(opts.responseType !== undefined ? { responseType: opts.responseType } : {}),
       },
     };
 
-    try {
-      const res = await chain(req);
-      return res.data as T;
-    } finally {
-      cleanup();
-    }
+    const res = await chain(req);
+    return res.data as T;
   }
 
   return { baseUrl, request };
@@ -111,25 +113,31 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
 
 function createTerminal(config: ApiClientConfig): Next {
   return async (req: MiddlewareRequest): Promise<MiddlewareResponse> => {
+    // Fresh timeout window PER ATTEMPT (composed with the caller signal). Every
+    // retry and the post-PIN step-up replay each get the full budget — and time
+    // spent in the PIN dialog or a retry sleep costs nothing.
+    const { signal, cleanup } = composeSignals(req.signal, req.meta.timeoutMs ?? 15_000);
     let res: Response;
     try {
       res = await fetch(req.url, {
         method: req.method,
         headers: req.headers,
         credentials: config.credentials ?? 'include',
-        signal: req.signal,
+        signal,
         body: req.body !== undefined ? JSON.stringify(req.body) : null,
       });
     } catch (err) {
       // Distinguish timeout from generic network/abort so UX can react
       // differently. The retry middleware also uses this distinction.
-      if (req.signal.aborted && req.signal.reason instanceof TimeoutError) {
-        throw new ApiNetworkError(req.signal.reason.message, req.signal.reason);
+      if (signal.aborted && signal.reason instanceof TimeoutError) {
+        throw new ApiNetworkError(signal.reason.message, signal.reason);
       }
       throw new ApiNetworkError(
         err instanceof Error ? err.message : 'unknown network failure',
         err,
       );
+    } finally {
+      cleanup();
     }
 
     const requestId = res.headers.get('x-request-id');

@@ -27,6 +27,13 @@ export interface RequestMeta {
   startedAt: number;
   /** Opt out of in-flight dedup for an idempotent GET that *should* refetch. */
   dedup?: boolean;
+  /**
+   * Per-ATTEMPT network timeout in ms; the terminal composes it with the caller
+   * signal for each fetch. Deliberately NOT baked into `signal`: time spent
+   * awaiting the step-up PIN dialog or sleeping between retries must never count
+   * against the network window (a slow PIN entry used to abort the replay).
+   */
+  timeoutMs?: number;
   /** Normalized route template for telemetry (e.g. `/ankauf/:id`). */
   routeTemplate?: string;
   /**
@@ -58,7 +65,11 @@ export interface MiddlewareRequest {
   headers: Record<string, string>;
   /** Not yet stringified. Middleware MAY rewrite (e.g. signing). */
   body: unknown;
-  /** Already-composed (parent ⨯ timeout). DO NOT re-compose downstream. */
+  /**
+   * The CALLER's abort signal only (never aborts unless the caller cancels).
+   * The per-attempt timeout is composed with it inside the terminal per fetch
+   * (see `meta.timeoutMs`) — so PIN dialogs and retry sleeps don't burn it.
+   */
   readonly signal: AbortSignal;
   readonly meta: RequestMeta;
 }

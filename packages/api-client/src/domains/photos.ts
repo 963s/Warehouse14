@@ -162,7 +162,12 @@ export const photosApi = {
    * created (and optionally product-bound) in the same call.
    */
   uploadDirect(client: ApiClient, body: PhotoDirectUploadBody): Promise<PhotoDirectUploadResponse> {
-    return client.request<PhotoDirectUploadResponse>('POST', '/api/photos/upload', body);
+    // Uploads carry a real image payload — give them their own generous window
+    // instead of the client's (deliberately short) default read timeout, so a
+    // slow mobile uplink finishes instead of wrongly aborting.
+    return client.request<PhotoDirectUploadResponse>('POST', '/api/photos/upload', body, {
+      timeoutMs: 60_000,
+    });
   },
   /** List the photos bound to a product (each row carries a `publicUrl`). */
   listForProduct(client: ApiClient, productId: string): Promise<{ items: PhotoRow[] }> {

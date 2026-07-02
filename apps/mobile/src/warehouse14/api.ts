@@ -214,6 +214,11 @@ export const DEV_DEVICE_FINGERPRINT =
 export const apiClient: ApiClient = createApiClient({
   baseUrl: API_BASE_URL,
   credentials: "include",
+  // Reads are small JSON cushioned by the stale-while-revalidate cache, so a
+  // tight 10s per-attempt window surfaces the calm offline state fast instead
+  // of a long spinner. Heavy payloads opt into their own budget per call
+  // (photo + KYC uploads use 60s inside the api-client domain methods).
+  timeoutMs: 10_000,
   defaultHeaders: { "x-dev-device-fingerprint": DEV_DEVICE_FINGERPRINT },
   getAuthToken: getSessionToken,
   middlewares: [

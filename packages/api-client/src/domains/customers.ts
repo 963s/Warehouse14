@@ -368,6 +368,8 @@ export const customersApi = {
       'POST',
       `/api/customers/${encodeURIComponent(customerId)}/kyc-documents`,
       body,
+      // ID-image upload — its own generous window (see photosApi.uploadDirect).
+      { timeoutMs: 60_000 },
     );
   },
   /**
