@@ -42,6 +42,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react"
 import { ScrollView, View, type TextInputProps } from "react-native"
@@ -49,11 +50,13 @@ import Animated, {
   Extrapolation,
   FadeIn,
   interpolate,
+  interpolateColor,
   runOnJS,
   type SharedValue,
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
+  withSequence,
   withTiming,
 } from "react-native-reanimated"
 import { ChevronDown } from "lucide-react-native"
@@ -191,6 +194,47 @@ function wheelTick(): void {
   haptics.selection()
 }
 
+/**
+ * The wheel's REST detector — the physics of "the stop IS the confirmation".
+ *
+ * Committing only on `onMomentumScrollEnd` has a hole the owner felt daily: a
+ * slow drag released WITHOUT a fling never fires that event on iOS, so the
+ * chosen row silently never committed until he tapped the field again. Instead,
+ * every scroll event refreshes this debounce; only when the wheel has truly
+ * RESTED (no event for SETTLE_MS — covers momentum end, a no-fling release, and
+ * the snap tail) does the centred row commit. Any new touch cancels the pending
+ * commit, so someone still browsing back and forth is never interrupted — the
+ * wheel decides nothing while a finger is on it or it is still moving.
+ */
+const WHEEL_SETTLE_MS = 200
+
+function useWheelSettle(onSettle: (index: number) => void): {
+  noteScroll: (offsetY: number) => void
+  cancelSettle: () => void
+} {
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastY = useRef(0)
+  const onSettleRef = useRef(onSettle)
+  onSettleRef.current = onSettle
+  const cancelSettle = useCallback(() => {
+    if (timer.current != null) {
+      clearTimeout(timer.current)
+      timer.current = null
+    }
+  }, [])
+  const noteScroll = useCallback((offsetY: number) => {
+    lastY.current = offsetY
+    if (timer.current != null) clearTimeout(timer.current)
+    timer.current = setTimeout(() => {
+      timer.current = null
+      onSettleRef.current(Math.round(lastY.current / WHEEL_ITEM_H))
+    }, WHEEL_SETTLE_MS)
+  }, [])
+  // Never fire a stale commit after unmount.
+  useEffect(() => cancelSettle, [cancelSettle])
+  return { noteScroll, cancelSettle }
+}
+
 // A wheel inside a Dialog (a separate iOS window where gesture-handler does not
 // coordinate) loses its vertical pan to the enclosing ScrollView. The scroll
 // container provides this setter; an open wheel calls it to freeze the parent
@@ -237,16 +281,26 @@ export function WheelPicker<T extends string>({
   const chevron = useSharedValue(0)
   const reduceMotion = useReduceMotion()
 
-  const onScroll = useAnimatedScrollHandler({
-    onScroll: (e) => {
-      scrollY.value = e.contentOffset.y
-      const idx = Math.round(e.contentOffset.y / WHEEL_ITEM_H)
-      if (idx !== lastTick.value) {
-        lastTick.value = idx
-        runOnJS(wheelTick)()
-      }
-    },
-  })
+  // The gilt band warms for a beat when a settled choice commits — the eye
+  // reads "gespeichert" without a popup. Reduce-motion skips the pulse.
+  const bandPulse = useSharedValue(0)
+  // Self-tidy: a comfortable moment after a settled commit (and only if the
+  // owner hasn't touched the wheel again) the panel folds itself away — the
+  // collapsed row showing the chosen value IS the receipt. Any interaction
+  // cancels it, so browsing is never yanked shut mid-thought.
+  const collapseTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const cancelCollapse = useCallback(() => {
+    if (collapseTimer.current != null) {
+      clearTimeout(collapseTimer.current)
+      collapseTimer.current = null
+    }
+  }, [])
+
+  const closeWheel = useCallback(() => {
+    chevron.value = reduceMotion ? 0 : withTiming(0, timingHover("fast"))
+    setOpen(false)
+    lockScroll?.(false)
+  }, [chevron, reduceMotion, lockScroll])
 
   const commit = useCallback(
     (rawIndex: number) => {
@@ -255,10 +309,43 @@ export function WheelPicker<T extends string>({
       if (next && next.value !== value) {
         haptics.selection()
         onChange(next.value)
+        if (!reduceMotion) {
+          bandPulse.value = withSequence(
+            withTiming(1, { duration: 140 }),
+            withTiming(0, { duration: 420 }),
+          )
+        }
       }
+      // Rested = confirmed (changed or re-confirmed the same) → fold away soon.
+      cancelCollapse()
+      collapseTimer.current = setTimeout(() => {
+        collapseTimer.current = null
+        closeWheel()
+      }, 650)
     },
-    [options, value, onChange],
+    [options, value, onChange, reduceMotion, bandPulse, cancelCollapse, closeWheel],
   )
+
+  const { noteScroll, cancelSettle } = useWheelSettle(commit)
+  // A finger back on the wheel means "still choosing" — nothing commits, nothing folds.
+  const onWheelTouch = useCallback(() => {
+    cancelSettle()
+    cancelCollapse()
+  }, [cancelSettle, cancelCollapse])
+  useEffect(() => cancelCollapse, [cancelCollapse])
+
+  const onScroll = useAnimatedScrollHandler({
+    onScroll: (e) => {
+      scrollY.value = e.contentOffset.y
+      const idx = Math.round(e.contentOffset.y / WHEEL_ITEM_H)
+      if (idx !== lastTick.value) {
+        lastTick.value = idx
+        runOnJS(wheelTick)()
+      }
+      // Refresh the rest detector on every movement — only true stillness commits.
+      runOnJS(noteScroll)(e.contentOffset.y)
+    },
+  })
 
   // A required field with an honest default commits its first option on mount so
   // the collapsed row reads a real value. Fields that must NOT default (the owner
@@ -270,6 +357,9 @@ export function WheelPicker<T extends string>({
 
   const toggle = () => {
     haptics.selection()
+    // A manual toggle overrides any pending settle-commit or self-fold.
+    cancelSettle()
+    cancelCollapse()
     const chevronTarget = open ? 0 : 1
     chevron.value = reduceMotion ? chevronTarget : withTiming(chevronTarget, timingHover("fast"))
     setOpen((o) => !o)
@@ -277,6 +367,12 @@ export function WheelPicker<T extends string>({
   }
   const chevronStyle = useAnimatedStyle(() => ({
     transform: [{ rotate: `${chevron.value * 180}deg` }],
+  }))
+  const bandGilt = t.colors.gilt
+  const bandInk = t.colors.foreground
+  const bandStyle = useAnimatedStyle(() => ({
+    borderColor: interpolateColor(bandPulse.value, [0, 1], [`${bandGilt}5e`, bandGilt]),
+    backgroundColor: interpolateColor(bandPulse.value, [0, 1], [`${bandInk}0a`, `${bandGilt}24`]),
   }))
 
   const pad = WHEEL_ITEM_H * WHEEL_CENTER
@@ -320,21 +416,23 @@ export function WheelPicker<T extends string>({
           entering={FadeIn.duration(reduceMotion ? 0 : duration.fast)}
           style={{ height: WHEEL_ITEM_H * WHEEL_VISIBLE }}
         >
-          {/* The centred selection band — a gilt-edged slot the chosen value rests in. */}
-          <View
+          {/* The centred selection band — a gilt-edged slot the chosen value rests
+              in. It warms briefly when a settled choice commits (bandStyle). */}
+          <Animated.View
             pointerEvents="none"
-            style={{
-              position: "absolute",
-              left: 0,
-              right: 0,
-              top: pad,
-              height: WHEEL_ITEM_H,
-              borderRadius: 10,
-              borderTopWidth: 1,
-              borderBottomWidth: 1,
-              borderColor: `${t.colors.gilt}5e`,
-              backgroundColor: `${t.colors.foreground}0a`,
-            }}
+            style={[
+              {
+                position: "absolute",
+                left: 0,
+                right: 0,
+                top: pad,
+                height: WHEEL_ITEM_H,
+                borderRadius: 10,
+                borderTopWidth: 1,
+                borderBottomWidth: 1,
+              },
+              bandStyle,
+            ]}
           />
           <Animated.ScrollView
             onScroll={onScroll}
@@ -345,7 +443,8 @@ export function WheelPicker<T extends string>({
             bounces={false}
             nestedScrollEnabled
             contentOffset={{ x: 0, y: selectedIndex * WHEEL_ITEM_H }}
-            onMomentumScrollEnd={(e) => commit(Math.round(e.nativeEvent.contentOffset.y / WHEEL_ITEM_H))}
+            onTouchStart={onWheelTouch}
+            onScrollBeginDrag={onWheelTouch}
             contentContainerStyle={{ paddingVertical: pad }}
           >
             {options.map((opt, i) => (
@@ -432,6 +531,11 @@ function WheelColumn({
   const t = useW14Theme()
   const scrollY = useSharedValue(selectedIndex * WHEEL_ITEM_H)
   const lastTick = useSharedValue(selectedIndex)
+  // Same rest-is-the-confirmation mechanic as the single wheel: a slow drag
+  // released without a fling never fires onMomentumScrollEnd, so the column
+  // commits whenever it truly RESTS instead. The composite date panel never
+  // folds itself (three columns are a deliberate multi-step choice).
+  const { noteScroll, cancelSettle } = useWheelSettle(onCommit)
   const onScroll = useAnimatedScrollHandler({
     onScroll: (e) => {
       scrollY.value = e.contentOffset.y
@@ -440,6 +544,7 @@ function WheelColumn({
         lastTick.value = idx
         runOnJS(wheelTick)()
       }
+      runOnJS(noteScroll)(e.contentOffset.y)
     },
   })
   const pad = WHEEL_ITEM_H * WHEEL_CENTER
@@ -454,7 +559,8 @@ function WheelColumn({
       bounces={false}
       nestedScrollEnabled
       contentOffset={{ x: 0, y: selectedIndex * WHEEL_ITEM_H }}
-      onMomentumScrollEnd={(e) => onCommit(Math.round(e.nativeEvent.contentOffset.y / WHEEL_ITEM_H))}
+      onTouchStart={cancelSettle}
+      onScrollBeginDrag={cancelSettle}
       contentContainerStyle={{ paddingVertical: pad }}
     >
       {options.map((opt, i) => (

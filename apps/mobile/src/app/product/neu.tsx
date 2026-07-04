@@ -199,6 +199,7 @@ export default function NeuerArtikelScreen() {
       acquisitionCostEur: form.acquisition.trim(),
       listPriceEur: form.listPrice.trim(),
       name: form.name.trim(),
+      ...(form.description.trim() ? { descriptionDe: form.description.trim() } : {}),
       ...(form.metal ? { metal: form.metal } : {}),
       ...(form.weightGrams.trim() ? { weightGrams: form.weightGrams.trim() } : {}),
       ...(form.fineness.trim() ? { finenessDecimal: form.fineness.trim() } : {}),
@@ -354,6 +355,20 @@ export default function NeuerArtikelScreen() {
             aria-invalid={!!errors.name}
             style={errors.name ? { borderColor: t.colors.destructive } : undefined}
             accessibilityLabel="Name"
+          />
+        </Field>
+
+        <Field label="Beschreibung" hint="Optional erscheint in der Storefront.">
+          <Input
+            value={form.description}
+            onChangeText={(v) => patch("description", v)}
+            placeholder="Details, Herkunft, Besonderheiten …"
+            multiline
+            textAlignVertical="top"
+            className="h-auto"
+            style={{ minHeight: 88, paddingTop: t.space.x2 }}
+            autoCapitalize="sentences"
+            accessibilityLabel="Beschreibung"
           />
         </Field>
 

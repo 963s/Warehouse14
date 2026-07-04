@@ -183,6 +183,8 @@ function isPositivePrice(value: string): boolean {
 /** The intake draft — all strings/enums the „Neu"-Formular collects. */
 export interface ProductIntakeForm {
   name: string
+  /** Optional free-text description — shown in the storefront (descriptionDe). */
+  description: string
   itemType: ProductItemType | null
   metal: Metal | null
   weightGrams: string
@@ -205,6 +207,7 @@ export interface ProductIntakeForm {
 /** A blank intake draft (Differenzbesteuerung §25a + „Gut" are the defaults). */
 export const EMPTY_PRODUCT_INTAKE: ProductIntakeForm = {
   name: "",
+  description: "",
   itemType: null,
   metal: null,
   weightGrams: "",
