@@ -59,6 +59,7 @@ import { Text } from "@/components/ui/text"
 import {
   absoluteUrl,
   currentMetalPrices,
+  deleteProductPhoto,
   formatEur,
   getProduct,
   listProductPhotos,
@@ -86,6 +87,7 @@ import {
   Hairline,
   haptics,
   InlineError,
+  invalidateQueries,
   isNotFoundError,
   MetalIcon,
   type MetalKind,
@@ -202,6 +204,24 @@ export default function ProductDetailScreen() {
     onSuccess: () => {
       haptics.selection()
       void photosQ.refetch()
+      // The Lager row shows the primary thumb — refresh it without a manual pull.
+      invalidateQueries("lager:")
+    },
+    onError: () => haptics.error(),
+  })
+
+  // Foto löschen — long-press on a thumbnail opens the confirm; the server
+  // removes row + files and auto-promotes the newest remaining photo when the
+  // primary was deleted. Refetch here + invalidate the Lager list so every
+  // surface reflects it immediately (no manual refresh, ever).
+  const [confirmPhotoDelete, setConfirmPhotoDelete] = useState<PhotoRow | null>(null)
+  const deletePhotoM = useMutation((photoId: string) => deleteProductPhoto(photoId), {
+    onSuccess: () => {
+      haptics.success()
+      setConfirmPhotoDelete(null)
+      setOkMsg("Foto gelöscht")
+      void photosQ.refetch()
+      invalidateQueries("lager:")
     },
     onError: () => haptics.error(),
   })
@@ -230,6 +250,8 @@ export default function ProductDetailScreen() {
   const deleteM = useMutation((_vars: void) => removeProduct(id), {
     onSuccess: () => {
       haptics.success()
+      // The Lager list must not keep showing the dead row until a manual pull.
+      invalidateQueries("lager:")
       router.back()
     },
     onError: () => haptics.error(),
@@ -582,10 +604,14 @@ export default function ProductDetailScreen() {
                       key={ph.id}
                       accessibilityRole="button"
                       accessibilityLabel={ph.isPrimary ? "Hauptbild" : "Als Hauptbild setzen"}
+                      accessibilityHint="Zum Löschen gedrückt halten"
                       accessibilityState={{ selected: ph.isPrimary }}
-                      disabled={ph.isPrimary || setPrimaryM.isPending}
                       onPress={() => {
-                        if (!ph.isPrimary) void setPrimaryM.mutate(ph.id)
+                        if (!ph.isPrimary && !setPrimaryM.isPending) void setPrimaryM.mutate(ph.id)
+                      }}
+                      onLongPress={() => {
+                        haptics.selection()
+                        setConfirmPhotoDelete(ph)
                       }}
                     >
                       <View className="gap-1.5">
@@ -809,6 +835,55 @@ export default function ProductDetailScreen() {
             </Button>
             <Button variant="destructive" onPress={runDelete} accessibilityLabel="Löschen">
               <Text>Löschen</Text>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Foto löschen — per Long-Press auf einer Miniatur geöffnet. Der Server
+          entfernt Zeile + Dateien und befördert bei Bedarf das neueste
+          verbleibende Foto zum Hauptbild. */}
+      <Dialog
+        open={confirmPhotoDelete != null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmPhotoDelete(null)
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <View className="flex-row items-center gap-2.5">
+              <View
+                className="h-9 w-9 items-center justify-center rounded-full"
+                style={{ backgroundColor: t.colors.destructive + "1f" }}
+              >
+                <ShieldAlert size={t.icon.md} color={t.colors.destructive} />
+              </View>
+              <DialogTitle>Foto löschen?</DialogTitle>
+            </View>
+            <DialogDescription>
+              {confirmPhotoDelete?.isPrimary
+                ? "Das Hauptbild wird unwiderruflich gelöscht. Das neueste verbleibende Foto wird automatisch zum Hauptbild."
+                : "Dieses Foto wird unwiderruflich gelöscht."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onPress={() => setConfirmPhotoDelete(null)}
+              disabled={deletePhotoM.isPending}
+              accessibilityLabel="Abbrechen"
+            >
+              <Text>Abbrechen</Text>
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={deletePhotoM.isPending}
+              onPress={() => {
+                if (confirmPhotoDelete) void deletePhotoM.mutate(confirmPhotoDelete.id)
+              }}
+              accessibilityLabel="Foto löschen"
+            >
+              <Text>{deletePhotoM.isPending ? "Wird gelöscht…" : "Löschen"}</Text>
             </Button>
           </DialogFooter>
         </DialogContent>

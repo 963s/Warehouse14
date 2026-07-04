@@ -17,7 +17,7 @@
  *                       layer reports every settled read's transport outcome
  *                       here, and the ConnectionBanner mirrors it.
  */
-export { useQuery } from "./useQuery"
+export { invalidateQueries, useQuery } from "./useQuery"
 export { useMultiQuery } from "./useMultiQuery"
 export { useMutation } from "./useMutation"
 export { useRefreshControl } from "./useRefreshControl"

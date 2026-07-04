@@ -28,7 +28,7 @@ import { productPhotoWorkflowEvents, productPhotos } from '@warehouse14/db/schem
 
 import type { Env } from '../config/env.js';
 import { requireAuth, requireRole } from '../lib/auth-policy.js';
-import { readRendition } from '../lib/photo-store.js';
+import { deleteRenditions, readRendition } from '../lib/photo-store.js';
 import { buildR2PublicUrl } from '../lib/r2.js';
 import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 import {
@@ -356,6 +356,73 @@ const photosRoutes: FastifyPluginAsync<PhotosRoutesOpts> = async (app, opts) => 
       });
 
       return reply.status(200).send(serializePhoto(result, opts.env));
+    },
+  );
+
+  // ────────────────────────────────────────────────────────────────────
+  // DELETE /api/photos/:id — remove a photo entirely (row + both stored
+  // renditions). The owner could capture but never REMOVE a bad shot — the
+  // capability was simply never built. If the deleted photo was the primary,
+  // the newest remaining photo of the product is promoted so the catalog tile
+  // never goes blank while other photos exist. The file unlink happens AFTER
+  // the DB commit (deleteRenditions is idempotent; a worst-case orphaned file
+  // is reclaimed by the worker purge sweep).
+  // ────────────────────────────────────────────────────────────────────
+  app.delete<{ Params: TPhotoIdParams }>(
+    '/api/photos/:id',
+    {
+      schema: {
+        tags: ['photos'],
+        summary: 'Delete a photo (row + stored renditions). ADMIN only.',
+        description:
+          'Removes the photo row and its stored WebP renditions. If it was the ' +
+          "product's primary, the newest remaining photo is promoted automatically.",
+        params: PhotoIdParams,
+        response: {
+          200: Type.Object({ id: Type.String({ format: 'uuid' }), deleted: Type.Boolean() }),
+          401: ErrorResponse,
+          403: ErrorResponse,
+          404: ErrorResponse,
+        },
+      },
+    },
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'ADMIN');
+
+      const deletedId = await app.db.transaction(async (tx) => {
+        const [current] = await tx
+          .select()
+          .from(productPhotos)
+          .where(eq(productPhotos.id, req.params.id))
+          .limit(1);
+        if (!current) throw new PhotoNotFoundError(`Photo ${req.params.id} not found`);
+
+        await tx.delete(productPhotos).where(eq(productPhotos.id, req.params.id));
+
+        // Keep the catalog tile alive: promote the newest remaining photo when
+        // the deleted one carried the primary flag.
+        if (current.isPrimary && current.productId) {
+          const [next] = await tx
+            .select({ id: productPhotos.id })
+            .from(productPhotos)
+            .where(eq(productPhotos.productId, current.productId))
+            .orderBy(desc(productPhotos.createdAt))
+            .limit(1);
+          if (next) {
+            await tx
+              .update(productPhotos)
+              .set({ isPrimary: true })
+              .where(eq(productPhotos.id, next.id));
+          }
+        }
+        return current.id;
+      });
+
+      // Post-commit: best-effort unlink of both renditions (idempotent).
+      await deleteRenditions(opts.env, deletedId).catch(() => {});
+
+      return reply.status(200).send({ id: deletedId, deleted: true });
     },
   );
 

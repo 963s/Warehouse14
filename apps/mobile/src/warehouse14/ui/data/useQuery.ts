@@ -50,6 +50,27 @@ export function __resetFocusThrottle(): void {
   lastFocusFetchAt.clear()
 }
 
+/**
+ * Mounted-query registry, keyed by query key. `invalidateQueries(prefix)` is
+ * the app's "no manual refresh, ever" primitive: after a mutation (create /
+ * edit / delete / status change), call it with the affected key prefix and
+ * every MOUNTED query whose key starts with it refetches immediately — the
+ * stale-time window and focus throttle are bypassed, because the caller KNOWS
+ * the data just changed. Unmounted screens need nothing: their state is gone
+ * and the mount effect always fetches fresh.
+ */
+const queryRegistry = new Map<string, Set<() => void>>()
+
+export function invalidateQueries(keyPrefix: string): void {
+  for (const [k, refetchers] of queryRegistry) {
+    if (!k.startsWith(keyPrefix)) continue
+    // Drop the focus throttle for the key so the follow-up focus refetch (if
+    // any) is not swallowed either.
+    lastFocusFetchAt.delete(k)
+    for (const refetch of refetchers) refetch()
+  }
+}
+
 function initialState<T>(enabled: boolean): QueryState<T> {
   return {
     data: null,
@@ -201,6 +222,28 @@ export function useQuery<T>(fetcher: () => Promise<T>, options: QueryOptions = {
     if (enabled) void run("auto")
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, enabled])
+
+  // Register this mounted query under its key so `invalidateQueries(prefix)`
+  // can force-refetch it after a mutation elsewhere (the "no manual refresh"
+  // primitive). The refetcher marks the data stale first so every guard
+  // (stale window, focus throttle) steps aside.
+  useEffect(() => {
+    if (!key || !enabled) return
+    let set = queryRegistry.get(key)
+    if (!set) {
+      set = new Set()
+      queryRegistry.set(key, set)
+    }
+    const force = (): void => {
+      updatedAtRef.current = null
+      if (!fetchingRef.current) void run("auto")
+    }
+    set.add(force)
+    return () => {
+      set.delete(force)
+      if (set.size === 0) queryRegistry.delete(key)
+    }
+  }, [key, enabled, run])
 
   // Refetch-on-focus, with a stale-time guard so tab-hopping doesn't storm the
   // backend. `useFocusEffect` runs on focus and its cleanup runs on blur.

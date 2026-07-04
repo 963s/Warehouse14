@@ -69,6 +69,7 @@ import {
   GoldFlood,
   Hairline,
   haptics,
+  invalidateQueries,
   PaperGrain,
   StaggerItem,
   useScreenInsets,
@@ -216,6 +217,8 @@ export default function NeuerArtikelScreen() {
     // One haptic per action (DESIGN.md §7): the Success notification IS the
     // confirm; the gold flood that follows is visual-only, never a second buzz.
     haptics.success()
+    // The Lager list shows the new article immediately — no manual refresh.
+    invalidateQueries("lager:")
     setCreated({ id: res.id, sku: res.sku })
     setCelebrate(true)
   }

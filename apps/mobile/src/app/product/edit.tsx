@@ -83,6 +83,7 @@ import {
   ErrorState,
   Hairline,
   haptics,
+  invalidateQueries,
   Skeleton,
   useScreenInsets,
 } from "@/warehouse14/ui"
@@ -244,6 +245,8 @@ export default function ArtikelBearbeitenScreen() {
     }
     // The Success notification IS the confirm (pairs with the verdigris banner).
     haptics.success()
+    // The Lager list reflects the edit immediately — no manual refresh, ever.
+    invalidateQueries("lager:")
     router.back()
   }
 
@@ -254,6 +257,7 @@ export default function ArtikelBearbeitenScreen() {
     try {
       await updateProduct(id, { status: "AVAILABLE" })
       haptics.success()
+      invalidateQueries("lager:")
       router.back()
     } catch (e) {
       haptics.error()
@@ -270,6 +274,7 @@ export default function ArtikelBearbeitenScreen() {
     try {
       await removeProduct(id)
       haptics.success()
+      invalidateQueries("lager:")
       router.back()
     } catch (e) {
       haptics.error()

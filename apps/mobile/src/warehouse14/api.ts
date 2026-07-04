@@ -385,6 +385,11 @@ export function setPhotoPrimary(photoId: string): ReturnType<typeof photosApi.se
   return photosApi.setPrimary(apiClient, photoId)
 }
 
+/** Delete a product photo (row + stored files) — ADMIN. */
+export function deleteProductPhoto(photoId: string): Promise<{ id: string; deleted: boolean }> {
+  return photosApi.remove(apiClient, photoId)
+}
+
 // ── Customers (Kunden + KYC + Vertrauen) ─────────────────────────────────────
 // The SERVER KYC store is the system of record. stampKyc / setTrust / the KYC
 // document POST are ADMIN + step-up; a 403 STEP_UP_REQUIRED is handled

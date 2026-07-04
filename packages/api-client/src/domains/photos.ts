@@ -188,6 +188,17 @@ export const photosApi = {
       `/api/photos/${encodeURIComponent(photoId)}/primary`,
     );
   },
+  /**
+   * Delete a photo entirely (row + stored renditions). ADMIN only. If it was
+   * the product's primary, the server promotes the newest remaining photo so
+   * the catalog tile never goes blank while other photos exist.
+   */
+  remove(client: ApiClient, photoId: string): Promise<{ id: string; deleted: boolean }> {
+    return client.request<{ id: string; deleted: boolean }>(
+      'DELETE',
+      `/api/photos/${encodeURIComponent(photoId)}`,
+    );
+  },
   /** Local photo-store usage gauge (bytes used vs the cap, + count). */
   usage(client: ApiClient): Promise<PhotoStoreUsage> {
     return client.request<PhotoStoreUsage>('GET', '/api/photos/usage');
