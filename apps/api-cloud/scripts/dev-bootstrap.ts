@@ -167,7 +167,41 @@ async function applyMigrationsIfEmpty(sql: Sql): Promise<void> {
   const files = all.filter((n) => /^\d{4}_.+\.sql$/.test(n)).sort();
   for (const file of files) {
     const text = await fsReadFile(resolve(MIGRATIONS_DIR, file), 'utf8');
-    await sql.unsafe(text);
+    // Apply via psql INSIDE the container, statement by statement (autocommit),
+    // exactly like the production migrate service. `sql.unsafe(wholeFile)`
+    // would run the file as ONE implicit transaction, and any migration that
+    // ADDs an enum value and then USES it (0039 REVERSE_CHARGE_13B, 0047, …)
+    // dies there with Postgres 55P04 "unsafe use of new value".
+    const apply = spawnSync(
+      'docker',
+      [
+        'compose',
+        '-f',
+        resolve(DOCKER_COMPOSE_DIR, 'docker-compose.yml'),
+        'exec',
+        '-T',
+        // Same session setting the old postgres.js runner used: SQL-language
+        // function bodies (blind_index in 0007) resolve types only at run
+        // time, so creation-time validation must stay off — like production.
+        '-e',
+        'PGOPTIONS=-c check_function_bodies=off',
+        'postgres',
+        'psql',
+        '-q',
+        '-v',
+        'ON_ERROR_STOP=1',
+        '-U',
+        'warehouse14_migrator',
+        '-d',
+        'warehouse14',
+        '-f',
+        '-',
+      ],
+      { input: text, encoding: 'utf8' },
+    );
+    if (apply.status !== 0) {
+      throw new Error(`migration ${file} failed:\n${apply.stderr || apply.stdout}`);
+    }
     log('migrations', `  ✓ applied ${file}`);
   }
 }
