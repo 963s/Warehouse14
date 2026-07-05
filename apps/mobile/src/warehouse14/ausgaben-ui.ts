@@ -130,34 +130,9 @@ export function toBusinessDay(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
-/** Prefill a "TT.MM.JJJJ" field from a `YYYY-MM-DD` business day (or "" if null). */
-export function businessDayInput(day: string | null): string {
-  if (!day) return ""
-  const m = day.match(/^(\d{4})-(\d{2})-(\d{2})$/)
-  if (!m) return ""
-  const [, yyyy, mm, dd] = m
-  return `${dd}.${mm}.${yyyy}`
-}
-
-/**
- * Parse a "TT.MM.JJJJ" field → a `YYYY-MM-DD` business day for the finance body
- * fields, or null if malformed. An empty/whitespace string returns
- * `{ ok: true, day: null }` so callers can treat it as "kein Datum" (e.g. an
- * open-ended `activeTo`). Guards against JS Date roll-over (32.01 → 01.02).
- */
-export function parseBusinessDayInput(
-  input: string,
-): { ok: true; day: string | null } | { ok: false } {
-  const trimmed = input.trim()
-  if (trimmed === "") return { ok: true, day: null }
-  const m = trimmed.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/)
-  if (!m) return { ok: false }
-  const [, dd, mm, yyyy] = m
-  const d = new Date(Number(yyyy), Number(mm) - 1, Number(dd), 0, 0, 0, 0)
-  if (Number.isNaN(d.getTime())) return { ok: false }
-  if (d.getDate() !== Number(dd) || d.getMonth() !== Number(mm) - 1) return { ok: false }
-  return { ok: true, day: toBusinessDay(d) }
-}
+// The de-DE "TT.MM.JJJJ" typing helpers that used to live here are gone: the
+// finance screens now compose their business days on the shared DateWheel,
+// which emits the bare "YYYY-MM-DD" wire shape directly.
 
 // ── de-DE display formatting ──────────────────────────────────────────────────
 const DAY_FMT = new Intl.DateTimeFormat("de-DE", {

@@ -15,12 +15,8 @@ import type { TaskPriority, UpdateTaskBody } from "@warehouse14/api-client"
 
 import { Text } from "@/components/ui/text"
 import { describeError, getTask, updateTask } from "@/warehouse14/api"
-import {
-  dueDateInput,
-  parseDueDateInput,
-  TASK_PRIORITIES,
-  TASK_PRIORITY_LABELS,
-} from "@/warehouse14/aufgaben-ui"
+import { dueDateDay, TASK_PRIORITIES, TASK_PRIORITY_LABELS } from "@/warehouse14/aufgaben-ui"
+import { DateWheel } from "@/warehouse14/product-form"
 import { useW14Theme } from "@/warehouse14/theme"
 import {
   ErrorState,
@@ -31,6 +27,8 @@ import {
   PressableScale,
   SkeletonCard,
 } from "@/warehouse14/ui"
+
+const CURRENT_YEAR = new Date().getFullYear()
 
 export default function AufgabeBearbeitenScreen() {
   const router = useRouter()
@@ -45,8 +43,8 @@ export default function AufgabeBearbeitenScreen() {
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [priority, setPriority] = useState<TaskPriority>("NORMAL")
-  const [dueInput, setDueInput] = useState("")
-  const [dueError, setDueError] = useState<string | null>(null)
+  // Bare "YYYY-MM-DD" straight from the shared DateWheel; "" = kein Datum.
+  const [dueDate, setDueDate] = useState("")
 
   useEffect(() => {
     let active = true
@@ -64,7 +62,7 @@ export default function AufgabeBearbeitenScreen() {
         setTitle(task.title)
         setDescription(task.description ?? "")
         setPriority(task.priority)
-        setDueInput(dueDateInput(task.dueDate))
+        setDueDate(dueDateDay(task.dueDate))
       } catch (e) {
         if (active) setLoadError(describeError(e))
       } finally {
@@ -81,20 +79,13 @@ export default function AufgabeBearbeitenScreen() {
 
   async function submit() {
     if (!id) throw new Error("Keine Aufgabe ausgewählt.")
-    const parsedDue = parseDueDateInput(dueInput)
-    if (!parsedDue.ok) {
-      haptics.error()
-      setDueError("Bitte im Format TT.MM.JJJJ eingeben.")
-      throw new Error("Fälligkeitsdatum ungültig.")
-    }
-    setDueError(null)
-
+    // The DateWheel composes only real calendar days — nothing to validate.
     // PATCH the editable metadata. dueDate/description accept null to clear.
     const body: UpdateTaskBody = {
       title: titleTrimmed,
       priority,
       description: description.trim() ? description.trim() : null,
-      dueDate: parsedDue.date,
+      dueDate: dueDate || null,
     }
     // 403 STEP_UP_REQUIRED → PIN Dialog opens + the call retries automatically.
     await updateTask(id, body)
@@ -193,22 +184,17 @@ export default function AufgabeBearbeitenScreen() {
           <View className="flex-row flex-wrap gap-2">{TASK_PRIORITIES.map(priorityChip)}</View>
         </FormField>
 
-        <FormField
-          label="Fällig am"
-          hint="Optional Format TT.MM.JJJJ. Leer lassen entfernt das Datum."
-          error={dueError}
-          inputProps={{
-            value: dueInput,
-            onChangeText: (v: string) => {
-              setDueInput(v)
-              if (dueError) setDueError(null)
-            },
-            placeholder: "TT.MM.JJJJ",
-            autoCapitalize: "none",
-            autoCorrect: false,
-            keyboardType: "numbers-and-punctuation",
-          }}
-        />
+        <FormField label="Fällig am" hint="Optional Tag, Monat und Jahr wählen. Das × entfernt das Datum.">
+          <DateWheel
+            value={dueDate || null}
+            onChange={setDueDate}
+            onClear={() => setDueDate("")}
+            accessibilityLabel="Fällig am"
+            minYear={CURRENT_YEAR - 1}
+            maxYear={CURRENT_YEAR + 5}
+            defaultYear={CURRENT_YEAR}
+          />
+        </FormField>
       </FormScreen>
 
       {/* The saved-changes flood visual only (the Success haptic already fired).

@@ -3,7 +3,8 @@
  * `id` it CREATES (expensesApi.create); with an `id` it loads the row
  * (expensesApi.list, filtered to find it) and PATCHes it (expensesApi.update).
  * Fields: amount (Pflicht, de-DE Euro → integer CENTS), category (a chip
- * picker), business day (TT.MM.JJJJ, defaults to today), and an optional note.
+ * picker), business day (the shared DateWheel, seeded with today), and an
+ * optional note.
  *
  * Money is integer CENTS on the wire; the field parses de-DE Euro input
  * (comma OR dot decimals, thousands ignored) through `parseEuroToCents`, so the
@@ -24,15 +25,14 @@ import type { CreateExpenseBody, ExpenseCategory, UpdateExpenseBody } from "@war
 import { Text } from "@/components/ui/text"
 import { createExpense, describeError, listExpenses, updateExpense } from "@/warehouse14/api"
 import {
-  businessDayInput,
   centsToEuroInput,
   EXPENSE_CATEGORY_ICON,
   EXPENSE_CATEGORY_LABELS,
   EXPENSE_CATEGORY_OPTIONS,
-  parseBusinessDayInput,
   parseEuroToCents,
   todayBusinessDay,
 } from "@/warehouse14/ausgaben-ui"
+import { DateWheel } from "@/warehouse14/product-form"
 import { useW14Theme } from "@/warehouse14/theme"
 import {
   ErrorState,
@@ -43,6 +43,8 @@ import {
   PressableScale,
   SkeletonCard,
 } from "@/warehouse14/ui"
+
+const CURRENT_YEAR = new Date().getFullYear()
 
 export default function AusgabeScreen() {
   const router = useRouter()
@@ -58,8 +60,9 @@ export default function AusgabeScreen() {
   const [amount, setAmount] = useState("")
   const [amountError, setAmountError] = useState<string | null>(null)
   const [category, setCategory] = useState<ExpenseCategory>("WARENEINKAUF")
-  const [dateInput, setDateInput] = useState(businessDayInput(todayBusinessDay()))
-  const [dateError, setDateError] = useState<string | null>(null)
+  // Bare "YYYY-MM-DD" business day straight from the shared DateWheel — the
+  // wire shape itself, prefilled with today so the common case is zero taps.
+  const [date, setDate] = useState(todayBusinessDay())
   const [note, setNote] = useState("")
 
   // Edit: load the row. The api-client has no get-by-id for an expense, so we
@@ -81,7 +84,7 @@ export default function AusgabeScreen() {
         }
         setAmount(centsToEuroInput(row.amountCents))
         setCategory(row.category)
-        setDateInput(businessDayInput(row.date))
+        setDate(row.date)
         setNote(row.note ?? "")
       } catch (e) {
         if (active) setLoadError(describeError(e))
@@ -112,21 +115,15 @@ export default function AusgabeScreen() {
     }
     setAmountError(null)
 
-    const parsedDate = parseBusinessDayInput(dateInput)
-    if (!parsedDate.ok || parsedDate.day == null) {
-      haptics.error()
-      setDateError("Bitte ein gültiges Datum im Format TT.MM.JJJJ eingeben.")
-      return false
-    }
-    setDateError(null)
-
+    // The DateWheel composes only real calendar days and the field is seeded
+    // with today — the date needs no further validation here.
     const trimmedNote = note.trim()
 
     if (isEdit) {
       const body: UpdateExpenseBody = {
         amountCents: cents,
         category,
-        date: parsedDate.day,
+        date,
         note: trimmedNote ? trimmedNote : null,
       }
       // 403 STEP_UP_REQUIRED → PIN Dialog opens + the call retries automatically.
@@ -135,7 +132,7 @@ export default function AusgabeScreen() {
       const body: CreateExpenseBody = {
         amountCents: cents,
         category,
-        date: parsedDate.day,
+        date,
         ...(trimmedNote ? { note: trimmedNote } : {}),
       }
       await createExpense(body)
@@ -242,23 +239,16 @@ export default function AusgabeScreen() {
           </View>
         </FormField>
 
-        <FormField
-          label="Datum"
-          required
-          hint="Format TT.MM.JJJJ."
-          error={dateError}
-          inputProps={{
-            value: dateInput,
-            onChangeText: (v: string) => {
-              setDateInput(v)
-              if (dateError) setDateError(null)
-            },
-            placeholder: "TT.MM.JJJJ",
-            autoCapitalize: "none",
-            autoCorrect: false,
-            keyboardType: "numbers-and-punctuation",
-          }}
-        />
+        <FormField label="Datum" required hint="Buchungstag der Ausgabe.">
+          <DateWheel
+            value={date}
+            onChange={setDate}
+            accessibilityLabel="Datum"
+            minYear={CURRENT_YEAR - 6}
+            maxYear={CURRENT_YEAR + 1}
+            defaultYear={CURRENT_YEAR}
+          />
+        </FormField>
 
         <FormField
           label="Notiz"

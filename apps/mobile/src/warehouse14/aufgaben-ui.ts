@@ -200,6 +200,20 @@ function parseDueDateLocal(value: string): Date | null {
   return Number.isNaN(d.getTime()) ? null : d
 }
 
+/**
+ * Bare local "YYYY-MM-DD" for a due-date string (or "" when undated) — the
+ * shape the DateWheel edits and the PATCH body sends. Legacy timestamp rows
+ * collapse to their LOCAL calendar day; the components are reassembled by
+ * hand, never via `toISOString()` (which would shift the day off-UTC).
+ */
+export function dueDateDay(iso: string | null): string {
+  if (!iso) return ""
+  const d = parseDueDateLocal(iso)
+  if (!d) return ""
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
 /** "Mi, 24.06.2026" for a due-date string, or null when undated. */
 export function formatDueDate(iso: string | null): string | null {
   if (!iso) return null
@@ -275,47 +289,6 @@ export function summaryLine(tasks: readonly TaskRow[], serverTotal?: number): st
   return parts.join(" · ")
 }
 
-// ── de-DE date parsing for the create/edit form (no date-picker dep) ──────────
-/** Prefill an "TT.MM.JJJJ" field from a due-date string (or "" when null). */
-export function dueDateInput(iso: string | null): string {
-  if (!iso) return ""
-  const d = parseDueDateLocal(iso)
-  if (!d) return ""
-  const pad = (n: number) => String(n).padStart(2, "0")
-  return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`
-}
-
-/**
- * Parse a "TT.MM.JJJJ" date field → a date-only "YYYY-MM-DD" string for the
- * `dueDate` body field, or `{ ok: false }` if malformed. An empty/whitespace
- * string is treated as "no due date" and yields `date: null` so callers can
- * clear it.
- *
- * The wire value MUST be a bare calendar day, never an ISO timestamp: the
- * backend column `internal_tasks.due_date` is a Postgres DATE and the TypeBox
- * body schema enforces `format: "date"` (ajv-formats), so a full ISO string
- * (`…T00:00:00.000Z`) is rejected with HTTP 400. It must also never be built by
- * round-tripping a local Date through `toISOString()`, which shifts the day for
- * any non-UTC operator (a Europe/Berlin Owner typing 24.06. would otherwise
- * store the 23rd). We therefore assemble the day from the typed components
- * directly and zero-pad it — no timezone ever enters the value.
- */
-export function parseDueDateInput(
-  input: string,
-): { ok: true; date: string | null } | { ok: false } {
-  const trimmed = input.trim()
-  if (trimmed === "") return { ok: true, date: null }
-  const m = trimmed.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/)
-  if (!m) return { ok: false }
-  const [, dd, mm, yyyy] = m
-  const day = Number(dd)
-  const month = Number(mm)
-  const year = Number(yyyy)
-  // Validate the calendar day via a local Date, then DISCARD it — we never read
-  // its UTC value, only confirm the typed day didn't roll over (e.g. 32.01).
-  const probe = new Date(year, month - 1, day, 0, 0, 0, 0)
-  if (Number.isNaN(probe.getTime())) return { ok: false }
-  if (probe.getDate() !== day || probe.getMonth() !== month - 1) return { ok: false }
-  const pad = (n: number) => String(n).padStart(2, "0")
-  return { ok: true, date: `${year}-${pad(month)}-${pad(day)}` }
-}
+// The de-DE "TT.MM.JJJJ" typing helpers that used to live here are gone: every
+// date in the app is now composed on the shared DateWheel, which emits the bare
+// "YYYY-MM-DD" wire shape directly (see dueDateDay above for the read side).

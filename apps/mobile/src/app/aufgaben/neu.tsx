@@ -1,7 +1,7 @@
 /**
  * Neue Aufgabe — the Owner task-create modal. A titled form (FormScreen) over
  * tasksApi.create: title (Pflicht), description, a priority picker, an optional
- * de-DE due date ("TT.MM.JJJJ"), and an optional „mir zuweisen"-toggle.
+ * due date on the shared DateWheel, and an optional „mir zuweisen"-toggle.
  *
  * Assignment: the api-client exposes no staff directory, and the backend
  * auto-fills the creator as the assignee when `assignedToUserId` is omitted. So
@@ -27,7 +27,8 @@ import type { CreateTaskBody, TaskPriority } from "@warehouse14/api-client"
 
 import { Text } from "@/components/ui/text"
 import { createTask } from "@/warehouse14/api"
-import { parseDueDateInput, TASK_PRIORITIES, TASK_PRIORITY_LABELS } from "@/warehouse14/aufgaben-ui"
+import { TASK_PRIORITIES, TASK_PRIORITY_LABELS } from "@/warehouse14/aufgaben-ui"
+import { DateWheel } from "@/warehouse14/product-form"
 import { useSession } from "@/warehouse14/session"
 import { useW14Theme } from "@/warehouse14/theme"
 import {
@@ -39,6 +40,8 @@ import {
   PressableScale,
   StaggerItem,
 } from "@/warehouse14/ui"
+
+const CURRENT_YEAR = new Date().getFullYear()
 
 // ────────────────────────────────────────────────────────────────────────────
 // QuillMark — ein bespoke Aufgaben-Siegel (react-native-svg). Ein Häkchen in
@@ -162,9 +165,10 @@ export default function NeueAufgabeScreen() {
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [priority, setPriority] = useState<TaskPriority>("NORMAL")
-  const [dueInput, setDueInput] = useState("")
+  // Bare "YYYY-MM-DD" straight from the shared DateWheel — already the wire
+  // shape the Postgres DATE column wants, so no de-DE parsing remains here.
+  const [dueDate, setDueDate] = useState("")
   const [assignToMe, setAssignToMe] = useState(false)
-  const [dueError, setDueError] = useState<string | null>(null)
   const [celebrate, setCelebrate] = useState(false)
 
   const titleTrimmed = title.trim()
@@ -176,20 +180,13 @@ export default function NeueAufgabeScreen() {
   const meName: string | null = null
 
   async function submit() {
-    const parsedDue = parseDueDateInput(dueInput)
-    if (!parsedDue.ok) {
-      haptics.error()
-      setDueError("Bitte im Format TT.MM.JJJJ eingeben.")
-      // Throwing keeps FormScreen's busy state correct and shows the banner.
-      throw new Error("Fälligkeitsdatum ungültig.")
-    }
-    setDueError(null)
-
+    // The DateWheel composes only real calendar days, so there is nothing left
+    // to validate here — an empty string simply means "kein Fälligkeitsdatum".
     const body: CreateTaskBody = {
       title: titleTrimmed,
       priority,
       ...(description.trim() ? { description: description.trim() } : {}),
-      ...(parsedDue.date ? { dueDate: parsedDue.date } : {}),
+      ...(dueDate ? { dueDate } : {}),
       ...(assignToMe && actor?.id ? { assignedToUserId: actor.id } : {}),
     }
     // 403 STEP_UP_REQUIRED → PIN Dialog opens + the call retries automatically.
@@ -273,22 +270,17 @@ export default function NeueAufgabeScreen() {
         </StaggerItem>
 
         <StaggerItem index={4} exit={false}>
-          <FormField
-            label="Fällig am"
-            hint="Optional Format TT.MM.JJJJ."
-            error={dueError}
-            inputProps={{
-              value: dueInput,
-              onChangeText: (v: string) => {
-                setDueInput(v)
-                if (dueError) setDueError(null)
-              },
-              placeholder: "TT.MM.JJJJ",
-              autoCapitalize: "none",
-              autoCorrect: false,
-              keyboardType: "numbers-and-punctuation",
-            }}
-          />
+          <FormField label="Fällig am" hint="Optional Tag, Monat und Jahr wählen. Das × entfernt das Datum.">
+            <DateWheel
+              value={dueDate || null}
+              onChange={setDueDate}
+              onClear={() => setDueDate("")}
+              accessibilityLabel="Fällig am"
+              minYear={CURRENT_YEAR - 1}
+              maxYear={CURRENT_YEAR + 5}
+              defaultYear={CURRENT_YEAR}
+            />
+          </FormField>
         </StaggerItem>
 
         <Hairline />

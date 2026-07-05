@@ -59,7 +59,7 @@ import Animated, {
   withSequence,
   withTiming,
 } from "react-native-reanimated"
-import { ChevronDown } from "lucide-react-native"
+import { ChevronDown, X } from "lucide-react-native"
 
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -214,6 +214,7 @@ function useWheelSettle(onSettle: (index: number) => void): {
 } {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastY = useRef(0)
+  const dead = useRef(false)
   const onSettleRef = useRef(onSettle)
   onSettleRef.current = onSettle
   const cancelSettle = useCallback(() => {
@@ -223,6 +224,11 @@ function useWheelSettle(onSettle: (index: number) => void): {
     }
   }, [])
   const noteScroll = useCallback((offsetY: number) => {
+    // runOnJS jobs queued from the UI thread can still land AFTER React
+    // unmounted the column (closing/clearing a still-decelerating wheel).
+    // Without this guard such a late event would re-arm the timer and commit
+    // a value the operator just cleared — the resurrecting-date bug.
+    if (dead.current) return
     lastY.current = offsetY
     if (timer.current != null) clearTimeout(timer.current)
     timer.current = setTimeout(() => {
@@ -230,8 +236,14 @@ function useWheelSettle(onSettle: (index: number) => void): {
       onSettleRef.current(Math.round(lastY.current / WHEEL_ITEM_H))
     }, WHEEL_SETTLE_MS)
   }, [])
-  // Never fire a stale commit after unmount.
-  useEffect(() => cancelSettle, [cancelSettle])
+  // Never fire a stale commit after unmount — and stay dead from then on.
+  useEffect(
+    () => () => {
+      dead.current = true
+      cancelSettle()
+    },
+    [cancelSettle],
+  )
   return { noteScroll, cancelSettle }
 }
 
@@ -302,8 +314,15 @@ export function WheelPicker<T extends string>({
     lockScroll?.(false)
   }, [chevron, reduceMotion, lockScroll])
 
+  // runOnJS scroll events from a dying ScrollView can land AFTER the panel
+  // folded and re-arm the rest detector — this component stays mounted, so the
+  // dead-on-unmount guard never fires. A closed panel must decide nothing.
+  const openRef = useRef(false)
+  openRef.current = open
+
   const commit = useCallback(
     (rawIndex: number) => {
+      if (!openRef.current) return
       const i = Math.min(options.length - 1, Math.max(0, rawIndex))
       const next = options[i]
       if (next && next.value !== value) {
@@ -573,9 +592,28 @@ function WheelColumn({
 export function DateWheel({
   value,
   onChange,
+  minYear = DATE_MIN_YEAR,
+  maxYear,
+  defaultYear = 1990,
+  onClear,
+  accessibilityLabel,
 }: {
   value: string | null
   onChange: (value: string) => void
+  /** Inclusive year range of the year column. Defaults to 1920 … the current
+   *  year (the date-of-birth shape). Validity dates (Ausweis „gültig bis")
+   *  pass a future `maxYear`; the wheel itself is date-agnostic. */
+  minYear?: number
+  maxYear?: number
+  /** Year the column rests on when the field is still empty. */
+  defaultYear?: number
+  /** OPTIONAL dates pass this: a filled row grows a small × that empties the
+   *  field again. Without it the wheel is one-way — once seated, always a date
+   *  (the right shape for required fields). */
+  onClear?: () => void
+  /** Names the field for screen readers (the visible label lives in FormField,
+   *  which VoiceOver cannot associate with this trigger on its own). */
+  accessibilityLabel?: string
 }): ReactNode {
   const t = useW14Theme()
   const [open, setOpen] = useState(false)
@@ -583,25 +621,58 @@ export function DateWheel({
   const chevron = useSharedValue(0)
   const reduceMotion = useReduceMotion()
 
-  const maxYear = new Date().getFullYear()
-  const years = useMemo(
-    () => Array.from({ length: maxYear - DATE_MIN_YEAR + 1 }, (_, i) => DATE_MIN_YEAR + i),
-    [maxYear],
-  )
-  const days = useMemo(() => Array.from({ length: 31 }, (_, i) => i + 1), [])
-
   const parsed = parseISODate(value)
   const hasValue = parsed != null
+
+  // The requested range, WIDENED to always contain the loaded value — an old
+  // task due 2023 opened under minYear=2025 must still show and keep its year,
+  // never silently jump to the range edge.
+  const loYear = Math.min(minYear, parsed?.y ?? minYear)
+  const hiYear = Math.max(maxYear ?? new Date().getFullYear(), parsed?.y ?? minYear)
+  const years = useMemo(
+    () => Array.from({ length: Math.max(1, hiYear - loYear + 1) }, (_, i) => loYear + i),
+    [hiYear, loYear],
+  )
+
   const [d, setD] = useState(parsed?.d ?? 1)
   const [m, setM] = useState(parsed?.m ?? 1)
-  const [y, setY] = useState(parsed?.y ?? 1990)
+  const [y, setY] = useState(parsed?.y ?? Math.min(Math.max(defaultYear, loYear), hiYear))
 
+  // The day column carries exactly the days the CHOSEN month has (Feb 28/29,
+  // leap years included) — an impossible calendar day cannot be composed, so
+  // no consumer ever needs a "31. Februar" validation of its own. Local-only
+  // calendar math; the value string is assembled from parts, never via a
+  // timezone round-trip.
+  const dayCount = new Date(y, m, 0).getDate()
+  const days = useMemo(() => Array.from({ length: dayCount }, (_, i) => i + 1), [dayCount])
+
+  const lastEmitted = useRef<string | null>(value)
   const commit = useCallback(
     (nd: number, nm: number, ny: number) => {
-      onChange(`${ny}-${pad2(nm)}-${pad2(nd)}`)
+      const next = `${ny}-${pad2(nm)}-${pad2(nd)}`
+      lastEmitted.current = next
+      onChange(next)
     },
     [onChange],
   )
+
+  // The parent may change the value OUTSIDE the wheel (fixkosten's „Bis heute
+  // beenden" button while this field is mounted). Re-seed the shown parts from
+  // the prop then — but never after our own commit round-trip, which arrives
+  // back as exactly `lastEmitted`. `panelSeed` remounts open columns so their
+  // scroll positions jump to the new date too.
+  const [panelSeed, setPanelSeed] = useState(0)
+  useEffect(() => {
+    if (value === lastEmitted.current) return
+    lastEmitted.current = value
+    const p = parseISODate(value)
+    if (p) {
+      setD(p.d)
+      setM(p.m)
+      setY(p.y)
+      setPanelSeed((s) => s + 1)
+    }
+  }, [value])
 
   const toggle = () => {
     haptics.selection()
@@ -609,20 +680,36 @@ export function DateWheel({
     chevron.value = reduceMotion ? (next ? 1 : 0) : withTiming(next ? 1 : 0, timingHover("fast"))
     setOpen(next)
     lockScroll?.(next)
-    // First open of an empty field seats the shown default so the row stops
-    // reading „Datum wählen" and the wheels have a value to spin from.
-    if (next && !hasValue) commit(d, m, y)
+    // Opening an EMPTY field commits nothing — looking is not choosing. The
+    // first column that comes to rest commits the full composed date; closing
+    // untouched leaves the field honestly empty ("Datum wählen").
   }
   const chevronStyle = useAnimatedStyle(() => ({
     transform: [{ rotate: `${chevron.value * 180}deg` }],
   }))
+
+  const clear = () => {
+    haptics.selection()
+    if (open) {
+      setOpen(false)
+      lockScroll?.(false)
+      chevron.value = reduceMotion ? 0 : withTiming(0, timingHover("fast"))
+    }
+    onClear?.()
+  }
 
   const display = hasValue ? `${pad2(d)}.${pad2(m)}.${y}` : "Datum wählen"
   const pad = WHEEL_ITEM_H * WHEEL_CENTER
 
   return (
     <View style={{ gap: 8 }}>
-      <PressableScale onPress={toggle} accessibilityRole="button" accessibilityState={{ expanded: open }}>
+      <PressableScale
+        onPress={toggle}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        accessibilityLabel={accessibilityLabel}
+        accessibilityValue={{ text: display }}
+      >
         <View
           style={{
             flexDirection: "row",
@@ -647,9 +734,22 @@ export function DateWheel({
           >
             {display}
           </Text>
-          <Animated.View style={chevronStyle}>
-            <ChevronDown size={t.icon.sm} color={t.colors.mutedForeground} />
-          </Animated.View>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+            {hasValue && onClear ? (
+              <PressableScale
+                onPress={clear}
+                accessibilityRole="button"
+                accessibilityLabel="Datum entfernen"
+                // 16px glyph + 14px slop each side = the 44px WCAG floor.
+                hitSlop={14}
+              >
+                <X size={t.icon.sm} color={t.colors.mutedForeground} />
+              </PressableScale>
+            ) : null}
+            <Animated.View style={chevronStyle}>
+              <ChevronDown size={t.icon.sm} color={t.colors.mutedForeground} />
+            </Animated.View>
+          </View>
         </View>
       </PressableScale>
 
@@ -674,12 +774,14 @@ export function DateWheel({
               backgroundColor: `${t.colors.foreground}0a`,
             }}
           />
-          <View style={{ flexDirection: "row" }}>
+          <View key={panelSeed} style={{ flexDirection: "row" }}>
             <WheelColumn
               options={days.map((n) => pad2(n))}
               selectedIndex={d - 1}
               onCommit={(i) => {
-                const nd = i + 1
+                // Clamp: a late settle can report an offset past a freshly
+                // SHRUNK day list (31 → Februar) — never compose a 31.02.
+                const nd = Math.min(Math.max(1, i + 1), days.length)
                 setD(nd)
                 commit(nd, m, y)
               }}
@@ -689,19 +791,25 @@ export function DateWheel({
               options={MONTHS_DE}
               selectedIndex={m - 1}
               onCommit={(i) => {
-                const nm = i + 1
+                const nm = Math.min(Math.max(1, i + 1), 12)
+                // A shorter month clamps the day (31. Mai → Februar = 28./29.).
+                const nd = Math.min(d, new Date(y, nm, 0).getDate())
                 setM(nm)
-                commit(d, nm, y)
+                if (nd !== d) setD(nd)
+                commit(nd, nm, y)
               }}
               flex={1.6}
             />
             <WheelColumn
               options={years.map((n) => String(n))}
-              selectedIndex={Math.max(0, y - DATE_MIN_YEAR)}
+              selectedIndex={Math.min(years.length - 1, Math.max(0, y - loYear))}
               onCommit={(i) => {
-                const ny = DATE_MIN_YEAR + i
+                const ny = loYear + Math.min(Math.max(0, i), years.length - 1)
+                // Leap-year flip clamps 29. Februar → 28.
+                const nd = Math.min(d, new Date(ny, m, 0).getDate())
                 setY(ny)
-                commit(d, m, ny)
+                if (nd !== d) setD(nd)
+                commit(nd, m, ny)
               }}
               flex={1.2}
             />

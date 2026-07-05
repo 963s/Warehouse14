@@ -3,8 +3,8 @@
  * no `id` it CREATES (fixedCostsApi.create); with an `id` it loads the row
  * (fixedCostsApi.list, filtered to find it) and PATCHes it
  * (fixedCostsApi.update). Fields: label (Pflicht, 1–200), monthly amount
- * (Pflicht, de-DE Euro → integer CENTS), the active-from date (Pflicht,
- * TT.MM.JJJJ, defaults to the first of the current month) and an optional
+ * (Pflicht, de-DE Euro → integer CENTS), the active-from date (Pflicht, the
+ * shared DateWheel, seeded with the first of the current month) and an optional
  * active-to (leer = läuft weiter). A retired line keeps past allocations honest
  * (there is no DELETE — you END it by setting active-to).
  *
@@ -28,13 +28,8 @@ import type { CreateFixedCostBody, UpdateFixedCostBody } from "@warehouse14/api-
 import { Button } from "@/components/ui/button"
 import { Text } from "@/components/ui/text"
 import { createFixedCost, describeError, listFixedCosts, updateFixedCost } from "@/warehouse14/api"
-import {
-  businessDayInput,
-  centsToEuroInput,
-  parseBusinessDayInput,
-  parseEuroToCents,
-  todayBusinessDay,
-} from "@/warehouse14/ausgaben-ui"
+import { centsToEuroInput, parseEuroToCents, todayBusinessDay } from "@/warehouse14/ausgaben-ui"
+import { DateWheel } from "@/warehouse14/product-form"
 import {
   ErrorState,
   FormField,
@@ -50,6 +45,8 @@ function firstOfThisMonth(): string {
   return `${todayBusinessDay().slice(0, 7)}-01`
 }
 
+const CURRENT_YEAR = new Date().getFullYear()
+
 export default function FixkostenScreen() {
   const router = useRouter()
   const { id } = useLocalSearchParams<{ id?: string }>()
@@ -64,9 +61,11 @@ export default function FixkostenScreen() {
   const [labelError, setLabelError] = useState<string | null>(null)
   const [amount, setAmount] = useState("")
   const [amountError, setAmountError] = useState<string | null>(null)
-  const [fromInput, setFromInput] = useState(businessDayInput(firstOfThisMonth()))
-  const [fromError, setFromError] = useState<string | null>(null)
-  const [toInput, setToInput] = useState("")
+  // Bare "YYYY-MM-DD" business days straight from the shared DateWheels — the
+  // wire shape itself. `from` is seeded with the first of the month; `to` may
+  // stay "" (offener Posten).
+  const [from, setFrom] = useState(firstOfThisMonth())
+  const [to, setTo] = useState("")
   const [toError, setToError] = useState<string | null>(null)
 
   // Edit: load the row from the (paged) list — no get-by-id wrapper exists, and
@@ -87,8 +86,8 @@ export default function FixkostenScreen() {
         }
         setLabel(row.label)
         setAmount(centsToEuroInput(row.monthlyAmountCents))
-        setFromInput(businessDayInput(row.activeFrom))
-        setToInput(businessDayInput(row.activeTo))
+        setFrom(row.activeFrom)
+        setTo(row.activeTo ?? "")
       } catch (e) {
         if (active) setLoadError(describeError(e))
       } finally {
@@ -126,22 +125,10 @@ export default function FixkostenScreen() {
     }
     setAmountError(null)
 
-    const parsedFrom = parseBusinessDayInput(fromInput)
-    if (!parsedFrom.ok || parsedFrom.day == null) {
-      haptics.error()
-      setFromError("Bitte ein gültiges Startdatum (TT.MM.JJJJ) eingeben.")
-      return false
-    }
-    setFromError(null)
-
-    const parsedTo = parseBusinessDayInput(toInput)
-    if (!parsedTo.ok) {
-      haptics.error()
-      setToError("Bitte ein gültiges Enddatum (TT.MM.JJJJ) eingeben oder leer lassen.")
-      return false
-    }
-    // The DB CHECK enforces active_to >= active_from — catch it before the round-trip.
-    if (parsedTo.day != null && parsedTo.day < parsedFrom.day) {
+    // The DateWheels compose only real calendar days — only the ORDER can
+    // still be wrong. The DB CHECK enforces active_to >= active_from; bare
+    // ISO days compare lexicographically, so catch it before the round-trip.
+    if (to !== "" && to < from) {
       haptics.error()
       setToError("Das Enddatum darf nicht vor dem Startdatum liegen.")
       return false
@@ -152,8 +139,8 @@ export default function FixkostenScreen() {
       const body: UpdateFixedCostBody = {
         label: labelTrimmed,
         monthlyAmountCents: cents,
-        activeFrom: parsedFrom.day,
-        activeTo: parsedTo.day,
+        activeFrom: from,
+        activeTo: to || null,
       }
       // 403 STEP_UP_REQUIRED → PIN Dialog opens + the call retries automatically.
       await updateFixedCost(id as string, body)
@@ -161,8 +148,8 @@ export default function FixkostenScreen() {
       const body: CreateFixedCostBody = {
         label: labelTrimmed,
         monthlyAmountCents: cents,
-        activeFrom: parsedFrom.day,
-        ...(parsedTo.day != null ? { activeTo: parsedTo.day } : {}),
+        activeFrom: from,
+        ...(to ? { activeTo: to } : {}),
       }
       await createFixedCost(body)
     }
@@ -239,40 +226,38 @@ export default function FixkostenScreen() {
           }}
         />
 
-        <FormField
-          label="Aktiv ab"
-          required
-          hint="Format TT.MM.JJJJ ab wann der Posten anfällt."
-          error={fromError}
-          inputProps={{
-            value: fromInput,
-            onChangeText: (v: string) => {
-              setFromInput(v)
-              if (fromError) setFromError(null)
-            },
-            placeholder: "TT.MM.JJJJ",
-            autoCapitalize: "none",
-            autoCorrect: false,
-            keyboardType: "numbers-and-punctuation",
-          }}
-        />
+        <FormField label="Aktiv ab" required hint="Ab wann der Posten anfällt.">
+          <DateWheel
+            value={from}
+            onChange={setFrom}
+            accessibilityLabel="Aktiv ab"
+            minYear={CURRENT_YEAR - 10}
+            maxYear={CURRENT_YEAR + 1}
+            defaultYear={CURRENT_YEAR}
+          />
+        </FormField>
 
         <FormField
           label="Aktiv bis"
-          hint="Optional leer lassen, solange der Posten weiterläuft."
+          hint="Optional ohne Datum läuft der Posten weiter."
           error={toError}
-          inputProps={{
-            value: toInput,
-            onChangeText: (v: string) => {
-              setToInput(v)
+        >
+          <DateWheel
+            value={to || null}
+            onChange={(v) => {
+              setTo(v)
               if (toError) setToError(null)
-            },
-            placeholder: "TT.MM.JJJJ",
-            autoCapitalize: "none",
-            autoCorrect: false,
-            keyboardType: "numbers-and-punctuation",
-          }}
-        />
+            }}
+            onClear={() => {
+              setTo("")
+              if (toError) setToError(null)
+            }}
+            accessibilityLabel="Aktiv bis"
+            minYear={CURRENT_YEAR - 10}
+            maxYear={CURRENT_YEAR + 10}
+            defaultYear={CURRENT_YEAR}
+          />
+        </FormField>
 
         {/* Edit shortcut: retire the line as of today in one tap (sets active-to). */}
         {isEdit ? (
@@ -281,7 +266,7 @@ export default function FixkostenScreen() {
             onPress={() => {
               haptics.selection()
               setToError(null)
-              setToInput(businessDayInput(todayBusinessDay()))
+              setTo(todayBusinessDay())
             }}
             accessibilityLabel="Aktiv bis heute setzen"
           >

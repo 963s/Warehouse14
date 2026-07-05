@@ -62,10 +62,10 @@ import {
 import {
   CategoryPicker,
   type CategoryChoice,
-  ChipSelect,
   Field,
   type InputRef,
   MoneyField,
+  WheelPicker,
 } from "@/warehouse14/product-form"
 import { MasseField } from "@/warehouse14/masse-field"
 import {
@@ -352,7 +352,16 @@ export default function ArtikelBearbeitenScreen() {
         />
 
         <Field label="Zustand">
-          <ChipSelect options={CONDITION_OPTIONS} value={condition} onChange={setCondition} />
+          {/* The same wheel as „Neuer Artikel" — one control per field across
+              create and edit. No defaultToFirst: the loaded value arrives
+              async and must never be pre-empted by options[0]. */}
+          <WheelPicker
+            options={CONDITION_OPTIONS}
+            value={condition}
+            onChange={setCondition}
+            defaultToFirst={false}
+            placeholder="Zustand wählen"
+          />
         </Field>
 
         <Field label="Beschreibung" hint="Optional erscheint in der Storefront.">

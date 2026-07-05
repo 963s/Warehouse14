@@ -34,7 +34,7 @@ import type { CustomerLanguage } from "@warehouse14/api-client"
 
 import { Input } from "@/components/ui/input"
 import { LANGUAGE_OPTIONS } from "@/warehouse14/customer-ui"
-import { ChipSelect } from "@/warehouse14/product-form"
+import { ChipSelect, DateWheel } from "@/warehouse14/product-form"
 import { useW14Theme } from "@/warehouse14/theme"
 import { FormField } from "@/warehouse14/ui"
 import * as haptics from "@/warehouse14/ui/native/haptics"
@@ -125,7 +125,10 @@ export function validateCustomerForm(s: CustomerFormState): CustomerFormErrors {
   }
 
   if (s.dateOfBirth.trim() && !isRealIsoDate(s.dateOfBirth.trim())) {
-    errors.dateOfBirth = "Datum ungültig Format JJJJ-MM-TT."
+    // Via the DateWheel the only reachable failure is a birth date after
+    // today; a legacy row loaded with a malformed value trips it too, so the
+    // copy names both without claiming a typing format that no longer exists.
+    errors.dateOfBirth = "Geburtsdatum ungültig oder in der Zukunft."
   }
 
   if (s.email.trim() && !EMAIL_RE.test(s.email.trim())) {
@@ -221,7 +224,7 @@ export function CustomerFields({
   onSubmitForm?: () => void
 }) {
   // Refs for keyboard focus-forwarding: each „Weiter" jumps to the next field.
-  const dobRef = useRef<InputRef>(null)
+  // (Geburtsdatum is a DateWheel, not a text input — Name forwards to E-Mail.)
   const emailRef = useRef<InputRef>(null)
   const phoneRef = useRef<InputRef>(null)
   const addressRef = useRef<InputRef>(null)
@@ -248,25 +251,24 @@ export function CustomerFields({
         textContentType="name"
         returnKeyType="next"
         submitBehavior="submit"
-        onSubmitEditing={focusNext(dobRef)}
+        onSubmitEditing={focusNext(emailRef)}
         accessibilityLabel="Name"
       />
 
-      <TextField
+      {/* The same shared DateWheel as everywhere else in the app — birth-date
+          shape (1920 … heute), the × empties the optional field again. */}
+      <FormField
         label="Geburtsdatum"
-        hint="Optional z. B. 1985-04-23."
+        hint="Optional Tag, Monat und Jahr wählen."
         error={errors.dateOfBirth}
-        inputRef={dobRef}
-        value={value.dateOfBirth}
-        onChangeText={patch("dateOfBirth")}
-        placeholder="JJJJ-MM-TT"
-        keyboardType="numbers-and-punctuation"
-        autoCorrect={false}
-        returnKeyType="next"
-        submitBehavior="submit"
-        onSubmitEditing={focusNext(emailRef)}
-        accessibilityLabel="Geburtsdatum"
-      />
+      >
+        <DateWheel
+          value={value.dateOfBirth || null}
+          onChange={patch("dateOfBirth")}
+          onClear={() => patch("dateOfBirth")("")}
+          accessibilityLabel="Geburtsdatum"
+        />
+      </FormField>
 
       <View className="flex-row gap-3">
         <View className="flex-1">

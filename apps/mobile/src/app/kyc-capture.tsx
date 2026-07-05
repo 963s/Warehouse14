@@ -27,6 +27,7 @@ import { describeError } from "@/warehouse14/api"
 import { CapturePhotoScreen } from "@/warehouse14/CapturePhotoScreen"
 import { KYC_DOC_TYPE_OPTIONS } from "@/warehouse14/customer-ui"
 import { uploadCapturedPhoto, type CapturedPhoto } from "@/warehouse14/photo-pipeline"
+import { DateWheel } from "@/warehouse14/product-form"
 import { useW14Theme } from "@/warehouse14/theme"
 import {
   FormField,
@@ -38,14 +39,12 @@ import {
   StaggerItem,
 } from "@/warehouse14/ui"
 
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
+const CURRENT_YEAR = new Date().getFullYear()
 
-/** Build a human reason an ISO-date field is invalid, or null when it's fine. */
+/** The DateWheel composes only real calendar days, so the single reason a
+ *  date field can still be invalid is a REQUIRED one left empty. */
 function dateError(value: string, { required }: { required: boolean }): string | null {
   if (value === "") return required ? "Pflichtfeld." : null
-  if (!ISO_DATE.test(value)) return "Format JJJJ-MM-TT (z. B. 2030-04-21)."
-  const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return "Kein gültiges Datum."
   return null
 }
 
@@ -239,33 +238,40 @@ export default function KycCaptureRoute() {
               accessibilityLabel: "Dokumentnummer",
             }}
           />
+          {/* Both validity dates spin on the same shared DateWheel as every
+              other date in the app — no hand-typed ISO strings. Issue dates
+              look BACK from today; expiry dates look FORWARD (German IDs and
+              passports run up to 10 years, so +15 covers every document). */}
           <FormField
             label="Ausgestellt am"
-            hint="Optional · JJJJ-MM-TT."
+            hint="Optional · Tag, Monat und Jahr wählen."
             error={showErrors ? issuedError : null}
-            inputProps={{
-              value: issuedOn,
-              onChangeText: setIssuedOn,
-              placeholder: "JJJJ-MM-TT",
-              autoCorrect: false,
-              keyboardType: "numbers-and-punctuation",
-              accessibilityLabel: "Ausgestellt am",
-            }}
-          />
+          >
+            <DateWheel
+              value={issuedOn || null}
+              onChange={setIssuedOn}
+              onClear={() => setIssuedOn("")}
+              accessibilityLabel="Ausgestellt am"
+              minYear={CURRENT_YEAR - 30}
+              maxYear={CURRENT_YEAR}
+              defaultYear={CURRENT_YEAR}
+            />
+          </FormField>
           <FormField
             label="Gültig bis"
             required
-            hint="JJJJ-MM-TT."
+            hint="Tag, Monat und Jahr wählen."
             error={showErrors ? expiresError : null}
-            inputProps={{
-              value: expiresOn,
-              onChangeText: setExpiresOn,
-              placeholder: "JJJJ-MM-TT",
-              autoCorrect: false,
-              keyboardType: "numbers-and-punctuation",
-              accessibilityLabel: "Gültig bis",
-            }}
-          />
+          >
+            <DateWheel
+              value={expiresOn || null}
+              onChange={setExpiresOn}
+              accessibilityLabel="Gültig bis"
+              minYear={CURRENT_YEAR - 5}
+              maxYear={CURRENT_YEAR + 15}
+              defaultYear={CURRENT_YEAR}
+            />
+          </FormField>
         </SectionCard>
       </StaggerItem>
 

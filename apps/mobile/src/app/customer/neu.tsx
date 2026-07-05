@@ -343,7 +343,12 @@ export default function NeuerKundeScreen(): ReactNode {
               hint="Optional Tag, Monat und Jahr wählen."
               error={errors.dateOfBirth}
             >
-              <DateWheel value={form.dateOfBirth} onChange={patch("dateOfBirth")} />
+              <DateWheel
+                value={form.dateOfBirth}
+                onChange={patch("dateOfBirth")}
+                onClear={() => patch("dateOfBirth")("")}
+                accessibilityLabel="Geburtsdatum"
+              />
             </FormField>
             <FormField label="Bevorzugte Sprache">
               <ChipSelect
