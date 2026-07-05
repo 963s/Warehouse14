@@ -387,23 +387,67 @@ def render_porthole():
     ImageDraw.Draw(sh).ellipse([cx - R * 1.5, cy - R * 1.5, cx + R * 1.5, cy + R * 1.55], fill=(0, 0, 0, 200))
     img.alpha_composite(blurred(sh, W * 0.014).transform(img.size, Image.AFFINE, (1, 0, -W * 0.006, 0, 1, W * 0.012)))
 
-    # brass hinge left (двух knuckles) + latch right, UNDER the ring
+    # heavy 3D hinge (left) + dog-latch (right), bolted onto the iron ring
     hy = cy
-    hinge = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    hd = ImageDraw.Draw(hinge)
-    hd.rounded_rectangle([cx - R * 1.85, hy - R * 0.42, cx - R * 1.32, hy + R * 0.42], W * 0.008, fill=(160, 128, 66, 255), outline=(40, 30, 10, 255), width=SS)
-    for ky in (hy - R * 0.24, hy + R * 0.08):
-        hd.rounded_rectangle([cx - R * 1.48, ky, cx - R * 1.18, ky + R * 0.17], W * 0.006, fill=(190, 155, 84, 255), outline=(40, 30, 10, 255), width=SS)
-        hd.line([(cx - R * 1.46, ky + SS), (cx - R * 1.2, ky + SS)], fill=(255, 240, 200, 190), width=SS)
-    grad = field_to_rgba(np.tile(np.linspace(0, 1, H).reshape(H, 1), (1, W)), [(0, (250, 226, 158)), (0.5, (176, 140, 70)), (1, (66, 49, 18))])
-    hinge = Image.composite(grad, hinge, hinge.split()[3])
-    img.alpha_composite(hinge)
-    latch = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    ld = ImageDraw.Draw(latch)
-    ld.rounded_rectangle([cx + R * 1.3, hy - R * 0.2, cx + R * 1.72, hy + R * 0.2], W * 0.008, fill=(176, 140, 70, 255), outline=(40, 30, 10, 255), width=SS)
-    ld.rounded_rectangle([cx + R * 1.42, hy + R * 0.14, cx + R * 1.6, hy + R * 0.62], W * 0.008, fill=(176, 140, 70, 255), outline=(40, 30, 10, 255), width=SS)
-    latch = Image.composite(grad, latch, latch.split()[3])
-    img.alpha_composite(latch)
+
+    def _cyl_v(box, ramp, seams=0):
+        """A vertical cylinder: bright band left → dark right (round profile)."""
+        x0b, y0b, x1b, y1b = [int(v) for v in box]
+        wv = max(2, x1b - x0b)
+        prof = np.abs(np.linspace(-1, 1, wv))  # 0 centre → 1 edges
+        shift = np.linspace(0, 1, wv)  # light from the left
+        line = np.clip(0.12 + 0.85 * (0.55 * prof + 0.45 * shift), 0, 1)
+        full = np.ones((H, W), dtype=np.float32)
+        full[:, x0b:x0b + wv] = np.tile(line.reshape(1, -1), (H, 1))
+        col = field_to_rgba(full, ramp)
+        m = Image.new("L", (W, H), 0)
+        ImageDraw.Draw(m).rounded_rectangle(box, W * 0.01, fill=255)
+        img.alpha_composite(Image.composite(col, Image.new("RGBA", (W, H), (0, 0, 0, 0)), m))
+        d2 = ImageDraw.Draw(img)
+        d2.rounded_rectangle(box, W * 0.01, outline=(40, 30, 10, 255), width=SS)
+        for k in range(seams):
+            sy = y0b + (y1b - y0b) * (k + 0.5) / seams
+            d2.line([(x0b + SS, sy), (x1b - SS, sy)], fill=(30, 20, 6, 220), width=int(1.6 * SS))
+            d2.line([(x0b + SS, sy - SS), (x1b - SS, sy - SS)], fill=(255, 240, 200, 150), width=SS)
+
+    brass_ramp = [(0, (252, 233, 178)), (0.32, (208, 172, 96)), (0.7, (120, 92, 40)), (1, (52, 38, 14))]
+    # mount plate (attached over the ring)
+    pl = [cx - R * 1.34, hy - R * 0.56, cx - R * 1.0, hy + R * 0.56]
+    psh = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    ImageDraw.Draw(psh).rounded_rectangle([pl[0] + W * 0.005, pl[1] + W * 0.006, pl[2] + W * 0.005, pl[3] + W * 0.006], W * 0.01, fill=(0, 0, 0, 190))
+    img.alpha_composite(blurred(psh, W * 0.006))
+    _cyl_v(pl, brass_ramp)
+    d = ImageDraw.Draw(img)
+    for by in (hy - R * 0.4, hy + R * 0.4):
+        for bx in (cx - R * 1.26, cx - R * 1.08):
+            d.ellipse([bx - W * 0.008, by - W * 0.008, bx + W * 0.008, by + W * 0.008], fill=(0, 0, 0, 150))
+            fb = radial_field(W, H, bx - W * 0.003, by - W * 0.003, W * 0.016)
+            bi = field_to_rgba(fb, brass_ramp, np.array(ellipse_mask(W, H, [bx - W * 0.007, by - W * 0.007, bx + W * 0.007, by + W * 0.007])))
+            img.alpha_composite(bi)
+            d.ellipse([bx - W * 0.003, by - W * 0.004, bx, by - W * 0.001], fill=(255, 247, 224, 180))
+    # hinge BARREL (the pin cylinder with 3 knuckles) protruding left
+    _cyl_v([cx - R * 1.52, hy - R * 0.62, cx - R * 1.3, hy + R * 0.62], brass_ramp, seams=4)
+
+    # right dog-latch: a plate + a turned lever handle
+    lp = [cx + R * 1.02, hy - R * 0.34, cx + R * 1.34, hy + R * 0.34]
+    lsh = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    ImageDraw.Draw(lsh).rounded_rectangle([lp[0] + W * 0.005, lp[1] + W * 0.006, lp[2] + W * 0.005, lp[3] + W * 0.006], W * 0.01, fill=(0, 0, 0, 180))
+    img.alpha_composite(blurred(lsh, W * 0.006))
+    _cyl_v(lp, brass_ramp)
+    # lever arm (horizontal) + knob
+    _cyl_v([cx + R * 1.3, hy - R * 0.11, cx + R * 1.62, hy + R * 0.11], brass_ramp)
+    d = ImageDraw.Draw(img)
+    kx, ky2 = cx + R * 1.6, hy
+    d.ellipse([kx - W * 0.018, ky2 - W * 0.018, kx + W * 0.018, ky2 + W * 0.018], fill=(0, 0, 0, 160))
+    fk = radial_field(W, H, kx - W * 0.006, ky2 - W * 0.006, W * 0.03)
+    ki = field_to_rgba(fk, brass_ramp, np.array(ellipse_mask(W, H, [kx - W * 0.016, ky2 - W * 0.016, kx + W * 0.016, ky2 + W * 0.016])))
+    img.alpha_composite(ki)
+    d.ellipse([kx - W * 0.007, ky2 - W * 0.008, kx - W * 0.001, ky2 - W * 0.002], fill=(255, 247, 224, 190))
+    # latch plate bolts
+    for by in (hy - R * 0.2, hy + R * 0.2):
+        bx = cx + R * 1.18
+        d.ellipse([bx - W * 0.007, by - W * 0.007, bx + W * 0.007, by + W * 0.007], fill=(46, 33, 10, 220))
+        d.ellipse([bx - W * 0.004, by - W * 0.005, bx, by - W * 0.001], fill=(255, 240, 200, 150))
     d = ImageDraw.Draw(img)
     d.line([(cx + R * 1.32, hy - R * 0.17), (cx + R * 1.7, hy - R * 0.17)], fill=(255, 240, 200, 170), width=SS)
 
@@ -670,62 +714,164 @@ def render_tank(metal):
     interior = field_to_rgba(fld, [(0, (60, 66, 74)), (0.42, (26, 30, 36)), (1, (8, 10, 13))], np.array(body))
     img.alpha_composite(interior)
 
-    # granulate heap — pre-shaded sprites packed in five mounded rows
+    # COIN HOARD — a jar of minted coins seen from the side (reference match):
+    # piled in mounded depth rows, back rows dimmed, mostly face-on with some
+    # tilted toward edge-on for variety. Clipped to the glass body.
     heap = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     bed = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    ImageDraw.Draw(bed).rounded_rectangle([x0 + bw * 0.02, y1 - bh * 0.5, x1 - bw * 0.02, y1 - bh * 0.04], bh * 0.18, fill=(0, 0, 0, 160))
+    ImageDraw.Draw(bed).rounded_rectangle([x0 + bw * 0.02, y1 - bh * 0.52, x1 - bw * 0.02, y1 - bh * 0.03], bh * 0.18, fill=(0, 0, 0, 175))
     img.alpha_composite(blurred(bed, W * 0.008))
+    # rows: (centre-y, coin-diam frac of H, count, mound amp, dim alpha, tilt)
     rows = [
-        (y1 - bh * 0.62, 0.058, 15, 0.16, 90),
-        (y1 - bh * 0.50, 0.062, 17, 0.11, 55),
-        (y1 - bh * 0.38, 0.066, 18, 0.07, 30),
-        (y1 - bh * 0.24, 0.070, 19, 0.03, 10),
-        (y1 - bh * 0.11, 0.072, 20, 0.0, 0),
+        (y1 - bh * 0.60, 0.115, 8, 0.14, 96, 0.80),
+        (y1 - bh * 0.47, 0.125, 9, 0.10, 58, 0.72),
+        (y1 - bh * 0.33, 0.135, 9, 0.06, 30, 0.66),
+        (y1 - bh * 0.19, 0.140, 10, 0.02, 8, 0.62),
     ]
-    for ri, (ry, grf, n, amp, dimm) in enumerate(rows):
+    for ri, (ry, grf, n, amp, dimm, tiltbase) in enumerate(rows):
         for i in range(n):
             t = i / (n - 1)
-            gx = x0 + bw * 0.045 + (bw * 0.91) * t + (rng.random() - 0.5) * bw * 0.018
-            gy = ry - math.sin(min(1, t * 1.3) * math.pi) * bh * amp + (rng.random() - 0.5) * bh * 0.025
-            gpx = max(10, int(H * grf * (0.85 + rng.random() * 0.35)))
-            sp = nugget_sprite(gpx * 2, int(rng.integers(1, 1e9))) if gold else pebble_sprite(gpx * 2, int(rng.integers(1, 1e9)))
+            gx = x0 + bw * 0.06 + (bw * 0.88) * t + (rng.random() - 0.5) * bw * 0.03
+            gy = ry - math.sin(min(1, t * 1.3) * math.pi) * bh * amp + (rng.random() - 0.5) * bh * 0.035
+            gpx = max(14, int(H * grf * (0.9 + rng.random() * 0.24)))
+            tilt = min(0.92, tiltbase + (rng.random() - 0.4) * 0.28)
+            sp = render_coin(gpx * 2, metal, np.random.default_rng(int(rng.integers(1, 1e9))), tilt=tilt, with_shadow=(ri > 0))
             if dimm:
                 dk = Image.new("RGBA", sp.size, (5, 4, 8, dimm))
                 sp = Image.alpha_composite(sp, Image.composite(dk, Image.new("RGBA", sp.size, (0, 0, 0, 0)), sp.split()[3]))
             heap.alpha_composite(sp, (int(gx - gpx), int(gy - gpx)))
     img.alpha_composite(Image.composite(heap, Image.new("RGBA", (W, H), (0, 0, 0, 0)), body))
 
-    # glass overlays ABOVE granulate
+    # glass overlays ABOVE the hoard — thick crystal: a broad soft sheen, a crisp
+    # top-edge highlight running the tube length, subtle vertical reflection
+    # streaks. Kept inside the collar span so the end caps cover their ends.
     d = ImageDraw.Draw(img)
     sheen = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    sd = ImageDraw.Draw(sheen)
-    sd.ellipse([x0 + bw * 0.05, y0 + bh * 0.04, x1 - bw * 0.3, y0 + bh * 0.3], fill=(255, 255, 255, 46))
-    img.alpha_composite(blurred(sheen, W * 0.014))
-    streak = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    ImageDraw.Draw(streak).line([(x0 + bw * 0.12, y0 + bh * 0.16), (x0 + bw * 0.42, y0 + bh * 0.1)], fill=(255, 255, 255, 130), width=int(bh * 0.05))
-    img.alpha_composite(blurred(streak, W * 0.006))
+    ImageDraw.Draw(sheen).ellipse([x0 + bw * 0.08, y0 + bh * 0.03, x0 + bw * 0.58, y0 + bh * 0.34], fill=(255, 255, 255, 42))
+    img.alpha_composite(blurred(sheen, W * 0.016))
+    for sx in (0.34, 0.55, 0.74):  # faint vertical reflections down the crystal
+        st = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        ImageDraw.Draw(st).line([(x0 + bw * sx, y0 + bh * 0.12), (x0 + bw * sx - bw * 0.018, y1 - bh * 0.14)], fill=(255, 255, 255, 24), width=int(bw * 0.011))
+        img.alpha_composite(blurred(st, W * 0.005))
+    hl = Image.new("RGBA", (W, H), (0, 0, 0, 0))  # broad top-edge glow
+    ImageDraw.Draw(hl).line([(x0 + bw * 0.17, y0 + bh * 0.11), (x1 - bw * 0.17, y0 + bh * 0.09)], fill=(255, 255, 255, 140), width=int(bh * 0.045))
+    img.alpha_composite(blurred(hl, W * 0.005))
+    d.line([(x0 + bw * 0.20, y0 + bh * 0.10), (x1 - bw * 0.22, y0 + bh * 0.085)], fill=(255, 255, 255, 205), width=SS)  # sharp specular
     d.rounded_rectangle([x0, y0, x1, y1], bh / 2, outline=(15, 18, 22, 255), width=2 * SS)
     d.line([(x0 + bw * 0.06, y1 - 3 * SS), (x1 - bw * 0.06, y1 - 3 * SS)], fill=(0, 0, 0, 170), width=3 * SS)
 
-    # end caps
-    capg = BRASS if gold else [(0.0, (188, 194, 203)), (0.5, (96, 103, 112)), (1.0, (26, 29, 34))]
-    for ex, dim in [(x0, False), (x1, True)]:
+    # END CAPS — machined 3D steel flanges (reference-grade). Each end is built
+    # in depth: a COLLAR BARREL wraps the glass (real wall thickness, drawn first
+    # so the flange overhangs it), then an overhanging FLANGE FACE bears an outer
+    # bevel ring, a recessed groove, a ring of 9 dome bolts, a raised inner hub,
+    # and a centre boss (left) or a protruding valve STUB (right). One light
+    # source, upper-left. Gold = brass, silver = gunmetal steel.
+    capg = BRASS if gold else [(0.0, (216, 223, 232)), (0.34, (150, 158, 168)),
+                               (0.66, (78, 84, 93)), (1.0, (17, 20, 25))]
+    lite = (255, 247, 224) if gold else (228, 234, 242)
+    rimd = (26, 18, 5) if gold else (7, 8, 10)
+    rx, ry = bw * 0.046, bh * 0.60  # flange overhangs the glass top & bottom
+
+    def _hcyl(box, hipos=0.30, ribs=0, rr=None):
+        """Shade a rounded-rect as a HORIZONTAL cylinder: a bright specular band
+        near the top, dark seats at top & bottom — the collar/stub wall that
+        wraps the tube, giving the cap visible barrel depth."""
+        x0b, y0b, x1b, y1b = [int(v) for v in box]
+        hv = max(2, y1b - y0b)
+        wv = max(1, x1b - x0b)
+        t = np.linspace(0, 1, hv)
+        edge = (2 * np.abs(t - 0.5)) ** 1.7           # 0 centre → 1 top/bottom
+        spec = np.exp(-((t - hipos) / 0.16) ** 2)      # bright specular near hipos
+        line = np.clip(0.60 * edge + 0.34 - 0.48 * spec, 0.02, 1)
+        full = np.ones((H, W), dtype=np.float32)
+        full[y0b:y1b, x0b:x1b] = np.tile(line.reshape(-1, 1), (1, wv))
+        col = field_to_rgba(full, capg)
+        radius = rr if rr else hv * 0.4
+        m = Image.new("L", (W, H), 0)
+        ImageDraw.Draw(m).rounded_rectangle([x0b, y0b, x1b, y1b], radius, fill=255)
+        img.alpha_composite(Image.composite(col, Image.new("RGBA", (W, H), (0, 0, 0, 0)), m))
+        d2 = ImageDraw.Draw(img)
+        d2.rounded_rectangle([x0b, y0b, x1b, y1b], radius, outline=rimd + (255,), width=SS)
+        for r in range(ribs):
+            rxp = x0b + wv * (r + 1) / (ribs + 1)
+            d2.line([(rxp, y0b + 2 * SS), (rxp, y1b - 2 * SS)], fill=rimd + (205,), width=int(1.8 * SS))
+            d2.line([(rxp + SS, y0b + 2 * SS), (rxp + SS, y1b - 2 * SS)], fill=lite + (110,), width=SS)
+
+    def _disc(box, light_r=3.4, grain=0.0):
+        """A light-ramped metal disc masked to an ellipse (upper-left lit),
+        optionally carrying fine brushed-steel grain."""
+        bx0, by0, bx1, by1 = box
+        fr = radial_field(W, H, bx0 + (bx1 - bx0) * 0.32, by0 + (by1 - by0) * 0.30,
+                          max(bx1 - bx0, by1 - by0) * light_r * 0.5, power=1.12)
+        if grain:
+            fr = np.clip(fr + (noise(W, H, 2.2, seed=int(abs(bx0 * 7 + by0 * 3)) % 99991) - 0.5) * grain, 0, 1)
+        return field_to_rgba(fr, capg, np.array(ellipse_mask(W, H, box)))
+
+    def _flange(ex, sgn, stub):
+        fx = ex
+        # 1) soft cast shadow behind the flange
         csh = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-        ImageDraw.Draw(csh).ellipse([ex - bw * 0.045 + W * 0.006, cy - bh * 0.58 + W * 0.008, ex + bw * 0.045 + W * 0.006, cy + bh * 0.58 + W * 0.008], fill=(0, 0, 0, 190))
-        img.alpha_composite(blurred(csh, W * 0.008))
-        fldc = radial_field(W, H, ex - bw * 0.02, cy - bh * 0.28, bh * 0.95)
-        cap = field_to_rgba(fldc, capg, np.array(ellipse_mask(W, H, [ex - bw * 0.045, cy - bh * 0.58, ex + bw * 0.045, cy + bh * 0.58])))
-        img.alpha_composite(cap)
+        ImageDraw.Draw(csh).ellipse([fx - rx + W * 0.007, cy - ry + W * 0.012,
+                                     fx + rx + W * 0.007, cy + ry + W * 0.012], fill=(0, 0, 0, 200))
+        img.alpha_composite(blurred(csh, W * 0.009))
+        # 2) collar barrel — the steel band clamping the glass, INBOARD of the
+        #    flange, taller than the glass so it hides the tube shoulder.
+        c_out = fx + sgn * bw * 0.135
+        c_lo, c_hi = sorted([fx, c_out])
+        _hcyl([c_lo, cy - ry * 0.80, c_hi, cy + ry * 0.80], hipos=0.26, ribs=2, rr=bh * 0.05)
+        ImageDraw.Draw(img).line([(c_out, cy - ry * 0.70), (c_out, cy + ry * 0.70)],
+                                 fill=(0, 0, 0, 150), width=2 * SS)  # seam at the glass
+        # 3) flange face (outer vertical ellipse), overhanging the collar. A
+        #    tight light_r gives a strong top-left→bottom-right ramp so it reads
+        #    as a raised 3D ring, not a flat plate.
+        img.alpha_composite(_disc([fx - rx, cy - ry, fx + rx, cy + ry], light_r=1.5, grain=0.05))
         d = ImageDraw.Draw(img)
-        d.ellipse([ex - bw * 0.045, cy - bh * 0.58, ex + bw * 0.045, cy + bh * 0.58], outline=(20, 15, 5, 255) if gold else (8, 9, 11, 255), width=2 * SS)
-        d.ellipse([ex - bw * 0.028, cy - bh * 0.44, ex + bw * 0.028, cy + bh * 0.44], outline=(0, 0, 0, 130), width=SS)
-        for j, ry in enumerate([cy - bh * 0.34, cy, cy + bh * 0.34]):
-            rv = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-            rr = W * 0.009
-            fldr = radial_field(W, H, ex - rr * 0.4, ry - rr * 0.45, rr * 2)
-            rvi = field_to_rgba(fldr, capg, np.array(ellipse_mask(W, H, [ex - rr, ry - rr, ex + rr, ry + rr])))
-            img.alpha_composite(rvi)
-            d.ellipse([ex - rr * 0.5, ry - rr * 0.55, ex - rr * 0.1, ry - rr * 0.15], fill=(255, 255, 255, 90 if dim else 160))
+        d.ellipse([fx - rx, cy - ry, fx + rx, cy + ry], outline=rimd + (255,), width=int(2.6 * SS))
+        d.arc([fx - rx * 0.95, cy - ry * 0.95, fx + rx * 0.95, cy + ry * 0.95], 145, 258, fill=lite + (230,), width=int(2.4 * SS))
+        d.arc([fx - rx * 0.95, cy - ry * 0.95, fx + rx * 0.95, cy + ry * 0.95], 12, 116, fill=rimd + (230,), width=int(2.4 * SS))
+        # recessed bolt channel — a dark sunken annulus the bolts sit in
+        chan = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        cd = ImageDraw.Draw(chan)
+        cd.ellipse([fx - rx * 0.82, cy - ry * 0.84, fx + rx * 0.82, cy + ry * 0.84], fill=(0, 0, 0, 150))
+        cd.ellipse([fx - rx * 0.40, cy - ry * 0.42, fx + rx * 0.40, cy + ry * 0.42], fill=(0, 0, 0, 0))
+        img.alpha_composite(blurred(chan, W * 0.0018))
+        d.ellipse([fx - rx * 0.82, cy - ry * 0.84, fx + rx * 0.82, cy + ry * 0.84], outline=rimd + (200,), width=SS)
+        d.arc([fx - rx * 0.82, cy - ry * 0.84, fx + rx * 0.82, cy + ry * 0.84], 150, 250, fill=lite + (70,), width=SS)
+        # 4) ring of 8 dome bolts pushed OUT near the rim, in the channel
+        for k in range(8):
+            a = math.radians(-90 + k * 45)
+            bxp = fx + (rx * 0.62) * math.cos(a)
+            byp = cy + (ry * 0.63) * math.sin(a)
+            br = W * 0.0088
+            lit = -176 < math.degrees(a) < -4
+            so = br * 0.16  # shadow pools down-right, not a symmetric black ring
+            d.ellipse([bxp - br * 1.18 + so, byp - br * 1.18 + so, bxp + br * 1.18 + so, byp + br * 1.18 + so], fill=(0, 0, 0, 90))
+            img.alpha_composite(_disc([bxp - br, byp - br, bxp + br, byp + br], light_r=1.7))
+            d.ellipse([bxp - br, byp - br, bxp + br, byp + br], outline=rimd + (200,), width=SS)
+            d.ellipse([bxp - br * 0.52, byp - br * 0.6, bxp - br * 0.04, byp - br * 0.1], fill=(255, 255, 255, 225 if lit else 60))
+        # 5) raised inner hub ring
+        hx, hy2 = rx * 0.36, ry * 0.38
+        img.alpha_composite(_disc([fx - hx, cy - hy2, fx + hx, cy + hy2], light_r=1.9))
+        d.ellipse([fx - hx, cy - hy2, fx + hx, cy + hy2], outline=rimd + (230,), width=int(2 * SS))
+        d.arc([fx - hx * 0.9, cy - hy2 * 0.9, fx + hx * 0.9, cy + hy2 * 0.9], 148, 254, fill=lite + (180,), width=SS)
+        # 6) centre — boss (left) or a protruding valve stub (right)
+        if stub:
+            s_out = fx + sgn * bw * 0.052
+            s_lo, s_hi = sorted([fx, s_out])
+            _hcyl([s_lo, cy - ry * 0.15, s_hi, cy + ry * 0.15], hipos=0.30, rr=ry * 0.15)
+            ex2 = s_hi if sgn > 0 else s_lo
+            srx, sry = bw * 0.010, ry * 0.15
+            img.alpha_composite(_disc([ex2 - srx, cy - sry, ex2 + srx, cy + sry], light_r=3.0))
+            d.ellipse([ex2 - srx, cy - sry, ex2 + srx, cy + sry], outline=rimd + (230,), width=SS)
+            d.arc([ex2 - srx * 0.9, cy - sry * 0.9, ex2 + srx * 0.9, cy + sry * 0.9], 150, 250, fill=lite + (160,), width=SS)
+        else:
+            bx0, by0 = rx * 0.14, ry * 0.15
+            d.ellipse([fx - bx0, cy - by0, fx + bx0, cy + by0], fill=rimd + (255,))
+            img.alpha_composite(_disc([fx - bx0 * 0.82, cy - by0 * 0.82, fx + bx0 * 0.82, cy + by0 * 0.82], light_r=2.4))
+            d.ellipse([fx - bx0 * 0.34, cy - by0 * 0.42, fx - bx0 * 0.02, cy - by0 * 0.06], fill=(255, 255, 255, 170))
+
+    _flange(x1, -1, stub=True)     # right end — with the valve stub
+    _flange(x0, +1, stub=False)    # left end — centre boss
 
     return img.resize((TANK_W, TANK_H), Image.LANCZOS)
 
@@ -898,22 +1044,37 @@ def _brass_rect(img, box, radius, W):
     d.line([(box[0] + 3 * SS, box[1] + 2 * SS), (box[2] - 3 * SS, box[1] + 2 * SS)], fill=(255, 240, 200, 200), width=SS)
 
 
-def _chain(img, x1, y1, x2, y2, links=7):
-    d = ImageDraw.Draw(img)
+def _chain(img, x1, y1, x2, y2, links=9):
+    """A real interlocked chain from (x1,y1) to (x2,y2): oval links whose long
+    axis follows the run, alternating face-on / edge-on so they read locked."""
+    dx, dy = x2 - x1, y2 - y1
+    dist = max(1.0, math.hypot(dx, dy))
+    ang = math.degrees(math.atan2(dy, dx))
+    step = dist / links
+    linkL = step * 1.55  # overlap neighbours → interlocked
     for i in range(links):
-        f = i / (links - 1)
-        lx, ly = x1 + (x2 - x1) * f, y1 + (y2 - y1) * f
-        big = i % 2 == 0
-        rx = (5 if big else 3.4) * SS
-        ry = (7.5 if big else 5) * SS
-        d.ellipse([lx - rx, ly - ry, lx + rx, ly + ry], outline=(138, 109, 47, 255), width=2 * SS)
-        d.arc([lx - rx, ly - ry, lx + rx, ly + ry], 200, 300, fill=(252, 233, 178, 220), width=SS)
+        f = (i + 0.5) / links
+        lx, ly = x1 + dx * f, y1 + dy * f
+        face = i % 2 == 0
+        pad = int(linkL) + 6 * SS
+        tile = Image.new("RGBA", (pad, pad), (0, 0, 0, 0))
+        td = ImageDraw.Draw(tile)
+        c = pad / 2
+        half = linkL / 2
+        w_ = (2.7 if face else 1.3) * SS   # face-on link is wider
+        td.ellipse([c - half, c - w_ * 2.4, c + half, c + w_ * 2.4], outline=(150, 120, 55, 255), width=int(2.4 * SS))
+        td.arc([c - half, c - w_ * 2.4, c + half, c + w_ * 2.4], 150, 250, fill=(252, 233, 178, 230), width=int(1.2 * SS))
+        td.arc([c - half, c - w_ * 2.4, c + half, c + w_ * 2.4], 10, 90, fill=(66, 49, 18, 220), width=int(1.2 * SS))
+        tile = tile.rotate(-ang, resample=Image.BICUBIC, center=(c, c))
+        img.alpha_composite(tile, (int(lx - c), int(ly - c)))
 
 
 def render_balance():
     W, H = BAL_W * SS, BAL_H * SS
     img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    cx = W * 0.33
+    # column sits left-of-centre: both pans stay on-canvas AND the value plate
+    # (RN, from x 0.61) never collides with the right (gold) pan.
+    cx = W * 0.30
     baseY = H * 0.9
     tilt = math.radians(7)  # right pan (gold) sits lower — wealth on the scale
     rng = np.random.default_rng(88)
@@ -943,7 +1104,7 @@ def render_balance():
 
     # pivot + beam at fixed tilt + finial
     pvx, pvy = cx, H * 0.20
-    armL = W * 0.275
+    armL = W * 0.17
     exL = (pvx - armL * math.cos(tilt), pvy + armL * math.sin(tilt))
     exR = (pvx + armL * math.cos(tilt), pvy - armL * math.sin(tilt))
     bsh2 = Image.new("RGBA", (W, H), (0, 0, 0, 0))
@@ -964,20 +1125,28 @@ def render_balance():
     for side, ex in (("L", exL), ("R", exR)):
         px, py = ex
         pan_y = py + H * 0.21
-        _chain(img, px - W * 0.052, py, px - W * 0.062, pan_y - H * 0.012)
-        _chain(img, px, py, px, pan_y - H * 0.016)
-        _chain(img, px + W * 0.052, py, px + W * 0.062, pan_y - H * 0.012)
+        d = ImageDraw.Draw(img)
+        # suspension HOOK RING clasped over the beam tip — the chains hang from it
+        hr = W * 0.014
+        d.ellipse([px - hr, py - hr * 0.5, px + hr, py + hr * 1.5], outline=(66, 49, 18, 255), width=int(3 * SS))
+        d.arc([px - hr, py - hr * 0.5, px + hr, py + hr * 1.5], 150, 250, fill=(252, 233, 178, 230), width=int(1.4 * SS))
+        # 3 chains fan from the SAME hook (px, py+hr) down to the pan rim — a real
+        # 3-cord stirrup, all attached, none floating.
+        hook_y = py + hr
+        _chain(img, px, hook_y, px - W * 0.082, pan_y - H * 0.004)
+        _chain(img, px, hook_y, px + W * 0.082, pan_y - H * 0.004)
+        _chain(img, px, hook_y, px, pan_y - H * 0.01)
         pan = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         pd = ImageDraw.Draw(pan)
-        pd.polygon([(px - W * 0.12, pan_y), (px + W * 0.12, pan_y), (px + W * 0.075, pan_y + H * 0.055), (px - W * 0.075, pan_y + H * 0.055)], fill=(255, 255, 255, 255))
+        pd.polygon([(px - W * 0.098, pan_y), (px + W * 0.098, pan_y), (px + W * 0.06, pan_y + H * 0.055), (px - W * 0.06, pan_y + H * 0.055)], fill=(255, 255, 255, 255))
         pangrad = field_to_rgba(np.tile(np.linspace(0, 1, H).reshape(H, 1), (1, W)), BRASS)
         img.alpha_composite(Image.composite(pangrad, Image.new("RGBA", (W, H), (0, 0, 0, 0)), pan.split()[3]))
         d = ImageDraw.Draw(img)
-        d.polygon([(px - W * 0.12, pan_y), (px + W * 0.12, pan_y), (px + W * 0.075, pan_y + H * 0.055), (px - W * 0.075, pan_y + H * 0.055)], outline=(40, 28, 8, 255))
-        d.line([(px - W * 0.12, pan_y), (px + W * 0.12, pan_y)], fill=(255, 244, 214, 230), width=2 * SS)
-        d.line([(px - W * 0.085, pan_y + H * 0.053), (px + W * 0.085, pan_y + H * 0.053)], fill=(20, 14, 4, 220), width=2 * SS)
+        d.polygon([(px - W * 0.098, pan_y), (px + W * 0.098, pan_y), (px + W * 0.06, pan_y + H * 0.055), (px - W * 0.06, pan_y + H * 0.055)], outline=(40, 28, 8, 255))
+        d.line([(px - W * 0.098, pan_y), (px + W * 0.098, pan_y)], fill=(255, 244, 214, 230), width=2 * SS)
+        d.line([(px - W * 0.07, pan_y + H * 0.053), (px + W * 0.07, pan_y + H * 0.053)], fill=(20, 14, 4, 220), width=2 * SS)
         inner = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-        ImageDraw.Draw(inner).ellipse([px - W * 0.1, pan_y - H * 0.012, px + W * 0.1, pan_y + H * 0.022], fill=(30, 21, 6, 170))
+        ImageDraw.Draw(inner).ellipse([px - W * 0.082, pan_y - H * 0.012, px + W * 0.082, pan_y + H * 0.022], fill=(30, 21, 6, 170))
         img.alpha_composite(blurred(inner, W * 0.004))
         d = ImageDraw.Draw(img)
         if side == "L":

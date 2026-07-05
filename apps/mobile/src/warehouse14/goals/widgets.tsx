@@ -213,39 +213,74 @@ export function WidgetFrame({
   )
 }
 
+/** An engraved brass-framed plate drawn as SVG (bevel frame + recessed face +
+ *  corner rivets) — real metal depth, not a flat CSS border. Fixed aspect so
+ *  the rivets stay round; the value text overlays it, centred. */
 function ValuePlate({ value, pct, tone, valueColor }: { value: string; pct: string | null; tone: string; valueColor?: string }): ReactNode {
+  const W = 210
+  const H = pct != null ? 72 : 56
+  const riv = 8
+  const rivets: Array<[number, number]> = [
+    [riv + 3, riv + 3],
+    [W - riv - 3, riv + 3],
+    [riv + 3, H - riv - 3],
+    [W - riv - 3, H - riv - 3],
+  ]
   return (
-    <View
-      style={{
-        backgroundColor: "#0d0b08",
-        borderRadius: 7,
-        borderWidth: 1.5,
-        borderColor: B_DEEP,
-        borderTopColor: "#241a0b",
-        borderLeftColor: "#3d2f14",
-        borderBottomColor: B_HI,
-        paddingHorizontal: 14,
-        paddingVertical: 4,
-        alignItems: "center",
-        minWidth: "62%",
-      }}
-    >
-      <Text
-        style={{
-          color: valueColor ?? "#eadfc2",
-          fontSize: 17,
-          fontWeight: "800",
-          textShadowColor: "#000",
-          textShadowOffset: { width: 0, height: 1.2 },
-          textShadowRadius: 1,
-        }}
-        numberOfLines={1}
-      >
-        {value}
-      </Text>
-      {pct != null ? (
-        <Text style={{ color: tone, fontSize: 10.5, fontWeight: "800", marginTop: -2 }}>{pct}</Text>
-      ) : null}
+    <View style={{ width: "90%", maxWidth: 178, aspectRatio: W / H, marginTop: 3 }}>
+      <Svg width="100%" height="100%" viewBox={`0 0 ${W} ${H}`}>
+        <Defs>
+          <LinearGradient id="vp_frame" x1="0" y1="0" x2="0.35" y2="1">
+            <Stop offset="0" stopColor="#fdecb2" />
+            <Stop offset="0.28" stopColor="#e9cb82" />
+            <Stop offset="0.6" stopColor="#a5822f" />
+            <Stop offset="1" stopColor="#31240c" />
+          </LinearGradient>
+          <RadialGradient id="vp_face" cx="0.5" cy="0.28" r="1">
+            <Stop offset="0" stopColor="#171310" />
+            <Stop offset="0.7" stopColor="#0c0a07" />
+            <Stop offset="1" stopColor="#050403" />
+          </RadialGradient>
+          <RadialGradient id="vp_riv" cx="0.34" cy="0.3" r="0.9">
+            <Stop offset="0" stopColor="#fdecb2" />
+            <Stop offset="0.5" stopColor="#c9a55c" />
+            <Stop offset="1" stopColor="#2e2109" />
+          </RadialGradient>
+        </Defs>
+        {/* cast shadow + brass bevel frame */}
+        <Rect x={2} y={3} width={W - 2} height={H - 2} rx={11} fill="#000" opacity={0.55} />
+        <Rect x={0} y={0} width={W} height={H} rx={11} fill="url(#vp_frame)" />
+        <Rect x={1.5} y={1.5} width={W - 3} height={3} rx={1.5} fill="#fff3c9" opacity={0.55} />
+        {/* recessed engraved face + top inner shadow */}
+        <Rect x={9} y={9} width={W - 18} height={H - 18} rx={6} fill="url(#vp_face)" stroke="#000" strokeWidth={1} />
+        <Rect x={9} y={9} width={W - 18} height={5} rx={2.5} fill="#000" opacity={0.6} />
+        {/* corner rivets */}
+        {rivets.map(([rx, ry], i) => (
+          <G key={i}>
+            <Circle cx={rx + 0.6} cy={ry + 0.8} r={3.4} fill="#000" opacity={0.5} />
+            <Circle cx={rx} cy={ry} r={3.4} fill="url(#vp_riv)" stroke="#241a08" strokeWidth={0.6} />
+            <Circle cx={rx - 1.1} cy={ry - 1.2} r={1.1} fill="#fff7e0" opacity={0.8} />
+          </G>
+        ))}
+      </Svg>
+      <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, alignItems: "center", justifyContent: "center" }}>
+        <Text
+          style={{
+            color: valueColor ?? "#eadfc2",
+            fontSize: 17,
+            fontWeight: "800",
+            textShadowColor: "#000",
+            textShadowOffset: { width: 0, height: 1.4 },
+            textShadowRadius: 1.5,
+          }}
+          numberOfLines={1}
+        >
+          {value}
+        </Text>
+        {pct != null ? (
+          <Text style={{ color: tone, fontSize: 11, fontWeight: "800", marginTop: -1 }}>{pct}</Text>
+        ) : null}
+      </View>
     </View>
   )
 }
@@ -479,10 +514,10 @@ function BalanceScale({
 }): ReactNode {
   const W = 960
   const H = 720
-  const px = W * 0.6
-  const py = H * 0.36
-  const pw = W * 0.36
-  const ph = H * 0.3
+  const px = W * 0.61
+  const py = H * 0.38
+  const pw = W * 0.35
+  const ph = H * 0.28
   return (
     <Plate art={ART.balance} w={W} h={H}>
       <Rect x={px} y={py} width={pw} height={ph} rx={14} fill="#0d0b08" stroke="#c9a55c" strokeWidth={4} />
