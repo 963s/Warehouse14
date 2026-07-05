@@ -33,7 +33,7 @@ export default function ZielkarteBoard(): ReactNode {
   const rows = chunkPairs(board.metrics)
 
   return (
-    <View style={{ flex: 1, backgroundColor: C.page }}>
+    <View style={{ flex: 1, backgroundColor: "#0a0908" }}>
       <StatusBar barStyle="light-content" />
 
       {/* Dark immersive header (this route hides the nav header). */}
@@ -46,7 +46,7 @@ export default function ZielkarteBoard(): ReactNode {
           alignItems: "center",
           gap: 10,
           borderBottomWidth: 1,
-          borderBottomColor: C.edgeSoft,
+          borderBottomColor: "#00000088",
         }}
       >
         <Pressable
@@ -58,7 +58,17 @@ export default function ZielkarteBoard(): ReactNode {
           <ChevronLeft size={26} color={C.ink} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={{ color: C.ink, fontSize: 20, fontWeight: "800", letterSpacing: 0.4 }}>
+          <Text
+            style={{
+              color: C.ink,
+              fontSize: 20,
+              fontWeight: "800",
+              letterSpacing: 0.4,
+              textShadowColor: "#000",
+              textShadowOffset: { width: 0, height: 1.5 },
+              textShadowRadius: 2,
+            }}
+          >
             Zielkarte
           </Text>
           <Text style={{ color: C.inkMuted, fontSize: 11.5 }}>
