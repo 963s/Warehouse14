@@ -42,10 +42,17 @@ import { evaluateKycGate } from '../../lib/ankauf-kyc-gate.js';
 import { useApiClient } from '../../lib/api-context.js';
 import { fromCents, sumNegotiatedCents } from '../../lib/intake-math.js';
 import {
+  type TseSessionResult,
+  closeTseSession,
+  newIntentionId,
+  openTseSession,
+} from '../../lib/tse-service.js';
+import {
   selectAnkaufCustomerId,
   selectAnkaufItems,
   useAnkaufCartStore,
 } from '../../state/ankauf-cart-store.js';
+import { useHardwareStore } from '../../state/hardware-store.js';
 import { useToastStore } from '../../state/toast-store.js';
 
 export interface AnkaufBezahlenDialogProps {
@@ -61,6 +68,7 @@ export function AnkaufBezahlenDialog({
   const qc = useQueryClient();
   const addToast = useToastStore((s) => s.addToast);
   const printer = useLabelPrinter();
+  const hardwareCfg = useHardwareStore((s) => s.config);
   const items = useAnkaufCartStore(selectAnkaufItems);
   const customerId = useAnkaufCartStore(selectAnkaufCustomerId);
   const payoutMethod = useAnkaufCartStore((s) => s.payoutMethod);
@@ -226,6 +234,19 @@ export function AnkaufBezahlenDialog({
     if (payoutMethod === 'BANK_TRANSFER') body.payoutExternalRef = payoutExternalRef.trim();
     if (notesInternal.trim().length > 0) body.notesInternal = notesInternal.trim();
 
+    // TSE INTENTION — an Ankauf is a Kassenbeleg like a sale (KassenSichV §146a),
+    // so it MUST be TSE-signed. Open the fiscal transaction the moment the payout
+    // is committed, using the identical INTENTION→FINISH sandwich BezahlenDialog
+    // uses for a sale. Best-effort: a failure logs but NEVER blocks the buy-in.
+    const tseIntentionId = newIntentionId();
+    const paymentKind: 'Bar' | 'Unbar' = payoutMethod === 'CASH' ? 'Bar' : 'Unbar';
+    const tseIntentionRes = await openTseSession({
+      config: hardwareCfg.tse,
+      receiptLocator: null,
+      intentionId: tseIntentionId,
+      paymentKind,
+    });
+
     try {
       const result = await transactionsApi.ankauf(api, body);
       setFinalized(result);
@@ -234,6 +255,60 @@ export function AnkaufBezahlenDialog({
         title: 'Ankauf abgeschlossen',
         body: `Beleg-Nr. ${result.receiptLocator}`,
       });
+
+      // TSE FINISH — only if the INTENTION opened. Sign the amount, then durably
+      // persist the signature against the finalized transaction (GoBD / BSI
+      // TR-03153). Both steps are best-effort: a failure NEVER unwinds the booked
+      // Ankauf — the signature falls into the offline queue and is nachgereicht.
+      if ('intention' in tseIntentionRes) {
+        const finishRes: TseSessionResult = await closeTseSession({
+          config: hardwareCfg.tse,
+          intentionId: tseIntentionId,
+          receiptLocator: result.receiptLocator,
+          paymentKind,
+          intention: tseIntentionRes.intention,
+          amountCents: Number(totalCents),
+        });
+        if (finishRes.kind === 'signed') {
+          const sig = finishRes.signature;
+          try {
+            await transactionsApi.recordTseSignature(api, result.transactionId, {
+              fiskalyTssId: hardwareCfg.tse.tssId,
+              fiskalyClientId: hardwareCfg.tse.clientId,
+              fiskalyTransactionId: tseIntentionRes.intention.fiskalyTransactionId,
+              fiskalyTransactionNumber: String(sig.transactionNumber),
+              signatureValue: sig.signatureValue,
+              signatureCounter: String(sig.signatureCounter),
+              signatureAlgorithm: sig.signatureAlgorithm,
+              qrCodeData: sig.qrCodePayload,
+              tseStartTime: sig.startedAt,
+              tseEndTime: sig.finishedAt,
+            });
+          } catch (sigErr) {
+            addToast({
+              tone: 'alert',
+              title: 'TSE-Signatur nicht gespeichert',
+              body: 'Ankauf gebucht — die Signatur wird nachgereicht.',
+            });
+            // eslint-disable-next-line no-console
+            console.warn('recordTseSignature failed (non-blocking)', sigErr);
+          }
+        } else if (finishRes.kind === 'queued_offline') {
+          addToast({
+            tone: 'alert',
+            title: 'TSE-Signatur in Warteschlange',
+            body: 'Ankauf gebucht — Signatur wird später nachgereicht.',
+          });
+        }
+      } else if (hardwareCfg.tse.tssId.length > 0) {
+        // TSE configured but unreachable — tell the operator the Ankauf was
+        // booked without a signature (mirrors the Verkauf path).
+        addToast({
+          tone: 'alert',
+          title: 'TSE nicht erreichbar',
+          body: 'Ankauf wurde ohne Signatur abgeschlossen.',
+        });
+      }
 
       if (result.createdProducts.length > 0) {
         const bySkuMap = new Map(items.map((it) => [it.sku, it]));
@@ -332,11 +407,13 @@ export function AnkaufBezahlenDialog({
     api,
     canSubmit,
     customerId,
+    hardwareCfg,
     items,
     notesInternal,
     payoutExternalRef,
     payoutMethod,
     qc,
+    totalCents,
     totalEur,
     printer,
   ]);
