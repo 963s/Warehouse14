@@ -182,6 +182,20 @@ describe('TauriSqlTseQueueStore', () => {
     expect(await store.getStats()).toEqual({ pending: 0, inFlight: 0, failedTerminal: 1 });
   });
 
+  it('persistSignature signs an in_flight row without re-arming it to pending (B1)', async () => {
+    await store.enqueue(baseEntry({ signature: null }));
+    const [entry] = await store.listDrainable(2_000_000);
+    await store.markInFlight(entry!.id, 2_000_000);
+    await store.persistSignature(entry!.id, signature(9));
+
+    // Still in_flight (not re-armed), so hidden until the row goes stale…
+    expect(await store.listDrainable(2_000_000)).toHaveLength(0);
+    // …and once re-selected it is now the record-only (signed) path, never a re-FINISH.
+    const restaled = await store.listDrainable(2_000_000 + STALE_MS + 1);
+    expect(restaled).toHaveLength(1);
+    expect(restaled[0]?.signature?.signatureCounter).toBe(9);
+  });
+
   it('the MAX_ATTEMPTS cap is a real number the drain can act on', () => {
     // The store exposes the cap; the drain (Step 5) enforces it. Guard the value.
     expect(MAX_ATTEMPTS).toBeGreaterThanOrEqual(3);

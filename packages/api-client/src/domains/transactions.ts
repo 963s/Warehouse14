@@ -248,7 +248,16 @@ export interface TseSignatureResponse {
 
 export const transactionsApi = {
   finalize(client: ApiClient, body: FinalizeBody): Promise<FinalizeResponse> {
-    return client.request<FinalizeResponse>('POST', '/api/transactions/finalize', body);
+    // Fiscal ownership (ADR-0044 §4): forward the caller's key via meta.custom —
+    // identical to `ankauf` below — so the sealed outbox row + Idempotency-Key
+    // header carry the SAME key the body does. Without this the offline-queue
+    // auto-generates a DIFFERENT key, and a queued-then-replayed finalize would
+    // not dedup against the body's key (the direct-offline-enqueue asymmetry).
+    return client.request<FinalizeResponse>('POST', '/api/transactions/finalize', body, {
+      ...(body.idempotencyKey
+        ? { custom: { idempotencyKey: body.idempotencyKey, gobdRelevant: true } }
+        : {}),
+    });
   },
   /**
    * Recent VERKAUF sales (last 24h, newest first, capped) so a mistaken ring

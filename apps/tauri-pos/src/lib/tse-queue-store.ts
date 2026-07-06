@@ -129,6 +129,14 @@ export interface TseQueueStore {
   enqueue(entry: EnrichedTseQueueEntry): Promise<void>;
   listDrainable(now: number): Promise<DrainableTseEntry[]>;
   markInFlight(id: number, now: number): Promise<void>;
+  /**
+   * Persist a freshly-finished signature onto a finish-failed row WITHOUT
+   * changing its status (B1). The drain calls this the instant Fiskaly FINISH
+   * succeeds, BEFORE the server-record leg — so a crash in between leaves a
+   * signed, record-only-replayable row instead of a NULL row that would
+   * re-FINISH an already-finished (and now unreconstructable) intention.
+   */
+  persistSignature(id: number, signature: TseSignature): Promise<void>;
   incrementAttempt(id: number, error: unknown, now: number): Promise<void>;
   markSucceeded(id: number, now: number): Promise<void>;
   markFailedTerminal(id: number, error: unknown, now: number): Promise<void>;
@@ -211,6 +219,17 @@ export class TauriSqlTseQueueStore implements TseQueueStore {
       `UPDATE tse_signature_queue SET status = 'in_flight', last_attempt_at = $1 WHERE id = $2`,
       [now, id],
     );
+  }
+
+  async persistSignature(id: number, signature: TseSignature): Promise<void> {
+    const db = await this.db();
+    // Status intentionally untouched — the row is 'in_flight' mid-drain; the very
+    // next line records it. A crash here leaves an in_flight+signed row, which the
+    // stale re-selection picks up as record-only (never re-FINISH). B1.
+    await db.execute(`UPDATE tse_signature_queue SET signature_json = $1 WHERE id = $2`, [
+      JSON.stringify(signature),
+      id,
+    ]);
   }
 
   async incrementAttempt(id: number, error: unknown, now: number): Promise<void> {
