@@ -691,7 +691,13 @@ export function BezahlenDialog({
         printedAt: new Date(result.finalizedAt).toLocaleString('de-DE', {
           timeZone: 'Europe/Berlin',
         }),
-        cashierName: sessionActor ? `Bediener ${sessionActor.id.slice(0, 6)}` : 'Bediener',
+        // The customer receipt must not carry machine text: a UUID slice
+        // ("Bediener 5f3a2c") is a raw id fragment, not a name (doctrine a), and
+        // SessionActor exposes no display name. Show the honest role instead; the
+        // real per-operator identity lives in the server-side fiscal ledger
+        // (actorUserId). Named operators on the receipt would need the server to
+        // expose the user's name — a separate enhancement.
+        cashierName: sessionActor?.isOwner ? 'Inhaber' : 'Bediener',
         shiftId: null,
         items: lines.map((line, idx) => {
           const math = adjustedPerLineMath[idx];
