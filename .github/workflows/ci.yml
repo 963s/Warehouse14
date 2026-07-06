@@ -40,3 +40,92 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Desktop build gate — doctrine (c) says the whole repo, INCLUDING the Tauri
+  # apps, must compile. `pnpm -r typecheck` in `quality` covers the TypeScript,
+  # but not the Rust side or the frontend->Tauri build. This job compiles the
+  # Rust command surface (`cargo check`) and runs `tauri build --no-bundle`
+  # (frontend + binary, no installer/signing) for BOTH desktop apps, so a Rust
+  # or Tauri-config regression is caught on the PR that introduces it. Gated on
+  # changes that can actually affect a desktop build to keep fast PRs fast.
+  # ───────────────────────────────────────────────────────────────────────────
+  desktop-build:
+    name: Desktop build (Rust + Tauri, both apps)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect desktop-affecting changes
+        uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            desktop:
+              - 'apps/tauri-pos/**'
+              - 'apps/control-desktop/**'
+              - 'packages/**'
+              - '.github/workflows/ci.yml'
+
+      - name: Install Rust toolchain
+        if: steps.changes.outputs.desktop == 'true'
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo + Rust build
+        if: steps.changes.outputs.desktop == 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/tauri-pos/src-tauri/target
+            apps/control-desktop/src-tauri/target
+          key: desktop-cargo-${{ hashFiles('apps/*/src-tauri/Cargo.lock') }}
+          restore-keys: desktop-cargo-
+
+      - uses: pnpm/action-setup@v4
+        if: steps.changes.outputs.desktop == 'true'
+        with:
+          version: 9.15.0
+
+      - uses: actions/setup-node@v4
+        if: steps.changes.outputs.desktop == 'true'
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install Linux WebView build deps
+        if: steps.changes.outputs.desktop == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Install dependencies
+        if: steps.changes.outputs.desktop == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Build internal packages the desktop apps consume
+        if: steps.changes.outputs.desktop == 'true'
+        run: |
+          pnpm --filter @warehouse14/inventory-lock build
+          pnpm --filter @warehouse14/db build
+          pnpm --filter @warehouse14/i18n-de build
+          pnpm --filter @warehouse14/ui-kit build
+          pnpm --filter @warehouse14/api-client build
+
+      - name: cargo check (both apps)
+        if: steps.changes.outputs.desktop == 'true'
+        run: |
+          cargo check --manifest-path apps/tauri-pos/src-tauri/Cargo.toml
+          cargo check --manifest-path apps/control-desktop/src-tauri/Cargo.toml
+
+      - name: tauri build --no-bundle (both apps)
+        if: steps.changes.outputs.desktop == 'true'
+        run: |
+          pnpm --filter @warehouse14/tauri-pos exec tauri build --no-bundle
+          pnpm --filter @warehouse14/control-desktop exec tauri build --no-bundle
