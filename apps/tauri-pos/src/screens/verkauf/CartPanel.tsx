@@ -921,8 +921,16 @@ function InvoiceDiscount({ lines }: { lines: readonly CartLine[] }): JSX.Element
   const [mode, setMode] = useState<'pct' | 'eur'>('pct');
   const [value, setValue] = useState<string>('');
   const [reason, setReason] = useState<string>('');
+  const [confirmingOverwrite, setConfirmingOverwrite] = useState<boolean>(false);
 
   if (lines.length === 0) return null;
+
+  // A cart-wide Rabatt lands as each line's own discountEur, so applying it
+  // REPLACES any existing per-line Rabatt + reason. Detect that up front so we
+  // can warn before silently discarding the operator's per-line discounts.
+  const hasExistingLineDiscounts = lines.some(
+    (l) => l.discountEur !== undefined && Number(l.discountEur) > 0,
+  );
 
   const bases = lines.map((l) => toCents(l.listPriceEur));
   const totalBase = bases.reduce((a, b) => a + b, 0n);
@@ -938,6 +946,12 @@ function InvoiceDiscount({ lines }: { lines: readonly CartLine[] }): JSX.Element
 
   const apply = (): void => {
     if (!canApply) return;
+    // Never discard existing per-line Rabatte silently — require one explicit
+    // confirmation first (the button turns into "Ersetzen & übernehmen").
+    if (hasExistingLineDiscounts && !confirmingOverwrite) {
+      setConfirmingOverwrite(true);
+      return;
+    }
     const shares = distributeInvoiceDiscount(bases, cappedTotal);
     lines.forEach((l, i) => {
       const s = shares[i] ?? 0n;
@@ -947,6 +961,7 @@ function InvoiceDiscount({ lines }: { lines: readonly CartLine[] }): JSX.Element
     setOpen(false);
     setValue('');
     setReason('');
+    setConfirmingOverwrite(false);
   };
 
   const clearAll = (): void => {
@@ -1047,8 +1062,21 @@ function InvoiceDiscount({ lines }: { lines: readonly CartLine[] }): JSX.Element
         placeholder={`Begründung (Pflicht, mind. ${MIN_DISCOUNT_REASON_LEN} Zeichen)`}
         style={DISCOUNT_INPUT}
       />
+      {confirmingOverwrite && (
+        <span style={{ fontSize: '0.78rem', color: 'var(--w14-wax-red)', fontWeight: 600 }}>
+          Bestehende Positions-Rabatte werden durch den Rechnungsrabatt ersetzt.
+        </span>
+      )}
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-        <Button variant="ghost" size="md" style={{ minHeight: 48 }} onClick={() => setOpen(false)}>
+        <Button
+          variant="ghost"
+          size="md"
+          style={{ minHeight: 48 }}
+          onClick={() => {
+            setOpen(false);
+            setConfirmingOverwrite(false);
+          }}
+        >
           Abbrechen
         </Button>
         <Button
@@ -1058,7 +1086,7 @@ function InvoiceDiscount({ lines }: { lines: readonly CartLine[] }): JSX.Element
           disabled={!canApply}
           onClick={apply}
         >
-          Übernehmen
+          {confirmingOverwrite ? 'Ersetzen & übernehmen' : 'Übernehmen'}
         </Button>
       </div>
     </div>
