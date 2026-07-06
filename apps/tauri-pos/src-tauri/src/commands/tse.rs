@@ -67,6 +67,16 @@ pub struct TseIntention {
     pub started_at: DateTime<Utc>,
 }
 
+/// One DSFinV-K USt-Schlüssel bucket for the signed `amounts_per_vat_id`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VatAmount {
+    /// DSFinV-K ID_UST (fiskaly standard_v1 vat_id): 1=19 %, 2=7 %, 5=0 %, 7=§25a.
+    pub vat_id: u8,
+    /// Gross amount (incl. VAT) for this vat_id, in integer cents.
+    pub amount_cents: u64,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 // `intention_id` + `process_data_base64` are part of the documented wire
@@ -86,6 +96,12 @@ pub struct TseFinishParams {
     /// the line-items + receipt locator in there.
     pub process_data_base64: String,
     pub process_type: String,
+    /// Per-VAT-rate gross breakdown (DSFinV-K USt-Schlüssel → gross cents) the
+    /// signed receipt carries under `amounts_per_vat_id`. `#[serde(default)]`
+    /// keeps an old offline-queue entry (or a caller that hasn't computed it)
+    /// signable — it just signs without the decomposition.
+    #[serde(default)]
+    pub amounts_per_vat_id: Vec<VatAmount>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -191,21 +207,7 @@ pub async fn tse_finish_transaction(mut params: TseFinishParams) -> HwResult<Tse
         tx = params.fiskaly_transaction_id,
     );
 
-    let body = serde_json::json!({
-        "state": "FINISHED",
-        "client_id": params.config.client_id,
-        "schema": {
-            "standard_v1": {
-                "receipt": {
-                    "receipt_type": params.process_type,
-                    "amounts_per_vat_id": [],
-                    "amounts_per_payment_type": [
-                        { "payment_type": params.payment_kind, "amount": format_cents(params.amount_cents) }
-                    ]
-                }
-            }
-        },
-    });
+    let body = build_finish_body(&params);
 
     let res = http_client()?
         .patch(&url)
@@ -334,6 +336,104 @@ fn format_cents(cents: u64) -> String {
     let euros = cents / 100;
     let rest = cents % 100;
     format!("{euros}.{rest:02}")
+}
+
+/// Build the fiskaly `PATCH /tx` FINISH body — the KassenSichV standard_v1
+/// receipt that gets SIGNED. Extracted from `tse_finish_transaction` so the
+/// signed VAT decomposition can be asserted without an HTTP round-trip.
+fn build_finish_body(params: &TseFinishParams) -> serde_json::Value {
+    let amounts_per_vat_id: Vec<serde_json::Value> = params
+        .amounts_per_vat_id
+        .iter()
+        .map(|v| serde_json::json!({ "vat_id": v.vat_id, "amount": format_cents(v.amount_cents) }))
+        .collect();
+    serde_json::json!({
+        "state": "FINISHED",
+        "client_id": params.config.client_id,
+        "schema": {
+            "standard_v1": {
+                "receipt": {
+                    "receipt_type": params.process_type,
+                    "amounts_per_vat_id": amounts_per_vat_id,
+                    "amounts_per_payment_type": [
+                        { "payment_type": params.payment_kind, "amount": format_cents(params.amount_cents) }
+                    ]
+                }
+            }
+        },
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_config() -> TseConfig {
+        TseConfig {
+            tss_id: "tss".into(),
+            client_id: "client".into(),
+            api_key: String::new(),
+            api_secret: String::new(),
+        }
+    }
+
+    #[test]
+    fn finish_body_carries_the_signed_vat_decomposition() {
+        // A mixed 19 % / 7 % / §25a receipt (119.00 + 107.00 + 1.00 = 227.00).
+        let params = TseFinishParams {
+            config: test_config(),
+            intention_id: "i".into(),
+            fiskaly_transaction_id: "tx".into(),
+            amount_cents: 22700,
+            payment_kind: "Bar".into(),
+            process_data_base64: String::new(),
+            process_type: "Kassenbeleg-V1".into(),
+            amounts_per_vat_id: vec![
+                VatAmount { vat_id: 1, amount_cents: 11900 },
+                VatAmount { vat_id: 2, amount_cents: 10700 },
+                VatAmount { vat_id: 7, amount_cents: 100 },
+            ],
+        };
+        let body = build_finish_body(&params);
+        let receipt = &body["schema"]["standard_v1"]["receipt"];
+        let vat = receipt["amounts_per_vat_id"].as_array().unwrap();
+        assert_eq!(vat.len(), 3, "the signed body carries every VAT bucket");
+        assert_eq!(vat[0]["vat_id"], 1);
+        assert_eq!(vat[0]["amount"], "119.00");
+        assert_eq!(vat[1]["vat_id"], 2);
+        assert_eq!(vat[1]["amount"], "107.00");
+        // §25a is signed under its distinct key 7, not as a plain 0 % line.
+        assert_eq!(vat[2]["vat_id"], 7);
+        assert_eq!(vat[2]["amount"], "1.00");
+        // The payment total still matches the summed VAT buckets.
+        assert_eq!(
+            receipt["amounts_per_payment_type"][0]["amount"],
+            "227.00"
+        );
+    }
+
+    #[test]
+    fn finish_body_defaults_to_empty_vat_when_absent() {
+        // An old offline-queue entry (no breakdown) still signs — just as [].
+        let params = TseFinishParams {
+            config: test_config(),
+            intention_id: "i".into(),
+            fiskaly_transaction_id: "tx".into(),
+            amount_cents: 5000,
+            payment_kind: "Unbar".into(),
+            process_data_base64: String::new(),
+            process_type: "Kassenbeleg-V1".into(),
+            amounts_per_vat_id: Vec::new(),
+        };
+        let body = build_finish_body(&params);
+        assert_eq!(
+            body["schema"]["standard_v1"]["receipt"]["amounts_per_vat_id"]
+                .as_array()
+                .unwrap()
+                .len(),
+            0
+        );
+    }
 }
 
 // Suppress "unused" warnings on the `mock` import when building without

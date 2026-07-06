@@ -152,6 +152,12 @@ export interface TseFinishParams {
   paymentKind: string; // 'Bar' | 'Unbar' per KassenSichV
   processDataBase64: string;
   processType: string;
+  /**
+   * Per-VAT-rate gross breakdown (DSFinV-K USt-Schlüssel → gross cents) that the
+   * signed receipt carries under `amounts_per_vat_id`. Optional on the wire —
+   * the Rust side defaults it to empty so an old offline-queue entry still signs.
+   */
+  amountsPerVatId?: Array<{ vatId: number; amountCents: number }>;
 }
 
 export interface TseSignature {

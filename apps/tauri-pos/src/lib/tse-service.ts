@@ -24,6 +24,7 @@ import {
   isRunningInTauri,
   tseClient,
 } from './hardware-client.js';
+import type { VatAmount } from './tse-vat.js';
 
 // Persisted-input schema (P2.6): the offline TSE queue is replayed to the fiscal
 // API, so a corrupt entry (e.g. a string `amountCents`) must be DROPPED here, not
@@ -94,6 +95,8 @@ export async function closeTseSession(
   input: OpenTseSessionInput & {
     intention: TseIntention;
     amountCents: number;
+    /** DSFinV-K per-VAT gross breakdown for the signed `amounts_per_vat_id`. */
+    amountsPerVatId?: VatAmount[];
   },
 ): Promise<TseSessionResult> {
   if (!isRunningInTauri()) {
@@ -107,6 +110,7 @@ export async function closeTseSession(
     paymentKind: input.paymentKind,
     processDataBase64: '', // V1 ships an empty blob; receipt locator carried elsewhere
     processType: input.processType ?? 'Kassenbeleg-V1',
+    amountsPerVatId: input.amountsPerVatId ?? [],
   };
   try {
     const signature = await tseClient.finish(params);

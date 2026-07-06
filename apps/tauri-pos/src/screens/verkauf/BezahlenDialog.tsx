@@ -90,6 +90,7 @@ import {
   newIntentionId,
   openTseSession,
 } from '../../lib/tse-service.js';
+import { computeAmountsPerVatId } from '../../lib/tse-vat.js';
 import { type CartLine, useCartStore } from '../../state/cart-store.js';
 import { useHardwareStore } from '../../state/hardware-store.js';
 import { useLastReceiptStore } from '../../state/last-receipt-store.js';
@@ -560,6 +561,16 @@ export function BezahlenDialog({
       lastTseSignatureRef.current = null;
       if ('intention' in intentionRes) {
         const totalCents = Number(toCents(adjustedTotals.totalEur));
+        // DSFinV-K per-VAT gross breakdown for the signed body (§146a): group the
+        // applied per-line treatments by USt-Schlüssel (same canonical mapping the
+        // server's DSFinV-K export uses), so the signed receipt carries the real
+        // decomposition instead of an empty amounts_per_vat_id.
+        const amountsPerVatId = computeAmountsPerVatId(
+          items.map((item, idx) => ({
+            appliedTaxTreatmentCode: item.appliedTaxTreatmentCode,
+            lineTotalCents: Number(adjustedPerLineMath[idx]?.lineTotalCents ?? 0n),
+          })),
+        );
         const finishRes: TseSessionResult = await closeTseSession({
           config: hardwareCfg.tse,
           intentionId,
@@ -567,6 +578,7 @@ export function BezahlenDialog({
           paymentKind,
           intention: intentionRes.intention,
           amountCents: totalCents,
+          amountsPerVatId,
         });
         if (finishRes.kind === 'signed') {
           const sig = finishRes.signature;

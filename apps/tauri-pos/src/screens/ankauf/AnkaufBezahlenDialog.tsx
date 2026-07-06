@@ -47,6 +47,7 @@ import {
   newIntentionId,
   openTseSession,
 } from '../../lib/tse-service.js';
+import { computeAmountsPerVatId } from '../../lib/tse-vat.js';
 import {
   selectAnkaufCustomerId,
   selectAnkaufItems,
@@ -261,6 +262,18 @@ export function AnkaufBezahlenDialog({
       // TR-03153). Both steps are best-effort: a failure NEVER unwinds the booked
       // Ankauf — the signature falls into the offline queue and is nachgereicht.
       if ('intention' in tseIntentionRes) {
+        // An Ankauf cart shares ONE tax treatment (the MIXED guard enforces it),
+        // so the signed VAT breakdown is a single bucket = total under that
+        // treatment's DSFinV-K USt-Schlüssel — consistent with the server export.
+        const amountsPerVatId =
+          items.length > 0
+            ? computeAmountsPerVatId([
+                {
+                  appliedTaxTreatmentCode: items[0]!.taxTreatmentCode,
+                  lineTotalCents: Number(totalCents),
+                },
+              ])
+            : [];
         const finishRes: TseSessionResult = await closeTseSession({
           config: hardwareCfg.tse,
           intentionId: tseIntentionId,
@@ -268,6 +281,7 @@ export function AnkaufBezahlenDialog({
           paymentKind,
           intention: tseIntentionRes.intention,
           amountCents: Number(totalCents),
+          amountsPerVatId,
         });
         if (finishRes.kind === 'signed') {
           const sig = finishRes.signature;
