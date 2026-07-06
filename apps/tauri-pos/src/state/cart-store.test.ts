@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { TaxTreatmentCode } from '@warehouse14/api-client';
 
-import { type CartLine, useCartStore } from './cart-store.js';
+import { type CartLine, sanitizeCartLines, useCartStore } from './cart-store.js';
 
 function stubLocalStorage(store: Map<string, string>): void {
   vi.stubGlobal('localStorage', {
@@ -74,5 +74,36 @@ describe('cart-store addLine — one tax treatment per receipt', () => {
       kind: 'ALREADY_IN_CART',
     });
     expect(useCartStore.getState().lines).toHaveLength(1);
+  });
+});
+
+describe('sanitizeCartLines — corrupt persisted lines are dropped, not crashed', () => {
+  it('keeps a well-formed line', () => {
+    expect(sanitizeCartLines([makeLine('a', 'STANDARD_19')])).toHaveLength(1);
+  });
+
+  it('drops a line missing a required field', () => {
+    const { sku: _dropped, ...broken } = makeLine('a', 'STANDARD_19');
+    expect(sanitizeCartLines([broken])).toHaveLength(0);
+  });
+
+  it('drops a line whose taxTreatmentCode is not a known enum', () => {
+    const bad = { ...makeLine('a', 'STANDARD_19'), taxTreatmentCode: 'GARBAGE' };
+    expect(sanitizeCartLines([bad])).toHaveLength(0);
+  });
+
+  it('keeps the valid lines and drops the corrupt ones from a mixed array', () => {
+    const out = sanitizeCartLines([
+      makeLine('a', 'MARGIN_25A'),
+      { nonsense: true },
+      makeLine('b', 'REDUCED_7'),
+      null,
+    ]);
+    expect(out.map((l) => l.productId)).toEqual(['a', 'b']);
+  });
+
+  it('returns an empty array for a non-array (corrupt/absent storage)', () => {
+    expect(sanitizeCartLines(undefined)).toEqual([]);
+    expect(sanitizeCartLines('not-an-array')).toEqual([]);
   });
 });

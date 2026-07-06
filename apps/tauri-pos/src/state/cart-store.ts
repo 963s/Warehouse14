@@ -49,10 +49,11 @@
  * `cart-math.ts` and are memoized by the consuming screen.
  */
 
+import { Type } from '@sinclair/typebox';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import type { TaxTreatmentCode } from '@warehouse14/api-client';
+import { type TaxTreatmentCode, parseResponse } from '@warehouse14/api-client';
 
 // ────────────────────────────────────────────────────────────────────────
 // Types
@@ -135,6 +136,42 @@ interface CartState {
 
 const STORAGE_KEY = 'w14.cart.v1';
 
+// Schema-validated rehydration (Phase 1.9). localStorage is untrusted: a
+// truncated write, a manual edit, or an older/newer shape can leave a corrupt
+// line that, once handed to `computeLineMath`, throws and WHITE-SCREENS the
+// till mid-shift. Validate each persisted line and DROP the malformed ones —
+// the operator loses that one line, not the whole terminal. taxTreatmentCode is
+// checked against the exact enum because it drives the fiscal tax math.
+const PersistedCartLineSchema = Type.Object({
+  productId: Type.String(),
+  reservationSessionId: Type.String(),
+  sku: Type.String(),
+  name: Type.String(),
+  listPriceEur: Type.String(),
+  acquisitionCostEur: Type.String(),
+  taxTreatmentCode: Type.Union([
+    Type.Literal('STANDARD_19'),
+    Type.Literal('REDUCED_7'),
+    Type.Literal('MARGIN_25A'),
+    Type.Literal('INVESTMENT_GOLD_25C'),
+    Type.Literal('REVERSE_CHARGE_13B'),
+    Type.Literal('MIXED'),
+  ]),
+  discountEur: Type.Optional(Type.String()),
+  discountReason: Type.Optional(Type.String()),
+  addedAt: Type.String(),
+});
+
+/** Validate persisted lines, dropping any malformed one. Exported for tests. */
+export function sanitizeCartLines(raw: unknown): CartLine[] {
+  if (!Array.isArray(raw)) return [];
+  const parsed = raw.map((line) => parseResponse(PersistedCartLineSchema, line, 'cart.line'));
+  // The validated shape is structurally CartLine — the only gap is the schema's
+  // optional fields being `string` vs CartLine's `string | undefined` under
+  // exactOptionalPropertyTypes, which is identical for persisted JSON.
+  return parsed.filter((line): line is NonNullable<typeof line> => line !== null) as CartLine[];
+}
+
 export const useCartStore = create<CartState>()(
   persist(
     (set, get) => ({
@@ -202,6 +239,12 @@ export const useCartStore = create<CartState>()(
       // Only persist `lines` — the action closures are recreated every
       // boot anyway, and persisting functions would explode JSON.
       partialize: (state) => ({ lines: state.lines }),
+      // Validate every persisted line on rehydration; a corrupt one is dropped
+      // rather than crashing computeLineMath on first render (Phase 1.9).
+      merge: (persisted, current) => ({
+        ...current,
+        lines: sanitizeCartLines((persisted as { lines?: unknown } | undefined)?.lines),
+      }),
       // Phase 1.5 hook: bump this when CartLine shape changes.
       version: 1,
     },

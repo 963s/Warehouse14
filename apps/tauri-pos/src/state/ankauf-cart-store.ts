@@ -27,9 +27,11 @@
  * The Ankauf coordinator owns the API calls.
  */
 
+import { Type } from '@sinclair/typebox';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
+import { parseResponse } from '@warehouse14/api-client';
 import type {
   AnkaufCondition,
   AnkaufItemType,
@@ -110,6 +112,47 @@ interface AnkaufCartState {
 }
 
 const STORAGE_KEY = 'w14.ankauf.v1';
+
+// Schema-validated rehydration (Phase 1.9). A corrupt persisted intake item —
+// truncated write, manual edit, older/newer shape — would crash the buy-in math
+// (sumNegotiatedCents / the KYC gate) on first render. Validate each item and
+// DROP the malformed ones. taxTreatmentCode is checked strictly (it drives the
+// fiscal gate); the display enums stay loose (their label maps handle unknowns).
+const PersistedIntakeItemSchema = Type.Object({
+  tempId: Type.String(),
+  sku: Type.String(),
+  barcode: Type.String(),
+  itemType: Type.String(),
+  metal: Type.Union([Type.String(), Type.Null()]),
+  karatCode: Type.String(),
+  finenessDecimal: Type.String(),
+  weightGrams: Type.String(),
+  hallmarkStamps: Type.Array(Type.String()),
+  condition: Type.String(),
+  taxTreatmentCode: Type.Union([
+    Type.Literal('STANDARD_19'),
+    Type.Literal('REDUCED_7'),
+    Type.Literal('MARGIN_25A'),
+    Type.Literal('INVESTMENT_GOLD_25C'),
+    Type.Literal('REVERSE_CHARGE_13B'),
+    Type.Literal('MIXED'),
+  ]),
+  name: Type.String(),
+  descriptionDe: Type.String(),
+  listPriceEur: Type.String(),
+  negotiatedPriceEur: Type.String(),
+  publishImmediately: Type.Boolean(),
+  addedAt: Type.String(),
+});
+
+/** Validate persisted intake items, dropping any malformed one. For tests. */
+export function sanitizeIntakeItems(raw: unknown): IntakeItem[] {
+  if (!Array.isArray(raw)) return [];
+  const parsed = raw.map((it) => parseResponse(PersistedIntakeItemSchema, it, 'ankauf.item'));
+  // Structurally IntakeItem — the display enums are validated as plain strings
+  // (their label maps degrade unknowns), so cast the validated rows.
+  return parsed.filter((it): it is NonNullable<typeof it> => it !== null) as IntakeItem[];
+}
 
 let counter = 0;
 function nextTempId(): string {
@@ -210,6 +253,14 @@ export const useAnkaufCartStore = create<AnkaufCartState>()(
         payoutExternalRef: state.payoutExternalRef,
         notesInternal: state.notesInternal,
         items: state.items,
+      }),
+      // Validate every persisted item on rehydration; a corrupt one is dropped
+      // rather than crashing the buy-in math on first render (Phase 1.9). Other
+      // persisted fields keep the default shallow-merge behavior.
+      merge: (persisted, current) => ({
+        ...current,
+        ...(persisted as object),
+        items: sanitizeIntakeItems((persisted as { items?: unknown } | null)?.items),
       }),
       version: 1,
     },
