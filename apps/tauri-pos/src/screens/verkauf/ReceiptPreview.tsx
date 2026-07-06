@@ -24,6 +24,21 @@ const PAPER = '#faf8f2';
 const INK = '#1c1814';
 const FADED = '#6b6354';
 
+/**
+ * Mirror the Rust thermal layer's `is_tse_down`: during a TSE outage / test mode
+ * the app sends the "TSE Ausfall" sentinel (or empty) for every TSE field. The
+ * printed receipt already shows ONE clean Ausfall note then (thermal.rs); the
+ * preview must do the same instead of rendering the sentinel four times + a
+ * meaningless QR placeholder (honesty — no fake fiscal fields).
+ */
+function isTsePreviewDown(signatureValue: string, qrPayload: string): boolean {
+  const down = (s: string): boolean => {
+    const t = s.trim();
+    return t.length === 0 || t === 'TSE Ausfall';
+  };
+  return down(signatureValue) || down(qrPayload);
+}
+
 const rowStyle: React.CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
@@ -210,31 +225,42 @@ export function ReceiptPreview({
               color: INK,
             }}
           >
-            <div style={{ color: FADED, letterSpacing: '0.08em' }}>TSE-SIGNATUR</div>
-            <div style={{ wordBreak: 'break-all' }}>{data.tseSignatureValue}</div>
-            <div>Signatur-Zähler: {data.tseSignatureCounter}</div>
-            <div>Trans-Nr.: {data.tseTransactionNumber}</div>
-            <div
-              aria-label="TSE QR-Code (wird gedruckt)"
-              style={{
-                marginTop: 6,
-                alignSelf: 'center',
-                width: 96,
-                height: 96,
-                display: 'grid',
-                placeItems: 'center',
-                textAlign: 'center',
-                border: '1px solid #b9ad97',
-                borderRadius: 4,
-                color: FADED,
-                fontSize: '0.6rem',
-                padding: 6,
-              }}
-            >
-              QR-Code
-              <br />
-              (wird gedruckt)
-            </div>
+            {isTsePreviewDown(data.tseSignatureValue, data.tseQrPayload) ? (
+              <>
+                <div style={{ color: FADED, letterSpacing: '0.08em' }}>TSE</div>
+                <div style={{ wordBreak: 'break-word' }}>
+                  TSE momentan nicht erreichbar, Signatur wird nachgereicht.
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ color: FADED, letterSpacing: '0.08em' }}>TSE-SIGNATUR</div>
+                <div style={{ wordBreak: 'break-all' }}>{data.tseSignatureValue}</div>
+                <div>Signatur-Zähler: {data.tseSignatureCounter}</div>
+                <div>Trans-Nr.: {data.tseTransactionNumber}</div>
+                <div
+                  aria-label="TSE QR-Code (wird gedruckt)"
+                  style={{
+                    marginTop: 6,
+                    alignSelf: 'center',
+                    width: 96,
+                    height: 96,
+                    display: 'grid',
+                    placeItems: 'center',
+                    textAlign: 'center',
+                    border: '1px solid #b9ad97',
+                    borderRadius: 4,
+                    color: FADED,
+                    fontSize: '0.6rem',
+                    padding: 6,
+                  }}
+                >
+                  QR-Code
+                  <br />
+                  (wird gedruckt)
+                </div>
+              </>
+            )}
           </div>
 
           <Rule />
