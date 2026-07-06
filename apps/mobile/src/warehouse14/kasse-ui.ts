@@ -12,14 +12,12 @@
  * stays declarative; nothing here touches the network.
  */
 import type { ClosingListItem, ShiftStatus } from "@warehouse14/api-client"
+import { CLOSING_STATE_LABELS, type ClosingState } from "@warehouse14/i18n-de"
 
-// ── Closing state (COUNTING | FINALIZED) ──────────────────────────────────────
-export type ClosingState = ClosingListItem["state"]
-
-export const CLOSING_STATE_LABELS: Record<ClosingState, string> = {
-  COUNTING: "Offen",
-  FINALIZED: "Abgeschlossen",
-}
+// ── Closing state (COUNTING | FINALIZED) — the German words live in the shared
+//    spine (@warehouse14/i18n-de) so the audit vocabulary and both apps read the
+//    same label; re-exported here so existing kasse-ui imports keep working.
+export { CLOSING_STATE_LABELS, type ClosingState }
 
 /** Badge variant per closing state — FINALIZED is the legally-sealed Z-Bon. */
 export function closingStateBadgeVariant(state: ClosingState): "default" | "secondary" | "outline" {

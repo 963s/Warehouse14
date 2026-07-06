@@ -10,3 +10,4 @@
  * so it imports cleanly into both an Expo app and a Tauri/React app.
  */
 export * from "./german-text"
+export * from "./audit-vocab"

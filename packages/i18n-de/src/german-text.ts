@@ -38,6 +38,7 @@ import {
   type AppointmentStatus,
   type AppointmentType,
   type BelegtextKind,
+  type ClosingListItem,
   type CustomerKycStatus,
   type CustomerLanguage,
   type CustomerTrustLevel,
@@ -593,6 +594,17 @@ export const BELEGTEXT_KIND_LABEL: Readonly<Record<BelegtextKind, string>> = {
   GENERIC_HEADER: "Allgemeiner Kopftext",
   GENERIC_FOOTER: "Allgemeiner Fußtext",
   REVERSE_CHARGE_13B: "Reverse-Charge (§13b)",
+}
+
+// ── Tagesabschluss-Status (COUNTING | FINALIZED) ─────────────────────────────
+// Der Z-Bon-Zustand: „Offen" während der Zählung, „Abgeschlossen" sobald der
+// Tagesabschluss fiskalisch versiegelt ist. Lives in the shared spine so the
+// audit vocabulary and both apps read the same word for the same state.
+export type ClosingState = ClosingListItem["state"]
+
+export const CLOSING_STATE_LABELS: Readonly<Record<ClosingState, string>> = {
+  COUNTING: "Offen",
+  FINALIZED: "Abgeschlossen",
 }
 
 // ════════════════════════════════════════════════════════════════════════════
