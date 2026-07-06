@@ -243,6 +243,9 @@ importers:
       '@warehouse14/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@warehouse14/i18n-de':
+        specifier: workspace:*
+        version: link:../../packages/i18n-de
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -739,6 +742,22 @@ importers:
       '@vitest/coverage-v8':
         specifier: 2.1.8
         version: 2.1.8(vitest@2.1.8(@types/node@26.0.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(lightningcss@1.30.1)(terser@5.48.0))
+      '@warehouse14/config':
+        specifier: workspace:*
+        version: link:../config
+      typescript:
+        specifier: 5.7.2
+        version: 5.7.2
+      vitest:
+        specifier: 2.1.8
+        version: 2.1.8(@types/node@26.0.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(lightningcss@1.30.1)(terser@5.48.0)
+
+  packages/i18n-de:
+    dependencies:
+      '@warehouse14/api-client':
+        specifier: workspace:*
+        version: link:../api-client
+    devDependencies:
       '@warehouse14/config':
         specifier: workspace:*
         version: link:../config
@@ -14136,9 +14155,7 @@ snapshots:
       metro-runtime: 0.84.4
     transitivePeerDependencies:
       - '@babel/core'
-      - bufferutil
       - supports-color
-      - utf-8-validate
     optional: true
 
   '@react-native/normalize-colors@0.74.89': {}
