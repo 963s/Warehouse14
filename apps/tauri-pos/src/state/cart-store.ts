@@ -148,6 +148,20 @@ export const useCartStore = create<CartState>()(
           return { kind: 'ALREADY_IN_CART' };
         }
 
+        // Rule 2: all lines must share one tax treatment. V1 has no
+        // split-payment / mixed-treatment fiscal path, so a §25a piece and a
+        // 19 % piece in one receipt would be signed under a single, WRONG
+        // treatment. Reject the second treatment at the store boundary; the
+        // caller releases the just-made hold and surfaces a German toast.
+        const existingTreatment = state.lines[0]?.taxTreatmentCode;
+        if (existingTreatment !== undefined && existingTreatment !== incoming.taxTreatmentCode) {
+          return {
+            kind: 'MIXED_TAX_TREATMENT',
+            existing: existingTreatment,
+            incoming: incoming.taxTreatmentCode,
+          };
+        }
+
         set({ lines: [...state.lines, incoming] });
         return null;
       },

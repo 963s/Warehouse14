@@ -70,6 +70,7 @@ import { classifyCartProductTax } from '../../lib/cart-math.js';
 import { beaconReleaseCart, releaseCart } from '../../lib/release-cart.js';
 import { classifyScanMatch, normalizeScan } from '../../lib/scan-resolve.js';
 import { getSessionToken } from '../../lib/session-token.js';
+import { TAX_TREATMENT_LABEL } from '../../lib/tax-treatment-label.js';
 import { type CartLine, selectCartLines, useCartStore } from '../../state/cart-store.js';
 import { useToastStore } from '../../state/toast-store.js';
 
@@ -199,15 +200,26 @@ function VerkaufFloor(): JSX.Element {
           return;
         }
 
-        // Cart-store rejected — release the hold + toast.
+        // Cart-store rejected — release the just-made hold, then explain WHY in
+        // German. A mixed tax treatment is NOT "already in cart"; V1 signs one
+        // receipt under one treatment, so the operator must finish the current
+        // cart before starting a piece with a different Steuerklasse.
         await safeRelease(api, product.id, sessionId);
-        addToast({
-          tone: 'info',
-          title: 'Bereits in der Karte',
-          // Unique inventory — one product = one physical piece (no quantity to
-          // raise). Tell the operator it is already reserved + where to find it.
-          body: `${detail.sku} — Einzelstück, bereits reserviert (rechts in der Karte).`,
-        });
+        if (addResult.kind === 'MIXED_TAX_TREATMENT') {
+          addToast({
+            tone: 'alert',
+            title: 'Steuerklassen passen nicht zusammen',
+            body: `Karte enthält ${TAX_TREATMENT_LABEL[addResult.existing]}; ${detail.sku} wäre ${TAX_TREATMENT_LABEL[addResult.incoming]}. Bitte zuerst abschließen.`,
+          });
+        } else {
+          addToast({
+            tone: 'info',
+            title: 'Bereits in der Karte',
+            // Unique inventory — one product = one physical piece (no quantity to
+            // raise). Tell the operator it is already reserved + where to find it.
+            body: `${detail.sku} — Einzelstück, bereits reserviert (rechts in der Karte).`,
+          });
+        }
       } catch (err) {
         if (err instanceof ApiError && err.code === 'PRODUCT_NOT_RESERVABLE') {
           addToast({
