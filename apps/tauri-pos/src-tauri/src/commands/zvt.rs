@@ -67,6 +67,11 @@ pub async fn zvt_authorize_payment(
         return zvt_mock::authorize_payment(endpoint, amount_cents).await;
     }
 
+    // Reject a zero / over-BCD amount BEFORE framing (and before touching the
+    // socket), so a bad amount fails cleanly instead of building a malformed
+    // on-wire frame. Same guard the mock enforces.
+    check_amount(amount_cents)?;
+
     let addr = format!("{}:{}", endpoint.ip, endpoint.port);
     let mut stream = timeout(
         Duration::from_millis(DEFAULT_TCP_TIMEOUT_MS),
@@ -79,7 +84,7 @@ pub async fn zvt_authorize_payment(
     stream.write_all(&frame).await?;
     stream.flush().await?;
 
-    run_authorisation_conversation(&mut stream).await
+    run_zvt_conversation(&mut stream).await
 }
 
 /// Drive the ECR side of the ZVT authorisation conversation after `06 01` was
@@ -92,7 +97,11 @@ pub async fn zvt_authorize_payment(
 /// captured from the `04 0F`; the conversation ends on Completion / Abort / NAK.
 /// Each message gets the full (cardholder) read window, so an intermediate
 /// "insert card / enter PIN" wait cannot trip a premature timeout.
-async fn run_authorisation_conversation(stream: &mut TcpStream) -> HwResult<ZvtResult> {
+/// Drive the ZVT ECR conversation to a result. Shared by authorization (06 01)
+/// AND reversal (06 30) — both elicit the same message sequence (ACK →
+/// intermediate status → 04 0F Status-Information → 06 0F Completion, or a
+/// 06 1E Abort), read with proper APDU length-framing across multiple reads.
+async fn run_zvt_conversation(stream: &mut TcpStream) -> HwResult<ZvtResult> {
     const ECR_ACK: [u8; 3] = [0x80, 0x00, 0x00];
     const MAX_MESSAGES: usize = 64; // guard against an endless intermediate-status stream
 
@@ -201,19 +210,43 @@ pub async fn zvt_reverse_payment(
     stream.write_all(&frame).await?;
     stream.flush().await?;
 
-    let mut buf = vec![0u8; 256];
-    let n = timeout(Duration::from_secs(30), stream.read(&mut buf))
-        .await
-        .map_err(HardwareError::from)??;
-    buf.truncate(n);
-
-    // Bytes 6-7 are the status — 00 00 = ok.
-    Ok(buf.len() >= 8 && buf[6] == 0x00 && buf[7] == 0x00)
+    // A reversal (06 30) elicits the SAME ECR conversation as an authorization
+    // (ACK → intermediate status → 04 0F Status-Information → 06 0F Completion,
+    // or 06 1E Abort). Run the full length-framed loop instead of a single naive
+    // `read` into a fixed buffer + a raw `buf[6]/buf[7]` check — a Storno
+    // confirmation that arrives across multiple reads (or after an intermediate
+    // status) is no longer misread as failure. `success` reflects the signed
+    // BMP 0x27 result-code.
+    let result = run_zvt_conversation(&mut stream).await?;
+    Ok(result.success)
 }
 
 // ────────────────────────────────────────────────────────────────────────
 // ZVT framing — kept deliberately small. V1 supports cents up to 8 digits.
 // ────────────────────────────────────────────────────────────────────────
+
+/// Largest amount representable in the 6-byte (12-nibble) BCD amount field.
+pub const MAX_BCD_CENTS: u64 = 999_999_999_999;
+
+/// Guard a ZVT amount BEFORE it is BCD-framed. A real terminal rejects a zero
+/// amount, and the 6-byte BCD amount field cannot hold more than
+/// `MAX_BCD_CENTS`. Shared by the real authorize path AND the mock so they
+/// reject identically — this guard used to live ONLY in the mock, so the real
+/// `zvt_authorize_payment` would build an over-large/zero frame that was green
+/// in the mock but malformed on the wire.
+pub fn check_amount(amount_cents: u64) -> HwResult<()> {
+    if amount_cents == 0 {
+        return Err(HardwareError::InvalidArgument(
+            "ZVT: Betrag 0 ist ungültig".into(),
+        ));
+    }
+    if amount_cents > MAX_BCD_CENTS {
+        return Err(HardwareError::InvalidArgument(format!(
+            "ZVT: Betrag {amount_cents} überschreitet das 6-Byte-BCD-Limit"
+        )));
+    }
+    Ok(())
+}
 
 /// Build a `06 01` Authorisation APDU. Amount is BCD-encoded, 6 bytes
 /// (cents), big-endian per ZVT 1.10 §8.
@@ -704,6 +737,26 @@ mod tests {
         assert_eq!(r.card_pan_masked.as_deref(), Some("****1234")); // last 4 only
         assert_eq!(r.card_brand.as_deref(), Some("VISA"));
         assert_eq!(r.receipt_text.as_deref(), Some("Zahlung OK"));
+    }
+
+    #[test]
+    fn check_amount_rejects_zero_and_over_bcd() {
+        assert!(check_amount(0).is_err(), "zero amount rejected");
+        assert!(check_amount(MAX_BCD_CENTS + 1).is_err(), "over-BCD amount rejected");
+        // The boundary and any normal amount frame cleanly.
+        assert!(check_amount(MAX_BCD_CENTS).is_ok());
+        assert!(check_amount(1).is_ok());
+        assert!(check_amount(12_345).is_ok());
+    }
+
+    #[test]
+    fn reversal_reads_success_and_abort_via_the_shared_parser() {
+        // A reversal (06 30) is interpreted by the SAME parser the authorize loop
+        // uses (run_zvt_conversation): an approved Status-Information means the
+        // Storno confirmed…
+        assert!(parse_authorisation_response(APPROVED_0F).unwrap().success);
+        // …and an Abort (06 1E) means it did NOT — no more raw buf[6]/buf[7].
+        assert!(!parse_authorisation_response(ABORT_1E).unwrap().success);
     }
 
     #[test]
