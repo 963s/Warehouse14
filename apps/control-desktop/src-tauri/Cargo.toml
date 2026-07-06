@@ -26,3 +26,6 @@ tauri-plugin-single-instance = "2"
 tauri-plugin-updater = "2"
 # Lets the React side relaunch the process after an update is applied.
 tauri-plugin-process = "2"
+# Required by `tauri::generate_context!()` — the macro emits serde_json to embed
+# the parsed tauri.conf.json at compile time (the POS crate carries it too).
+serde_json = "1"
