@@ -32,6 +32,14 @@ pub fn run() {
             sql: include_str!("../migrations/0002_kyc.sql"),
             kind: tauri_plugin_sql::MigrationKind::Up,
         },
+        // Phase 1.3 — durable TSE signature replay queue (STRICT). Replaces the
+        // volatile localStorage queue; fiscal records, never dropped.
+        tauri_plugin_sql::Migration {
+            version: 3,
+            description: "create TSE signature replay queue",
+            sql: include_str!("../migrations/0003_tse_queue.sql"),
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
