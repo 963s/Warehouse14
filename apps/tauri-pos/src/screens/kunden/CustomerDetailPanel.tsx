@@ -24,6 +24,7 @@ import { Button, DiamondRule, MoneyAmount, ParchmentCard, Seal } from '@warehous
 import { useApiClient } from '../../lib/api-context.js';
 
 import { CustomerEditDialog } from './CustomerEditDialog.js';
+import { CustomerEraseDialog } from './CustomerEraseDialog.js';
 import { CustomerAnkaufHistory, CustomerSalesHistory } from './CustomerHistoryPanels.js';
 import { CustomerTrustDialog } from './CustomerTrustDialog.js';
 import { KycCaptureModal } from './KycCaptureModal.js';
@@ -73,6 +74,7 @@ function CustomerCard({ detail }: { detail: CustomerDetail }): JSX.Element {
   const [editOpen, setEditOpen] = useState<boolean>(false);
   const [trustOpen, setTrustOpen] = useState<boolean>(false);
   const [kycOpen, setKycOpen] = useState<boolean>(false);
+  const [eraseOpen, setEraseOpen] = useState<boolean>(false);
   const blocked = detail.sanctionsMatch || detail.trustLevel === 'BANNED';
   const kycVerified = detail.kycVerifiedAt !== null;
 
@@ -246,8 +248,35 @@ function CustomerCard({ detail }: { detail: CustomerDetail }): JSX.Element {
       <CustomerAnkaufHistory customerId={detail.id} />
       <CustomerSalesHistory customerId={detail.id} />
 
+      {/* Datenschutz — DSGVO Art. 17. Deliberately last + low-emphasis: a rare,
+          serious action, step-up-gated on the server and confirm-word-gated here. */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'baseline',
+          justifyContent: 'space-between',
+          gap: 'var(--space-3)',
+          padding: 'var(--space-2) var(--space-1) var(--space-4)',
+          marginTop: 'var(--space-2)',
+          borderTop: '1px solid var(--w14-rule)',
+        }}
+      >
+        <span style={{ fontSize: '0.8rem', color: 'var(--w14-ink-faded)', fontStyle: 'italic' }}>
+          Recht auf Löschung (Art. 17)
+        </span>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setEraseOpen(true)}
+          style={{ color: 'var(--w14-wax-red)' }}
+        >
+          Kundendaten löschen
+        </Button>
+      </div>
+
       <CustomerEditDialog open={editOpen} customer={detail} onClose={() => setEditOpen(false)} />
       <CustomerTrustDialog open={trustOpen} customer={detail} onClose={() => setTrustOpen(false)} />
+      <CustomerEraseDialog open={eraseOpen} customer={detail} onClose={() => setEraseOpen(false)} />
       {kycOpen && (
         <KycCaptureModal
           customerId={detail.id}
