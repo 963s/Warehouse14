@@ -9,6 +9,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { useCallback, useState } from 'react';
 import { describeError } from '@warehouse14/i18n-de';
 
+import { describeHardwareError, isHardwareError } from '../lib/hardware-client.js';
+
 export interface ScaleWeight {
   /** Weight in grams as the scale reported it (string preserves precision). */
   grams: string;
@@ -17,11 +19,19 @@ export interface ScaleWeight {
 export interface UseScaleWeight {
   /** Read a stable weight from the given serial port (baud defaults to 9600). */
   readWeight: (portPath: string, baudRate?: number) => Promise<ScaleWeight>;
+  /** Tare (zero) the scale on the given serial port. */
+  tare: (portPath: string, baudRate?: number) => Promise<void>;
   /** Enumerate available serial ports. */
   listPorts: () => Promise<string[]>;
   weight: ScaleWeight | null;
   loading: boolean;
   error: string | null;
+}
+
+/** A scale failure carries the {kind, details} HardwareError shape — prefer its
+ *  clean German sentence; fall back to describeError for any other shape. */
+function describeScaleError(err: unknown): string {
+  return isHardwareError(err) ? describeHardwareError(err) : describeError(err);
 }
 
 export function useScaleWeight(): UseScaleWeight {
@@ -41,7 +51,7 @@ export function useScaleWeight(): UseScaleWeight {
         setWeight(result);
         return result;
       } catch (err) {
-        setError(describeError(err));
+        setError(describeScaleError(err));
         throw err;
       } finally {
         setLoading(false);
@@ -50,9 +60,25 @@ export function useScaleWeight(): UseScaleWeight {
     [],
   );
 
+  const tare = useCallback(async (portPath: string, baudRate?: number): Promise<void> => {
+    setLoading(true);
+    setError(null);
+    try {
+      await invoke('tare_scale', {
+        portPath,
+        ...(baudRate !== undefined ? { baudRate } : {}),
+      });
+    } catch (err) {
+      setError(describeScaleError(err));
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   const listPorts = useCallback(async (): Promise<string[]> => {
     return invoke<string[]>('list_scale_ports');
   }, []);
 
-  return { readWeight, listPorts, weight, loading, error };
+  return { readWeight, tare, listPorts, weight, loading, error };
 }

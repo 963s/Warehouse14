@@ -21,6 +21,7 @@ import { Button, DiamondRule, ParchmentCard, Seal } from '@warehouse14/ui-kit';
 
 import { HardwareStatusBadge } from '../../components/hardware/HardwareStatusBadge.js';
 import { useHardwareAutoConnect } from '../../hooks/useHardwareAutoConnect.js';
+import { useScaleWeight } from '../../hooks/useScaleWeight.js';
 import { useTseQueueStats } from '../../lib/tse-queue-drain-hook.js';
 import {
   type LabelConfig,
@@ -146,6 +147,7 @@ export function GeraeteManager(): JSX.Element {
       <LabelSection />
       <ZvtSection />
       <ScannerSection />
+      <WaageSection />
       <TseSection />
     </section>
   );
@@ -459,6 +461,120 @@ function A4Section(): JSX.Element {
       <Row>
         <span style={{ color: 'var(--w14-ink-faded)', fontSize: '0.82rem' }}>
           Liste stammt von <code>lpstat -p</code>. PDFs gehen via <code>lpr -P</code>.
+        </span>
+      </Row>
+    </Card>
+  );
+}
+
+function WaageSection(): JSX.Element {
+  const portPath = useHardwareStore((s) => s.config.scale.portPath);
+  const baudRate = useHardwareStore((s) => s.config.scale.baudRate);
+  const setScale = useHardwareStore((s) => s.setScale);
+  const addToast = useToastStore((s) => s.addToast);
+  const { readWeight, tare, listPorts, loading } = useScaleWeight();
+  const [ports, setPorts] = useState<string[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const refresh = useCallback(async () => {
+    if (!isRunningInTauri()) return;
+    setRefreshing(true);
+    try {
+      setPorts(await listPorts());
+    } catch (err) {
+      addToast({
+        tone: 'alert',
+        title: 'Anschlüsse konnten nicht ermittelt werden',
+        body: isHardwareError(err) ? describeHardwareError(err) : String(err),
+      });
+    } finally {
+      setRefreshing(false);
+    }
+  }, [addToast, listPorts]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const testWeigh = useCallback(async () => {
+    if (!portPath) return;
+    try {
+      const w = await readWeight(portPath, baudRate);
+      addToast({ tone: 'success', title: 'Waage verbunden', body: `Gewicht: ${w.grams} g` });
+    } catch (err) {
+      addToast({
+        tone: 'alert',
+        title: 'Wägen fehlgeschlagen',
+        body: isHardwareError(err) ? describeHardwareError(err) : String(err),
+      });
+    }
+  }, [addToast, baudRate, portPath, readWeight]);
+
+  const doTare = useCallback(async () => {
+    if (!portPath) return;
+    try {
+      await tare(portPath, baudRate);
+      addToast({ tone: 'success', title: 'Waage tariert', body: 'Nullpunkt gesetzt.' });
+    } catch (err) {
+      addToast({
+        tone: 'alert',
+        title: 'Tarieren fehlgeschlagen',
+        body: isHardwareError(err) ? describeHardwareError(err) : String(err),
+      });
+    }
+  }, [addToast, baudRate, portPath, tare]);
+
+  const actionsDisabled = !isRunningInTauri() || !portPath || loading;
+
+  return (
+    <Card title="USB-Waage (Ankauf)">
+      <Row>
+        <label
+          htmlFor="scale-port"
+          className="w14-smallcaps"
+          style={{ letterSpacing: '0.08em', fontSize: '0.78rem', minWidth: 110 }}
+        >
+          Anschluss
+        </label>
+        <select
+          id="scale-port"
+          value={portPath}
+          onChange={(e) => setScale({ portPath: e.target.value })}
+          style={{
+            flex: 1,
+            padding: '6px 10px',
+            fontFamily: 'var(--w14-font-display)',
+            backgroundColor: 'var(--w14-parchment-1)',
+            border: '1px solid var(--w14-rule)',
+            borderRadius: 4,
+          }}
+        >
+          <option value="">— bitte wählen —</option>
+          {/* Keep the persisted port selectable even before the enumeration runs. */}
+          {portPath && !ports.includes(portPath) && <option value={portPath}>{portPath}</option>}
+          {ports.map((p) => (
+            <option key={p} value={p}>
+              {p}
+            </option>
+          ))}
+        </select>
+        <Button
+          variant="ghost"
+          onClick={() => void refresh()}
+          disabled={refreshing || !isRunningInTauri()}
+        >
+          {refreshing ? 'Lädt…' : 'Aktualisieren'}
+        </Button>
+      </Row>
+      <Row>
+        <Button variant="ghost" onClick={() => void testWeigh()} disabled={actionsDisabled}>
+          {loading ? 'Wägt…' : 'Wägen testen'}
+        </Button>
+        <Button variant="ghost" onClick={() => void doTare()} disabled={actionsDisabled}>
+          Tarieren
+        </Button>
+        <span style={{ color: 'var(--w14-ink-faded)', fontSize: '0.82rem' }}>
+          Serielle Waage (MT-SICS). Nur stabile Gewichte werden übernommen.
         </span>
       </Row>
     </Card>
