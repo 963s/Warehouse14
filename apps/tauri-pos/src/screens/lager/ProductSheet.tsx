@@ -760,8 +760,20 @@ function ManageBody({
   });
 
   const product = detailQ.data;
+  // Share the EXACT photos query key FotosSection uses (TanStack dedupes on the
+  // key) so the lifecycle chip can reflect real photo presence — a DRAFT with
+  // photos but no price is "Fotos", not "Entwurf" — with no second network read.
+  const photosQ = useQuery({
+    queryKey: ['products', productId, 'photos'],
+    queryFn: () => photosApi.listForProduct(api, productId),
+    staleTime: 10_000,
+  });
   const stage = product
-    ? deriveLifecycleStage({ status: product.status, listPriceEur: product.listPriceEur })
+    ? deriveLifecycleStage({
+        status: product.status,
+        listPriceEur: product.listPriceEur,
+        photoCount: photosQ.data?.items.length ?? 0,
+      })
     : null;
 
   return (
