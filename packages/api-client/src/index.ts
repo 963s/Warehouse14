@@ -113,6 +113,7 @@ export {
   type ClosingListItem,
   type ClosingListResponse,
 } from './domains/closings.js';
+export { registersApi, type AnVerkaufsbuchCsvQuery } from './domains/registers.js';
 export {
   appointments,
   type AppointmentType,

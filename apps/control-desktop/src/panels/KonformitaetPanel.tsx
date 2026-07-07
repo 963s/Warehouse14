@@ -12,6 +12,7 @@ import { type CSSProperties, useState } from 'react';
 
 import { useQuery } from '@tanstack/react-query';
 
+import { ApiError, registersApi } from '@warehouse14/api-client';
 import {
   Button,
   DiamondRule,
@@ -22,7 +23,7 @@ import {
 
 import { useApiClient } from '../api-context.js';
 import { StatusDot, type StatusTone } from '../components/StatusDot.js';
-import { describeError } from '@warehouse14/i18n-de';
+import { actorInfo, describeError, entityLabel, eventLabel, shortId } from '@warehouse14/i18n-de';
 
 interface LedgerRow {
   id: number;
@@ -31,6 +32,8 @@ interface LedgerRow {
   entityId: string;
   actorUserId: string | null;
   createdAt: string;
+  /** Owner-trusted event payload; carries a cashier name for some events. */
+  payload?: unknown;
 }
 
 interface LedgerResponse {
@@ -114,28 +117,16 @@ export function KonformitaetPanel(): JSX.Element {
   const dismissToast = (id: string): void => setToasts((prev) => prev.filter((t) => t.id !== id));
 
   /**
-   * Stream the An-/Verkaufsbuch CSV (raw fetch — it's a file). Cookie auth
-   * rides along; a 403 means a fresh PIN step-up is required (it decrypts
-   * counterparty identity).
+   * Stream the An-/Verkaufsbuch CSV via the ApiClient. Routing through the client
+   * (not a raw fetch) means the 403 STEP_UP_REQUIRED it raises — the register
+   * decrypts counterparty identity, so it demands a fresh PIN — is caught by the
+   * wired step-up middleware: the PIN modal opens and the request replays once.
    */
   async function downloadRegister(): Promise<void> {
     setDownloading(true);
     try {
-      const url = `${baseUrl}/api/registers/an-verkaufsbuch?direction=${direction}&from=${from}&to=${to}&format=csv`;
-      const res = await fetch(url, { method: 'GET', credentials: 'include' });
-      if (!res.ok) {
-        if (res.status === 403) {
-          pushToast(
-            'alert',
-            'PIN-Bestätigung nötig',
-            'Das An-/Verkaufsbuch entschlüsselt Ausweisdaten und verlangt eine frische PIN-Freigabe.',
-          );
-        } else {
-          pushToast('alert', 'Export fehlgeschlagen', `HTTP ${res.status}`);
-        }
-        return;
-      }
-      const blob = await res.blob();
+      const csv = await registersApi.anVerkaufsbuchCsv(client, { direction, from, to });
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
       const objectUrl = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = objectUrl;
@@ -150,7 +141,11 @@ export function KonformitaetPanel(): JSX.Element {
         `${direction === 'ANKAUF' ? 'Ankäufe' : 'Verkäufe'} ${from} – ${to}.`,
       );
     } catch (err) {
-      pushToast('alert', 'Export fehlgeschlagen', describeError(err));
+      if (err instanceof ApiError && err.code === 'STEP_UP_REQUIRED') {
+        pushToast('alert', 'Export abgebrochen', 'Die PIN-Bestätigung wurde abgebrochen.');
+      } else {
+        pushToast('alert', 'Export fehlgeschlagen', describeError(err));
+      }
     } finally {
       setDownloading(false);
     }
@@ -268,16 +263,17 @@ export function KonformitaetPanel(): JSX.Element {
                   <td style={td}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                       <StatusDot tone={eventTone(e.eventType)} size={9} />
-                      <span style={{ fontFamily: 'var(--w14-font-mono)', fontSize: '0.82rem' }}>
-                        {e.eventType}
-                      </span>
+                      <span style={{ fontSize: '0.85rem' }}>{eventLabel(e.eventType)}</span>
                     </span>
                   </td>
                   <td style={{ ...td, fontSize: '0.82rem' }}>
-                    {e.entityTable} · {e.entityId.slice(0, 8)}
+                    {entityLabel(e.entityTable)}
+                    {shortId(e.entityId) ? (
+                      <span style={{ color: 'var(--w14-ink-faded)' }}> · {shortId(e.entityId)}</span>
+                    ) : null}
                   </td>
-                  <td style={{ ...td, fontFamily: 'var(--w14-font-mono)', fontSize: '0.8rem' }}>
-                    {e.actorUserId ? e.actorUserId.slice(0, 8) : 'System'}
+                  <td style={{ ...td, fontSize: '0.82rem' }}>
+                    {actorInfo(e.actorUserId, e.payload).label}
                   </td>
                 </tr>
               ))}
