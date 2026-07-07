@@ -41,6 +41,8 @@ import {
 } from '@warehouse14/ui-kit';
 
 import { useBarcodeScanner } from '../../hooks/useBarcodeScanner.js';
+import { useInventoryCounts } from '../../hooks/useInventoryCounts.js';
+import { type AvailabilityBucket, bucketCount } from '../../lib/availability-ui.js';
 import { useApiClient } from '../../lib/api-context.js';
 import { type StatusFilter, useLagerFilterStore } from '../../state/lager-filter-store.js';
 import { useToastStore } from '../../state/toast-store.js';
@@ -64,6 +66,9 @@ export function Lager(): JSX.Element {
   const queryClient = useQueryClient();
   const addToast = useToastStore((s) => s.addToast);
   const filters = useLagerFilterStore();
+  // Live per-status totals for the filter chips (Verfügbar/Reserviert/Verkauft),
+  // keyed to the current search so the counts match what the list shows.
+  const inventoryCounts = useInventoryCounts({ q: filters.q });
   const setStatus = useLagerFilterStore((s) => s.setStatus);
   const setQ = useLagerFilterStore((s) => s.setQ);
   const setBarcode = useLagerFilterStore((s) => s.setBarcode);
@@ -347,6 +352,16 @@ export function Lager(): JSX.Element {
               key={chip.value}
               label={chip.label}
               active={filters.status === chip.value}
+              // Live total for the three availability buckets; undefined for
+              // ALL/DRAFT and while the first count is still loading (no fake 0).
+              count={
+                inventoryCounts.data &&
+                (chip.value === 'AVAILABLE' ||
+                  chip.value === 'RESERVED' ||
+                  chip.value === 'SOLD')
+                  ? bucketCount(inventoryCounts.data, chip.value as AvailabilityBucket)
+                  : undefined
+              }
               onClick={() => setStatus(chip.value)}
             />
           ))}
@@ -420,17 +435,26 @@ export function Lager(): JSX.Element {
 function StatusChip({
   label,
   active,
+  count,
   onClick,
-}: { label: string; active: boolean; onClick: () => void }): JSX.Element {
+}: {
+  label: string;
+  active: boolean;
+  /** Live per-status total, or undefined while counts load / for chips without one. */
+  count?: number | undefined;
+  onClick: () => void;
+}): JSX.Element {
   return (
     <button
       type="button"
       onClick={onClick}
       className="w14-smallcaps"
       aria-pressed={active}
+      aria-label={count !== undefined ? `${label}: ${count}` : label}
       style={{
         display: 'inline-flex',
         alignItems: 'center',
+        gap: 'var(--space-2)',
         minHeight: 40, // comfortable filter target (brief §1 touch floor)
         background: active ? 'var(--w14-parchment-3)' : 'transparent',
         border: `1px solid ${active ? 'var(--w14-gold)' : 'var(--w14-rule)'}`,
@@ -444,6 +468,19 @@ function StatusChip({
       }}
     >
       {label}
+      {count !== undefined && (
+        <span
+          aria-hidden
+          style={{
+            fontVariantNumeric: 'tabular-nums',
+            fontFamily: 'var(--w14-font-mono, monospace)',
+            fontSize: '0.72rem',
+            color: active ? 'var(--w14-gold)' : 'var(--w14-ink-faded)',
+          }}
+        >
+          {count}
+        </span>
+      )}
     </button>
   );
 }
