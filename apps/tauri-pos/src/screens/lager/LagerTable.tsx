@@ -347,12 +347,14 @@ const LagerRow = memo(
                 flexShrink: 0,
                 borderRadius: '50%',
                 // For a sellable item, distinguish shop-only ("Im Laden", brass)
-                // from web-published ("Online", sage) — what the owner wanted to
-                // see in the cashier. Antique palette only: sage =
-                // published/positive, brass = in-store.
+                // from web-published ("Online", sage). Drive "Online" off the
+                // CANONICAL web-shop gate `isPublishedToWeb` (the storefront
+                // catalog filters on `is_published_to_web AND status='AVAILABLE'`),
+                // NOT the deprecated `listedOnStorefront` flag. Since this branch
+                // is already gated on AVAILABLE, isPublishedToWeb here == canonical.
                 background:
                   row.status === 'AVAILABLE'
-                    ? row.listedOnStorefront
+                    ? row.isPublishedToWeb
                       ? 'var(--w14-verdigris)'
                       : 'var(--w14-accent)'
                     : PRODUCT_STATUS_COLOR[row.status],
@@ -367,7 +369,7 @@ const LagerRow = memo(
               }}
             >
               {row.status === 'AVAILABLE'
-                ? row.listedOnStorefront
+                ? row.isPublishedToWeb
                   ? 'Online'
                   : 'Im Laden'
                 : PRODUCT_STATUS_LABEL[row.status]}

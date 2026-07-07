@@ -228,7 +228,13 @@ export function WebSeoPanel({ productId }: WebSeoPanelProps): JSX.Element {
     return out;
   }, [treeQ.data]);
 
-  const isLive = detailQ.data?.isPublishedToWeb === true;
+  // The publish flag the toggle controls (whether the operator has published it).
+  const publishedToWeb = detailQ.data?.isPublishedToWeb === true;
+  // Canonical web-shop VISIBILITY: the storefront filters on
+  // `is_published_to_web AND status='AVAILABLE'`. A published DRAFT is NOT live —
+  // it becomes visible only once available. Never show "LIVE" for it (pending).
+  const isLive = publishedToWeb && detailQ.data?.status === 'AVAILABLE';
+  const isPendingWeb = publishedToWeb && !isLive;
   const detailLoading = detailQ.isLoading;
   const detailError = detailQ.isError;
 
@@ -269,7 +275,9 @@ export function WebSeoPanel({ productId }: WebSeoPanelProps): JSX.Element {
     >
       {/* ── 1. Publication toggle ── */}
       <PublishToggle
+        published={publishedToWeb}
         isLive={isLive}
+        isPendingWeb={isPendingWeb}
         publishedAt={
           detail.archivedAt ? null : null /* detail.publishedAt not on type yet — Phase 2.B I-29 */
         }
@@ -368,11 +376,18 @@ export function WebSeoPanel({ productId }: WebSeoPanelProps): JSX.Element {
 // ════════════════════════════════════════════════════════════════════════
 
 function PublishToggle({
+  published,
   isLive,
+  isPendingWeb,
   busy,
   onToggle,
 }: {
+  /** The real publish flag the switch controls (isPublishedToWeb). */
+  published: boolean;
+  /** Live = published AND available (actually visible on the web-shop). */
   isLive: boolean;
+  /** Published but not yet available — visible only once available. */
+  isPendingWeb: boolean;
   publishedAt: string | null;
   busy: boolean;
   onToggle: (next: boolean) => void;
@@ -398,10 +413,15 @@ function PublishToggle({
             width: 12,
             height: 12,
             borderRadius: 999,
-            backgroundColor: isLive ? 'var(--w14-gold)' : 'var(--w14-rule)',
+            backgroundColor: isLive
+              ? 'var(--w14-gold)'
+              : isPendingWeb
+                ? 'var(--w14-verdigris)'
+                : 'var(--w14-rule)',
             boxShadow: isLive
               ? '0 0 0 2px var(--w14-parchment-2), 0 0 12px var(--w14-gold-soft)'
               : 'none',
+            // Pulse ONLY when actually live; a pending item is steady (honest).
             animation: isLive ? 'w14-publish-pulse 2.2s ease-in-out infinite' : 'none',
           }}
         />
@@ -411,14 +431,23 @@ function PublishToggle({
             style={{
               letterSpacing: '0.1em',
               fontSize: '0.78rem',
-              color: isLive ? 'var(--w14-gold)' : 'var(--w14-ink-faded)',
+              color: isLive
+                ? 'var(--w14-gold)'
+                : isPendingWeb
+                  ? 'var(--w14-verdigris)'
+                  : 'var(--w14-ink-faded)',
               fontWeight: 600,
             }}
           >
-            {isLive ? 'LIVE im Web-Shop' : 'Nicht veröffentlicht'}
+            {isLive
+              ? 'LIVE im Web-Shop'
+              : isPendingWeb
+                ? 'Veröffentlicht — noch nicht verfügbar'
+                : 'Nicht veröffentlicht'}
           </span>
           <span style={{ fontSize: '0.78rem', color: 'var(--w14-ink-faded)', fontStyle: 'italic' }}>
-            warehouse14.de zeigt dieses Stück {isLive ? 'sofort an.' : 'noch nicht.'}
+            warehouse14.de zeigt dieses Stück{' '}
+            {isLive ? 'sofort an.' : isPendingWeb ? 'sobald es verfügbar ist.' : 'noch nicht.'}
           </span>
         </div>
       </div>
@@ -426,8 +455,8 @@ function PublishToggle({
       <button
         type="button"
         role="switch"
-        aria-checked={isLive}
-        onClick={() => onToggle(!isLive)}
+        aria-checked={published}
+        onClick={() => onToggle(!published)}
         disabled={busy}
         style={{
           position: 'relative',
@@ -435,7 +464,7 @@ function PublishToggle({
           height: 30,
           padding: 0,
           border: 'none',
-          background: isLive ? 'var(--w14-gold)' : 'var(--w14-rule)',
+          background: published ? 'var(--w14-gold)' : 'var(--w14-rule)',
           borderRadius: 999,
           cursor: busy ? 'wait' : 'pointer',
           transition: 'background 0.18s ease',
@@ -447,7 +476,7 @@ function PublishToggle({
           style={{
             position: 'absolute',
             top: 3,
-            left: isLive ? 28 : 3,
+            left: published ? 28 : 3,
             width: 24,
             height: 24,
             borderRadius: 999,
