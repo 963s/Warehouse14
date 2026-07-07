@@ -69,9 +69,16 @@ echo "  Total leaks: ${count}"
 echo "  Patterns:    err.message · error.message · j.error.message · ?? err · humanizeEnum · localhost:3001"
 echo "  Scope:       apps/tauri-pos/src + apps/control-desktop/src (excl. tests, .d.ts)"
 
-if [ "${STRICT:-0}" = "1" ] && [ "$count" -gt 0 ]; then
-  echo "  STRICT mode: FAIL — the sweep must drive this to zero." >&2
+# Phase 2.1 complete — the sweep drove this to ZERO, so the gate is now STRICT by
+# DEFAULT: any reintroduced raw-error / token / dev-URL leak fails. Downgrade to
+# warn-only with STRICT=0 only if you must.
+if [ "${STRICT:-1}" = "1" ] && [ "$count" -gt 0 ]; then
+  echo "  STRICT mode: FAIL — a leak was reintroduced. Route it through describeError/germanLabel (@warehouse14/i18n-de), not raw wire text." >&2
   exit 1
 fi
-echo "  Mode: warn-only (set STRICT=1 to fail on any leak)."
+if [ "${STRICT:-1}" = "1" ]; then
+  echo "  Mode: STRICT (fails on any leak). Currently clean."
+else
+  echo "  Mode: warn-only (STRICT=0)."
+fi
 exit 0
