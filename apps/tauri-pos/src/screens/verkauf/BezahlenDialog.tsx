@@ -62,7 +62,12 @@ import { ZvtSpinner } from '../../components/hardware/ZvtSpinner.js';
 import { currentShiftQueryKey } from '../../hooks/useCurrentShift.js';
 import { dashboardQueryKey } from '../../hooks/useDashboardSummary.js';
 import { useReceiptFooterLines } from '../../hooks/useReceiptFooter.js';
-import { isReceiptShopValid, resolveShopInfo, useShopInfo } from '../../hooks/useShopInfo.js';
+import {
+  RECEIPT_VAT_LOCK_REASON,
+  isReceiptShopValid,
+  resolveShopInfo,
+  useShopInfo,
+} from '../../hooks/useShopInfo.js';
 import { evaluateKycGate } from '../../lib/ankauf-kyc-gate.js';
 import { resolveDeviceId, useApiClient } from '../../lib/api-context.js';
 import { posIntentsStore, sealFiscalRequest } from '../../lib/pos-intents-store.js';
@@ -822,7 +827,7 @@ export function BezahlenDialog({
   // with an honest reason pointing the operator to the settings.
   const receiptLockReason = isReceiptShopValid(resolveShopInfo(shopApi))
     ? null
-    : 'USt-IdNr. nicht hinterlegt — Beleg gesperrt. Bitte in den Einstellungen ergänzen.';
+    : RECEIPT_VAT_LOCK_REASON;
 
   /**
    * Send an already-built receipt to the thermal printer. Called from the

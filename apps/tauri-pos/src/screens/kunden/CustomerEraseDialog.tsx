@@ -21,7 +21,7 @@ import { describeError } from '@warehouse14/i18n-de';
 import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
-import { deleteKycDocument } from '../../lib/hardware-client.js';
+import { deleteKycDocument, isRunningInTauri } from '../../lib/hardware-client.js';
 import { deleteKycRecord, listKycForCustomer } from '../../lib/kyc-store.js';
 import { useToastStore } from '../../state/toast-store.js';
 
@@ -31,20 +31,37 @@ import { kycLocalQueryKey } from './KycLocalDocs.js';
 const CONFIRM_WORD = 'LÖSCHEN';
 
 /**
- * Best-effort purge of this customer's local encrypted Ausweis files. The server
- * erase is the authoritative action; this removes the offline cached copies on
- * THIS till. Returns the count that could not be removed so the operator hears
- * the truth rather than a blanket "gelöscht".
+ * The honest outcome of purging this customer's local encrypted Ausweis files.
+ * The server erase is the authoritative action; this reports what actually
+ * happened to the offline cached copies on THIS till.
+ *
+ *  - `none`    — not a Tauri till, so there is no local vault to purge.
+ *  - `cleared` — every local file for this customer was removed (or there were none).
+ *  - `partial` — one or more files could not be removed; at-rest copies may remain.
+ *  - `unknown` — the local index could not even be READ, so the state is
+ *                indeterminate. Crucially this is NOT the same as "empty": we must
+ *                never claim the vault was emptied when we could not look inside it.
  */
-async function purgeLocalVault(customerId: string): Promise<number> {
-  let failed = 0;
-  let records: Awaited<ReturnType<typeof listKycForCustomer>> = [];
+type LocalPurge =
+  | { kind: 'none' }
+  | { kind: 'cleared' }
+  | { kind: 'partial'; failed: number }
+  | { kind: 'unknown' };
+
+async function purgeLocalVault(customerId: string): Promise<LocalPurge> {
+  // Outside a Tauri webview (browser / Vitest) there is no local vault at all.
+  if (!isRunningInTauri()) return { kind: 'none' };
+
+  let records: Awaited<ReturnType<typeof listKycForCustomer>>;
   try {
     records = await listKycForCustomer(customerId);
   } catch {
-    // Outside Tauri (or no local DB) there is nothing to purge.
-    return 0;
+    // Inside Tauri but the local index could not be read — we cannot honestly
+    // claim the vault is empty, so report the indeterminate state.
+    return { kind: 'unknown' };
   }
+
+  let failed = 0;
   for (const rec of records) {
     try {
       await deleteKycDocument(rec.filePath);
@@ -53,7 +70,7 @@ async function purgeLocalVault(customerId: string): Promise<number> {
       failed += 1;
     }
   }
-  return failed;
+  return failed > 0 ? { kind: 'partial', failed } : { kind: 'cleared' };
 }
 
 export interface CustomerEraseDialogProps {
@@ -102,16 +119,23 @@ export function CustomerEraseDialog({
     setError(null);
     try {
       await customersApi.erase(api, customer.id);
-      // Server erase succeeded — now purge the local at-rest copies.
-      const failedLocal = await purgeLocalVault(customer.id);
+      // Server erase succeeded — now purge the local at-rest copies and report
+      // exactly what happened to them (never a blanket "geleert").
+      const purge = await purgeLocalVault(customer.id);
+      const localLine =
+        purge.kind === 'cleared'
+          ? 'Lokaler Ausweis-Tresor geleert.'
+          : purge.kind === 'partial'
+            ? `${purge.failed} lokale Tresor-Datei(en) konnten nicht entfernt werden.`
+            : purge.kind === 'unknown'
+              ? 'Lokaler Ausweis-Tresor konnte nicht geprüft werden. Bitte an dieser Kasse manuell kontrollieren.'
+              : ''; // 'none' — no local vault on this till, nothing to mention.
+      const clean = purge.kind === 'cleared' || purge.kind === 'none';
 
       addToast({
-        tone: 'success',
+        tone: clean ? 'success' : 'alert',
         title: 'Kundendaten gelöscht',
-        body:
-          failedLocal > 0
-            ? `Serverseitig anonymisiert. ${failedLocal} lokale Tresor-Datei(en) konnten nicht entfernt werden.`
-            : 'Serverseitig anonymisiert, lokaler Ausweis-Tresor geleert.',
+        body: localLine ? `Serverseitig anonymisiert. ${localLine}` : 'Serverseitig anonymisiert.',
       });
       await qc.invalidateQueries({ queryKey: ['customers', customer.id] });
       await qc.invalidateQueries({ queryKey: ['customers', 'list'] });

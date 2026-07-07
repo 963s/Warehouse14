@@ -29,6 +29,7 @@ import {
 import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../api-context.js';
+import { isStepUpCancelled } from '../state/step-up-store.js';
 import { describeError } from '@warehouse14/i18n-de';
 
 export interface EditableCustomer {
@@ -66,8 +67,12 @@ const DOCUMENT_OPTIONS: Array<{ value: DocumentType; label: string }> = [
   { value: 'PASSPORT_NON_EU', label: 'Reisepass (Nicht-EU)' },
 ];
 
-/** Map an ApiError to a precise German sentence. */
+/** Map an error to a precise German sentence. */
 function germanError(err: unknown): string {
+  // A cancelled PIN modal rejects with a plain StepUpCancelledError (not an
+  // ApiError), so it must be caught here — else a deliberate cancel would fall
+  // through to the "Verbindung gestört" network line.
+  if (isStepUpCancelled(err)) return 'PIN-Bestätigung wurde abgebrochen.';
   if (err instanceof ApiError) {
     switch (err.code) {
       case 'STEP_UP_REQUIRED':

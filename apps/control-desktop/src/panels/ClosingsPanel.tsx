@@ -25,6 +25,7 @@ import {
 
 import { useApiClient } from '../api-context.js';
 import { StatusDot, type StatusTone } from '../components/StatusDot.js';
+import { isStepUpCancelled } from '../state/step-up-store.js';
 import { describeError } from '@warehouse14/i18n-de';
 
 interface ClosingItem {
@@ -131,7 +132,7 @@ export function ClosingsPanel(): JSX.Element {
         `Buchungsstapel für ${formatDay(item.businessDay)}.`,
       );
     } catch (err) {
-      if (err instanceof ApiError && err.code === 'STEP_UP_REQUIRED') {
+      if (isStepUpCancelled(err) || (err instanceof ApiError && err.code === 'STEP_UP_REQUIRED')) {
         pushToast('alert', 'Export abgebrochen', 'Die PIN-Bestätigung wurde abgebrochen.');
       } else {
         pushToast('alert', 'Export fehlgeschlagen', describeError(err));
@@ -169,7 +170,7 @@ export function ClosingsPanel(): JSX.Element {
         `Kassendaten-Paket für ${formatDay(item.businessDay)} (Kern-Export — vor einer Prüfung mit dem DSFinV-K-Prüftool abgleichen).`,
       );
     } catch (err) {
-      if (err instanceof ApiError && err.code === 'STEP_UP_REQUIRED') {
+      if (isStepUpCancelled(err) || (err instanceof ApiError && err.code === 'STEP_UP_REQUIRED')) {
         pushToast('alert', 'Export abgebrochen', 'Die PIN-Bestätigung wurde abgebrochen.');
       } else {
         pushToast('alert', 'Export fehlgeschlagen', describeError(err));
@@ -197,7 +198,7 @@ export function ClosingsPanel(): JSX.Element {
       );
       await query.refetch();
     } catch (err) {
-      if (err instanceof ApiError && err.code === 'STEP_UP_REQUIRED') {
+      if (isStepUpCancelled(err) || (err instanceof ApiError && err.code === 'STEP_UP_REQUIRED')) {
         pushToast('alert', 'Tagesabschluss abgebrochen', 'Die PIN-Bestätigung wurde abgebrochen.');
       } else if (err instanceof ApiError && err.httpStatus === 409) {
         pushToast(

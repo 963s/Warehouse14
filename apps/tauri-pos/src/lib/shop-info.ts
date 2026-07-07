@@ -54,10 +54,15 @@ export interface ShopInfoApi {
  */
 export function resolveShopInfo(api: ShopInfoApi | undefined): ShopInfo {
   if (!api) return SHOP_INFO;
+  const serverAddress = [api.addressLine1, api.addressLine2].filter((l) => l.length > 0);
   return {
     name: api.name || SHOP_INFO.name,
     tagline: api.tagline || SHOP_INFO.tagline,
-    address: [api.addressLine1, api.addressLine2].filter((l) => l.length > 0),
+    // Address is a safe-to-default header field (per this module's contract):
+    // when the server carries no address line, fall back to the bundled one so
+    // the receipt header never prints blank. The VAT id below is the ONLY field
+    // that must stay server-only (it locks rather than defaults).
+    address: serverAddress.length > 0 ? serverAddress : SHOP_INFO.address,
     vatId: api.vatId.trim(),
     phone: api.phone.trim().length > 0 ? api.phone.trim() : null,
   };
@@ -71,3 +76,12 @@ export function resolveShopInfo(api: ShopInfoApi | undefined): ShopInfo {
 export function isReceiptShopValid(shop: ShopInfo): boolean {
   return shop.vatId.trim().length > 0;
 }
+
+/**
+ * The single honest reason shown whenever a receipt print (first sale OR
+ * reprint from the Kassenbuch) is hard-locked for a missing USt-IdNr. Kept here
+ * as ONE source of truth so every print surface locks with identical wording —
+ * a divergent copy on the reprint path was how the lock got silently bypassed.
+ */
+export const RECEIPT_VAT_LOCK_REASON =
+  'USt-IdNr. nicht hinterlegt. Beleg gesperrt. Bitte in den Einstellungen ergänzen.';

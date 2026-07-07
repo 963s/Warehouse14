@@ -20,6 +20,7 @@ import { useApiClient } from '../api-context.js';
 import { StatusDot, type StatusTone } from '../components/StatusDot.js';
 import { clearSessionToken } from '../lib/session-token.js';
 import { useSessionStore } from '../state/session-store.js';
+import { isStepUpCancelled } from '../state/step-up-store.js';
 import { describeError } from '@warehouse14/i18n-de';
 
 interface SettingItem {
@@ -178,6 +179,10 @@ function formatDate(iso: string): string {
 }
 
 function germanError(err: unknown): string {
+  // A cancelled PIN modal rejects with a plain StepUpCancelledError (not an
+  // ApiError) — catch it here so a deliberate cancel is not misreported as a
+  // "Verbindung gestört" network failure.
+  if (isStepUpCancelled(err)) return 'PIN-Bestätigung wurde abgebrochen.';
   if (err instanceof ApiError) {
     switch (err.code) {
       case 'STEP_UP_REQUIRED':

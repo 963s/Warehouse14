@@ -92,7 +92,9 @@ export function KycLocalDocs({
         addToast({
           tone: 'alert',
           title: 'Vorschau fehlgeschlagen',
-          body: isHardwareError(err) ? describeHardwareError(err) : String(err),
+          body: isHardwareError(err)
+            ? describeHardwareError(err)
+            : 'Die Vorschau konnte nicht geladen werden. Bitte erneut versuchen.',
         });
       } finally {
         setBusyId(null);
@@ -121,7 +123,9 @@ export function KycLocalDocs({
         addToast({
           tone: 'alert',
           title: 'Löschen fehlgeschlagen',
-          body: isHardwareError(err) ? describeHardwareError(err) : String(err),
+          body: isHardwareError(err)
+            ? describeHardwareError(err)
+            : 'Der Ausweis konnte nicht entfernt werden. Bitte erneut versuchen.',
         });
       } finally {
         setBusyId(null);

@@ -23,6 +23,7 @@ import {
 
 import { useApiClient } from '../api-context.js';
 import { StatusDot, type StatusTone } from '../components/StatusDot.js';
+import { isStepUpCancelled } from '../state/step-up-store.js';
 import { actorInfo, describeError, entityLabel, eventLabel, shortId } from '@warehouse14/i18n-de';
 
 interface LedgerRow {
@@ -141,7 +142,7 @@ export function KonformitaetPanel(): JSX.Element {
         `${direction === 'ANKAUF' ? 'Ankäufe' : 'Verkäufe'} ${from} – ${to}.`,
       );
     } catch (err) {
-      if (err instanceof ApiError && err.code === 'STEP_UP_REQUIRED') {
+      if (isStepUpCancelled(err) || (err instanceof ApiError && err.code === 'STEP_UP_REQUIRED')) {
         pushToast('alert', 'Export abgebrochen', 'Die PIN-Bestätigung wurde abgebrochen.');
       } else {
         pushToast('alert', 'Export fehlgeschlagen', describeError(err));

@@ -15,6 +15,24 @@ import { create } from 'zustand';
 
 import type { StepUpReason } from '@warehouse14/api-client';
 
+/**
+ * Thrown when the owner CANCELS the PIN modal (Esc / backdrop / Abbrechen). It
+ * is a plain rejection, NOT an ApiError — the middleware propagates it verbatim,
+ * so callers must recognise a deliberate cancel via `isStepUpCancelled(err)` and
+ * report "abgebrochen", not a system failure.
+ */
+export class StepUpCancelledError extends Error {
+  constructor() {
+    super('Step-up cancelled by owner.');
+    this.name = 'StepUpCancelledError';
+  }
+}
+
+/** True iff `err` is a deliberate owner cancel of the step-up PIN modal. */
+export function isStepUpCancelled(err: unknown): boolean {
+  return err instanceof StepUpCancelledError;
+}
+
 interface StepUpRequest {
   resolve: () => void;
   reject: (err: unknown) => void;
@@ -60,7 +78,7 @@ export const useStepUpStore = create<StepUpState>((set, get) => ({
 
   cancel: () => {
     const r = get().request;
-    if (r) r.reject(new Error('Step-up cancelled by owner.'));
+    if (r) r.reject(new StepUpCancelledError());
     set({ active: false, request: null, reason: null });
   },
 }));

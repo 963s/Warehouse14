@@ -24,6 +24,7 @@ import {
 
 import { useDashboardSummary } from '../../hooks/useDashboardSummary.js';
 import { useReceiptPrinter } from '../../hooks/useReceiptPrinter.js';
+import { RECEIPT_VAT_LOCK_REASON } from '../../lib/shop-info.js';
 import { useLastReceiptStore } from '../../state/last-receipt-store.js';
 
 import { ReceiptPreview } from '../verkauf/ReceiptPreview.js';
@@ -272,6 +273,10 @@ export function KassenbuchPanel({ shift }: KassenbuchPanelProps): JSX.Element {
           data={lastReceipt}
           printing={printing}
           canPrint={canPrint}
+          // Phase 7.2 lock also guards the REPRINT: a stored receipt whose
+          // USt-IdNr. is blank must never be re-printed with a fake or empty VAT
+          // id (GoBD/§14 UStG). Same rule + same wording as the first-sale path.
+          lockedReason={lastReceipt.shopVatId.trim() ? null : RECEIPT_VAT_LOCK_REASON}
           onPrint={() => {
             void print(lastReceipt).then((ok) => {
               if (ok) setReprintOpen(false);

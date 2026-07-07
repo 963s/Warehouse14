@@ -10,12 +10,17 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { useApiClient } from '../lib/api-context.js';
-import { type ShopInfoApi, isReceiptShopValid, resolveShopInfo } from '../lib/shop-info.js';
+import {
+  RECEIPT_VAT_LOCK_REASON,
+  type ShopInfoApi,
+  isReceiptShopValid,
+  resolveShopInfo,
+} from '../lib/shop-info.js';
 
 // The pure identity types + resolver live in lib/shop-info.ts (unit-testable, no
 // React deps). Re-exported here so existing `../hooks/useShopInfo.js` imports of
 // resolveShopInfo continue to work.
-export { type ShopInfoApi, isReceiptShopValid, resolveShopInfo };
+export { RECEIPT_VAT_LOCK_REASON, type ShopInfoApi, isReceiptShopValid, resolveShopInfo };
 
 export const shopInfoQueryKey = ['shop-info'] as const;
 

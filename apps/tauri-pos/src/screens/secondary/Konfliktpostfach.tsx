@@ -25,17 +25,53 @@ import { useToastStore } from '../../state/toast-store.js';
 
 const CONFLICTS_KEY = ['outbox', 'conflicts'] as const;
 
-/** Map a sealed outbox path to a German operation name; fall back to the path. */
+/**
+ * Map a sealed outbox path to a German operation name. Covers every queueable
+ * fiscal + non-fiscal route; anything not yet mapped falls back to the neutral
+ * German "Vorgang" — the raw English path must NEVER reach the operator.
+ */
 function operationLabel(path: string): string {
   if (/\/storno\b/.test(path)) return 'Storno';
+  if (path.includes('/transactions/ankauf')) return 'Ankauf';
+  if (path.includes('/transactions/return')) return 'Rückgabe';
   if (path.includes('/transactions/finalize')) return 'Verkauf abschließen';
   if (path.includes('/closings/finalize')) return 'Tagesabschluss';
+  if (path.includes('/shifts/open')) return 'Kasse öffnen';
+  if (path.includes('/shifts/close')) return 'Kasse abschließen';
   if (path.includes('/cash-movement')) return 'Kassenbewegung';
   if (path.includes('/appraisals')) return 'Bewertung';
-  if (path.includes('/kyc')) return 'KYC-Prüfung';
+  if (path.includes('/kyc')) return 'Ausweisprüfung';
   if (path.includes('/customers')) return 'Kundendaten';
   if (path.includes('/products') || path.includes('/inventory')) return 'Lagerbestand';
-  return path;
+  return 'Vorgang';
+}
+
+/**
+ * A short, honest German label for the server divergence code. The raw
+ * SCREAMING-token `ApiErrorCode` (or a Postgres constraint token) must never
+ * reach the operator; anything unmapped falls back to the neutral "Abweichung".
+ */
+const CONFLICT_CODE_LABEL: Readonly<Record<string, string>> = {
+  VALIDATION_ERROR: 'Ungültige Daten',
+  NOT_FOUND: 'Nicht gefunden',
+  UNAUTHORIZED: 'Nicht angemeldet',
+  FORBIDDEN: 'Keine Berechtigung',
+  STEP_UP_REQUIRED: 'PIN erforderlich',
+  PIN_LOCKED: 'PIN gesperrt',
+  CONFLICT: 'Datenkonflikt',
+  SANCTIONS_BLOCK: 'Sanktionsprüfung',
+  KYC_REQUIRED: 'Ausweis erforderlich',
+  CLOSING_DAY_FINALIZED: 'Tag bereits abgeschlossen',
+  STORNO_OF_STORNO: 'Storno nicht möglich',
+  PRODUCT_NOT_RESERVABLE: 'Artikel nicht verfügbar',
+  DEVICE_NOT_AUTHORIZED: 'Gerät nicht gekoppelt',
+  RATE_LIMITED: 'Zu viele Anfragen',
+  EXTERNAL_SERVICE_FAILED: 'Dienst nicht erreichbar',
+  INTERNAL_ERROR: 'Serverfehler',
+};
+
+function conflictCodeLabel(code: string): string {
+  return CONFLICT_CODE_LABEL[code] ?? 'Abweichung';
 }
 
 function formatWhen(ms: number): string {
@@ -191,9 +227,7 @@ function ConflictCard({
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
         <span
-          className="w14-tabular"
           style={{
-            fontFamily: 'var(--w14-font-mono)',
             fontSize: '0.72rem',
             color: 'var(--w14-wax-red)',
             border: '1px solid var(--w14-rule)',
@@ -201,7 +235,7 @@ function ConflictCard({
             padding: '1px 6px',
           }}
         >
-          {conflict.serverCode}
+          {conflictCodeLabel(conflict.serverCode)}
         </span>
         <span style={{ color: 'var(--w14-ink-faded)', fontSize: '0.78rem' }}>
           erfasst {formatWhen(conflict.enqueuedAt)} · {conflict.attemptCount} Versuch
