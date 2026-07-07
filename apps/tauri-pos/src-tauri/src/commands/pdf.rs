@@ -131,6 +131,16 @@ pub async fn open_pdf_preview(
             .map_err(|e| HardwareError::Internal(format!("shell::open failed: {e}")))?;
     }
 
+    // Best-effort same-session cleanup (DSGVO, Phase 3.8): the external viewer has
+    // loaded the file long before this fires (it holds its own copy), so removing
+    // the temp PDF — with the customer name + §25a data — is safe. If the app dies
+    // before this fires, the boot-time sweep catches the orphan. Never blocks.
+    let tmp_for_cleanup = tmp.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(300)).await;
+        let _ = std::fs::remove_file(&tmp_for_cleanup);
+    });
+
     Ok(PdfPreviewResult {
         temp_path: tmp.to_string_lossy().into_owned(),
     })
@@ -301,6 +311,40 @@ fn uuid_like() -> String {
     format!("{r1:016x}{r2:08x}")
 }
 
+const TEMP_PDF_PREFIXES: [&str; 2] = ["warehouse14-invoice-", "warehouse14-preview-"];
+
+/// DSGVO cleanup (Phase 3.8): delete every stale warehouse14 invoice/preview PDF
+/// left in the OS temp dir. `print_a4` removes its own temp on success, but a
+/// crash between write and remove — and EVERY `open_pdf_preview` (whose file is
+/// held open by an external viewer, so it can't be deleted inline) — leaves a
+/// temp PDF carrying a customer name + §25a data. Called at startup (purges the
+/// previous session's orphans) and exposed as a command for the Art.17 erase
+/// flow. Returns the number of files removed. Never panics.
+pub fn sweep_stale_pdf_temp_files() -> usize {
+    let dir = std::env::temp_dir();
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return 0;
+    };
+    let mut removed = 0usize;
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        let is_ours = TEMP_PDF_PREFIXES.iter().any(|p| name.starts_with(p));
+        if is_ours && name.ends_with(".pdf") && std::fs::remove_file(entry.path()).is_ok() {
+            removed += 1;
+        }
+    }
+    removed
+}
+
+/// Sweep stale invoice/preview temp PDFs (DSGVO). Callable from the Art.17 flow
+/// so an erase purges any at-rest PDF for the customer immediately, not just at
+/// the next launch.
+#[tauri::command]
+pub fn sweep_temp_pdfs() -> usize {
+    sweep_stale_pdf_temp_files()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -331,5 +375,26 @@ mod tests {
         };
         let pdf = compile_typst_to_pdf(build_invoice_source(&data)).expect("invoice compiles");
         assert!(pdf.starts_with(b"%PDF-"));
+    }
+
+    #[test]
+    fn sweep_removes_stale_invoice_and_preview_temps_but_not_foreign_files() {
+        let dir = std::env::temp_dir();
+        // Unique suffix so a concurrent run of this test can't fight over names.
+        let tag = uuid_like();
+        let invoice = dir.join(format!("warehouse14-invoice-{tag}.pdf"));
+        let preview = dir.join(format!("warehouse14-preview-{tag}.pdf"));
+        let foreign = dir.join(format!("warehouse14-keepme-{tag}.txt"));
+        std::fs::write(&invoice, b"customer name + 25a data").unwrap();
+        std::fs::write(&preview, b"customer name + 25a data").unwrap();
+        std::fs::write(&foreign, b"not ours").unwrap();
+
+        let removed = sweep_stale_pdf_temp_files();
+
+        assert!(removed >= 2, "should remove at least our two temp PDFs");
+        assert!(!invoice.exists(), "stale invoice PDF must be purged");
+        assert!(!preview.exists(), "stale preview PDF must be purged");
+        assert!(foreign.exists(), "a non-warehouse14 file must be left untouched");
+        let _ = std::fs::remove_file(&foreign);
     }
 }

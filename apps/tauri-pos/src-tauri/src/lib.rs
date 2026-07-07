@@ -42,6 +42,13 @@ pub fn run() {
         },
     ];
 
+    // DSGVO boot-time sweep (Phase 3.8): purge any stale invoice/preview temp PDFs
+    // — each carries a customer name + §25a data — left behind by a previous
+    // session (a crash mid-print, or a preview whose external viewer held the
+    // file open so it couldn't be deleted inline). Off the main thread so it never
+    // delays the UI; a temp-dir scan is fast and failures are swallowed.
+    std::thread::spawn(commands::pdf::sweep_stale_pdf_temp_files);
+
     tauri::Builder::default()
         // Plugins — order doesn't matter, registration is idempotent.
         // V1 only needs `shell` (for the PDF preview opener); store +
@@ -90,6 +97,7 @@ pub fn run() {
             commands::pdf::generate_invoice_pdf,
             commands::pdf::print_a4,
             commands::pdf::open_pdf_preview,
+            commands::pdf::sweep_temp_pdfs,
             // Mandate 4 — system probe
             commands::system::list_system_printers,
             // Epic C — encrypted local KYC vault
