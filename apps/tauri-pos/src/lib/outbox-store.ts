@@ -133,6 +133,93 @@ export class TauriSqlOutboxStore implements OutboxStore {
     );
     return rows.map(rowToRecord);
   }
+
+  // ── Compliance Inbox (Phase 6.1) ──────────────────────────────────────────
+  // A `status='conflict'` row halted the FIFO drain (drainOutbox stops at a
+  // non-transient divergence). The Owner reviews it here and either DISCARDS it
+  // (terminally closed) or RE-QUEUES it (another drain attempt at its original
+  // monotonic_seq, so FIFO order still holds). Both writes are scoped to
+  // `status='conflict'`, so they can NEVER touch a pending / in-flight /
+  // succeeded / already-terminal row — the safety invariant the tests assert.
+
+  /** Conflict rows awaiting human resolution, oldest first (FIFO order). */
+  async listConflicts(): Promise<readonly ConflictRecord[]> {
+    const db = await this.db();
+    const rows = await db.select<ConflictRow[]>(
+      `SELECT idempotency_key, method, path, last_error_json, enqueued_at,
+              last_attempt_at, attempt_count, gobd_relevant
+         FROM outbox_mutations
+        WHERE status = 'conflict'
+        ORDER BY monotonic_seq ASC`,
+    );
+    return rows.map(conflictRowToRecord);
+  }
+
+  /** Verwerfen — the reviewed conflict is terminally closed, never retried. */
+  async discardConflict(idempotencyKey: string): Promise<void> {
+    const db = await this.db();
+    await db.execute(
+      `UPDATE outbox_mutations
+         SET status = 'failed_terminal', resolved_at = $1
+       WHERE idempotency_key = $2 AND status = 'conflict'`,
+      [Date.now(), idempotencyKey],
+    );
+  }
+
+  /** Erneut senden — re-queue the reviewed conflict for another drain pass. It
+   *  returns to `pending` at its original monotonic_seq, so the FIFO order is
+   *  preserved (it is re-attempted before any later row). */
+  async retryConflict(idempotencyKey: string): Promise<void> {
+    const db = await this.db();
+    await db.execute(
+      `UPDATE outbox_mutations
+         SET status = 'pending', last_error_json = NULL
+       WHERE idempotency_key = $1 AND status = 'conflict'`,
+      [idempotencyKey],
+    );
+  }
+}
+
+/** One conflict row surfaced in the Compliance Inbox. */
+export interface ConflictRecord {
+  idempotencyKey: string;
+  method: string;
+  path: string;
+  /**
+   * Stable server error code that halted the drain (from the sealed conflict
+   * error). We deliberately surface only the CODE, never the raw server message
+   * — an English server string must not leak into the operator UI (honesty gate).
+   */
+  serverCode: string;
+  enqueuedAt: number;
+  lastAttemptAt: number | null;
+  attemptCount: number;
+  gobdRelevant: boolean;
+}
+
+interface ConflictRow {
+  idempotency_key: string;
+  method: string;
+  path: string;
+  last_error_json: string | null;
+  enqueued_at: number;
+  last_attempt_at: number | null;
+  attempt_count: number;
+  gobd_relevant: number;
+}
+
+function conflictRowToRecord(row: ConflictRow): ConflictRecord {
+  const sealed = safeParse<{ serverCode?: unknown }>(row.last_error_json ?? '') ?? {};
+  return {
+    idempotencyKey: row.idempotency_key,
+    method: row.method,
+    path: row.path,
+    serverCode: typeof sealed.serverCode === 'string' ? sealed.serverCode : 'UNKNOWN',
+    enqueuedAt: row.enqueued_at,
+    lastAttemptAt: row.last_attempt_at,
+    attemptCount: row.attempt_count,
+    gobdRelevant: row.gobd_relevant === 1,
+  };
 }
 
 function rowToRecord(row: OutboxRow): OutboxRecord {

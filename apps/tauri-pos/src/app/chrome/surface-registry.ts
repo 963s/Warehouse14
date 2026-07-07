@@ -117,6 +117,11 @@ const Termine = lazy(() =>
 const WhatsApp = lazy(() =>
   import('../../screens/secondary/WhatsApp.js').then((m) => ({ default: m.WhatsApp })),
 );
+const Konfliktpostfach = lazy(() =>
+  import('../../screens/secondary/Konfliktpostfach.js').then((m) => ({
+    default: m.Konfliktpostfach,
+  })),
+);
 
 export const SURFACES: readonly SurfaceDescriptor[] = [
   // ── Tier 1 — 6 frontline chips, action-frequency order (ADR Option B) ─
@@ -278,6 +283,14 @@ export const SURFACES: readonly SurfaceDescriptor[] = [
     tier: 'secondary',
     component: Tagebuch,
     searchAliases: ['ledger', 'history', 'historie', 'chain', 'audit'],
+  },
+  {
+    path: '/compliance-inbox',
+    label: 'Konfliktpostfach',
+    description: 'Offline-Vorgänge, die vom Server abweichen und geprüft werden müssen.',
+    tier: 'secondary',
+    component: Konfliktpostfach,
+    searchAliases: ['konflikt', 'sync', 'compliance', 'warteschlange', 'outbox'],
   },
   {
     path: '/dokumente',
