@@ -36,8 +36,13 @@ function makeFakeDb(): { execute: unknown; select: unknown } {
   const toQ = (sql: string): string => sql.replace(/\$\d+/g, '?');
   return {
     async execute(sql: string, params: unknown[] = []) {
-      sqlite.prepare(toQ(sql)).run(...(params as never[]));
-      return { rowsAffected: 1, lastInsertId: 0 };
+      // Return node:sqlite's REAL affected-row count so pruneExpired's return
+      // value is meaningful (a hardcoded 1 would make the count untestable).
+      const r = sqlite.prepare(toQ(sql)).run(...(params as never[])) as {
+        changes?: number | bigint;
+        lastInsertRowid?: number | bigint;
+      };
+      return { rowsAffected: Number(r.changes ?? 0), lastInsertId: Number(r.lastInsertRowid ?? 0) };
     },
     async select(sql: string, params: unknown[] = []) {
       return sqlite.prepare(toQ(sql)).all(...(params as never[]));
@@ -49,6 +54,12 @@ const h = vi.hoisted(() => ({ current: null as ReturnType<typeof makeFakeDb> | n
 vi.mock('@tauri-apps/plugin-sql', () => ({ default: { load: async () => h.current } }));
 
 function rec(key: string): OutboxRecord {
+  return recAt(key, 1_700_000_000_000, true);
+}
+
+/** Build a record with an explicit enqueuedAt + fiscal flag — the enqueue path
+ *  derives retention_until from these, which is what the pruner filters on. */
+function recAt(key: string, enqueuedAt: number, gobdRelevant: boolean): OutboxRecord {
   return {
     idempotencyKey: key,
     traceId: `trace-${key}`,
@@ -57,8 +68,8 @@ function rec(key: string): OutboxRecord {
     url: 'https://api.warehouse14.de/api/transactions/finalize',
     headers: {},
     body: { key },
-    enqueuedAt: 1_700_000_000_000,
-    gobdRelevant: true,
+    enqueuedAt,
+    gobdRelevant,
     callerSuppliedKey: true,
     deviceId: 'device-1',
   };
@@ -132,5 +143,61 @@ describe('TauriSqlOutboxStore — Compliance Inbox', () => {
     expect((await store.listPending()).map((r) => r.idempotencyKey)).toEqual(['a']); // a untouched
     expect((await store.getStats()).pending).toBe(1); // 'done' not resurrected
     expect((await store.getStats()).conflict).toBe(0);
+  });
+});
+
+describe('TauriSqlOutboxStore — pruneExpired retention (Phase 6.4)', () => {
+  let store: TauriSqlOutboxStore;
+  const DAY = 86_400_000;
+  const NOW = 1_800_000_000_000;
+
+  beforeEach(() => {
+    h.current = makeFakeDb();
+    store = new TauriSqlOutboxStore();
+  });
+  afterEach(() => {
+    h.current = null;
+    vi.clearAllMocks();
+  });
+
+  it('removes ONLY expired, non-fiscal, succeeded rows — never fiscal or live rows', async () => {
+    // (1) non-fiscal, succeeded, expired → the only row that may be pruned.
+    await store.enqueue(recAt('stale-ok', NOW - 31 * DAY, false));
+    await store.markSucceeded('stale-ok', { ok: true });
+    // (2) non-fiscal, succeeded, still within its 30-day window → keep.
+    await store.enqueue(recAt('fresh-ok', NOW, false));
+    await store.markSucceeded('fresh-ok', { ok: true });
+    // (3) FISCAL (GoBD), succeeded, retention forced past by an 11-year-old ts → keep.
+    await store.enqueue(recAt('fiscal', NOW - 11 * 365 * DAY, true));
+    await store.markSucceeded('fiscal', { ok: true });
+    // (4) non-fiscal, PENDING, "expired" ts → keep (not succeeded).
+    await store.enqueue(recAt('pending', NOW - 31 * DAY, false));
+    // (5) non-fiscal, CONFLICT, "expired" ts → keep (not succeeded).
+    await store.enqueue(recAt('conflict', NOW - 31 * DAY, false));
+    await store.markConflict('conflict', { serverCode: 'CONFLICT' });
+
+    const removed = await store.pruneExpired(NOW);
+
+    expect(removed).toBe(1); // exactly the one prunable row
+    // Live rows survive:
+    expect((await store.getStats()).pending).toBe(1); // 'pending'
+    expect((await store.getStats()).conflict).toBe(1); // 'conflict'
+    // The fiscal succeeded row is NOT resurrected as pending/conflict and NOT gone
+    // improperly — assert directly that it still exists.
+    const stillThere = await (h.current as { select: (s: string) => Promise<unknown[]> }).select(
+      "SELECT idempotency_key FROM outbox_mutations WHERE idempotency_key IN ('fiscal','fresh-ok') ORDER BY idempotency_key",
+    );
+    expect(stillThere).toEqual([{ idempotency_key: 'fiscal' }, { idempotency_key: 'fresh-ok' }]);
+    // The stale non-fiscal row is gone.
+    const stale = await (h.current as { select: (s: string) => Promise<unknown[]> }).select(
+      "SELECT idempotency_key FROM outbox_mutations WHERE idempotency_key = 'stale-ok'",
+    );
+    expect(stale).toEqual([]);
+  });
+
+  it('is a no-op when nothing is expired', async () => {
+    await store.enqueue(recAt('fresh', NOW, false));
+    await store.markSucceeded('fresh', { ok: true });
+    expect(await store.pruneExpired(NOW)).toBe(0);
   });
 });

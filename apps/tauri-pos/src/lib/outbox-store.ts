@@ -178,6 +178,26 @@ export class TauriSqlOutboxStore implements OutboxStore {
       [idempotencyKey],
     );
   }
+
+  /**
+   * Retention pruner (Phase 6.4). Delete EXPIRED, NON-fiscal, already-`succeeded`
+   * rows so the outbox table doesn't grow without bound. The WHERE clause is the
+   * safety guarantee: only `status='succeeded'` (so a pending / in_flight /
+   * conflict / failed_terminal row is never touched), only `gobd_relevant = 0`
+   * (a GoBD/§25a fiscal row is legally retained 10 years and NEVER pruned), and
+   * only past its own `retention_until`. Returns the number of rows removed.
+   */
+  async pruneExpired(now: number = Date.now()): Promise<number> {
+    const db = await this.db();
+    const res = await db.execute(
+      `DELETE FROM outbox_mutations
+        WHERE status = 'succeeded'
+          AND gobd_relevant = 0
+          AND retention_until < $1`,
+      [now],
+    );
+    return res.rowsAffected ?? 0;
+  }
 }
 
 /** One conflict row surfaced in the Compliance Inbox. */

@@ -52,6 +52,11 @@ function isOnline(): boolean {
   return typeof navigator === 'undefined' ? true : navigator.onLine;
 }
 
+/** Heartbeat cadence (Phase 6.4): brisk while there is work to reflect, slow when
+ *  the queue is idle so we don't poll SQLite twelve times a minute for nothing. */
+const ACTIVE_HEARTBEAT_MS = 5_000;
+const IDLE_HEARTBEAT_MS = 30_000;
+
 /**
  * Phase 1.4 startup reconcile — funnel unresolved `pos_intents` (the pre-request
  * crash window) into the outbox on the SAME idempotency key, then let
@@ -186,6 +191,10 @@ export function useOfflineReplay(enabled: boolean): void {
         });
       },
     });
+    // Retention housekeeping (Phase 6.4): drop expired, non-fiscal, succeeded rows
+    // so the outbox never grows without bound. Best-effort + independent of the
+    // drain (it only deletes SUCCEEDED rows, never a pending/conflict/fiscal one).
+    void outboxStore.pruneExpired().catch(() => {});
     // Reconcile crash-window pos_intents INTO the outbox first, THEN start the
     // controller (its startup sweep drains the just-reconciled rows). If the hook
     // unmounts mid-reconcile, don't start a controller we're about to drop.
@@ -198,18 +207,27 @@ export function useOfflineReplay(enabled: boolean): void {
     };
   }, [enabled, client, addToast]);
 
-  // Lightweight 5s heartbeat: keep the header badge counts + online flag fresh
+  // Lightweight heartbeat: keep the header badge counts + online flag fresh
   // (covers enqueues, which happen inside the api-client middleware out-of-band).
+  // Self-scheduling so the cadence can BACK OFF when the queue is idle (Phase 6.4)
+  // — a brisk 5s while there is work, a calm 30s when there is nothing to reflect.
   useEffect(() => {
     if (!enabled) return;
-    const sync = useSyncStore.getState();
-    sync.setOnline(isOnline());
-    void sync.refreshStats();
-    const id = setInterval(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    let cancelled = false;
+    const tick = async (): Promise<void> => {
       const s = useSyncStore.getState();
       s.setOnline(isOnline());
-      void s.refreshStats();
-    }, 5000);
-    return () => clearInterval(id);
+      await s.refreshStats();
+      if (cancelled) return;
+      const { pendingCount, conflictCount } = useSyncStore.getState();
+      const idle = pendingCount === 0 && conflictCount === 0;
+      timer = setTimeout(() => void tick(), idle ? IDLE_HEARTBEAT_MS : ACTIVE_HEARTBEAT_MS);
+    };
+    void tick();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [enabled]);
 }
