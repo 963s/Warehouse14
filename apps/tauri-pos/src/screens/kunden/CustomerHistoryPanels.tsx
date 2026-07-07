@@ -11,7 +11,7 @@
  * link for future detail-page navigation (Phase 1.5).
  */
 
-import { useQuery } from '@tanstack/react-query';
+import { StaleBadge, useCachedQuery } from '../../offline/index.js';
 
 import { DiamondRule, MoneyAmount, ParchmentCard } from '@warehouse14/ui-kit';
 
@@ -38,13 +38,14 @@ interface CustomerTransactionRow {
 
 export function CustomerAnkaufHistory({ customerId }: { customerId: string }): JSX.Element {
   const api = useApiClient();
-  const q = useQuery({
+  const q = useCachedQuery({
     queryKey: ['customers', customerId, 'products'],
     queryFn: () =>
       api.request<{ items: CustomerProductRow[]; total: number }>(
         'GET',
         `/api/customers/${encodeURIComponent(customerId)}/products`,
       ),
+    cacheKey: `customer:products:${customerId}`,
     staleTime: 30_000,
   });
 
@@ -54,6 +55,11 @@ export function CustomerAnkaufHistory({ customerId }: { customerId: string }): J
   return (
     <ParchmentCard padding="md">
       <DiamondRule label={`Ankauf-Historie · ${total} Stück${total === 1 ? '' : 'e'}`} />
+      {q.fromCache && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
+          <StaleBadge cachedAt={q.cachedAt} stale={q.isStale} />
+        </div>
+      )}
       {q.isLoading ? (
         <Skeleton />
       ) : items.length === 0 ? (
@@ -104,13 +110,14 @@ export function CustomerAnkaufHistory({ customerId }: { customerId: string }): J
 
 export function CustomerSalesHistory({ customerId }: { customerId: string }): JSX.Element {
   const api = useApiClient();
-  const q = useQuery({
+  const q = useCachedQuery({
     queryKey: ['customers', customerId, 'transactions'],
     queryFn: () =>
       api.request<{ items: CustomerTransactionRow[]; total: number }>(
         'GET',
         `/api/customers/${encodeURIComponent(customerId)}/transactions`,
       ),
+    cacheKey: `customer:transactions:${customerId}`,
     staleTime: 30_000,
   });
 
@@ -120,6 +127,11 @@ export function CustomerSalesHistory({ customerId }: { customerId: string }): JS
   return (
     <ParchmentCard padding="md">
       <DiamondRule label={`Transaktionen · ${total}`} />
+      {q.fromCache && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
+          <StaleBadge cachedAt={q.cachedAt} stale={q.isStale} />
+        </div>
+      )}
       {q.isLoading ? (
         <Skeleton />
       ) : items.length === 0 ? (

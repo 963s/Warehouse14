@@ -13,7 +13,9 @@
  * One slow query doesn't block the others.
  */
 
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
+
+import { StaleBadge, useCachedQuery } from '../../offline/index.js';
 import { useState } from 'react';
 
 import { type CustomerDetail, customersApi } from '@warehouse14/api-client';
@@ -38,16 +40,28 @@ export function CustomerDetailPanel({ customerId }: CustomerDetailPanelProps): J
 
 function DetailLoaded({ customerId }: { customerId: string }): JSX.Element {
   const api = useApiClient();
-  const q = useQuery({
+  // Offline-resilient (Phase 2.5): on an offline remount, seed the akte from the
+  // last-good snapshot instead of an error placeholder, marked with a StaleBadge.
+  const q = useCachedQuery({
     queryKey: ['customers', customerId],
     queryFn: () => customersApi.get(api, customerId),
+    cacheKey: `customer:detail:${customerId}`,
     staleTime: 10_000,
   });
 
   if (q.isLoading) return <LoadingPlaceholder />;
   if (q.isError || !q.data) return <ErrorPlaceholder />;
 
-  return <CustomerCard detail={q.data} />;
+  return (
+    <>
+      {q.fromCache && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '4px 8px 0' }}>
+          <StaleBadge cachedAt={q.cachedAt} stale={q.isStale} />
+        </div>
+      )}
+      <CustomerCard detail={q.data} />
+    </>
+  );
 }
 
 // ────────────────────────────────────────────────────────────────────────
