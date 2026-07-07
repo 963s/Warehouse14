@@ -24,6 +24,8 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { type ProductListRow, productsApi } from '@warehouse14/api-client';
 import { Button, MagnifierIcon, MoneyAmount, ParchmentCard } from '@warehouse14/ui-kit';
 
+import { useInventoryCounts } from '../../hooks/useInventoryCounts.js';
+import { AVAILABILITY_BUCKETS, bucketCount } from '../../lib/availability-ui.js';
 import { useApiClient } from '../../lib/api-context.js';
 
 /** German labels for the metal chip. `null` metal renders no chip. */
@@ -138,6 +140,11 @@ export function CatalogGrid({
     refetchOnWindowFocus: false,
   });
 
+  // Live availability at a glance (Phase 2.7): the catalog shows only sellable
+  // AVAILABLE tiles, so the strip surfaces the fuller picture — what's held
+  // (Reserviert) and gone (Verkauft) — keyed to the current search.
+  const inventoryCounts = useInventoryCounts({ q: debouncedQ });
+
   const allItems = useMemo(() => q.data?.items ?? [], [q.data]);
   const items = useMemo(() => {
     if (metalFilter === 'ALL') return allItems;
@@ -228,6 +235,36 @@ export function CatalogGrid({
             sucht…
           </span>
         )}
+      </div>
+
+      {/* Availability at a glance (Verfügbar/Reserviert/Verkauft). */}
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+        {AVAILABILITY_BUCKETS.map((b) => (
+          <span
+            key={b.bucket}
+            className="w14-smallcaps"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              fontSize: '0.74rem',
+              letterSpacing: '0.06em',
+              color: 'var(--w14-ink-faded)',
+            }}
+          >
+            {b.label}
+            <span
+              style={{
+                fontFamily: 'var(--w14-font-mono, monospace)',
+                fontVariantNumeric: 'tabular-nums',
+                color: b.tone === 'available' ? 'var(--w14-verdigris)' : 'var(--w14-ink-aged)',
+              }}
+            >
+              {/* No fake 0 while the first count loads. */}
+              {inventoryCounts.data ? bucketCount(inventoryCounts.data, b.bucket) : '—'}
+            </span>
+          </span>
+        ))}
       </div>
 
       {/* Quick metal filters */}
