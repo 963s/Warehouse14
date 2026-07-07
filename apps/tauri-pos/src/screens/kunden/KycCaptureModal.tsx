@@ -18,6 +18,7 @@ import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 import {
   type KycDocType,
   type KycEncryptResult,
+  deleteKycDocument,
   describeHardwareError,
   encryptAndSaveKycDocument,
   isHardwareError,
@@ -53,7 +54,11 @@ export function KycCaptureModal({
       const result = await encryptAndSaveKycDocument(bytes, customerId, docType);
 
       // Index the encrypted file locally so it's listable/previewable offline.
-      // The ciphertext is already safe on disk; an index failure is non-fatal.
+      // If the index write fails, the ciphertext on disk becomes an ORPHAN:
+      // invisible to the Akte, un-previewable, and — worst — un-eraseable, i.e.
+      // exactly the at-rest PII sink that Art.17 must never leave behind. So we
+      // unlink the just-written vault file and ask the operator to re-capture,
+      // rather than reporting a save that cannot be governed or deleted.
       try {
         await insertKycRecord({
           customerId,
@@ -63,13 +68,20 @@ export function KycCaptureModal({
           createdAt: Date.now(),
         });
       } catch (dbErr) {
+        try {
+          await deleteKycDocument(result.path);
+        } catch {
+          // Best-effort orphan cleanup — the file could not be indexed AND could
+          // not be removed; nothing further to do from here.
+        }
         addToast({
           tone: 'alert',
-          title: 'Lokaler KYC-Index nicht aktualisiert',
+          title: 'Ausweis nicht gespeichert',
           body: isHardwareError(dbErr)
             ? describeHardwareError(dbErr)
-            : 'Dokument ist verschlüsselt gespeichert, aber nicht im lokalen Index erfasst.',
+            : 'Der lokale Index konnte nicht aktualisiert werden. Bitte erneut erfassen.',
         });
+        return;
       }
 
       addToast({
