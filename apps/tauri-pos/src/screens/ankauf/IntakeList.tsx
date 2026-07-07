@@ -43,8 +43,11 @@ import {
   selectAnkaufItems,
   useAnkaufCartStore,
 } from '../../state/ankauf-cart-store.js';
+import { useHardwareStore } from '../../state/hardware-store.js';
 import { useToastStore } from '../../state/toast-store.js';
 
+import { useScaleWeight } from '../../hooks/useScaleWeight.js';
+import { describeHardwareError, isHardwareError } from '../../lib/hardware-client.js';
 import { CONDITION_OPTIONS, ITEM_TYPE_OPTIONS } from '../../lib/item-type-label.js';
 
 import { EuroInput } from '../kasse/EuroInput.js';
@@ -358,6 +361,32 @@ function AddItemForm({
   const [listPriceEur, setListPriceEur] = useState<string>('');
   const [publishImmediately, setPublishImmediately] = useState<boolean>(true);
 
+  // USB-scale weigh-in (Phase 4.1): pull a stable weight straight into the field.
+  const scalePortPath = useHardwareStore((s) => s.config.scale.portPath);
+  const scaleBaud = useHardwareStore((s) => s.config.scale.baudRate);
+  const { readWeight, loading: weighing } = useScaleWeight();
+
+  const weighIn = async (): Promise<void> => {
+    if (!scalePortPath) {
+      addToast({
+        tone: 'info',
+        title: 'Keine Waage eingerichtet',
+        body: 'Bitte die Waage im Gerätemanager verbinden.',
+      });
+      return;
+    }
+    try {
+      const w = await readWeight(scalePortPath, scaleBaud);
+      setWeightGrams(w.grams);
+    } catch (err) {
+      addToast({
+        tone: 'alert',
+        title: 'Wägen fehlgeschlagen',
+        body: isHardwareError(err) ? describeHardwareError(err) : String(err),
+      });
+    }
+  };
+
   // Live Ankauf rate (Decision #69): the buy-side Schmelzwert hint uses the safe
   // 10-day time-weighted buy rate, NOT current spot. Degrades gracefully.
   const api = useApiClient();
@@ -535,7 +564,12 @@ function AddItemForm({
           onChange={setFinenessDecimal}
           mono
         />
-        <FormField label="Gewicht (g)" value={weightGrams} onChange={setWeightGrams} mono />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <FormField label="Gewicht (g)" value={weightGrams} onChange={setWeightGrams} mono />
+          <Button variant="ghost" size="sm" onClick={() => void weighIn()} disabled={weighing}>
+            {weighing ? 'Wägt…' : 'Von Waage übernehmen'}
+          </Button>
+        </div>
         <FormField
           label="Beschreibung"
           value={descriptionDe}

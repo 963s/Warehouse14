@@ -26,7 +26,10 @@ import { Button, DiamondRule, MoneyAmount, ParchmentCard } from '@warehouse14/ui
 import { useApiClient } from '../../lib/api-context.js';
 import { computeSchmelzwertEur } from '../../lib/bewertung-math.js';
 import { germanMoneyToDot } from '../../lib/decimal.js';
+import { describeHardwareError, isHardwareError } from '../../lib/hardware-client.js';
 import { CONDITION_OPTIONS, ITEM_TYPE_OPTIONS } from '../../lib/item-type-label.js';
+import { useScaleWeight } from '../../hooks/useScaleWeight.js';
+import { useHardwareStore } from '../../state/hardware-store.js';
 import { describeError } from '@warehouse14/i18n-de';
 
 export interface AppraisalItemFormProps {
@@ -48,6 +51,25 @@ export function AppraisalItemForm({ appraisalId }: AppraisalItemFormProps): JSX.
   const [individualEur, setIndividualEur] = useState<string>('');
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+
+  // USB-scale weigh-in (Phase 4.1): pull a stable weight straight into the field.
+  const scalePortPath = useHardwareStore((s) => s.config.scale.portPath);
+  const scaleBaud = useHardwareStore((s) => s.config.scale.baudRate);
+  const { readWeight, loading: weighing } = useScaleWeight();
+
+  const weighIn = async (): Promise<void> => {
+    if (!scalePortPath) {
+      setError('Keine Waage eingerichtet — bitte im Gerätemanager verbinden.');
+      return;
+    }
+    try {
+      const w = await readWeight(scalePortPath, scaleBaud);
+      setWeightGrams(w.grams);
+      setError(null);
+    } catch (err) {
+      setError(isHardwareError(err) ? describeHardwareError(err) : describeError(err));
+    }
+  };
 
   // Live metal RATES. Ankauf is asymmetric (Decision #69): the buy hint uses the
   // safe 10-day time-weighted buy rate (`ankaufRatePerGramEur`), NOT current spot.
@@ -190,7 +212,12 @@ export function AppraisalItemForm({ appraisalId }: AppraisalItemFormProps): JSX.
           onChange={setFinenessDecimal}
           mono
         />
-        <Field label="Gewicht (g)" value={weightGrams} onChange={setWeightGrams} mono />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <Field label="Gewicht (g)" value={weightGrams} onChange={setWeightGrams} mono />
+          <Button variant="ghost" size="sm" onClick={() => void weighIn()} disabled={weighing}>
+            {weighing ? 'Wägt…' : 'Von Waage übernehmen'}
+          </Button>
+        </div>
         <Field
           label="Beschreibung"
           value={description}
