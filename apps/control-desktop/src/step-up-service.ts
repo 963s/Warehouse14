@@ -12,8 +12,11 @@ import type { StepUpDependencies, StepUpReason, StepUpToken } from '@warehouse14
 
 import { useStepUpStore } from './state/step-up-store.js';
 
-async function requestStepUp(_reason: StepUpReason): Promise<StepUpToken> {
-  await useStepUpStore.getState().ask();
+async function requestStepUp(reason: StepUpReason): Promise<StepUpToken> {
+  // Forward the reason (method + path of the guarded call) so the modal can name
+  // the action the owner is confirming. The token stays empty on purpose — the
+  // freshened session cookie is the source of truth, not this header value.
+  await useStepUpStore.getState().ask(reason);
   return { value: '' };
 }
 

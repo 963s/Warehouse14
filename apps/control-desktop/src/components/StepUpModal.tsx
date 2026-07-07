@@ -21,10 +21,29 @@ import { useApiClient } from '../api-context.js';
 import { useStepUpStore } from '../state/step-up-store.js';
 import { describeError } from '@warehouse14/i18n-de';
 
+/**
+ * Name the guarded action in German from the request path, so the owner sees
+ * WHICH action the PIN confirms. Unknown paths fall back to the generic line.
+ */
+function describeStepUpAction(path: string | undefined): string | null {
+  if (!path) return null;
+  if (path.includes('/erase')) return 'Kundendaten löschen (Art. 17)';
+  if (path.includes('/kyc-documents')) return 'Ausweisdokument löschen';
+  if (path.endsWith('/kyc')) return 'KYC-Prüfung stempeln';
+  if (path.includes('/trust')) return 'Vertrauensstufe ändern';
+  if (path.includes('/closings/finalize')) return 'Tagesabschluss erstellen';
+  if (path.includes('/export/datev')) return 'DATEV-Export';
+  if (path.includes('/export/dsfinvk')) return 'DSFinV-K-Export';
+  if (path.includes('/registers/an-verkaufsbuch')) return 'An-/Verkaufsbuch-Export';
+  if (path.includes('/settings/')) return 'Einstellung ändern';
+  return null;
+}
+
 export function StepUpModal(): JSX.Element | null {
   const active = useStepUpStore((s) => s.active);
   const complete = useStepUpStore((s) => s.complete);
   const cancel = useStepUpStore((s) => s.cancel);
+  const reason = useStepUpStore((s) => s.reason);
 
   const { client } = useApiClient();
 
@@ -170,6 +189,18 @@ export function StepUpModal(): JSX.Element | null {
         >
           Dieser Schritt erfordert eine frische Bestätigung.
         </p>
+        {describeStepUpAction(reason?.path) && (
+          <p
+            style={{
+              margin: '6px 0 0',
+              color: 'var(--w14-ink)',
+              fontFamily: 'var(--w14-font-display)',
+              fontSize: '0.92rem',
+            }}
+          >
+            Aktion: {describeStepUpAction(reason?.path)}
+          </p>
+        )}
         <DiamondRule />
 
         <PinPad

@@ -13,6 +13,8 @@
 
 import { create } from 'zustand';
 
+import type { StepUpReason } from '@warehouse14/api-client';
+
 interface StepUpRequest {
   resolve: () => void;
   reject: (err: unknown) => void;
@@ -21,9 +23,12 @@ interface StepUpRequest {
 interface StepUpState {
   active: boolean;
   request: StepUpRequest | null;
+  /** Why the middleware asked — carries the method + path of the guarded request
+   *  so the modal can name the action the owner is confirming. */
+  reason: StepUpReason | null;
 
   /** Called by the middleware to ask for a PIN; returns a Promise. */
-  ask: () => Promise<void>;
+  ask: (reason?: StepUpReason) => Promise<void>;
   /** Called by the modal on a successful POST /api/auth/step-up. */
   complete: () => void;
   /** Called by the modal on Esc or backdrop click. */
@@ -33,8 +38,9 @@ interface StepUpState {
 export const useStepUpStore = create<StepUpState>((set, get) => ({
   active: false,
   request: null,
+  reason: null,
 
-  ask: () =>
+  ask: (reason) =>
     new Promise<void>((resolve, reject) => {
       // If a step-up is already pending, fail fast — resolve the current
       // modal first.
@@ -43,18 +49,18 @@ export const useStepUpStore = create<StepUpState>((set, get) => ({
         reject(new Error('A step-up is already pending.'));
         return;
       }
-      set({ active: true, request: { resolve, reject } });
+      set({ active: true, request: { resolve, reject }, reason: reason ?? null });
     }),
 
   complete: () => {
     const r = get().request;
     if (r) r.resolve();
-    set({ active: false, request: null });
+    set({ active: false, request: null, reason: null });
   },
 
   cancel: () => {
     const r = get().request;
     if (r) r.reject(new Error('Step-up cancelled by owner.'));
-    set({ active: false, request: null });
+    set({ active: false, request: null, reason: null });
   },
 }));

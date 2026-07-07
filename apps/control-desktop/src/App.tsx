@@ -132,6 +132,15 @@ export function App(): JSX.Element {
       .catch(() => setConnection('nicht erreichbar'));
   }, [client]);
 
+  // Probe /health on mount + every 30s so the header pill is live from launch and
+  // never stuck at "unbekannt". The shell mounts only once authenticated, so this
+  // never fires on the login screen; the header pill also stays manually clickable.
+  useEffect(() => {
+    checkConnection();
+    const id = setInterval(checkConnection, 30_000);
+    return () => clearInterval(id);
+  }, [checkConnection]);
+
   const activeSurface = SURFACES.find((s) => s.digit === active) ?? SURFACES[0];
 
   return (
