@@ -4,16 +4,14 @@
  * BezahlenDialog opens an INTENTION the moment the operator commits to
  * a sale, lets the payment method (cash / ZVT) run, and then finishes
  * the TSE with the actual sum. The result is the KassenSichV-mandated
- * signature block that lands on the receipt + the offline queue.
+ * signature block that lands on the receipt + the durable replay queue.
  *
- * V1: if Fiskaly is unreachable, the failed signature gets stored in
- * `localStorage['warehouse14.tse-queue']` so the sale completes; a
- * future worker (Phase 1.5 #I-23) drains the queue back to the API.
+ * If Fiskaly is unreachable the sale still completes: the failed signature
+ * lands in the durable SQLite `tse_signature_queue` (tse-queue-store.ts) —
+ * finish-failed via `closeTseSession`, record-failed via
+ * `enqueueSignatureRecordOnly` — and the TSE-queue drain (tse-queue-drain.ts)
+ * replays it once Fiskaly / the server is reachable again (Phase 1.3).
  */
-
-import { Type } from '@sinclair/typebox';
-
-import { parseResponse } from '@warehouse14/api-client';
 
 import {
   type TseConfig,
@@ -24,35 +22,19 @@ import {
   isRunningInTauri,
   tseClient,
 } from './hardware-client.js';
+import { tseQueueStore } from './tse-queue-store.js';
 import type { VatAmount } from './tse-vat.js';
 
-// Persisted-input schema (P2.6): the offline TSE queue is replayed to the fiscal
-// API, so a corrupt entry (e.g. a string `amountCents`) must be DROPPED here, not
-// handed to the replay worker. `amountCents` is integer cents — never a string.
-const TseQueueEntrySchema = Type.Object({
-  intentionId: Type.String(),
-  receiptLocator: Type.Union([Type.String(), Type.Null()]),
-  amountCents: Type.Integer(),
-  paymentKind: Type.Union([Type.Literal('Bar'), Type.Literal('Unbar')]),
-  failedAt: Type.String(),
-  reason: Type.String(),
-});
-
-const QUEUE_STORAGE_KEY = 'warehouse14.tse-queue.v1';
+// Phase 1.3: the volatile `localStorage['warehouse14.tse-queue.v1']` queue is
+// gone — a failed TSE signature now lands in the durable SQLite
+// `tse_signature_queue` (tse-queue-store.ts), which survives crash + sign-out and
+// is never rolled off. The finish-failed path enqueues in `closeTseSession`; the
+// record-failed path via `enqueueSignatureRecordOnly` below.
 
 export type TseSessionResult =
   | { kind: 'signed'; signature: TseSignature; intention: TseIntention }
   | { kind: 'queued_offline'; intentionId: string; reason: string }
   | { kind: 'unavailable'; reason: string };
-
-export interface TseQueueEntry {
-  intentionId: string;
-  receiptLocator: string | null;
-  amountCents: number;
-  paymentKind: 'Bar' | 'Unbar';
-  failedAt: string;
-  reason: string;
-}
 
 export interface OpenTseSessionInput {
   config: TseConfig;
@@ -95,6 +77,13 @@ export async function closeTseSession(
   input: OpenTseSessionInput & {
     intention: TseIntention;
     amountCents: number;
+    /**
+     * The finalized server transaction id — `result.id` (Verkauf) /
+     * `result.transactionId` (Ankauf). This is the `:id` in the replay
+     * POST route, so it MUST be threaded through for a finish-failed row to
+     * be replayable. Required (not optional) so both call sites supply it.
+     */
+    serverTransactionId: string;
     /** DSFinV-K per-VAT gross breakdown for the signed `amounts_per_vat_id`. */
     amountsPerVatId?: VatAmount[];
   },
@@ -117,44 +106,71 @@ export async function closeTseSession(
     return { kind: 'signed', signature, intention: input.intention };
   } catch (err) {
     const reason = messageOf(err);
-    enqueueFailure({
-      intentionId: input.intention.intentionId,
-      receiptLocator: input.receiptLocator,
-      amountCents: input.amountCents,
-      paymentKind: input.paymentKind,
-      failedAt: new Date().toISOString(),
-      reason,
-    });
+    // Finish-failed → durable replay queue (path a: signature NULL). Replaces the
+    // volatile localStorage queue; this fiscal record survives crash + sign-out
+    // and is re-FINISHed by the drain. Enqueue is best-effort-awaited: a store
+    // write failure must not throw into the sale (the sale is already finalized).
+    try {
+      await tseQueueStore.enqueue({
+        intentionId: input.intention.intentionId,
+        fiskalyTransactionId: input.intention.fiskalyTransactionId,
+        tssId: input.config.tssId,
+        clientId: input.config.clientId,
+        serverTransactionId: input.serverTransactionId,
+        amountCents: input.amountCents,
+        paymentKind: input.paymentKind,
+        amountsPerVatId: input.amountsPerVatId ?? [],
+        processType: input.processType ?? 'Kassenbeleg-V1',
+        receiptLocator: input.receiptLocator,
+        signature: null,
+        createdAt: Date.now(),
+        lastError: err,
+      });
+    } catch {
+      // localStorage/DB unavailable — nothing else client-side; the sale stands.
+    }
     return { kind: 'queued_offline', intentionId: input.intention.intentionId, reason };
   }
 }
 
-/** Read the offline-queue snapshot — used by the Gerätemanager badge. */
-export function readQueue(): TseQueueEntry[] {
+/**
+ * Record-failed enqueue (path b): the FINISH succeeded and we HOLD the signature,
+ * but the server-record POST failed. Enqueue the SIGNED entry so the drain
+ * re-POSTs it ONLY — it must never re-FINISH an already-finished intention. The
+ * store's UPSERT promotes a pre-existing finish-failed (NULL) row for the same
+ * intention to this signed one, so the signature is never lost. Best-effort:
+ * a store write failure must not throw into the (already finalized) sale.
+ */
+export async function enqueueSignatureRecordOnly(input: {
+  config: TseConfig;
+  intention: TseIntention;
+  serverTransactionId: string;
+  amountCents: number;
+  paymentKind: 'Bar' | 'Unbar';
+  amountsPerVatId?: VatAmount[];
+  processType?: string;
+  receiptLocator: string | null;
+  signature: TseSignature;
+  error?: unknown;
+}): Promise<void> {
   try {
-    const raw = localStorage.getItem(QUEUE_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    // Validate each entry; a corrupt one is dropped (not handed to the replay
-    // worker), the valid ones survive. `.filter(Boolean)` strips the nulls.
-    return parsed
-      .map((e) => parseResponse(TseQueueEntrySchema, e, 'tse-queue.entry'))
-      .filter((e): e is TseQueueEntry => e !== null);
+    await tseQueueStore.enqueue({
+      intentionId: input.intention.intentionId,
+      fiskalyTransactionId: input.intention.fiskalyTransactionId,
+      tssId: input.config.tssId,
+      clientId: input.config.clientId,
+      serverTransactionId: input.serverTransactionId,
+      amountCents: input.amountCents,
+      paymentKind: input.paymentKind,
+      amountsPerVatId: input.amountsPerVatId ?? [],
+      processType: input.processType ?? 'Kassenbeleg-V1',
+      receiptLocator: input.receiptLocator,
+      signature: input.signature,
+      createdAt: Date.now(),
+      lastError: input.error,
+    });
   } catch {
-    return [];
-  }
-}
-
-function enqueueFailure(entry: TseQueueEntry): void {
-  try {
-    const current = readQueue();
-    current.push(entry);
-    // Cap at 200 to prevent runaway growth — Phase 1.5 worker drains.
-    const capped = current.slice(-200);
-    localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(capped));
-  } catch {
-    // localStorage full / disabled — nothing else we can do client-side.
+    // DB unavailable — the sale stands; the signature still printed on the receipt.
   }
 }
 

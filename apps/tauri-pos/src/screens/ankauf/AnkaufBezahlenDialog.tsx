@@ -44,6 +44,7 @@ import { fromCents, sumNegotiatedCents } from '../../lib/intake-math.js';
 import {
   type TseSessionResult,
   closeTseSession,
+  enqueueSignatureRecordOnly,
   newIntentionId,
   openTseSession,
 } from '../../lib/tse-service.js';
@@ -281,6 +282,7 @@ export function AnkaufBezahlenDialog({
           paymentKind,
           intention: tseIntentionRes.intention,
           amountCents: Number(totalCents),
+          serverTransactionId: result.transactionId,
           amountsPerVatId,
         });
         if (finishRes.kind === 'signed') {
@@ -299,6 +301,19 @@ export function AnkaufBezahlenDialog({
               tseEndTime: sig.finishedAt,
             });
           } catch (sigErr) {
+            // Record-failed (path b): hold the signature, enqueue it for a
+            // re-POST-only replay (never re-FINISH). Durable — survives crash.
+            await enqueueSignatureRecordOnly({
+              config: hardwareCfg.tse,
+              intention: tseIntentionRes.intention,
+              serverTransactionId: result.transactionId,
+              amountCents: Number(totalCents),
+              paymentKind,
+              amountsPerVatId,
+              receiptLocator: result.receiptLocator,
+              signature: sig,
+              error: sigErr,
+            });
             addToast({
               tone: 'alert',
               title: 'TSE-Signatur nicht gespeichert',

@@ -87,6 +87,7 @@ import {
 import {
   type TseSessionResult,
   closeTseSession,
+  enqueueSignatureRecordOnly,
   newIntentionId,
   openTseSession,
 } from '../../lib/tse-service.js';
@@ -578,6 +579,7 @@ export function BezahlenDialog({
           paymentKind,
           intention: intentionRes.intention,
           amountCents: totalCents,
+          serverTransactionId: result.id,
           amountsPerVatId,
         });
         if (finishRes.kind === 'signed') {
@@ -610,8 +612,21 @@ export function BezahlenDialog({
               tseEndTime: sig.finishedAt,
             });
           } catch (err) {
-            // Persisting is best-effort at the till — surface a soft warning so
-            // the operator knows the server-side record may need a later replay.
+            // Record-failed (path b): we HOLD the signature but the server POST
+            // failed. Enqueue the SIGNED entry to the durable queue so the drain
+            // re-POSTs it — never re-FINISH. Previously this was lost after the
+            // toast; now it survives crash + sign-out.
+            await enqueueSignatureRecordOnly({
+              config: hardwareCfg.tse,
+              intention: intentionRes.intention,
+              serverTransactionId: result.id,
+              amountCents: totalCents,
+              paymentKind,
+              amountsPerVatId,
+              receiptLocator: result.receiptLocator,
+              signature: sig,
+              error: err,
+            });
             addToast({
               tone: 'alert',
               title: 'TSE-Signatur nicht gespeichert',

@@ -62,11 +62,11 @@ const PER_OPERATOR_STORAGE_KEYS = [
   'w14.cart.v1', // Verkauf cart (with reservationSessionIds)
   'w14.ankauf.v1', // Ankauf intake cart (customer context + items)
   'w14.bewertung.v1', // Appraisal selection (customer id + appraisal id)
-  // NOTE: 'warehouse14.tse-queue.v1' is DELIBERATELY NOT purged here. Pending
-  // TSE signatures are shop FISCAL records (KassenSichV §146a), not per-operator
-  // work — a sign-out must NEVER destroy them. They persist across sessions and
-  // are replayed by the TSE-queue drain (Phase 1.3b). Re-adding this key here
-  // would re-introduce the fiscal-record-loss bug it was removed to fix.
+  // NOTE: pending TSE signatures are NO LONGER in localStorage — as of Phase 1.3
+  // they live in the durable SQLite `tse_signature_queue` (tse-queue-store.ts),
+  // which sign-out never touches (only this localStorage list is purged). They
+  // are shop FISCAL records (KassenSichV §146a) and survive across sessions,
+  // replayed by the TSE-queue drain. Do NOT add any TSE queue key to this list.
 ] as const;
 
 import { AppShellHeader } from './AppShellHeader.js';
