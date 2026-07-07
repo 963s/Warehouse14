@@ -28,6 +28,7 @@ import {
 import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../api-context.js';
+import { describeError } from '@warehouse14/i18n-de';
 
 export interface EditableCustomer {
   id: string;
@@ -77,7 +78,7 @@ function germanError(err: unknown): string {
       case 'FORBIDDEN':
         return 'Nur der Inhaber darf diese Änderung vornehmen.';
       default:
-        return err.message;
+        return describeError(err);
     }
   }
   return 'Verbindung gestört — bitte erneut versuchen.';

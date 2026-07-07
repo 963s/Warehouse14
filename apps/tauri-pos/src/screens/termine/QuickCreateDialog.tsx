@@ -22,6 +22,7 @@ import {
 import { useBookAppointment } from '../../hooks/useAppointments.js';
 import { useSessionStore } from '../../state/session-store.js';
 import { useToastStore } from '../../state/toast-store.js';
+import { describeError } from '@warehouse14/i18n-de';
 
 const APPOINTMENT_TYPES: AppointmentType[] = ['VIEWING', 'BUYBACK_EVAL', 'CONSULTATION', 'PICKUP'];
 
@@ -104,7 +105,7 @@ function CreateForm({ slotStart, onClose }: { slotStart: Date; onClose: () => vo
               'Dieser Slot ist nicht verfügbar — belegt oder außerhalb der Arbeitszeiten. Bitte anderen Zeitpunkt wählen.',
             );
           } else if (err instanceof ApiError) {
-            setError(err.message);
+            setError(describeError(err));
           } else {
             setError('Buchung fehlgeschlagen. Bitte erneut versuchen.');
           }

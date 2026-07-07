@@ -27,6 +27,7 @@ import { useApiClient } from '../../lib/api-context.js';
 import { computeSchmelzwertEur } from '../../lib/bewertung-math.js';
 import { germanMoneyToDot } from '../../lib/decimal.js';
 import { CONDITION_OPTIONS, ITEM_TYPE_OPTIONS } from '../../lib/item-type-label.js';
+import { describeError } from '@warehouse14/i18n-de';
 
 export interface AppraisalItemFormProps {
   appraisalId: string;
@@ -111,7 +112,7 @@ export function AppraisalItemForm({ appraisalId }: AppraisalItemFormProps): JSX.
       qc.setQueryData(['appraisals', appraisalId], next);
       reset();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Netzwerk prüfen.');
+      setError(err instanceof ApiError ? describeError(err) : 'Netzwerk prüfen.');
     } finally {
       setSubmitting(false);
     }

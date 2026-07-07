@@ -38,6 +38,7 @@ import { useCamera } from '../../hooks/useCamera.js';
 import { useApiClient } from '../../lib/api-context.js';
 import { photoContentTypeOf, uploadProductPhotoViaApi } from '../../lib/photo-upload.js';
 import { useToastStore } from '../../state/toast-store.js';
+import { describeError } from '@warehouse14/i18n-de';
 
 type Mode = 'produkt' | 'kyc' | 'allgemein';
 type SnapshotStatus = 'queued' | 'uploading' | 'registering' | 'done' | 'failed';
@@ -190,10 +191,8 @@ export function Fotos(): JSX.Element {
       } catch (err) {
         const message =
           err instanceof ApiError
-            ? err.message
-            : err instanceof Error
-              ? err.message
-              : 'Unbekannter Fehler';
+            ? describeError(err)
+            : describeError(err);
         updateSnapshot(snap.id, { status: 'failed', error: message });
       }
     },
@@ -942,7 +941,7 @@ function ProductGallery({ productId }: { productId: string }): JSX.Element {
         body: notImplemented
           ? 'Die Hauptbild-Auswahl ist auf diesem Server noch nicht aktiv — bitte später erneut versuchen.'
           : err instanceof ApiError
-            ? err.message
+            ? describeError(err)
             : 'Verbindung gestört — bitte erneut versuchen.',
       });
     },
@@ -1241,7 +1240,7 @@ function KycDocumentForm({
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.code === 'STEP_UP_REQUIRED') setError('PIN-Bestätigung wurde abgebrochen.');
-        else setError(err.message);
+        else setError(describeError(err));
       } else {
         setError('Verbindung gestört — bitte erneut versuchen.');
       }

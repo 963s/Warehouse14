@@ -46,6 +46,7 @@ import {
 import { useApiClient } from '../../lib/api-context.js';
 import { germanDateToIso } from '../../lib/german-date.js';
 import { useToastStore } from '../../state/toast-store.js';
+import { describeError } from '@warehouse14/i18n-de';
 
 type Mode = 'SEARCH' | 'CREATE' | 'SELECTED';
 
@@ -460,7 +461,7 @@ function SelectedBuyer({
     } catch (err) {
       if (err instanceof ApiError) {
         setError(
-          err.code === 'STEP_UP_REQUIRED' ? 'PIN-Bestätigung wurde abgebrochen.' : err.message,
+          err.code === 'STEP_UP_REQUIRED' ? 'PIN-Bestätigung wurde abgebrochen.' : describeError(err),
         );
       } else {
         setError('Verbindung gestört — Ausweis nicht bestätigt.');
@@ -696,7 +697,7 @@ function CreateBuyer({
       await qc.invalidateQueries({ queryKey: ['customers', 'list'] });
       onCreated(created.id);
     } catch (err) {
-      if (err instanceof ApiError) setError(err.message);
+      if (err instanceof ApiError) setError(describeError(err));
       else setError('Verbindung gestört — Netzwerk prüfen.');
     } finally {
       setSubmitting(false);

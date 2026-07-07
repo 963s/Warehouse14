@@ -19,6 +19,7 @@ import { useApiClient } from '../../lib/api-context.js';
 import { useToastStore } from '../../state/toast-store.js';
 
 import { EuroInput } from './EuroInput.js';
+import { describeError } from '@warehouse14/i18n-de';
 
 export type MovementKind = 'einlage' | 'entnahme';
 
@@ -93,7 +94,7 @@ export function CashMovementDialog({
       onClose();
     } catch (err) {
       if (err instanceof ApiError) {
-        setError(err.message);
+        setError(describeError(err));
       } else {
         setError('Verbindung gestört — Netzwerk prüfen.');
       }

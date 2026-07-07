@@ -26,6 +26,7 @@ import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 import { useApiClient } from '../../lib/api-context.js';
 import { germanDateToIso, isoToGermanDate } from '../../lib/german-date.js';
 import { useToastStore } from '../../state/toast-store.js';
+import { describeError } from '@warehouse14/i18n-de';
 
 export interface CustomerEditDialogProps {
   open: boolean;
@@ -119,9 +120,9 @@ export function CustomerEditDialog({
         } else if (err.code === 'CONFLICT') {
           setError('E-Mail oder Telefon bereits einem anderen Kunden zugewiesen.');
         } else if (err.code === 'VALIDATION_ERROR') {
-          setError(err.message);
+          setError(describeError(err));
         } else {
-          setError(err.message);
+          setError(describeError(err));
         }
       } else {
         setError('Verbindung gestört — bitte erneut versuchen.');

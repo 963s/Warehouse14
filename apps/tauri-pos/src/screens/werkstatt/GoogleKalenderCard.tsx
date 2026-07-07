@@ -26,6 +26,7 @@ import { DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 import { useApiClient } from '../../lib/api-context.js';
 
 import { TerminDialog } from './TerminDialog.js';
+import { describeError } from '@warehouse14/i18n-de';
 
 /** The server's calendar-event shape (mirrors the api route). */
 export interface CalendarEvent {
@@ -160,7 +161,7 @@ export function GoogleKalenderCard({ variant = 'card' }: GoogleKalenderCardProps
       if (ctrl.signal.aborted) return;
       const message =
         err instanceof ApiError
-          ? `Termine konnten nicht geladen werden — ${err.message}`
+          ? `Termine konnten nicht geladen werden — ${describeError(err)}`
           : 'Keine Verbindung — bitte erneut versuchen.';
       setState({ kind: 'error', message });
     }

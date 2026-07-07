@@ -24,6 +24,7 @@ import { Button, DiamondRule } from '@warehouse14/ui-kit';
 import { IconCheck } from '../../app/chrome/Icons.js';
 import { useApiClient } from '../../lib/api-context.js';
 import { useToastStore } from '../../state/toast-store.js';
+import { describeError } from '@warehouse14/i18n-de';
 
 type IntegrationSource = 'env' | 'settings' | 'none';
 
@@ -221,7 +222,7 @@ function IntegrationCard({ item }: { item: IntegrationItem }): JSX.Element {
       addToast({
         tone: 'alert',
         title: 'Speichern fehlgeschlagen',
-        body: err instanceof ApiError ? err.message : 'Bitte erneut versuchen.',
+        body: err instanceof ApiError ? describeError(err) : 'Bitte erneut versuchen.',
       });
     },
   });
@@ -241,7 +242,7 @@ function IntegrationCard({ item }: { item: IntegrationItem }): JSX.Element {
       setTestResult({
         ok: false,
         message:
-          err instanceof ApiError ? err.message : 'Test fehlgeschlagen. Bitte erneut versuchen.',
+          err instanceof ApiError ? describeError(err) : 'Test fehlgeschlagen. Bitte erneut versuchen.',
       });
     },
   });

@@ -74,6 +74,7 @@ import { TAX_TREATMENT_LABEL } from '../../lib/tax-treatment-label.js';
 import { type StampErhaltung, formatStampDisplay, sortierTipp } from '../../lib/taxonomy-hints.js';
 import { useLabelPrinter } from '../../lib/use-label-printer.js';
 import { useToastStore } from '../../state/toast-store.js';
+import { describeError } from '@warehouse14/i18n-de';
 
 import {
   BeschreibungDetailsFields,
@@ -482,7 +483,7 @@ function CreateBody({
       // is now explicit via the header close X.
       onCreated(res.id);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Unbekannter Fehler';
+      const msg = describeError(err);
       if (/step[_-]?up/i.test(msg)) {
         addToast({
           tone: 'alert',
@@ -996,7 +997,7 @@ function DetailsEditor({ product }: { product: ProductDetail }): JSX.Element {
       await qc.invalidateQueries({ queryKey: ['products', 'list'] });
     } catch (err) {
       const msg =
-        err instanceof ApiError ? err.message : 'Verbindung gestört — bitte erneut versuchen.';
+        err instanceof ApiError ? describeError(err) : 'Verbindung gestört — bitte erneut versuchen.';
       addToast({ tone: 'alert', title: 'Speichern fehlgeschlagen', body: msg });
     } finally {
       setBusy(false);
@@ -1159,7 +1160,7 @@ function PreisSection({
       onDone();
     } catch (err) {
       const msg =
-        err instanceof ApiError ? err.message : 'Verbindung gestört — bitte erneut versuchen.';
+        err instanceof ApiError ? describeError(err) : 'Verbindung gestört — bitte erneut versuchen.';
       addToast({ tone: 'alert', title: 'Nicht verkaufsbereit', body: msg });
     } finally {
       setBusy(false);
@@ -1267,7 +1268,7 @@ function BestandSection({
         else if (err.code === 'NOT_FOUND') {
           setError('Stück nicht mehr vorhanden — Liste wird aktualisiert.');
           void qc.invalidateQueries({ queryKey: ['products', 'list'] });
-        } else setError(err.message);
+        } else setError(describeError(err));
       } else setError('Verbindung gestört — bitte erneut versuchen.');
     } finally {
       setSubmitting(false);
@@ -1468,7 +1469,7 @@ function HandelSection({ product }: { product: ProductDetail }): JSX.Element {
       await qc.invalidateQueries({ queryKey: ['products', 'list'] });
     } catch (err) {
       const msg =
-        err instanceof ApiError ? err.message : 'Verbindung gestört — bitte erneut versuchen.';
+        err instanceof ApiError ? describeError(err) : 'Verbindung gestört — bitte erneut versuchen.';
       addToast({ tone: 'alert', title: 'eBay-Aufnahme fehlgeschlagen', body: msg });
     } finally {
       setBusy(false);
@@ -1503,7 +1504,7 @@ function HandelSection({ product }: { product: ProductDetail }): JSX.Element {
       }
     } catch (err) {
       const msg =
-        err instanceof ApiError ? err.message : 'Verbindung gestört — bitte erneut versuchen.';
+        err instanceof ApiError ? describeError(err) : 'Verbindung gestört — bitte erneut versuchen.';
       addToast({ tone: 'alert', title: 'eBay-Veröffentlichung fehlgeschlagen', body: msg });
     } finally {
       setPushBusy(false);
@@ -1642,7 +1643,7 @@ function LoeschenSection({
       onDeleted();
     } catch (err) {
       const msg =
-        err instanceof ApiError ? err.message : 'Verbindung gestört — bitte erneut versuchen.';
+        err instanceof ApiError ? describeError(err) : 'Verbindung gestört — bitte erneut versuchen.';
       addToast({ tone: 'alert', title: 'Löschen nicht möglich', body: msg });
     } finally {
       setBusy(false);

@@ -40,6 +40,7 @@ import { useApiClient } from '../../lib/api-context.js';
 import { germanDateToIso } from '../../lib/german-date.js';
 import { selectAnkaufCustomerId, useAnkaufCartStore } from '../../state/ankauf-cart-store.js';
 import { useToastStore } from '../../state/toast-store.js';
+import { describeError } from '@warehouse14/i18n-de';
 
 type Mode = 'SEARCH' | 'CREATE';
 
@@ -662,7 +663,7 @@ function CreateMode({
       await qc.invalidateQueries({ queryKey: ['customers', 'list'] });
       onCreated(created.id);
     } catch (err) {
-      if (err instanceof ApiError) setError(err.message);
+      if (err instanceof ApiError) setError(describeError(err));
       else setError('Verbindung gestört — Netzwerk prüfen.');
     } finally {
       setSubmitting(false);

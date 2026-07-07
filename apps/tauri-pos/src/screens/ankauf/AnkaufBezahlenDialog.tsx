@@ -57,6 +57,7 @@ import {
 } from '../../state/ankauf-cart-store.js';
 import { useHardwareStore } from '../../state/hardware-store.js';
 import { useToastStore } from '../../state/toast-store.js';
+import { describeError } from '@warehouse14/i18n-de';
 
 export interface AnkaufBezahlenDialogProps {
   open: boolean;
@@ -185,7 +186,7 @@ export function AnkaufBezahlenDialog({
         if (err.code === 'STEP_UP_REQUIRED') {
           setError('PIN-Bestätigung wurde abgebrochen.');
         } else {
-          setError(err.message);
+          setError(describeError(err));
         }
       } else {
         setError('Verbindung gestört — KYC nicht bestätigt.');
@@ -462,7 +463,7 @@ export function AnkaufBezahlenDialog({
         } else if (err.code === 'CLOSING_DAY_FINALIZED') {
           setError('Heutiger Tagesabschluss ist bereits geschlossen.');
         } else {
-          setError(err.message);
+          setError(describeError(err));
         }
       } else {
         setError('Verbindung gestört — Netzwerk prüfen.');

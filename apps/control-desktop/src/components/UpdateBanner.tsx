@@ -17,6 +17,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import { describeError } from '@warehouse14/i18n-de';
 
 /** Tauri 2 injects this global into the webview; absent in a plain browser. */
 function isRunningInTauri(): boolean {
@@ -80,7 +81,7 @@ export function UpdateBanner(): JSX.Element | null {
       window.setTimeout(() => void relaunch(), 1_200);
     } catch (err) {
       setInstalling(false);
-      setError(err instanceof Error ? err.message : 'Aktualisierung fehlgeschlagen.');
+      setError(describeError(err));
     }
   }, [update]);
 

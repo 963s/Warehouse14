@@ -33,6 +33,7 @@
 import { useSyncExternalStore } from 'react';
 
 import { isRunningInTauri } from '../lib/hardware-client.js';
+import { describeError } from '@warehouse14/i18n-de';
 
 export type UpdateStatus =
   | 'idle'
@@ -170,7 +171,7 @@ async function runCheck(opts: { silent: boolean }): Promise<void> {
     } else {
       setState({
         status: 'error',
-        error: err instanceof Error ? err.message : String(err),
+        error: err instanceof Error ? describeError(err) : String(err),
       });
     }
   } finally {
@@ -238,7 +239,7 @@ export function useAppUpdate(): UseAppUpdate {
       setState({
         status: 'error',
         progressPct: null,
-        error: err instanceof Error ? err.message : String(err),
+        error: err instanceof Error ? describeError(err) : String(err),
       });
     }
   };

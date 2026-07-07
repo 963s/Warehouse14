@@ -34,6 +34,7 @@ import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
 import { useToastStore } from '../../state/toast-store.js';
+import { describeError } from '@warehouse14/i18n-de';
 
 // ════════════════════════════════════════════════════════════════════════
 // Query keys
@@ -340,7 +341,7 @@ function ConversationPane({ phone }: { phone: string | null }): JSX.Element {
           err instanceof ApiError
             ? err.code === 'EXTERNAL_SERVICE_FAILED'
               ? 'WhatsApp-Anbieter hat abgelehnt.'
-              : err.message
+              : describeError(err)
             : 'Netzwerkfehler. Bitte erneut versuchen.',
       });
     },
@@ -658,7 +659,7 @@ function ThreadSidebarBody({ phone }: { phone: string }): JSX.Element {
       addToast({
         tone: 'alert',
         title: 'Konnte nicht markieren',
-        body: err instanceof ApiError ? err.message : 'Bitte erneut versuchen.',
+        body: err instanceof ApiError ? describeError(err) : 'Bitte erneut versuchen.',
       });
     },
   });
@@ -674,7 +675,7 @@ function ThreadSidebarBody({ phone }: { phone: string }): JSX.Element {
       addToast({
         tone: 'alert',
         title: 'Verknüpfung fehlgeschlagen',
-        body: err instanceof ApiError ? err.message : 'Bitte erneut versuchen.',
+        body: err instanceof ApiError ? describeError(err) : 'Bitte erneut versuchen.',
       });
     },
   });
@@ -689,7 +690,7 @@ function ThreadSidebarBody({ phone }: { phone: string }): JSX.Element {
       addToast({
         tone: 'alert',
         title: 'AI-Status fehlgeschlagen',
-        body: err instanceof ApiError ? err.message : 'Bitte erneut versuchen.',
+        body: err instanceof ApiError ? describeError(err) : 'Bitte erneut versuchen.',
       });
     },
   });

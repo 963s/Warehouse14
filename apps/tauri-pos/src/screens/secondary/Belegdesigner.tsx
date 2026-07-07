@@ -31,6 +31,7 @@ import { useApiClient } from '../../lib/api-context.js';
 import type { ThermalReceiptData } from '../../lib/hardware-client.js';
 import { SHOP_INFO } from '../../lib/shop-info.js';
 import { useToastStore } from '../../state/toast-store.js';
+import { describeError } from '@warehouse14/i18n-de';
 
 // Physical thermal-paper cream — kept as a literal (not a theme token) so the
 // printed-preview stays paper-white regardless of light/dark. Aligned to the
@@ -177,7 +178,7 @@ export function Belegdesigner(): JSX.Element {
       addToast({
         tone: 'alert',
         title: 'Speichern fehlgeschlagen',
-        body: err instanceof ApiError ? err.message : 'Bitte erneut versuchen.',
+        body: err instanceof ApiError ? describeError(err) : 'Bitte erneut versuchen.',
       });
     },
   });

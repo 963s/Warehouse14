@@ -21,6 +21,7 @@ import { useApiClient } from '../../lib/api-context.js';
 import { isMoneyInput, normalizeDecimal } from '../../lib/decimal.js';
 import { itemTypeLabel } from '../../lib/item-type-label.js';
 import { useToastStore } from '../../state/toast-store.js';
+import { describeError } from '@warehouse14/i18n-de';
 
 export interface AppraisalItemsListProps {
   appraisal: AppraisalView;
@@ -52,7 +53,7 @@ export function AppraisalItemsList({
       addToast({
         tone: 'alert',
         title: 'Entfernen fehlgeschlagen',
-        body: err instanceof ApiError ? err.message : 'Netzwerk prüfen.',
+        body: err instanceof ApiError ? describeError(err) : 'Netzwerk prüfen.',
       });
     }
   };
@@ -72,7 +73,7 @@ export function AppraisalItemsList({
       setCompleteOpen(false);
       onOpenAcceptance();
     } catch (err) {
-      setCompleteError(err instanceof ApiError ? err.message : 'Netzwerk prüfen.');
+      setCompleteError(err instanceof ApiError ? describeError(err) : 'Netzwerk prüfen.');
     } finally {
       setCompleting(false);
     }

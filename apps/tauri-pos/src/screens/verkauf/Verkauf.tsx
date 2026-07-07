@@ -78,6 +78,7 @@ import { ShiftGuard } from '../_shared/ShiftGuard.js';
 
 import { CartPanel } from './CartPanel.js';
 import { CatalogGrid } from './CatalogGrid.js';
+import { describeError } from '@warehouse14/i18n-de';
 
 export function Verkauf(): JSX.Element {
   const { data: shift, isLoading } = useCurrentShift();
@@ -234,7 +235,7 @@ function VerkaufFloor(): JSX.Element {
           addToast({
             tone: 'alert',
             title: 'Reservierung fehlgeschlagen',
-            body: err.message,
+            body: describeError(err),
           });
         } else {
           addToast({

@@ -23,6 +23,7 @@ import { ThemeToggle } from '../app/chrome/ThemeToggle.js';
 import { useApiClient } from '../lib/api-context.js';
 import { setSessionToken } from '../lib/session-token.js';
 import { useSessionStore } from '../state/session-store.js';
+import { describeError } from '@warehouse14/i18n-de';
 
 export function PinLogin(): JSX.Element {
   const api = useApiClient();
@@ -89,7 +90,7 @@ export function PinLogin(): JSX.Element {
             setErrorMsg('Zu viele Versuche, kurz innehalten.');
             break;
           default:
-            setErrorMsg(err.message);
+            setErrorMsg(describeError(err));
         }
       } else {
         setErrorMsg('Verbindung gestört — Netzwerk prüfen.');

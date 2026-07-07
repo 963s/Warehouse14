@@ -26,6 +26,7 @@ import { useApiClient } from '../../lib/api-context.js';
 import { SHOP_INFO } from '../../lib/shop-info.js';
 import { useSessionStore } from '../../state/session-store.js';
 import { useToastStore } from '../../state/toast-store.js';
+import { describeError } from '@warehouse14/i18n-de';
 
 type TemplateKind = 'ankaufvertrag' | 'rechnung' | 'brief' | 'leer';
 
@@ -133,7 +134,7 @@ export function Schreiben(): JSX.Element {
       if (mode === 'generate') setAiPrompt('');
       addToast({ tone: 'success', title: 'KI-Text übernommen' });
     } catch (err) {
-      const msg = err instanceof ApiError ? err.message : 'KI nicht erreichbar.';
+      const msg = err instanceof ApiError ? describeError(err) : 'KI nicht erreichbar.';
       addToast({ tone: 'alert', title: 'KI', body: msg });
     } finally {
       setAiBusy(false);

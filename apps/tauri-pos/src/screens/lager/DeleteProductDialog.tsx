@@ -24,6 +24,7 @@
 import { useState } from 'react';
 
 import { ApiError, type ProductListRow, productsApi } from '@warehouse14/api-client';
+import { describeError } from '@warehouse14/i18n-de';
 import { Button, Dialog, DialogBody, DialogFooter, Icon, TriangleAlert } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
@@ -79,7 +80,7 @@ export function DeleteProductDialog({
       onClose();
     } catch (err) {
       const msg =
-        err instanceof ApiError ? err.message : 'Verbindung gestört — bitte erneut versuchen.';
+        err instanceof ApiError ? describeError(err) : 'Verbindung gestört — bitte erneut versuchen.';
       addToast({ tone: 'alert', title: 'Löschen nicht möglich', body: msg });
     } finally {
       setBusy(false);
@@ -100,7 +101,7 @@ export function DeleteProductDialog({
       onClose();
     } catch (err) {
       const msg =
-        err instanceof ApiError ? err.message : 'Verbindung gestört — bitte erneut versuchen.';
+        err instanceof ApiError ? describeError(err) : 'Verbindung gestört — bitte erneut versuchen.';
       addToast({ tone: 'alert', title: 'Archivieren nicht möglich', body: msg });
     } finally {
       setBusy(false);

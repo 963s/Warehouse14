@@ -22,6 +22,7 @@ import {
 
 import { useApiClient } from '../api-context.js';
 import { StatusDot, type StatusTone } from '../components/StatusDot.js';
+import { describeError } from '@warehouse14/i18n-de';
 
 interface LedgerRow {
   id: number;
@@ -149,7 +150,7 @@ export function KonformitaetPanel(): JSX.Element {
         `${direction === 'ANKAUF' ? 'Ankäufe' : 'Verkäufe'} ${from} – ${to}.`,
       );
     } catch (err) {
-      pushToast('alert', 'Export fehlgeschlagen', err instanceof Error ? err.message : 'Netzwerk');
+      pushToast('alert', 'Export fehlgeschlagen', describeError(err));
     } finally {
       setDownloading(false);
     }

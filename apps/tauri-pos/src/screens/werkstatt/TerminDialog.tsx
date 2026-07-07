@@ -35,6 +35,7 @@ import { useApiClient } from '../../lib/api-context.js';
 import { useToastStore } from '../../state/toast-store.js';
 
 import type { CalendarEvent } from './GoogleKalenderCard.js';
+import { describeError } from '@warehouse14/i18n-de';
 
 export interface TerminDialogProps {
   mode: 'create' | 'edit';
@@ -365,11 +366,11 @@ function toGermanError(err: unknown, fallback: string): string {
       case 'NOT_FOUND':
         return 'Dieser Termin existiert nicht mehr.';
       case 'VALIDATION_ERROR':
-        return `Eingabe ungültig — ${err.message}`;
+        return `Eingabe ungültig — ${describeError(err)}`;
       case 'EXTERNAL_SERVICE_FAILED':
         return 'Der Kalender ist gerade nicht erreichbar — bitte gleich erneut versuchen.';
       default:
-        return `${fallback} (${err.message})`;
+        return `${fallback} (${describeError(err)})`;
     }
   }
   return 'Keine Verbindung — bitte erneut versuchen.';

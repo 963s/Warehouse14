@@ -48,6 +48,7 @@ import {
   mcpApi,
   productsApi,
 } from '@warehouse14/api-client';
+import { describeError } from '@warehouse14/i18n-de';
 import { Button, DiamondRule } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
@@ -121,7 +122,7 @@ export function WebSeoPanel({ productId }: WebSeoPanelProps): JSX.Element {
       addToast({
         tone: 'alert',
         title: 'Schalten fehlgeschlagen',
-        body: err instanceof ApiError ? err.message : 'Netzwerkfehler — bitte erneut versuchen.',
+        body: err instanceof ApiError ? describeError(err) : 'Netzwerkfehler — bitte erneut versuchen.',
       });
     },
   });
@@ -148,7 +149,7 @@ export function WebSeoPanel({ productId }: WebSeoPanelProps): JSX.Element {
       addToast({
         tone: 'alert',
         title: 'Speichern fehlgeschlagen',
-        body: err instanceof ApiError ? err.message : 'Bitte Eingaben prüfen.',
+        body: err instanceof ApiError ? describeError(err) : 'Bitte Eingaben prüfen.',
       });
     },
   });
@@ -168,7 +169,7 @@ export function WebSeoPanel({ productId }: WebSeoPanelProps): JSX.Element {
       addToast({
         tone: 'alert',
         title: 'Kategorie konnte nicht gesetzt werden',
-        body: err instanceof ApiError ? err.message : 'Bitte erneut versuchen.',
+        body: err instanceof ApiError ? describeError(err) : 'Bitte erneut versuchen.',
       });
     },
   });
@@ -202,9 +203,9 @@ export function WebSeoPanel({ productId }: WebSeoPanelProps): JSX.Element {
     onError: (err: unknown) => {
       const msg =
         err instanceof McpToolError
-          ? err.message
+          ? describeError(err)
           : err instanceof ApiError
-            ? err.message
+            ? describeError(err)
             : 'Unbekannter KI-Fehler';
       addToast({ tone: 'alert', title: 'KI-Generierung fehlgeschlagen', body: msg });
     },

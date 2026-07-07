@@ -31,6 +31,7 @@ import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
 import { useToastStore } from '../../state/toast-store.js';
+import { describeError } from '@warehouse14/i18n-de';
 
 export function Ebay(): JSX.Element {
   const api = useApiClient();
@@ -324,7 +325,7 @@ function ProductDrawer({
       addToast({
         tone: 'alert',
         title: 'Übergang abgelehnt',
-        body: err instanceof ApiError ? err.message : 'Bitte erneut versuchen.',
+        body: err instanceof ApiError ? describeError(err) : 'Bitte erneut versuchen.',
       });
     },
   });

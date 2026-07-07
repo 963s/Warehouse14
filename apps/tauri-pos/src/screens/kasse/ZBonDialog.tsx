@@ -28,6 +28,7 @@ import { classifyDifferenz } from '../../lib/kassensturz.js';
 import { useToastStore } from '../../state/toast-store.js';
 
 import { EuroInput } from './EuroInput.js';
+import { describeError } from '@warehouse14/i18n-de';
 
 export interface ZBonDialogProps {
   open: boolean;
@@ -102,7 +103,7 @@ export function ZBonDialog({ open, shiftId, onClose }: ZBonDialogProps): JSX.Ele
         if (err.code === 'STEP_UP_REQUIRED') {
           setError('PIN-Bestätigung wurde abgebrochen.');
         } else {
-          setError(err.message);
+          setError(describeError(err));
         }
       } else {
         setError('Verbindung gestört — Netzwerk prüfen.');

@@ -24,6 +24,7 @@ import {
 
 import { useApiClient } from '../api-context.js';
 import { StatusDot, type StatusTone } from '../components/StatusDot.js';
+import { describeError } from '@warehouse14/i18n-de';
 
 interface ClosingItem {
   id: string;
@@ -146,7 +147,7 @@ export function ClosingsPanel(): JSX.Element {
       pushToast(
         'alert',
         'Export fehlgeschlagen',
-        err instanceof Error ? err.message : 'Netzwerkfehler',
+        describeError(err),
       );
     } finally {
       setDownloading(null);
@@ -195,7 +196,7 @@ export function ClosingsPanel(): JSX.Element {
       pushToast(
         'alert',
         'Export fehlgeschlagen',
-        err instanceof Error ? err.message : 'Netzwerkfehler',
+        describeError(err),
       );
     } finally {
       setDownloading(null);
@@ -226,13 +227,13 @@ export function ClosingsPanel(): JSX.Element {
           );
           return;
         }
-        let msg = `HTTP ${res.status}`;
-        try {
-          const j = (await res.json()) as { error?: { message?: string } };
-          if (j?.error?.message) msg = j.error.message;
-        } catch {
-          /* non-JSON body */
-        }
+        // Never echo the server's raw (English) error body — map the status to an
+        // actionable German line. 409 = a Z-Bon for this day already exists / is
+        // being created; anything else is a generic retryable failure.
+        const msg =
+          res.status === 409
+            ? 'Für diesen Geschäftstag besteht bereits ein Tagesabschluss oder er wird gerade erstellt.'
+            : 'Der Tagesabschluss konnte nicht erstellt werden. Bitte später erneut versuchen.';
         pushToast('alert', 'Tagesabschluss nicht möglich', msg);
         return;
       }
@@ -251,7 +252,7 @@ export function ClosingsPanel(): JSX.Element {
       pushToast(
         'alert',
         'Tagesabschluss fehlgeschlagen',
-        err instanceof Error ? err.message : 'Netzwerkfehler',
+        describeError(err),
       );
     } finally {
       setFinalizing(false);

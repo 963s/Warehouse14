@@ -30,6 +30,7 @@ import { useApiClient } from '../../lib/api-context.js';
 import { useToastStore } from '../../state/toast-store.js';
 
 import { ShippingLabelButton } from './ShippingLabelButton.js';
+import { describeError } from '@warehouse14/i18n-de';
 
 // ────────────────────────────────────────────────────────────────────────
 // Filter chips
@@ -183,7 +184,7 @@ function TaskListPanel({
       addToast({
         tone: 'alert',
         title: 'Konnte Aufgabe nicht anlegen',
-        body: err instanceof ApiError ? err.message : 'Netzwerkfehler.',
+        body: err instanceof ApiError ? describeError(err) : 'Netzwerkfehler.',
       });
     },
   });
@@ -441,7 +442,7 @@ function TaskDetail({ taskId }: { taskId: string }): JSX.Element {
       addToast({
         tone: 'alert',
         title: 'Übergang abgelehnt',
-        body: err instanceof ApiError ? err.message : 'Bitte erneut versuchen.',
+        body: err instanceof ApiError ? describeError(err) : 'Bitte erneut versuchen.',
       });
     },
   });
@@ -457,7 +458,7 @@ function TaskDetail({ taskId }: { taskId: string }): JSX.Element {
       addToast({
         tone: 'alert',
         title: 'Konnte nicht speichern',
-        body: err instanceof ApiError ? err.message : 'Bitte erneut versuchen.',
+        body: err instanceof ApiError ? describeError(err) : 'Bitte erneut versuchen.',
       });
     },
   });

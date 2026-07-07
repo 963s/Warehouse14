@@ -21,6 +21,7 @@ import {
 
 import { useApiClient } from '../api-context.js';
 import { StatusDot, type StatusTone } from '../components/StatusDot.js';
+import { describeError } from '@warehouse14/i18n-de';
 
 type ProductStatus = 'DRAFT' | 'AVAILABLE' | 'RESERVED' | 'SOLD';
 
@@ -105,7 +106,7 @@ export function LagerPanel(): JSX.Element {
       void queryClient.invalidateQueries({ queryKey: PRODUCTS_KEY });
     },
     onError: (err) => {
-      const msg = err.message;
+      const msg = describeError(err);
       if (/step[_-]?up/i.test(msg)) {
         pushToast(
           'alert',

@@ -34,6 +34,7 @@ import { currentShiftQueryKey } from '../../hooks/useCurrentShift.js';
 import { dashboardQueryKey } from '../../hooks/useDashboardSummary.js';
 import { useApiClient } from '../../lib/api-context.js';
 import { useToastStore } from '../../state/toast-store.js';
+import { describeError } from '@warehouse14/i18n-de';
 
 /** Single canonical Storno glyph (outlined-2px, 24-grid) — a reversal arrow over
  *  a document, reused identically wherever Storno is surfaced. */
@@ -125,7 +126,7 @@ export function StornoDialog({
             setError('Storno erfordert ein gekoppeltes Gerät (mTLS).');
             break;
           default:
-            setError(err.message);
+            setError(describeError(err));
         }
       } else {
         setError('Verbindung gestört — bitte erneut versuchen.');

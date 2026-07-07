@@ -19,6 +19,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Cropper, { type Area } from 'react-easy-crop';
 
 import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
+import { describeError } from '@warehouse14/i18n-de';
 
 import {
   compressToWebpBlob,
@@ -103,9 +104,7 @@ export function CropStudio({
       setError(
         isHardwareError(err)
           ? describeHardwareError(err)
-          : err instanceof Error
-            ? err.message
-            : 'Unbekannter Fehler beim Zuschneiden',
+          : describeError(err),
       );
     } finally {
       setBusy(false);

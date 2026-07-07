@@ -37,6 +37,7 @@ import { useApiClient } from '../../lib/api-context.js';
 import { downloadBase64File, downloadTextFile } from '../../lib/download-file.js';
 import { useSessionStore } from '../../state/session-store.js';
 import { useToastStore } from '../../state/toast-store.js';
+import { describeError } from '@warehouse14/i18n-de';
 
 type ExportKind = 'datev' | 'kassenbericht' | 'dsfinvk';
 
@@ -88,7 +89,7 @@ export function SteuerExport(): JSX.Element {
       addToast({
         tone: 'alert',
         title: 'Export fehlgeschlagen',
-        body: err instanceof ApiError ? err.message : 'Bitte erneut versuchen.',
+        body: err instanceof ApiError ? describeError(err) : 'Bitte erneut versuchen.',
       });
     } finally {
       setBusyKey(null);

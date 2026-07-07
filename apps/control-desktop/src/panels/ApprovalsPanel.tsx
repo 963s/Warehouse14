@@ -26,6 +26,7 @@ import {
 
 import { useApiClient } from '../api-context.js';
 import { StatusDot, type StatusTone } from '../components/StatusDot.js';
+import { describeError } from '@warehouse14/i18n-de';
 
 const FOCUSABLE = 'w14cd-focusable';
 
@@ -130,7 +131,7 @@ export function ApprovalsPanel(): JSX.Element {
       void queryClient.invalidateQueries({ queryKey: ['bridge', 'overview'] });
     },
     onError: (err) => {
-      pushToast('alert', 'Aktion fehlgeschlagen', err.message);
+      pushToast('alert', 'Aktion fehlgeschlagen', describeError(err));
     },
   });
 

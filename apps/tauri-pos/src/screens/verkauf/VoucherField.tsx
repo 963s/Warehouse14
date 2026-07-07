@@ -15,6 +15,7 @@ import type { ApiClient } from '@warehouse14/api-client';
 import { Button } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
+import { describeError } from '@warehouse14/i18n-de';
 
 export interface AppliedVoucher {
   code: string;
@@ -63,7 +64,7 @@ export function VoucherField({
       onApplied({ code: v.code, balanceEur: v.currentBalanceEur });
       setCode('');
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '';
+      const msg = describeError(err);
       setError(
         /not found|404/i.test(msg) ? 'Gutschein nicht gefunden.' : 'Prüfung fehlgeschlagen.',
       );

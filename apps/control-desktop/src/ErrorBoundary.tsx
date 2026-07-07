@@ -8,6 +8,7 @@
  */
 
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { describeError } from '@warehouse14/i18n-de';
 
 interface Props {
   children: ReactNode;
@@ -59,7 +60,7 @@ export class ErrorBoundary extends Component<Props, State> {
               margin: '12px 0 20px',
             }}
           >
-            {error.message}
+            {describeError(error)}
           </pre>
           <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
             <button type="button" onClick={this.retry} style={btn(true)}>

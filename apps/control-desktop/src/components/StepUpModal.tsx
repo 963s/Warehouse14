@@ -19,6 +19,7 @@ import { DiamondRule, ParchmentCard, PinPad, RomanIndex, Seal } from '@warehouse
 
 import { useApiClient } from '../api-context.js';
 import { useStepUpStore } from '../state/step-up-store.js';
+import { describeError } from '@warehouse14/i18n-de';
 
 export function StepUpModal(): JSX.Element | null {
   const active = useStepUpStore((s) => s.active);
@@ -98,7 +99,7 @@ export function StepUpModal(): JSX.Element | null {
             break;
           }
           default:
-            setErrorMsg(err.message);
+            setErrorMsg(describeError(err));
         }
       } else {
         setErrorMsg('Verbindung gestört — Netzwerk prüfen.');

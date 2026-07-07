@@ -76,6 +76,7 @@ import {
   toCents,
 } from '../../lib/cart-math.js';
 import { isMoneyInput } from '../../lib/decimal.js';
+import { describeError } from '@warehouse14/i18n-de';
 import {
   type ThermalReceiptData,
   type ZvtResult,
@@ -1045,7 +1046,7 @@ export function BezahlenDialog({
     try {
       resolvedCustomerId = await resolveB2bCustomerId();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kunde konnte nicht ermittelt werden.');
+      setError(describeError(err));
       setSubmitting(false);
       inFlightRef.current = false;
       return;
@@ -1224,7 +1225,7 @@ export function BezahlenDialog({
     try {
       resolvedCustomerId = await resolveB2bCustomerId();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kunde konnte nicht ermittelt werden.');
+      setError(describeError(err));
       setSubmitting(false);
       inFlightRef.current = false;
       return;
@@ -2660,9 +2661,9 @@ function formatPaymentError(err: unknown): string {
       return 'Käufer muss per Ausweis geprüft werden — bitte Kunden zuordnen.';
     if (err.code === 'PRODUCT_NOT_RESERVABLE')
       return 'Mindestens ein Stück ist nicht mehr reserviert. Karte leeren und neu wählen.';
-    return err.message;
+    return describeError(err);
   }
-  if (err instanceof Error) return err.message;
+  if (err instanceof Error) return describeError(err);
   if (typeof err === 'string') return err;
   return 'Verbindung gestört — Netzwerk prüfen.';
 }

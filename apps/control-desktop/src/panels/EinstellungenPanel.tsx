@@ -18,6 +18,7 @@ import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../api-context.js';
 import { StatusDot, type StatusTone } from '../components/StatusDot.js';
+import { describeError } from '@warehouse14/i18n-de';
 
 interface SettingItem {
   key: string;
@@ -184,7 +185,7 @@ function germanError(err: unknown): string {
       case 'FORBIDDEN':
         return 'Keine Berechtigung (ADMIN erforderlich).';
       default:
-        return err.message;
+        return describeError(err);
     }
   }
   return 'Verbindung gestört — bitte erneut versuchen.';

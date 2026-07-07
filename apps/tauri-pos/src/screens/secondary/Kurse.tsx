@@ -32,6 +32,7 @@ import { deriveAnkaufPerGram, formatPerGram } from '../../lib/metal-margin.js';
 import { useSessionStore } from '../../state/session-store.js';
 import { useToastStore } from '../../state/toast-store.js';
 import { TradingTerminal } from './TradingTerminal.js';
+import { describeError } from '@warehouse14/i18n-de';
 
 const METAL_LABEL: Record<MetalKind, string> = {
   gold: 'Gold',
@@ -725,7 +726,7 @@ function ManualOverrideModal({
       addToast({
         tone: 'alert',
         title: 'Override fehlgeschlagen',
-        body: err instanceof ApiError ? err.message : 'Bitte erneut versuchen.',
+        body: err instanceof ApiError ? describeError(err) : 'Bitte erneut versuchen.',
       });
     },
   });
@@ -911,7 +912,7 @@ function MarginModal({ rates, onClose }: { rates: MetalRate[]; onClose: () => vo
       addToast({
         tone: 'alert',
         title: 'Speichern fehlgeschlagen',
-        body: err instanceof ApiError ? err.message : 'Bitte erneut versuchen.',
+        body: err instanceof ApiError ? describeError(err) : 'Bitte erneut versuchen.',
       });
     },
   });

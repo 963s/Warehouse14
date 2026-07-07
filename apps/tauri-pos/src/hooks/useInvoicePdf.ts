@@ -9,6 +9,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { useCallback, useState } from 'react';
+import { describeError } from '@warehouse14/i18n-de';
 
 export interface InvoiceItem {
   description: string;
@@ -35,11 +36,6 @@ export interface UseInvoicePdf {
   generatePdf: (data: InvoiceData) => Promise<Uint8Array>;
   loading: boolean;
   error: string | null;
-}
-
-function describeError(err: unknown): string {
-  if (typeof err === 'string') return err;
-  return err instanceof Error ? err.message : String(err);
 }
 
 export function useInvoicePdf(): UseInvoicePdf {

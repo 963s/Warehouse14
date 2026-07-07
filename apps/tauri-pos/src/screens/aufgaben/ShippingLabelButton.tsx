@@ -13,6 +13,7 @@ import { Button } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
 import { useToastStore } from '../../state/toast-store.js';
+import { describeError } from '@warehouse14/i18n-de';
 
 /** Decode a Base64 PDF and trigger a download. */
 function downloadPdf(base64: string, filename: string): void {
@@ -48,7 +49,7 @@ export function ShippingLabelButton({ transactionId }: { transactionId: string }
       addToast({
         tone: 'alert',
         title: 'Etikett fehlgeschlagen',
-        body: err instanceof ApiError ? err.message : 'Bitte erneut versuchen.',
+        body: err instanceof ApiError ? describeError(err) : 'Bitte erneut versuchen.',
       });
     },
   });

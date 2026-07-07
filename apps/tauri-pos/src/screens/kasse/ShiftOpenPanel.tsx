@@ -17,6 +17,7 @@ import { useApiClient } from '../../lib/api-context.js';
 import { useToastStore } from '../../state/toast-store.js';
 
 import { EuroInput } from './EuroInput.js';
+import { describeError } from '@warehouse14/i18n-de';
 
 export function ShiftOpenPanel(): JSX.Element {
   const api = useApiClient();
@@ -51,7 +52,7 @@ export function ShiftOpenPanel(): JSX.Element {
         } else if (err.code === 'DEVICE_NOT_AUTHORIZED') {
           setError('Dieses Gerät ist nicht für die Kasse autorisiert.');
         } else {
-          setError(err.message);
+          setError(describeError(err));
         }
       } else {
         setError('Verbindung gestört — Netzwerk prüfen.');

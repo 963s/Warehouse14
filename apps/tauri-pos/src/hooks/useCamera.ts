@@ -14,6 +14,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { describeError } from '@warehouse14/i18n-de';
 
 export type CameraPermission = 'unknown' | 'pending' | 'granted' | 'denied' | 'unavailable';
 
@@ -141,7 +142,7 @@ export function useCamera(opts: UseCameraOptions = {}): UseCameraResult {
           }
         }
         setPermission('denied');
-        setError(err instanceof Error ? err.message : 'Unbekannter Kamera-Fehler.');
+        setError(describeError(err));
         return false;
       }
     },

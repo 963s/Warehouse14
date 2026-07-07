@@ -63,6 +63,7 @@ import { decidePublish, isPositivePrice } from '../../lib/product-publish.js';
 import { TAX_TREATMENT_LABEL } from '../../lib/tax-treatment-label.js';
 import { type StampErhaltung, formatStampDisplay, sortierTipp } from '../../lib/taxonomy-hints.js';
 import { useToastStore } from '../../state/toast-store.js';
+import { describeError } from '@warehouse14/i18n-de';
 
 import {
   BeschreibungDetailsFields,
@@ -344,7 +345,7 @@ export function NeuesProduktDialog({
         handleClose();
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Unbekannter Fehler';
+      const msg = describeError(err);
       if (/step[_-]?up/i.test(msg)) {
         addToast({
           tone: 'alert',

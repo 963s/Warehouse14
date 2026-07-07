@@ -16,6 +16,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { ApiError, authPin } from '@warehouse14/api-client';
+import { describeError } from '@warehouse14/i18n-de';
 import { Dialog, DiamondRule, PinPad, RomanIndex, Seal } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
@@ -91,7 +92,7 @@ export function StepUpModal(): JSX.Element | null {
             }
             break;
           default:
-            setErrorMsg(err.message);
+            setErrorMsg(describeError(err));
         }
       } else {
         setErrorMsg('Verbindung gestört — Netzwerk prüfen.');

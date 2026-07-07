@@ -7,6 +7,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { useCallback, useState } from 'react';
+import { describeError } from '@warehouse14/i18n-de';
 
 export interface ScaleWeight {
   /** Weight in grams as the scale reported it (string preserves precision). */
@@ -21,13 +22,6 @@ export interface UseScaleWeight {
   weight: ScaleWeight | null;
   loading: boolean;
   error: string | null;
-}
-
-function describeError(err: unknown): string {
-  if (err && typeof err === 'object' && 'details' in err) {
-    return String((err as { details?: unknown }).details ?? 'Waage nicht erreichbar');
-  }
-  return err instanceof Error ? err.message : String(err);
 }
 
 export function useScaleWeight(): UseScaleWeight {

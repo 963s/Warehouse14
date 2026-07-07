@@ -33,6 +33,7 @@ import type { LabelData } from '../../lib/hardware-client.js';
 import { useLabelPrinter } from '../../lib/use-label-printer.js';
 import { useBewertungStore } from '../../state/bewertung-store.js';
 import { useToastStore } from '../../state/toast-store.js';
+import { describeError } from '@warehouse14/i18n-de';
 
 export interface AcceptanceDialogProps {
   open: boolean;
@@ -159,7 +160,7 @@ export function AcceptanceDialog({
           setError('Heutiger Tagesabschluss ist bereits geschlossen.');
         else if (err.code === 'DEVICE_NOT_AUTHORIZED')
           setError('Dieses Gerät ist nicht autorisiert. Bitte am POS-Terminal annehmen.');
-        else setError(err.message);
+        else setError(describeError(err));
       } else {
         setError('Verbindung gestört — bitte erneut versuchen.');
       }
@@ -201,7 +202,7 @@ export function AcceptanceDialog({
       resetBewertung();
       onClose();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Netzwerk prüfen.');
+      setError(err instanceof ApiError ? describeError(err) : 'Netzwerk prüfen.');
     } finally {
       setSubmitting(false);
       inFlightRef.current = false;

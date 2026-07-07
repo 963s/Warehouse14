@@ -25,6 +25,7 @@ import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
 import { useToastStore } from '../../state/toast-store.js';
+import { describeError } from '@warehouse14/i18n-de';
 
 const TRUST_OPTIONS: Array<{
   value: CustomerTrustLevel;
@@ -105,7 +106,7 @@ export function CustomerTrustDialog({
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.code === 'STEP_UP_REQUIRED') setError('PIN-Bestätigung wurde abgebrochen.');
-        else setError(err.message);
+        else setError(describeError(err));
       } else {
         setError('Verbindung gestört — bitte erneut versuchen.');
       }
