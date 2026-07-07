@@ -13,9 +13,10 @@ import { createApiClient, stepUpMiddleware } from '@warehouse14/api-client';
 // Brand stylesheet — tokens + @font-face (local fonts only).
 import '@warehouse14/ui-kit/styles.css';
 
-import { App } from './App.js';
+import { AuthGate } from './AuthGate.js';
 import { ErrorBoundary } from './ErrorBoundary.js';
 import { ApiClientProvider } from './api-context.js';
+import { getSessionToken } from './lib/session-token.js';
 import { stepUpService } from './step-up-service.js';
 
 const env = (import.meta as unknown as { env: { VITE_API_BASE_URL?: string } }).env;
@@ -26,8 +27,12 @@ const apiBaseUrl = env.VITE_API_BASE_URL ?? 'https://api.warehouse14.de';
 
 // Owner mutations (trust, KYC, settings) require a fresh PIN. The step-up
 // middleware replays the call once the <StepUpModal/> POSTs /api/auth/step-up.
+// `getAuthToken` carries the session as a Bearer header too — on Windows WebView2
+// the cross-site session cookie is dropped, so the token path is the fallback
+// (matches apps/tauri-pos). Set by PinLogin, cleared on sign-out.
 const apiClient = createApiClient({
   baseUrl: apiBaseUrl,
+  getAuthToken: getSessionToken,
   middlewares: [stepUpMiddleware(stepUpService)],
 });
 
@@ -48,7 +53,7 @@ createRoot(rootEl).render(
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <ApiClientProvider client={apiClient} baseUrl={apiBaseUrl}>
-          <App />
+          <AuthGate />
         </ApiClientProvider>
       </QueryClientProvider>
     </ErrorBoundary>

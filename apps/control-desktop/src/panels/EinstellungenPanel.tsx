@@ -13,11 +13,13 @@ import { type CSSProperties, useState } from 'react';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { ApiError } from '@warehouse14/api-client';
+import { ApiError, authPin } from '@warehouse14/api-client';
 import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../api-context.js';
 import { StatusDot, type StatusTone } from '../components/StatusDot.js';
+import { clearSessionToken } from '../lib/session-token.js';
+import { useSessionStore } from '../state/session-store.js';
 import { describeError } from '@warehouse14/i18n-de';
 
 interface SettingItem {
@@ -380,6 +382,56 @@ function TextSettingRow({ setting, spec }: { setting: SettingItem; spec: TextSpe
   );
 }
 
+/** Sign out of the governance session — the exit from the authenticated boundary. */
+function AbmeldenSection(): JSX.Element {
+  const { client } = useApiClient();
+  const setUnauthenticated = useSessionStore((s) => s.setUnauthenticated);
+  const [busy, setBusy] = useState<boolean>(false);
+
+  const signOut = async (): Promise<void> => {
+    setBusy(true);
+    try {
+      await authPin.signOut(client);
+    } catch {
+      // Best-effort: even if the server call fails, clear locally so the operator
+      // is never stranded inside an authenticated shell.
+    } finally {
+      clearSessionToken();
+      setUnauthenticated();
+    }
+  };
+
+  return (
+    <div>
+      <DiamondRule tone="faded" label="Sitzung" />
+      <ParchmentCard tone="parchment" padding="md">
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 16,
+            flexWrap: 'wrap',
+          }}
+        >
+          <p style={{ ...caption, margin: 0 }}>
+            Nach dem Abmelden ist wieder eine PIN-Eingabe erforderlich.
+          </p>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void signOut()}
+            disabled={busy}
+            style={{ color: 'var(--w14-wax-red)' }}
+          >
+            {busy ? 'Meldet ab…' : 'Abmelden'}
+          </Button>
+        </div>
+      </ParchmentCard>
+    </div>
+  );
+}
+
 export function EinstellungenPanel(): JSX.Element {
   const { baseUrl, client } = useApiClient();
 
@@ -532,6 +584,9 @@ export function EinstellungenPanel(): JSX.Element {
               )}
             </ParchmentCard>
           </div>
+
+          {/* Session — the exit from the authenticated boundary */}
+          <AbmeldenSection />
         </div>
       )}
     </>
