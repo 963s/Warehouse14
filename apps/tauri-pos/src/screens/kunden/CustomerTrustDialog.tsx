@@ -91,8 +91,11 @@ export function CustomerTrustDialog({
     setSubmitting(true);
     setError(null);
     try {
+      // The trust route reads `req.body.reason` (≥8 chars) for SUSPICIOUS/BANNED
+      // and writes it to price_expectation_notes server-side. Sending the note
+      // under any other key is silently dropped → a valid rationale still 400s.
       const body = requiresNote
-        ? { trustLevel: target, priceExpectationNotes: note.trim() }
+        ? { trustLevel: target, reason: note.trim() }
         : { trustLevel: target };
       await customersApi.setTrust(api, customer.id, body);
       addToast({
