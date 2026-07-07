@@ -50,5 +50,11 @@ export {
   type RetryCandidate,
 } from './retry-policy.js';
 
+export {
+  useSafeRetry,
+  type SafeRetryOptions,
+  type SafeRetryResult,
+} from './useSafeRetry.js';
+
 export { StaleBadge, type StaleBadgeProps } from './StaleBadge.js';
 export { OfflineNotice, type OfflineNoticeProps } from './OfflineNotice.js';
