@@ -761,7 +761,14 @@ function ManageBody({
 
   const product = detailQ.data;
   const stage = product
-    ? deriveLifecycleStage({ status: product.status, listPriceEur: product.listPriceEur })
+    ? deriveLifecycleStage({
+        status: product.status,
+        listPriceEur: product.listPriceEur,
+        // Feed the photo signal so the "Fotos" stage can actually be reached
+        // (7.6). The detail carries `primaryPhotoThumbUrl` (null = no photo), a
+        // reliable ≥1-photo indicator — the stage only needs "has photos or not".
+        photoCount: product.primaryPhotoThumbUrl ? 1 : 0,
+      })
     : null;
 
   return (

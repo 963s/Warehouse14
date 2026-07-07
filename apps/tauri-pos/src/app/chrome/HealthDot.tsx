@@ -19,6 +19,9 @@ const DOT_KEYFRAMES = `
 interface DotVisual {
   color: string;
   label: string;
+  /** Human German explanation shown to the operator (the raw `code` is demoted). */
+  detail: string;
+  /** Internal W14- support reference — never the headline; shown muted, for support. */
   code: string;
   pulse: boolean;
   action: 'none' | 'compliance' | 'retry';
@@ -43,15 +46,50 @@ export function HealthDot(): JSX.Element {
 
   let v: DotVisual;
   if (health === 'conflict') {
-    v = { color: 'var(--w14-wax-red)', label: 'Sync blockiert — Konflikt', code: 'W14-SYNC-CONFLICT', pulse: true, action: 'compliance' };
+    v = {
+      color: 'var(--w14-wax-red)',
+      label: 'Sync blockiert — Konflikt',
+      detail: 'Ein Offline-Vorgang weicht vom Server ab und wartet im Konfliktpostfach auf Prüfung.',
+      code: 'W14-SYNC-CONFLICT',
+      pulse: true,
+      action: 'compliance',
+    };
   } else if (health === 'offline') {
-    v = { color: 'var(--w14-accent)', label: `Offline — ${pendingCount} in Warteschlange`, code: 'W14-NET-OFFLINE', pulse: false, action: 'none' };
+    v = {
+      color: 'var(--w14-accent)',
+      label: `Offline — ${pendingCount} in Warteschlange`,
+      detail: 'Ohne Verbindung. Die Vorgänge werden gesendet, sobald das Netz zurück ist.',
+      code: 'W14-NET-OFFLINE',
+      pulse: false,
+      action: 'none',
+    };
   } else if (health === 'unreachable') {
-    v = { color: 'var(--w14-wax-red)', label: 'Server nicht erreichbar', code: 'W14-API-UNREACHABLE', pulse: true, action: 'retry' };
+    v = {
+      color: 'var(--w14-wax-red)',
+      label: 'Server nicht erreichbar',
+      detail: 'Der Server antwortet nicht. Bitte die Internetverbindung prüfen; erneut tippen versucht es neu.',
+      code: 'W14-API-UNREACHABLE',
+      pulse: true,
+      action: 'retry',
+    };
   } else if (health === 'syncing') {
-    v = { color: 'var(--w14-gold)', label: `Synchronisiert — ${pendingCount}`, code: 'W14-SYNC', pulse: false, action: 'none' };
+    v = {
+      color: 'var(--w14-gold)',
+      label: `Synchronisiert — ${pendingCount}`,
+      detail: 'Die Warteschlange wird gerade abgearbeitet.',
+      code: 'W14-SYNC',
+      pulse: false,
+      action: 'none',
+    };
   } else {
-    v = { color: 'var(--w14-verdigris)', label: 'Bereit — alles in Ordnung', code: 'OK', pulse: false, action: 'none' };
+    v = {
+      color: 'var(--w14-verdigris)',
+      label: 'Bereit — alles in Ordnung',
+      detail: 'Verbindung und Synchronisation laufen.',
+      code: 'OK',
+      pulse: false,
+      action: 'none',
+    };
   }
 
   const onClick = (): void => {
@@ -65,7 +103,9 @@ export function HealthDot(): JSX.Element {
     addToast({
       tone: v.code === 'OK' ? 'success' : 'alert',
       title: v.label,
-      body: v.code === 'OK' ? 'Verbindung & Synchronisation laufen.' : `Fehlercode: ${v.code}`,
+      // The human explanation leads; the raw W14- code is demoted to a muted
+      // support reference at the end (for a support call), never the headline.
+      body: v.code === 'OK' ? v.detail : `${v.detail}  ·  Support-Ref. ${v.code}`,
     });
   };
 

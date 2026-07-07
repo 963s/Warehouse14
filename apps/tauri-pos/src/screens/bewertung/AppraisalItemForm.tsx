@@ -264,7 +264,7 @@ export function AppraisalItemForm({ appraisalId }: AppraisalItemFormProps): JSX.
           Zurücksetzen
         </Button>
         <Button variant="primary" size="lg" onClick={() => void submit()} disabled={!canSubmit}>
-          {submitting ? 'Hinzufügt…' : '+ Zum Konvolut hinzufügen'}
+          {submitting ? 'Wird hinzugefügt…' : '+ Zum Konvolut hinzufügen'}
         </Button>
       </div>
     </ParchmentCard>
