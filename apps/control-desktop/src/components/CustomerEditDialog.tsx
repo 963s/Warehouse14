@@ -24,6 +24,7 @@ import {
   CUSTOMER_TRUST_LEVEL_LABELS,
   type CustomerKycStatus,
   type CustomerTrustLevel,
+  customersApi,
 } from '@warehouse14/api-client';
 import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 
@@ -84,6 +85,9 @@ function germanError(err: unknown): string {
   return 'Verbindung gestört — bitte erneut versuchen.';
 }
 
+/** The word the operator types to arm the irreversible Art. 17 erasure. */
+const ERASE_CONFIRM_WORD = 'LÖSCHEN';
+
 export function CustomerEditDialog({
   customer,
   onClose,
@@ -100,7 +104,8 @@ export function CustomerEditDialog({
   const [reason, setReason] = useState('');
   const [docType, setDocType] = useState<DocumentType>('PERSONALAUSWEIS');
   const [promote, setPromote] = useState<'' | 'VERIFIED' | 'VIP'>('');
-  const [busy, setBusy] = useState<null | 'trust' | 'kyc'>(null);
+  const [confirmErase, setConfirmErase] = useState('');
+  const [busy, setBusy] = useState<null | 'trust' | 'kyc' | 'erase' | 'kyc-delete'>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -162,6 +167,47 @@ export function CustomerEditDialog({
       await client.request('PATCH', `/api/customers/${encodeURIComponent(customer.id)}/kyc`, body);
       await invalidate();
       setNotice('KYC-Prüfung gestempelt.');
+    } catch (err) {
+      setError(germanError(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const eraseArmed = confirmErase.trim().toUpperCase() === ERASE_CONFIRM_WORD && busy === null;
+
+  /** DSGVO Art. 17 — anonymize the customer server-side + delete their KYC images. */
+  async function eraseCustomer(): Promise<void> {
+    if (!eraseArmed) return;
+    setBusy('erase');
+    setError(null);
+    setNotice(null);
+    try {
+      await customersApi.erase(client, customer.id);
+      await invalidate();
+      setConfirmErase('');
+      setNotice('Kundendaten gelöscht — serverseitig anonymisiert.');
+    } catch (err) {
+      setError(germanError(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /** Purge the customer's stored ID documents (C4 — delete / replace a saved Ausweis). */
+  async function deleteKycDocuments(): Promise<void> {
+    if (busy !== null) return;
+    setBusy('kyc-delete');
+    setError(null);
+    setNotice(null);
+    try {
+      const { purgedCount } = await customersApi.deleteKycDocuments(client, customer.id);
+      await invalidate();
+      setNotice(
+        purgedCount > 0
+          ? `${purgedCount} Ausweisdokument(e) gelöscht.`
+          : 'Keine gespeicherten Ausweisdokumente vorhanden.',
+      );
     } catch (err) {
       setError(germanError(err));
     } finally {
@@ -400,6 +446,65 @@ export function CustomerEditDialog({
         <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
           <Button variant="primary" onClick={() => void stampKyc()} disabled={busy !== null}>
             {busy === 'kyc' ? 'Stempelt…' : 'KYC stempeln'}
+          </Button>
+        </div>
+
+        <DiamondRule label="Datenschutz (Art. 17)" />
+
+        <p style={{ margin: '0 0 10px', color: 'var(--w14-ink-faded)', fontSize: '0.85rem' }}>
+          Recht auf Löschung. Die personenbezogenen Daten werden unwiderruflich
+          anonymisiert und die gespeicherten Ausweisbilder gelöscht; Steuer-, GoBD-
+          und GwG-Belege bleiben mit geschwärzten Daten erhalten. Jede Aktion verlangt
+          eine frische PIN-Bestätigung.
+        </p>
+
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end' }}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 200px' }}>
+            <span
+              className="w14-smallcaps"
+              style={{
+                color: 'var(--w14-ink-faded)',
+                fontSize: '0.72rem',
+                letterSpacing: '0.08em',
+              }}
+            >
+              Zum Bestätigen »{ERASE_CONFIRM_WORD}« eingeben
+            </span>
+            <input
+              type="text"
+              value={confirmErase}
+              onChange={(ev) => setConfirmErase(ev.target.value)}
+              autoComplete="off"
+              spellCheck={false}
+              style={{
+                padding: '7px 10px',
+                border: '1px solid var(--w14-ink-faded)',
+                borderRadius: 'var(--w14-radius-button)',
+                background: 'var(--w14-parchment)',
+                color: 'var(--w14-ink)',
+                fontFamily: 'var(--w14-font-mono)',
+                letterSpacing: '0.12em',
+              }}
+            />
+          </label>
+          <Button
+            variant="destructive"
+            onClick={() => void eraseCustomer()}
+            disabled={!eraseArmed}
+          >
+            {busy === 'erase' ? 'Löscht…' : 'Kundendaten löschen'}
+          </Button>
+        </div>
+
+        <div style={{ marginTop: 10, display: 'flex', justifyContent: 'flex-end' }}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void deleteKycDocuments()}
+            disabled={busy !== null}
+            style={{ color: 'var(--w14-wax-red)' }}
+          >
+            {busy === 'kyc-delete' ? 'Löscht…' : 'Gespeicherten Ausweis löschen'}
           </Button>
         </div>
 
