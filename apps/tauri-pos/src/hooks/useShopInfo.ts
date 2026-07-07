@@ -10,16 +10,12 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { useApiClient } from '../lib/api-context.js';
-import { SHOP_INFO, type ShopInfo } from '../lib/shop-info.js';
+import { type ShopInfoApi, isReceiptShopValid, resolveShopInfo } from '../lib/shop-info.js';
 
-export interface ShopInfoApi {
-  name: string;
-  tagline: string;
-  addressLine1: string;
-  addressLine2: string;
-  vatId: string;
-  phone: string;
-}
+// The pure identity types + resolver live in lib/shop-info.ts (unit-testable, no
+// React deps). Re-exported here so existing `../hooks/useShopInfo.js` imports of
+// resolveShopInfo continue to work.
+export { type ShopInfoApi, isReceiptShopValid, resolveShopInfo };
 
 export const shopInfoQueryKey = ['shop-info'] as const;
 
@@ -32,16 +28,4 @@ export function useShopInfo(): { data: ShopInfoApi | undefined } {
     retry: 1,
   });
   return { data };
-}
-
-/** Merge the API shop identity over the bundled fallback constant. */
-export function resolveShopInfo(api: ShopInfoApi | undefined): ShopInfo {
-  if (!api) return SHOP_INFO;
-  return {
-    name: api.name || SHOP_INFO.name,
-    tagline: api.tagline || SHOP_INFO.tagline,
-    address: [api.addressLine1, api.addressLine2].filter((l) => l.length > 0),
-    vatId: api.vatId || SHOP_INFO.vatId,
-    phone: api.phone || null,
-  };
 }

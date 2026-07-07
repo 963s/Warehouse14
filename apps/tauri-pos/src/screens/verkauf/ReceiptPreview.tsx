@@ -63,12 +63,19 @@ export function ReceiptPreview({
   onClose,
   printing,
   canPrint,
+  lockedReason,
 }: {
   data: ThermalReceiptData;
   onPrint: () => void;
   onClose: () => void;
   printing: boolean;
   canPrint: boolean;
+  /**
+   * When set, printing is HARD-BLOCKED for a compliance reason (e.g. no USt-IdNr.
+   * configured — a receipt must never print a fake or blank VAT id, GoBD). Shown
+   * as a distinct wax-red banner, separate from the "printer not configured" note.
+   */
+  lockedReason?: string | null;
 }): JSX.Element {
   return (
     // biome-ignore lint/a11y/useSemanticElements: backdrop-overlay modal; a native <dialog> needs imperative showModal()/focus-trap wiring beyond this scope.
@@ -287,11 +294,31 @@ export function ReceiptPreview({
           <Button variant="ghost" size="md" onClick={onClose} disabled={printing}>
             Schließen
           </Button>
-          <Button variant="primary" size="md" onClick={onPrint} disabled={printing || !canPrint}>
+          <Button
+            variant="primary"
+            size="md"
+            onClick={onPrint}
+            disabled={printing || !canPrint || Boolean(lockedReason)}
+          >
             {printing ? 'Druckt…' : 'Drucken'}
           </Button>
         </div>
-        {!canPrint && (
+        {lockedReason && (
+          <div
+            role="alert"
+            style={{
+              color: 'var(--w14-wax-red)',
+              fontSize: '0.82rem',
+              fontWeight: 600,
+              background: 'rgba(0,0,0,0.25)',
+              borderRadius: 4,
+              padding: '6px 10px',
+            }}
+          >
+            {lockedReason}
+          </div>
+        )}
+        {!lockedReason && !canPrint && (
           <div style={{ color: 'var(--w14-parchment-1)', fontSize: '0.78rem', opacity: 0.85 }}>
             Drucker nicht konfiguriert — Vorschau ohne Druck. (Geräte einrichten)
           </div>

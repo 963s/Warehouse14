@@ -62,7 +62,7 @@ import { ZvtSpinner } from '../../components/hardware/ZvtSpinner.js';
 import { currentShiftQueryKey } from '../../hooks/useCurrentShift.js';
 import { dashboardQueryKey } from '../../hooks/useDashboardSummary.js';
 import { useReceiptFooterLines } from '../../hooks/useReceiptFooter.js';
-import { resolveShopInfo, useShopInfo } from '../../hooks/useShopInfo.js';
+import { isReceiptShopValid, resolveShopInfo, useShopInfo } from '../../hooks/useShopInfo.js';
 import { evaluateKycGate } from '../../lib/ankauf-kyc-gate.js';
 import { resolveDeviceId, useApiClient } from '../../lib/api-context.js';
 import { posIntentsStore, sealFiscalRequest } from '../../lib/pos-intents-store.js';
@@ -816,6 +816,13 @@ export function BezahlenDialog({
     (hardwareCfg.thermal.mode === 'usb'
       ? hardwareCfg.thermal.printerName.length > 0
       : hardwareCfg.thermal.ip.length > 0);
+
+  // Phase 7.2 — a receipt must NEVER print a fake or blank USt-IdNr. (GoBD/§14
+  // UStG). If the shop VAT id isn't configured server-side, HARD-LOCK the print
+  // with an honest reason pointing the operator to the settings.
+  const receiptLockReason = isReceiptShopValid(resolveShopInfo(shopApi))
+    ? null
+    : 'USt-IdNr. nicht hinterlegt — Beleg gesperrt. Bitte in den Einstellungen ergänzen.';
 
   /**
    * Send an already-built receipt to the thermal printer. Called from the
@@ -1600,6 +1607,7 @@ export function BezahlenDialog({
           data={previewData}
           printing={printing}
           canPrint={canPrint}
+          lockedReason={receiptLockReason}
           onPrint={() => void printReceipt(previewData)}
           onClose={() => setPreviewData(null)}
         />

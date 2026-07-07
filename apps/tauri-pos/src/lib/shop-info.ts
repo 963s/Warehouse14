@@ -2,18 +2,16 @@
  * shop-info — the shop identity printed on every customer receipt (Kassenbon)
  * and shown in the on-screen receipt preview.
  *
- * GoBD / KassenSichV require the REAL shop name, full address, and USt-IdNr.
- * on the receipt. These were previously hardcoded to a BERLIN placeholder
- * inside BezahlenDialog (`Musterstraße 1, 10115 Berlin`, VAT `DE000000000`).
- * They now live here as the single source of truth.
+ * GoBD / KassenSichV require the REAL shop name, full address, and USt-IdNr. on
+ * the receipt. The live values come from `GET /api/shop-info` (Owner-editable,
+ * system_settings, migration 0044); this bundled constant is the fallback for
+ * the header fields that are safe to default (name, tagline, address).
  *
- * ⚠️ PROVISIONAL DATA — the address is real (Schornbacher Weg 66, 73614
- * Schorndorf) but `vatId` and `phone` are DUMMY placeholders. BASEL: replace
- * `vatId` with the shop's real USt-IdNr. and `phone` with the real number
- * before go-live (a wrong VAT id on a Kassenbon is a GoBD breach).
- *
- * Phase 1.5: move these into `system_settings` so the Owner can edit them in
- * the Owner Desktop without rebuilding the app.
+ * The USt-IdNr. and phone are DELIBERATELY empty here (Phase 7.2): a receipt must
+ * NEVER print a placeholder VAT id (`DE123456789` on a Kassenbon is a GoBD
+ * breach). When the server has no `shop.vat_id` configured, the receipt LOCKS
+ * (see `isReceiptShopValid`) rather than printing a fake or blank one — the Owner
+ * sets the real value in the Einstellungen / Belegdesigner.
  */
 
 export interface ShopInfo {
@@ -22,7 +20,7 @@ export interface ShopInfo {
   tagline: string;
   /** Each entry is one printed address line (street, then "PLZ Ort"). */
   address: readonly string[];
-  /** USt-IdNr. (German VAT id), e.g. `DE123456789`. */
+  /** USt-IdNr. (German VAT id). Empty when not configured — the receipt then locks. */
   vatId: string;
   /** Optional phone; printed as `Tel.: …` when set. */
   phone: string | null;
@@ -32,8 +30,44 @@ export const SHOP_INFO: ShopInfo = {
   name: 'WAREHOUSE 14',
   tagline: 'Antiquitäten · Briefmarken · Münzen',
   address: ['Schornbacher Weg 66', '73614 Schorndorf'],
-  // DUMMY — replace with the real USt-IdNr. before go-live.
-  vatId: 'DE123456789',
-  // DUMMY — replace with the real shop phone before go-live.
-  phone: '+49 7181 0000000',
+  // NO placeholder VAT id / phone — an unconfigured USt-IdNr. must LOCK the
+  // receipt, never print a fake one (GoBD). The real values live in the server
+  // shop-info settings and flow in via `resolveShopInfo`.
+  vatId: '',
+  phone: null,
 };
+
+/** The `GET /api/shop-info` payload shape (system_settings, migration 0044). */
+export interface ShopInfoApi {
+  name: string;
+  tagline: string;
+  addressLine1: string;
+  addressLine2: string;
+  vatId: string;
+  phone: string;
+}
+
+/**
+ * Merge the API shop identity over the bundled fallback. The VAT id is taken
+ * ONLY from the server (never the constant, which is empty) so an unconfigured
+ * id resolves to empty and locks the receipt — it can never inject a placeholder.
+ */
+export function resolveShopInfo(api: ShopInfoApi | undefined): ShopInfo {
+  if (!api) return SHOP_INFO;
+  return {
+    name: api.name || SHOP_INFO.name,
+    tagline: api.tagline || SHOP_INFO.tagline,
+    address: [api.addressLine1, api.addressLine2].filter((l) => l.length > 0),
+    vatId: api.vatId.trim(),
+    phone: api.phone.trim().length > 0 ? api.phone.trim() : null,
+  };
+}
+
+/**
+ * True when the shop identity is complete enough to print a GoBD-valid receipt.
+ * A missing USt-IdNr. is the hard blocker (§14 UStG / GoBD): without it the
+ * receipt is LOCKED rather than printed with a fake or blank VAT id.
+ */
+export function isReceiptShopValid(shop: ShopInfo): boolean {
+  return shop.vatId.trim().length > 0;
+}
