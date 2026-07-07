@@ -15,10 +15,13 @@
  * The record leg is server-idempotent (`transactionsApi.recordTseSignature`,
  * "Idempotent — safe to retry"), so re-running it is safe.
  *
- * The one irreducible hole (B1): if FINISH itself reports the intention is
- * ALREADY finished, the signature is unreconstructable — we mark the row
- * `failed_terminal` and surface it (Gerätemanager badge) rather than looping
- * forever. This is a bounded, visible dead-end, not a silent drop.
+ * A FINISH that keeps rejecting (e.g. the intention really was already finished
+ * server-side, so the signature is unreconstructable) is NOT fast-terminaled on
+ * a heuristic — that risks discarding a still-recoverable signature when the
+ * rejection is only a transient proxy/gateway wrapper. Instead every FINISH
+ * rejection is retried, and the MAX_ATTEMPTS cap is the sole backstop: a truly
+ * dead intention reaches `failed_terminal` after the cap (bounded, surfaced via
+ * the Gerätemanager badge), while a transient one is recovered on a later sweep.
  *
  * Rows are independent fiscal records (distinct transactions), so a failure on
  * one row does NOT abort the sweep — unlike the outbox, whose FIFO mutations can
@@ -34,8 +37,10 @@ export interface TseDrainDeps {
   store: TseQueueStore;
   /**
    * Path (a): re-invoke Fiskaly FINISH for a finish-failed row. Resolves with
-   * the signature; rejects with the underlying error (which `isAlreadyFinished`
-   * classifies).
+   * the signature; rejects with the underlying error. A rejection — INCLUDING a
+   * genuine "already finished" — routes through the retry/cap path, never a
+   * fast-terminal (a heuristic false-positive must not discard a recoverable
+   * signature; the MAX_ATTEMPTS cap is the sole backstop).
    */
   finish: (entry: DrainableTseEntry) => Promise<TseSignature>;
   /**
@@ -43,12 +48,6 @@ export interface TseDrainDeps {
    * server transaction. Rejects on any non-2xx.
    */
   record: (entry: DrainableTseEntry, signature: TseSignature) => Promise<void>;
-  /**
-   * True when a FINISH rejection means the intention was already finished
-   * server-side (Fiskaly "already finished") — the signature can no longer be
-   * obtained, so the row is a terminal dead-end rather than a retry.
-   */
-  isAlreadyFinished: (error: unknown) => boolean;
   /** Injected clock (testability); Step 5b passes `Date.now`. */
   now: () => number;
 }
@@ -71,7 +70,7 @@ export interface TseDrainOutcome {
  * itself propagates — the hook's try/finally owns that.
  */
 export async function drainTseQueue(deps: TseDrainDeps): Promise<TseDrainOutcome> {
-  const { store, finish, record, isAlreadyFinished, now } = deps;
+  const { store, finish, record, now } = deps;
   const outcome: TseDrainOutcome = { attempted: 0, succeeded: 0, terminal: 0, retryable: 0 };
 
   const drainable = await store.listDrainable(now());
@@ -82,21 +81,23 @@ export async function drainTseQueue(deps: TseDrainDeps): Promise<TseDrainOutcome
 
       let signature = entry.signature;
       if (signature === null) {
-        // Path (a): finish-failed — re-invoke FINISH.
+        // Path (a): finish-failed — re-invoke FINISH. Any rejection (INCLUDING a
+        // genuine "already finished") falls to the outer catch → retry/cap. A
+        // transient wrapper gets retried (finish may then succeed → signature
+        // recovered); a truly-consumed intention keeps failing until the cap →
+        // terminal. We never fast-terminal on a heuristic (B1): that would
+        // discard a still-recoverable signature.
+        signature = await finish(entry);
+        // Persist BEFORE the record leg so a hard CRASH here degrades to a
+        // record-only replay (never a re-FINISH). If the persist itself THROWS
+        // (local DB error, not a crash), keep the in-hand signature and still
+        // record it — the server is its durable home; only a persist AND record
+        // double-failure can lose it.
         try {
-          signature = await finish(entry);
-        } catch (finishErr) {
-          if (isAlreadyFinished(finishErr)) {
-            // FINISH already consumed the intention; the signature is gone. Bounded
-            // dead-end, surfaced — not an infinite re-FINISH loop (B1).
-            await store.markFailedTerminal(entry.id, finishErr, now());
-            outcome.terminal += 1;
-            continue;
-          }
-          throw finishErr; // transient / other → the retry/cap path below
+          await store.persistSignature(entry.id, signature);
+        } catch {
+          /* proceed to record with the in-memory signature */
         }
-        // Persist BEFORE the record leg so a crash here degrades to record-only.
-        await store.persistSignature(entry.id, signature);
       }
 
       // Record leg (idempotent), for BOTH paths.

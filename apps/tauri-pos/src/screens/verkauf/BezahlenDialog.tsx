@@ -646,7 +646,7 @@ export function BezahlenDialog({
             // failed. Enqueue the SIGNED entry to the durable queue so the drain
             // re-POSTs it — never re-FINISH. Previously this was lost after the
             // toast; now it survives crash + sign-out.
-            await enqueueSignatureRecordOnly({
+            const queued = await enqueueSignatureRecordOnly({
               config: hardwareCfg.tse,
               intention: intentionRes.intention,
               serverTransactionId: result.id,
@@ -657,11 +657,21 @@ export function BezahlenDialog({
               signature: sig,
               error: err,
             });
-            addToast({
-              tone: 'alert',
-              title: 'TSE-Signatur nicht gespeichert',
-              body: 'Verkauf gebucht — die Signatur wird nachgereicht.',
-            });
+            // Honest surface: if the durable queue write ALSO failed, the signature
+            // survives only on the printed receipt — tell the operator to keep it.
+            addToast(
+              queued
+                ? {
+                    tone: 'alert',
+                    title: 'TSE-Signatur nicht gespeichert',
+                    body: 'Verkauf gebucht — die Signatur wird nachgereicht.',
+                  }
+                : {
+                    tone: 'alert',
+                    title: 'TSE-Signatur nicht gesichert',
+                    body: 'Verkauf gebucht — bitte den gedruckten Beleg aufbewahren.',
+                  },
+            );
             // eslint-disable-next-line no-console
             console.warn('recordTseSignature failed (non-blocking)', err);
           }

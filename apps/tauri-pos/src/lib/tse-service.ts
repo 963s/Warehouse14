@@ -126,8 +126,12 @@ export async function closeTseSession(
         createdAt: Date.now(),
         lastError: err,
       });
-    } catch {
-      // localStorage/DB unavailable — nothing else client-side; the sale stands.
+    } catch (enqueueErr) {
+      // Durable-queue write failed — no replay row for this sale (the FINISH had
+      // already failed, so there is no signature to lose, only the retry intent).
+      // Surface it rather than swallowing silently; the sale still stands.
+      // eslint-disable-next-line no-console
+      console.error('TSE finish-failed enqueue failed — no replay row for this sale', enqueueErr);
     }
     return { kind: 'queued_offline', intentionId: input.intention.intentionId, reason };
   }
@@ -138,8 +142,10 @@ export async function closeTseSession(
  * but the server-record POST failed. Enqueue the SIGNED entry so the drain
  * re-POSTs it ONLY — it must never re-FINISH an already-finished intention. The
  * store's UPSERT promotes a pre-existing finish-failed (NULL) row for the same
- * intention to this signed one, so the signature is never lost. Best-effort:
- * a store write failure must not throw into the (already finalized) sale.
+ * intention to this signed one, so the signature is never lost. Never throws
+ * into the (already finalized) sale; returns `false` if the durable write itself
+ * failed so the caller can surface it honestly (the signature is then only on the
+ * printed receipt — never a silent loss).
  */
 export async function enqueueSignatureRecordOnly(input: {
   config: TseConfig;
@@ -152,7 +158,7 @@ export async function enqueueSignatureRecordOnly(input: {
   receiptLocator: string | null;
   signature: TseSignature;
   error?: unknown;
-}): Promise<void> {
+}): Promise<boolean> {
   try {
     await tseQueueStore.enqueue({
       intentionId: input.intention.intentionId,
@@ -169,8 +175,14 @@ export async function enqueueSignatureRecordOnly(input: {
       createdAt: Date.now(),
       lastError: input.error,
     });
-  } catch {
-    // DB unavailable — the sale stands; the signature still printed on the receipt.
+    return true;
+  } catch (err) {
+    // The durable queue write failed. The signature is still on the printed
+    // receipt, but it could NOT be queued for server replay — surfaced by the
+    // caller (never a silent fiscal-signature loss).
+    // eslint-disable-next-line no-console
+    console.error('TSE record-only enqueue failed — signature only on the printed receipt', err);
+    return false;
   }
 }
 

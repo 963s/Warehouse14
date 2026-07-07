@@ -31,23 +31,6 @@ function isOnline(): boolean {
   return typeof navigator === 'undefined' || navigator.onLine !== false;
 }
 
-/**
- * Fiskaly reports the intention was already finished → the signature is
- * unreconstructable, so the drain must NOT loop re-FINISH forever (B1). This
- * is an optimisation: even if the heuristic misses a variant, the MAX_ATTEMPTS
- * cap is the backstop that eventually retires the row.
- */
-function isAlreadyFinished(err: unknown): boolean {
-  let msg = '';
-  if (typeof err === 'string') msg = err;
-  else if (err && typeof err === 'object') {
-    const e = err as { details?: unknown; message?: unknown };
-    msg = String(e.details ?? e.message ?? '');
-  }
-  msg = msg.toLowerCase();
-  return msg.includes('already') && /finish|signed|closed|complete/.test(msg);
-}
-
 /** Build the drain seams from the live client + Tauri bridge. */
 function buildDeps(client: ApiClient): TseDrainDeps {
   return {
@@ -83,7 +66,6 @@ function buildDeps(client: ApiClient): TseDrainDeps {
         tseEndTime: signature.finishedAt,
       });
     },
-    isAlreadyFinished,
     now: () => Date.now(),
   };
 }

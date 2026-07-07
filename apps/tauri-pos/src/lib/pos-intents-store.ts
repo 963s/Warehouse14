@@ -134,12 +134,23 @@ export class TauriSqlPosIntentsStore implements PosIntentsStore {
 
   async create(intent: NewPosIntent): Promise<void> {
     const db = await this.db();
-    // OR IGNORE on the PK `key`: a double-tap / retry with the same frozen
-    // idempotency key is a no-op — the original intent stands, never duplicated.
+    // UPSERT that RE-SEALS the body while the intent is still open. The
+    // idempotency key is frozen per dialog-open, but finalizeWithTse re-runs this
+    // on every attempt — if the operator edits the cart (B2B toggle, voucher, line
+    // change) after a rejected attempt and retries, the persisted sealed request
+    // MUST match the body that was actually sent. `INSERT OR IGNORE` would freeze
+    // the FIRST body, so a crash-recovery reconcile would book a STALE request.
+    // The `WHERE resolved_at IS NULL AND failed_at IS NULL` guard means a
+    // resolved / handed-off / failed intent is NEVER resurrected or overwritten.
     // Retention is always +10y — pos_intents is a fiscal-only table.
     await db.execute(
-      `INSERT OR IGNORE INTO pos_intents (key, intent_type, payload_json, created_at, retention_until)
-       VALUES ($1, $2, $3, $4, $5)`,
+      `INSERT INTO pos_intents (key, intent_type, payload_json, created_at, retention_until)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT(key) DO UPDATE SET
+         payload_json    = excluded.payload_json,
+         created_at      = excluded.created_at,
+         retention_until = excluded.retention_until
+       WHERE pos_intents.resolved_at IS NULL AND pos_intents.failed_at IS NULL`,
       [intent.key, intent.intentType, intent.sealedRequestJson, intent.createdAt, intent.createdAt + TEN_YEARS_MS],
     );
   }

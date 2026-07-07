@@ -103,18 +103,20 @@ describe('closeTseSession — finish-failed durable enqueue (path a)', () => {
 });
 
 describe('enqueueSignatureRecordOnly — record-failed durable enqueue (path b)', () => {
-  it('enqueues the SIGNED entry so the drain re-POSTs only (never re-FINISH)', async () => {
-    await enqueueSignatureRecordOnly({
-      config: { tssId: 'tss-1', clientId: 'cli-1' },
-      intention,
-      serverTransactionId: 'srv-9',
-      amountCents: 4500,
-      paymentKind: 'Unbar',
-      amountsPerVatId: [{ vatId: 5, amountCents: 4500 }],
-      receiptLocator: 'RCP-9',
-      signature,
-    });
+  const recordOnlyInput = {
+    config: { tssId: 'tss-1', clientId: 'cli-1' },
+    intention,
+    serverTransactionId: 'srv-9',
+    amountCents: 4500,
+    paymentKind: 'Unbar' as const,
+    amountsPerVatId: [{ vatId: 5, amountCents: 4500 }],
+    receiptLocator: 'RCP-9',
+    signature,
+  };
 
+  it('enqueues the SIGNED entry (drain re-POSTs only) and returns true on success', async () => {
+    const ok = await enqueueSignatureRecordOnly(recordOnlyInput);
+    expect(ok).toBe(true);
     expect(h.enqueue).toHaveBeenCalledTimes(1);
     const entry = h.enqueue.mock.calls[0]![0] as Record<string, unknown>;
     expect(entry).toMatchObject({
@@ -125,5 +127,11 @@ describe('enqueueSignatureRecordOnly — record-failed durable enqueue (path b)'
       processType: 'Kassenbeleg-V1',
     });
     expect((entry.signature as TseSignature).signatureCounter).toBe(42); // the held signature
+  });
+
+  it('returns false (never throws) when the durable write itself fails — honest surface', async () => {
+    h.enqueue.mockRejectedValueOnce(new Error('DB locked'));
+    const ok = await enqueueSignatureRecordOnly(recordOnlyInput);
+    expect(ok).toBe(false); // caller shows "bitte den gedruckten Beleg aufbewahren"
   });
 });

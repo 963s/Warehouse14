@@ -332,7 +332,7 @@ export function AnkaufBezahlenDialog({
           } catch (sigErr) {
             // Record-failed (path b): hold the signature, enqueue it for a
             // re-POST-only replay (never re-FINISH). Durable — survives crash.
-            await enqueueSignatureRecordOnly({
+            const queued = await enqueueSignatureRecordOnly({
               config: hardwareCfg.tse,
               intention: tseIntentionRes.intention,
               serverTransactionId: result.transactionId,
@@ -343,11 +343,19 @@ export function AnkaufBezahlenDialog({
               signature: sig,
               error: sigErr,
             });
-            addToast({
-              tone: 'alert',
-              title: 'TSE-Signatur nicht gespeichert',
-              body: 'Ankauf gebucht — die Signatur wird nachgereicht.',
-            });
+            addToast(
+              queued
+                ? {
+                    tone: 'alert',
+                    title: 'TSE-Signatur nicht gespeichert',
+                    body: 'Ankauf gebucht — die Signatur wird nachgereicht.',
+                  }
+                : {
+                    tone: 'alert',
+                    title: 'TSE-Signatur nicht gesichert',
+                    body: 'Ankauf gebucht — bitte den gedruckten Beleg aufbewahren.',
+                  },
+            );
             // eslint-disable-next-line no-console
             console.warn('recordTseSignature failed (non-blocking)', sigErr);
           }

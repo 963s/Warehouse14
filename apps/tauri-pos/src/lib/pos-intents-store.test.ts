@@ -83,12 +83,23 @@ describe('TauriSqlPosIntentsStore', () => {
     expect(sealed).toMatchObject({ method: 'POST', url: expect.any(String), headers: expect.any(Object), deviceId: 'dev-1' });
   });
 
-  it('create is idempotent on the PK key (double-tap is a no-op)', async () => {
-    await store.create(newIntent('idem-1'));
-    await store.create(newIntent('idem-1', { createdAt: 2_000_000 })); // same key, ignored
+  it('re-seals the body on a retry while the intent is unresolved (latest body wins)', async () => {
+    await store.create(newIntent('idem-1', { sealedRequestJson: '{"v":1}' }));
+    // Operator edits the cart and retries under the SAME frozen key → the persisted
+    // sealed request must be the retry's body, never the stale first one.
+    await store.create(newIntent('idem-1', { sealedRequestJson: '{"v":2}', createdAt: 2_000_000 }));
     const un = await store.listUnresolved();
     expect(un).toHaveLength(1);
-    expect(un[0]!.createdAt).toBe(1_000_000); // original stands
+    expect(un[0]!.sealedRequestJson).toBe('{"v":2}');
+    expect(un[0]!.createdAt).toBe(2_000_000);
+  });
+
+  it('never resurrects or overwrites a resolved intent', async () => {
+    await store.create(newIntent('idem-1', { sealedRequestJson: '{"v":1}' }));
+    await store.markResolved('idem-1', {});
+    // A late duplicate create with a new body must NOT re-open or mutate it.
+    await store.create(newIntent('idem-1', { sealedRequestJson: '{"v":2}', createdAt: 2_000_000 }));
+    expect(await store.listUnresolved()).toHaveLength(0);
   });
 
   it('markResolved removes the intent from the unresolved set', async () => {

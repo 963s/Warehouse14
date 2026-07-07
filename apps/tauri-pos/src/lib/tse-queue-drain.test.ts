@@ -103,7 +103,6 @@ function deps(over: Partial<TseDrainDeps>): TseDrainDeps {
     store: makeFakeStore([]).store,
     finish: vi.fn(async () => sig(1)),
     record: vi.fn(async () => {}),
-    isAlreadyFinished: () => false,
     now: () => 1_000_000,
     ...over,
   };
@@ -147,20 +146,53 @@ describe('drainTseQueue', () => {
     expect(outcome.succeeded).toBe(1);
   });
 
-  it('FINISH "already finished": row goes failed_terminal, no loop', async () => {
+  it('a FINISH rejection is RETRIED (pending), never fast-terminaled on a heuristic', async () => {
+    // Regression: a transient proxy wrapper like "connection already closed" must
+    // NOT retire a finish-failed row on attempt 1 — the signature is still
+    // recoverable on a later sweep. Only the MAX_ATTEMPTS cap terminates it.
     const { store, byId } = makeFakeStore([drainableFrom(1, { signature: null })]);
     const finish = vi.fn(async () => {
-      throw new Error('transaction already finished');
+      throw new Error('connection already closed, please complete the request');
     });
     const record = vi.fn(async () => {});
 
-    const outcome = await drainTseQueue(
-      deps({ store, finish, record, isAlreadyFinished: (e) => String(e).includes('already finished') }),
-    );
+    const outcome = await drainTseQueue(deps({ store, finish, record }));
 
     expect(record).not.toHaveBeenCalled();
-    expect(byId.get(1)?.status).toBe('failed_terminal');
-    expect(outcome).toEqual({ attempted: 1, succeeded: 0, terminal: 1, retryable: 0 });
+    expect(byId.get(1)?.status).toBe('pending'); // retryable, NOT terminal
+    expect(byId.get(1)?.attemptCount).toBe(1);
+    expect(outcome).toEqual({ attempted: 1, succeeded: 0, terminal: 0, retryable: 1 });
+  });
+
+  it('a persistSignature failure still records the in-hand signature (no loss)', async () => {
+    // finish() succeeds → the intention is consumed; if the local persist THROWS,
+    // the drain must still record the in-memory signature (server = durable home),
+    // not discard it and re-FINISH.
+    const { store, byId } = makeFakeStore([drainableFrom(1, { signature: null })]);
+    (store.persistSignature as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('DB locked'));
+    const finish = vi.fn(async () => sig(4));
+    const record = vi.fn(async (_e: DrainableTseEntry, _s: TseSignature) => {});
+
+    const outcome = await drainTseQueue(deps({ store, finish, record }));
+
+    expect(record).toHaveBeenCalledTimes(1); // recorded despite the persist failure
+    expect(record.mock.calls[0]![1].signatureCounter).toBe(4); // the in-hand signature
+    expect(byId.get(1)?.status).toBe('succeeded');
+    expect(outcome.succeeded).toBe(1);
+  });
+
+  it('a genuinely dead FINISH reaches failed_terminal at the cap (bounded, not infinite)', async () => {
+    const { store, byId } = makeFakeStore([
+      drainableFrom(1, { signature: null, attemptCount: MAX_ATTEMPTS - 1 }),
+    ]);
+    const finish = vi.fn(async () => {
+      throw new Error('transaction already finished');
+    });
+
+    const outcome = await drainTseQueue(deps({ store, finish, record: vi.fn(async () => {}) }));
+
+    expect(byId.get(1)?.status).toBe('failed_terminal'); // at the cap
+    expect(outcome.terminal).toBe(1);
   });
 
   it('a transient failure leaves the row pending (retryable), not terminal', async () => {
