@@ -48,28 +48,37 @@ export function isHardwareError(err: unknown): err is HardwareError {
 }
 
 /**
- * Friendly German message for a HardwareError, suitable for a toast or
- * banner. Falls back to the raw `details` if the variant is unmapped.
+ * Self-contained German message per HardwareError kind, each with an actionable
+ * next step. The raw `details` (a technical Rust string like `lpr exited` or
+ * `Permission denied`) is NEVER part of these sentences — it is a diagnostic
+ * value for the log, not for the operator.
+ */
+const HARDWARE_ERROR_MESSAGES: Record<HardwareErrorKind, string> = {
+  network: 'Keine Verbindung zum Gerät. Bitte Kabel und Netzwerk prüfen und erneut versuchen.',
+  timeout:
+    'Das Gerät antwortet nicht rechtzeitig. Bitte prüfen, ob es eingeschaltet und verbunden ist, und erneut versuchen.',
+  device:
+    'Das Gerät hat unerwartet reagiert. Bitte erneut versuchen; bleibt der Fehler, das Gerät neu starten.',
+  not_configured: 'Das Gerät ist noch nicht eingerichtet. Bitte im Gerätemanager konfigurieren.',
+  encoding: 'Die Daten konnten nicht verarbeitet werden. Bitte erneut versuchen.',
+  local_io:
+    'Eine lokale Datei konnte nicht gespeichert werden. Bitte Speicherplatz prüfen und erneut versuchen.',
+  invalid_argument: 'Die Eingabe war ungültig. Bitte die Angaben prüfen und erneut versuchen.',
+  internal: 'Es ist ein unerwarteter Fehler aufgetreten. Bitte erneut versuchen.',
+};
+
+/**
+ * Human-facing German message for a HardwareError, suitable for a toast or
+ * banner. The technical `details` are logged to the console as a diagnostic
+ * side-channel and never surfaced to the operator (so `lpr exited` / a reqwest
+ * error / `Permission denied` can no longer leak into the UI). Falls back to the
+ * internal message for any unmapped kind.
  */
 export function describeHardwareError(err: HardwareError): string {
-  switch (err.kind) {
-    case 'network':
-      return `Netzwerkfehler: ${err.details}`;
-    case 'timeout':
-      return 'Gerät antwortet nicht (Zeitüberschreitung). Bitte erneut versuchen.';
-    case 'device':
-      return `Gerätefehler: ${err.details}`;
-    case 'not_configured':
-      return `Nicht konfiguriert: ${err.details}`;
-    case 'encoding':
-      return `Datenfehler: ${err.details}`;
-    case 'local_io':
-      return `Lokaler Dateifehler: ${err.details}`;
-    case 'invalid_argument':
-      return `Ungültiger Aufruf: ${err.details}`;
-    default:
-      return `Interner Fehler: ${err.details}`;
+  if (err.details) {
+    console.warn(`[hardware:${err.kind}]`, err.details);
   }
+  return HARDWARE_ERROR_MESSAGES[err.kind] ?? HARDWARE_ERROR_MESSAGES.internal;
 }
 
 // ────────────────────────────────────────────────────────────────────────

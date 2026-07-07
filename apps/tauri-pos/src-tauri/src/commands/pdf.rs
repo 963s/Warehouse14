@@ -75,14 +75,20 @@ pub struct PdfPreviewResult {
 
 /// Render an `InvoiceData` to PDF bytes via Typst. Pure CPU work — runs on the
 /// blocking pool so we never starve the Tauri event loop.
+///
+/// Returns the shared `HardwareError` union (not a bare `String`) so a render
+/// failure flows through `describeHardwareError` on the JS side and gets a clean
+/// German message instead of a raw Typst diagnostic. `compile_typst_to_pdf` keeps
+/// its `String` error (its unit tests depend on it); we adapt at this boundary.
 #[tauri::command]
-pub async fn generate_invoice_pdf(data: InvoiceData) -> Result<Vec<u8>, String> {
+pub async fn generate_invoice_pdf(data: InvoiceData) -> HwResult<Vec<u8>> {
     tauri::async_runtime::spawn_blocking(move || {
         let source = build_invoice_source(&data);
         compile_typst_to_pdf(source)
     })
     .await
-    .map_err(|e| format!("invoice render task join failed: {e}"))?
+    .map_err(|e| HardwareError::Internal(format!("invoice render task join failed: {e}")))?
+    .map_err(HardwareError::Encoding)
 }
 
 /// Hand the PDF bytes to the OS print spool (macOS / Linux `lpr`).

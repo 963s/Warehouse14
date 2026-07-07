@@ -11,6 +11,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { useCallback, useState } from 'react';
 import { describeError } from '@warehouse14/i18n-de';
 
+import { describeHardwareError, isHardwareError } from '../lib/hardware-client.js';
+
 export interface InvoiceItem {
   description: string;
   quantity: number;
@@ -50,7 +52,9 @@ export function useInvoicePdf(): UseInvoicePdf {
       const bytes = await invoke<number[]>('generate_invoice_pdf', { data });
       return new Uint8Array(bytes);
     } catch (err) {
-      setError(describeError(err));
+      // The command now returns the HardwareError union — prefer its clean
+      // German sentence; fall back to describeError for any non-hardware shape.
+      setError(isHardwareError(err) ? describeHardwareError(err) : describeError(err));
       throw err;
     } finally {
       setLoading(false);
