@@ -27,6 +27,12 @@ import {
 import { useSyncStore } from '../state/sync-store.js';
 import { useToastStore } from '../state/toast-store.js';
 import { outboxStore, useApiClient } from './api-context.js';
+import {
+  type PosIntentsStore,
+  type SealedFiscalRequest,
+  posIntentsStore,
+  sealedToOutboxRecord,
+} from './pos-intents-store.js';
 
 export interface ReplayController {
   /** Begin listening for connectivity + run an initial startup sweep. */
@@ -44,6 +50,48 @@ export interface OfflineReplayOptions {
 
 function isOnline(): boolean {
   return typeof navigator === 'undefined' ? true : navigator.onLine;
+}
+
+/**
+ * Phase 1.4 startup reconcile — funnel unresolved `pos_intents` (the pre-request
+ * crash window) into the outbox on the SAME idempotency key, then let
+ * `drainOutbox` carry them. Recovery rides the one at-most-once FIFO path and the
+ * server's partial-UNIQUE index dedups on the shared key → never a double-finalize.
+ * Runs BEFORE the first drain. Idempotent: `INSERT OR IGNORE` + `markResolved`,
+ * so a re-run (or a crash between enqueue and mark) is a no-op.
+ */
+export async function reconcilePosIntents(
+  intents: PosIntentsStore,
+  outbox: Pick<OutboxStore, 'enqueue'>,
+): Promise<void> {
+  let unresolved: Awaited<ReturnType<PosIntentsStore['listUnresolved']>>;
+  try {
+    unresolved = await intents.listUnresolved();
+  } catch {
+    return; // browser / DB unavailable — nothing to reconcile
+  }
+  for (const intent of unresolved) {
+    let sealed: SealedFiscalRequest;
+    try {
+      sealed = JSON.parse(intent.sealedRequestJson) as SealedFiscalRequest;
+    } catch (parseErr) {
+      // A malformed sealed request can never be replayed — fail it terminally so
+      // it's surfaced (never retried forever), without blocking the other intents.
+      try {
+        await intents.markFailed(intent.key, parseErr);
+      } catch {
+        /* ignore */
+      }
+      continue;
+    }
+    try {
+      await outbox.enqueue(sealedToOutboxRecord(sealed, intent.createdAt));
+      await intents.markResolved(intent.key, { reconciledIntoOutbox: true });
+    } catch {
+      // Transient DB error — leave the intent unresolved; the next startup retries.
+      // A re-enqueue is a no-op (INSERT OR IGNORE on the shared idempotency key).
+    }
+  }
 }
 
 export function createOfflineReplay(
@@ -126,6 +174,7 @@ export function useOfflineReplay(enabled: boolean): void {
 
   useEffect(() => {
     if (!enabled) return;
+    let cancelled = false;
     const controller = createOfflineReplay(client, outboxStore, {
       onConflict: (record, serverCode) => {
         // A halted-queue conflict — refresh the badge so it flips to red.
@@ -137,8 +186,16 @@ export function useOfflineReplay(enabled: boolean): void {
         });
       },
     });
-    controller.start();
-    return () => controller.stop();
+    // Reconcile crash-window pos_intents INTO the outbox first, THEN start the
+    // controller (its startup sweep drains the just-reconciled rows). If the hook
+    // unmounts mid-reconcile, don't start a controller we're about to drop.
+    void reconcilePosIntents(posIntentsStore, outboxStore).then(() => {
+      if (!cancelled) controller.start();
+    });
+    return () => {
+      cancelled = true;
+      controller.stop();
+    };
   }, [enabled, client, addToast]);
 
   // Lightweight 5s heartbeat: keep the header badge counts + online flag fresh

@@ -44,7 +44,8 @@ import { telemetrySink } from './telemetrySink.js';
  * the client-side correlation handle, persisted once and reused.
  */
 const DEVICE_ID_KEY = 'w14.device-id';
-function resolveDeviceId(): string {
+/** Exported for Phase 1.4: the fiscal dialogs seal this into a pos_intents row. */
+export function resolveDeviceId(): string {
   if (typeof localStorage === 'undefined') return 'unknown-device';
   let id = localStorage.getItem(DEVICE_ID_KEY);
   if (!id) {

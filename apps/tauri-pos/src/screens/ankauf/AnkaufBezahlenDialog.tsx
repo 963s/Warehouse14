@@ -39,7 +39,8 @@ import type { IntakeItem } from '../../state/ankauf-cart-store.js';
 import { currentShiftQueryKey } from '../../hooks/useCurrentShift.js';
 import { dashboardQueryKey } from '../../hooks/useDashboardSummary.js';
 import { evaluateKycGate } from '../../lib/ankauf-kyc-gate.js';
-import { useApiClient } from '../../lib/api-context.js';
+import { resolveDeviceId, useApiClient } from '../../lib/api-context.js';
+import { posIntentsStore, sealFiscalRequest } from '../../lib/pos-intents-store.js';
 import { fromCents, sumNegotiatedCents } from '../../lib/intake-math.js';
 import {
   type TseSessionResult,
@@ -250,7 +251,35 @@ export function AnkaufBezahlenDialog({
     });
 
     try {
+      // Phase 1.4: crystallize the intent to disk BEFORE the network call, so a
+      // crash between here and the server leaves a recoverable pos_intents row
+      // (the startup reconcile funnels it into the outbox on this SAME key →
+      // no double-booking). Best-effort — never blocks the buy-in.
+      try {
+        await posIntentsStore.create({
+          key: idempotencyKeyRef.current,
+          intentType: 'ankauf',
+          sealedRequestJson: JSON.stringify(
+            sealFiscalRequest({
+              baseUrl: api.baseUrl,
+              path: '/api/transactions/ankauf',
+              body,
+              idempotencyKey: idempotencyKeyRef.current,
+              deviceId: resolveDeviceId(),
+            }),
+          ),
+          createdAt: Date.now(),
+        });
+      } catch {
+        /* best-effort */
+      }
       const result = await transactionsApi.ankauf(api, body);
+      // Reached the server — resolve the intent (no reconcile needed).
+      try {
+        await posIntentsStore.markResolved(idempotencyKeyRef.current, result);
+      } catch {
+        /* best-effort */
+      }
       setFinalized(result);
       addToast({
         tone: 'success',
@@ -363,6 +392,9 @@ export function AnkaufBezahlenDialog({
       ]);
     } catch (err) {
       if (err instanceof ApiOfflineQueuedError) {
+        // Phase 1.4: the outbox now owns this key — hand the intent OFF (resolved
+        // into the outbox), not fail. The reconcile must not re-enqueue it.
+        void posIntentsStore.markHandedOff(idempotencyKeyRef.current);
         // The buy-in is SAFELY captured for replay (GoBD §146) — this is a
         // success from the cashier's point of view, NOT a failure. Mirror the
         // cash-sale offline path: advance to the receipt phase with a synthetic

@@ -10,7 +10,7 @@
  * tests) never transitively pulls in React / the api-context / the Tauri bridge.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 import { transactionsApi } from '@warehouse14/api-client';
 import type { ApiClient } from '@warehouse14/api-client';
@@ -18,7 +18,7 @@ import type { ApiClient } from '@warehouse14/api-client';
 import { useApiClient } from './api-context.js';
 import { tseClient } from './hardware-client.js';
 import { drainTseQueue, type TseDrainDeps } from './tse-queue-drain.js';
-import { tseQueueStore } from './tse-queue-store.js';
+import { tseQueueStore, type TseQueueStats } from './tse-queue-store.js';
 
 export interface TseDrainController {
   start(): void;
@@ -149,4 +149,34 @@ export function useTseQueueDrain(enabled: boolean): void {
       controller.stop();
     };
   }, [enabled, client]);
+}
+
+/**
+ * Live TSE replay-queue backlog for the Gerätemanager badge. Polls
+ * `tseQueueStore.getStats()` on mount + every 5s. Degrades to `null` (the
+ * honest "no local records" state) when the store is unavailable (browser /
+ * Db.load rejects) — the badge simply shows nothing rather than a fake zero.
+ */
+export function useTseQueueStats(pollMs = 5000): TseQueueStats | null {
+  const [stats, setStats] = useState<TseQueueStats | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    const read = async (): Promise<void> => {
+      try {
+        const s = await tseQueueStore.getStats();
+        if (alive) setStats(s);
+      } catch {
+        if (alive) setStats(null);
+      }
+    };
+    void read();
+    const id = setInterval(() => void read(), pollMs);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [pollMs]);
+
+  return stats;
 }

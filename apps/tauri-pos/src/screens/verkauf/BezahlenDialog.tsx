@@ -64,7 +64,8 @@ import { dashboardQueryKey } from '../../hooks/useDashboardSummary.js';
 import { useReceiptFooterLines } from '../../hooks/useReceiptFooter.js';
 import { resolveShopInfo, useShopInfo } from '../../hooks/useShopInfo.js';
 import { evaluateKycGate } from '../../lib/ankauf-kyc-gate.js';
-import { useApiClient } from '../../lib/api-context.js';
+import { resolveDeviceId, useApiClient } from '../../lib/api-context.js';
+import { posIntentsStore, sealFiscalRequest } from '../../lib/pos-intents-store.js';
 import {
   type HeaderTotals,
   type LineMath,
@@ -554,7 +555,36 @@ export function BezahlenDialog({
         payments,
         idempotencyKey: idempotencyKeyRef.current,
       };
+      // Phase 1.4: crystallize the intent to disk BEFORE the network call, so a
+      // crash between here and the server leaves a recoverable pos_intents row —
+      // the startup reconcile funnels it into the outbox on this SAME key (the
+      // server's partial-UNIQUE dedups → no double-finalize). Best-effort: a
+      // store-write failure must NEVER block the sale.
+      try {
+        await posIntentsStore.create({
+          key: idempotencyKeyRef.current,
+          intentType: 'sale',
+          sealedRequestJson: JSON.stringify(
+            sealFiscalRequest({
+              baseUrl: api.baseUrl,
+              path: '/api/transactions/finalize',
+              body,
+              idempotencyKey: idempotencyKeyRef.current,
+              deviceId: resolveDeviceId(),
+            }),
+          ),
+          createdAt: Date.now(),
+        });
+      } catch {
+        /* best-effort — the sale proceeds even if the intent write fails */
+      }
       const result = await transactionsApi.finalize(api, body);
+      // The request reached the server — resolve the intent (no reconcile needed).
+      try {
+        await posIntentsStore.markResolved(idempotencyKeyRef.current, result);
+      } catch {
+        /* best-effort */
+      }
 
       // 3. TSE FINISH — only if INTENTION succeeded. Capture the signature
       //    in a ref so the thermal-print step (W-7) can render the
@@ -902,6 +932,9 @@ export function BezahlenDialog({
       ]);
     } catch (err) {
       if (err instanceof ApiOfflineQueuedError) {
+        // Phase 1.4: the outbox now owns this key — hand the intent OFF (resolved
+        // into the outbox), not fail. The reconcile must not re-enqueue it.
+        void posIntentsStore.markHandedOff(idempotencyKeyRef.current);
         const offlineLocator = `OFFLINE-${idempotencyKeyRef.current.slice(0, 8).toUpperCase()}`;
         const dummyResult: FinalizeResponse = {
           id: idempotencyKeyRef.current,
@@ -1077,6 +1110,9 @@ export function BezahlenDialog({
       ]);
     } catch (err) {
       if (err instanceof ApiOfflineQueuedError) {
+        // Phase 1.4: the outbox now owns this key — hand the intent OFF (resolved
+        // into the outbox), not fail. The reconcile must not re-enqueue it.
+        void posIntentsStore.markHandedOff(idempotencyKeyRef.current);
         // §19.3 C-3 — card AUTHORIZED + finalize QUEUED offline. The sale is
         // safely captured for replay (GoBD §146); telling the cashier to Storno
         // would wrongly reverse a booked charge. Advance to the receipt phase.
@@ -1274,6 +1310,9 @@ export function BezahlenDialog({
       ]);
     } catch (err) {
       if (err instanceof ApiOfflineQueuedError) {
+        // Phase 1.4: the outbox now owns this key — hand the intent OFF (resolved
+        // into the outbox), not fail. The reconcile must not re-enqueue it.
+        void posIntentsStore.markHandedOff(idempotencyKeyRef.current);
         // Card AUTHORIZED + finalize QUEUED offline — the sale is safely captured
         // for replay (GoBD §146). Advance to the receipt phase; a Storno would
         // wrongly reverse a booked charge.

@@ -21,6 +21,7 @@ import { Button, DiamondRule, ParchmentCard, Seal } from '@warehouse14/ui-kit';
 
 import { HardwareStatusBadge } from '../../components/hardware/HardwareStatusBadge.js';
 import { useHardwareAutoConnect } from '../../hooks/useHardwareAutoConnect.js';
+import { useTseQueueStats } from '../../lib/tse-queue-drain-hook.js';
 import {
   type LabelConfig,
   type SystemPrinter,
@@ -809,6 +810,14 @@ function TseSection(): JSX.Element {
   const [keyDraft, setKeyDraft] = useState('');
   const [secretDraft, setSecretDraft] = useState('');
 
+  // Phase 1.3: live backlog of TSE signatures still awaiting replay (durable
+  // queue). null = store unavailable (browser) → the badge stays hidden.
+  const tseStats = useTseQueueStats();
+  const pendingSignatures = tseStats
+    ? tseStats.pending + tseStats.inFlight + tseStats.failedTerminal
+    : 0;
+  const hasStuckSignatures = (tseStats?.failedTerminal ?? 0) > 0;
+
   const save = useCallback((patch: Partial<TseFiskalyConfig>) => setTse(patch), [setTse]);
 
   useEffect(() => {
@@ -995,6 +1004,19 @@ function TseSection(): JSX.Element {
           lastCheckedAt={cfg.lastCheckedAt}
         />
       </Row>
+      {pendingSignatures > 0 && (
+        <Row>
+          <span style={{ flex: 1, fontSize: '0.85rem', color: 'var(--w14-ink-faded)' }}>
+            {hasStuckSignatures
+              ? 'Einige Signaturen konnten nicht übertragen werden — bitte TSE-Verbindung prüfen.'
+              : 'Ausstehende TSE-Signaturen werden automatisch nachgereicht, sobald die TSE erreichbar ist.'}
+          </span>
+          <HardwareStatusBadge
+            tone={hasStuckSignatures ? 'error' : 'pending'}
+            label={`Ausstehende TSE-Signaturen: ${pendingSignatures}`}
+          />
+        </Row>
+      )}
     </Card>
   );
 }
