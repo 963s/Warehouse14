@@ -83,3 +83,14 @@ export async function listKycForCustomer(customerId: string): Promise<KycRecord[
     createdAt: r.created_at,
   }));
 }
+
+/**
+ * Remove one local KYC index row (Phase 3.2 — DSGVO Art. 17 erasure). The
+ * ciphertext file is deleted separately via the `delete_kyc_document` Tauri
+ * command; this drops only the queryable index row so the document stops
+ * appearing in the customer's Akte. Deleting an already-gone id is a no-op.
+ */
+export async function deleteKycRecord(id: number): Promise<void> {
+  const conn = await db();
+  await conn.execute(`DELETE FROM customer_kyc WHERE id = $1`, [id]);
+}

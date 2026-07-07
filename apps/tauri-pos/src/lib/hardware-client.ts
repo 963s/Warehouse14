@@ -434,6 +434,14 @@ export async function decryptAndLoadKycDocument(filePath: string): Promise<Uint8
   return new Uint8Array(bytes);
 }
 
+/**
+ * Delete a vault ciphertext file (DSGVO Art. 17 erasure). The Rust side confines
+ * the path to the vault directory; a file that is already gone resolves cleanly.
+ */
+export async function deleteKycDocument(filePath: string): Promise<void> {
+  await invoke('delete_kyc_document', { filePath });
+}
+
 // ────────────────────────────────────────────────────────────────────────
 // Tauri probe — useful to short-circuit hardware calls when the React app
 // is being rendered outside Tauri (Vitest, Storybook).

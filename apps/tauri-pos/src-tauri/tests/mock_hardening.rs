@@ -33,6 +33,7 @@ fn finish(cfg: TseConfig, amount_cents: u64, payment_kind: &str) -> TseFinishPar
         payment_kind: payment_kind.into(),
         process_data_base64: String::new(),
         process_type: "Kassenbeleg-V1".into(),
+        amounts_per_vat_id: Vec::new(),
     }
 }
 

@@ -103,6 +103,7 @@ pub fn run() {
             // Epic C — encrypted local KYC vault
             commands::kyc::encrypt_and_save_kyc_document,
             commands::kyc::decrypt_and_load_kyc_document,
+            commands::kyc::delete_kyc_document,
             // USB digital scale (MT-SICS over serial)
             commands::scale::read_scale_weight,
             commands::scale::list_scale_ports,

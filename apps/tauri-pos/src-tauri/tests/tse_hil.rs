@@ -219,6 +219,7 @@ async fn start_then_finish_carries_correct_amount_and_payment_type() {
         payment_kind: "Bar".into(),
         process_data_base64: String::new(),
         process_type: "Kassenbeleg-V1".into(),
+        amounts_per_vat_id: Vec::new(),
     })
     .await
     .expect("finish should sign");
@@ -250,6 +251,7 @@ async fn signature_counter_is_monotonic_across_two_sales() {
         payment_kind: "Unbar".into(),
         process_data_base64: String::new(),
         process_type: "Kassenbeleg-V1".into(),
+        amounts_per_vat_id: Vec::new(),
     };
 
     let first = tse_finish_transaction(mk("a")).await.expect("sign a");
@@ -299,6 +301,7 @@ async fn server_rejected_request_surfaces_as_device_error() {
         payment_kind: "Krypto".into(),
         process_data_base64: String::new(),
         process_type: "Kassenbeleg-V1".into(),
+        amounts_per_vat_id: Vec::new(),
     })
     .await
     .expect_err("an out-of-spec payment_type must surface an error");

@@ -8,17 +8,18 @@
  * closes / the component unmounts, so decrypted PII never lingers.
  */
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useState } from 'react';
 
 import { Button } from '@warehouse14/ui-kit';
 
 import {
   decryptAndLoadKycDocument,
+  deleteKycDocument,
   describeHardwareError,
   isHardwareError,
 } from '../../lib/hardware-client.js';
-import { type KycRecord, listKycForCustomer } from '../../lib/kyc-store.js';
+import { deleteKycRecord, type KycRecord, listKycForCustomer } from '../../lib/kyc-store.js';
 import { useToastStore } from '../../state/toast-store.js';
 
 const DOC_LABEL: Record<string, string> = {
@@ -60,7 +61,9 @@ export function KycLocalDocs({
   onPromoteTrust?: () => void;
 }): JSX.Element | null {
   const addToast = useToastStore((s) => s.addToast);
+  const queryClient = useQueryClient();
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [confirmId, setConfirmId] = useState<number | null>(null);
   const [preview, setPreview] = useState<PreviewState | null>(null);
 
   const recordsQ = useQuery({
@@ -96,6 +99,35 @@ export function KycLocalDocs({
       }
     },
     [addToast],
+  );
+
+  // DSGVO Art. 17 erasure. The ciphertext is the actual PII, so it is destroyed
+  // first (the Rust command is idempotent — an already-gone file still resolves);
+  // only then is the local index row removed so the document leaves the Akte.
+  const deleteDoc = useCallback(
+    async (rec: KycRecord) => {
+      setBusyId(rec.id);
+      try {
+        await deleteKycDocument(rec.filePath);
+        await deleteKycRecord(rec.id);
+        setConfirmId(null);
+        addToast({
+          tone: 'success',
+          title: 'Dokument gelöscht',
+          body: 'Der verschlüsselte Ausweis wurde dauerhaft entfernt.',
+        });
+        await queryClient.invalidateQueries({ queryKey: kycLocalQueryKey(customerId) });
+      } catch (err) {
+        addToast({
+          tone: 'alert',
+          title: 'Löschen fehlgeschlagen',
+          body: isHardwareError(err) ? describeHardwareError(err) : String(err),
+        });
+      } finally {
+        setBusyId(null);
+      }
+    },
+    [addToast, customerId, queryClient],
   );
 
   const records = recordsQ.data ?? [];
@@ -148,14 +180,48 @@ export function KycLocalDocs({
             >
               {rec.sha256.slice(0, 16)}…
             </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={busyId === rec.id}
-              onClick={() => void openPreview(rec)}
-            >
-              {busyId === rec.id ? 'Entschlüsselt…' : 'Vorschau'}
-            </Button>
+            {confirmId === rec.id ? (
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: '0.78rem', color: 'var(--w14-ink-faded)' }}>
+                  Endgültig löschen?
+                </span>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  disabled={busyId === rec.id}
+                  onClick={() => void deleteDoc(rec)}
+                >
+                  {busyId === rec.id ? 'Löscht…' : 'Ja, löschen'}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={busyId === rec.id}
+                  onClick={() => setConfirmId(null)}
+                >
+                  Abbrechen
+                </Button>
+              </span>
+            ) : (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={busyId === rec.id}
+                  onClick={() => void openPreview(rec)}
+                >
+                  {busyId === rec.id ? 'Entschlüsselt…' : 'Vorschau'}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={busyId !== null}
+                  onClick={() => setConfirmId(rec.id)}
+                >
+                  Löschen
+                </Button>
+              </>
+            )}
           </li>
         ))}
       </ul>

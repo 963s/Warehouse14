@@ -195,6 +195,32 @@ pub async fn decrypt_and_load_kyc_document(
     plaintext
 }
 
+/// Delete a vault ciphertext file (Phase 3.2 — operator removal / Art.17 erasure).
+/// The path is confined to the vault directory (same canonicalized prefix check
+/// as the read path) so a crafted `file_path` cannot delete an arbitrary file.
+/// A file that is already gone is treated as success — the erasure goal is met,
+/// so a repeat delete is idempotent rather than an error.
+#[tauri::command]
+pub async fn delete_kyc_document(
+    file_path: String,
+    app_handle: tauri::AppHandle,
+) -> HwResult<()> {
+    let dir = vault_dir(&app_handle)?;
+    let canonical_dir = std::fs::canonicalize(&dir).map_err(HardwareError::from)?;
+    // canonicalize fails on a nonexistent path — the file is already gone, which
+    // satisfies the erasure intent, so return Ok rather than surfacing an error.
+    let Ok(canonical) = std::fs::canonicalize(PathBuf::from(&file_path)) else {
+        return Ok(());
+    };
+    if !canonical.starts_with(&canonical_dir) {
+        return Err(HardwareError::InvalidArgument(
+            "path is outside the KYC vault".into(),
+        ));
+    }
+    std::fs::remove_file(&canonical).map_err(HardwareError::from)?;
+    Ok(())
+}
+
 // ════════════════════════════════════════════════════════════════════════
 // Tests — pure crypto only (no keyring / no Tauri runtime)
 // ════════════════════════════════════════════════════════════════════════
