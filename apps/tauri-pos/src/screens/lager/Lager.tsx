@@ -20,7 +20,7 @@
  * not shift presence.
  */
 
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
@@ -44,6 +44,7 @@ import { useBarcodeScanner } from '../../hooks/useBarcodeScanner.js';
 import { useInventoryCounts } from '../../hooks/useInventoryCounts.js';
 import { type AvailabilityBucket, bucketCount } from '../../lib/availability-ui.js';
 import { useApiClient } from '../../lib/api-context.js';
+import { StaleBadge, useCachedQuery } from '../../offline/index.js';
 import { type StatusFilter, useLagerFilterStore } from '../../state/lager-filter-store.js';
 import { useToastStore } from '../../state/toast-store.js';
 
@@ -133,11 +134,16 @@ export function Lager(): JSX.Element {
     return args;
   }, [filters, pageOffset]);
 
-  const q = useQuery({
+  // Offline-resilient catalog (Phase 2.5): seeds each filter/page from the durable
+  // last-good snapshot so the Lager stays browsable when the LAN drops, and keeps
+  // the previous page on screen while the next loads (no flash to empty).
+  const q = useCachedQuery({
     queryKey: ['products', 'list', queryArgs],
     queryFn: () => productsApi.list(api, queryArgs),
+    cacheKey: `products:list:${JSON.stringify(queryArgs)}`,
     staleTime: 30_000,
     refetchOnWindowFocus: false,
+    keepPreviousData: true,
   });
 
   const rows = useMemo(() => q.data?.items ?? [], [q.data]);
@@ -365,6 +371,12 @@ export function Lager(): JSX.Element {
               onClick={() => setStatus(chip.value)}
             />
           ))}
+          {/* Honest marker while the catalog is served from the offline seed. */}
+          {q.fromCache && (
+            <span style={{ marginLeft: 'auto', alignSelf: 'center' }}>
+              <StaleBadge cachedAt={q.cachedAt} stale={q.isStale} />
+            </span>
+          )}
         </div>
       </div>
 

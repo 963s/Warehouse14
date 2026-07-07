@@ -14,7 +14,7 @@
  * screen, `fromCache` is true and the surface should show a StaleBadge with
  * `cachedAt` so the operator knows it is the last-good value, not live.
  */
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData as keepPreviousDataFn, useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 
 import {
@@ -38,6 +38,13 @@ export interface CachedQueryOptions<T> {
   staleAfterMs?: number;
   enabled?: boolean;
   staleTime?: number;
+  refetchOnWindowFocus?: boolean;
+  /**
+   * For paginated / filtered lists: keep the previous page's rows on screen
+   * while the next loads (no flash to empty). Composes with the read-cache seed
+   * — the seed still fills the very first (offline) mount.
+   */
+  keepPreviousData?: boolean;
 }
 
 export interface CachedQueryResult<T> {
@@ -63,6 +70,8 @@ export function useCachedQuery<T>(options: CachedQueryOptions<T>): CachedQueryRe
     staleAfterMs = DEFAULT_STALE_AFTER_MS,
     enabled = true,
     staleTime,
+    refetchOnWindowFocus,
+    keepPreviousData = false,
   } = options;
 
   const seedFromMemory = (k: string): { data: T; cachedAt: number } | null => {
@@ -94,6 +103,8 @@ export function useCachedQuery<T>(options: CachedQueryOptions<T>): CachedQueryRe
     queryFn,
     enabled,
     ...(staleTime !== undefined ? { staleTime } : {}),
+    ...(refetchOnWindowFocus !== undefined ? { refetchOnWindowFocus } : {}),
+    ...(keepPreviousData ? { placeholderData: keepPreviousDataFn } : {}),
   });
 
   // Write every REAL success back to the durable cache.
