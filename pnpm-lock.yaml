@@ -176,6 +176,9 @@ importers:
       '@warehouse14/api-client':
         specifier: workspace:*
         version: link:../../packages/api-client
+      '@warehouse14/i18n-de':
+        specifier: workspace:*
+        version: link:../../packages/i18n-de
       '@warehouse14/ui-kit':
         specifier: workspace:*
         version: link:../../packages/ui-kit
@@ -487,6 +490,9 @@ importers:
       '@warehouse14/appointments':
         specifier: workspace:*
         version: link:../../packages/appointments
+      '@warehouse14/i18n-de':
+        specifier: workspace:*
+        version: link:../../packages/i18n-de
       '@warehouse14/ui-kit':
         specifier: workspace:*
         version: link:../../packages/ui-kit

@@ -19,7 +19,10 @@ import { ApiClientProvider } from './api-context.js';
 import { stepUpService } from './step-up-service.js';
 
 const env = (import.meta as unknown as { env: { VITE_API_BASE_URL?: string } }).env;
-const apiBaseUrl = env.VITE_API_BASE_URL ?? 'http://localhost:3001';
+// Fail-safe default is PRODUCTION: a shipped build with a missing env var must
+// never silently target a dev host. Dev supplies the local URL via
+// `.env.development` (VITE_API_BASE_URL), loaded by Vite in dev mode.
+const apiBaseUrl = env.VITE_API_BASE_URL ?? 'https://api.warehouse14.de';
 
 // Owner mutations (trust, KYC, settings) require a fresh PIN. The step-up
 // middleware replays the call once the <StepUpModal/> POSTs /api/auth/step-up.

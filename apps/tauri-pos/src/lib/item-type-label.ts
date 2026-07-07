@@ -6,6 +6,8 @@
  * surfaces stay drift-free.
  */
 
+import { germanLabel } from '@warehouse14/i18n-de';
+
 export type ItemType =
   | 'gold_jewelry'
   | 'gold_coin'
@@ -46,11 +48,11 @@ export const ITEM_TYPE_OPTIONS: ReadonlyArray<{ value: ItemType; label: string }
  * Graceful display label for a possibly-unknown item-type value. Use this on
  * any operator-facing surface that renders a product's `itemType` straight from
  * the API — it maps the known DB enum values to their German label and, for an
- * unmapped value, degrades to a humanized form (no raw `gold_jewelry` leak).
+ * unmapped value, shows "Unbekannt" (never a raw `gold_jewelry` leak).
  */
 export function itemTypeLabel(value: string | null | undefined): string {
   if (!value) return '—';
-  return ITEM_TYPE_LABEL[value as ItemType] ?? humanizeEnum(value);
+  return germanLabel(ITEM_TYPE_LABEL, value, 'Unbekannt');
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -83,22 +85,10 @@ export const CONDITION_OPTIONS: ReadonlyArray<{ value: Condition; label: string 
 
 /**
  * Graceful display label for a possibly-unknown condition value. Mirrors
- * `itemTypeLabel` — humanizes an unmapped value instead of leaking the raw
- * SCREAMING_SNAKE_CASE enum.
+ * `itemTypeLabel` — shows "Unbekannt" for an unmapped value instead of leaking
+ * the raw SCREAMING_SNAKE_CASE enum.
  */
 export function conditionLabel(value: string | null | undefined): string {
   if (!value) return '—';
-  return CONDITION_LABEL[value as Condition] ?? humanizeEnum(value);
-}
-
-/**
- * Last-resort fallback for an enum value with no German label: turn
- * `USED_GOOD` / `gold_jewelry` into a readable `Used good` / `Gold jewelry`
- * instead of showing the raw machine string. Real values are always mapped;
- * this only guards against a server adding a new enum before the UI ships.
- */
-export function humanizeEnum(value: string): string {
-  const cleaned = value.replace(/[_-]+/g, ' ').trim().toLowerCase();
-  if (cleaned.length === 0) return value;
-  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+  return germanLabel(CONDITION_LABEL, value, 'Unbekannt');
 }

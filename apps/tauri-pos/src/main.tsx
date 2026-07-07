@@ -35,7 +35,10 @@ const env = (
     };
   }
 ).env;
-const apiBaseUrl = env.VITE_API_BASE_URL ?? 'http://localhost:3001';
+// Fail-safe default is PRODUCTION: a shipped build with a missing env var must
+// never silently target a dev host. Dev supplies the local URL via
+// `.env.development.local` / `.env.local` (VITE_API_BASE_URL), loaded by Vite in dev.
+const apiBaseUrl = env.VITE_API_BASE_URL ?? 'https://api.warehouse14.de';
 const devDeviceFingerprint = env.VITE_DEV_DEVICE_FINGERPRINT ?? '';
 
 // Telemetry (GlitchTip/Sentry) — optional + fail-safe: only init when a DSN is

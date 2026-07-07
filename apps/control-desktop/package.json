@@ -21,6 +21,7 @@
     "@tauri-apps/plugin-process": "2.2.0",
     "@tauri-apps/plugin-updater": "2.5.1",
     "@warehouse14/api-client": "workspace:*",
+    "@warehouse14/i18n-de": "workspace:*",
     "@warehouse14/ui-kit": "workspace:*",
     "react": "18.3.1",
     "react-dom": "18.3.1",
