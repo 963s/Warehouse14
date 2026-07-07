@@ -11,7 +11,7 @@
  * re-render unrelated rows.
  */
 
-import { useQuery } from '@tanstack/react-query';
+import { StaleBadge, useCachedQuery } from '../../offline/index.js';
 import { type CSSProperties, memo, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
@@ -74,9 +74,13 @@ export function CustomerListPanel({ selectedId, onSelect }: CustomerListPanelPro
     return args;
   }, [debouncedQ, filter]);
 
-  const q = useQuery({
+  // Offline-resilient read: seeds from the last-good snapshot on remount so the
+  // Kundenakte paints real names instantly when the LAN drops, and marks the
+  // data with a StaleBadge while it's the cached seed (Phase 2.5).
+  const q = useCachedQuery({
     queryKey: ['customers', 'list', queryArgs],
     queryFn: () => customersApi.list(api, queryArgs),
+    cacheKey: `customers:list:${JSON.stringify(queryArgs)}`,
     staleTime: 30_000,
   });
 
@@ -123,8 +127,17 @@ export function CustomerListPanel({ selectedId, onSelect }: CustomerListPanelPro
         </h2>
         <span
           className="w14-smallcaps"
-          style={{ color: 'var(--w14-ink-faded)', fontSize: '0.72rem', letterSpacing: '0.08em' }}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 'var(--space-2)',
+            color: 'var(--w14-ink-faded)',
+            fontSize: '0.72rem',
+            letterSpacing: '0.08em',
+          }}
         >
+          {/* Honest last-good marker: only while showing the cached seed offline. */}
+          {q.fromCache && <StaleBadge cachedAt={q.cachedAt} stale={q.isStale} />}
           {q.isFetching ? 'sucht…' : `${items.length}`}
         </span>
       </header>

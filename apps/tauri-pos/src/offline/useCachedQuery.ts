@@ -44,6 +44,8 @@ export interface CachedQueryResult<T> {
   data: T | undefined;
   isLoading: boolean;
   isError: boolean;
+  /** The live refetch is in flight (true even while the seed is on screen). */
+  isFetching: boolean;
   /** `Date.now()` the shown data was captured — the source of the StaleBadge. */
   cachedAt: number | null;
   /** True while the seed is on screen and the live fetch hasn't landed. */
@@ -116,6 +118,7 @@ export function useCachedQuery<T>(options: CachedQueryOptions<T>): CachedQueryRe
     // operator sees last-good numbers, not a spinner or a red state.
     isLoading: showingSeed ? false : q.isLoading,
     isError: showingSeed ? false : q.isError,
+    isFetching: q.isFetching,
     cachedAt,
     fromCache: showingSeed,
     isStale,
