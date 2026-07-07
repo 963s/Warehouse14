@@ -24,6 +24,7 @@ import { useHardwareAutoConnect } from '../hooks/useHardwareAutoConnect.js';
 import { useSessionProbe } from '../hooks/useSessionProbe.js';
 import { applyChatwoot } from '../lib/chatwoot.js';
 import { useOfflineReplay } from '../lib/offline-replay.js';
+import { useTseQueueDrain } from '../lib/tse-queue-drain-hook.js';
 import { PinLogin } from '../screens/PinLogin.js';
 import { useHardwareStore } from '../state/hardware-store.js';
 import { useIntegrationSettings } from '../state/integration-settings-store.js';
@@ -45,6 +46,12 @@ export function App(): JSX.Element {
   // attaches connectivity listeners + runs a startup sweep; the DB connection
   // lazy-loads on first drain, never blocking React mount.
   useOfflineReplay(status === 'authenticated');
+
+  // Phase 1.3 (durable fiscal recovery): drain the TSE signature replay queue on
+  // its OWN independent controller — a finish-failed or record-failed KassenSichV
+  // signature is re-finished / re-posted here so it is never lost. Kept separate
+  // from useOfflineReplay so neither drain's single-flight flag starves the other.
+  useTseQueueDrain(status === 'authenticated');
 
   // Hardware auto-connect: once the operator is in, hydrate the saved endpoints
   // and silently probe every configured device (receipt + label printer, card

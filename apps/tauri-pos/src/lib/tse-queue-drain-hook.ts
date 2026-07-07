@@ -1,0 +1,152 @@
+/**
+ * tse-queue-drain-hook — the app-layer driver for the TSE replay queue (Phase
+ * 1.3, Step 5b). Owns the single-flight controller + 5s heartbeat + online
+ * listener + startup sweep, mirroring `useOfflineReplay` but as its OWN,
+ * independent hook: neither drain's `running` flag can starve the other, and the
+ * CI-guarded middleware order (`api-context`, `production-middleware-order.test`)
+ * stays untouched.
+ *
+ * Kept in a sibling of `tse-queue-drain.ts` so the pure drain engine (+ its unit
+ * tests) never transitively pulls in React / the api-context / the Tauri bridge.
+ */
+
+import { useEffect } from 'react';
+
+import { transactionsApi } from '@warehouse14/api-client';
+import type { ApiClient } from '@warehouse14/api-client';
+
+import { useApiClient } from './api-context.js';
+import { tseClient } from './hardware-client.js';
+import { drainTseQueue, type TseDrainDeps } from './tse-queue-drain.js';
+import { tseQueueStore } from './tse-queue-store.js';
+
+export interface TseDrainController {
+  start(): void;
+  stop(): void;
+  trigger(): Promise<void>;
+}
+
+/** Conservative online probe — treat "unknown" as online (same as the outbox drain). */
+function isOnline(): boolean {
+  return typeof navigator === 'undefined' || navigator.onLine !== false;
+}
+
+/**
+ * Fiskaly reports the intention was already finished → the signature is
+ * unreconstructable, so the drain must NOT loop re-FINISH forever (B1). This
+ * is an optimisation: even if the heuristic misses a variant, the MAX_ATTEMPTS
+ * cap is the backstop that eventually retires the row.
+ */
+function isAlreadyFinished(err: unknown): boolean {
+  let msg = '';
+  if (typeof err === 'string') msg = err;
+  else if (err && typeof err === 'object') {
+    const e = err as { details?: unknown; message?: unknown };
+    msg = String(e.details ?? e.message ?? '');
+  }
+  msg = msg.toLowerCase();
+  return msg.includes('already') && /finish|signed|closed|complete/.test(msg);
+}
+
+/** Build the drain seams from the live client + Tauri bridge. */
+function buildDeps(client: ApiClient): TseDrainDeps {
+  return {
+    store: tseQueueStore,
+    // Path (a): re-invoke FINISH. The row carries everything needed; the empty
+    // processDataBase64 mirrors the online path (tse-service.closeTseSession),
+    // and the Fiskaly secrets are hydrated Rust-side from the OS keychain.
+    finish: (entry) =>
+      tseClient.finish({
+        config: { tssId: entry.tssId, clientId: entry.clientId },
+        intentionId: entry.intentionId,
+        fiskalyTransactionId: entry.fiskalyTransactionId,
+        amountCents: entry.amountCents,
+        paymentKind: entry.paymentKind,
+        processDataBase64: '',
+        processType: entry.processType,
+        amountsPerVatId: entry.amountsPerVatId,
+      }),
+    // The idempotent server-record leg. Numeric counters go over the wire as
+    // decimal STRINGS (bigint-safe), matching the online BezahlenDialog path.
+    record: async (entry, signature) => {
+      await transactionsApi.recordTseSignature(client, entry.serverTransactionId, {
+        fiskalyTssId: entry.tssId,
+        fiskalyClientId: entry.clientId,
+        fiskalyTransactionId: entry.fiskalyTransactionId,
+        fiskalyTransactionNumber: String(signature.transactionNumber),
+        signatureValue: signature.signatureValue,
+        signatureCounter: String(signature.signatureCounter),
+        signatureAlgorithm: signature.signatureAlgorithm,
+        processType: entry.processType,
+        qrCodeData: signature.qrCodePayload,
+        tseStartTime: signature.startedAt,
+        tseEndTime: signature.finishedAt,
+      });
+    },
+    isAlreadyFinished,
+    now: () => Date.now(),
+  };
+}
+
+/** A single-flight controller — one drain at a time, retriggered by online + heartbeat. */
+export function createTseQueueDrainController(deps: TseDrainDeps): TseDrainController {
+  let running = false;
+  let started = false;
+
+  async function trigger(): Promise<void> {
+    if (running || !isOnline()) return;
+    running = true;
+    try {
+      await drainTseQueue(deps);
+    } catch {
+      // listDrainable / store I/O failure (e.g. browser: Db.load rejects) —
+      // swallow; the next heartbeat/online event retries. Never throw from a
+      // background driver.
+    } finally {
+      running = false;
+    }
+  }
+
+  const onOnline = (): void => {
+    void trigger();
+  };
+
+  return {
+    start(): void {
+      if (started || typeof window === 'undefined') return;
+      started = true;
+      window.addEventListener('online', onOnline);
+      // Startup sweep: rows left by a previous crash / offline session.
+      void trigger();
+    },
+    stop(): void {
+      if (!started || typeof window === 'undefined') return;
+      started = false;
+      window.removeEventListener('online', onOnline);
+    },
+    trigger,
+  };
+}
+
+/**
+ * Drain the durable TSE queue while authenticated. Mounted in App.tsx NEXT TO
+ * `useOfflineReplay` (not folded in) so the two background drains stay fully
+ * independent. One controller instance backs both the online listener and the
+ * 5s heartbeat, so its single `running` flag prevents any overlap.
+ */
+export function useTseQueueDrain(enabled: boolean): void {
+  const client = useApiClient();
+
+  useEffect(() => {
+    if (!enabled) return;
+    const controller = createTseQueueDrainController(buildDeps(client));
+    controller.start();
+    const id = setInterval(() => {
+      void controller.trigger();
+    }, 5000);
+    return () => {
+      clearInterval(id);
+      controller.stop();
+    };
+  }, [enabled, client]);
+}
