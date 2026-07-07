@@ -7,7 +7,9 @@
 
 import { useState } from 'react';
 
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
+
+import { StaleBadge, useCachedQuery } from '../../offline/index.js';
 
 import type { ApiClient } from '@warehouse14/api-client';
 import { Button, DiamondRule, MoneyAmount, ParchmentCard } from '@warehouse14/ui-kit';
@@ -32,11 +34,15 @@ export function RecentSalesPanel(): JSX.Element {
   const qc = useQueryClient();
   const [storno, setStorno] = useState<{ id: string; locator: string } | null>(null);
 
-  const { data, isLoading } = useQuery<{ items: RecentItem[] }>({
+  // Offline-resilient (Phase 2.5): seeds from the last-good snapshot so the last
+  // sales still show when the LAN drops mid-glance, marked with a StaleBadge.
+  const recent = useCachedQuery<{ items: RecentItem[] }>({
     queryKey: recentSalesQueryKey,
     queryFn: () => api.request<{ items: RecentItem[] }>('GET', '/api/transactions/recent'),
+    cacheKey: 'transactions:recent',
     staleTime: 15_000,
   });
+  const { data, isLoading } = recent;
 
   const items = data?.items ?? [];
   const time = (iso: string): string =>
@@ -45,6 +51,11 @@ export function RecentSalesPanel(): JSX.Element {
   return (
     <ParchmentCard padding="md">
       <DiamondRule label="Letzte Verkäufe" />
+      {recent.fromCache && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
+          <StaleBadge cachedAt={recent.cachedAt} stale={recent.isStale} />
+        </div>
+      )}
       {isLoading ? (
         <p
           style={{
