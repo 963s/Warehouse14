@@ -106,6 +106,7 @@ pub fn run() {
             commands::kyc::delete_kyc_document,
             // USB digital scale (MT-SICS over serial)
             commands::scale::read_scale_weight,
+            commands::scale::tare_scale,
             commands::scale::list_scale_ports,
         ])
         .run(tauri::generate_context!())
