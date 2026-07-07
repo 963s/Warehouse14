@@ -64,6 +64,11 @@ const TseSchema = Type.Object({
   lastCheckedAt: NullableStr,
   lastSyncAt: NullableStr,
 });
+const Baud = Type.Integer({ minimum: 300, maximum: 921600 });
+const ScaleSchema = Type.Object({
+  portPath: Type.String(),
+  baudRate: Baud,
+});
 
 /** Merge a persisted sub-object over its default, then validate; bad → default. */
 function validateSection<T extends object>(
@@ -130,12 +135,19 @@ export interface TseFiskalyConfig {
   lastSyncAt: string | null;
 }
 
+export interface ScaleConfig {
+  /** Serial port path, e.g. '/dev/tty.usbserial-XYZ' (macOS) or 'COM3' (Windows). */
+  portPath: string;
+  baudRate: number; // typical 9600 for MT-SICS
+}
+
 export interface HardwareConfig {
   thermal: ThermalConfig;
   a4: A4PrinterConfig;
   label: LabelPrinterConfig;
   zvt: ZvtTerminalConfig;
   tse: TseFiskalyConfig;
+  scale: ScaleConfig;
 }
 
 const DEFAULT: HardwareConfig = {
@@ -166,6 +178,7 @@ const DEFAULT: HardwareConfig = {
     lastCheckedAt: null,
     lastSyncAt: null,
   },
+  scale: { portPath: '', baudRate: 9600 },
 };
 
 interface HardwareState {
@@ -176,6 +189,7 @@ interface HardwareState {
   setLabel: (patch: Partial<LabelPrinterConfig>) => void;
   setZvt: (patch: Partial<ZvtTerminalConfig>) => void;
   setTse: (patch: Partial<TseFiskalyConfig>) => void;
+  setScale: (patch: Partial<ScaleConfig>) => void;
   hydrateFromLocal: () => void;
   /** Replace the whole config (used after a successful API revalidation). */
   replaceAll: (next: HardwareConfig) => void;
@@ -210,6 +224,11 @@ export const useHardwareStore = create<HardwareState>((set, get) => ({
     persist(next);
     set({ config: next });
   },
+  setScale: (patch) => {
+    const next = { ...get().config, scale: { ...get().config.scale, ...patch } };
+    persist(next);
+    set({ config: next });
+  },
   hydrateFromLocal: () => {
     if (get().loaded) return;
     try {
@@ -224,6 +243,7 @@ export const useHardwareStore = create<HardwareState>((set, get) => ({
           label: validateSection(LabelSchema, DEFAULT.label, parsed.label, 'hw.label'),
           zvt: validateSection(ZvtSchema, DEFAULT.zvt, parsed.zvt, 'hw.zvt'),
           tse: validateSection(TseSchema, DEFAULT.tse, parsed.tse, 'hw.tse'),
+          scale: validateSection(ScaleSchema, DEFAULT.scale, parsed.scale, 'hw.scale'),
         };
         set({ config: merged, loaded: true });
         return;

@@ -80,3 +80,41 @@ describe('hardware-store hydrateFromLocal validation', () => {
     expect(useHardwareStore.getState().config.thermal.port).toBe(9100);
   });
 });
+
+describe('hardware-store scale section (Phase 4.1)', () => {
+  let store: Map<string, string>;
+  beforeEach(() => {
+    store = new Map();
+    stubLocalStorage(store);
+    useHardwareStore.setState({ loaded: false });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('persists a chosen scale port and restores it on hydrate', () => {
+    useHardwareStore.getState().setScale({ portPath: '/dev/tty.usbserial-A1', baudRate: 9600 });
+    // A fresh cold-boot hydrate must read the same value back from localStorage.
+    useHardwareStore.setState({ loaded: false });
+    useHardwareStore.getState().hydrateFromLocal();
+    expect(useHardwareStore.getState().config.scale).toEqual({
+      portPath: '/dev/tty.usbserial-A1',
+      baudRate: 9600,
+    });
+  });
+
+  it('drops the scale section to default when baudRate is a string', () => {
+    store.set(KEY, JSON.stringify({ scale: { portPath: '/dev/ttyUSB0', baudRate: '9600' } }));
+    useHardwareStore.getState().hydrateFromLocal();
+    expect(useHardwareStore.getState().config.scale).toEqual({ portPath: '', baudRate: 9600 });
+  });
+
+  it('defaults the scale section when it is absent from an otherwise valid config', () => {
+    store.set(
+      KEY,
+      JSON.stringify({
+        zvt: { ip: '10.0.0.5', port: 20007, lastReachable: null, lastCheckedAt: null },
+      }),
+    );
+    useHardwareStore.getState().hydrateFromLocal();
+    expect(useHardwareStore.getState().config.scale).toEqual({ portPath: '', baudRate: 9600 });
+  });
+});
