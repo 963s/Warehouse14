@@ -13,6 +13,7 @@ import { type CSSProperties, useState } from 'react';
 
 import { useQuery } from '@tanstack/react-query';
 
+import { ApiError, closingsApi } from '@warehouse14/api-client';
 import {
   Button,
   DiamondRule,
@@ -106,30 +107,16 @@ export function ClosingsPanel(): JSX.Element {
   });
 
   /**
-   * Stream the DATEV CSV (raw fetch — it's a file, not JSON) and trigger a
-   * browser download. Cookie auth rides along; a 403 means a PIN step-up is
-   * required for the export.
+   * Stream the DATEV CSV via the ApiClient and trigger a browser download.
+   * Routing through the client (not a raw fetch) means a 403 STEP_UP_REQUIRED is
+   * caught by the wired step-up middleware: the PIN modal opens and the request
+   * replays once. A cancelled step-up surfaces as an honest "abgebrochen".
    */
   async function downloadDatev(item: ClosingItem): Promise<void> {
     setDownloading(item.id);
     try {
-      const res = await fetch(`${baseUrl}/api/closings/${item.id}/export/datev`, {
-        method: 'GET',
-        credentials: 'include',
-      });
-      if (!res.ok) {
-        if (res.status === 403) {
-          pushToast(
-            'alert',
-            'PIN-Bestätigung nötig',
-            'Der DATEV-Export verlangt eine frische PIN-Freigabe.',
-          );
-        } else {
-          pushToast('alert', 'Export fehlgeschlagen', `HTTP ${res.status}`);
-        }
-        return;
-      }
-      const blob = await res.blob();
+      const csv = await closingsApi.datevCsv(client, item.id);
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -144,11 +131,11 @@ export function ClosingsPanel(): JSX.Element {
         `Buchungsstapel für ${formatDay(item.businessDay)}.`,
       );
     } catch (err) {
-      pushToast(
-        'alert',
-        'Export fehlgeschlagen',
-        describeError(err),
-      );
+      if (err instanceof ApiError && err.code === 'STEP_UP_REQUIRED') {
+        pushToast('alert', 'Export abgebrochen', 'Die PIN-Bestätigung wurde abgebrochen.');
+      } else {
+        pushToast('alert', 'Export fehlgeschlagen', describeError(err));
+      }
     } finally {
       setDownloading(null);
     }
@@ -156,29 +143,18 @@ export function ClosingsPanel(): JSX.Element {
 
   /**
    * Stream the local DSFinV-K bundle ZIP (the DFKA-Taxonomie core export for a
-   * §146b Kassen-Nachschau) and trigger a browser download. Same auth as DATEV
-   * (cookie + a 403 means a PIN step-up is required). Raw application/zip → blob.
+   * §146b Kassen-Nachschau) and trigger a browser download. The client returns
+   * the ZIP base64-encoded (?encoding=base64) — decode to bytes so the archive is
+   * not corrupted. Same step-up flow as DATEV.
    */
   async function downloadDsfinvk(item: ClosingItem): Promise<void> {
     setDownloading(`${item.id}:dsfinvk`);
     try {
-      const res = await fetch(`${baseUrl}/api/closings/${item.id}/export/dsfinvk`, {
-        method: 'GET',
-        credentials: 'include',
-      });
-      if (!res.ok) {
-        if (res.status === 403) {
-          pushToast(
-            'alert',
-            'PIN-Bestätigung nötig',
-            'Der DSFinV-K-Export verlangt eine frische PIN-Freigabe.',
-          );
-        } else {
-          pushToast('alert', 'Export fehlgeschlagen', `HTTP ${res.status}`);
-        }
-        return;
-      }
-      const blob = await res.blob();
+      const b64 = await closingsApi.dsfinvkZipBase64(client, item.id);
+      // Base64 → bytes: a plain Blob([b64]) would ship the ASCII text and corrupt
+      // the ZIP. Decode to a Uint8Array first.
+      const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: 'application/zip' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -193,11 +169,11 @@ export function ClosingsPanel(): JSX.Element {
         `Kassendaten-Paket für ${formatDay(item.businessDay)} (Kern-Export — vor einer Prüfung mit dem DSFinV-K-Prüftool abgleichen).`,
       );
     } catch (err) {
-      pushToast(
-        'alert',
-        'Export fehlgeschlagen',
-        describeError(err),
-      );
+      if (err instanceof ApiError && err.code === 'STEP_UP_REQUIRED') {
+        pushToast('alert', 'Export abgebrochen', 'Die PIN-Bestätigung wurde abgebrochen.');
+      } else {
+        pushToast('alert', 'Export fehlgeschlagen', describeError(err));
+      }
     } finally {
       setDownloading(null);
     }
@@ -206,42 +182,14 @@ export function ClosingsPanel(): JSX.Element {
   /**
    * Finalize the legal Z-Bon (Tagesabschluss) for the current business day — the
    * act that aggregates the day's sales into the row every fiscal export reads.
-   * Raw fetch so the 403 → PIN step-up flow works; a 409 carries a German reason
-   * (open shift / already finalized) which we surface verbatim.
+   * Routed through the client so a 403 STEP_UP_REQUIRED opens the PIN modal and
+   * replays; a 409 (open shift / already finalized) becomes an actionable German
+   * line, never the server's raw English body.
    */
   async function runTagesabschluss(): Promise<void> {
     setFinalizing(true);
     try {
-      const res = await fetch(`${baseUrl}/api/closings/finalize`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: '{}',
-      });
-      if (!res.ok) {
-        if (res.status === 403) {
-          pushToast(
-            'alert',
-            'PIN-Bestätigung nötig',
-            'Der Tagesabschluss verlangt eine frische PIN-Freigabe.',
-          );
-          return;
-        }
-        // Never echo the server's raw (English) error body — map the status to an
-        // actionable German line. 409 = a Z-Bon for this day already exists / is
-        // being created; anything else is a generic retryable failure.
-        const msg =
-          res.status === 409
-            ? 'Für diesen Geschäftstag besteht bereits ein Tagesabschluss oder er wird gerade erstellt.'
-            : 'Der Tagesabschluss konnte nicht erstellt werden. Bitte später erneut versuchen.';
-        pushToast('alert', 'Tagesabschluss nicht möglich', msg);
-        return;
-      }
-      const data = (await res.json()) as {
-        businessDay: string;
-        verkaufCount: number;
-        cashVarianceEur: string;
-      };
+      const data = await closingsApi.finalize(client);
       pushToast(
         'success',
         'Tagesabschluss erstellt',
@@ -249,11 +197,21 @@ export function ClosingsPanel(): JSX.Element {
       );
       await query.refetch();
     } catch (err) {
-      pushToast(
-        'alert',
-        'Tagesabschluss fehlgeschlagen',
-        describeError(err),
-      );
+      if (err instanceof ApiError && err.code === 'STEP_UP_REQUIRED') {
+        pushToast('alert', 'Tagesabschluss abgebrochen', 'Die PIN-Bestätigung wurde abgebrochen.');
+      } else if (err instanceof ApiError && err.httpStatus === 409) {
+        pushToast(
+          'alert',
+          'Tagesabschluss nicht möglich',
+          'Für diesen Geschäftstag besteht bereits ein Tagesabschluss oder er wird gerade erstellt.',
+        );
+      } else {
+        pushToast(
+          'alert',
+          'Tagesabschluss fehlgeschlagen',
+          'Der Tagesabschluss konnte nicht erstellt werden. Bitte später erneut versuchen.',
+        );
+      }
     } finally {
       setFinalizing(false);
     }
