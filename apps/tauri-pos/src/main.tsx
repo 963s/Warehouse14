@@ -14,9 +14,10 @@ import '@warehouse14/ui-kit/styles.css';
 
 import { App } from './app/App.js';
 import { ApiClientProvider } from './lib/api-context.js';
-import { initTheme } from './lib/theme.js';
+import { initTheme } from './state/theme-store.js';
 
-// Apply the persisted light/dark theme before the first paint.
+// Apply the persisted light/dark theme before the first paint (single source of
+// truth — the same store the toggle + Cmd+Shift+D read, Phase 7.1).
 initTheme();
 
 const queryClient = new QueryClient({

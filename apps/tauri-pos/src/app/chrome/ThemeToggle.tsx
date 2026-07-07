@@ -4,19 +4,20 @@
  * corner instead of floating over the buttons beneath it.
  */
 
-import { useState } from 'react';
-
-import { type Theme, getTheme, toggleTheme } from '../../lib/theme.js';
+import { useTheme } from '../../state/theme-store.js';
 import { IconMoon, IconSun } from './Icons.js';
 
 export function ThemeToggle(): JSX.Element {
-  const [theme, setThemeState] = useState<Theme>(getTheme());
+  // Subscribe to the SINGLE theme store (Phase 7.1) — so this button, the
+  // Cmd+Shift+D keybinding, and the boot paint always agree.
+  const theme = useTheme((s) => s.theme);
+  const toggle = useTheme((s) => s.toggle);
   const dark = theme === 'dark';
 
   return (
     <button
       type="button"
-      onClick={() => setThemeState(toggleTheme())}
+      onClick={toggle}
       title={dark ? 'Heller Modus' : 'Dunkler Modus'}
       aria-label="Darstellung umschalten"
       style={{
