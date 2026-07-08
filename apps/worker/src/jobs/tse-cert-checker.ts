@@ -91,6 +91,7 @@ export interface TseCertCheckOutcome {
 type TseClientLookupRow = {
   id: string;
   last_alert_tier: string | null;
+  cert_valid_to: string | Date;
 };
 
 export async function runTseCertCheck(deps: TseCertCheckDeps): Promise<TseCertCheckOutcome> {
@@ -119,7 +120,7 @@ export async function runTseCertCheck(deps: TseCertCheckDeps): Promise<TseCertCh
 
   // Upsert the row for this TSS, reading the last tier we alerted at.
   const existing = await db.execute<TseClientLookupRow>(drizzleSql`
-    SELECT id, last_alert_tier FROM tse_clients WHERE tss_id = ${tssId} LIMIT 1`);
+    SELECT id, last_alert_tier, cert_valid_to FROM tse_clients WHERE tss_id = ${tssId} LIMIT 1`);
   const existingRow = existing[0];
 
   let rowId: string;
@@ -138,11 +139,31 @@ export async function runTseCertCheck(deps: TseCertCheckDeps): Promise<TseCertCh
     lastTier = null;
   }
 
+  // Detect a certificate RENEWAL: the fresh validity end is strictly later than
+  // the one we last recorded. When the operator installs a new certificate the
+  // escalation ladder MUST reset, otherwise `last_alert_tier` stays latched at
+  // the most urgent tier ever reached (up to 'expired') and no future alert can
+  // ever fire for the new certificate, until it too silently expires. Resetting
+  // the ladder to null re-arms the monitor for the next expiry cycle.
+  const renewed =
+    existingRow != null &&
+    info.certValidTo.getTime() > new Date(existingRow.cert_valid_to).getTime();
+  if (renewed) {
+    lastTier = null;
+    log.info('tse cert checker: certificate renewed, resetting alert ladder', {
+      tssId,
+      certValidTo: certValidToIso,
+    });
+  }
+
   // Alert ONLY on escalation into a more-urgent tier (never re-spam the same
   // band; never alert when > 30 days out).
   const alerted = tier !== null && tierRank(tier) > tierRank(lastTier);
 
-  // Refresh the row (+ stamp alert_sent_at / last_alert_tier when we alert).
+  // Refresh the row. `last_alert_tier` must track the CURRENT certificate's
+  // ladder: set it to the tier we just alerted at; on a renewal with no alert
+  // reset it to NULL (persist the re-arm, since the no-alert path otherwise
+  // leaves the stale value); otherwise leave it untouched.
   if (alerted) {
     await db.execute(drizzleSql`
       UPDATE tse_clients
@@ -151,6 +172,14 @@ export async function runTseCertCheck(deps: TseCertCheckDeps): Promise<TseCertCh
              last_checked = ${nowIso}::timestamptz,
              alert_sent_at = ${nowIso}::timestamptz,
              last_alert_tier = ${tier}
+       WHERE id = ${rowId}::uuid`);
+  } else if (renewed) {
+    await db.execute(drizzleSql`
+      UPDATE tse_clients
+         SET description = ${info.description},
+             cert_valid_to = ${certValidToIso}::timestamptz,
+             last_checked = ${nowIso}::timestamptz,
+             last_alert_tier = NULL
        WHERE id = ${rowId}::uuid`);
   } else {
     await db.execute(drizzleSql`

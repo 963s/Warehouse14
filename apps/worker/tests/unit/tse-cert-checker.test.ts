@@ -140,6 +140,85 @@ describe('runTseCertCheck — escalation re-alerts', () => {
   });
 });
 
+describe('runTseCertCheck — certificate renewal resets the ladder (H3)', () => {
+  it('re-alerts after renewal even though the ladder was latched at expired', async () => {
+    emitMock.mockClear();
+    log.info.mockClear();
+    // Old cert had expired and we alerted at 'expired'. Operator installs a new
+    // cert valid ~20 days out (still inside T-30). The ladder must reset so this
+    // fresh warning fires; without the reset 'expired' outranks T-30 and the
+    // monitor stays silent for the whole life of the new cert.
+    const { db } = makeDb([
+      [{ id: 'c1', last_alert_tier: 'expired', cert_valid_to: daysFromNow(-10) }],
+    ]);
+
+    const outcome = await runTseCertCheck({
+      db,
+      log,
+      fiskaly: CONFIGURED,
+      client: makeClient(daysFromNow(20)), // renewed → 20 days → T-30
+      now: NOW,
+    });
+
+    expect(outcome.tier).toBe('T-30');
+    expect(outcome.alerted).toBe(true);
+    expect(emitMock).toHaveBeenCalledTimes(1);
+    expect(log.info).toHaveBeenCalledWith(
+      'tse cert checker: certificate renewed, resetting alert ladder',
+      expect.objectContaining({ tssId: 'tss-1' }),
+    );
+  });
+
+  it('renewal to a healthy cert clears the ladder without alerting', async () => {
+    emitMock.mockClear();
+    log.info.mockClear();
+    const { db, execute } = makeDb([
+      [{ id: 'c1', last_alert_tier: 'expired', cert_valid_to: daysFromNow(-10) }],
+    ]);
+
+    const outcome = await runTseCertCheck({
+      db,
+      log,
+      fiskaly: CONFIGURED,
+      client: makeClient(daysFromNow(365)), // renewed → healthy, > 30 days
+      now: NOW,
+    });
+
+    expect(outcome.tier).toBeNull();
+    expect(outcome.alerted).toBe(false);
+    expect(emitMock).not.toHaveBeenCalled();
+    // Reset persisted via the renewed branch: SELECT + UPDATE, no INSERT.
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(log.info).toHaveBeenCalledWith(
+      'tse cert checker: certificate renewed, resetting alert ladder',
+      expect.objectContaining({ tssId: 'tss-1' }),
+    );
+  });
+
+  it('does NOT treat an unchanged cert as a renewal (no false reset)', async () => {
+    emitMock.mockClear();
+    log.info.mockClear();
+    // Same validity as recorded, already alerted at T-7, still 5 days out.
+    const { db } = makeDb([[{ id: 'c1', last_alert_tier: 'T-7', cert_valid_to: daysFromNow(5) }]]);
+
+    const outcome = await runTseCertCheck({
+      db,
+      log,
+      fiskaly: CONFIGURED,
+      client: makeClient(daysFromNow(5)),
+      now: NOW,
+    });
+
+    expect(outcome.tier).toBe('T-7');
+    expect(outcome.alerted).toBe(false); // same band, no re-spam
+    expect(emitMock).not.toHaveBeenCalled();
+    expect(log.info).not.toHaveBeenCalledWith(
+      'tse cert checker: certificate renewed, resetting alert ladder',
+      expect.anything(),
+    );
+  });
+});
+
 describe('runTseCertCheck — edge cases', () => {
   it('inserts a fresh row when the TSS is seen for the first time, then alerts if near', async () => {
     emitMock.mockClear();

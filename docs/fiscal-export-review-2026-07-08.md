@@ -365,14 +365,22 @@ Cron-Jobs. Vier bestätigte Feststellungen.
   Codepfad und keine Änderung am Reaper nötig, der Schutz sitzt korrekt an der
   Reservierung.
 
-### H3 · HOCH · TSE-Zertifikats-Monitor verstummt nach Erneuerung. REPORT-ONLY
-- **Ist:** `tse-cert-checker.ts` setzt `last_alert_tier` nie zurück, wenn das
-  Zertifikat erneuert wird (`cert_valid_to` springt vor). Das eskalations-basierte
-  Alarm-Gate bleibt auf der höchsten je erreichten Stufe verrastet und warnt vor der
-  NÄCHSTEN Ablauf nicht mehr rechtzeitig. Ein Monitor, der stumm bleibt, ist gefährlich:
-  das TSE-Zertifikat kann unbemerkt ablaufen (Kassen-Ausfall).
-- **Empfohlener Fix:** pro Lauf `cert_valid_to` mitlesen; bei erkanntem neuem Zertifikat
-  (Wert geändert) die Alarm-Leiter zurücksetzen.
+### H3 · HOCH · TSE-Zertifikats-Monitor verstummt nach Erneuerung. BEHOBEN (branch-only, Unit-getestet)
+- **War:** `tse-cert-checker.ts` setzte `last_alert_tier` nie zurück, wenn das
+  Zertifikat erneuert wurde (`cert_valid_to` springt vor). Das eskalations-basierte
+  Alarm-Gate blieb auf der höchsten je erreichten Stufe verrastet (bis 'expired') und
+  warnte vor dem NÄCHSTEN Ablauf nicht mehr. Ein Monitor, der stumm bleibt, ist
+  gefährlich: das TSE-Zertifikat kann unbemerkt ablaufen (Kassen-Ausfall).
+- **Jetzt:** Der Job liest jetzt zusätzlich das gespeicherte `cert_valid_to` mit und
+  erkennt eine Erneuerung daran, dass die neue Gültigkeit STRIKT später ist. Bei
+  erkannter Erneuerung wird die Alarm-Leiter auf null zurückgesetzt (und der Reset
+  auch auf dem Nicht-Alarm-Pfad in die DB geschrieben, sonst bliebe der veraltete Wert
+  stehen), also ist der Monitor für den nächsten Ablauf-Zyklus wieder scharf. Ein
+  unverändertes Zertifikat gilt NICHT als Erneuerung (kein Fehlalarm-Reset). +3 Unit-Tests
+  (Erneuerung alarmiert erneut trotz zuvor 'expired', Erneuerung auf gesundes Zertifikat
+  setzt still zurück, unverändertes Zertifikat löst keinen Reset aus). typecheck grün,
+  Unit-Tests grün (11/11 in `tse-cert-checker.test.ts`). Kein Migrations-Bedarf
+  (`last_alert_tier` und `cert_valid_to` existieren bereits).
 
 ### H4 · MITTEL · Job-Runner erzwang das Timeout nicht. BEHOBEN (`d4b0276`, branch-only)
 - **War:** Das Pro-Versuch-Timeout rief nur `controller.abort()`; es rennt `def.run()`
@@ -402,10 +410,11 @@ einen verpassten Tag. Verdient einen zweiten Blick.
    `payment_intent.processing`-Handler, verlängerte Checkout- und Reservierungs-Fenster,
    plus der `device_status`-Enum-500er). Offen ist NUR noch die Produkt-Entscheidung zum
    14-Tage-Halte-Fenster bei Einzelstücken (siehe H1) und Basels Sign-off, dann Deploy.
-6. H3 (TSE-Monitor-Reset) und G2 (`trustProxy`) nachziehen; einen
-   E-Mail-Verifizierungs-Flow für die Passwort-Registrierung ergänzen.
-7. Freigabe von A1, A2, E1, F1, F2, F3, G1 (Security-Review), H1, H2 und H4, dann Deploy
-   über den üblichen Server-Weg. Basel führt den Integrationstest und den Deploy aus.
+6. H3 (TSE-Monitor-Reset) ist GELÖST (branch-only, Unit-getestet). Offen bleibt G2
+   (`trustProxy`, braucht die echte Proxy-Topologie) plus ein
+   E-Mail-Verifizierungs-Flow für die Passwort-Registrierung.
+7. Freigabe von A1, A2, E1, F1, F2, F3, G1 (Security-Review), H1, H2, H3 und H4, dann
+   Deploy über den üblichen Server-Weg. Basel führt den Integrationstest und den Deploy aus.
 8. Nebenbefund (nicht in diesem Fix): der Sign-in-Lockout-Integrationstest in
    `day19-storefront.test.ts` ("5 wrong attempts") schlägt fehl, auch ohne diese
    Änderungen (per Stash bewiesen). Gehört nicht zum Zahlungs-Fix, separat prüfen.
