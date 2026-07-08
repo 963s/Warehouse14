@@ -249,7 +249,12 @@ export class JobRunner {
       );
 
       try {
-        const payload = await def.run({
+        // Race the job against the abort signal so the RUNNER settles even when a
+        // job ignores `signal` (a long DB query cannot be interrupted by an
+        // AbortController alone). Without the race, an over-timeout job hangs this
+        // await forever, so neither `clearTimeout` nor the advisory-lock release in
+        // the finally blocks runs, and the job stays wedged across every future tick.
+        const runPromise = def.run({
           db: this.opts.db,
           sql: this.opts.sql,
           runId,
@@ -257,6 +262,20 @@ export class JobRunner {
           signal: controller.signal,
           log,
         });
+        // Swallow a late rejection once the timeout has already won the race, so a
+        // slow job that fails after we gave up is not an unhandledRejection.
+        void runPromise.catch(() => {});
+        const abortRejection = new Promise<never>((_, reject) => {
+          const onAbort = (): void =>
+            reject(
+              controller.signal.reason instanceof Error
+                ? controller.signal.reason
+                : new Error(`job '${def.name}' exceeded ${timeoutMs}ms`),
+            );
+          if (controller.signal.aborted) onAbort();
+          else controller.signal.addEventListener('abort', onAbort, { once: true });
+        });
+        const payload = await Promise.race([runPromise, abortRejection]);
         const durationMs = elapsedMs(startHrTime);
         await this.recordTerminal(runRowId, 'SUCCESS', null, payload ?? {});
         this.consecutiveFailures.set(def.name, 0);
