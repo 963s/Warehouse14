@@ -133,7 +133,7 @@ Von den Widerlegern mehrheitlich als KEIN Fehler bestätigt:
 
 ---
 
-## D · Anhang: Finalize-Money-Pfad (`transaction-math.ts`) — geprüft, im Kern solide
+## D · Anhang: Finalize-Money-Pfad (`transaction-math.ts`), geprüft und im Kern solide
 
 Der Serverseitige Geld-Validator `validateTransactionMath` (er speist die Beträge,
 die dann exportiert werden) ist im Kern korrekt: `Money` (Decimal, kein Float),
