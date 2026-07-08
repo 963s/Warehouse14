@@ -75,7 +75,7 @@ export function PinLogin(): JSX.Element {
           case 'PIN_LOCKED': {
             const details = err.details as { lockedUntil?: string } | undefined;
             if (details?.lockedUntil) setLockedUntilIso(details.lockedUntil);
-            setErrorMsg('Konto gesperrt — bitte Geduld.');
+            setErrorMsg('Konto gesperrt. Bitte kurz Geduld.');
             break;
           }
           case 'DEVICE_NOT_AUTHORIZED':
@@ -88,7 +88,7 @@ export function PinLogin(): JSX.Element {
             setErrorMsg(describeError(err));
         }
       } else {
-        setErrorMsg('Verbindung gestört — Netzwerk prüfen.');
+        setErrorMsg('Verbindung gestört. Netzwerk prüfen.');
       }
       setPin('');
     } finally {

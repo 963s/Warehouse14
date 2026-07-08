@@ -103,6 +103,7 @@ import { type CartLine, useCartStore } from '../../state/cart-store.js';
 import { useHardwareStore } from '../../state/hardware-store.js';
 import { useLastReceiptStore } from '../../state/last-receipt-store.js';
 import { useSessionStore } from '../../state/session-store.js';
+import { isStepUpCancelled } from '../../state/step-up-store.js';
 import { useToastStore } from '../../state/toast-store.js';
 
 import { KaeuferPicker } from './KaeuferPicker.js';
@@ -2668,17 +2669,22 @@ function isKycRequiredError(err: unknown): boolean {
 }
 
 function formatPaymentError(err: unknown): string {
+  // A cancelled PIN modal rejects with a plain StepUpCancelledError (the step-up
+  // middleware propagates it AS-IS), so it must be caught BEFORE the generic
+  // `instanceof Error` branch — otherwise a deliberate cancel is misreported as
+  // a payment/network failure.
+  if (isStepUpCancelled(err)) return 'PIN-Bestätigung wurde abgebrochen.';
   if (err instanceof ApiError) {
     if (err.code === 'STEP_UP_REQUIRED') return 'PIN-Bestätigung wurde abgebrochen.';
     if (err.code === 'KYC_REQUIRED')
-      return 'Käufer muss per Ausweis geprüft werden — bitte Kunden zuordnen.';
+      return 'Käufer muss per Ausweis geprüft werden. Bitte Kunden zuordnen.';
     if (err.code === 'PRODUCT_NOT_RESERVABLE')
       return 'Mindestens ein Stück ist nicht mehr reserviert. Karte leeren und neu wählen.';
     return describeError(err);
   }
   if (err instanceof Error) return describeError(err);
   if (typeof err === 'string') return err;
-  return 'Verbindung gestört — Netzwerk prüfen.';
+  return 'Verbindung gestört. Netzwerk prüfen.';
 }
 
 function Row({

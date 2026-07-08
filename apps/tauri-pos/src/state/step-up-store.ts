@@ -13,6 +13,25 @@
 
 import { create } from 'zustand';
 
+/**
+ * Thrown when the operator CANCELS the PIN modal (Esc / backdrop / Abbrechen).
+ * It is a plain rejection, NOT an ApiError — the step-up middleware propagates
+ * it to the caller AS-IS (step-up.ts only wraps `next(req)`, not requestStepUp),
+ * so screens must recognise a deliberate cancel via `isStepUpCancelled(err)` and
+ * report "abgebrochen", never a generic payment/network failure.
+ */
+export class StepUpCancelledError extends Error {
+  constructor() {
+    super('Step-up cancelled by operator.');
+    this.name = 'StepUpCancelledError';
+  }
+}
+
+/** True iff `err` is a deliberate operator cancel of the step-up PIN modal. */
+export function isStepUpCancelled(err: unknown): boolean {
+  return err instanceof StepUpCancelledError;
+}
+
 interface StepUpRequest {
   resolve: () => void;
   reject: (err: unknown) => void;
@@ -54,7 +73,7 @@ export const useStepUpStore = create<StepUpState>((set, get) => ({
 
   cancel: () => {
     const r = get().request;
-    if (r) r.reject(new Error('Step-up cancelled by operator.'));
+    if (r) r.reject(new StepUpCancelledError());
     set({ active: false, request: null });
   },
 }));

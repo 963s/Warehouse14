@@ -56,6 +56,7 @@ import {
   useAnkaufCartStore,
 } from '../../state/ankauf-cart-store.js';
 import { useHardwareStore } from '../../state/hardware-store.js';
+import { isStepUpCancelled } from '../../state/step-up-store.js';
 import { useToastStore } from '../../state/toast-store.js';
 import { describeError } from '@warehouse14/i18n-de';
 
@@ -182,14 +183,16 @@ export function AnkaufBezahlenDialog({
       addToast({ tone: 'success', title: 'KYC bestätigt', body: customer.fullName });
       await qc.invalidateQueries({ queryKey: ['customers', customer.id] });
     } catch (err) {
-      if (err instanceof ApiError) {
+      if (isStepUpCancelled(err)) {
+        setError('PIN-Bestätigung wurde abgebrochen.');
+      } else if (err instanceof ApiError) {
         if (err.code === 'STEP_UP_REQUIRED') {
           setError('PIN-Bestätigung wurde abgebrochen.');
         } else {
           setError(describeError(err));
         }
       } else {
-        setError('Verbindung gestört — KYC nicht bestätigt.');
+        setError('Verbindung gestört. KYC nicht bestätigt.');
       }
     } finally {
       setStampingKyc(false);
@@ -455,18 +458,23 @@ export function AnkaufBezahlenDialog({
           qc.invalidateQueries({ queryKey: ['customers', customerId] }),
           qc.invalidateQueries({ queryKey: ['customers', 'list'] }),
         ]);
+      } else if (isStepUpCancelled(err)) {
+        // A cancelled PIN modal rejects with a plain StepUpCancelledError (the
+        // step-up middleware propagates it as-is), so it must be caught before
+        // the network `else` — otherwise a deliberate cancel reads as a failure.
+        setError('PIN-Bestätigung wurde abgebrochen.');
       } else if (err instanceof ApiError) {
         if (err.code === 'STEP_UP_REQUIRED') {
           setError('PIN-Bestätigung wurde abgebrochen.');
         } else if (err.code === 'SANCTIONS_BLOCK') {
-          setError('Sanktionslisten-Treffer — der Ankauf wurde abgewiesen.');
+          setError('Sanktionslisten-Treffer. Der Ankauf wurde abgewiesen.');
         } else if (err.code === 'CLOSING_DAY_FINALIZED') {
           setError('Heutiger Tagesabschluss ist bereits geschlossen.');
         } else {
           setError(describeError(err));
         }
       } else {
-        setError('Verbindung gestört — Netzwerk prüfen.');
+        setError('Verbindung gestört. Netzwerk prüfen.');
       }
     } finally {
       setSubmitting(false);

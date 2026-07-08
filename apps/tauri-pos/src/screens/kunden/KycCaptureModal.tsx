@@ -59,8 +59,9 @@ export function KycCaptureModal({
       // exactly the at-rest PII sink that Art.17 must never leave behind. So we
       // unlink the just-written vault file and ask the operator to re-capture,
       // rather than reporting a save that cannot be governed or deleted.
+      let inserted: boolean;
       try {
-        await insertKycRecord({
+        inserted = await insertKycRecord({
           customerId,
           docType,
           filePath: result.path,
@@ -81,6 +82,27 @@ export function KycCaptureModal({
             ? describeHardwareError(dbErr)
             : 'Der lokale Index konnte nicht aktualisiert werden. Bitte erneut erfassen.',
         });
+        return;
+      }
+
+      if (!inserted) {
+        // The exact bytes are ALREADY in the vault (UNIQUE sha256, so the index
+        // INSERT was a no-op). The file we just wrote is a redundant duplicate —
+        // unlink it so it can never become an un-indexed, un-eraseable orphan
+        // (Art.17). The existing indexed copy stays authoritative, and we tell
+        // the operator the truth instead of claiming a fresh save.
+        try {
+          await deleteKycDocument(result.path);
+        } catch {
+          // Best-effort — nothing else to do from here.
+        }
+        addToast({
+          tone: 'info',
+          title: 'Bereits hinterlegt',
+          body: 'Dieser Ausweis ist für den Kunden bereits gespeichert.',
+        });
+        onSaved?.(result);
+        onClose();
         return;
       }
 

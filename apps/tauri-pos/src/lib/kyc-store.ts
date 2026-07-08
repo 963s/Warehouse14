@@ -52,14 +52,21 @@ interface KycRow {
   created_at: number;
 }
 
-/** Record a freshly-encrypted document. UNIQUE(sha256) makes a re-scan a no-op. */
-export async function insertKycRecord(rec: NewKycRecord): Promise<void> {
+/**
+ * Record a freshly-encrypted document. UNIQUE(sha256) makes a re-scan a no-op.
+ * Returns TRUE when a new index row was written, FALSE when an identical
+ * document (same sha256) was already indexed and the INSERT was ignored. The
+ * caller MUST unlink the just-written ciphertext on FALSE — otherwise that
+ * redundant vault file becomes an un-indexed, un-eraseable orphan (Art.17).
+ */
+export async function insertKycRecord(rec: NewKycRecord): Promise<boolean> {
   const conn = await db();
-  await conn.execute(
+  const res = await conn.execute(
     `INSERT OR IGNORE INTO customer_kyc (customer_id, doc_type, file_path, sha256, created_at)
      VALUES ($1, $2, $3, $4, $5)`,
     [rec.customerId, rec.docType, rec.filePath, rec.sha256, rec.createdAt],
   );
+  return (res.rowsAffected ?? 0) > 0;
 }
 
 /** All local KYC documents for a customer, newest first. */
