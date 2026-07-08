@@ -225,6 +225,76 @@ describe('buildDsfinvkBundle — cashpointclosing header + totals reconcile', ()
   });
 });
 
+describe('buildDsfinvkBundle — mixed-treatment receipt splits bon_ust per USt-Schlüssel', () => {
+  it('emits one Bonkopf-USt row per rate, never collapsing an exempt line onto 19 %', () => {
+    const input = sample({
+      receipts: [
+        {
+          transactionId: 't-mix',
+          receiptLocator: 'RCP-2026-000199',
+          direction: 'VERKAUF',
+          finalizedAt: '2026-06-06T12:00:00.000Z',
+          // Receipt-level code is STANDARD_19 — the OLD buildBonUst keyed the
+          // whole Bon on this, collapsing the exempt gold line onto 19 %.
+          taxTreatmentCode: 'STANDARD_19',
+          subtotalEur: '600.00',
+          vatEur: '19.00',
+          totalEur: '619.00',
+          cashierUserId: 'u-1',
+          customerId: null,
+          isStorno: false,
+          lines: [
+            {
+              lineNumber: 1,
+              productName: 'Standard-Artikel 19 %',
+              quantity: '1.000',
+              appliedTaxTreatmentCode: 'STANDARD_19',
+              appliedVatRate: '0.1900',
+              lineSubtotalEur: '100.00',
+              lineVatEur: '19.00',
+              lineTotalEur: '119.00',
+            },
+            {
+              lineNumber: 2,
+              productName: 'Anlagegold (§ 25c steuerfrei)',
+              quantity: '1.000',
+              appliedTaxTreatmentCode: 'INVESTMENT_GOLD_25C',
+              appliedVatRate: '0.0000',
+              lineSubtotalEur: '500.00',
+              lineVatEur: '0.00',
+              lineTotalEur: '500.00',
+            },
+          ],
+          payments: [{ paymentMethod: 'CASH', amountEur: '619.00' }],
+          tse: {
+            fiskalyTransactionNumber: '4003',
+            signatureCounter: '9003',
+            signatureValue: 'BASE64SIG3==',
+            signatureAlgorithm: 'ecdsa-plain-SHA256',
+            fiskalyTssId: '11111111-1111-1111-1111-111111111111',
+            processType: 'Kassenbeleg-V1',
+            tseStartTime: null,
+            tseEndTime: null,
+          },
+        },
+      ],
+    });
+    const csv = fileByName(buildDsfinvkBundle(input), 'bon_ust.csv');
+    const dataRows = csv
+      .split('\r\n')
+      .slice(1)
+      .filter((r) => r.includes('RCP-2026-000199'));
+    // One row per USt-Schlüssel present in the receipt's LINES.
+    expect(dataRows).toHaveLength(2);
+    // 19 % (key 1): brutto 119.00 / netto 100.00 / USt 19.00 — the line total, not 619.00.
+    expect(csv).toContain(';1;119.00;100.00;19.00');
+    // §25c investment gold (key 5): booked exempt (USt 0.00), not folded into 19 %.
+    expect(csv).toContain(';5;500.00;500.00;0.00');
+    // The old collapse (the whole 619.00 booked under 19 %) must be gone.
+    expect(csv).not.toContain(';1;619.00;600.00;19.00');
+  });
+});
+
 describe('buildDsfinvkBundle — multi-receipt day', () => {
   it('emits one bon_kopf row per receipt (header + 2 data rows)', () => {
     const input = sample();

@@ -199,6 +199,24 @@ function dec(amount: string | null | undefined): string {
   return `${neg ? '-' : ''}${intPart || '0'}.${frac2}`;
 }
 
+/** "119.00" / "-7.5" → integer cents (no float; mirrors dec()'s parsing). */
+function eurToCents(amount: string | null | undefined): number {
+  if (amount == null || amount.trim().length === 0) return 0;
+  const t = amount.trim();
+  const neg = t.startsWith('-');
+  const body = neg ? t.slice(1) : t;
+  const [intPart, fracPart = ''] = body.split('.');
+  const cents = Number(intPart || '0') * 100 + Number(`${fracPart}00`.slice(0, 2));
+  return neg ? -cents : cents;
+}
+
+/** integer cents → "119.00" (mirrors dec()'s 2-dp dot format). */
+function centsToDec(cents: number): string {
+  const neg = cents < 0;
+  const abs = Math.abs(cents);
+  return `${neg ? '-' : ''}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, '0')}`;
+}
+
 /** Pass a quantity through as a dot-decimal string (no float). */
 function qty(q: string | null | undefined): string {
   if (q == null || q.trim().length === 0) return '0.000';
@@ -428,15 +446,42 @@ function buildBonUst(input: DsfinvkBundleInput): string {
     'BON_NETTO',
     'BON_UST',
   ];
-  const rows = input.receipts.map((r) => [
-    input.cashRegister.id,
-    z,
-    r.receiptLocator,
-    ustKey(r.taxTreatmentCode),
-    dec(r.totalEur),
-    dec(r.subtotalEur),
-    dec(r.vatEur),
-  ]);
+  // One Bonkopf-USt row per (receipt, USt-Schlüssel). The key comes from each
+  // LINE's applied tax treatment — NOT the single receipt-level code — so a
+  // mixed-treatment Bon (e.g. a 19 % line plus a §25c-exempt gold line) is split
+  // by rate and reconciles with bon_pos_ust, instead of collapsing all turnover
+  // onto one rate (which would report exempt/margin turnover as standard-rated).
+  // Sums are in integer cents (no float). Mirrors buildBonPosUst's key basis.
+  const rows: string[][] = [];
+  for (const r of input.receipts) {
+    const byKey = new Map<string, { brutto: number; netto: number; ust: number }>();
+    const order: string[] = [];
+    for (const line of r.lines) {
+      const key = ustKey(line.appliedTaxTreatmentCode);
+      let acc = byKey.get(key);
+      if (!acc) {
+        acc = { brutto: 0, netto: 0, ust: 0 };
+        byKey.set(key, acc);
+        order.push(key);
+      }
+      acc.brutto += eurToCents(line.lineTotalEur);
+      acc.netto += eurToCents(line.lineSubtotalEur);
+      acc.ust += eurToCents(line.lineVatEur);
+    }
+    for (const key of order) {
+      const acc = byKey.get(key);
+      if (!acc) continue;
+      rows.push([
+        input.cashRegister.id,
+        z,
+        r.receiptLocator,
+        key,
+        centsToDec(acc.brutto),
+        centsToDec(acc.netto),
+        centsToDec(acc.ust),
+      ]);
+    }
+  }
   return csv(header, rows);
 }
 
