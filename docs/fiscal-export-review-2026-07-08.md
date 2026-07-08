@@ -210,6 +210,54 @@ Bestands-Mutationen. Drei bestätigte Feststellungen.
 
 ---
 
+## F · Web-Zahlung: Stripe-Webhook und Storefront-Checkout
+
+Dritte Prüfung (find→refute, je Feststellung 3 Widerleger) über den Web-Geldpfad.
+Zwei bestätigte HOCH-Feststellungen.
+
+### F1 · HOCH · Checkout-Betrag mit Float-Division, jeder Cent-Betrag scheitert. BEHOBEN (`ad5e568`, branch-only)
+- **War:** `storefront-cart.ts` baute den Betrag als
+  `${amountCents / 100}.${amountCents % 100, zweistellig}`. `amountCents / 100` ist
+  FLOAT-Division, also ergab jeder nicht-ganze-Euro-Betrag einen kaputten String:
+  4999 Cent wurde zu "49.99" (Float) plus ".99" gleich "49.99.99". Die Spalte
+  `payment_intents.amount_eur` ist NUMERIC(18,2) und lehnt das ab, der INSERT warf,
+  und JEDER Checkout mit Cent-Betrag (der Normalfall) schlug fehl.
+- **Jetzt:** `Math.floor(amountCents / 100)` für den Euro-Teil an beiden Stellen
+  (INSERT und Antwort). 4999 wird "49.99", 5000 wird "50.00", 5 wird "0.05".
+  Durch Auswertung des Templates verifiziert. typecheck grün; Integrationstest
+  braucht die DB.
+
+### F2 · HOCH · Webhook verschluckt Stripe-Retry, Geld kassiert, Bestellung nie erfüllt. REPORT-ONLY
+- **Ist:** `storefront-webhook.ts` schreibt die Dedup-Zeile in `webhook_events`
+  (Zeile 174) als eigenständige, sofort committende Anweisung, die Verarbeitung
+  läuft in einer SEPARATEN Transaktion (Zeile 238). Wirft die Verarbeitung
+  transient (Reservierung abgelaufen, Deadlock, Verbindungsabbruch), rollt die
+  Transaktion zurück, die Dedup-Zeile bleibt aber. Beim Stripe-Retry trifft der
+  INSERT den Unique-Index, und der Catch gibt bedingungslos 200 `{idempotent:true}`
+  zurück, OHNE `processed_at` zu prüfen. Ergebnis: Stripe hat das Geld kassiert, die
+  Bestellung wird nie erfüllt, die Reservierung bleibt hängen und wird später vom
+  Cart-Sweeper freigegeben und weiterverkauft. Kein Reconciliation-Worker existiert
+  (im Kommentar als künftige Phase 1.5 bezeichnet).
+- **Empfohlener Fix:** die `webhook_events`-INSERT in DIESELBE Transaktion wie die
+  Verarbeitung ziehen (ein Rollback entfernt dann die Dedup-Zeile, der Retry
+  verarbeitet neu), ODER im Unique-Konflikt-Zweig die Zeile nachladen und bei
+  `processed_at IS NULL` neu verarbeiten statt idempotent zu antworten; zusätzlich
+  `processing_error` auf dem Fehlerpfad schreiben. Die inneren Idempotenz-Wächter
+  (`pi.status='SUCCEEDED'` und Cart CONVERTED sind No-ops) machen ein erneutes
+  Verarbeiten sicher. NICHT autonom umgesetzt: zahlungskritische Transaktions- und
+  Retry-Semantik, braucht einen Integrationstest.
+- Ergänzend: der Cart-Sweeper (`storefront-cart-sweeper.ts`) gibt abgelaufene
+  CHECKOUT-Warenkörbe allein nach `checkout_expires_at < now()` frei, OHNE zu prüfen,
+  ob der PaymentIntent SUCCEEDED ist. Ein bezahlter, aber hängender Warenkorb gibt so
+  seinen Bestand wieder frei. Mit F2 im selben Fix mitbewerten.
+
+REFUTED (0/3, korrekt kein Fehler): Out-of-order-Event ohne PI-Zeile,
+fehlender Betrags-/Währungs-Abgleich im Webhook. Ein Punkt unbestätigt (Refuter
+lief in das Session-Limit): `storefront-reserve.ts` Hold und Cart-Flip nicht in
+einer Transaktion. Verdient einen gezielten zweiten Blick.
+
+---
+
 ## Nächste Schritte für die Freigabe
 
 1. Steuerberatung prüft B1 bis B4 gegen die verbindliche DATEV-/DSFinV-K-Spezifikation.
@@ -217,4 +265,5 @@ Bestands-Mutationen. Drei bestätigte Feststellungen.
 3. Bewertung von D1/D2 (Positions-Vorzeichen, §25a-Marge-Prüfung).
 4. E2 und E3 (Nebenläufigkeit Z-Abschluss): partieller Unique-Index über den
    `drizzle-kit`-Flow plus Vorbedingungs-Prüfung; Advisory-Lock nach Bewertung.
-5. Freigabe von A1, A2 und E1, dann Deploy über den üblichen Server-Weg.
+5. F2 (Webhook-Idempotenz plus Cart-Sweeper) mit Integrationstest umsetzen.
+6. Freigabe von A1, A2, E1 und F1, dann Deploy über den üblichen Server-Weg.
