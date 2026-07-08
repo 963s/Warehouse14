@@ -109,16 +109,22 @@ betroffenen Feldstelle.
   eigenen `BON_TYP`.
 - **Prüffrage:** `BON_TYP = 'Beleg'` auch für Storno-Belege?
 
-### B5 · Policy · Export ohne Prüfung auf `state = 'FINALIZED'`
+### B5 · HOCH · Export ohne Prüfung auf `state = 'FINALIZED'`. BEHOBEN (branch-only, Integrationstest grün)
 `closing-export.ts` · alle drei Export-Routen
 
-- **Ist:** Die Routen laden den Abschluss per `id` und prüfen nur die Existenz; das
-  SELECT liest `state` nicht. Ein noch offener Abschluss (`COUNTING`) kann so als
-  DATEV/DSFinV-K exportiert werden.
-- **Entscheidung nötig:** Ist ein Export eines offenen Abschlusses als Vorschau
-  gewollt, oder soll der Export `state = 'FINALIZED'` verlangen? (Reproduziert nur
-  über Route + DB, gehört daher in einen Integrationstest, nicht in eine reine
-  Code-Korrektur.)
+- **War:** Die Routen luden den Abschluss per `id` und prüften nur die Existenz; das
+  SELECT las `state` nicht. Ein noch offener Abschluss (`COUNTING`) konnte so als
+  legaler DATEV/DSFinV-K/Kassenbericht exportiert werden, also ein unvollständiges,
+  nicht-finales Artefakt als Tagesbuch. Empirisch bestätigt (COUNTING-Abschluss ist
+  für die App-Rolle sichtbar, keine RLS auf `daily_closings`), der Kopfkommentar
+  rahmt die Routen aber als legale Steuer-Exporte über einen FINALIZED-Tag.
+- **Jetzt:** Alle drei Routen lesen jetzt `state` mit und werfen einen sauberen 409
+  (`ClosingNotFinalizedError`, deutsche Meldung), wenn der Abschluss nicht FINALIZED
+  ist. Die Info-Route `GET /:id` bleibt für die Vorschau eines offenen Abschlusses
+  verfügbar (dort ist der offene Zustand ausdrücklich vorgesehen). Kein
+  Policy-Konflikt: ein legaler Export verlangt einen finalisierten Tag. Integrationstest
+  in `fiscal-export.test.ts` (COUNTING-Abschluss über alle drei Routen = 409 CONFLICT,
+  die FINALIZED-Exporte bleiben grün, 24/24). typecheck grün.
 
 ---
 
@@ -459,7 +465,8 @@ No-Show/verschoben zählen NICHT als Konflikt). Eine Feststellung.
 ## Nächste Schritte für die Freigabe
 
 1. Steuerberatung prüft B1 bis B4 gegen die verbindliche DATEV-/DSFinV-K-Spezifikation.
-2. Entscheidung zu B5 (Export offener Abschlüsse ja/nein).
+2. B5 ist GELÖST (branch-only, Integrationstest grün): der Export verlangt jetzt
+   `state = 'FINALIZED'` (409 sonst), die Info-Route bleibt für die Vorschau.
 3. Bewertung von D1/D2 (Positions-Vorzeichen, §25a-Marge-Prüfung).
 4. E2 und E3 sind GELÖST (branch-only, DB-getestet): E2 = partieller Unique-Index
    gegen den doppelten Z-Bon (Migration `0079`, `migrate.sh` vor dem Deploy nötig);
@@ -474,8 +481,8 @@ No-Show/verschoben zählen NICHT als Konflikt). Eine Feststellung.
 6. H3 (TSE-Monitor-Reset) ist GELÖST (branch-only, Unit-getestet). Offen bleibt G2
    (`trustProxy`, braucht die echte Proxy-Topologie) plus ein
    E-Mail-Verifizierungs-Flow für die Passwort-Registrierung.
-7. Freigabe von A1, A2, E1, E2, E3, F1, F2, F3, G1 (Security-Review), H1, H2, H3, H4 und
-   I1, dann Deploy über den üblichen Server-Weg. Basel führt den Integrationstest,
+7. Freigabe von A1, A2, B5, E1, E2, E3, F1, F2, F3, G1 (Security-Review), H1, H2, H3, H4
+   und I1, dann Deploy über den üblichen Server-Weg. Basel führt den Integrationstest,
    `migrate.sh` (0079 + 0080) und den Deploy aus.
 8. Nebenbefund (nicht in diesem Fix): der Sign-in-Lockout-Integrationstest in
    `day19-storefront.test.ts` ("5 wrong attempts") schlägt fehl, auch ohne diese

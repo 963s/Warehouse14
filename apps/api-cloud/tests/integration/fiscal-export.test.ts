@@ -1255,4 +1255,26 @@ describe('GET /api/closings/:id/export/{datev,dsfinvk} — fiscal-export E2E', (
       expect(res.statusCode).toBe(403);
     });
   });
+
+  // ════════════════════════════════════════════════════════════════════════
+  //  A non-finalized (COUNTING) closing is NOT a legal export (B5)
+  // ════════════════════════════════════════════════════════════════════════
+  describe('COUNTING closing is not exportable (B5)', () => {
+    it('all three legal export routes reject a COUNTING closing with 409 CONFLICT', async () => {
+      // Insert INSIDE the test: the suite's beforeEach TRUNCATEs daily_closings.
+      // A fresh, distinct business day so migration 0079's partial unique index
+      // (one closing per NULL-shop day) does not collide with the seeded days.
+      const [c] = await migratorSql<{ id: string }[]>`
+        INSERT INTO daily_closings (business_day, state)
+        VALUES ('2019-03-03'::date, 'COUNTING'::closing_state)
+        RETURNING id`;
+      const countingId = c!.id;
+
+      for (const path of ['datev', 'kassenbericht', 'dsfinvk']) {
+        const res = await get(`/api/closings/${countingId}/export/${path}`);
+        expect(res.statusCode, `export/${path} should be 409`).toBe(409);
+        expect((res.json() as { error: { code: string } }).error.code).toBe('CONFLICT');
+      }
+    });
+  });
 });

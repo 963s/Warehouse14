@@ -34,6 +34,17 @@ class ClosingNotFoundError extends DomainError {
   public readonly code: ApiErrorCode = 'NOT_FOUND';
 }
 
+/**
+ * A legal tax export (DATEV / DSFinV-K / Kassenbericht) is only valid over a
+ * FINALIZED daily closing. Exporting a COUNTING (still open) day would hand out
+ * an incomplete, non-final artifact as if it were the day's books. The GET
+ * /:id info route stays available for previewing an open closing's state.
+ */
+class ClosingNotFinalizedError extends DomainError {
+  public readonly httpStatus = 409;
+  public readonly code: ApiErrorCode = 'CONFLICT';
+}
+
 const ErrorResponse = Type.Object({
   error: Type.Object({
     code: Type.String(),
@@ -446,6 +457,7 @@ const closingExportRoute: FastifyPluginAsync = async (app) => {
           401: ErrorResponse,
           403: ErrorResponse,
           404: ErrorResponse,
+          409: ErrorResponse,
         },
       },
     },
@@ -456,14 +468,19 @@ const closingExportRoute: FastifyPluginAsync = async (app) => {
 
       const { id } = req.params;
 
-      const closingRows = await app.db.execute<{ business_day: string }>(sql`
-        SELECT business_day::text AS business_day
+      const closingRows = await app.db.execute<{ business_day: string; state: string }>(sql`
+        SELECT business_day::text AS business_day, state::text AS state
           FROM daily_closings
          WHERE id = ${id}
          LIMIT 1`);
       const closing = closingRows[0];
       if (!closing) {
         throw new ClosingNotFoundError(`Daily closing ${id} not found.`);
+      }
+      if (closing.state !== 'FINALIZED') {
+        throw new ClosingNotFinalizedError(
+          `Der Tagesabschluss für ${closing.business_day} ist noch nicht finalisiert und kann nicht als DATEV exportiert werden.`,
+        );
       }
 
       // All transactions whose Berlin business day matches the closing.
@@ -527,7 +544,12 @@ const closingExportRoute: FastifyPluginAsync = async (app) => {
           'the stored daily_closing (counts, net totals, VAT + payment breakdown, cash ' +
           'count/variance, TSE health). No fiscal figure is recomputed.',
         params: Type.Object({ id: Type.String({ format: 'uuid' }) }),
-        response: { 401: ErrorResponse, 403: ErrorResponse, 404: ErrorResponse },
+        response: {
+          401: ErrorResponse,
+          403: ErrorResponse,
+          404: ErrorResponse,
+          409: ErrorResponse,
+        },
       },
     },
     async (req, reply) => {
@@ -557,6 +579,11 @@ const closingExportRoute: FastifyPluginAsync = async (app) => {
       const r = rows[0];
       if (!r) {
         throw new ClosingNotFoundError(`Daily closing ${id} not found.`);
+      }
+      if (r.state !== 'FINALIZED') {
+        throw new ClosingNotFinalizedError(
+          `Der Tagesabschluss für ${r.business_day} ist noch nicht finalisiert und kann nicht als Kassenbericht exportiert werden.`,
+        );
       }
 
       const input: KassenberichtInput = {
@@ -617,7 +644,12 @@ const closingExportRoute: FastifyPluginAsync = async (app) => {
           'base64-encoded as text/plain (for the POS client).',
         params: Type.Object({ id: Type.String({ format: 'uuid' }) }),
         querystring: Type.Object({ encoding: Type.Optional(Type.String()) }),
-        response: { 401: ErrorResponse, 403: ErrorResponse, 404: ErrorResponse },
+        response: {
+          401: ErrorResponse,
+          403: ErrorResponse,
+          404: ErrorResponse,
+          409: ErrorResponse,
+        },
       },
     },
     async (req, reply) => {
@@ -627,8 +659,9 @@ const closingExportRoute: FastifyPluginAsync = async (app) => {
 
       const { id } = req.params;
 
-      const closingRows = await app.db.execute<ClosingDsfinvkRow>(sql`
+      const closingRows = await app.db.execute<ClosingDsfinvkRow & { state: string }>(sql`
         SELECT business_day::text AS business_day,
+               state::text AS state,
                finalized_at,
                gross_verkauf_eur::text AS gross_verkauf_eur,
                gross_ankauf_eur::text  AS gross_ankauf_eur,
@@ -642,6 +675,11 @@ const closingExportRoute: FastifyPluginAsync = async (app) => {
       const closing = closingRows[0];
       if (!closing) {
         throw new ClosingNotFoundError(`Daily closing ${id} not found.`);
+      }
+      if (closing.state !== 'FINALIZED') {
+        throw new ClosingNotFinalizedError(
+          `Der Tagesabschluss für ${closing.business_day} ist noch nicht finalisiert und kann nicht als DSFinV-K exportiert werden.`,
+        );
       }
       const businessDay = closing.business_day;
 
