@@ -195,14 +195,14 @@ function FinanzamtGroup({
 
   const downloadVerfahrensdoku = (): void => {
     downloadTextFile(
-      'Verfahrensdokumentation_Warehouse14.md',
+      'Verfahrensdokumentation-Warehouse14.md',
       verfahrensdoku,
       'text/markdown;charset=utf-8',
     );
     addToast({
       tone: 'success',
       title: 'Verfahrensdokumentation',
-      body: 'Verfahrensdokumentation_Warehouse14.md heruntergeladen.',
+      body: 'Verfahrensdokumentation-Warehouse14.md heruntergeladen.',
     });
   };
 

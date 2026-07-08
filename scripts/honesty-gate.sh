@@ -81,4 +81,18 @@ if [ "${STRICT:-1}" = "1" ]; then
 else
   echo "  Mode: warn-only (STRICT=0)."
 fi
+
+# ── House-style guard: no em/en dash in user-facing UI text ──────────────────
+# (comment-aware; the 2026-07-08 repo-wide dash purge stays enforced). Runs after
+# the token check so both rules are covered by the single `honesty-gate.sh` call.
+echo "─────────────────────────────────────────────────────────────"
+if node "$ROOT/scripts/no-userfacing-dashes.mjs"; then
+  :
+elif [ "${STRICT:-1}" = "1" ]; then
+  echo "  STRICT mode: FAIL — a user-facing em/en dash was reintroduced. Use a comma, a full stop, or \"bis\"." >&2
+  exit 1
+else
+  echo "  (warn-only) user-facing em/en dash present."
+fi
+
 exit 0
