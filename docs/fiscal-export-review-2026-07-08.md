@@ -301,6 +301,61 @@ rate-limitiert, Lockout-DoS.
 
 ---
 
+## H · Hintergrund-Jobs (Sweeper, Cleanup, Export, Monitore)
+
+Fünfte Prüfung (find→refute, je Feststellung 3 Widerleger) über die unbeaufsichtigten
+Cron-Jobs. Vier bestätigte Feststellungen.
+
+### H1 · HOCH · Cart-Sweeper gibt bezahlten Bestand frei (asynchrone Zahlung). REPORT-ONLY
+- **Ist:** Async-Zahlarten (SEPA, Klarna, iDEAL, giropay) sind im Checkout Standard,
+  SEPA bleibt tagelang bei Stripe im Status `processing`. Reservierungs-TTL und
+  Checkout-Fenster sind aber fest auf 15 Minuten, und das `payment_intent_status`-Enum
+  hat kein `processing`. Nach 16 Minuten gibt `storefront-cart-sweeper.ts` die
+  reservierten (bezahlbaren) Artikel allein nach `checkout_expires_at < now()` frei
+  (RESERVED→AVAILABLE), setzt den Warenkorb ABANDONED und den laufenden PaymentIntent
+  EXPIRED. Der Artikel wird weiterverkauft; Tage später kommt `succeeded`, der Webhook
+  wirft (Warenkorb ABANDONED statt CHECKOUT) und der F2-Idempotenz-Schluck verhindert
+  jede Erholung. Geld kassiert, Bestand weiterverkauft, keine Buchung. Lautlos.
+- **Empfohlener Fix:** vor dem Freigeben den PaymentIntent gegen Stripe abgleichen
+  (bei `processing`/`requires_action`/`succeeded` NICHT freigeben), ODER für
+  async-fähige Zahlarten das Fenster über die maximale Settlement-Zeit hinaus setzen,
+  ODER einen `processing`-Status via `payment_intent.processing`-Handler einführen, der
+  den Warenkorb aus dem Sweep-Fenster nimmt. Zusammen mit F2 bewerten. Zahlungskritisch,
+  Integrationstest nötig.
+
+### H2 · HOCH · Reservierungs-Reaper resellt denselben In-Flight-Artikel. REPORT-ONLY
+- **Ist:** `packages/inventory-lock/autoReleaseExpired.ts` setzt jedes RESERVED-Produkt
+  nach `reservation_expires_at < now()` auf AVAILABLE, ohne Zahlungs-/Warenkorb-Bezug —
+  ein zweiter, unabhängiger Pfad mit demselben Ergebnis wie H1.
+- **Empfohlener Fix:** Der Reaper ist generisch und kann Zahlungen nicht sehen; der
+  Schutz muss bei der Reservierung liegen (für async-fähige STOREFRONT-Checkouts eine
+  längere/gekoppelte TTL). Gemeinsam mit H1 lösen.
+
+### H3 · HOCH · TSE-Zertifikats-Monitor verstummt nach Erneuerung. REPORT-ONLY
+- **Ist:** `tse-cert-checker.ts` setzt `last_alert_tier` nie zurück, wenn das
+  Zertifikat erneuert wird (`cert_valid_to` springt vor). Das eskalations-basierte
+  Alarm-Gate bleibt auf der höchsten je erreichten Stufe verrastet und warnt vor der
+  NÄCHSTEN Ablauf nicht mehr rechtzeitig. Ein Monitor, der stumm bleibt, ist gefährlich:
+  das TSE-Zertifikat kann unbemerkt ablaufen (Kassen-Ausfall).
+- **Empfohlener Fix:** pro Lauf `cert_valid_to` mitlesen; bei erkanntem neuem Zertifikat
+  (Wert geändert) die Alarm-Leiter zurücksetzen.
+
+### H4 · MITTEL · Job-Runner erzwang das Timeout nicht. BEHOBEN (`d4b0276`, branch-only)
+- **War:** Das Pro-Versuch-Timeout rief nur `controller.abort()`; es rennt `def.run()`
+  nie. `abort()` unterbricht kein bereits awaited Promise, also hing ein Job, der
+  `signal` ignoriert (eine lange DB-Abfrage kann das nicht beobachten), ewig — weder
+  `clearTimeout` noch die pg-Advisory-Lock-Freigabe in den finally-Blöcken liefen, der
+  Job blieb über jeden künftigen Tick verkeilt.
+- **Jetzt:** `Promise.race([def.run(...), abortRejection])`, damit der Runner auch dann
+  terminiert (TIMEOUT, Timer weg, Lock frei), wenn der Job das Signal nie beobachtet.
+  typecheck grün; runner-resilience-Integrationstest braucht die DB.
+
+REFUTED (0/3): GDPR-KYC-Purge meldet SUCCESS ohne Actor, tse-archive kein Auto-Recover,
+anomaly-watchdog UTC-Tag. Unbestätigt (1/3): dsfinvk-daily-export ohne Catch-up für
+einen verpassten Tag. Verdient einen zweiten Blick.
+
+---
+
 ## Nächste Schritte für die Freigabe
 
 1. Steuerberatung prüft B1 bis B4 gegen die verbindliche DATEV-/DSFinV-K-Spezifikation.
@@ -308,8 +363,10 @@ rate-limitiert, Lockout-DoS.
 3. Bewertung von D1/D2 (Positions-Vorzeichen, §25a-Marge-Prüfung).
 4. E2 und E3 (Nebenläufigkeit Z-Abschluss): partieller Unique-Index über den
    `drizzle-kit`-Flow plus Vorbedingungs-Prüfung; Advisory-Lock nach Bewertung.
-5. F2 (Webhook-Idempotenz plus Cart-Sweeper) mit Integrationstest umsetzen.
-6. G2 (`trustProxy` / Rate-Limit-Key) an die echte Proxy-Topologie anpassen; einen
-   E-Mail-Verifizierungs-Flow für die Passwort-Registrierung nachziehen.
-7. Freigabe von A1, A2, E1, F1 und G1 (Security-Review), dann Deploy über den
+5. F2 plus H1/H2 zusammen lösen: der Async-Zahlungs-Lebenszyklus (Webhook-Idempotenz,
+   Cart-Sweeper, Reservierungs-TTL) mit Integrationstest. Höchste Priorität, weil hier
+   Geld kassiert und Bestand weiterverkauft wird.
+6. H3 (TSE-Monitor-Reset) und G2 (`trustProxy`) nachziehen; einen
+   E-Mail-Verifizierungs-Flow für die Passwort-Registrierung ergänzen.
+7. Freigabe von A1, A2, E1, F1, G1 (Security-Review) und H4, dann Deploy über den
    üblichen Server-Weg.
