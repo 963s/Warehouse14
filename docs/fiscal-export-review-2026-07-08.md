@@ -165,9 +165,56 @@ zur Kenntnis (beide REPORT-ONLY, keine autonome Korrektur):
 
 ---
 
+## E · Mutations-Integrität (finalize / return / Z-Abschluss)
+
+Zweite Prüfung (find→refute, je Feststellung 3 Widerleger) über die Geld- und
+Bestands-Mutationen. Drei bestätigte Feststellungen.
+
+### E1 · HOCH · Return: Produkt-Flip ohne Nullung der Reservierungshülle, BEHOBEN (`10a8fac`, branch-only)
+- **War:** `POST /api/transactions/:id/return` setzte das Produkt SOLD → AVAILABLE
+  mit nur `sold_at = NULL`, die Reservierungshülle blieb gefüllt. Ein WEB-Verkauf
+  behält diese Hülle auf der SOLD-Zeile, also verletzte der Flip die CHECK
+  `products_available_no_reservation` (`0006_products.sql`) und der GANZE Return
+  rollte zurück. Jeder Web-Verkaufs-Return schlug fehl.
+- **Jetzt:** Der Flip nullt alle fünf Reservierungsspalten (wie der kanonische
+  `release()` in `inventory-lock`). Storno flippt keine Produkte (Phase 2), dort
+  kein Pendant. typecheck grün; Integrationstest braucht die DB.
+
+### E2 · HOCH · Doppelter Z-Bon möglich (Race), REPORT-ONLY
+- **Ist:** `POST /api/closings/finalize` macht check-then-insert (nicht-sperrender
+  Existenz-SELECT, dann INSERT). Der einzige Schutz `UNIQUE (business_day, shop_id)`
+  (`0011_closing.sql`) greift NICHT, weil `shop_id` in V1 immer NULL ist und
+  Postgres NULLS DISTINCT zwei `(tag, NULL)` als verschieden behandelt. Zwei
+  gleichzeitige (oder vom Offline-Outbox erneut gespielte) Abschlüsse für denselben
+  Tag committen also BEIDE → zwei unveränderliche FINALIZED Z-Bons, und
+  DSFinV-K/DATEV/Kassenbericht zählen den Tag doppelt. Kein Advisory-Lock, kein
+  Idempotency-Key auf dieser Route.
+- **Empfohlener Fix (über den `drizzle-kit`-Flow, NICHT von Hand am Journal):** ein
+  partieller Unique-Index (Muster wie `0028` für `transactions`):
+  `CREATE UNIQUE INDEX daily_closings_business_day_null_shop_uq ON daily_closings (business_day) WHERE shop_id IS NULL;`
+  ODER `UNIQUE NULLS NOT DISTINCT`, ODER ein `pg_advisory_xact_lock` vor dem
+  Existenz-Check. **Vorbedingung:** vorher prüfen, dass es KEINE doppelten
+  `(business_day, NULL)`-Zeilen gibt, sonst schlägt das Anlegen des Index fehl.
+  Nicht autonom umgesetzt: der Migrations-Ledger (`meta/_journal.json`) muss von
+  `drizzle-kit generate` konsistent geschrieben werden, was hier nicht ausführbar ist.
+
+### E3 · MITTEL · Z-Snapshot-Race (Transaktion fällt aus dem Abschluss), REPORT-ONLY
+- **Ist:** Der Abschluss-Snapshot und der State-Flip sind nicht gegen einen
+  gleichzeitig laufenden Transaktions-Finalize serialisiert; der C-3-Trigger
+  (`0013_security_hardening.sql`) sieht einen noch nicht committeten Abschluss nicht.
+  Eine Transaktion kann in einen gerade finalisierten Tag committen und aus dem
+  Z-Snapshot herausfallen.
+- **Empfohlener Fix:** beide Flows auf den Geschäftstag serialisieren, z. B.
+  `pg_advisory_xact_lock(hashtext('closing:'||day))` in beiden Pfaden. Subtile
+  Nebenläufigkeitsänderung am heißen Finalize-Pfad, braucht einen Integrationstest.
+
+---
+
 ## Nächste Schritte für die Freigabe
 
 1. Steuerberatung prüft B1 bis B4 gegen die verbindliche DATEV-/DSFinV-K-Spezifikation.
 2. Entscheidung zu B5 (Export offener Abschlüsse ja/nein).
 3. Bewertung von D1/D2 (Positions-Vorzeichen, §25a-Marge-Prüfung).
-4. Freigabe von A1 und A2, dann Deploy über den üblichen Server-Weg.
+4. E2 und E3 (Nebenläufigkeit Z-Abschluss): partieller Unique-Index über den
+   `drizzle-kit`-Flow plus Vorbedingungs-Prüfung; Advisory-Lock nach Bewertung.
+5. Freigabe von A1, A2 und E1, dann Deploy über den üblichen Server-Weg.
