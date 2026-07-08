@@ -325,7 +325,7 @@ Cron-Jobs. Vier bestätigte Feststellungen.
 
 ### H2 · HOCH · Reservierungs-Reaper resellt denselben In-Flight-Artikel. REPORT-ONLY
 - **Ist:** `packages/inventory-lock/autoReleaseExpired.ts` setzt jedes RESERVED-Produkt
-  nach `reservation_expires_at < now()` auf AVAILABLE, ohne Zahlungs-/Warenkorb-Bezug —
+  nach `reservation_expires_at < now()` auf AVAILABLE, ohne Zahlungs-/Warenkorb-Bezug,
   ein zweiter, unabhängiger Pfad mit demselben Ergebnis wie H1.
 - **Empfohlener Fix:** Der Reaper ist generisch und kann Zahlungen nicht sehen; der
   Schutz muss bei der Reservierung liegen (für async-fähige STOREFRONT-Checkouts eine
@@ -343,7 +343,7 @@ Cron-Jobs. Vier bestätigte Feststellungen.
 ### H4 · MITTEL · Job-Runner erzwang das Timeout nicht. BEHOBEN (`d4b0276`, branch-only)
 - **War:** Das Pro-Versuch-Timeout rief nur `controller.abort()`; es rennt `def.run()`
   nie. `abort()` unterbricht kein bereits awaited Promise, also hing ein Job, der
-  `signal` ignoriert (eine lange DB-Abfrage kann das nicht beobachten), ewig — weder
+  `signal` ignoriert (eine lange DB-Abfrage kann das nicht beobachten), ewig. Weder
   `clearTimeout` noch die pg-Advisory-Lock-Freigabe in den finally-Blöcken liefen, der
   Job blieb über jeden künftigen Tick verkeilt.
 - **Jetzt:** `Promise.race([def.run(...), abortRejection])`, damit der Runner auch dann
