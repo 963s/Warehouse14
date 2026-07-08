@@ -258,6 +258,49 @@ einer Transaktion. Verdient einen gezielten zweiten Blick.
 
 ---
 
+## G · Sicherheit: eingehende Webhooks und Storefront-Auth
+
+Vierte Prüfung (find→refute, je Feststellung 3 Widerleger) über die öffentlich
+erreichbaren, unauthentifizierten Endpunkte. Zwei bestätigte Feststellungen.
+
+### G1 · HOCH · Storefront Google-OAuth Konto-Übernahme. BEHOBEN (`1a8b526`, branch-only)
+- **War:** Der Google-Callback verknüpfte eine verifizierte Google-Identität mit
+  JEDEM vorhandenen E-Mail-Konto (Blind-Index) und setzte es per COALESCE auf
+  verifiziert, OHNE zu prüfen, ob dieses Konto selbst verifiziert war. Da die
+  Passwort-Registrierung ein nutzbares Passwort ohne E-Mail-Verifizierung anlegt
+  (`email_verified_at` bleibt NULL), gilt: (1) Angreifer registriert die E-Mail des
+  Opfers mit eigenem Passwort; (2) Opfer meldet sich später mit Google an, der
+  Callback merged Google auf die Angreifer-Zeile und gibt dem Opfer dort eine
+  Session; (3) das Angreifer-Passwort wurde nie gelöscht und der Sign-in prüft nie
+  auf Verifizierung, also behält der Angreifer dauerhaften Zugriff auf Bestellungen,
+  Warenkorb, Termine und PII des Opfers. Klassischer Federated-Merge-Takeover.
+- **Jetzt (verified-email-wins):** Beim Verknüpfen von Google mit einem NICHT bereits
+  verifizierten Konto wird `password_hash` in derselben UPDATE auf NULL gesetzt, das
+  ungeprüfte Passwort also verworfen. `verifyPassword` liefert bei NULL-Hash false
+  (auth-pin try/catch), das alte Passwort scheitert danach sauber am Sign-in; ein
+  echter Nutzer ist nicht betroffen (er hat sich gerade per Google authentifiziert).
+  Die CHECK (`password_hash IS NOT NULL OR google_sub IS NOT NULL`) bleibt erfüllt,
+  weil `google_sub` in derselben Anweisung gesetzt wird. typecheck grün;
+  Integrationstest plus Security-Review vor Deploy.
+- **Zusatz (REPORT-ONLY):** Es gibt gar keinen E-Mail-Verifizierungs-Flow für die
+  Passwort-Registrierung. Das ist die Wurzel; ein echter Verifizierungs-Schritt
+  (Double-Opt-in) sollte nachgezogen werden.
+
+### G2 · MITTEL · Rate-Limit umgehbar über `trustProxy: true`. REPORT-ONLY
+- **Ist:** `app.ts` setzt `trustProxy: true`, also leitet Fastify `req.ip` aus dem
+  vom Client vollständig kontrollierbaren, linken `X-Forwarded-For`-Eintrag ab. Der
+  Rate-Limit-Key (`plugins/rate-limit.ts`) nutzt nur `req.ip`, also kann ein
+  Angreifer den Header rotieren und die einzige Flut-/Brute-Force-Grenze umgehen.
+- **Empfohlener Fix:** `trustProxy` auf den konkreten Proxy setzen (Hop-Zahl oder
+  cloudflared-CIDR) statt `true`, ODER den keyGenerator auf einen validierten
+  `CF-Connecting-IP`-Header umstellen. NICHT autonom umgesetzt: hängt von der echten
+  Proxy-Topologie ab; ein falscher Wert bricht die `req.ip`-Auflösung.
+
+REFUTED (0/3): User-Enumeration-Timing beim Sign-in, unauth Sign-up nur global
+rate-limitiert, Lockout-DoS.
+
+---
+
 ## Nächste Schritte für die Freigabe
 
 1. Steuerberatung prüft B1 bis B4 gegen die verbindliche DATEV-/DSFinV-K-Spezifikation.
@@ -266,4 +309,7 @@ einer Transaktion. Verdient einen gezielten zweiten Blick.
 4. E2 und E3 (Nebenläufigkeit Z-Abschluss): partieller Unique-Index über den
    `drizzle-kit`-Flow plus Vorbedingungs-Prüfung; Advisory-Lock nach Bewertung.
 5. F2 (Webhook-Idempotenz plus Cart-Sweeper) mit Integrationstest umsetzen.
-6. Freigabe von A1, A2, E1 und F1, dann Deploy über den üblichen Server-Weg.
+6. G2 (`trustProxy` / Rate-Limit-Key) an die echte Proxy-Topologie anpassen; einen
+   E-Mail-Verifizierungs-Flow für die Passwort-Registrierung nachziehen.
+7. Freigabe von A1, A2, E1, F1 und G1 (Security-Review), dann Deploy über den
+   üblichen Server-Weg.
