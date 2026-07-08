@@ -273,6 +273,18 @@ const transactionsFinalize: FastifyPluginAsync<TransactionsFinalizeOpts> = async
       // ──────────────────────────────────────────────────────────────────
       const outcome = await app.db
         .transaction(async (tx) => {
+          // E3: take a SHARED advisory lock on this sale's Berlin business day so
+          // the Z-Bon finalize (which takes the EXCLUSIVE lock on the same key)
+          // cannot snapshot the day while this sale is mid-commit, which would
+          // drop the sale from its own Z-Bon. Shared locks do not conflict with
+          // each other, so concurrent sales are unaffected; only the once-a-day
+          // closing waits for in-flight sales. xact-scoped: released at COMMIT.
+          // Key = (namespace 1146, days-since-epoch); the closing derives the
+          // SAME key. The int-pair keyspace is separate from the single-bigint
+          // advisory locks used elsewhere (e.g. appointment slots), so no clash.
+          await tx.execute(drizzleSql`
+            SELECT pg_advisory_xact_lock_shared(1146, (berlin_business_day(now())::date - DATE '1970-01-01')::int)`);
+
           // 3a. Move each reserved product to SOLD. The ownership guard
           // checks BOTH `(sessionId, userId)` — closes memory.md §19.2 C-1
           // (cross-cashier stale-cart finalize). A reservation created by

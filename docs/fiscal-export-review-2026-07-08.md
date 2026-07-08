@@ -209,15 +209,30 @@ Bestands-Mutationen. Drei bestätigte Feststellungen.
 - **Anwendung (Basel):** vor dem Deploy `migrate.sh` mit dem Migrator-Credential laufen
   lassen; falls die Vorbedingung greift, zuerst evtl. vorhandene Doppel-Abschlüsse klären.
 
-### E3 · MITTEL · Z-Snapshot-Race (Transaktion fällt aus dem Abschluss), REPORT-ONLY
-- **Ist:** Der Abschluss-Snapshot und der State-Flip sind nicht gegen einen
+### E3 · MITTEL · Z-Snapshot-Race (Transaktion fällt aus dem Abschluss). BEHOBEN (branch-only, DB-getestet)
+- **War:** Der Abschluss-Snapshot und der State-Flip waren nicht gegen einen
   gleichzeitig laufenden Transaktions-Finalize serialisiert; der C-3-Trigger
   (`0013_security_hardening.sql`) sieht einen noch nicht committeten Abschluss nicht.
-  Eine Transaktion kann in einen gerade finalisierten Tag committen und aus dem
-  Z-Snapshot herausfallen.
-- **Empfohlener Fix:** beide Flows auf den Geschäftstag serialisieren, z. B.
-  `pg_advisory_xact_lock(hashtext('closing:'||day))` in beiden Pfaden. Subtile
-  Nebenläufigkeitsänderung am heißen Finalize-Pfad, braucht einen Integrationstest.
+  Eine Transaktion konnte in einen gerade finalisierten Tag committen und aus dem
+  Z-Snapshot herausfallen (Beleg im Bestand, aber nicht im Z-Bon des Tages).
+- **Jetzt:** Beide Pfade serialisieren über einen Advisory-Xact-Lock auf den
+  Geschäftstag mit SHARED/EXCLUSIVE-Trennung, KEINE Migration (Laufzeit-Lock):
+  der Verkauf-Finalize (`transactions-finalize.ts`) nimmt
+  `pg_advisory_xact_lock_shared(1146, (berlin_business_day(now())::date - DATE '1970-01-01')::int)`,
+  der Z-Abschluss (`closings-finalize.ts`) nimmt den EXKLUSIVEN Lock auf denselben
+  Schlüssel VOR jedem Aggregat. Shared-Locks kollidieren nicht untereinander, also
+  blockieren sich gleichzeitige Verkäufe NICHT (nur ein zusätzlicher billiger
+  Lock-Aufruf pro Beleg); nur der einmal-tägliche Abschluss wartet auf die in-flight
+  Verkäufe und schliesst dann neue für seine Dauer aus, sieht also einen konsistenten
+  Snapshot. Der Int-Paar-Schlüsselraum ist getrennt vom Einzel-bigint der
+  Termin-Slots (kein Zusammenstoss). Kein zweiter Lock je Transaktion, also keine
+  Ordering-Deadlock-Gefahr. Test `e3_z_snapshot_advisory_lock.test.ts` 3/3 grün
+  (Schlüssel = Tage-seit-Epoche; exklusiv kollidiert mit gehaltenem shared, shared+shared
+  nicht; frei nach COMMIT); Regressionslauf finalize 15/15 + fiscal-export 23/23 grün;
+  api-cloud typecheck grün.
+- **Hinweis (Basel):** die Änderung liegt auf dem heissesten Schreibpfad (jeder Beleg
+  nimmt jetzt einen billigen Shared-Lock). Bitte im Review kurz das Perf-Profil bestätigen;
+  Shared-Locks serialisieren nichts, der Aufwand ist ein zusätzlicher Lock-Aufruf.
 
 ---
 
@@ -446,10 +461,11 @@ No-Show/verschoben zählen NICHT als Konflikt). Eine Feststellung.
 1. Steuerberatung prüft B1 bis B4 gegen die verbindliche DATEV-/DSFinV-K-Spezifikation.
 2. Entscheidung zu B5 (Export offener Abschlüsse ja/nein).
 3. Bewertung von D1/D2 (Positions-Vorzeichen, §25a-Marge-Prüfung).
-4. E2 ist GELÖST (Migration `0079`, branch-only, DB-getestet): der partielle
-   Unique-Index gegen den doppelten Z-Bon. Basel wendet `migrate.sh` vor dem Deploy an.
-   Offen bleibt E3 (Z-Snapshot-Race): ein `pg_advisory_xact_lock` nach Bewertung,
-   berührt den heissesten Schreibpfad (jeder Beleg-Abschluss), daher Basels Entscheid.
+4. E2 und E3 sind GELÖST (branch-only, DB-getestet): E2 = partieller Unique-Index
+   gegen den doppelten Z-Bon (Migration `0079`, `migrate.sh` vor dem Deploy nötig);
+   E3 = SHARED/EXCLUSIVE-Advisory-Lock auf den Geschäftstag gegen den Z-Snapshot-Race
+   (keine Migration). Basel bestätigt beim Review kurz das Perf-Profil des Shared-Locks
+   auf dem Verkauf-Pfad (er serialisiert nichts).
 5. F2, F3, H1 und H2 sind GELÖST (branch-only, Integrationstest `day20` lokal grün):
    der Async-Zahlungs-Lebenszyklus (Webhook-Idempotenz mit `processed_at`-Neuverarbeitung,
    `payment_intent.processing`-Handler, verlängerte Checkout- und Reservierungs-Fenster,
@@ -458,8 +474,9 @@ No-Show/verschoben zählen NICHT als Konflikt). Eine Feststellung.
 6. H3 (TSE-Monitor-Reset) ist GELÖST (branch-only, Unit-getestet). Offen bleibt G2
    (`trustProxy`, braucht die echte Proxy-Topologie) plus ein
    E-Mail-Verifizierungs-Flow für die Passwort-Registrierung.
-7. Freigabe von A1, A2, E1, F1, F2, F3, G1 (Security-Review), H1, H2, H3 und H4, dann
-   Deploy über den üblichen Server-Weg. Basel führt den Integrationstest und den Deploy aus.
+7. Freigabe von A1, A2, E1, E2, E3, F1, F2, F3, G1 (Security-Review), H1, H2, H3, H4 und
+   I1, dann Deploy über den üblichen Server-Weg. Basel führt den Integrationstest,
+   `migrate.sh` (0079 + 0080) und den Deploy aus.
 8. Nebenbefund (nicht in diesem Fix): der Sign-in-Lockout-Integrationstest in
    `day19-storefront.test.ts` ("5 wrong attempts") schlägt fehl, auch ohne diese
    Änderungen (per Stash bewiesen). Gehört nicht zum Zahlungs-Fix, separat prüfen.

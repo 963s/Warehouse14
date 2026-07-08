@@ -99,6 +99,15 @@ const closingsFinalizeRoute: FastifyPluginAsync = async (app) => {
           SELECT COALESCE(${req.body.businessDay ?? null}::date, berlin_business_day(now()))::text AS day`);
         const day = dayRow!.day;
 
+        // E3: take the EXCLUSIVE advisory lock on this business day BEFORE reading
+        // any aggregate. It waits for every in-flight sale-finalize (each holds
+        // the SHARED lock on the same key) to commit, then blocks new ones for the
+        // rest of this transaction, so the aggregates below see a consistent
+        // snapshot: no sale can commit into the day while we compute and write its
+        // Z-Bon. Same key derivation as transactions-finalize. Released at COMMIT.
+        await tx.execute(sql`
+          SELECT pg_advisory_xact_lock(1146, (${day}::date - DATE '1970-01-01')::int)`);
+
         // 2. Not already finalized for this day.
         const existing = await tx.execute<{ id: string }>(sql`
           SELECT id FROM daily_closings WHERE business_day = ${day}::date LIMIT 1`);
