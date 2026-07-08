@@ -133,8 +133,41 @@ Von den Widerlegern mehrheitlich als KEIN Fehler bestätigt:
 
 ---
 
+## D · Anhang: Finalize-Money-Pfad (`transaction-math.ts`) — geprüft, im Kern solide
+
+Der Serverseitige Geld-Validator `validateTransactionMath` (er speist die Beträge,
+die dann exportiert werden) ist im Kern korrekt: `Money` (Decimal, kein Float),
+volle Abstimmung Netto + USt = Brutto je Position UND je Kopf, Summenprüfung der
+Positionen gegen den Kopf, Summenprüfung der Zahlungen gegen den Kopf. Zwei Punkte
+zur Kenntnis (beide REPORT-ONLY, keine autonome Korrektur):
+
+### D1 · Vorzeichen-Disziplin nur auf Kopf-Ebene, nicht je Position
+- **Ist:** Der App-Validator prüft das Vorzeichen nur an `totalEur`. Die DB-Constraint
+  `transactions_sign_discipline` (`0009_transactions.sql`) prüft Kopf
+  total/subtotal/vat, aber `transaction_items` hat NUR
+  `line_subtotal + line_vat = line_total` (keine Positions-Vorzeichenprüfung). Ein
+  Nicht-Storno-Vorgang könnte also eine negative Position tragen, die sich am Kopf
+  wieder zu einem nicht-negativen Betrag summiert; weder Validator noch DB fangen
+  das. Der Docstring des Validators behauptet Vorzeichen-Disziplin für "every header
+  & line money", was nicht zutrifft.
+- **Bewertung:** Defense-in-depth-Lücke (niedrig/mittel). NICHT autonom korrigiert:
+  eine Positions-Vorzeichenprüfung könnte legitime negative Positionen (z. B.
+  Rabatt-Position) ablehnen. Entscheidung/Bestätigung nötig.
+
+### D2 · §25a-Marge wird serverseitig nicht rechnerisch validiert
+- **Ist:** Für eine `MARGIN_25A`-Position prüft der Validator nur, dass `marginEur`
+  und `acquisitionCostEurSnapshot` gemeinsam gesetzt sind, NICHT dass die USt =
+  19 % der Marge und die Marge = Verkauf minus Einstand ist. Der Docstring nennt das
+  als bewusste Phase-1.5-Vertagung.
+- **Bewertung:** Bekannte Lücke; eine echte Marge-USt-Prüfung ist eine
+  Verhaltensänderung des Finalize-Pfads und braucht die exakte §25a-Formel von der
+  Steuerberatung. REPORT-ONLY.
+
+---
+
 ## Nächste Schritte für die Freigabe
 
 1. Steuerberatung prüft B1 bis B4 gegen die verbindliche DATEV-/DSFinV-K-Spezifikation.
 2. Entscheidung zu B5 (Export offener Abschlüsse ja/nein).
-3. Freigabe von A1 und A2, dann Deploy über den üblichen Server-Weg.
+3. Bewertung von D1/D2 (Positions-Vorzeichen, §25a-Marge-Prüfung).
+4. Freigabe von A1 und A2, dann Deploy über den üblichen Server-Weg.
