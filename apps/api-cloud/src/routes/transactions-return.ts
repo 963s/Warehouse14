@@ -186,12 +186,21 @@ const transactionsReturnRoute: FastifyPluginAsync<ReturnRouteOpts> = async (app,
           );
         }
 
-        // Flip each product back to AVAILABLE.
+        // Flip each product back to AVAILABLE. Null the FULL reservation
+        // envelope too (mirroring inventory-lock `release`): an AVAILABLE row
+        // MUST carry no reservation columns (CHECK products_available_no_reservation).
+        // A WEB sale keeps its envelope on the SOLD row, so flipping to AVAILABLE
+        // without clearing it violated the CHECK and rolled the whole return back.
         for (const line of items) {
           await tx.execute(drizzleSql`
           UPDATE products
              SET status = 'AVAILABLE'::product_status,
-                 sold_at = NULL
+                 sold_at = NULL,
+                 reserved_by_channel = NULL,
+                 reserved_by_session_id = NULL,
+                 reserved_by_user_id = NULL,
+                 reserved_at = NULL,
+                 reservation_expires_at = NULL
            WHERE id = ${line.productId} AND status = 'SOLD'::product_status
         `);
         }
