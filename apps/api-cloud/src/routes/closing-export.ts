@@ -253,6 +253,25 @@ function debitCreditFor(originalSide: 'S' | 'H', storno: boolean): 'S' | 'H' {
 }
 
 /**
+ * A tz-aware timestamp → its Europe/Berlin calendar date as `YYYY-MM-DD`.
+ * Mirrors the DB `berlin_business_day()` ((ts AT TIME ZONE 'Europe/Berlin')::date,
+ * DST-correct) EXACTLY, so the DATEV Belegdatum matches the Berlin business day
+ * the export is scoped to (`WHERE berlin_business_day(finalized_at) = business_day`).
+ * The UTC date would book a post-midnight-Berlin sale to the previous day.
+ */
+function berlinDate(ts: Date | string): string {
+  const d = ts instanceof Date ? ts : new Date(ts);
+  const p = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Berlin',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(d);
+  const get = (t: string): string => p.find((x) => x.type === t)?.value ?? '';
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
+/**
  * Map one transaction to a DATEV booking line.
  * VERKAUF: Kasse (Soll) an the per-treatment Erlöskonto, with the matching
  * BU-Schlüssel. ANKAUF: Wareneingang an Kasse (no output VAT). A STORNO row
@@ -287,7 +306,7 @@ export function toDatevRow(tx: TxRow): DATEVRow {
     contraAccount,
     // Omit the optional BU-Schlüssel entirely when empty (exactOptionalPropertyTypes).
     ...(taxKey === '' ? {} : { taxKey }),
-    date: new Date(tx.finalized_at).toISOString().slice(0, 10), // YYYY-MM-DD → DDMM in exporter
+    date: berlinDate(tx.finalized_at), // Europe/Berlin business day → DDMM in exporter
     reference: tx.receipt_locator,
     bookingText: `${storno ? 'STORNO ' : ''}${tx.direction} ${tx.receipt_locator} (${tx.tax_treatment_code})`,
   };

@@ -14,6 +14,36 @@ const baseTx = {
   finalized_at: new Date('2026-06-08T10:00:00Z'),
 };
 
+describe('DATEV Belegdatum = the Europe/Berlin business day (not the UTC date)', () => {
+  it('a daytime sale keeps its date (UTC date == Berlin date)', () => {
+    // 2026-06-08 10:00 UTC = 12:00 Berlin (CEST) → same calendar day.
+    const r = toDatevRow({ ...baseTx, tax_treatment_code: 'STANDARD_19' });
+    expect(r.date).toBe('2026-06-08');
+  });
+
+  it('a post-midnight-Berlin summer sale books to the Berlin day, not the UTC day', () => {
+    // 2026-06-07 22:30 UTC = 2026-06-08 00:30 Berlin (CEST, UTC+2). The closing
+    // that scopes by berlin_business_day() files it under 2026-06-08, so the
+    // Belegdatum must be 2026-06-08 — the old UTC-date code gave 2026-06-07.
+    const r = toDatevRow({
+      ...baseTx,
+      tax_treatment_code: 'STANDARD_19',
+      finalized_at: new Date('2026-06-07T22:30:00Z'),
+    });
+    expect(r.date).toBe('2026-06-08');
+  });
+
+  it('a post-midnight-Berlin winter sale is DST-correct (UTC+1)', () => {
+    // 2026-01-07 23:30 UTC = 2026-01-08 00:30 Berlin (CET, UTC+1) → 2026-01-08.
+    const r = toDatevRow({
+      ...baseTx,
+      tax_treatment_code: 'STANDARD_19',
+      finalized_at: new Date('2026-01-07T23:30:00Z'),
+    });
+    expect(r.date).toBe('2026-01-08');
+  });
+});
+
 describe('DATEV per-tax-treatment Gegenkonto + BU-Schlüssel routing', () => {
   it('STANDARD_19 → Gegenkonto 8400, BU-Schlüssel 3', () => {
     const r = toDatevRow({ ...baseTx, tax_treatment_code: 'STANDARD_19' });
