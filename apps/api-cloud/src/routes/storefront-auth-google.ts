@@ -266,11 +266,24 @@ const storefrontGoogleAuthRoutes: FastifyPluginAsync<{ env: Env }> = async (app,
                WHERE email_blind_index = blind_index(${email}) AND soft_deleted_at IS NULL
                LIMIT 1`);
             if (byEmail[0]) {
-              // Link Google to the existing email account.
+              // Link Google to the existing email account. SECURITY: an account
+              // that was NOT already email-verified holds a password that was
+              // never proven to belong to this address (there is no email-verify
+              // flow, so a password sign-up leaves email_verified_at NULL). Google
+              // has now proven ownership, so we DISCARD that untrusted password —
+              // otherwise a pre-registration attacker who signed up the victim's
+              // email keeps their password after the victim's first Google login
+              // (classic-federated-merge account takeover). verifyPassword returns
+              // false on a NULL hash, so the stale password then cleanly fails
+              // sign-in; the CHECK (password_hash OR google_sub) stays satisfied.
               shopperId = byEmail[0].id;
               await tx.execute(drizzleSql`
                 UPDATE shoppers
                    SET google_sub = ${sub},
+                       password_hash = CASE
+                         WHEN email_verified_at IS NULL THEN NULL
+                         ELSE password_hash
+                       END,
                        email_verified_at = COALESCE(email_verified_at, now()),
                        updated_at = now()
                  WHERE id = ${shopperId}`);
