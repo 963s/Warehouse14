@@ -352,12 +352,12 @@ export function AnkaufBezahlenDialog({
                 ? {
                     tone: 'alert',
                     title: 'TSE-Signatur nicht gespeichert',
-                    body: 'Ankauf gebucht — die Signatur wird nachgereicht.',
+                    body: 'Ankauf gebucht. Die Signatur wird nachgereicht.',
                   }
                 : {
                     tone: 'alert',
                     title: 'TSE-Signatur nicht gesichert',
-                    body: 'Ankauf gebucht — bitte den gedruckten Beleg aufbewahren.',
+                    body: 'Ankauf gebucht. Bitte den gedruckten Beleg aufbewahren.',
                   },
             );
             // eslint-disable-next-line no-console
@@ -367,7 +367,7 @@ export function AnkaufBezahlenDialog({
           addToast({
             tone: 'alert',
             title: 'TSE-Signatur in Warteschlange',
-            body: 'Ankauf gebucht — Signatur wird später nachgereicht.',
+            body: 'Ankauf gebucht. Signatur wird später nachgereicht.',
           });
         }
       } else if (hardwareCfg.tse.tssId.length > 0) {
@@ -678,7 +678,7 @@ function ReviewPhase(props: {
           style={{ marginTop: 12, border: '2px solid var(--w14-wax-red)' }}
         >
           <p style={{ margin: 0, color: 'var(--w14-wax-red)', fontWeight: 500 }}>
-            Geschäft mit diesem Verkäufer nicht zulässig — Sanktion oder Sperre.
+            Geschäft mit diesem Verkäufer nicht zulässig. Sanktion oder Sperre.
           </p>
         </ParchmentCard>
       )}
@@ -694,7 +694,7 @@ function ReviewPhase(props: {
             textAlign: 'center',
           }}
         >
-          Jeder Ankauf verlangt eine persönliche Ausweisprüfung des Verkäufers (§ 259 StGB) — ab dem
+          Jeder Ankauf verlangt eine persönliche Ausweisprüfung des Verkäufers (§ 259 StGB). Ab dem
           ersten Euro.
         </p>
       )}
@@ -1058,7 +1058,7 @@ function ReceiptPhase({
                     whiteSpace: 'nowrap',
                   }}
                 >
-                  {bySku.get(p.sku)?.name ?? '—'}
+                  {bySku.get(p.sku)?.name ?? '-'}
                 </span>
                 <Button variant="ghost" size="sm" onClick={() => void printer.print([labelFor(p)])}>
                   Drucken

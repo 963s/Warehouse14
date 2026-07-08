@@ -671,12 +671,12 @@ export function BezahlenDialog({
                 ? {
                     tone: 'alert',
                     title: 'TSE-Signatur nicht gespeichert',
-                    body: 'Verkauf gebucht — die Signatur wird nachgereicht.',
+                    body: 'Verkauf gebucht. Die Signatur wird nachgereicht.',
                   }
                 : {
                     tone: 'alert',
                     title: 'TSE-Signatur nicht gesichert',
-                    body: 'Verkauf gebucht — bitte den gedruckten Beleg aufbewahren.',
+                    body: 'Verkauf gebucht. Bitte den gedruckten Beleg aufbewahren.',
                   },
             );
             // eslint-disable-next-line no-console
@@ -686,7 +686,7 @@ export function BezahlenDialog({
           addToast({
             tone: 'alert',
             title: 'TSE-Signatur in Warteschlange',
-            body: 'Verkauf gebucht — Signatur wird später nachgereicht.',
+            body: 'Verkauf gebucht. Signatur wird später nachgereicht.',
           });
         }
       } else if (hardwareCfg.tse.tssId.length > 0) {
@@ -841,7 +841,7 @@ export function BezahlenDialog({
         addToast({
           tone: 'info',
           title: 'Kein Drucker',
-          body: 'Beleg nur als Vorschau — Drucker unter „Geräte" einrichten.',
+          body: 'Beleg nur als Vorschau. Drucker unter „Geräte" einrichten.',
         });
         return;
       }
@@ -860,7 +860,7 @@ export function BezahlenDialog({
           title: 'Druck fehlgeschlagen',
           body: isHardwareError(err)
             ? describeHardwareError(err)
-            : 'Drucker prüfen — Beleg digital ausgegeben.',
+            : 'Drucker prüfen. Beleg digital ausgegeben.',
         });
       } finally {
         setPrinting(false);
@@ -943,7 +943,7 @@ export function BezahlenDialog({
           addToast({
             tone: 'alert',
             title: 'Gutschein-Verbuchung',
-            body: 'Beleg ausgegeben, aber der Gutschein konnte nicht verbucht werden — bitte manuell prüfen.',
+            body: 'Beleg ausgegeben, aber der Gutschein konnte nicht verbucht werden. Bitte manuell prüfen.',
           });
         }
       }
@@ -987,7 +987,7 @@ export function BezahlenDialog({
           addToast({
             tone: 'alert',
             title: 'Gutschein offline',
-            body: 'Gutschein wird erst beim Synchronisieren verbucht — bitte später prüfen.',
+            body: 'Gutschein wird erst beim Synchronisieren verbucht. Bitte später prüfen.',
           });
         }
         if (tender.dueCents > 0n) {
@@ -1123,7 +1123,7 @@ export function BezahlenDialog({
       addToast({
         tone: 'success',
         title: 'Karte autorisiert · Beleg ausgegeben',
-        body: `Auth ${zvt.authorizationCode ?? '—'}`,
+        body: `Auth ${zvt.authorizationCode ?? '-'}`,
       });
       // §19.3 W-7 — pop the receipt preview; the operator confirms the print.
       setPreviewData(buildReceiptData(result, payments));
@@ -1183,7 +1183,7 @@ export function BezahlenDialog({
         // against the same authorization (no second charge).
         if (isKycRequiredError(err)) setBuyerPickerOpen(true);
         setError(
-          `Buchung fehlgeschlagen NACH Karten-Autorisierung. Bitte erneut „Karte autorisieren" — die Zahlung wird ohne erneute Belastung gebucht. Details: ${formatPaymentError(err)}`,
+          `Buchung fehlgeschlagen NACH Karten-Autorisierung. Bitte erneut „Karte autorisieren". Die Zahlung wird ohne erneute Belastung gebucht. Details: ${formatPaymentError(err)}`,
         );
       }
     } finally {
@@ -1224,7 +1224,7 @@ export function BezahlenDialog({
       addToast({
         tone: 'alert',
         title: 'Terminal nicht konfiguriert',
-        body: 'Kartenanteil benötigt ein Terminal — Einstellungen → Hardware.',
+        body: 'Kartenanteil benötigt ein Terminal. Bitte unter Einstellungen, Hardware einrichten.',
       });
       return;
     }
@@ -1322,7 +1322,7 @@ export function BezahlenDialog({
           addToast({
             tone: 'alert',
             title: 'Gutschein-Verbuchung',
-            body: 'Beleg ausgegeben, aber der Gutschein konnte nicht verbucht werden — bitte manuell prüfen.',
+            body: 'Beleg ausgegeben, aber der Gutschein konnte nicht verbucht werden. Bitte manuell prüfen.',
           });
         }
       }
@@ -1361,7 +1361,7 @@ export function BezahlenDialog({
           addToast({
             tone: 'alert',
             title: 'Gutschein offline',
-            body: 'Gutschein wird erst beim Synchronisieren verbucht — bitte später prüfen.',
+            body: 'Gutschein wird erst beim Synchronisieren verbucht. Bitte später prüfen.',
           });
         }
         setPreviewData(buildReceiptData(dummyResult, buildSplitPayments()));
@@ -1375,7 +1375,7 @@ export function BezahlenDialog({
         // so a retry finalizes against the SAME auth (no second charge).
         if (isKycRequiredError(err)) setBuyerPickerOpen(true);
         setError(
-          `Buchung fehlgeschlagen NACH Karten-Autorisierung. Bitte erneut bestätigen — die Zahlung wird ohne erneute Belastung gebucht. Details: ${formatPaymentError(err)}`,
+          `Buchung fehlgeschlagen NACH Karten-Autorisierung. Bitte erneut bestätigen. Die Zahlung wird ohne erneute Belastung gebucht. Details: ${formatPaymentError(err)}`,
         );
       }
     } finally {
@@ -1842,7 +1842,7 @@ function PaymentInput({
                     lineHeight: 1.4,
                   }}
                 >
-                  Käufer zuordnen — Ausweis erforderlich (ab 2.000&nbsp;€, § 10 GwG). Ohne geprüften
+                  Käufer zuordnen. Ausweis erforderlich (ab 2.000&nbsp;€, § 10 GwG). Ohne geprüften
                   Käufer lehnt das System den Verkauf ab.
                 </p>
                 <Button
@@ -2160,7 +2160,7 @@ function PaymentInput({
                     height: 16,
                   }}
                 />
-                <span>Betrag aufteilen — Restbetrag per Karte</span>
+                <span>Betrag aufteilen, Restbetrag per Karte</span>
               </label>
             )}
 
