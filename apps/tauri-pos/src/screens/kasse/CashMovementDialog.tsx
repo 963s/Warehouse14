@@ -96,7 +96,7 @@ export function CashMovementDialog({
       if (err instanceof ApiError) {
         setError(describeError(err));
       } else {
-        setError('Verbindung gestört — Netzwerk prüfen.');
+        setError('Verbindung gestört. Netzwerk prüfen.');
       }
     } finally {
       setSubmitting(false);
@@ -127,7 +127,7 @@ export function CashMovementDialog({
               disabled={submitting}
               maxLength={1024}
               placeholder={
-                kind === 'einlage' ? 'z. B. Tresor-Übernahme' : 'z. B. Bürobedarf — Tinte'
+                kind === 'einlage' ? 'z. B. Tresor-Übernahme' : 'z. B. Bürobedarf, Tinte'
               }
             />
           </Field>

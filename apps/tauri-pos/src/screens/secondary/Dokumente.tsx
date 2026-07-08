@@ -108,7 +108,7 @@ export function Dokumente(): JSX.Element {
             onChange={(e) => setCategory(e.target.value as DocumentCategory | 'ALL')}
             style={inputStyle}
           >
-            <option value="ALL">— alle —</option>
+            <option value="ALL">alle</option>
             {CATEGORY_ORDER.map((c) => (
               <option key={c} value={c}>
                 {DOCUMENT_CATEGORY_LABELS[c]}
@@ -122,7 +122,7 @@ export function Dokumente(): JSX.Element {
             onChange={(e) => setLinkKind(e.target.value as EntityLinkKind | '')}
             style={inputStyle}
           >
-            <option value="">— egal —</option>
+            <option value="">egal</option>
             <option value="customer">Kunde</option>
             <option value="product">Artikel</option>
             <option value="transaction">Transaktion</option>
@@ -644,7 +644,7 @@ function UploadDialog({
 
 function formatBytes(s: string): string {
   const n = Number.parseInt(s, 10);
-  if (!Number.isFinite(n) || n <= 0) return '—';
+  if (!Number.isFinite(n) || n <= 0) return '-';
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;

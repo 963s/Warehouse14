@@ -321,7 +321,7 @@ export function NeuesProduktDialog({
         addToast({
           tone: 'success',
           title: 'Produkt angelegt & im Online-Shop',
-          body: `${res.sku} — jetzt online sichtbar. ${woHin}`,
+          body: `${res.sku}: jetzt online sichtbar. ${woHin}`,
         });
       } else if (decision.kind === 'draft-no-price') {
         addToast({
@@ -333,7 +333,7 @@ export function NeuesProduktDialog({
         addToast({
           tone: 'success',
           title: 'Produkt angelegt',
-          body: `${res.sku} (Entwurf) — jetzt Foto & Etikett in Lager. ${woHin}`,
+          body: `${res.sku} (Entwurf): jetzt Foto & Etikett in Lager. ${woHin}`,
         });
       }
 
@@ -350,7 +350,7 @@ export function NeuesProduktDialog({
         addToast({
           tone: 'alert',
           title: 'PIN-Bestätigung nötig',
-          body: 'Hoher Einkaufswert — bitte die PIN-Freigabe wiederholen.',
+          body: 'Hoher Einkaufswert. Bitte die PIN-Freigabe wiederholen.',
         });
       } else {
         addToast({ tone: 'alert', title: 'Anlegen fehlgeschlagen', body: msg });
@@ -374,7 +374,7 @@ export function NeuesProduktDialog({
         <div style={{ minWidth: 0 }}>
           <h2 style={HEAD_TITLE}>Neues Produkt</h2>
           <p style={HEAD_SUB}>
-            Manueller Lagerzugang — Schritt für Schritt. Wird als Entwurf angelegt.
+            Manueller Lagerzugang, Schritt für Schritt. Wird als Entwurf angelegt.
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
@@ -466,7 +466,7 @@ export function NeuesProduktDialog({
               style={DISCLOSE_ROW}
             >
               <span style={{ color: 'var(--w14-ink-aged)' }}>
-                Merkmale — Art · Zustand · Gewicht
+                Merkmale: Art · Zustand · Gewicht
               </span>
               <span aria-hidden style={{ color: 'var(--w14-ink-faded)', flexShrink: 0 }}>
                 {showMerkmale ? '▾' : '▸'}
@@ -641,12 +641,12 @@ export function NeuesProduktDialog({
             {/* Recognition-over-recall summary before the commit — incl. the
                 "where does it go" facts: Kategorie + Lagerort + Briefmarke. */}
             <div style={{ display: 'grid', gap: 8 }}>
-              <SummaryRow label="Bezeichnung" value={name.trim() || '—'} />
-              <SummaryRow label="SKU" value={sku.trim() || '—'} mono />
-              <SummaryRow label="Verkaufspreis" value={formatEuroEcho(listPriceEur) ?? '—'} mono />
+              <SummaryRow label="Bezeichnung" value={name.trim() || '-'} />
+              <SummaryRow label="SKU" value={sku.trim() || '-'} mono />
+              <SummaryRow label="Verkaufspreis" value={formatEuroEcho(listPriceEur) ?? '-'} mono />
               <SummaryRow
                 label="Kategorie"
-                value={category ? category.pathNames.join(' › ') : '—'}
+                value={category ? category.pathNames.join(' › ') : '-'}
               />
               <SummaryRow
                 label="Lagerort"
@@ -683,7 +683,7 @@ export function NeuesProduktDialog({
                 Barcode drucken
               </li>
               <li style={NEXT_STEP_LI}>
-                <Icon icon={Tag} size={15} aria-hidden /> Veröffentlichen — hier sofort online oder
+                <Icon icon={Tag} size={15} aria-hidden /> Veröffentlichen: hier sofort online oder
                 später aus Lager
               </li>
             </ol>
@@ -710,7 +710,7 @@ export function NeuesProduktDialog({
                     </span>
                     <span style={{ fontSize: '0.82rem', color: 'var(--w14-ink-faded)' }}>
                       {canPublish
-                        ? 'Sofort im Online-Shop sichtbar — statt nur als Entwurf.'
+                        ? 'Sofort im Online-Shop sichtbar, statt nur als Entwurf.'
                         : 'Erst möglich, wenn ein Verkaufspreis über 0,00 € hinterlegt ist.'}
                     </span>
                   </span>

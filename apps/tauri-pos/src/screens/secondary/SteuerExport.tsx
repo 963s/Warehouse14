@@ -128,7 +128,7 @@ export function SteuerExport(): JSX.Element {
       <header>
         <h1 style={HEADING}>Steuer-Export</h1>
         <p style={{ margin: '4px 0 0', color: 'var(--w14-ink-aged)', fontSize: '0.95rem' }}>
-          Tagesabschlüsse für Finanzamt und Steuerberater — DATEV und Kassenbericht auf Knopfdruck.
+          Tagesabschlüsse für Finanzamt und Steuerberater. DATEV und Kassenbericht auf Knopfdruck.
         </p>
       </header>
 
@@ -140,7 +140,7 @@ export function SteuerExport(): JSX.Element {
           style={{ margin: 0, fontSize: '0.86rem', color: 'var(--w14-ink-aged)', lineHeight: 1.5 }}
         >
           <strong>DSFinV-K</strong> (der Finanzamt-Standard für Kassendaten) lässt sich pro Tag
-          direkt als ZIP-Paket herunterladen — die DFKA-Taxonomie-Kerndateien (Belege, Positionen,
+          direkt als ZIP-Paket herunterladen. Es enthält die DFKA-Taxonomie-Kerndateien (Belege, Positionen,
           USt, Zahlungen, TSE) plus index.xml, für eine Kassen-Nachschau nach §146b AO. Es ist ein
           getreuer <strong>Kern-Export</strong>, kein zertifizierter: vor einer echten Prüfung bitte
           mit dem amtlichen DSFinV-K-Prüftool und dem Steuerberater abgleichen. Zusätzlich

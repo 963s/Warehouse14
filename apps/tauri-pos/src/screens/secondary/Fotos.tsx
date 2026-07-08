@@ -283,7 +283,7 @@ export function Fotos(): JSX.Element {
   const contextLine = useMemo(() => {
     if (mode === 'produkt' && productId) return `Produkt-Foto · ${productId.slice(0, 8)}…`;
     if (mode === 'kyc' && customerId) return `KYC-Dokument · Kunde ${customerId.slice(0, 8)}…`;
-    return 'Allgemein — Zuordnung später';
+    return 'Allgemein, Zuordnung später';
   }, [mode, productId, customerId]);
 
   // ── Finish action (UX P0) ───────────────────────────────────────────────
@@ -310,7 +310,7 @@ export function Fotos(): JSX.Element {
       addToast({
         tone: 'info',
         title: 'Uploads noch aktiv',
-        body: `${pendingCount} Foto(s) werden noch hochgeladen — bitte kurz warten.`,
+        body: `${pendingCount} Foto(s) werden noch hochgeladen. Bitte kurz warten.`,
       });
       return;
     }
@@ -939,10 +939,10 @@ function ProductGallery({ productId }: { productId: string }): JSX.Element {
         tone: 'alert',
         title: 'Hauptbild nicht geändert',
         body: notImplemented
-          ? 'Die Hauptbild-Auswahl ist auf diesem Server noch nicht aktiv — bitte später erneut versuchen.'
+          ? 'Die Hauptbild-Auswahl ist auf diesem Server noch nicht aktiv. Bitte später erneut versuchen.'
           : err instanceof ApiError
             ? describeError(err)
-            : 'Verbindung gestört — bitte erneut versuchen.',
+            : 'Verbindung gestört. Bitte erneut versuchen.',
       });
     },
   });
@@ -997,7 +997,7 @@ function ProductGallery({ productId }: { productId: string }): JSX.Element {
             color: 'var(--w14-ink-faded)',
           }}
         >
-          Noch keine gespeicherten Fotos — nehmen Sie links das erste auf.
+          Noch keine gespeicherten Fotos. Nehmen Sie links das erste auf.
         </p>
       )}
 
@@ -1242,7 +1242,7 @@ function KycDocumentForm({
         if (err.code === 'STEP_UP_REQUIRED') setError('PIN-Bestätigung wurde abgebrochen.');
         else setError(describeError(err));
       } else {
-        setError('Verbindung gestört — bitte erneut versuchen.');
+        setError('Verbindung gestört. Bitte erneut versuchen.');
       }
     } finally {
       setSubmitting(false);
@@ -1275,7 +1275,7 @@ function KycDocumentForm({
         }}
       >
         {readySnapshot
-          ? '✓ Aufnahme bereit — Details ausfüllen + bestätigen.'
+          ? '✓ Aufnahme bereit. Details ausfüllen + bestätigen.'
           : 'Bitte zuerst Ausweis fotografieren / hochladen.'}
       </p>
 

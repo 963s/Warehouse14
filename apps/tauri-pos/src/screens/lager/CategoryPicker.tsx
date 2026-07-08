@@ -117,7 +117,7 @@ export function resolveCategorySelection(
 function nodeRangeText(node: CategoryNode, underStamps: boolean): string | null {
   const hint = stampRangeForSlug(node.slug);
   if (hint)
-    return `MiNr. ${hint.min}–${hint.max ?? 'laufend'}${hint.blocks ? ` · ${hint.blocks}` : ''}`;
+    return `MiNr. ${hint.min} bis ${hint.max ?? 'laufend'}${hint.blocks ? ` · ${hint.blocks}` : ''}`;
   if (underStamps && node.descriptionDe) return node.descriptionDe;
   return null;
 }
@@ -215,7 +215,7 @@ export function CategoryPicker({ value, onChange, disabled }: CategoryPickerProp
     return <p style={QUIET_TEXT}>Kategorien werden geladen…</p>;
   }
   if (isError || roots.length === 0) {
-    return <p style={QUIET_TEXT}>Keine Kategorien verfügbar — später erneut versuchen.</p>;
+    return <p style={QUIET_TEXT}>Keine Kategorien verfügbar. Später erneut versuchen.</p>;
   }
 
   return (
@@ -228,7 +228,7 @@ export function CategoryPicker({ value, onChange, disabled }: CategoryPickerProp
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Kategorie suchen — z. B. Baden, Goldmünzen, Sachsen…"
+          placeholder="Kategorie suchen, z. B. Baden, Goldmünzen, Sachsen…"
           aria-label="Kategorie über alle Ebenen suchen"
           disabled={disabled === true}
           style={SEARCH_INPUT}
@@ -321,7 +321,7 @@ export function CategoryPicker({ value, onChange, disabled }: CategoryPickerProp
           )}
 
           <span style={LEVEL_LABEL}>
-            {parent ? `${parent.nameDe} — wählen` : 'Hauptkategorie wählen'}
+            {parent ? `${parent.nameDe} wählen` : 'Hauptkategorie wählen'}
           </span>
           <div style={TILE_WRAP}>
             {levelNodes.map((n) => {
@@ -480,7 +480,7 @@ export function StampAttributeFields({
 
   return (
     <div style={STAMP_BOX}>
-      <span style={LEVEL_LABEL}>Briefmarke — Erhaltung</span>
+      <span style={LEVEL_LABEL}>Briefmarke: Erhaltung</span>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
         {ERHALTUNG_OPTIONS.map((o) => {
           const active = erhaltung === o.value;
@@ -612,7 +612,7 @@ export function BeschreibungDetailsFields({
     <div style={{ display: 'grid', gap: 10 }}>
       <Field
         label="Beschreibung (erscheint im Online-Shop)"
-        hint="Kurz und konkret — so sieht es die Kundschaft auf der Artikelseite."
+        hint="Kurz und konkret. So sieht es die Kundschaft auf der Artikelseite."
       >
         <Textarea
           value={description}
@@ -631,7 +631,7 @@ export function BeschreibungDetailsFields({
         style={TRIGGER_ROW}
       >
         <span style={{ color: 'var(--w14-ink-aged)' }}>
-          Details — Epoche · Prägejahr · Herkunft · Katalog
+          Details: Epoche · Prägejahr · Herkunft · Katalog
         </span>
         <span aria-hidden style={{ color: 'var(--w14-ink-faded)', flexShrink: 0 }}>
           {openDetails ? '▾' : '▸'}

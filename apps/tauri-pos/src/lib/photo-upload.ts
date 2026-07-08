@@ -99,7 +99,7 @@ export async function uploadBlobToR2(input: {
   });
   if (!res.ok) {
     throw new Error(
-      `R2 PUT failed: ${res.status} ${res.statusText} — die signierte URL ist möglicherweise abgelaufen.`,
+      `R2 PUT failed: ${res.status} ${res.statusText}. Die signierte URL ist möglicherweise abgelaufen.`,
     );
   }
 

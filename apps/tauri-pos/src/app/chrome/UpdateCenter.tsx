@@ -287,7 +287,7 @@ function DownloadProgress({ pct, version }: { pct: number; version: string | nul
   return (
     <div>
       <div className="w14-smallcaps" style={SMALLCAPS_LABEL}>
-        {version ? `Version ${version}` : 'Aktualisierung'} — wird heruntergeladen… {clamped} %
+        {version ? `Version ${version}` : 'Aktualisierung'} wird heruntergeladen… {clamped} %
       </div>
       <div
         role="progressbar"
@@ -315,7 +315,7 @@ function DownloadProgress({ pct, version }: { pct: number; version: string | nul
         />
       </div>
       <div style={{ marginTop: 8, fontSize: '0.8rem', color: 'var(--w14-ink-faded)' }}>
-        Bitte nicht schließen — die App startet danach neu.
+        Bitte nicht schließen. Die App startet danach neu.
       </div>
     </div>
   );

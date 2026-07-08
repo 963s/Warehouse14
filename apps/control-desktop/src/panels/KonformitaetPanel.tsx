@@ -139,7 +139,7 @@ export function KonformitaetPanel(): JSX.Element {
       pushToast(
         'success',
         'An-/Verkaufsbuch geladen',
-        `${direction === 'ANKAUF' ? 'Ankäufe' : 'Verkäufe'} ${from} – ${to}.`,
+        `${direction === 'ANKAUF' ? 'Ankäufe' : 'Verkäufe'} ${from} bis ${to}.`,
       );
     } catch (err) {
       if (isStepUpCancelled(err) || (err instanceof ApiError && err.code === 'STEP_UP_REQUIRED')) {
@@ -166,7 +166,7 @@ export function KonformitaetPanel(): JSX.Element {
     <>
       <DiamondRule tone="gold" label="Konformität" />
       <p style={{ ...caption, marginTop: 8, marginBottom: 16 }}>
-        Das fälschungssichere Prüfprotokoll (hash-chained). Jedes fiskalische und AML-Ereignis —
+        Das fälschungssichere Prüfprotokoll (hash-chained). Jedes fiskalische und AML-Ereignis:
         {alerts > 0 ? ` ${alerts} Warnung(en) in der Ansicht.` : ' keine Warnungen in der Ansicht.'}
       </p>
 

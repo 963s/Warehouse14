@@ -32,11 +32,11 @@ const TRUST_OPTIONS: Array<{
   label: string;
   tone: 'gold' | 'ink' | 'wax-red';
 }> = [
-  { value: 'NEW', label: 'NEU — Standard', tone: 'ink' },
-  { value: 'VERIFIED', label: 'BESTÄTIGT — Stammkunde', tone: 'gold' },
-  { value: 'VIP', label: 'VIP — Sammler', tone: 'gold' },
-  { value: 'SUSPICIOUS', label: 'BEOBACHTEN — Verdacht', tone: 'wax-red' },
-  { value: 'BANNED', label: 'GESPERRT — kein Geschäft', tone: 'wax-red' },
+  { value: 'NEW', label: 'NEU, Standard', tone: 'ink' },
+  { value: 'VERIFIED', label: 'BESTÄTIGT, Stammkunde', tone: 'gold' },
+  { value: 'VIP', label: 'VIP, Sammler', tone: 'gold' },
+  { value: 'SUSPICIOUS', label: 'BEOBACHTEN, Verdacht', tone: 'wax-red' },
+  { value: 'BANNED', label: 'GESPERRT, kein Geschäft', tone: 'wax-red' },
 ];
 
 export interface CustomerTrustDialogProps {
@@ -111,7 +111,7 @@ export function CustomerTrustDialog({
         if (err.code === 'STEP_UP_REQUIRED') setError('PIN-Bestätigung wurde abgebrochen.');
         else setError(describeError(err));
       } else {
-        setError('Verbindung gestört — bitte erneut versuchen.');
+        setError('Verbindung gestört. Bitte erneut versuchen.');
       }
     } finally {
       setSubmitting(false);
@@ -243,7 +243,7 @@ export function CustomerTrustDialog({
               value={note}
               onChange={(ev) => setNote(ev.target.value)}
               rows={2}
-              placeholder="Z. B. Hehlerverdacht — Auffälligkeit am 27.05.2026"
+              placeholder="Z. B. Hehlerverdacht, Auffälligkeit am 27.05.2026"
               style={{
                 border: 'none',
                 outline: 'none',

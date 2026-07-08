@@ -284,7 +284,7 @@ function IntegrationCard({ item }: { item: IntegrationItem }): JSX.Element {
           onChange={(e) => setDraftKey(e.target.value)}
           placeholder={
             item.configured
-              ? 'Hinterlegt — zum Ersetzen neuen Schlüssel eingeben'
+              ? 'Hinterlegt. Zum Ersetzen neuen Schlüssel eingeben'
               : hints.keyPlaceholder
           }
         />

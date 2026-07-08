@@ -171,7 +171,7 @@ export function KassenbuchPanel({ shift }: KassenbuchPanelProps): JSX.Element {
               fontSize: '0.78rem',
             }}
           >
-            Geschätzt — Einlagen und Entnahmen werden im Z-Bon endgültig verrechnet.
+            Geschätzt. Einlagen und Entnahmen werden im Z-Bon endgültig verrechnet.
           </p>
         </ParchmentCard>
 
@@ -231,7 +231,7 @@ export function KassenbuchPanel({ shift }: KassenbuchPanelProps): JSX.Element {
               textAlign: 'center',
             }}
           >
-            Der Z-Bon ist der gesetzliche Tagesabschluss (KassenSichV) — er schließt die Schicht
+            Der Z-Bon ist der gesetzliche Tagesabschluss (KassenSichV). Er schließt die Schicht
             endgültig. PIN-Bestätigung erforderlich.
           </p>
           <div

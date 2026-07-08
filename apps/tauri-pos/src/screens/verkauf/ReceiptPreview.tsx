@@ -320,7 +320,7 @@ export function ReceiptPreview({
         )}
         {!lockedReason && !canPrint && (
           <div style={{ color: 'var(--w14-parchment-1)', fontSize: '0.78rem', opacity: 0.85 }}>
-            Drucker nicht konfiguriert — Vorschau ohne Druck. (Geräte einrichten)
+            Drucker nicht konfiguriert. Vorschau ohne Druck. (Geräte einrichten)
           </div>
         )}
       </div>

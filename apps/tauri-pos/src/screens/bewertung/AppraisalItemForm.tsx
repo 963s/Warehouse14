@@ -59,7 +59,7 @@ export function AppraisalItemForm({ appraisalId }: AppraisalItemFormProps): JSX.
 
   const weighIn = async (): Promise<void> => {
     if (!scalePortPath) {
-      setError('Keine Waage eingerichtet — bitte im Gerätemanager verbinden.');
+      setError('Keine Waage eingerichtet. Bitte im Gerätemanager verbinden.');
       return;
     }
     try {
@@ -198,7 +198,7 @@ export function AppraisalItemForm({ appraisalId }: AppraisalItemFormProps): JSX.
           value={metal}
           onChange={setMetal}
           options={[
-            { value: '', label: '—' },
+            { value: '', label: '-' },
             { value: 'gold', label: 'Gold' },
             { value: 'silver', label: 'Silber' },
             { value: 'platinum', label: 'Platin' },

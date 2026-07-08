@@ -113,7 +113,7 @@ export function ZvtSpinner({
             fontSize: '0.78rem',
           }}
         >
-          Vorgang nicht abbrechen — das Terminal sendet das Ergebnis.
+          Vorgang nicht abbrechen. Das Terminal sendet das Ergebnis.
         </p>
       </ParchmentCard>
 

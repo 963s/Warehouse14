@@ -261,7 +261,7 @@ export function CatalogGrid({
               }}
             >
               {/* No fake 0 while the first count loads. */}
-              {inventoryCounts.data ? bucketCount(inventoryCounts.data, b.bucket) : '—'}
+              {inventoryCounts.data ? bucketCount(inventoryCounts.data, b.bucket) : '-'}
             </span>
           </span>
         ))}
@@ -633,7 +633,7 @@ function CatalogError({
           fontFamily: 'var(--w14-font-display)',
         }}
       >
-        Katalog konnte nicht geladen werden — Verbindung prüfen.
+        Katalog konnte nicht geladen werden. Verbindung prüfen.
       </p>
       <Button variant="ghost" size="sm" onClick={onRetry} disabled={retrying}>
         {retrying ? 'Lädt…' : 'Erneut laden'}
@@ -655,7 +655,7 @@ function EmptyState({ query }: { query: string }): JSX.Element {
       >
         {query.length > 0
           ? `Keine Treffer für „${query}“.`
-          : 'Der Katalog ist leer — fügen Sie Artikel über die Aufnahme hinzu.'}
+          : 'Der Katalog ist leer. Fügen Sie Artikel über die Aufnahme hinzu.'}
       </p>
     </ParchmentCard>
   );

@@ -88,14 +88,14 @@ export function StepUpModal(): JSX.Element | null {
             {
               const details = err.details as { lockedUntil?: string } | undefined;
               if (details?.lockedUntil) setLockedUntilIso(details.lockedUntil);
-              setErrorMsg('Konto gesperrt — bitte Geduld.');
+              setErrorMsg('Konto gesperrt. Bitte Geduld.');
             }
             break;
           default:
             setErrorMsg(describeError(err));
         }
       } else {
-        setErrorMsg('Verbindung gestört — Netzwerk prüfen.');
+        setErrorMsg('Verbindung gestört. Netzwerk prüfen.');
       }
       setPin('');
     } finally {

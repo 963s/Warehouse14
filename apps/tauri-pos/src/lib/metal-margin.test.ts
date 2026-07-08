@@ -48,7 +48,7 @@ describe('formatPerGram', () => {
     expect(formatPerGram('57.2531')).toBe('57,2531 €/g');
   });
 
-  it('null → em dash', () => {
-    expect(formatPerGram(null)).toBe('—');
+  it('null renders a hyphen placeholder (house style: no em dash)', () => {
+    expect(formatPerGram(null)).toBe('-');
   });
 });

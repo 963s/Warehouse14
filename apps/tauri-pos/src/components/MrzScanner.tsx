@@ -134,7 +134,7 @@ export function MrzScanner({
       .map((l) => l.trim())
       .filter((l) => l.length > 0);
     if (lines.length < 2) {
-      setParseError('Bitte die 2–3 MRZ-Zeilen des Ausweises eingeben.');
+      setParseError('Bitte die 2 bis 3 MRZ-Zeilen des Ausweises eingeben.');
       return;
     }
     const person = parseMrzDocument(lines);
@@ -152,14 +152,14 @@ export function MrzScanner({
           <video ref={videoRef} muted playsInline style={{ width: '100%', borderRadius: 8 }} />
           <p className="mrz-scanner-hint">
             {recognizeMrz
-              ? 'Ausweis in den Rahmen halten — die MRZ wird automatisch erkannt.'
+              ? 'Ausweis in den Rahmen halten. Die MRZ wird automatisch erkannt.'
               : 'Kamera aktiv. MRZ unten manuell eingeben (kein Offline-Texterkenner geladen).'}
           </p>
         </div>
       ) : null}
 
       {camera === 'denied' ? (
-        <p role="alert">Kamera nicht verfügbar — bitte die MRZ-Zeilen manuell eingeben.</p>
+        <p role="alert">Kamera nicht verfügbar. Bitte die MRZ-Zeilen manuell eingeben.</p>
       ) : null}
 
       {/* Manual entry is always offered (fallback + when no OCR engine is wired). */}

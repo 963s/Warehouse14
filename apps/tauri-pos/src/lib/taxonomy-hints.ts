@@ -76,11 +76,11 @@ export const STAMP_MINR_RANGES: Readonly<Record<string, StampRangeHint>> = {
     name: 'Deutsches Reich',
     min: 1,
     max: 910,
-    blocks: 'Block 1–11',
+    blocks: 'Block 1 bis 11',
   },
-  'briefmarken-berlin': { name: 'Berlin (West)', min: 1, max: 879, blocks: 'Block 1–8' },
-  'briefmarken-bund': { name: 'Bund', min: 111, max: null, blocks: 'Block 2–laufend' },
-  'briefmarken-ddr': { name: 'DDR', min: 242, max: 3365, blocks: 'Block 7–100' },
+  'briefmarken-berlin': { name: 'Berlin (West)', min: 1, max: 879, blocks: 'Block 1 bis 8' },
+  'briefmarken-bund': { name: 'Bund', min: 111, max: null, blocks: 'Block 2 bis laufend' },
+  'briefmarken-ddr': { name: 'DDR', min: 242, max: 3365, blocks: 'Block 7 bis 100' },
   // Altdeutschland (18 states)
   baden: { name: 'Baden', min: 1, max: 25 },
   bayern: { name: 'Bayern', min: 1, max: 191 },
@@ -104,7 +104,7 @@ export const STAMP_MINR_RANGES: Readonly<Record<string, StampRangeHint>> = {
 
 /** 'Baden · MiNr. 1–25' / 'Bund · MiNr. 111–laufend · Block 2–laufend'. */
 export function formatRangeHint(hint: StampRangeHint): string {
-  const range = `MiNr. ${hint.min}–${hint.max ?? 'laufend'}`;
+  const range = `MiNr. ${hint.min} bis ${hint.max ?? 'laufend'}`;
   return [hint.name, range, hint.blocks].filter(Boolean).join(' · ');
 }
 
@@ -148,32 +148,32 @@ export function minrWarning(pathSlugs: readonly string[], minr: number): string 
   const tooLow = minr < hint.min;
   const tooHigh = hint.max !== null && minr > hint.max;
   if (!tooLow && !tooHigh) return null;
-  return `Außerhalb des üblichen Bereichs (${formatRangeHint(hint)}) — Speichern ist trotzdem möglich.`;
+  return `Außerhalb des üblichen Bereichs (${formatRangeHint(hint)}). Speichern ist trotzdem möglich.`;
 }
 
 // ── Sortier-Tipps (where does it go) per root category ──────────────────
 
 const SORTIER_TIPP: Readonly<Record<string, string>> = {
-  gold: 'Edelmetall — direkt in den Tresor.',
-  silber: 'Edelmetall — in den Tresor bzw. das Silberfach.',
-  platin: 'Edelmetall — direkt in den Tresor.',
-  palladium: 'Edelmetall — direkt in den Tresor.',
+  gold: 'Edelmetall, direkt in den Tresor.',
+  silber: 'Edelmetall, in den Tresor bzw. das Silberfach.',
+  platin: 'Edelmetall, direkt in den Tresor.',
+  palladium: 'Edelmetall, direkt in den Tresor.',
   muenzen: 'In Münzkapseln/Tabletts, nach Gebiet und Jahrgang sortiert.',
   briefmarken: 'In Steckbücher/Klemmtaschen, nach Gebiet und MiNr. einsortieren.',
-  schmuck: 'In die Schmuckvitrine — hochwertige Stücke in den Tresor.',
-  barren: 'Barren mit Zertifikat zusammenhalten — in den Tresor.',
+  schmuck: 'In die Schmuckvitrine, hochwertige Stücke in den Tresor.',
+  barren: 'Barren mit Zertifikat zusammenhalten, in den Tresor.',
   medaillen: 'Zu den Medaillen-Tabletts, nach Anlass/Material sortiert.',
   banknoten: 'In Banknotenhüllen, liegend und lichtgeschützt lagern.',
   postkarten: 'In Archivboxen, nach Region/Motiv sortiert.',
-  militaria: 'Ins Militaria-Regal — Herkunft dokumentieren.',
-  antiquitaeten: 'In den Antiquitäten-Bereich — stoßsicher abstellen.',
-  uhren: 'In die Uhrenvitrine — Werte in den Tresor.',
+  militaria: 'Ins Militaria-Regal, Herkunft dokumentieren.',
+  antiquitaeten: 'In den Antiquitäten-Bereich, stoßsicher abstellen.',
+  uhren: 'In die Uhrenvitrine, Werte in den Tresor.',
   'orden-ehrenzeichen': 'In die Orden-Vitrine, mit Band/Etui zusammenhalten.',
   'orden-und-ehrenzeichen': 'In die Orden-Vitrine, mit Band/Etui zusammenhalten.',
   ansichtskarten: 'In Archivboxen, nach Ort/Region einsortieren.',
-  konvolute: 'Als Posten zusammenhalten — Konvolut-Regal.',
+  konvolute: 'Als Posten zusammenhalten, Konvolut-Regal.',
   neuheiten: 'Zur Neuheiten-Präsentation an der Theke.',
-  ankauf: 'In die Ankauf-Zwischenablage — zeitnah bewerten.',
+  ankauf: 'In die Ankauf-Zwischenablage, zeitnah bewerten.',
 };
 
 /** One-line 'Sortier-Tipp' for the chosen root category (null when unknown). */

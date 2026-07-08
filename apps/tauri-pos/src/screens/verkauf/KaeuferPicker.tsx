@@ -91,7 +91,7 @@ export function KaeuferPicker({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Käufer zuordnen — Ausweis erforderlich"
+      aria-label="Käufer zuordnen, Ausweis erforderlich"
       onClick={onCancel}
       style={{
         position: 'fixed',
@@ -464,7 +464,7 @@ function SelectedBuyer({
           err.code === 'STEP_UP_REQUIRED' ? 'PIN-Bestätigung wurde abgebrochen.' : describeError(err),
         );
       } else {
-        setError('Verbindung gestört — Ausweis nicht bestätigt.');
+        setError('Verbindung gestört. Ausweis nicht bestätigt.');
       }
     } finally {
       setStamping(false);
@@ -546,8 +546,8 @@ function SelectedBuyer({
                 }}
               >
                 {customer.sanctionsMatch
-                  ? 'Sanktionslisten-Treffer — Verstoß gegen EU-Verordnung.'
-                  : 'Kunde ist gesperrt — siehe Notizen.'}
+                  ? 'Sanktionslisten-Treffer. Verstoß gegen EU-Verordnung.'
+                  : 'Kunde ist gesperrt. Siehe Notizen.'}
               </p>
             </ParchmentCard>
           )}
@@ -597,9 +597,9 @@ function SelectedBuyer({
                 ? `Ausweis geprüft am ${
                     customer.kycVerifiedAt
                       ? new Date(customer.kycVerifiedAt).toLocaleDateString('de-DE')
-                      : '—'
+                      : '-'
                   }`
-                : 'Ausweis noch nicht geprüft — § 10 GwG verlangt eine Identifizierung.'}
+                : 'Ausweis noch nicht geprüft. § 10 GwG verlangt eine Identifizierung.'}
             </p>
           </ParchmentCard>
 
@@ -639,7 +639,7 @@ function SelectedBuyer({
                 onClick={() => void stampKyc()}
                 disabled={stamping}
               >
-                {stamping ? 'Bestätigt…' : 'Ausweis geprüft — bestätigen'}
+                {stamping ? 'Bestätigt…' : 'Ausweis geprüft, bestätigen'}
               </Button>
             ))}
         </>
@@ -698,7 +698,7 @@ function CreateBuyer({
       onCreated(created.id);
     } catch (err) {
       if (err instanceof ApiError) setError(describeError(err));
-      else setError('Verbindung gestört — Netzwerk prüfen.');
+      else setError('Verbindung gestört. Netzwerk prüfen.');
     } finally {
       setSubmitting(false);
     }

@@ -451,20 +451,20 @@ function CreateBody({
         addToast({
           tone: 'success',
           title: 'Produkt verkaufsbereit',
-          body: `${res.sku} — sofort im Verkauf sichtbar`,
+          body: `${res.sku}: sofort im Verkauf sichtbar`,
         });
       } else if (outcome === 'publish-failed') {
         addToast({
           tone: 'alert',
           title: 'Angelegt, aber NICHT verkaufsbereit',
-          body: `${res.sku} ist nur ein Entwurf — in Lager veröffentlichen.${
+          body: `${res.sku} ist nur ein Entwurf. In Lager veröffentlichen.${
             publishErr ? ` (${publishErr})` : ''
           }`,
         });
       } else if (outcome === 'no-price') {
         addToast({
           tone: 'alert',
-          title: 'Kein Verkaufspreis — als Entwurf gespeichert',
+          title: 'Kein Verkaufspreis, als Entwurf gespeichert',
           body: `${res.sku}: ein Verkaufspreis über 0 € ist nötig, um sofort zu verkaufen.`,
         });
       } else {
@@ -472,8 +472,8 @@ function CreateBody({
           tone: 'success',
           title: 'Produkt angelegt',
           body: printer.configured
-            ? `${res.sku} (Entwurf) — Etikett gedruckt, jetzt Fotos`
-            : `${res.sku} (Entwurf) — jetzt Fotos aufnehmen`,
+            ? `${res.sku} (Entwurf): Etikett gedruckt, jetzt Fotos`
+            : `${res.sku} (Entwurf): jetzt Fotos aufnehmen`,
         });
       }
 
@@ -488,7 +488,7 @@ function CreateBody({
         addToast({
           tone: 'alert',
           title: 'PIN-Bestätigung nötig',
-          body: 'Hoher Einkaufswert — bitte PIN-Freigabe wiederholen.',
+          body: 'Hoher Einkaufswert. Bitte PIN-Freigabe wiederholen.',
         });
       } else {
         addToast({ tone: 'alert', title: 'Anlegen fehlgeschlagen', body: msg });
@@ -502,7 +502,7 @@ function CreateBody({
     <>
       <SheetHeaderRow
         title="Neues Produkt"
-        subtitle="Manueller Lagerzugang — wird als Entwurf angelegt"
+        subtitle="Manueller Lagerzugang, wird als Entwurf angelegt"
         chip={<LifecycleChip stage="Entwurf" />}
         onClose={onClose}
       />
@@ -585,7 +585,7 @@ function CreateBody({
           style={DISCLOSE_ROW}
         >
           <span style={{ color: 'var(--w14-ink-aged)' }}>
-            Merkmale — Art · Zustand · Gewicht · Steuerart
+            Merkmale: Art · Zustand · Gewicht · Steuerart
           </span>
           <span aria-hidden style={{ color: 'var(--w14-ink-faded)', flexShrink: 0 }}>
             {showMerkmale ? '▾' : '▸'}
@@ -716,7 +716,7 @@ function CreateBody({
           checked={willPublish}
           disabled={!pricePositive}
           onChange={(e) => setPublishNow(e.target.checked)}
-          label="Sofort verkaufsbereit — direkt im Verkauf sichtbar (sonst nur Entwurf)"
+          label="Sofort verkaufsbereit, direkt im Verkauf sichtbar (sonst nur Entwurf)"
         />
         {!pricePositive && (
           <p
@@ -856,20 +856,20 @@ function DetailsSection({ product }: { product: ProductDetail }): JSX.Element {
   const stampLine = formatStampDisplay(ext.stampMinr ?? null, ext.stampErhaltung ?? null);
   const rows: Array<[string, string]> = [
     ['Art', itemTypeLabel(product.itemType)],
-    ['Kategorie', primary ? primary.nameDe : '—'],
+    ['Kategorie', primary ? primary.nameDe : '-'],
     ['Zustand', conditionLabel(product.condition)],
     [
       'Steuerart',
       TAX_TREATMENT_LABEL[product.taxTreatmentCode as TaxTreatmentCode] ?? product.taxTreatmentCode,
     ],
-    ['Gewicht', product.weightGrams ? `${formatGrams(product.weightGrams)} g` : '—'],
+    ['Gewicht', product.weightGrams ? `${formatGrams(product.weightGrams)} g` : '-'],
     ['Einkaufswert', `${formatEur(product.acquisitionCostEur)} €`],
     ['Verkaufspreis', `${formatEur(product.listPriceEur)} €`],
     [
       'Lagerort',
       [product.locationStorageUnit, product.locationDrawer, product.locationPosition]
         .filter((s): s is string => !!s && s.length > 0)
-        .join(' · ') || '—',
+        .join(' · ') || '-',
     ],
     ...(stampLine ? ([['Briefmarke', stampLine]] as Array<[string, string]>) : []),
   ];
@@ -999,7 +999,7 @@ function DetailsEditor({ product }: { product: ProductDetail }): JSX.Element {
           addToast({
             tone: 'alert',
             title: 'Briefmarken-Merkmale nicht gespeichert',
-            body: 'Erhaltung/MiNr. konnte der Server noch nicht annehmen — Rest ist gespeichert.',
+            body: 'Erhaltung/MiNr. konnte der Server noch nicht annehmen. Rest ist gespeichert.',
           });
         }
       }
@@ -1009,7 +1009,7 @@ function DetailsEditor({ product }: { product: ProductDetail }): JSX.Element {
       await qc.invalidateQueries({ queryKey: ['products', 'list'] });
     } catch (err) {
       const msg =
-        err instanceof ApiError ? describeError(err) : 'Verbindung gestört — bitte erneut versuchen.';
+        err instanceof ApiError ? describeError(err) : 'Verbindung gestört. Bitte erneut versuchen.';
       addToast({ tone: 'alert', title: 'Speichern fehlgeschlagen', body: msg });
     } finally {
       setBusy(false);
@@ -1068,7 +1068,7 @@ function FotosSection({ product }: { product: ProductDetail }): JSX.Element {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
       <p style={{ margin: 0, fontSize: '0.86rem', color: 'var(--w14-ink-faded)' }}>
-        Fotos werden in der Foto-Werkstatt aufgenommen und zugeschnitten — danach landen Sie wieder
+        Fotos werden in der Foto-Werkstatt aufgenommen und zugeschnitten. Danach landen Sie wieder
         hier beim Produkt.
       </p>
 
@@ -1165,14 +1165,14 @@ function PreisSection({
       addToast({
         tone: 'success',
         title: 'Verkaufsbereit',
-        body: `${product.sku} — jetzt im Verkauf sichtbar`,
+        body: `${product.sku}: jetzt im Verkauf sichtbar`,
       });
       await qc.invalidateQueries({ queryKey: ['products', 'list'] });
       await qc.invalidateQueries({ queryKey: productDetailQueryKey(product.id) });
       onDone();
     } catch (err) {
       const msg =
-        err instanceof ApiError ? describeError(err) : 'Verbindung gestört — bitte erneut versuchen.';
+        err instanceof ApiError ? describeError(err) : 'Verbindung gestört. Bitte erneut versuchen.';
       addToast({ tone: 'alert', title: 'Nicht verkaufsbereit', body: msg });
     } finally {
       setBusy(false);
@@ -1269,7 +1269,7 @@ function BestandSection({
       addToast({
         tone: reason === 'LOST' || reason === 'DAMAGED' ? 'alert' : 'success',
         title: 'Anpassung protokolliert',
-        body: `${product.sku} — ${ADJ_REASON_OPTIONS.find((o) => o.value === reason)?.label ?? reason}`,
+        body: `${product.sku}: ${ADJ_REASON_OPTIONS.find((o) => o.value === reason)?.label ?? reason}`,
       });
       await qc.invalidateQueries({ queryKey: ['products', 'list'] });
       await qc.invalidateQueries({ queryKey: productDetailQueryKey(product.id) });
@@ -1278,10 +1278,10 @@ function BestandSection({
       if (err instanceof ApiError) {
         if (err.code === 'STEP_UP_REQUIRED') setError('PIN-Bestätigung wurde abgebrochen.');
         else if (err.code === 'NOT_FOUND') {
-          setError('Stück nicht mehr vorhanden — Liste wird aktualisiert.');
+          setError('Stück nicht mehr vorhanden. Liste wird aktualisiert.');
           void qc.invalidateQueries({ queryKey: ['products', 'list'] });
         } else setError(describeError(err));
-      } else setError('Verbindung gestört — bitte erneut versuchen.');
+      } else setError('Verbindung gestört. Bitte erneut versuchen.');
     } finally {
       setSubmitting(false);
     }
@@ -1475,13 +1475,13 @@ function HandelSection({ product }: { product: ProductDetail }): JSX.Element {
       addToast({
         tone: 'success',
         title: 'In eBay-Pipeline aufgenommen',
-        body: `${product.sku} — als Entwurf vorgemerkt (noch nicht live bei eBay).`,
+        body: `${product.sku}: als Entwurf vorgemerkt (noch nicht live bei eBay).`,
       });
       await qc.invalidateQueries({ queryKey: productDetailQueryKey(product.id) });
       await qc.invalidateQueries({ queryKey: ['products', 'list'] });
     } catch (err) {
       const msg =
-        err instanceof ApiError ? describeError(err) : 'Verbindung gestört — bitte erneut versuchen.';
+        err instanceof ApiError ? describeError(err) : 'Verbindung gestört. Bitte erneut versuchen.';
       addToast({ tone: 'alert', title: 'eBay-Aufnahme fehlgeschlagen', body: msg });
     } finally {
       setBusy(false);
@@ -1516,7 +1516,7 @@ function HandelSection({ product }: { product: ProductDetail }): JSX.Element {
       }
     } catch (err) {
       const msg =
-        err instanceof ApiError ? describeError(err) : 'Verbindung gestört — bitte erneut versuchen.';
+        err instanceof ApiError ? describeError(err) : 'Verbindung gestört. Bitte erneut versuchen.';
       addToast({ tone: 'alert', title: 'eBay-Veröffentlichung fehlgeschlagen', body: msg });
     } finally {
       setPushBusy(false);
@@ -1577,7 +1577,7 @@ function HandelSection({ product }: { product: ProductDetail }): JSX.Element {
               {live
                 ? 'Live im eBay-Marktplatz.'
                 : enrolled
-                  ? 'In der eBay-Pipeline vorgemerkt — jetzt veröffentlichen.'
+                  ? 'In der eBay-Pipeline vorgemerkt. Jetzt veröffentlichen.'
                   : 'Mit einem Klick in die eBay-Pipeline aufnehmen.'}
             </span>
           </div>
@@ -1655,7 +1655,7 @@ function LoeschenSection({
       onDeleted();
     } catch (err) {
       const msg =
-        err instanceof ApiError ? describeError(err) : 'Verbindung gestört — bitte erneut versuchen.';
+        err instanceof ApiError ? describeError(err) : 'Verbindung gestört. Bitte erneut versuchen.';
       addToast({ tone: 'alert', title: 'Löschen nicht möglich', body: msg });
     } finally {
       setBusy(false);
@@ -1676,7 +1676,7 @@ function LoeschenSection({
     >
       <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--w14-ink-aged)', lineHeight: 1.45 }}>
         <strong style={{ color: 'var(--w14-wax-red)' }}>Achtung:</strong> Dieser Entwurf wird{' '}
-        <strong>endgültig gelöscht</strong> — Fotos, eBay-Verlauf und Kategorie-Zuordnung
+        <strong>endgültig gelöscht</strong>. Fotos, eBay-Verlauf und Kategorie-Zuordnung
         inbegriffen. Dies ist nur für noch nicht verkaufte Entwürfe möglich und kann nicht
         rückgängig gemacht werden.
       </p>

@@ -122,7 +122,7 @@ export function WebSeoPanel({ productId }: WebSeoPanelProps): JSX.Element {
       addToast({
         tone: 'alert',
         title: 'Schalten fehlgeschlagen',
-        body: err instanceof ApiError ? describeError(err) : 'Netzwerkfehler — bitte erneut versuchen.',
+        body: err instanceof ApiError ? describeError(err) : 'Netzwerkfehler. Bitte erneut versuchen.',
       });
     },
   });
@@ -299,7 +299,7 @@ export function WebSeoPanel({ productId }: WebSeoPanelProps): JSX.Element {
           disabled={treeQ.isLoading || setCategory.isPending}
           style={selectStyle}
         >
-          <option value="">— keine Kategorie —</option>
+          <option value="">Keine Kategorie</option>
           {flatCategories.map((c) => (
             <option key={c.id} value={c.id}>
               {`${'  '.repeat(c.depth)}${c.label}`}
@@ -324,11 +324,11 @@ export function WebSeoPanel({ productId }: WebSeoPanelProps): JSX.Element {
         </small>
       </FieldGroup>
 
-      <FieldGroup label="SEO-Title" hint="≤ 60 Zeichen — erscheint im Browser-Tab.">
+      <FieldGroup label="SEO-Title" hint="≤ 60 Zeichen, erscheint im Browser-Tab.">
         <input
           value={seoTitleDraft}
           onChange={(e) => setSeoTitleDraft(e.target.value)}
-          placeholder="Saint-Gaudens 1907 — Anlagegold..."
+          placeholder="Saint-Gaudens 1907, Anlagegold..."
           maxLength={256}
           style={inputStyle}
         />
@@ -442,7 +442,7 @@ function PublishToggle({
             {isLive
               ? 'LIVE im Web-Shop'
               : isPendingWeb
-                ? 'Veröffentlicht — noch nicht verfügbar'
+                ? 'Veröffentlicht, noch nicht verfügbar'
                 : 'Nicht veröffentlicht'}
           </span>
           <span style={{ fontSize: '0.78rem', color: 'var(--w14-ink-faded)', fontStyle: 'italic' }}>

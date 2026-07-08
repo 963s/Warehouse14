@@ -125,7 +125,7 @@ export function CustomerEditDialog({
           setError(describeError(err));
         }
       } else {
-        setError('Verbindung gestört — bitte erneut versuchen.');
+        setError('Verbindung gestört. Bitte erneut versuchen.');
       }
     } finally {
       setSubmitting(false);
@@ -196,7 +196,7 @@ export function CustomerEditDialog({
               color: 'var(--w14-ink-aged)',
             }}
           >
-            KYC ist bestätigt — Änderungen erfordern PIN-Bestätigung.
+            KYC ist bestätigt. Änderungen erfordern PIN-Bestätigung.
           </p>
         )}
 

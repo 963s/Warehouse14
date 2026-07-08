@@ -54,7 +54,7 @@ export function UebersichtPanel({
               fontFamily: 'var(--w14-font-display)',
             }}
           >
-            Kennzahlen sind derzeit nicht abrufbar — Verbindung prüfen.
+            Kennzahlen sind derzeit nicht abrufbar. Verbindung prüfen.
           </p>
           {onRetry && (
             <Button variant="ghost" size="sm" onClick={onRetry} disabled={retrying}>
@@ -78,36 +78,36 @@ export function UebersichtPanel({
       >
         <StatTile
           index={1}
-          value={placeholder ? '—' : data!.openTasksMine}
+          value={placeholder ? '-' : data!.openTasksMine}
           label="Meine Aufgaben"
         />
         <StatTile
           index={2}
-          value={placeholder ? '—' : data!.tasksDueToday}
+          value={placeholder ? '-' : data!.tasksDueToday}
           label="Heute fällig"
           attention={!placeholder && data!.tasksDueToday > 0}
           attentionCaption="Heute erledigen."
         />
         <StatTile
           index={3}
-          value={placeholder ? '—' : data!.tasksOverdue}
+          value={placeholder ? '-' : data!.tasksOverdue}
           label="Überfällig"
           attention={!placeholder && data!.tasksOverdue > 0}
           attentionCaption="Sofortige Beachtung."
         />
         <StatTile
           index={4}
-          value={placeholder ? '—' : data!.pendingAppraisals}
+          value={placeholder ? '-' : data!.pendingAppraisals}
           label="Offene Bewertungen"
         />
         <StatTile
           index={5}
-          value={placeholder ? '—' : data!.ebayPipelineDepth}
+          value={placeholder ? '-' : data!.ebayPipelineDepth}
           label="eBay-Pipeline"
         />
         <StatTile
           index={6}
-          value={placeholder ? '—' : data!.ebayConflictsWeek}
+          value={placeholder ? '-' : data!.ebayConflictsWeek}
           label="eBay-Konflikte (7 T.)"
           attention={!placeholder && data!.ebayConflictsWeek > 0}
           attentionCaption="Sofortige Prüfung."

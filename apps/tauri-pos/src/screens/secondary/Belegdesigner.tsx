@@ -78,7 +78,7 @@ const KEY_OF: Record<keyof Identity, string> = {
 
 const QUICK_CHIPS: { label: string; line: string }[] = [
   { label: '★ Dankestext', line: 'Vielen Dank für Ihren Besuch.' },
-  { label: 'Öffnungszeiten', line: 'Mo–Fr 10–18 Uhr · Sa 10–14 Uhr' },
+  { label: 'Öffnungszeiten', line: 'Mo bis Fr 10 bis 18 Uhr · Sa 10 bis 14 Uhr' },
   { label: 'Rückgaberecht', line: 'Umtausch innerhalb 14 Tagen mit Beleg.' },
   { label: 'Web/Social', line: 'www.warehouse14.de · @warehouse14' },
   { label: 'Aktionscode', line: 'Aktion: 5% mit Code GOLD5' },
@@ -228,7 +228,7 @@ export function Belegdesigner(): JSX.Element {
           Beleg gestalten
         </h2>
         <p style={{ margin: '4px 0 0', color: 'var(--w14-ink-faded)', fontSize: '0.86rem' }}>
-          Geschäftsdaten und Fußzeile bearbeiten — die Vorschau rechts druckt genau so.
+          Geschäftsdaten und Fußzeile bearbeiten. Die Vorschau rechts druckt genau so.
         </p>
       </header>
       <DiamondRule />
@@ -257,12 +257,12 @@ export function Belegdesigner(): JSX.Element {
               onChange={(v) => setIdentity((s) => ({ ...s, tagline: v }))}
             />
             <Field
-              label="Adresse — Straße"
+              label="Adresse (Straße)"
               value={identity.addressLine1}
               onChange={(v) => setIdentity((s) => ({ ...s, addressLine1: v }))}
             />
             <Field
-              label="Adresse — PLZ Ort"
+              label="Adresse (PLZ Ort)"
               value={identity.addressLine2}
               onChange={(v) => setIdentity((s) => ({ ...s, addressLine2: v }))}
             />
@@ -531,7 +531,7 @@ function ReceiptPaper({
         }}
       >
         <div style={{ color: FADED, letterSpacing: '0.08em' }}>TSE-SIGNATUR</div>
-        <div style={{ wordBreak: 'break-all' }}>BEISPIEL — wird beim echten Verkauf signiert</div>
+        <div style={{ wordBreak: 'break-all' }}>BEISPIEL, wird beim echten Verkauf signiert</div>
         <div
           aria-hidden
           style={{
@@ -608,7 +608,7 @@ function buildSampleReceipt(identity: Identity, footerLines: string[]): ThermalR
     tseSignatureCounter: 'TSE Ausfall',
     tseTransactionNumber: 'TSE Ausfall',
     tseQrPayload: 'TSE Ausfall',
-    footerLines: [...(footerLines.length > 0 ? footerLines : DEFAULT_FOOTER), '— TESTDRUCK —'],
+    footerLines: [...(footerLines.length > 0 ? footerLines : DEFAULT_FOOTER), '- TESTDRUCK -'],
   };
 }
 

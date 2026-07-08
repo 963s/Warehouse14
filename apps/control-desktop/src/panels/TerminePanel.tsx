@@ -88,7 +88,7 @@ export function TerminePanel(): JSX.Element {
     <>
       <DiamondRule tone="gold" label="Termine" />
       <p style={{ ...caption, marginTop: 8, marginBottom: 16 }}>
-        Die nächsten 30 Tage — wer kommt, wann, und wozu.
+        Die nächsten 30 Tage. Wer kommt, wann, und wozu.
       </p>
 
       {query.isLoading ? (
@@ -136,7 +136,7 @@ export function TerminePanel(): JSX.Element {
                     </span>
                   </td>
                   <td style={{ ...td, fontFamily: 'var(--w14-font-mono)', fontSize: '0.8rem' }}>
-                    {a.customer_id ? a.customer_id.slice(0, 8) : '—'}
+                    {a.customer_id ? a.customer_id.slice(0, 8) : '-'}
                   </td>
                 </tr>
               ))}

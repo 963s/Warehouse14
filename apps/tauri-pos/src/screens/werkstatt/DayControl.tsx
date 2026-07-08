@@ -33,7 +33,7 @@ export function DayControl(): JSX.Element | null {
         }}
       >
         <span style={{ fontFamily: 'var(--w14-font-display)', fontSize: '1.05rem' }}>
-          Schichtstatus nicht abrufbar — Verbindung prüfen.
+          Schichtstatus nicht abrufbar. Verbindung prüfen.
         </span>
         <Button variant="ghost" size="sm" onClick={() => void refetch()} disabled={isFetching}>
           {isFetching ? 'Lädt…' : 'Erneut versuchen'}

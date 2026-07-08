@@ -297,7 +297,7 @@ function PlaceholderSurface({ digit, label }: { digit: number; label: string }):
         </div>
         <p style={{ color: 'var(--w14-ink-faded)', marginTop: 12 }}>
           Diese Oberfläche wird mit dem jeweiligen Back-Office-Workflow gefüllt. Die Übersicht
-          (Bridge) ist bereits aktiv — wähle <strong>1 · Übersicht</strong>.
+          (Bridge) ist bereits aktiv. Wähle <strong>1 · Übersicht</strong>.
         </p>
       </ParchmentCard>
     </>

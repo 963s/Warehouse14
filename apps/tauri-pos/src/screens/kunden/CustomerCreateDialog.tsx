@@ -129,7 +129,7 @@ export function CustomerCreateDialog({
             : describeError(err),
         );
       } else {
-        setError('Verbindung gestört — bitte erneut versuchen.');
+        setError('Verbindung gestört. Bitte erneut versuchen.');
       }
     } finally {
       setSubmitting(false);
@@ -184,7 +184,7 @@ export function CustomerCreateDialog({
             color: 'var(--w14-ink-faded)',
           }}
         >
-          Auch ohne Kauf — nur der Name ist Pflicht.
+          Auch ohne Kauf. Nur der Name ist Pflicht.
         </p>
 
         <DiamondRule label="Daten" />

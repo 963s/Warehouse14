@@ -99,7 +99,7 @@ export function HeuteRail({ appointments, now, onOpenDetail }: HeuteRailProps): 
                   className="w14-tabular"
                   style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--w14-ink)' }}
                 >
-                  {berlinTime(appt.starts_at)} – {berlinTime(appt.ends_at)} Uhr
+                  {berlinTime(appt.starts_at)} bis {berlinTime(appt.ends_at)} Uhr
                 </span>
                 <span style={{ fontSize: '0.8rem', color: 'var(--w14-ink-aged)' }}>
                   {APPOINTMENT_TYPE_LABELS[appt.appointment_type]} ·{' '}

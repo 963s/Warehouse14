@@ -155,7 +155,7 @@ export function LagerPanel(): JSX.Element {
         }}
       >
         <p style={caption}>
-          Bestand steuern — Status, eBay, Listenpreis bearbeiten, veröffentlichen.
+          Bestand steuern. Status, eBay, Listenpreis bearbeiten, veröffentlichen.
         </p>
         <input
           className="w14cd-focusable"
@@ -220,7 +220,7 @@ export function LagerPanel(): JSX.Element {
                       </span>
                     </td>
                     <td style={{ ...td, fontSize: '0.85rem' }}>
-                      {p.listedOnEbay ? 'Online' : '—'}
+                      {p.listedOnEbay ? 'Online' : '-'}
                     </td>
                     <td style={{ ...td, textAlign: 'right' }}>
                       {editing ? (

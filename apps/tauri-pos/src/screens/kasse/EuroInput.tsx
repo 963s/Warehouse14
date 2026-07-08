@@ -347,7 +347,7 @@ export function EuroInput({
           minHeight: '1.2em',
         }}
       >
-        {preview || '—'}
+        {preview || '-'}
       </span>
       {keypad ? (
         <RegisterKeypad

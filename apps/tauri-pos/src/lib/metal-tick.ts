@@ -39,7 +39,7 @@ export function formatMetalTick(
   prior: string | null | undefined,
 ): MetalTick {
   const cur = parseDecimal(current);
-  if (cur === null) return { price: '—', deltaLabel: '', tone: 'flat' };
+  if (cur === null) return { price: '-', deltaLabel: '', tone: 'flat' };
 
   const price = deFixed(cur, 2);
   const pri = parseDecimal(prior);

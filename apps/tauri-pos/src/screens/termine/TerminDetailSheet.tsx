@@ -127,7 +127,7 @@ function DetailContent({
               className="w14-tabular"
               style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--w14-ink)' }}
             >
-              {berlinTime(appointment.starts_at)} – {berlinTime(appointment.ends_at)} Uhr
+              {berlinTime(appointment.starts_at)} bis {berlinTime(appointment.ends_at)} Uhr
             </span>
             <span style={{ fontSize: '0.78rem', color: 'var(--w14-ink-faded)' }}>
               Dauer {appointment.duration_minutes} Minuten
@@ -165,7 +165,7 @@ function DetailContent({
             </div>
           ) : (
             <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--w14-ink-faded)' }}>
-              Endzustand erreicht — keine Statuswechsel mehr möglich.
+              Endzustand erreicht. Keine Statuswechsel mehr möglich.
             </p>
           )}
 

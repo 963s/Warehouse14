@@ -42,9 +42,9 @@ export function deriveAnkaufPerGram(
 
 /** Format a per-gram decimal string as German "1.234,5678 €/g" (2–4 dp). */
 export function formatPerGram(valueEur: string | null): string {
-  if (valueEur == null) return '—';
+  if (valueEur == null) return '-';
   const trimmed = valueEur.trim();
-  if (!PER_GRAM_4DP.test(trimmed)) return '—';
+  if (!PER_GRAM_4DP.test(trimmed)) return '-';
   const n = Number.parseFloat(trimmed);
   return `${n.toLocaleString('de-DE', {
     minimumFractionDigits: 2,

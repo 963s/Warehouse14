@@ -32,9 +32,9 @@ describe('formatMetalTick', () => {
     expect(formatMetalTick('60.00', '0').tone).toBe('flat');
   });
 
-  it('missing current → em-dash price, neutral', () => {
+  it('missing current renders a hyphen placeholder price, neutral tone', () => {
     const t = formatMetalTick(null, '60.00');
-    expect(t.price).toBe('—');
+    expect(t.price).toBe('-');
     expect(t.tone).toBe('flat');
   });
 });

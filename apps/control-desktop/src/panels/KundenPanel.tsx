@@ -90,7 +90,7 @@ export function KundenPanel(): JSX.Element {
         }}
       >
         <p style={caption}>
-          Kundenstamm — KYC, Vertrauensstufe, Sanktionen, Umsätze. Zeile wählen zum Bearbeiten.
+          Kundenstamm. KYC, Vertrauensstufe, Sanktionen, Umsätze. Zeile wählen zum Bearbeiten.
         </p>
         <input
           className="w14cd-focusable"

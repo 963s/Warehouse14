@@ -74,7 +74,7 @@ export function MetalTicker(): JSX.Element {
       {stale && (
         <span
           className="w14-smallcaps"
-          title="Letzter bekannter Kurs — Verbindung gestört"
+          title="Letzter bekannter Kurs. Verbindung gestört"
           style={{
             display: 'inline-flex',
             alignItems: 'center',
@@ -183,7 +183,7 @@ function MetalCell({
         open={open}
         anchorRef={anchorRef}
         onClose={() => setOpen(false)}
-        ariaLabel={`${METAL_LABEL[metal]} — Kursdetail`}
+        ariaLabel={`${METAL_LABEL[metal]}, Kursdetail`}
       >
         <MetalDetail metal={metal} rate={rate} />
       </Popover>

@@ -366,12 +366,12 @@ function toGermanError(err: unknown, fallback: string): string {
       case 'NOT_FOUND':
         return 'Dieser Termin existiert nicht mehr.';
       case 'VALIDATION_ERROR':
-        return `Eingabe ungültig — ${describeError(err)}`;
+        return `Eingabe ungültig. ${describeError(err)}`;
       case 'EXTERNAL_SERVICE_FAILED':
-        return 'Der Kalender ist gerade nicht erreichbar — bitte gleich erneut versuchen.';
+        return 'Der Kalender ist gerade nicht erreichbar. Bitte gleich erneut versuchen.';
       default:
         return `${fallback} (${describeError(err)})`;
     }
   }
-  return 'Keine Verbindung — bitte erneut versuchen.';
+  return 'Keine Verbindung. Bitte erneut versuchen.';
 }

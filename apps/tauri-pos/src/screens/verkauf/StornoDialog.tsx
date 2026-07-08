@@ -129,7 +129,7 @@ export function StornoDialog({
             setError(describeError(err));
         }
       } else {
-        setError('Verbindung gestört — bitte erneut versuchen.');
+        setError('Verbindung gestört. Bitte erneut versuchen.');
       }
     } finally {
       setBusy(false);
@@ -241,7 +241,7 @@ export function StornoDialog({
               lineHeight: 1.45,
             }}
           >
-            Achtung — endgültiger Vorgang. Es wird ein Gegenbeleg mit negierten Beträgen erstellt
+            Achtung. Endgültiger Vorgang. Es wird ein Gegenbeleg mit negierten Beträgen erstellt
             (Z-Bon gleicht aus). Eine Stornierung lässt sich fiskalisch nicht zurücknehmen.
           </p>
         </div>
@@ -264,7 +264,7 @@ export function StornoDialog({
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             rows={2}
-            placeholder="z. B. Falsch erfasst — doppelt gebucht"
+            placeholder="z. B. Falsch erfasst, doppelt gebucht"
             style={{
               border: 'none',
               outline: 'none',
@@ -287,7 +287,7 @@ export function StornoDialog({
             fontStyle: 'italic',
           }}
         >
-          Der Artikel wird NICHT automatisch zurück in den Bestand gebucht — bei Bedarf im Lager neu
+          Der Artikel wird NICHT automatisch zurück in den Bestand gebucht. Bei Bedarf im Lager neu
           freigeben.
         </p>
 

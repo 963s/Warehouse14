@@ -48,7 +48,7 @@ export function HealthDot(): JSX.Element {
   if (health === 'conflict') {
     v = {
       color: 'var(--w14-wax-red)',
-      label: 'Sync blockiert — Konflikt',
+      label: 'Sync blockiert, Konflikt',
       detail: 'Ein Offline-Vorgang weicht vom Server ab und wartet im Konfliktpostfach auf Prüfung.',
       code: 'W14-SYNC-CONFLICT',
       pulse: true,
@@ -57,7 +57,7 @@ export function HealthDot(): JSX.Element {
   } else if (health === 'offline') {
     v = {
       color: 'var(--w14-accent)',
-      label: `Offline — ${pendingCount} in Warteschlange`,
+      label: `Offline, ${pendingCount} in Warteschlange`,
       detail: 'Ohne Verbindung. Die Vorgänge werden gesendet, sobald das Netz zurück ist.',
       code: 'W14-NET-OFFLINE',
       pulse: false,
@@ -75,7 +75,7 @@ export function HealthDot(): JSX.Element {
   } else if (health === 'syncing') {
     v = {
       color: 'var(--w14-gold)',
-      label: `Synchronisiert — ${pendingCount}`,
+      label: `Synchronisiert, ${pendingCount} offen`,
       detail: 'Die Warteschlange wird gerade abgearbeitet.',
       code: 'W14-SYNC',
       pulse: false,
@@ -84,7 +84,7 @@ export function HealthDot(): JSX.Element {
   } else {
     v = {
       color: 'var(--w14-verdigris)',
-      label: 'Bereit — alles in Ordnung',
+      label: 'Bereit, alles in Ordnung',
       detail: 'Verbindung und Synchronisation laufen.',
       code: 'OK',
       pulse: false,

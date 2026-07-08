@@ -167,7 +167,7 @@ export function ClosingsPanel(): JSX.Element {
       pushToast(
         'success',
         'DSFinV-K-Export geladen',
-        `Kassendaten-Paket für ${formatDay(item.businessDay)} (Kern-Export — vor einer Prüfung mit dem DSFinV-K-Prüftool abgleichen).`,
+        `Kassendaten-Paket für ${formatDay(item.businessDay)} (Kern-Export, vor einer Prüfung mit dem DSFinV-K-Prüftool abgleichen).`,
       );
     } catch (err) {
       if (isStepUpCancelled(err) || (err instanceof ApiError && err.code === 'STEP_UP_REQUIRED')) {
@@ -194,7 +194,7 @@ export function ClosingsPanel(): JSX.Element {
       pushToast(
         'success',
         'Tagesabschluss erstellt',
-        `Z-Bon für ${formatDay(data.businessDay)} — ${data.verkaufCount} Verkäufe, Kassendiff. ${data.cashVarianceEur} EUR.`,
+        `Z-Bon für ${formatDay(data.businessDay)}: ${data.verkaufCount} Verkäufe, Kassendiff. ${data.cashVarianceEur} EUR.`,
       );
       await query.refetch();
     } catch (err) {
@@ -234,7 +234,7 @@ export function ClosingsPanel(): JSX.Element {
         }}
       >
         <p style={{ ...captionStyle, margin: 0, maxWidth: 620 }}>
-          Jeder Tagesabschluss (Z-Bon) im Überblick — und der DATEV-Export für den Steuerberater.
+          Jeder Tagesabschluss (Z-Bon) im Überblick, und der DATEV-Export für den Steuerberater.
           Der Tagesabschluss bündelt die Verkäufe des Tages zum gesetzlichen Z-Bon, den jede Prüfung
           verlangt.
         </p>
@@ -326,7 +326,7 @@ export function ClosingsPanel(): JSX.Element {
                     >
                       <StatusDot tone={varianceTone(item.cashVarianceEur)} size={9} />
                       {item.cashVarianceEur === null ? (
-                        <span style={captionStyle}>—</span>
+                        <span style={captionStyle}>-</span>
                       ) : (
                         <MoneyAmount valueEur={item.cashVarianceEur} signed />
                       )}

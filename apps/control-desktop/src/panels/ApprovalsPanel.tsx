@@ -157,7 +157,7 @@ export function ApprovalsPanel(): JSX.Element {
             </p>
           </div>
           <p style={{ ...captionStyle, marginTop: 8 }}>
-            Alles freigegeben — die Pipeline ist ruhig.
+            Alles freigegeben. Die Pipeline ist ruhig.
           </p>
         </ParchmentCard>
       ) : (

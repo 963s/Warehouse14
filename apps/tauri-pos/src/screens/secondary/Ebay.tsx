@@ -313,7 +313,7 @@ function ProductDrawer({
     onSuccess: async (res) => {
       addToast({
         tone: 'success',
-        title: `Übergang ${res.fromState ?? '—'} → ${res.toState}`,
+        title: `Übergang ${res.fromState ?? '-'} → ${res.toState}`,
         body:
           res.inventorySideEffect !== 'NONE' ? `Inventar: ${res.inventorySideEffect}` : undefined,
       });

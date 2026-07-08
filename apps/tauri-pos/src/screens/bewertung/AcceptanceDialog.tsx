@@ -155,14 +155,14 @@ export function AcceptanceDialog({
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.code === 'STEP_UP_REQUIRED') setError('PIN-Bestätigung wurde abgebrochen.');
-        else if (err.code === 'SANCTIONS_BLOCK') setError('Sanktionen — Annahme verweigert.');
+        else if (err.code === 'SANCTIONS_BLOCK') setError('Sanktionen. Annahme verweigert.');
         else if (err.code === 'CLOSING_DAY_FINALIZED')
           setError('Heutiger Tagesabschluss ist bereits geschlossen.');
         else if (err.code === 'DEVICE_NOT_AUTHORIZED')
           setError('Dieses Gerät ist nicht autorisiert. Bitte am POS-Terminal annehmen.');
         else setError(describeError(err));
       } else {
-        setError('Verbindung gestört — bitte erneut versuchen.');
+        setError('Verbindung gestört. Bitte erneut versuchen.');
       }
     } finally {
       setSubmitting(false);
@@ -283,7 +283,7 @@ export function AcceptanceDialog({
             style={{ marginTop: 12, border: '2px solid var(--w14-wax-red)' }}
           >
             <p style={{ margin: 0, color: 'var(--w14-wax-red)', fontWeight: 500 }}>
-              Geschäft mit diesem Kunden nicht zulässig — {sanctioned ? 'Sanktion' : 'gesperrt'}.
+              Geschäft mit diesem Kunden nicht zulässig ({sanctioned ? 'Sanktion' : 'gesperrt'}).
             </p>
           </ParchmentCard>
         )}
@@ -300,7 +300,7 @@ export function AcceptanceDialog({
                 fontFamily: 'var(--w14-font-display)',
               }}
             >
-              Ankauf — Identität ab 0,01 € erforderlich (§ 259 StGB / § 10 GwG).
+              Ankauf: Identität ab 0,01 € erforderlich (§ 259 StGB / § 10 GwG).
             </p>
             <p
               style={{
@@ -361,7 +361,7 @@ export function AcceptanceDialog({
           </>
         ) : (
           <>
-            <DiamondRule label="Ablehnung — Begründung" />
+            <DiamondRule label="Ablehnung: Begründung" />
             <textarea
               value={rejectReason}
               onChange={(ev) => setRejectReason(ev.target.value)}

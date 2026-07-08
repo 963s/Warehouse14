@@ -58,7 +58,7 @@ const TEMPLATES: readonly TemplateDef[] = [
   {
     key: 'rechnung',
     label: 'Rechnung',
-    betreff: 'Rechnung Nr. —',
+    betreff: 'Rechnung Nr. -',
     body:
       'Sehr geehrte Damen und Herren,\n\nwir berechnen Ihnen wie folgt:\n\n' +
       'Pos.   Bezeichnung                          Menge   Einzelpreis   Gesamt\n' +
@@ -356,7 +356,7 @@ export function Schreiben(): JSX.Element {
 
           <Editable
             refEl={bodyRef}
-            ph="Hier klicken und den Text schreiben — oder den KI-Assistenten links nutzen…"
+            ph="Hier klicken und den Text schreiben. Oder den KI-Assistenten links nutzen…"
             ariaLabel="Inhalt"
             style={{ minHeight: '120mm', whiteSpace: 'pre-wrap', fontSize: '11pt' }}
           />

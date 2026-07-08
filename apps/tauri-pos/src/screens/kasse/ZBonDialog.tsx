@@ -106,7 +106,7 @@ export function ZBonDialog({ open, shiftId, onClose }: ZBonDialogProps): JSX.Ele
           setError(describeError(err));
         }
       } else {
-        setError('Verbindung gestört — Netzwerk prüfen.');
+        setError('Verbindung gestört. Netzwerk prüfen.');
       }
     } finally {
       setSubmitting(false);
@@ -366,7 +366,7 @@ function ZBonResult({
             {diff.differenzEur !== null ? (
               <MoneyAmount valueEur={diff.differenzEur} signed emphasis />
             ) : (
-              '—'
+              '-'
             )}
           </span>
         </div>

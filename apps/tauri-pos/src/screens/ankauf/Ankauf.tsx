@@ -42,7 +42,7 @@ export function Ankauf(): JSX.Element {
       <ShiftGuard
         digitLabel="3"
         surfaceTitle="Keine offene Schicht"
-        lede="Ein Ankauf ohne Schicht hätte kein Kassenbuch-Zuhause — das Bargeld könnte nicht im Z-Bon abgerechnet werden."
+        lede="Ein Ankauf ohne Schicht hätte kein Kassenbuch-Zuhause. Das Bargeld könnte nicht im Z-Bon abgerechnet werden."
       />
     );
   }
@@ -80,7 +80,7 @@ function AnkaufFloor(): JSX.Element {
         }}
       >
         <span style={{ color: 'var(--w14-ink-faded)', fontSize: '0.82rem' }}>
-          Einzelankauf — Stück für Stück.
+          Einzelankauf, Stück für Stück.
         </span>
         <button
           type="button"

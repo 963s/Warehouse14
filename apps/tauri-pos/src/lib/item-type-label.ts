@@ -51,7 +51,7 @@ export const ITEM_TYPE_OPTIONS: ReadonlyArray<{ value: ItemType; label: string }
  * unmapped value, shows "Unbekannt" (never a raw `gold_jewelry` leak).
  */
 export function itemTypeLabel(value: string | null | undefined): string {
-  if (!value) return '—';
+  if (!value) return '-';
   return germanLabel(ITEM_TYPE_LABEL, value, 'Unbekannt');
 }
 
@@ -69,11 +69,11 @@ export type Condition =
 
 export const CONDITION_LABEL: Readonly<Record<Condition, string>> = Object.freeze({
   NEW: 'Neu',
-  USED_EXCELLENT: 'Gebraucht — sehr gut',
-  USED_GOOD: 'Gebraucht — gut',
-  USED_FAIR: 'Gebraucht — mäßig',
-  ANTIQUE_RESTORED: 'Antik — restauriert',
-  ANTIQUE_AS_FOUND: 'Antik — Fundzustand',
+  USED_EXCELLENT: 'Gebraucht, sehr gut',
+  USED_GOOD: 'Gebraucht, gut',
+  USED_FAIR: 'Gebraucht, mäßig',
+  ANTIQUE_RESTORED: 'Antik, restauriert',
+  ANTIQUE_AS_FOUND: 'Antik, Fundzustand',
 });
 
 export const CONDITION_OPTIONS: ReadonlyArray<{ value: Condition; label: string }> = Object.freeze(
@@ -89,6 +89,6 @@ export const CONDITION_OPTIONS: ReadonlyArray<{ value: Condition; label: string 
  * the raw SCREAMING_SNAKE_CASE enum.
  */
 export function conditionLabel(value: string | null | undefined): string {
-  if (!value) return '—';
+  if (!value) return '-';
   return germanLabel(CONDITION_LABEL, value, 'Unbekannt');
 }

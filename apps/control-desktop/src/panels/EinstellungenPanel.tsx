@@ -124,8 +124,8 @@ interface TextSpec {
 const TEXT_EDITABLE: Record<string, TextSpec> = {
   'shop.name': { label: 'Geschäftsname', maxLen: 80 },
   'shop.tagline': { label: 'Slogan', maxLen: 80 },
-  'shop.address_line1': { label: 'Adresse — Zeile 1 (Straße)', maxLen: 100 },
-  'shop.address_line2': { label: 'Adresse — Zeile 2 (PLZ Ort)', maxLen: 100 },
+  'shop.address_line1': { label: 'Adresse, Zeile 1 (Straße)', maxLen: 100 },
+  'shop.address_line2': { label: 'Adresse, Zeile 2 (PLZ Ort)', maxLen: 100 },
   'shop.vat_id': { label: 'USt-IdNr.', maxLen: 20 },
   'shop.phone': { label: 'Telefon', maxLen: 32 },
 };
@@ -195,7 +195,7 @@ function germanError(err: unknown): string {
         return describeError(err);
     }
   }
-  return 'Verbindung gestört — bitte erneut versuchen.';
+  return 'Verbindung gestört. Bitte erneut versuchen.';
 }
 
 /** One editable tunable: number input + Speichern, with inline feedback. */
@@ -242,7 +242,7 @@ function EditableSettingRow({
       <div>
         <div style={{ fontFamily: 'var(--w14-font-display)', fontSize: '1rem' }}>{spec.label}</div>
         <div style={{ color: 'var(--w14-ink-faded)', fontSize: '0.78rem', marginTop: 2 }}>
-          {setting.description ?? setting.key} · zulässig {spec.min}–{spec.max}
+          {setting.description ?? setting.key} · zulässig {spec.min} bis {spec.max}
           {spec.unit ? ` ${spec.unit}` : ''}
         </div>
         {error && (
@@ -479,7 +479,7 @@ export function EinstellungenPanel(): JSX.Element {
                 ))
               )}
               <p style={{ ...caption, fontSize: '0.78rem', marginTop: 12 }}>
-                Erscheint im Belegkopf. USt-IdNr. und Telefon sind vorläufig — bitte durch die
+                Erscheint im Belegkopf. USt-IdNr. und Telefon sind vorläufig. Bitte durch die
                 echten Werte ersetzen. Jede Änderung verlangt eine PIN-Bestätigung.
               </p>
             </ParchmentCard>
@@ -535,7 +535,7 @@ export function EinstellungenPanel(): JSX.Element {
                           {s.value}
                         </td>
                         <td style={{ ...td, fontSize: '0.82rem', color: 'var(--w14-ink-faded)' }}>
-                          {s.description ?? '—'}
+                          {s.description ?? '-'}
                         </td>
                       </tr>
                     ))}

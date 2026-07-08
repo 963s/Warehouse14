@@ -53,7 +53,7 @@ export function OfflineNotice({ show, message, retryHint }: OfflineNoticeProps):
         fontSize: '0.82rem',
       }}
     >
-      <span>{message ?? 'Keine Verbindung — es werden die zuletzt geladenen Daten angezeigt.'}</span>
+      <span>{message ?? 'Keine Verbindung. Es werden die zuletzt geladenen Daten angezeigt.'}</span>
       {retryHint && (
         <span style={{ fontSize: '0.76rem', color: 'var(--w14-ink-faded)' }}>{retryHint}</span>
       )}

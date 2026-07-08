@@ -161,8 +161,8 @@ export function GoogleKalenderCard({ variant = 'card' }: GoogleKalenderCardProps
       if (ctrl.signal.aborted) return;
       const message =
         err instanceof ApiError
-          ? `Termine konnten nicht geladen werden — ${describeError(err)}`
-          : 'Keine Verbindung — bitte erneut versuchen.';
+          ? `Termine konnten nicht geladen werden. ${describeError(err)}`
+          : 'Keine Verbindung. Bitte erneut versuchen.';
       setState({ kind: 'error', message });
     }
   }, [api]);
@@ -475,7 +475,7 @@ function formatRange(ev: CalEvent): string {
   if (ev.allDay) return 'Ganztägig';
   const start = timeFmt.format(ev.start);
   if (!ev.end) return start;
-  return `${start}–${timeFmt.format(ev.end)}`;
+  return `${start} bis ${timeFmt.format(ev.end)}`;
 }
 
 function EventRow({

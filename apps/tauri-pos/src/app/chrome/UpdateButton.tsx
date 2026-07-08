@@ -31,7 +31,7 @@ export function UpdateButton(): JSX.Element {
         type="button"
         onClick={() => setOpen(true)}
         title={hasUpdate ? 'Update verfügbar' : 'Nach Updates suchen'}
-        aria-label={hasUpdate ? 'Update verfügbar — Aktualisierungen öffnen' : 'Nach Updates suchen'}
+        aria-label={hasUpdate ? 'Update verfügbar. Aktualisierungen öffnen' : 'Nach Updates suchen'}
         style={{
           position: 'relative',
           display: 'inline-flex',

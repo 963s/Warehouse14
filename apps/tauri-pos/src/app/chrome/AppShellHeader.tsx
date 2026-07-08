@@ -113,7 +113,7 @@ export function AppShellHeader(_props: AppShellHeaderProps): JSX.Element {
         {actor && (
           <button
             type="button"
-            title="Angemeldet — zu den Einstellungen (dort Abmelden)"
+            title="Angemeldet. Zu den Einstellungen (dort Abmelden)"
             aria-label={`Angemeldet als ${operatorLabel(actor)}`}
             onClick={() => navigate('/einstellungen')}
             className="w14-smallcaps"

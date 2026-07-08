@@ -436,7 +436,7 @@ function ConversationPane({ phone }: { phone: string | null }): JSX.Element {
                   textAlign: 'center',
                 }}
               >
-                Noch keine Nachrichten — tippen Sie unten Ihre Antwort.
+                Noch keine Nachrichten. Tippen Sie unten Ihre Antwort.
               </p>
             ) : (
               messages.map((m) => <MessageBubble key={m.id} message={m} />)
@@ -773,7 +773,7 @@ function ThreadSidebarBody({ phone }: { phone: string }): JSX.Element {
               color: 'var(--w14-ink-faded)',
             }}
           >
-            Mensch übernimmt — {formatCooldownRemaining(cooldownRemainingMs)}
+            Mensch übernimmt, {formatCooldownRemaining(cooldownRemainingMs)}
           </p>
         )}
         <div style={{ marginTop: 10 }}>
@@ -1068,7 +1068,7 @@ function EmptyThreads(): JSX.Element {
           color: 'var(--w14-ink-aged)',
         }}
       >
-        Hinweis — der Meta-Webhook muss in den Einstellungen mit
+        Hinweis. Der Meta-Webhook muss in den Einstellungen mit
         <em> WHATSAPP_VERIFY_TOKEN </em> und <em> WHATSAPP_APP_SECRET </em>
         verbunden sein, bevor eingehende Nachrichten hier erscheinen.
       </p>

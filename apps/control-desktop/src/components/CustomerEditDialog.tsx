@@ -52,11 +52,11 @@ const TRUST_OPTIONS: Array<{
   label: string;
   tone: 'gold' | 'ink' | 'wax-red';
 }> = [
-  { value: 'NEW', label: 'NEU — Standard', tone: 'ink' },
-  { value: 'VERIFIED', label: 'BESTÄTIGT — Stammkunde', tone: 'gold' },
-  { value: 'VIP', label: 'VIP — Sammler', tone: 'gold' },
-  { value: 'SUSPICIOUS', label: 'BEOBACHTEN — Verdacht', tone: 'wax-red' },
-  { value: 'BANNED', label: 'GESPERRT — kein Geschäft', tone: 'wax-red' },
+  { value: 'NEW', label: 'NEU (Standard)', tone: 'ink' },
+  { value: 'VERIFIED', label: 'BESTÄTIGT (Stammkunde)', tone: 'gold' },
+  { value: 'VIP', label: 'VIP (Sammler)', tone: 'gold' },
+  { value: 'SUSPICIOUS', label: 'BEOBACHTEN (Verdacht)', tone: 'wax-red' },
+  { value: 'BANNED', label: 'GESPERRT (kein Geschäft)', tone: 'wax-red' },
 ];
 
 const DOCUMENT_OPTIONS: Array<{ value: DocumentType; label: string }> = [
@@ -87,7 +87,7 @@ function germanError(err: unknown): string {
         return describeError(err);
     }
   }
-  return 'Verbindung gestört — bitte erneut versuchen.';
+  return 'Verbindung gestört. Bitte erneut versuchen.';
 }
 
 /** The word the operator types to arm the irreversible Art. 17 erasure. */
@@ -191,7 +191,7 @@ export function CustomerEditDialog({
       await customersApi.erase(client, customer.id);
       await invalidate();
       setConfirmErase('');
-      setNotice('Kundendaten gelöscht — serverseitig anonymisiert.');
+      setNotice('Kundendaten gelöscht. Serverseitig anonymisiert.');
     } catch (err) {
       setError(germanError(err));
     } finally {
@@ -355,7 +355,7 @@ export function CustomerEditDialog({
               value={reason}
               onChange={(ev) => setReason(ev.target.value)}
               rows={2}
-              placeholder="Z. B. Hehlerverdacht — Auffälligkeit am 27.05.2026"
+              placeholder="Z. B. Hehlerverdacht, Auffälligkeit am 27.05.2026"
               style={{
                 border: 'none',
                 outline: 'none',
@@ -382,7 +382,7 @@ export function CustomerEditDialog({
         <p style={{ margin: '0 0 10px', color: 'var(--w14-ink-faded)', fontSize: '0.85rem' }}>
           Physisch geprüftes Ausweisdokument stempeln.{' '}
           {kycVerified
-            ? 'Bereits verifiziert — erneutes Stempeln aktualisiert Prüfer und Zeitpunkt.'
+            ? 'Bereits verifiziert. Erneutes Stempeln aktualisiert Prüfer und Zeitpunkt.'
             : ''}
         </p>
 
@@ -441,7 +441,7 @@ export function CustomerEditDialog({
                 fontFamily: 'var(--w14-font-body)',
               }}
             >
-              <option value="">Keine — nur stempeln</option>
+              <option value="">Keine (nur stempeln)</option>
               <option value="VERIFIED">Auf BESTÄTIGT</option>
               <option value="VIP">Auf VIP</option>
             </select>

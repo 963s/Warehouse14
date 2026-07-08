@@ -46,7 +46,7 @@ export type UpdateStatus =
 
 export interface UpdateState {
   status: UpdateStatus;
-  /** Version of the running build (best-effort; '—' until resolved). */
+  /** Version of the running build (best-effort; '-' until resolved). */
   currentVersion: string;
   /** Version offered by the update, when status is available/downloading/ready. */
   version: string | null;
@@ -81,7 +81,7 @@ type PluginDownloadEvent =
 
 const INITIAL: UpdateState = {
   status: 'idle',
-  currentVersion: '—',
+  currentVersion: '-',
   version: null,
   notes: null,
   progressPct: null,
@@ -116,7 +116,7 @@ let pollStarted = false;
 let checkInFlight = false;
 
 async function resolveCurrentVersion(): Promise<void> {
-  if (state.currentVersion !== '—') return;
+  if (state.currentVersion !== '-') return;
   try {
     const appMod = await import('@tauri-apps/api/app');
     setState({ currentVersion: await appMod.getVersion() });

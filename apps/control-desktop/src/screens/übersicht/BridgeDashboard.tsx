@@ -268,7 +268,7 @@ export function BridgeDashboard(): JSX.Element {
         />
         <StatTile
           label="Nächster Termin"
-          value={data.nextAppointmentAt ? formatTime(data.nextAppointmentAt) : '—'}
+          value={data.nextAppointmentAt ? formatTime(data.nextAppointmentAt) : '-'}
         />
         <StatTile label="Termine heute" value={data.todayAppointmentCount} />
         <StatTile label="DLQ" value={data.workerDlqUnacked} attention={data.workerDlqUnacked > 0} />

@@ -54,7 +54,7 @@ export function IcsFeedCard(): JSX.Element {
           In iPhone/Google Kalender abonnieren
         </h3>
         <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--w14-ink-faded)' }}>
-          Alle Termine der nächsten 90 Tage als Kalender-Abo — fügen Sie die Adresse unter
+          Alle Termine der nächsten 90 Tage als Kalender-Abo. Fügen Sie die Adresse unter
           „Kalenderabonnement" (iPhone) bzw. „Per URL hinzufügen" (Google Kalender) ein. Der
           Kalender aktualisiert sich dort automatisch.
         </p>

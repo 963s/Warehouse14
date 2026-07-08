@@ -146,7 +146,7 @@ export function CustomerEraseDialog({
         if (err.code === 'STEP_UP_REQUIRED') setError('PIN-Bestätigung wurde abgebrochen.');
         else setError(describeError(err));
       } else {
-        setError('Verbindung gestört — bitte erneut versuchen.');
+        setError('Verbindung gestört. Bitte erneut versuchen.');
       }
     } finally {
       setSubmitting(false);
@@ -211,7 +211,7 @@ export function CustomerEraseDialog({
 
         <p style={{ margin: '4px 0 0', fontSize: '0.9rem', lineHeight: 1.5 }}>
           Alle personenbezogenen Daten dieses Kunden werden unwiderruflich
-          anonymisiert und die gespeicherten Ausweisbilder gelöscht — server- und
+          anonymisiert und die gespeicherten Ausweisbilder gelöscht, server- und
           geräteseitig. Steuer-, GoBD- und GwG-Belege bleiben mit geschwärzten
           Daten erhalten; die Kundennummer bleibt als Pseudonym bestehen.
         </p>

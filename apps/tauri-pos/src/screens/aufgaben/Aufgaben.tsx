@@ -591,7 +591,7 @@ function TaskDetail({ taskId }: { taskId: string }): JSX.Element {
               fontSize: '0.9rem',
             }}
           >
-            Endzustand erreicht — keine Übergänge mehr möglich.
+            Endzustand erreicht. Keine Übergänge mehr möglich.
           </p>
         ) : (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>

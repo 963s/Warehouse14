@@ -126,7 +126,7 @@ export function SteuerComplianceSection(): JSX.Element {
           Steuer-Export &amp; Compliance
         </h2>
         <p style={{ margin: '4px 0 0', color: 'var(--w14-ink-faded)', fontSize: '0.88rem' }}>
-          DATEV · DSFinV-K · TSE · GoBD — alle Pflicht-Exporte auf Knopfdruck. Read-only, keine
+          DATEV · DSFinV-K · TSE · GoBD. Alle Pflicht-Exporte auf Knopfdruck. Read-only, keine
           fiskalische Änderung.
         </p>
         <DiamondRule style={{ margin: '14px 0 0' }} />
@@ -216,7 +216,7 @@ function FinanzamtGroup({
         <div style={rowHead}>
           <span style={rowTitle}>DSFinV-K Export (Z3-Zugriff)</span>
           <span style={rowHint}>
-            DSFinV-K ist tagesgenau — pro Kassentag wird ein ZIP geladen (Prüftool-konform).
+            DSFinV-K ist tagesgenau. Pro Kassentag wird ein ZIP geladen (Prüftool-konform).
           </span>
         </div>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
@@ -391,7 +391,7 @@ function SteuerberaterGroup({
       <div style={rowCard}>
         <div style={rowHead}>
           <span style={rowTitle}>DATEV-Export (Buchungsstapel)</span>
-          <span style={rowHint}>SKR03-Buchungsstapel · EXTF — eine CSV je Kassentag.</span>
+          <span style={rowHint}>SKR03-Buchungsstapel · EXTF. Eine CSV je Kassentag.</span>
         </div>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <label style={{ display: 'grid', gap: 5 }}>

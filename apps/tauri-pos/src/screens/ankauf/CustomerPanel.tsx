@@ -504,8 +504,8 @@ function CustomerCard({ detail }: { detail: CustomerDetail }): JSX.Element {
             }}
           >
             {detail.sanctionsMatch
-              ? 'Sanktionslisten-Treffer — Verstoß gegen EU-Verordnung.'
-              : 'Kunde ist gesperrt — siehe Notizen.'}
+              ? 'Sanktionslisten-Treffer. Verstoß gegen EU-Verordnung.'
+              : 'Kunde ist gesperrt. Siehe Notizen.'}
           </p>
         </ParchmentCard>
       )}
@@ -548,10 +548,10 @@ function CustomerCard({ detail }: { detail: CustomerDetail }): JSX.Element {
           {detail.customerNumber}
         </p>
 
-        <Row label="Geburtsdatum" value={detail.dateOfBirth ?? '—'} />
-        <Row label="E-Mail" value={detail.email ?? '—'} />
-        <Row label="Telefon" value={detail.phone ?? '—'} />
-        <Row label="Adresse" value={detail.address ?? '—'} multiline />
+        <Row label="Geburtsdatum" value={detail.dateOfBirth ?? '-'} />
+        <Row label="E-Mail" value={detail.email ?? '-'} />
+        <Row label="Telefon" value={detail.phone ?? '-'} />
+        <Row label="Adresse" value={detail.address ?? '-'} multiline />
 
         <DiamondRule label="Bisher" />
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
@@ -664,7 +664,7 @@ function CreateMode({
       onCreated(created.id);
     } catch (err) {
       if (err instanceof ApiError) setError(describeError(err));
-      else setError('Verbindung gestört — Netzwerk prüfen.');
+      else setError('Verbindung gestört. Netzwerk prüfen.');
     } finally {
       setSubmitting(false);
     }

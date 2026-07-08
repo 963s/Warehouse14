@@ -226,7 +226,7 @@ export function Kurse(): JSX.Element {
                     lineHeight: 1.1,
                   }}
                 >
-                  {cur?.pricePerGramEur ? formatPrice(cur.pricePerGramEur) : '—'}{' '}
+                  {cur?.pricePerGramEur ? formatPrice(cur.pricePerGramEur) : '-'}{' '}
                   <span style={{ fontSize: '0.8rem', color: 'var(--w14-ink-faded)' }}>€/g</span>
                 </div>
                 <div
@@ -413,7 +413,7 @@ function PriceTile({
               color: 'var(--w14-ink-faded)',
             }}
           >
-            zuletzt {current.fetchedAt ? new Date(current.fetchedAt).toLocaleString('de-DE') : '—'}
+            zuletzt {current.fetchedAt ? new Date(current.fetchedAt).toLocaleString('de-DE') : '-'}
           </p>
 
           <RatesBlock rate={rate} />
@@ -507,7 +507,7 @@ function RateRow({
         className="w14-tabular"
         style={{ fontFamily: 'var(--w14-font-mono)', fontSize: '0.86rem', color }}
       >
-        {value !== null ? `${formatPrice(value)} €/g` : '—'}
+        {value !== null ? `${formatPrice(value)} €/g` : '-'}
       </span>
     </div>
   );
@@ -898,7 +898,7 @@ function MarginModal({ rates, onClose }: { rates: MetalRate[]; onClose: () => vo
       addToast({
         tone: 'success',
         title: 'Margen gespeichert',
-        body: 'Ankaufskurse überall aktualisiert — Ticker, Ankauf-Vorschlag, Kursraum.',
+        body: 'Ankaufskurse überall aktualisiert: Ticker, Ankauf-Vorschlag, Kursraum.',
       });
       // CORE FIX: invalidate the WHOLE metal-prices family (not just 'rates') so
       // EVERY consumer refetches the new server-derived Ankauf rate at once. The
@@ -957,12 +957,12 @@ function MarginModal({ rates, onClose }: { rates: MetalRate[]; onClose: () => vo
 
         <p style={{ margin: '8px 0 0', fontSize: '0.84rem', color: 'var(--w14-ink-aged)' }}>
           <strong>Ankaufpreis = 10-Tage-Mittel (Spot) × (1 − Marge).</strong> Jede Marge ist einzeln
-          einstellbar (0–50 %). Speichern wirkt <strong>sofort überall</strong>: Ticker,
+          einstellbar (0 bis 50 %). Speichern wirkt <strong>sofort überall</strong>: Ticker,
           Ankauf-Vorschlag und Kursraum.
         </p>
         <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: 'var(--w14-ink-faded)' }}>
           Die Marge betrifft nur den <strong>Ankauf</strong>. Verkaufspreise sind je Artikel
-          (Listenpreis) — nicht Spot × Marge.
+          (Listenpreis), nicht Spot × Marge.
         </p>
 
         <div style={{ display: 'grid', gap: 12, marginTop: 14 }}>

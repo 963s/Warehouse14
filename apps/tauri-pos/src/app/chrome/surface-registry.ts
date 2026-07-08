@@ -131,7 +131,7 @@ export const SURFACES: readonly SurfaceDescriptor[] = [
   {
     path: '/verkauf',
     label: 'Verkauf',
-    description: 'Verkauf an Kunden — Beleg, Zahlung, Kasse.',
+    description: 'Verkauf an Kunden. Beleg, Zahlung, Kasse.',
     digit: 1,
     tier: 'primary',
     component: Verkauf,
@@ -140,7 +140,7 @@ export const SURFACES: readonly SurfaceDescriptor[] = [
   {
     path: '/ankauf',
     label: 'Ankauf',
-    description: 'Ankauf & Bewertung — Ausweis, AML, Ankaufbeleg.',
+    description: 'Ankauf & Bewertung. Ausweis, AML, Ankaufbeleg.',
     digit: 2,
     tier: 'primary',
     component: Ankauf,
@@ -203,7 +203,7 @@ export const SURFACES: readonly SurfaceDescriptor[] = [
   {
     path: '/bewertung',
     label: 'Konvolut-Bewertung',
-    description: 'Konvolut-Bewertung mit Pro-rata-Verteilung — Teil des Ankaufs.',
+    description: 'Konvolut-Bewertung mit Pro-rata-Verteilung. Teil des Ankaufs.',
     tier: 'secondary',
     component: Bewertung,
     searchAliases: ['appraisal', 'expertise', 'gutachten', 'konvolut', 'ankauf', 'bewertung'],
@@ -216,7 +216,7 @@ export const SURFACES: readonly SurfaceDescriptor[] = [
   {
     path: '/kurse',
     label: 'Kurse',
-    description: 'Live-Kurse für Gold, Silber, Platin, Palladium — Handelsterminal.',
+    description: 'Live-Kurse für Gold, Silber, Platin, Palladium. Handelsterminal.',
     tier: 'secondary',
     component: Kurse,
     searchAliases: [
@@ -237,7 +237,7 @@ export const SURFACES: readonly SurfaceDescriptor[] = [
   {
     path: '/schreiben',
     label: 'Schreiben',
-    description: 'Verträge, Rechnungen und Briefe auf A4 erstellen — mit KI-Assistent.',
+    description: 'Verträge, Rechnungen und Briefe auf A4 erstellen, mit KI-Assistent.',
     digit: 7,
     tier: 'primary',
     component: Schreiben,
@@ -295,7 +295,7 @@ export const SURFACES: readonly SurfaceDescriptor[] = [
   {
     path: '/dokumente',
     label: 'Dokumente',
-    description: 'Belege, Ausweise, Expertisen — verknüpft pro Entität.',
+    description: 'Belege, Ausweise, Expertisen, verknüpft pro Entität.',
     tier: 'secondary',
     component: Dokumente,
     searchAliases: ['ausweis', 'rechnung', 'expertise', 'zertifikat', 'r2'],
@@ -311,7 +311,7 @@ export const SURFACES: readonly SurfaceDescriptor[] = [
   {
     path: '/termine',
     label: 'Termine',
-    description: 'Terminkalender — Besichtigung, Ankauf-Bewertung, Beratung, Abholung.',
+    description: 'Terminkalender. Besichtigung, Ankauf-Bewertung, Beratung, Abholung.',
     tier: 'secondary',
     component: Termine,
     searchAliases: [
@@ -329,7 +329,7 @@ export const SURFACES: readonly SurfaceDescriptor[] = [
   {
     path: '/kalender',
     label: 'Kalender',
-    description: 'Google Kalender des Geschäfts — eingebettete Wochenansicht, ganzseitig.',
+    description: 'Google Kalender des Geschäfts. Eingebettete Wochenansicht, ganzseitig.',
     tier: 'secondary',
     component: Kalender,
     searchAliases: ['google', 'google kalender', 'gcal', 'wochenansicht', 'embed'],

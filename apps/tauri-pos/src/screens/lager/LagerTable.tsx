@@ -408,7 +408,7 @@ const LagerRow = memo(
           }}
           title={lagerort || undefined}
         >
-          {lagerort || '—'}
+          {lagerort || '-'}
         </div>
         <div style={{ ...cellBase, textAlign: 'right' }}>
           <MoneyAmount valueEur={row.listPriceEur} />
@@ -561,7 +561,7 @@ function EmptyTable(): JSX.Element {
             fontSize: '0.88rem',
           }}
         >
-          Passen Sie Suche oder Filter an — oder legen Sie ein neues Produkt an.
+          Passen Sie Suche oder Filter an, oder legen Sie ein neues Produkt an.
         </p>
       </ParchmentCard>
     </div>

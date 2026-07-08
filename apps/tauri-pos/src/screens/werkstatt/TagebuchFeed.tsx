@@ -41,7 +41,7 @@ export function TagebuchFeed({ compact = false }: TagebuchFeedProps): JSX.Elemen
 
   return (
     <section
-      aria-label="Tagebuch — Lebendige Ereignisse"
+      aria-label="Tagebuch, lebendige Ereignisse"
       style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
     >
       <DiamondRule label="Tagebuch" />

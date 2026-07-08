@@ -871,7 +871,7 @@ function DiscountEditor({ line, disabled }: { line: CartLine; disabled: boolean 
             ? 'Begründung ✓'
             : reasonTouched
               ? `Noch ${reasonShortfall} Zeichen (mind. ${MIN_DISCOUNT_REASON_LEN})`
-              : `Pflichtfeld — mind. ${MIN_DISCOUNT_REASON_LEN} Zeichen`}
+              : `Pflichtfeld, mind. ${MIN_DISCOUNT_REASON_LEN} Zeichen`}
         </span>
       </div>
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>

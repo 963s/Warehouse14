@@ -374,7 +374,7 @@ function EditorPane({ kind }: { kind: BelegtextKind }): JSX.Element {
             fontSize: '0.86rem',
           }}
         >
-          Es existiert noch keine Version — diese wird zur ersten.
+          Es existiert noch keine Version. Diese wird zur ersten.
         </p>
       ) : !dirty ? (
         <p

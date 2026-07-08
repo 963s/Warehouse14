@@ -89,7 +89,7 @@ export function Verkauf(): JSX.Element {
       <ShiftGuard
         digitLabel="2"
         surfaceTitle="Keine offene Schicht"
-        lede="Bevor ein Beleg entstehen darf, muss eine Schicht eröffnet sein — die Schublade braucht ein Zuhause für den Kassensturz."
+        lede="Bevor ein Beleg entstehen darf, muss eine Schicht eröffnet sein. Die Schublade braucht ein Zuhause für den Kassensturz."
       />
     );
   }
@@ -218,7 +218,7 @@ function VerkaufFloor(): JSX.Element {
             title: 'Bereits in der Karte',
             // Unique inventory — one product = one physical piece (no quantity to
             // raise). Tell the operator it is already reserved + where to find it.
-            body: `${detail.sku} — Einzelstück, bereits reserviert (rechts in der Karte).`,
+            body: `${detail.sku}. Einzelstück, bereits reserviert (rechts in der Karte).`,
           });
         }
       } catch (err) {
@@ -226,7 +226,7 @@ function VerkaufFloor(): JSX.Element {
           addToast({
             tone: 'alert',
             title: 'Bereits anderswo reserviert',
-            body: `${product.sku} — der Storefront oder eBay-Kanal hat zuerst zugegriffen.`,
+            body: `${product.sku}. Der Storefront oder eBay-Kanal hat zuerst zugegriffen.`,
           });
           await qc.invalidateQueries({ queryKey: ['products', 'list'] });
         } else if (err instanceof ApiError && err.code === 'STEP_UP_REQUIRED') {
@@ -300,7 +300,7 @@ function VerkaufFloor(): JSX.Element {
           addToast({
             tone: 'alert',
             title: 'Bereits verkauft',
-            body: `${match.product.sku} ist bereits verkauft — nicht mehr im Bestand.`,
+            body: `${match.product.sku} ist bereits verkauft. Nicht mehr im Bestand.`,
           });
           return;
         case 'reserved':
@@ -314,7 +314,7 @@ function VerkaufFloor(): JSX.Element {
           addToast({
             tone: 'info',
             title: 'Noch nicht verkaufsbereit',
-            body: `${match.product.sku} ist ein Entwurf — erst in Lager veröffentlichen.`,
+            body: `${match.product.sku} ist ein Entwurf. Erst in Lager veröffentlichen.`,
           });
           return;
         case 'found':
@@ -328,7 +328,7 @@ function VerkaufFloor(): JSX.Element {
         addToast({
           tone: 'info',
           title: 'Schon in der Karte',
-          body: `${product.sku} — Einzelstück, bereits im Korb.`,
+          body: `${product.sku}. Einzelstück, bereits im Korb.`,
         });
         return;
       }
@@ -404,7 +404,7 @@ function VerkaufFloor(): JSX.Element {
           addToast({
             tone: 'alert',
             title: 'Freigabe fehlgeschlagen',
-            body: `Server-Freigabe für ${target.sku} fehlgeschlagen — Position wiederhergestellt. Bitte erneut entfernen.`,
+            body: `Server-Freigabe für ${target.sku} fehlgeschlagen. Position wiederhergestellt. Bitte erneut entfernen.`,
           });
         }
       } finally {

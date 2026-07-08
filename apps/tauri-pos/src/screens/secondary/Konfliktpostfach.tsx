@@ -152,7 +152,7 @@ export function Konfliktpostfach(): JSX.Element {
         </h1>
         <p style={{ margin: '4px 0 0', color: 'var(--w14-ink-faded)', fontSize: '0.9rem' }}>
           Offline erfasste Vorgänge, die vom Server abweichen. Bis zur Klärung ruht die
-          Synchronisierung — bitte jeden Konflikt prüfen und erneut senden oder verwerfen.
+          Synchronisierung. Bitte jeden Konflikt prüfen und erneut senden oder verwerfen.
         </p>
       </div>
       <DiamondRule />
@@ -174,7 +174,7 @@ export function Konfliktpostfach(): JSX.Element {
               color: 'var(--w14-ink-faded)',
             }}
           >
-            Keine Konflikte — die Synchronisierung läuft.
+            Keine Konflikte. Die Synchronisierung läuft.
           </p>
         </ParchmentCard>
       ) : (

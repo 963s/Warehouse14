@@ -22,7 +22,7 @@ export function WerkstattFooter({
   revenueEur,
   counterValue,
 }: WerkstattFooterProps): JSX.Element {
-  const shiftLabel = currentShiftId ? 'Shift OPEN' : 'Shift —';
+  const shiftLabel = currentShiftId ? 'Shift OPEN' : 'Shift -';
   const shiftColor = currentShiftId ? 'var(--w14-gold)' : 'var(--w14-ink-faded)';
 
   return (

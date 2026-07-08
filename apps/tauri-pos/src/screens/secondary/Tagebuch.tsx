@@ -180,7 +180,7 @@ export function Tagebuch(): JSX.Element {
             onChange={(e) => setEventType(e.target.value)}
             style={{ ...inputStyle, minWidth: 220 }}
           >
-            <option value="">— alle —</option>
+            <option value="">Alle</option>
             {EVENT_TYPE_GROUPS.map((g) => (
               <optgroup key={g.label} label={g.label}>
                 {g.values.map((v) => (

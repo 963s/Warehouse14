@@ -23,7 +23,7 @@ const STEPS: ReadonlyArray<{ icon: LucideIcon; title: string; body: string }> = 
   {
     icon: Lock,
     title: 'Tag abschließen',
-    body: 'Bar zählen, dann Z-Bon — der gesetzliche Tagesabschluss.',
+    body: 'Bar zählen, dann Z-Bon, der gesetzliche Tagesabschluss.',
   },
 ];
 
@@ -76,7 +76,7 @@ export function KassePurposeBanner(): JSX.Element {
               lineHeight: 1.45,
             }}
           >
-            Deine Bargeld-Schublade für heute — hier öffnest und schließt du den Kassentag und
+            Deine Bargeld-Schublade für heute. Hier öffnest und schließt du den Kassentag und
             behältst das Bargeld im Blick.{' '}
             <strong style={{ color: 'var(--w14-ink)' }}>Verkauft wird in Verkauf</strong> (Warenkorb
             &amp; Zahlung). Die Tageskasse ist nicht der Verkauf, sondern die tägliche

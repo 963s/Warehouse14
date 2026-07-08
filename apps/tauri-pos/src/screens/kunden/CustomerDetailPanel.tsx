@@ -118,8 +118,8 @@ function CustomerCard({ detail }: { detail: CustomerDetail }): JSX.Element {
             }}
           >
             {detail.sanctionsMatch
-              ? 'Sanktionslisten-Treffer — EU-Verordnung.'
-              : 'Vom Inhaber gesperrt — Trust = BANNED.'}
+              ? 'Sanktionslisten-Treffer laut EU-Verordnung.'
+              : 'Vom Inhaber gesperrt. Trust = BANNED.'}
           </p>
         </ParchmentCard>
       )}
@@ -215,7 +215,7 @@ function CustomerCard({ detail }: { detail: CustomerDetail }): JSX.Element {
           <DataRow
             label="KYC-Eingang"
             value={
-              detail.kycCompletedAt ? new Date(detail.kycCompletedAt).toLocaleString('de-DE') : '—'
+              detail.kycCompletedAt ? new Date(detail.kycCompletedAt).toLocaleString('de-DE') : '-'
             }
             mono
           />
@@ -409,7 +409,7 @@ function DataRow({
             color: toneColor[tone],
           }}
         >
-          {value ?? '—'}
+          {value ?? '-'}
         </span>
       )}
     </div>

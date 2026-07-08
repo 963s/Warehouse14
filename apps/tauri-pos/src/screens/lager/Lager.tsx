@@ -290,7 +290,7 @@ export function Lager(): JSX.Element {
             type="text"
             value={searchInput}
             onChange={(ev) => setSearchInput(ev.target.value)}
-            placeholder="SKU · Barcode · Bezeichnung — oder Barcode-Scanner verwenden"
+            placeholder="SKU · Barcode · Bezeichnung. Oder Barcode-Scanner verwenden"
             spellCheck={false}
             aria-label="Lager durchsuchen"
             style={{

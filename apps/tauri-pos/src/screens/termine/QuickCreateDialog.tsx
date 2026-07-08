@@ -102,7 +102,7 @@ function CreateForm({ slotStart, onClose }: { slotStart: Date; onClose: () => vo
         onError: (err: unknown) => {
           if (err instanceof ApiError && err.httpStatus === 409) {
             setError(
-              'Dieser Slot ist nicht verfügbar — belegt oder außerhalb der Arbeitszeiten. Bitte anderen Zeitpunkt wählen.',
+              'Dieser Slot ist nicht verfügbar. Belegt oder außerhalb der Arbeitszeiten. Bitte anderen Zeitpunkt wählen.',
             );
           } else if (err instanceof ApiError) {
             setError(describeError(err));
@@ -148,7 +148,7 @@ function CreateForm({ slotStart, onClose }: { slotStart: Date; onClose: () => vo
 
           <Field
             label="Mitarbeiter-ID"
-            hint="Vorbelegt mit Ihnen — nur ändern, wenn der Termin jemand anderem gehört."
+            hint="Vorbelegt mit Ihnen. Nur ändern, wenn der Termin jemand anderem gehört."
             required
           >
             <Input mono value={staffUserId} onChange={(e) => setStaffUserId(e.target.value)} />

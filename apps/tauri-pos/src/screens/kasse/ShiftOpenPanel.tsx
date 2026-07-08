@@ -55,7 +55,7 @@ export function ShiftOpenPanel(): JSX.Element {
           setError(describeError(err));
         }
       } else {
-        setError('Verbindung gestört — Netzwerk prüfen.');
+        setError('Verbindung gestört. Netzwerk prüfen.');
       }
     } finally {
       setSubmitting(false);
@@ -129,7 +129,7 @@ export function ShiftOpenPanel(): JSX.Element {
                 lineHeight: 1.4,
               }}
             >
-              Das Wechselgeld, mit dem du den Tag beginnst (z. B. 200 €) — damit du Kunden
+              Das Wechselgeld, mit dem du den Tag beginnst (z. B. 200 €), damit du Kunden
               herausgeben kannst.
             </p>
           </div>

@@ -74,13 +74,13 @@ export function DeleteProductDialog({
       addToast({
         tone: 'success',
         title: 'Endgültig gelöscht',
-        body: `${p.sku} wurde unwiderruflich entfernt — inklusive Fotos und Zuordnungen.`,
+        body: `${p.sku} wurde unwiderruflich entfernt, inklusive Fotos und Zuordnungen.`,
       });
       onDeleted(p.id);
       onClose();
     } catch (err) {
       const msg =
-        err instanceof ApiError ? describeError(err) : 'Verbindung gestört — bitte erneut versuchen.';
+        err instanceof ApiError ? describeError(err) : 'Verbindung gestört. Bitte erneut versuchen.';
       addToast({ tone: 'alert', title: 'Löschen nicht möglich', body: msg });
     } finally {
       setBusy(false);
@@ -101,7 +101,7 @@ export function DeleteProductDialog({
       onClose();
     } catch (err) {
       const msg =
-        err instanceof ApiError ? describeError(err) : 'Verbindung gestört — bitte erneut versuchen.';
+        err instanceof ApiError ? describeError(err) : 'Verbindung gestört. Bitte erneut versuchen.';
       addToast({ tone: 'alert', title: 'Archivieren nicht möglich', body: msg });
     } finally {
       setBusy(false);
@@ -123,7 +123,7 @@ export function DeleteProductDialog({
         {verdict === 'deletable' && (
           <>
             <p style={BODY_TEXT}>
-              Wird unwiderruflich gelöscht — Fotos und Zuordnungen eingeschlossen. Der Artikel
+              Wird unwiderruflich gelöscht, Fotos und Zuordnungen eingeschlossen. Der Artikel
               verschwindet damit auch aus dem Web-Shop.
             </p>
             <p
@@ -147,7 +147,7 @@ export function DeleteProductDialog({
         {verdict === 'sold' && (
           <p style={BODY_TEXT}>
             Dieses Stück wurde verkauft und ist Teil der fiskalischen Aufzeichnung (GoBD). Es kann
-            deshalb nicht gelöscht, sondern nur <strong>archiviert</strong> werden — es verschwindet
+            deshalb nicht gelöscht, sondern nur <strong>archiviert</strong> werden. Es verschwindet
             damit aus den Listen, bleibt aber für Prüfungen erhalten.
           </p>
         )}
@@ -155,7 +155,7 @@ export function DeleteProductDialog({
         {verdict === 'reserved' && (
           <p style={BODY_TEXT}>
             Dieses Stück ist derzeit <strong>reserviert</strong> und kann nicht gelöscht werden.
-            Bitte zuerst die Reservierung aufheben — danach ist das endgültige Löschen möglich.
+            Bitte zuerst die Reservierung aufheben. Danach ist das endgültige Löschen möglich.
           </p>
         )}
 

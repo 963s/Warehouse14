@@ -40,7 +40,7 @@ export function ShiftGuard({
   digitLabel,
   surfaceTitle,
   lede,
-  ctaLabel = 'Zur Kasse — Schicht eröffnen',
+  ctaLabel = 'Zur Kasse, Schicht eröffnen',
 }: ShiftGuardProps): JSX.Element {
   const navigate = useNavigate();
 

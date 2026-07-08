@@ -128,7 +128,7 @@ export function GeraeteManager(): JSX.Element {
               className="w14-smallcaps"
               style={{ color: 'var(--w14-wax-red)', fontSize: '0.78rem' }}
             >
-              Browser-Modus — Aktionen sind deaktiviert
+              Browser-Modus, Aktionen sind deaktiviert
             </span>
           )}
           <Button
@@ -328,7 +328,7 @@ function ThermalSection(): JSX.Element {
                 borderRadius: 4,
               }}
             >
-              <option value="">— automatisch erkennen oder wählen —</option>
+              <option value="">automatisch erkennen oder wählen</option>
               {printers.map((p) => (
                 <option key={p.name} value={p.name}>
                   {p.name} ({p.status})
@@ -447,7 +447,7 @@ function A4Section(): JSX.Element {
             borderRadius: 4,
           }}
         >
-          <option value="">— bitte wählen —</option>
+          <option value="">bitte wählen</option>
           {printers.map((p) => (
             <option key={p.name} value={p.name}>
               {p.name} ({p.status})
@@ -549,7 +549,7 @@ function WaageSection(): JSX.Element {
             borderRadius: 4,
           }}
         >
-          <option value="">— bitte wählen —</option>
+          <option value="">bitte wählen</option>
           {/* Keep the persisted port selectable even before the enumeration runs. */}
           {portPath && !ports.includes(portPath) && <option value={portPath}>{portPath}</option>}
           {ports.map((p) => (
@@ -729,7 +729,7 @@ function LabelSection(): JSX.Element {
             onChange={(e) => save({ printerName: e.target.value })}
             style={selectStyle()}
           >
-            <option value="">— bitte wählen —</option>
+            <option value="">bitte wählen</option>
             {printers.map((p) => (
               <option key={p.name} value={p.name}>
                 {p.name} ({p.status})
@@ -884,15 +884,15 @@ function ScannerSection(): JSX.Element {
     <Card title="Barcode-Scanner (USB)">
       <Row>
         <span style={{ color: 'var(--w14-ink-faded)', fontSize: '0.82rem', flex: 1 }}>
-          Der Handscanner funktioniert ohne Einrichtung: einstecken und scannen. Er wirkt systemweit
-          — ein Scan landet automatisch in Kasse oder Lager.
+          Der Handscanner funktioniert ohne Einrichtung: einstecken und scannen. Er wirkt systemweit.
+          Ein Scan landet automatisch in Kasse oder Lager.
         </span>
       </Row>
       <Row>
         {seen ? (
           <span style={{ color: 'var(--w14-ink-faded)', fontSize: '0.82rem' }}>
             Zuletzt gescannt:{' '}
-            <code style={{ fontFamily: 'var(--w14-font-mono)' }}>{lastCode ?? '—'}</code>
+            <code style={{ fontFamily: 'var(--w14-font-mono)' }}>{lastCode ?? '-'}</code>
           </span>
         ) : (
           <span style={{ color: 'var(--w14-ink-faded)', fontSize: '0.82rem' }}>
@@ -902,7 +902,7 @@ function ScannerSection(): JSX.Element {
         <span style={{ flex: 1 }} />
         <HardwareStatusBadge
           tone={seen ? 'online' : 'pending'}
-          label={seen ? 'Scanner bereit' : 'Bereit — auf ersten Scan wartend'}
+          label={seen ? 'Scanner bereit' : 'Bereit, auf ersten Scan wartend'}
         />
       </Row>
     </Card>
@@ -977,7 +977,7 @@ function TseSection(): JSX.Element {
       addToast({
         tone: 'success',
         title: 'TSE-Schlüssel gespeichert',
-        body: 'Sicher im OS-Schlüsselbund hinterlegt — nicht im Browserspeicher.',
+        body: 'Sicher im OS-Schlüsselbund hinterlegt, nicht im Browserspeicher.',
       });
     } catch (err) {
       addToast({
@@ -1086,7 +1086,7 @@ function TseSection(): JSX.Element {
             <span
               style={{ flex: 1, fontFamily: 'var(--w14-font-mono)', color: 'var(--w14-ink-faded)' }}
             >
-              {cfg.credentialsStored ? '•••••••••••• (im Schlüsselbund)' : '— nicht gesetzt —'}
+              {cfg.credentialsStored ? '•••••••••••• (im Schlüsselbund)' : 'nicht gesetzt'}
             </span>
             <Button variant="ghost" onClick={() => setEditingKey(true)}>
               {cfg.credentialsStored ? 'Ändern' : 'Hinterlegen'}
@@ -1124,7 +1124,7 @@ function TseSection(): JSX.Element {
         <Row>
           <span style={{ flex: 1, fontSize: '0.85rem', color: 'var(--w14-ink-faded)' }}>
             {hasStuckSignatures
-              ? 'Einige Signaturen konnten nicht übertragen werden — bitte TSE-Verbindung prüfen.'
+              ? 'Einige Signaturen konnten nicht übertragen werden. Bitte TSE-Verbindung prüfen.'
               : 'Ausstehende TSE-Signaturen werden automatisch nachgereicht, sobald die TSE erreichbar ist.'}
           </span>
           <HardwareStatusBadge
@@ -1263,6 +1263,6 @@ function buildTestReceipt(): ThermalReceiptData {
     tseSignatureCounter: '0',
     tseTransactionNumber: '0',
     tseQrPayload: 'TEST',
-    footerLines: ['Vielen Dank für Ihren Besuch.', 'Dies ist ein Testbeleg — keine Buchung.'],
+    footerLines: ['Vielen Dank für Ihren Besuch.', 'Dies ist ein Testbeleg, keine Buchung.'],
   };
 }

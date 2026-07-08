@@ -177,7 +177,7 @@ export function IntakeList({ customerSelected, onOpenBezahlen }: IntakeListProps
                 Liste leeren
               </Button>
               <Button variant="primary" size="lg" onClick={onOpenBezahlen} disabled={!canPay}>
-                Bezahlen — Bar auszahlen
+                Bezahlen, bar auszahlen
               </Button>
             </div>
           </ParchmentCard>
@@ -277,7 +277,7 @@ function KycEarlyBanner({
         <span aria-hidden style={{ color: 'var(--w14-gold)' }}>
           ✓
         </span>
-        <span>KYC bestätigt — Ausweis geprüft. Ankauf zulässig.</span>
+        <span>KYC bestätigt. Ausweis geprüft. Ankauf zulässig.</span>
       </output>
     );
   }
@@ -305,13 +305,13 @@ function KycEarlyBanner({
           {gate.reason === 'aggregate' ? (
             <>
               Die Summe der Ankäufe dieses Kunden der letzten{' '}
-              {customer?.gwgRollingAnkauf.windowDays ?? 0} Tage erreicht 2.000&nbsp;€ — § 10 GwG
+              {customer?.gwgRollingAnkauf.windowDays ?? 0} Tage erreicht 2.000&nbsp;€. § 10 GwG
               (verknüpfte Geschäfte) verlangt eine Ausweisprüfung, auch wenn dieser Ankauf einzeln
               darunter liegt. Jetzt erledigen.
             </>
           ) : (
             <>
-              Jeder Ankauf verlangt eine persönliche Ausweisprüfung des Verkäufers (§ 259 StGB) — ab
+              Jeder Ankauf verlangt eine persönliche Ausweisprüfung des Verkäufers (§ 259 StGB), ab
               dem ersten Euro. Jetzt erledigen, nicht erst beim Bezahlen.
             </>
           )}
@@ -550,7 +550,7 @@ function AddItemForm({
           value={metal}
           onChange={setMetal}
           options={[
-            { value: '', label: '—' },
+            { value: '', label: '-' },
             { value: 'gold', label: 'Gold' },
             { value: 'silver', label: 'Silber' },
             { value: 'platinum', label: 'Platin' },
@@ -623,7 +623,7 @@ function AddItemForm({
           onChange={(ev) => setPublishImmediately(ev.target.checked)}
         />
         <span style={{ fontFamily: 'var(--w14-font-display)', fontSize: '0.9rem' }}>
-          Sofort verkaufsbereit (AVAILABLE — sonst DRAFT bis Foto)
+          Sofort verkaufsbereit (AVAILABLE, sonst DRAFT bis Foto)
         </span>
       </label>
 
@@ -701,7 +701,7 @@ function SchmelzwertHint({
         {grossEur ? (
           <MoneyAmount valueEur={grossEur} />
         ) : (
-          <span style={{ color: 'var(--w14-ink-faded)' }}>—</span>
+          <span style={{ color: 'var(--w14-ink-faded)' }}>-</span>
         )}
       </div>
       <div
@@ -721,7 +721,7 @@ function SchmelzwertHint({
                 fontSize: '0.7rem',
               }}
             >
-              — Marge auf Spot
+              (Marge auf Spot)
             </span>
           )}
         </span>
@@ -729,7 +729,7 @@ function SchmelzwertHint({
           {suggestion.value ? (
             <MoneyAmount valueEur={suggestion.value} emphasis />
           ) : (
-            <span style={{ color: 'var(--w14-ink-faded)' }}>—</span>
+            <span style={{ color: 'var(--w14-ink-faded)' }}>-</span>
           )}
           {suggestion.value !== null && (
             <Button

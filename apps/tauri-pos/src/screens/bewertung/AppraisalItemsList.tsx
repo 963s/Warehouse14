@@ -183,7 +183,7 @@ export function AppraisalItemsList({
               onClick={() => setCompleteOpen(true)}
               disabled={appraisal.items.length === 0}
             >
-              Vollständig — Angebot machen
+              Vollständig: Angebot machen
             </Button>
           )}
           {appraisal.status === 'COMPLETED' && (
