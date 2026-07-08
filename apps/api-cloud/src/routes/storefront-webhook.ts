@@ -67,6 +67,17 @@ export interface StorefrontWebhookOpts {
   env: Env;
 }
 
+/**
+ * How long to hold a cart plus its product reservations once an ASYNC payment
+ * (SEPA-Lastschrift, Klarna, iDEAL, giropay, ...) starts settling. A card clears
+ * inside the 15-minute checkout window; SEPA direct debit can take up to roughly
+ * 14 days to clear or bounce. We hold the reserved goods for that horizon so a
+ * still-settling payment is never released and resold. Tunable: shorten it if the
+ * storefront only enables faster async methods, lengthen it if a slower one is
+ * added. Expressed as a Postgres interval literal.
+ */
+const ASYNC_SETTLEMENT_INTERVAL = '14 days';
+
 /** Type guard against the Stripe event shapes we react to. */
 interface StripeEvent {
   id: string;
@@ -168,7 +179,16 @@ const storefrontWebhookRoutes: FastifyPluginAsync<StorefrontWebhookOpts> = async
         );
       }
 
-      // 4. Idempotency via webhook_events UNIQUE. First delivery wins.
+      // 4. Idempotency via webhook_events UNIQUE. The FIRST delivery inserts the
+      //    dedup row. A later delivery of the same event is a true no-op ONLY if
+      //    that first delivery actually FINISHED (processed_at is set). If a prior
+      //    delivery inserted the row but then FAILED before marking processed_at
+      //    (a transient DB error mid-conversion), processed_at is still NULL and
+      //    we MUST re-process on this retry. Otherwise a captured payment is
+      //    swallowed forever: the order is never fulfilled and the still-reserved
+      //    inventory is later swept and resold. The handlers are idempotent (a
+      //    SUCCEEDED intent, a CONVERTED cart, and the conditional finalize are
+      //    all no-ops), so re-processing after a partial success is safe.
       let isIdempotent = false;
       try {
         await app.db.insert(webhookEvents).values({
@@ -181,17 +201,34 @@ const storefrontWebhookRoutes: FastifyPluginAsync<StorefrontWebhookOpts> = async
         });
       } catch (err) {
         const msg = (err as Error).message ?? '';
-        if (msg.includes('webhook_events_provider_event_uq')) {
-          isIdempotent = true;
+        if (!msg.includes('webhook_events_provider_event_uq')) throw err;
+        isIdempotent = true;
+        const [existing] = await app.db.execute<{ processed_at: string | null }>(drizzleSql`
+          SELECT processed_at FROM webhook_events
+           WHERE provider = 'STRIPE' AND provider_event_id = ${event.id}
+           LIMIT 1
+        `);
+        if (existing && existing.processed_at !== null) {
+          // Prior delivery completed. A genuine duplicate, ack without re-work.
           return reply.status(200).send({ received: true, idempotent: true, eventId: event.id });
         }
-        throw err;
+        // Prior delivery never finished (processed_at NULL). Fall through and
+        // re-process this event so a partially-applied payment is recovered.
+        req.log.warn(
+          { eventId: event.id, eventType: event.type },
+          'stripe webhook: prior delivery never finished, re-processing',
+        );
       }
 
       // 5. Dispatch on event.type. We react to the three events that move
       //    money/state — everything else is recorded as evidence and ack'd.
       if (event.type === 'payment_intent.succeeded') {
         await handlePaymentIntentSucceeded(app, opts, event.data.object.id);
+      } else if (event.type === 'payment_intent.processing') {
+        // An async method (SEPA-Lastschrift, Klarna, ...) is now settling. Push
+        // the cart + reservation windows out so neither the cart sweeper nor the
+        // reservation reaper releases the soon-to-be-paid inventory in flight.
+        await handlePaymentIntentProcessing(app, event.data.object.id);
       } else if (
         event.type === 'payment_intent.payment_failed' ||
         event.type === 'payment_intent.canceled'
@@ -398,12 +435,15 @@ async function handlePaymentIntentSucceeded(
     }
 
     // We need a device_id too (NOT NULL). For online: use any active server
-    // device. If none, fail loudly — operator must seed one.
+    // device. If none, fail loudly — operator must seed one. NOTE: the
+    // device_status enum is lowercase ('active','revoked','expired'); an
+    // uppercase 'ACTIVE' throws "invalid input value for enum device_status"
+    // and 500s the whole conversion. Cast explicitly like the mTLS guard does.
     const [systemDevice] = await tx.execute<{ id: string }>(drizzleSql`
-      SELECT id FROM devices WHERE status = 'ACTIVE' ORDER BY created_at ASC LIMIT 1
+      SELECT id FROM devices WHERE status = 'active'::device_status ORDER BY created_at ASC LIMIT 1
     `);
     if (!systemDevice) {
-      throw new Error('online sales require an ACTIVE device row (e.g. an SSR server device)');
+      throw new Error('online sales require an active device row (e.g. an SSR server device)');
     }
 
     // Find the shopper's customer + snapshot a JSON shipping address.
@@ -504,6 +544,105 @@ async function handlePaymentIntentSucceeded(
       .update(paymentIntents)
       .set({ status: 'SUCCEEDED' })
       .where(eq(paymentIntents.id, pi.id));
+  });
+}
+
+/**
+ * Handle payment_intent.processing — an async payment method (SEPA direct debit,
+ * Klarna, iDEAL, giropay, ...) has been confirmed and is now settling. Unlike a
+ * card it does NOT resolve inside the 15-minute checkout window; SEPA can take up
+ * to roughly 14 days. Without intervention the cart sweeper (checkout_expires_at
+ * < now) and the reservation reaper (reservation_expires_at < now) release the
+ * reserved inventory long before the money clears, then resell a one-of-a-kind
+ * item the shopper is actively (and successfully) paying for.
+ *
+ * Fix: push BOTH expiry windows out to a settlement-safe horizon so the reserved
+ * goods are held until Stripe reports the terminal outcome:
+ *   • payment_intent.succeeded                    → convert to a fiscal sale.
+ *   • payment_intent.payment_failed / .canceled   → release immediately.
+ * If Stripe never reports a terminal event, the extended window still eventually
+ * releases the reservation as a backstop.
+ *
+ * No new payment_intent status is introduced (it stays PENDING). The settlement
+ * hold is expressed purely as an extended expiry, so no enum migration is needed.
+ * Idempotent: re-running just re-sets the same window. If the sweeper already
+ * expired the intent before this event arrived (a rare late delivery), the guard
+ * below no-ops rather than resurrecting a released reservation.
+ */
+async function handlePaymentIntentProcessing(
+  app: import('fastify').FastifyInstance,
+  providerIntentId: string,
+): Promise<void> {
+  await app.db.transaction(async (tx) => {
+    const [pi] = await tx
+      .select({
+        id: paymentIntents.id,
+        cartId: paymentIntents.cartId,
+        status: paymentIntents.status,
+      })
+      .from(paymentIntents)
+      .where(
+        and(
+          eq(paymentIntents.provider, 'STRIPE'),
+          eq(paymentIntents.providerIntentId, providerIntentId),
+        ),
+      )
+      .limit(1);
+    if (!pi) {
+      app.log.warn({ providerIntentId }, 'stripe webhook (processing): unknown PaymentIntent');
+      return;
+    }
+    // Extend only while the intent is still open (CREATED/PENDING). SUCCEEDED,
+    // FAILED and CANCELED are terminal; EXPIRED means the sweeper already
+    // released the reservation, so extending now would be a lie.
+    if (pi.status !== 'PENDING' && pi.status !== 'CREATED') {
+      app.log.info(
+        { providerIntentId, status: pi.status },
+        'stripe webhook (processing): intent not open, no-op',
+      );
+      return;
+    }
+
+    const [cart] = await tx
+      .select({
+        id: carts.id,
+        status: carts.status,
+        reservationSessionId: carts.reservationSessionId,
+      })
+      .from(carts)
+      .where(eq(carts.id, pi.cartId))
+      .limit(1);
+    if (!cart || cart.status !== 'CHECKOUT') {
+      app.log.info(
+        { cartId: pi.cartId, status: cart?.status },
+        'stripe webhook (processing): cart not in CHECKOUT, no-op',
+      );
+      return;
+    }
+
+    // Extend the cart checkout window so the cart sweeper leaves it alone.
+    await tx.execute(drizzleSql`
+      UPDATE carts
+         SET checkout_expires_at = now() + ${ASYNC_SETTLEMENT_INTERVAL}::interval
+       WHERE id = ${cart.id}
+    `);
+
+    // Extend every RESERVED product this session holds so the reaper leaves them.
+    // status stays RESERVED and reservation_expires_at stays NON-NULL, so the
+    // STOREFRONT reservation CHECK invariant is preserved.
+    if (cart.reservationSessionId) {
+      await tx.execute(drizzleSql`
+        UPDATE products
+           SET reservation_expires_at = now() + ${ASYNC_SETTLEMENT_INTERVAL}::interval
+         WHERE reserved_by_session_id = ${cart.reservationSessionId}
+           AND status = 'RESERVED'
+      `);
+    }
+
+    app.log.info(
+      { providerIntentId, cartId: cart.id },
+      'stripe webhook (processing): extended checkout + reservation window for async settlement',
+    );
   });
 }
 

@@ -213,7 +213,8 @@ Bestands-Mutationen. Drei bestätigte Feststellungen.
 ## F · Web-Zahlung: Stripe-Webhook und Storefront-Checkout
 
 Dritte Prüfung (find→refute, je Feststellung 3 Widerleger) über den Web-Geldpfad.
-Zwei bestätigte HOCH-Feststellungen.
+Zwei bestätigte HOCH-Feststellungen (F1, F2); F3 kam beim Umsetzen des Fixes ans
+Licht, als der Integrationstest den Konvertierungspfad zum ersten Mal wirklich durchlief.
 
 ### F1 · HOCH · Checkout-Betrag mit Float-Division, jeder Cent-Betrag scheitert. BEHOBEN (`ad5e568`, branch-only)
 - **War:** `storefront-cart.ts` baute den Betrag als
@@ -227,29 +228,43 @@ Zwei bestätigte HOCH-Feststellungen.
   Durch Auswertung des Templates verifiziert. typecheck grün; Integrationstest
   braucht die DB.
 
-### F2 · HOCH · Webhook verschluckt Stripe-Retry, Geld kassiert, Bestellung nie erfüllt. REPORT-ONLY
-- **Ist:** `storefront-webhook.ts` schreibt die Dedup-Zeile in `webhook_events`
+### F2 · HOCH · Webhook verschluckt Stripe-Retry, Geld kassiert, Bestellung nie erfüllt. BEHOBEN (branch-only, Integrationstest grün)
+- **War:** `storefront-webhook.ts` schrieb die Dedup-Zeile in `webhook_events`
   (Zeile 174) als eigenständige, sofort committende Anweisung, die Verarbeitung
-  läuft in einer SEPARATEN Transaktion (Zeile 238). Wirft die Verarbeitung
-  transient (Reservierung abgelaufen, Deadlock, Verbindungsabbruch), rollt die
-  Transaktion zurück, die Dedup-Zeile bleibt aber. Beim Stripe-Retry trifft der
-  INSERT den Unique-Index, und der Catch gibt bedingungslos 200 `{idempotent:true}`
+  lief in einer SEPARATEN Transaktion (Zeile 238). Warf die Verarbeitung
+  transient (Reservierung abgelaufen, Deadlock, Verbindungsabbruch), rollte die
+  Transaktion zurück, die Dedup-Zeile blieb aber. Beim Stripe-Retry traf der
+  INSERT den Unique-Index, und der Catch gab bedingungslos 200 `{idempotent:true}`
   zurück, OHNE `processed_at` zu prüfen. Ergebnis: Stripe hat das Geld kassiert, die
   Bestellung wird nie erfüllt, die Reservierung bleibt hängen und wird später vom
   Cart-Sweeper freigegeben und weiterverkauft. Kein Reconciliation-Worker existiert
   (im Kommentar als künftige Phase 1.5 bezeichnet).
-- **Empfohlener Fix:** die `webhook_events`-INSERT in DIESELBE Transaktion wie die
-  Verarbeitung ziehen (ein Rollback entfernt dann die Dedup-Zeile, der Retry
-  verarbeitet neu), ODER im Unique-Konflikt-Zweig die Zeile nachladen und bei
-  `processed_at IS NULL` neu verarbeiten statt idempotent zu antworten; zusätzlich
-  `processing_error` auf dem Fehlerpfad schreiben. Die inneren Idempotenz-Wächter
-  (`pi.status='SUCCEEDED'` und Cart CONVERTED sind No-ops) machen ein erneutes
-  Verarbeiten sicher. NICHT autonom umgesetzt: zahlungskritische Transaktions- und
-  Retry-Semantik, braucht einen Integrationstest.
-- Ergänzend: der Cart-Sweeper (`storefront-cart-sweeper.ts`) gibt abgelaufene
-  CHECKOUT-Warenkörbe allein nach `checkout_expires_at < now()` frei, OHNE zu prüfen,
-  ob der PaymentIntent SUCCEEDED ist. Ein bezahlter, aber hängender Warenkorb gibt so
-  seinen Bestand wieder frei. Mit F2 im selben Fix mitbewerten.
+- **Jetzt:** Im Unique-Konflikt-Zweig lädt der Handler jetzt `processed_at` nach. Ist
+  es gesetzt, war die vorige Zustellung fertig, also echte Dublette, ACK ohne erneute
+  Arbeit. Ist es NULL (vorige Zustellung brach mitten in der Verarbeitung ab),
+  verarbeitet der Handler das Event NEU statt es zu verschlucken. Die inneren
+  Idempotenz-Wächter (`pi.status='SUCCEEDED'`, Cart CONVERTED, bedingtes `finalize`)
+  machen die Neu-Verarbeitung sicher, auch bei Nebenläufigkeit: der bedingte
+  `finalize` (`WHERE status='RESERVED'`) serialisiert konkurrierende Zustellungen
+  über die Zeilensperre, die zweite rollt zurück. Integrationstest in
+  `day20-stripe-real.test.ts` deckt beide Zweige ab (unerledigte vorige Zustellung
+  verarbeitet neu und bucht, erledigte nicht). typecheck grün, Integrationstest lokal grün.
+
+### F3 · HOCH · Jede Web-Konvertierung 500te am `device_status`-Enum. BEHOBEN (branch-only, Integrationstest grün)
+- **War:** Beim Buchen einer Web-Bestellung fragte `storefront-webhook.ts` das
+  Aktiv-Gerät mit `WHERE status = 'ACTIVE'` ab. Das `device_status`-Enum ist aber
+  kleingeschrieben (`'active','revoked','expired'`); der Großbuchstaben-Wert warf
+  `invalid input value for enum device_status` und liess die GESAMTE
+  `payment_intent.succeeded`-Konvertierung 500en. Jede Web-Bestellung wäre nach
+  Live-Gang lautlos gescheitert (Geld kassiert, keine Buchung, Reservierung hängt).
+  Bislang latent, weil die Storefront noch nicht live ist; erst dieser
+  Integrationstest hat den Pfad wirklich durchlaufen und den Fehler freigelegt.
+- **Jetzt:** `WHERE status = 'active'::device_status`, wie der mTLS-Guard
+  (`plugins/mtls.ts`) es macht. Die zuvor rote Konvertierungs-Prüfung läuft grün.
+- Nebenbefund (Test-Drift, behoben): der day20-Seed-Helfer setzte am Produkt nur
+  `listed_on_storefront`, nicht `is_published_to_web`, den heute gültigen
+  Kaufbarkeits-Schalter (Audit H1). Ohne den Schalter gab Add-to-Cart 409, also lief
+  der ganze Konvertierungspfad nie an. Helfer an das day19-Muster angeglichen.
 
 REFUTED (0/3, korrekt kein Fehler): Out-of-order-Event ohne PI-Zeile,
 fehlender Betrags-/Währungs-Abgleich im Webhook. Ein Punkt unbestätigt (Refuter
@@ -306,30 +321,49 @@ rate-limitiert, Lockout-DoS.
 Fünfte Prüfung (find→refute, je Feststellung 3 Widerleger) über die unbeaufsichtigten
 Cron-Jobs. Vier bestätigte Feststellungen.
 
-### H1 · HOCH · Cart-Sweeper gibt bezahlten Bestand frei (asynchrone Zahlung). REPORT-ONLY
-- **Ist:** Async-Zahlarten (SEPA, Klarna, iDEAL, giropay) sind im Checkout Standard,
+### H1 · HOCH · Cart-Sweeper gibt bezahlten Bestand frei (asynchrone Zahlung). BEHOBEN (branch-only, Integrationstest grün)
+- **War:** Async-Zahlarten (SEPA, Klarna, iDEAL, giropay) sind im Checkout Standard,
   SEPA bleibt tagelang bei Stripe im Status `processing`. Reservierungs-TTL und
-  Checkout-Fenster sind aber fest auf 15 Minuten, und das `payment_intent_status`-Enum
-  hat kein `processing`. Nach 16 Minuten gibt `storefront-cart-sweeper.ts` die
+  Checkout-Fenster waren aber fest auf 15 Minuten, und das `payment_intent_status`-Enum
+  hat kein `processing`. Nach 16 Minuten gab `storefront-cart-sweeper.ts` die
   reservierten (bezahlbaren) Artikel allein nach `checkout_expires_at < now()` frei
-  (RESERVED→AVAILABLE), setzt den Warenkorb ABANDONED und den laufenden PaymentIntent
-  EXPIRED. Der Artikel wird weiterverkauft; Tage später kommt `succeeded`, der Webhook
-  wirft (Warenkorb ABANDONED statt CHECKOUT) und der F2-Idempotenz-Schluck verhindert
+  (RESERVED→AVAILABLE), setzte den Warenkorb ABANDONED und den laufenden PaymentIntent
+  EXPIRED. Der Artikel wurde weiterverkauft; Tage später kam `succeeded`, der Webhook
+  warf (Warenkorb ABANDONED statt CHECKOUT) und der F2-Idempotenz-Schluck verhinderte
   jede Erholung. Geld kassiert, Bestand weiterverkauft, keine Buchung. Lautlos.
-- **Empfohlener Fix:** vor dem Freigeben den PaymentIntent gegen Stripe abgleichen
-  (bei `processing`/`requires_action`/`succeeded` NICHT freigeben), ODER für
-  async-fähige Zahlarten das Fenster über die maximale Settlement-Zeit hinaus setzen,
-  ODER einen `processing`-Status via `payment_intent.processing`-Handler einführen, der
-  den Warenkorb aus dem Sweep-Fenster nimmt. Zusammen mit F2 bewerten. Zahlungskritisch,
-  Integrationstest nötig.
+- **Jetzt:** Ein neuer `payment_intent.processing`-Handler im Webhook verlängert bei
+  Beginn der async-Abwicklung SOWOHL `checkout_expires_at` (Warenkorb) ALS AUCH
+  `reservation_expires_at` (alle RESERVED-Produkte der Session) auf ein
+  settlement-sicheres Fenster (Konstante `ASYNC_SETTLEMENT_INTERVAL`, Standard 14 Tage).
+  Cart-Sweeper und Reaper greifen nur auf wirklich abgelaufene Fenster zu, also lassen
+  sie einen abwickelnden async-Kauf in Ruhe, bis Stripe das Endergebnis meldet
+  (`succeeded` bucht, `payment_failed`/`canceled` gibt sofort frei). Karten-Checkouts
+  erhalten kein `processing`-Event und behalten den schnellen 15-Minuten-Sweep. KEIN
+  neuer Enum-Wert, KEINE Migration nötig (der Halt steckt allein in den verlängerten
+  Fenstern). Weder Sweeper noch Reaper mussten geändert werden. Integrationstest in
+  `day20` prüft, dass `processing` beide Fenster über 13 Tage hinausschiebt und
+  Warenkorb (CHECKOUT), Reservierung (RESERVED) und PaymentIntent (PENDING) unangetastet
+  lässt. typecheck grün, Integrationstest lokal grün.
+- **Restrisiko (REPORT-ONLY):** Trifft `processing` erst NACH dem 15-Minuten-Sweep ein
+  (sehr seltene, stark verzögerte Zustellung), ist der Artikel schon frei. Stripe feuert
+  `processing` normalerweise binnen Sekunden nach der Autorisierung, also praktisch
+  vernachlässigbar. Der Doppel-Schutz (Sweeper gleicht selbst aktiv gegen Stripe ab)
+  bräuchte einen Stripe-Client im Worker, der nicht existiert, und bleibt offen.
+- **Produkt-Entscheidung (Basel):** 14 Tage ein Einzelstück (Unikat) für eine
+  vielleicht-Zahlung zu halten ist ein realer Verfügbarkeits-Preis. Alternativen: das
+  Fenster kürzen (Konstante), oder online nur Karten-Zahlung anbieten (async-Zahlarten
+  aus `DEFAULT_PAYMENT_METHOD_TYPES` nehmen, SEPA in DE ist aber stark). Bewusst als
+  tunbare Konstante gebaut, nicht einseitig entschieden.
 
-### H2 · HOCH · Reservierungs-Reaper resellt denselben In-Flight-Artikel. REPORT-ONLY
-- **Ist:** `packages/inventory-lock/autoReleaseExpired.ts` setzt jedes RESERVED-Produkt
+### H2 · HOCH · Reservierungs-Reaper resellt denselben In-Flight-Artikel. BEHOBEN (durch H1, branch-only)
+- **War:** `packages/inventory-lock/autoReleaseExpired.ts` setzt jedes RESERVED-Produkt
   nach `reservation_expires_at < now()` auf AVAILABLE, ohne Zahlungs-/Warenkorb-Bezug,
   ein zweiter, unabhängiger Pfad mit demselben Ergebnis wie H1.
-- **Empfohlener Fix:** Der Reaper ist generisch und kann Zahlungen nicht sehen; der
-  Schutz muss bei der Reservierung liegen (für async-fähige STOREFRONT-Checkouts eine
-  längere/gekoppelte TTL). Gemeinsam mit H1 lösen.
+- **Jetzt:** Durch H1 mitbehoben. Der `processing`-Handler verlängert
+  `reservation_expires_at` derselben Session, also lässt der generische Reaper den
+  abwickelnden Artikel liegen, bis Stripe das Endergebnis meldet. Kein separater
+  Codepfad und keine Änderung am Reaper nötig, der Schutz sitzt korrekt an der
+  Reservierung.
 
 ### H3 · HOCH · TSE-Zertifikats-Monitor verstummt nach Erneuerung. REPORT-ONLY
 - **Ist:** `tse-cert-checker.ts` setzt `last_alert_tier` nie zurück, wenn das
@@ -363,10 +397,15 @@ einen verpassten Tag. Verdient einen zweiten Blick.
 3. Bewertung von D1/D2 (Positions-Vorzeichen, §25a-Marge-Prüfung).
 4. E2 und E3 (Nebenläufigkeit Z-Abschluss): partieller Unique-Index über den
    `drizzle-kit`-Flow plus Vorbedingungs-Prüfung; Advisory-Lock nach Bewertung.
-5. F2 plus H1/H2 zusammen lösen: der Async-Zahlungs-Lebenszyklus (Webhook-Idempotenz,
-   Cart-Sweeper, Reservierungs-TTL) mit Integrationstest. Höchste Priorität, weil hier
-   Geld kassiert und Bestand weiterverkauft wird.
+5. F2, F3, H1 und H2 sind GELÖST (branch-only, Integrationstest `day20` lokal grün):
+   der Async-Zahlungs-Lebenszyklus (Webhook-Idempotenz mit `processed_at`-Neuverarbeitung,
+   `payment_intent.processing`-Handler, verlängerte Checkout- und Reservierungs-Fenster,
+   plus der `device_status`-Enum-500er). Offen ist NUR noch die Produkt-Entscheidung zum
+   14-Tage-Halte-Fenster bei Einzelstücken (siehe H1) und Basels Sign-off, dann Deploy.
 6. H3 (TSE-Monitor-Reset) und G2 (`trustProxy`) nachziehen; einen
    E-Mail-Verifizierungs-Flow für die Passwort-Registrierung ergänzen.
-7. Freigabe von A1, A2, E1, F1, G1 (Security-Review) und H4, dann Deploy über den
-   üblichen Server-Weg.
+7. Freigabe von A1, A2, E1, F1, F2, F3, G1 (Security-Review), H1, H2 und H4, dann Deploy
+   über den üblichen Server-Weg. Basel führt den Integrationstest und den Deploy aus.
+8. Nebenbefund (nicht in diesem Fix): der Sign-in-Lockout-Integrationstest in
+   `day19-storefront.test.ts` ("5 wrong attempts") schlägt fehl, auch ohne diese
+   Änderungen (per Stash bewiesen). Gehört nicht zum Zahlungs-Fix, separat prüfen.

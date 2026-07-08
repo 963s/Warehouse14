@@ -190,12 +190,15 @@ describe('Day 20 — Stripe testmode + full conversion pipeline', () => {
     const cookie = `${STOREFRONT_COOKIE_NAME}=${token}`;
     const shopperId = (sign.json() as { shopperId: string }).shopperId;
 
+    // `is_published_to_web` is the flag that gates add-to-cart (the old
+    // `listed_on_storefront` was retired as a buyability gate, audit H1). Seed
+    // both TRUE so the product is buyable, mirroring the day19 makeProduct helper.
     const [p] = await migratorSql<{ id: string }[]>`
       INSERT INTO products (sku, status, tax_treatment_code, item_type,
                             acquisition_cost_eur, list_price_eur, name, published_at,
-                            listed_on_storefront)
+                            listed_on_storefront, is_published_to_web)
       VALUES (${`SKU-pipe-${randomUUID()}`}, 'AVAILABLE'::product_status, 'STANDARD_19',
-              'gold_jewelry'::item_type, '50.00', '119.00', 'Pipeline ring', now(), TRUE)
+              'gold_jewelry'::item_type, '50.00', '119.00', 'Pipeline ring', now(), TRUE, TRUE)
       RETURNING id`;
 
     const add = await app.inject({
@@ -402,6 +405,127 @@ describe('Day 20 — Stripe testmode + full conversion pipeline', () => {
       const [pi] = await migratorSql<{ status: string }[]>`
         SELECT status::text AS status FROM payment_intents WHERE provider_intent_id = ${providerIntentId}`;
       expect(pi!.status).toBe('CANCELED');
+    });
+
+    // ────────────────────────────────────────────────────────────────────
+    // Async-payment lifecycle (SEPA/Klarna settle for days, not seconds).
+    // ────────────────────────────────────────────────────────────────────
+
+    it('payment_intent.processing → holds cart + reservation for async settlement', async () => {
+      const { cartId, productId, providerIntentId } = await checkoutWithoutRealStripe();
+      // Precondition: helper set both windows to now + 15 min (the card default).
+
+      const event = {
+        id: `evt_processing_${randomUUID()}`,
+        type: 'payment_intent.processing',
+        data: { object: { id: providerIntentId, status: 'processing' } },
+      };
+      const rawBody = JSON.stringify(event);
+      const sig = stripeSig(rawBody, STRIPE_WHSEC);
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/webhooks/stripe',
+        headers: { 'content-type': 'application/json', 'stripe-signature': sig },
+        payload: rawBody,
+      });
+      expect(res.statusCode).toBe(200);
+
+      // A 13-day floor proves both windows were pushed to the ~14-day horizon and
+      // are no longer the 15-minute default the sweeper/reaper would act on.
+      const floor = Date.now() + 13 * 24 * 60 * 60_000;
+
+      const [cart] = await migratorSql<{ status: string; checkout_expires_at: Date }[]>`
+        SELECT status::text AS status, checkout_expires_at FROM carts WHERE id = ${cartId}`;
+      expect(cart!.status).toBe('CHECKOUT'); // still open, not swept
+      expect(new Date(cart!.checkout_expires_at).getTime()).toBeGreaterThan(floor);
+
+      const [product] = await migratorSql<{ status: string; reservation_expires_at: Date }[]>`
+        SELECT status::text AS status, reservation_expires_at FROM products WHERE id = ${productId}`;
+      expect(product!.status).toBe('RESERVED'); // still held for the paying shopper
+      expect(new Date(product!.reservation_expires_at).getTime()).toBeGreaterThan(floor);
+
+      const [pi] = await migratorSql<{ status: string }[]>`
+        SELECT status::text AS status FROM payment_intents WHERE provider_intent_id = ${providerIntentId}`;
+      expect(pi!.status).toBe('PENDING'); // unchanged, no new enum state introduced
+    });
+
+    it('duplicate delivery whose prior attempt never finished → re-processes (recovery)', async () => {
+      const { cartId, productId, providerIntentId } = await checkoutWithoutRealStripe();
+
+      const eventId = `evt_recover_${randomUUID()}`;
+      // Simulate a prior delivery that inserted the dedup row but crashed before
+      // marking processed_at (a transient DB error mid-conversion).
+      await migratorSql`
+        INSERT INTO webhook_events (provider, provider_event_id, event_type, raw_body, payload, signature_verified, processed_at)
+        VALUES ('STRIPE', ${eventId}, 'payment_intent.succeeded', '', '{}'::jsonb, true, NULL)`;
+
+      const event = {
+        id: eventId,
+        type: 'payment_intent.succeeded',
+        data: { object: { id: providerIntentId, status: 'succeeded' } },
+      };
+      const rawBody = JSON.stringify(event);
+      const sig = stripeSig(rawBody, STRIPE_WHSEC);
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/webhooks/stripe',
+        headers: { 'content-type': 'application/json', 'stripe-signature': sig },
+        payload: rawBody,
+      });
+      expect(res.statusCode).toBe(200);
+      // A duplicate delivery, but the unfinished prior attempt means the work is
+      // DONE this time rather than swallowed.
+      expect((res.json() as { idempotent: boolean }).idempotent).toBe(true);
+
+      const [cart] = await migratorSql<{ status: string }[]>`
+        SELECT status::text AS status FROM carts WHERE id = ${cartId}`;
+      expect(cart!.status).toBe('CONVERTED'); // recovered, not lost
+
+      const [product] = await migratorSql<{ status: string }[]>`
+        SELECT status::text AS status FROM products WHERE id = ${productId}`;
+      expect(product!.status).toBe('SOLD');
+
+      const [row] = await migratorSql<{ processed_at: Date | null }[]>`
+        SELECT processed_at FROM webhook_events WHERE provider_event_id = ${eventId}`;
+      expect(row!.processed_at).not.toBeNull(); // now marked finished
+    });
+
+    it('duplicate delivery whose prior attempt finished → does NOT re-process (idempotent)', async () => {
+      const { cartId, providerIntentId } = await checkoutWithoutRealStripe();
+
+      const eventId = `evt_done_${randomUUID()}`;
+      // A prior delivery that fully finished: dedup row present AND processed_at set.
+      await migratorSql`
+        INSERT INTO webhook_events (provider, provider_event_id, event_type, raw_body, payload, signature_verified, processed_at)
+        VALUES ('STRIPE', ${eventId}, 'payment_intent.succeeded', '', '{}'::jsonb, true, now())`;
+
+      const event = {
+        id: eventId,
+        type: 'payment_intent.succeeded',
+        data: { object: { id: providerIntentId, status: 'succeeded' } },
+      };
+      const rawBody = JSON.stringify(event);
+      const sig = stripeSig(rawBody, STRIPE_WHSEC);
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/webhooks/stripe',
+        headers: { 'content-type': 'application/json', 'stripe-signature': sig },
+        payload: rawBody,
+      });
+      expect(res.statusCode).toBe(200);
+      expect((res.json() as { idempotent: boolean }).idempotent).toBe(true);
+
+      // Untouched: the finished-guard short-circuits before any conversion work.
+      const [cart] = await migratorSql<{ status: string }[]>`
+        SELECT status::text AS status FROM carts WHERE id = ${cartId}`;
+      expect(cart!.status).toBe('CHECKOUT');
+
+      const [pi] = await migratorSql<{ status: string }[]>`
+        SELECT status::text AS status FROM payment_intents WHERE provider_intent_id = ${providerIntentId}`;
+      expect(pi!.status).toBe('PENDING');
     });
   });
 });
