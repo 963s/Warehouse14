@@ -409,6 +409,38 @@ einen verpassten Tag. Verdient einen zweiten Blick.
 
 ---
 
+## I · Terminbuchung (nachträgliche gezielte Prüfung)
+
+Fokus-Review der Buchungs-Nebenläufigkeit. Beide Buchungspfade sind sauber: der
+öffentliche Storefront-Pfad serialisiert per `pg_advisory_xact_lock` auf den
+Slot-Zeitpunkt plus Re-Check, der Admin-Pfad stützt sich auf den DB-EXCLUDE
+`appointments_no_staff_overlap` (Migration `0069`, korrektes Status-Prädikat, storniert/
+No-Show/verschoben zählen NICHT als Konflikt). Eine Feststellung.
+
+### I1 · MITTEL · Verschieben auf eine überlappende Zeit scheitert immer. BEHOBEN (Migration `0080`, branch-only, DB-getestet)
+- **War:** Der Reschedule (`routes/appointments.ts`) MUSS den Klon einfügen, bevor er
+  das Original auf RESCHEDULED setzen kann (die CHECK `appointments_rescheduled_has_link`
+  braucht die Klon-id zuerst). Der EXCLUDE aus `0069` war IMMEDIATE, also kollidierte
+  der Klon-INSERT mit dem noch aktiven Original, sobald die neue Zeit die alte
+  überlappte (z. B. 10:00 auf 10:30 verschieben, gleiche Kraft), und jeder
+  Zeit-nahe Reschedule schlug mit 23P01 fehl. Das Verschieben um einen kleinen
+  Betrag, der häufigste Fall, war unmöglich.
+- **Jetzt:** Migration `0080` legt den Constraint als DEFERRABLE INITIALLY IMMEDIATE
+  neu an (Standardverhalten unverändert, Buchungs-Konflikte greifen weiter sofort und
+  werden als 409 gefangen). Nur die Reschedule-Transaktion setzt
+  `SET CONSTRAINTS appointments_no_staff_overlap DEFERRED`, also läuft IHRE Prüfung
+  erst beim COMMIT, wenn das Original schon RESCHEDULED (aus der Menge) ist. Eine echte
+  Überlappung mit einem ANDEREN aktiven Termin wirft weiterhin 23P01 beim COMMIT und
+  wird zum 409. Ein reines UNIQUE/EXCLUDE lässt sich nicht per `ALTER CONSTRAINT`
+  deferrable machen (nur FK), daher drop + re-add; die Bestandsdaten erfüllen das
+  Prädikat, also ist das Neu-Anlegen sicher. RED/GREEN-Migrationstest
+  `0080_*.test.ts` (5/5 grün: bei 0079 wird der überlappende Klon abgewiesen und der
+  Constraint ist nicht deferrable; bei 0080 committet der aufgeschobene Reschedule, ein
+  echter Fremd-Konflikt scheitert beim COMMIT, eine normale Doppelbuchung scheitert
+  weiter sofort). `db` build + api-cloud typecheck grün.
+
+---
+
 ## Nächste Schritte für die Freigabe
 
 1. Steuerberatung prüft B1 bis B4 gegen die verbindliche DATEV-/DSFinV-K-Spezifikation.

@@ -575,6 +575,15 @@ const appointmentsRoutes: FastifyPluginAsync<AppointmentsOpts> = async (app) => 
       const newId = await app.db.transaction(async (txAny) => {
         const tx = txAny as unknown as typeof app.db;
 
+        // Defer the no-overlap EXCLUDE to COMMIT (migration 0080 made it
+        // DEFERRABLE). We must insert the clone before we can flip the original
+        // to RESCHEDULED (the has-link CHECK needs the clone id), so a near-time
+        // reschedule (same staff, new time overlaps the old) would otherwise
+        // self-collide with the still-active original. By COMMIT the original is
+        // RESCHEDULED and out of the constraint's set; a real overlap with a
+        // DIFFERENT active appointment still raises 23P01 at COMMIT → 409.
+        await tx.execute(sql`SET CONSTRAINTS appointments_no_staff_overlap DEFERRED`);
+
         const origRows = (await tx.execute<ApptRow>(sql`
           SELECT id::text AS id, appointment_type::text AS appointment_type, status::text AS status,
                  starts_at::text AS starts_at, duration_minutes,
