@@ -251,10 +251,18 @@ const closingsFinalizeRoute: FastifyPluginAsync = async (app) => {
             RETURNING id::text AS id, finalized_at::text AS finalized_at`);
         } catch (e) {
           // A concurrent finalize for the same day loses the business_day UNIQUE
-          // race — surface it as a clean 409, not a raw 23505 → 500.
+          // race — surface it as a clean 409, not a raw 23505 → 500. In the V1
+          // single-shop model (shop_id NULL) the winning guard is the partial
+          // index daily_closings_business_day_null_shop_uq (migration 0079); the
+          // shop-scoped constraint applies once shop_id is set. Either way it is
+          // SQLSTATE 23505.
           const code = (e as { code?: string }).code;
           const msg = (e as Error).message ?? '';
-          if (code === '23505' || msg.includes('daily_closings_business_day_shop_uq')) {
+          if (
+            code === '23505' ||
+            msg.includes('daily_closings_business_day_shop_uq') ||
+            msg.includes('daily_closings_business_day_null_shop_uq')
+          ) {
             throw new ClosingConflictError(`Der Tagesabschluss für ${day} besteht bereits.`);
           }
           throw e;

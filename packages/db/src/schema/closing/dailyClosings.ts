@@ -87,6 +87,13 @@ export const dailyClosings = pgTable(
       table.businessDay,
       table.shopId,
     ),
+    // Partial unique index closing the NULLS-DISTINCT gap in the constraint above:
+    // in the V1 single-shop model shop_id is always NULL, and a plain UNIQUE lets
+    // two (business_day, NULL) rows coexist, so two concurrent finalizes could
+    // both write a Z-Bon for the same day. This guarantees one per day. (0079)
+    businessDayNullShopUq: uniqueIndex('daily_closings_business_day_null_shop_uq')
+      .on(table.businessDay)
+      .where(sql`${table.shopId} IS NULL`),
     stateIdx: index('daily_closings_state_idx').on(table.state, table.businessDay.desc()),
     businessDayIdx: index('daily_closings_business_day_idx').on(table.businessDay.desc()),
     finalizedIdx: index('daily_closings_finalized_idx')

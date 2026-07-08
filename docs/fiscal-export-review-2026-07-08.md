@@ -180,23 +180,34 @@ Bestands-Mutationen. Drei bestätigte Feststellungen.
   `release()` in `inventory-lock`). Storno flippt keine Produkte (Phase 2), dort
   kein Pendant. typecheck grün; Integrationstest braucht die DB.
 
-### E2 · HOCH · Doppelter Z-Bon möglich (Race), REPORT-ONLY
-- **Ist:** `POST /api/closings/finalize` macht check-then-insert (nicht-sperrender
+### E2 · HOCH · Doppelter Z-Bon möglich (Race). BEHOBEN (Migration `0079`, branch-only, DB-getestet)
+- **War:** `POST /api/closings/finalize` macht check-then-insert (nicht-sperrender
   Existenz-SELECT, dann INSERT). Der einzige Schutz `UNIQUE (business_day, shop_id)`
-  (`0011_closing.sql`) greift NICHT, weil `shop_id` in V1 immer NULL ist und
+  (`0011_closing.sql`) griff NICHT, weil `shop_id` in V1 immer NULL ist und
   Postgres NULLS DISTINCT zwei `(tag, NULL)` als verschieden behandelt. Zwei
   gleichzeitige (oder vom Offline-Outbox erneut gespielte) Abschlüsse für denselben
-  Tag committen also BEIDE → zwei unveränderliche FINALIZED Z-Bons, und
-  DSFinV-K/DATEV/Kassenbericht zählen den Tag doppelt. Kein Advisory-Lock, kein
-  Idempotency-Key auf dieser Route.
-- **Empfohlener Fix (über den `drizzle-kit`-Flow, NICHT von Hand am Journal):** ein
-  partieller Unique-Index (Muster wie `0028` für `transactions`):
-  `CREATE UNIQUE INDEX daily_closings_business_day_null_shop_uq ON daily_closings (business_day) WHERE shop_id IS NULL;`
-  ODER `UNIQUE NULLS NOT DISTINCT`, ODER ein `pg_advisory_xact_lock` vor dem
-  Existenz-Check. **Vorbedingung:** vorher prüfen, dass es KEINE doppelten
-  `(business_day, NULL)`-Zeilen gibt, sonst schlägt das Anlegen des Index fehl.
-  Nicht autonom umgesetzt: der Migrations-Ledger (`meta/_journal.json`) muss von
-  `drizzle-kit generate` konsistent geschrieben werden, was hier nicht ausführbar ist.
+  Tag committeten also BEIDE, es entstanden zwei unveränderliche FINALIZED Z-Bons, und
+  DSFinV-K/DATEV/Kassenbericht zählten den Tag doppelt. Empirisch am Live-Schema
+  bestätigt (PG 17.10, `pg_get_constraintdef` zeigt reines `UNIQUE (business_day, shop_id)`
+  ohne NULLS NOT DISTINCT, kein partieller Index vorhanden).
+- **Jetzt:** Migration `0079_daily_closings_single_z_bon.sql` legt einen PARTIELLEN
+  Unique-Index `daily_closings_business_day_null_shop_uq ON daily_closings (business_day) WHERE shop_id IS NULL`
+  an. Zusammen mit dem bestehenden `(business_day, shop_id)` ist damit genau ein
+  Abschluss pro Tag garantiert, im Einzel-Shop- (NULL) wie im späteren Mehr-Shop-Fall.
+  Der Finalize-Catch wandelt den resultierenden 23505 bereits in einen sauberen 409
+  (der Index-Name ist jetzt zusätzlich explizit erfasst). Der Index steht auch im
+  Drizzle-Schema (`dailyClosings.ts`) für Schema-Konsistenz. Die Migration prüft als
+  **Vorbedingung** in einem DO-Block, dass KEINE doppelten `(business_day, NULL)`-Zeilen
+  existieren, und bricht sonst mit einer klaren Meldung ab (statt den Schutz still zu
+  überspringen). Migrations-Set: der `_journal.json` ist bewusst leer, `migrate.sh`
+  wendet `NNNN_*.sql` in Reihenfolge an und verfolgt sie in `_w14_schema_migrations`,
+  also ist die NEUE nummerierte Datei der korrekte, sichere Weg (mein früherer
+  `drizzle-kit`-Vorbehalt galt für dieses Repo nicht). RED/GREEN-Migrationstest in
+  `packages/db/tests/migrations/0079_*.test.ts` (bei 0078 rutschen beide durch, bei 0079
+  wird die zweite abgewiesen, ein anderer Tag geht weiter), 4/4 grün; `db` build + api-cloud
+  typecheck grün.
+- **Anwendung (Basel):** vor dem Deploy `migrate.sh` mit dem Migrator-Credential laufen
+  lassen; falls die Vorbedingung greift, zuerst evtl. vorhandene Doppel-Abschlüsse klären.
 
 ### E3 · MITTEL · Z-Snapshot-Race (Transaktion fällt aus dem Abschluss), REPORT-ONLY
 - **Ist:** Der Abschluss-Snapshot und der State-Flip sind nicht gegen einen
@@ -403,8 +414,10 @@ einen verpassten Tag. Verdient einen zweiten Blick.
 1. Steuerberatung prüft B1 bis B4 gegen die verbindliche DATEV-/DSFinV-K-Spezifikation.
 2. Entscheidung zu B5 (Export offener Abschlüsse ja/nein).
 3. Bewertung von D1/D2 (Positions-Vorzeichen, §25a-Marge-Prüfung).
-4. E2 und E3 (Nebenläufigkeit Z-Abschluss): partieller Unique-Index über den
-   `drizzle-kit`-Flow plus Vorbedingungs-Prüfung; Advisory-Lock nach Bewertung.
+4. E2 ist GELÖST (Migration `0079`, branch-only, DB-getestet): der partielle
+   Unique-Index gegen den doppelten Z-Bon. Basel wendet `migrate.sh` vor dem Deploy an.
+   Offen bleibt E3 (Z-Snapshot-Race): ein `pg_advisory_xact_lock` nach Bewertung,
+   berührt den heissesten Schreibpfad (jeder Beleg-Abschluss), daher Basels Entscheid.
 5. F2, F3, H1 und H2 sind GELÖST (branch-only, Integrationstest `day20` lokal grün):
    der Async-Zahlungs-Lebenszyklus (Webhook-Idempotenz mit `processed_at`-Neuverarbeitung,
    `payment_intent.processing`-Handler, verlängerte Checkout- und Reservierungs-Fenster,
