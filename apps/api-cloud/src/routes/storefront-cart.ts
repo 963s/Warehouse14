@@ -435,7 +435,7 @@ const storefrontCartRoutes: FastifyPluginAsync<StorefrontCartOpts> = async (app,
           provider: 'STRIPE',
           providerIntentId: stripeJson.id,
           status: 'PENDING',
-          amountEur: `${amountCents / 100}.${String(amountCents % 100).padStart(2, '0')}`,
+          amountEur: `${Math.floor(amountCents / 100)}.${String(amountCents % 100).padStart(2, '0')}`,
           clientSecret: stripeJson.client_secret,
         });
       });
@@ -452,7 +452,7 @@ const storefrontCartRoutes: FastifyPluginAsync<StorefrontCartOpts> = async (app,
         paymentIntentId: pi.id,
         provider: 'STRIPE',
         providerIntentId: stripeJson.id,
-        amountEur: `${amountCents / 100}.${String(amountCents % 100).padStart(2, '0')}`,
+        amountEur: `${Math.floor(amountCents / 100)}.${String(amountCents % 100).padStart(2, '0')}`,
         clientSecret: stripeJson.client_secret,
         expiresAt: checkoutExpiresAt.toISOString(),
       });
