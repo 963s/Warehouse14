@@ -147,18 +147,24 @@ volle Abstimmung Netto + USt = Brutto je Position UND je Kopf, Summenprüfung de
 Positionen gegen den Kopf, Summenprüfung der Zahlungen gegen den Kopf. Zwei Punkte
 zur Kenntnis (beide REPORT-ONLY, keine autonome Korrektur):
 
-### D1 · Vorzeichen-Disziplin nur auf Kopf-Ebene, nicht je Position
-- **Ist:** Der App-Validator prüft das Vorzeichen nur an `totalEur`. Die DB-Constraint
+### D1 · Vorzeichen-Disziplin nur auf Kopf-Ebene, nicht je Position. BEHOBEN (branch-only, Unit-getestet)
+- **War:** Der App-Validator prüfte das Vorzeichen nur an `totalEur`. Die DB-Constraint
   `transactions_sign_discipline` (`0009_transactions.sql`) prüft Kopf
   total/subtotal/vat, aber `transaction_items` hat NUR
   `line_subtotal + line_vat = line_total` (keine Positions-Vorzeichenprüfung). Ein
-  Nicht-Storno-Vorgang könnte also eine negative Position tragen, die sich am Kopf
-  wieder zu einem nicht-negativen Betrag summiert; weder Validator noch DB fangen
-  das. Der Docstring des Validators behauptet Vorzeichen-Disziplin für "every header
-  & line money", was nicht zutrifft.
-- **Bewertung:** Defense-in-depth-Lücke (niedrig/mittel). NICHT autonom korrigiert:
-  eine Positions-Vorzeichenprüfung könnte legitime negative Positionen (z. B.
-  Rabatt-Position) ablehnen. Entscheidung/Bestätigung nötig.
+  Nicht-Storno-Vorgang konnte also eine negative Position tragen, die sich am Kopf
+  wieder zu einem nicht-negativen Betrag summiert; weder Validator noch DB fingen
+  das. Der Docstring des Validators behauptete Vorzeichen-Disziplin für "every header
+  & line money", was nicht zutraf.
+- **Jetzt:** `validateTransactionMath` prüft das Vorzeichen jetzt auch je Position,
+  spiegelbildlich zum Kopf und zum Docstring (Nicht-Storno, jede Position >= 0;
+  Storno, jede Position <= 0). V1 kennt kein Rabatt-/Negativpositions-Konzept, also
+  weist die Prüfung nur anomale Eingaben ab. Sicherheitsnetz bestätigt: die
+  Finalize-Integrationstests (15/15) mit echten positiven Positionen bleiben grün,
+  der dedizierte Storno-Pfad (`transactions-storno.ts`) umgeht den Validator ohnehin
+  (baut die negierten Daten direkt). +4 Unit-Tests (`transaction-math.test.ts`:
+  Nicht-Storno mit negativer Position abgelehnt, Storno mit positiver Position
+  abgelehnt, beide gültigen Fälle akzeptiert). typecheck grün.
 
 ### D2 · §25a-Marge wird serverseitig nicht rechnerisch validiert
 - **Ist:** Für eine `MARGIN_25A`-Position prüft der Validator nur, dass `marginEur`
@@ -467,7 +473,10 @@ No-Show/verschoben zählen NICHT als Konflikt). Eine Feststellung.
 1. Steuerberatung prüft B1 bis B4 gegen die verbindliche DATEV-/DSFinV-K-Spezifikation.
 2. B5 ist GELÖST (branch-only, Integrationstest grün): der Export verlangt jetzt
    `state = 'FINALIZED'` (409 sonst), die Info-Route bleibt für die Vorschau.
-3. Bewertung von D1/D2 (Positions-Vorzeichen, §25a-Marge-Prüfung).
+3. D1 ist GELÖST (branch-only, Unit-getestet): Positions-Vorzeichen-Disziplin im
+   Validator. D2 (§25a-Marge rechnerisch prüfen) bleibt die BEWUSSTE Phase-1.5-Vertagung
+   (der DB-CHECK erzwingt nur die Paar-Präsenz), kein Fehler; erst mit dem
+   Marge-Klassifizierer nachziehen.
 4. E2 und E3 sind GELÖST (branch-only, DB-getestet): E2 = partieller Unique-Index
    gegen den doppelten Z-Bon (Migration `0079`, `migrate.sh` vor dem Deploy nötig);
    E3 = SHARED/EXCLUSIVE-Advisory-Lock auf den Geschäftstag gegen den Z-Snapshot-Race
@@ -481,8 +490,8 @@ No-Show/verschoben zählen NICHT als Konflikt). Eine Feststellung.
 6. H3 (TSE-Monitor-Reset) ist GELÖST (branch-only, Unit-getestet). Offen bleibt G2
    (`trustProxy`, braucht die echte Proxy-Topologie) plus ein
    E-Mail-Verifizierungs-Flow für die Passwort-Registrierung.
-7. Freigabe von A1, A2, B5, E1, E2, E3, F1, F2, F3, G1 (Security-Review), H1, H2, H3, H4
-   und I1, dann Deploy über den üblichen Server-Weg. Basel führt den Integrationstest,
+7. Freigabe von A1, A2, B5, D1, E1, E2, E3, F1, F2, F3, G1 (Security-Review), H1, H2, H3,
+   H4 und I1, dann Deploy über den üblichen Server-Weg. Basel führt den Integrationstest,
    `migrate.sh` (0079 + 0080) und den Deploy aus.
 8. Nebenbefund (nicht in diesem Fix): der Sign-in-Lockout-Integrationstest in
    `day19-storefront.test.ts` ("5 wrong attempts") schlägt fehl, auch ohne diese

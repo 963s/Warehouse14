@@ -102,6 +102,30 @@ export function validateTransactionMath(body: FinalizeBody): TransactionMathErro
       };
     }
 
+    // 6 (per line) — sign discipline, mirroring the header rule (and this
+    // validator's docstring, which promises it for every LINE too). The DB
+    // CHECK `transactions_sign_discipline` only guards the header, so a negative
+    // line that nets back to a non-negative header would otherwise slip through
+    // on a non-storno (and vice versa). V1 has no discount/negative-line concept,
+    // so this rejects only anomalous input.
+    const lineTotalNonNeg = !item.lineTotalEur.startsWith('-');
+    if (!isStorno && !lineTotalNonNeg) {
+      return {
+        field: `items[${i}].lineTotalEur`,
+        message: 'Original transaction line must carry a non-negative amount',
+        expected: '>= 0',
+        actual: item.lineTotalEur,
+      };
+    }
+    if (isStorno && lineTotalNonNeg && !lineTotal.isZero()) {
+      return {
+        field: `items[${i}].lineTotalEur`,
+        message: 'Storno transaction line must carry a non-positive amount',
+        expected: '<= 0',
+        actual: item.lineTotalEur,
+      };
+    }
+
     // 7 — §25a integrity: margin and acquisition_cost must land together
     // (the DB CHECK `transaction_items_margin_implies_acquisition` mirrors).
     const hasCost = item.acquisitionCostEurSnapshot !== null;
