@@ -434,11 +434,13 @@ function ReceiptPaper({
         padding: '22px 20px 26px',
       }}
     >
-      <div style={{ display: 'grid', placeItems: 'center', gap: 5, textAlign: 'center' }}>
+      <div style={{ display: 'grid', placeItems: 'center', gap: 8, textAlign: 'center' }}>
+        {/* Seal is the WAREHOUSE 14 wordmark (carries the name); a balanced ~160px
+            keeps the head from being top-heavy. Matches the sale receipt preview. */}
         <img
           src="/shop-logo.svg"
           alt={identity.name}
-          style={{ width: 220, maxWidth: '100%', height: 'auto', marginBottom: 2 }}
+          style={{ width: 160, maxWidth: '62%', height: 'auto' }}
         />
         {identity.tagline.trim() && (
           <div

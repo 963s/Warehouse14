@@ -119,19 +119,30 @@ export function ReceiptPreview({
             padding: '22px 20px 26px',
           }}
         >
-          {/* Engraved shop logo + identity */}
-          <div style={{ display: 'grid', placeItems: 'center', gap: 6, textAlign: 'center' }}>
+          {/* Engraved shop seal + identity. The seal is the WAREHOUSE 14
+              wordmark (it already carries the name), so we do NOT repeat the name
+              as text. It was oversized (240px on a ~300px paper), which made the
+              header top-heavy; a balanced ~160px seal with a little air below reads
+              like a real receipt head. */}
+          <div style={{ display: 'grid', placeItems: 'center', gap: 8, textAlign: 'center' }}>
             <img
               src="/shop-logo.svg"
               alt={data.shopName}
-              style={{ width: 240, maxWidth: '100%', height: 'auto', marginBottom: 4 }}
+              style={{ width: 160, maxWidth: '62%', height: 'auto' }}
             />
-            <div style={{ fontFamily: 'var(--w14-font-mono, monospace)', fontSize: '0.74rem' }}>
+            <div
+              style={{
+                fontFamily: 'var(--w14-font-mono, monospace)',
+                fontSize: '0.72rem',
+                lineHeight: 1.5,
+                color: INK,
+              }}
+            >
               {data.shopAddress.map((line) => (
                 <div key={line}>{line}</div>
               ))}
-              {data.shopPhone && <div>Tel.: {data.shopPhone}</div>}
-              <div>USt-IdNr.: {data.shopVatId}</div>
+              {data.shopPhone && <div>Tel. {data.shopPhone}</div>}
+              <div>USt-IdNr. {data.shopVatId}</div>
             </div>
           </div>
 
