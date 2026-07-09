@@ -947,6 +947,30 @@ function ProductGallery({ productId }: { productId: string }): JSX.Element {
     },
   });
 
+  const remove = useMutation({
+    mutationFn: (photoId: string) => photosApi.remove(api, photoId),
+    onSuccess: async () => {
+      // The server drops the row + renditions and promotes the newest remaining
+      // photo if this was the primary, so refresh both the gallery and the
+      // catalog tiles.
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['products', productId, 'photos'] }),
+        qc.invalidateQueries({ queryKey: ['products', 'list'] }),
+      ]);
+      addToast({ tone: 'success', title: 'Foto gelöscht', body: 'Das Foto wurde entfernt.' });
+    },
+    onError: (err) => {
+      addToast({
+        tone: 'alert',
+        title: 'Foto nicht gelöscht',
+        body:
+          err instanceof ApiError
+            ? describeError(err)
+            : 'Verbindung gestört. Bitte erneut versuchen.',
+      });
+    },
+  });
+
   return (
     <ParchmentCard padding="md" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
@@ -1014,8 +1038,10 @@ function ProductGallery({ productId }: { productId: string }): JSX.Element {
               key={p.id}
               photo={p}
               busy={setPrimary.isPending && setPrimary.variables === p.id}
-              disabled={setPrimary.isPending}
+              disabled={setPrimary.isPending || remove.isPending}
+              deleting={remove.isPending && remove.variables === p.id}
               onSetPrimary={() => setPrimary.mutate(p.id)}
+              onDelete={() => remove.mutate(p.id)}
             />
           ))}
         </div>
@@ -1028,14 +1054,19 @@ function GalleryCell({
   photo,
   busy,
   disabled,
+  deleting,
   onSetPrimary,
+  onDelete,
 }: {
   photo: PhotoRow;
   busy: boolean;
   disabled: boolean;
+  deleting: boolean;
   onSetPrimary: () => void;
+  onDelete: () => void;
 }): JSX.Element {
   const imgSrc = photo.thumbUrl ?? photo.publicUrl ?? null;
+  const [confirmDelete, setConfirmDelete] = useState<boolean>(false);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div
@@ -1107,6 +1138,75 @@ function GalleryCell({
           }}
         >
           {busy ? 'wird gesetzt…' : 'Als Hauptbild festlegen'}
+        </button>
+      )}
+
+      {/* Delete this photo. Two-step confirm (destructive + permanent). The
+          server promotes the newest remaining photo if this was the primary,
+          so the catalog tile never goes blank while other photos exist. */}
+      {confirmDelete ? (
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={deleting}
+            className="w14-smallcaps"
+            style={{
+              flex: 1,
+              background: 'var(--w14-wax-red)',
+              border: '1px solid var(--w14-wax-red)',
+              borderRadius: 'var(--w14-radius-button)',
+              color: 'var(--w14-parchment-1)',
+              fontFamily: 'var(--w14-font-display)',
+              fontSize: '0.64rem',
+              letterSpacing: '0.05em',
+              padding: '5px 4px',
+              cursor: deleting ? 'wait' : 'pointer',
+            }}
+          >
+            {deleting ? 'wird gelöscht…' : 'Ja, löschen'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfirmDelete(false)}
+            disabled={deleting}
+            className="w14-smallcaps"
+            style={{
+              flex: 1,
+              background: 'transparent',
+              border: '1px solid var(--w14-rule)',
+              borderRadius: 'var(--w14-radius-button)',
+              color: 'var(--w14-ink-aged)',
+              fontFamily: 'var(--w14-font-display)',
+              fontSize: '0.64rem',
+              letterSpacing: '0.05em',
+              padding: '5px 4px',
+              cursor: 'pointer',
+            }}
+          >
+            Abbrechen
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setConfirmDelete(true)}
+          disabled={disabled}
+          className="w14-smallcaps"
+          style={{
+            background: 'transparent',
+            border: 'none',
+            color: 'var(--w14-ink-faded)',
+            fontFamily: 'var(--w14-font-display)',
+            fontSize: '0.62rem',
+            letterSpacing: '0.05em',
+            padding: '2px 0',
+            cursor: disabled ? 'not-allowed' : 'pointer',
+            textDecoration: 'underline',
+            textUnderlineOffset: '2px',
+          }}
+        >
+          Foto löschen
         </button>
       )}
     </div>
