@@ -1,0 +1,124 @@
+<!-- Cashier vs mobile feature-parity audit. Generated 2026-07-09 by a 64-agent workflow (18 areas, each gap adversarially verified). Fixes are branch-only until Basel signs off. -->
+
+# Feature-Parity-Audit: Mobile Owner OS gegen Cashier/Admin-Desktop (`tauri-pos`)
+
+## 1. Gesamturteil
+
+Die Desktop-Kasse ist in der Breite gleichauf oder deutlich voraus. Auf den Kernachsen (Verkauf, Termine, Foto-Werkstatt, SEO/KI, Bestandsbuchung, Steuer-Export, Offline-Schreibpfad) ist `tauri-pos` die kanonische, reichere Implementierung. Die bestätigten Lücken ballen sich in klar abgrenzbaren Zonen: erstens fehlende ganze Flächen auf der Finanzseite (P&L, Ausgaben, Fixkosten, Auswertungen), zweitens Compliance- und Ehrlichkeits-Signale (PEP-Flag, archivierte Belege, kuratierte Tagebuch-Labels, ehrliche Schicht-Fehlerzustände), und drittens Schreib- und Redaktionslücken (Stammdaten eines bestehenden Artikels ändern, Aufgaben-Fälligkeit setzen, Ankauf-Beleg drucken). Insgesamt 43 bestätigte, rollengerechte Lücken, davon 12 mit Schweregrad HOCH. Keine davon ist ein Widerspruch zur Backend-Fähigkeit: die geteilte API akzeptiert praktisch jedes fehlende Feld, es fehlt nur die Desktop-Oberfläche.
+
+---
+
+## 2. Bestätigte Lücken
+
+### HOCH
+
+**Produkte, Stammdaten eines bestehenden Artikels bearbeiten.** Die Kasse kann Verkaufspreis (`listPriceEur`), Name und Zustand eines schon angelegten Artikels nirgends ändern. `ProductSheet` im Manage-Modus editiert nur Beschreibung, Sammler-Metadaten und Web/SEO; der Preis steht read-only da. Für eine Kommandostation ist das die schärfste Lücke: ein falsch bepreister, falsch benannter oder falsch bewerteter Artikel lässt sich am Desktop gar nicht korrigieren. Fix: einen editierbaren Stammdatenblock (oder ein „Preis ändern") in `ProductSheet` ergänzen, der Name, `listPriceEur` und Zustand per Diff-PUT sendet, genau wie es Mobile in `product/edit.tsx` tut.
+
+**Ankauf, kundenseitiger Ankauf-Beleg.** Der Ankauf-Abschluss druckt am Desktop nur Produkt-Etiketten, nie einen Beleg. Es wird kein `ThermalReceiptData` gebaut, `setLastReceipt` läuft nur im Verkauf, also lässt sich ein Ankauf auch aus dem Kassenbuch nie nachdrucken. Der Verkaufspfad baut und druckt sehr wohl einen Beleg, der Ankauf ist also asymmetrisch schwächer, und das ausgerechnet auf dem Gerät, an das Mobile den zertifizierten Druck delegiert. Fix: beim Finalisieren einen Ankauf-Beleg (`kind` Ankauf, Auszahlungsart, TSE-QR, Shop-Identität) erzeugen, automatisch drucken und via `setLastReceipt` nachdruckbar machen.
+
+**Kunden, GwG-PEP-Flag auf der Kundenakte.** `pepMatch` kommt im gesamten `tauri-pos` nirgends vor. Sperr- und Bannerlogik sowie der `TrustChip` hängen ausschließlich an `sanctionsMatch` und `trustLevel==='BANNED'`. Ein PEP-Kunde ohne Sanktionstreffer zeigt dem Operator kein Signal zur erhöhten Sorgfaltspflicht. Das ist die Compliance-Kommandofläche, sie darf für ein Kern-GwG-Signal nicht blind sein. Fix: einen PEP-Status-Thread plus einen Hinweis zur erhöhten Sorgfaltspflicht in `CustomerDetailPanel` ergänzen, mit derselben Trennung Sanktion gegen PEP wie Mobile.
+
+**Aufgaben, Fälligkeitsdatum setzen oder ändern.** Die Kasse kann ein Fälligkeitsdatum anzeigen, aber nirgends setzen, ändern oder löschen. Quick-Add sendet nur den Titel, der Inline-Edit kennt nur Titel, Beschreibung, Priorität. `CreateTaskBody.dueDate` und `UpdateTaskBody.dueDate` existieren, werden aber nie verdrahtet. Fix: ein `<input type="date">` in `TaskInlineEdit` einhängen, das auf `UpdateTaskBody.dueDate` mappt (mit Löschen auf null), damit eine Kommandostation die Aufgaben, die sie ohnehin anzeigt, auch terminieren kann.
+
+**eBay, Pipeline-Board filtert auf das falsche Flag.** Die eBay-Konsole listet mit `listedOnEbay: true`, dem Alt-Flag, das der Server nur bei echtem Marketplace-Publish (OAuth-Token, aktuell „pending") auf TRUE setzt. Der korrekte Filter `enrolledOnEbay` (= `ebay_state IS NOT NULL`) kommt in der Kasse kein einziges Mal vor. Selbstwiderspruch: die eigene `ProductSheet.enlist()` setzt `ebay_state=ENTWURF`, aber nie `listed_on_ebay`, ein gerade eingebuchter Artikel ist damit im Board unsichtbar. Solange kein echtes Token existiert, bleibt das ganze Kanban leer. Fix: die Board-Query auf `enrolledOnEbay:true` umstellen und aus `row.ebayState` bucketieren.
+
+**eBay, Doppelverkauf-Konflikt als grüner Erfolg getarnt.** Der Transition-Erfolg feuert immer einen `tone:'success'`-Toast, dessen Text der rohe Enum ist (`Inventar: CONFLICT_LOCAL_SOLD`). Ein lokaler Doppelverkauf erscheint also als grüner Erfolg mit untranslatiertem Token und ohne Handlungshinweis, und das genau an dem Tresen, dessen Aufgabe es ist, den Konflikt aufzulösen. Fix: die `describeSideEffect`-Semantik übernehmen, `CONFLICT_LOCAL_*` auf Alarm-Ton mit Erklärung und Auflösung eskalieren, einen Konflikt nie als Erfolg zeigen.
+
+**WhatsApp, kein Live-Refresh des Posteingangs.** Beide Queries setzen nur `staleTime`, kein `refetchInterval`. Zusätzlich ist `refetchOnWindowFocus` global aus, das immer fokussierte Tauri-Fenster kann also nicht einspringen. Eine neue Kundennachricht taucht erst auf, wenn der Operator selbst sendet, „erledigt" markiert oder den Thread wechselt. WhatsApp ist damit der einzige Ausreißer, jede andere Live-Fläche (Termine, Schicht, Kurse) pollt. Für einen Kommando-Posteingang ist das die wichtigste Lücke. Fix: `refetchInterval` von rund 15 bis 20 Sekunden auf die Threadliste und rund 10 Sekunden auf den offenen Thread legen.
+
+**Dokumente, archivierte Belege bleiben unsichtbar.** `Dokumente.tsx` baut die Liste ohne `includeArchived`, der Serverdefault ist false. Nach dem Archivieren verschwindet die Zeile, und es gibt keinen Filter, sie je wieder zu sehen, obwohl die Kasse die einzige App ist, die überhaupt archivieren kann. Für Admin und Steuerberater bricht das die revisionssichere Vollansicht. Fix: einen Schalter „inkl. archivierte" ergänzen, der `includeArchived:true` setzt, und archivierte Zeilen gedimmt plus beschriftet („Archiviert bleibt revisionssicher im Kassensystem") rendern.
+
+**Tagebuch, kuratierte deutsche Event- und Entity-Labels.** Die Kasse rendert rohe Maschinenstrings: Zeilentitel `transaction.finalized`, Meta-Zeile `products/1a2b3c4d`, Quelle `ebay_webhook` mit Unterstrich. Das geteilte Vokabular `@warehouse14/i18n-de` (`eventLabel`/`entityLabel`) ist eine deklarierte Abhängigkeit, wird aber nie importiert, obwohl es genau dafür extrahiert wurde. Auf der Admin-Fläche ist das ein Bruch der Hausregel gegen Roh-Token-Leaks. Fix: `eventLabel`/`entityLabel` als Primärzeile nutzen, den rohen `event_type` als sekundäre Mono-Zeile für die forensische Grep-Barkeit behalten (besser als Mobile, das den Rohwert wegwirft).
+
+**Analytics, laufende Betriebsausgaben (Ausgaben) fehlen ganz.** Kein `expensesApi`-Konsument im gesamten `tauri-pos`. Der Admin kann am Tresen keine einmalige Betriebsausgabe (Wareneinkauf, Miete, Reparatur) buchen. Die einzige Nähe, die Bargeld-Entnahme in `CashMovementDialog`, ist eine fiskalische Schubladenbewegung für den Z-Bon, keine gebuchte P&L-Ausgabe. Fix: eine Ausgaben-Adminfläche ergänzen (eigene Sektion oder Finanzen-Fläche), ADMIN- und Step-up-gated über den vorhandenen `wrapWithStepUp`-Interceptor.
+
+**Analytics, wiederkehrende Fixkosten fehlen ganz.** Kein `fixedCostsApi`-Konsument. Der Admin kann keine wiederkehrenden Fixkosten (Miete, Versicherung) erfassen oder ansehen, die Basis für jede Break-Even-Rechnung. Reine Kommando-Konfiguration, die auf den Desktop mindestens so sehr gehört wie aufs Telefon. Fix: eine Fixkostenliste plus Editor neben die Ausgaben stellen, gleiche Admin- und Step-up-Gate.
+
+**Analytics, Gewinn- und Verlustrechnung fehlt ganz.** Kein `financeApi.profit`-Konsument. Die Kasse zeigt nur den Umsatz der aktuellen Schicht, keine Kostenseite, keinen Nettogewinn, keine Monatsansicht. Auch die Datenquelle fehlt: `DashboardSummary` trägt keines der Waterfall-Felder. Ein Inhaber, der die Kasse am Desktop führt, sieht heute weder Tages- noch Monatsgewinn. Fix: eine Finanzen-Fläche mit dem Waterfall (Umsatz minus Ankauf minus Ausgaben minus Fixkostenanteil, Tag und Monat) aus `financeApi.profit`.
+
+### MITTEL
+
+**Produkte, Feinheit und abgeleitetes Feingewicht im Lager.** Der Produkt-Anlagepfad erfasst nur `weightGrams`, keine `finenessDecimal`, und zeigt keine Feingewicht-Vorschau. Ein manuell im Lager erfasstes Goldstück ist damit das einzige Produkt ohne Schmelzbasis. Fix: ein Feinheit-Feld neben das Gewicht in den `CreateBody` legen und `finenessDecimal` mitsenden, wie es die Kaufseite (Ankauf, Bewertung) schon tut.
+
+**Produkte, Packmaße L×B×H und Größenklasse.** Weder Erfassung noch Anzeige von `lengthCm/widthCm/heightCm` oder abgeleiteter S/M/L/XL-Klasse. Der Desktop verwaltet eBay- und Shop-Fulfillment, dort gehört die Packgröße hin. Fix: eine Maße-Zeile (drei cm-Felder) in die Anlage- und Manage-Formulare; die Größen-Anzeige selbst ist optional, die Maßerfassung ist funktional.
+
+**Ankauf, Feingehalt-Schnellwahl-Chips.** Beide Desktop-Intake-Formulare bieten nur ein rohes Textfeld „Feingehalt (0…1)". Die Helfer `COMMON_FINENESS_PER_MILLE` und `finenessDecimalForPerMille` sind sogar exportiert, aber von der UI ungenutzt (toter Code relativ zur Oberfläche). Fix: pro-Metall-Preset-Chips (Gold 999/916/750/585/375 usw.) in `AddItemForm` und `AppraisalItemForm`, gespeist aus den schon vorhandenen Helfern, reduziert Tippfehler auf einem fiskalrelevanten Feld.
+
+**Ankauf, PEP-Flag auf dem Verkäufer.** Wie auf der Kundenakte: der Ankauf-Fluss gated nur auf Sanktion und BANNED, `pepMatch` fehlt. Fix: ein nicht-blockierendes PEP-Banner parallel zur Sanktionsbehandlung in `CustomerPanel` und den Bezahl-/Annahme-Dialogen, bevor ausgezahlt wird.
+
+**Kasse, ehrlicher Schicht-Lesefehler-Zustand.** `Kasse.tsx` liest nur `data` und `isLoading`, nie `isError`. Bei einem fehlgeschlagenen `/api/shifts/current`-Read fällt der Body auf „Tag beginnen" durch und behauptet damit, die Kasse sei geschlossen, obwohl nur der Read scheiterte. Das ehrliche Muster existiert bereits in `DayControl` (Werkstatt-Banner), nur nicht im Kasse-Body. Fix: `isError` lesen und einen „Schichtstatus nicht abrufbar, erneut versuchen"-Zustand zeigen statt `ShiftOpenPanel`.
+
+**Kunden, USt-IdNr. ansehen und bearbeiten.** Kein `vatId`-Feld in Anlage- oder Editier-Dialog, keine Detailzeile, obwohl `CustomerUpdateBody`/`CustomerDetail` es tragen. Anmerkung: der Verkaufs-Checkout hat einen separaten B2B-Reverse-Charge-Fluss, der bei Neuanlage ein `vatId` setzt, aber ein bestehendes nie anzeigt oder ändert. Der Kommando-Desktop stellt Rechnungen, er braucht die VAT-ID mehr als das Telefon. Fix: ein USt-IdNr.-Feld in Anlage/Edit plus eine Detailzeile, mit Formatvalidierung.
+
+**Kunden, KYC aus der Akte bestätigen.** Die Kundenakte hat keinen KYC-Stempel-Button. `stampKyc` wird nur inline in Ankauf und Verkauf aufgerufen. Ein Admin kann einen Kunden nicht aus der Akte heraus vorab oder erneut verifizieren. Achtung, irreführende veraltete Kommentare behaupten, das Feature sei verdrahtet, ist es aber nicht (der echte Button heißt „Ausweis erfassen" und schreibt nur in einen lokalen Tresor). Fix: eine „KYC bestätigen"-Aktion in die KYC-Karte von `CustomerDetailPanel`, das Step-up ist über den Interceptor schon abgedeckt.
+
+**Kunden, strukturierte JSON-Adresse sauber rendern.** Der Desktop rendert `detail.address` wörtlich, ein per POS oder Seed erzeugter JSON-Adress-Blob erscheint also als rohes `{"street":…}` mit englischen Keys, in Detailansicht und Edit-Prefill. Fix: `formatCustomerAddress` aus Mobile portieren (oder als api-client-Util teilen) und in Detailzeile und Prefill nutzen.
+
+**Aufgaben, ehrliches Vollisten-Laden.** Eine Anfrage mit `limit:100`, kein Offset, kein Paging; die Kopfzahl zeigt `items.length` statt `total`. Zeilen jenseits 100 verschwinden lautlos, die Zahl liest ein irreführendes „100". Die DONE/CANCELLED-Historie (forensisch, GoBD, nie beschnitten) läuft über die Zeit über 100. Fix: entweder paginieren (`hasMore`/`total`/`offset`) oder mindestens `data.total` statt `items.length` anzeigen.
+
+**Aufgaben, Überfällig/Heute-fällig pro Zeile.** Jede Zeile zeigt ein flaches „· fällig <Datum>" ohne Überfällig-Unterscheidung, ohne Farbe, ohne fälligkeitsbasierte Sortierung. Teilminderung: die Werkstatt-Übersicht zeigt Aggregat-Kacheln, aber die Liste markiert nie, welche konkreten Zeilen überfällig sind. Fix: Überfällig/Heute in der Zeilenkarte berechnen und die Zeile tönen bzw. einen Marker setzen.
+
+**eBay, Board aus einer Listen-Anfrage statt N+1.** Nach der Liste feuert das Board pro Zeile ein `productsApi.get()` (bis zu 200 Detail-Requests), um den Zustand aufzulösen. Der rechtfertigende Kommentar ist veraltet: `ProductListRow.ebayState` existiert längst. Fix: die `useQueries`-Detail-Fanout streichen und direkt aus `row.ebayState` bucketieren, spart bis zu rund 200 Requests pro Board-Load.
+
+**eBay, humanisierte Historie und Transition-Feedback.** Historie druckt rohe Token (`ENTWURF → GEPRUEFT`) und gelowercaste Quelle (`ebay_webhook`), auch der Erfolgs-Toast-Titel ist roh. Dieselbe Datei übersetzt aber Aktuellzustand und Buttons via `EBAY_STATE_LABELS`, also ein interner Widerspruch. Fix: Historie-`from`/`to` durch `EBAY_STATE_LABELS` wickeln und eine Quell-Label-Map ergänzen, dasselbe für den Toast-Titel.
+
+**eBay, Bestätigungs-Gate vor bestandsreservierender Transition.** Jede erlaubte Transition ist ein einzelner Button, dessen Klick sofort `transition.mutate(next)` ruft, ohne Bestätigen, ohne Reserve- oder Konflikt-Warnung, auch für VERKAUFT/VERSENDET. Ein Ein-Klick-irreversibles Reservieren auf einer Kommandokonsole ist die riskantere Voreinstellung. Fix: einen Bestätigen-Schritt (oder mindestens einen „reserviert Bestand, kann mit dem Laden kollidieren"-Hinweis) für Sold-Cluster-Ziele, gepaart mit der Konflikt-Anzeige aus dem HOCH-Punkt oben.
+
+**WhatsApp, ungelesene Threads zuerst.** Die Threadliste rendert die Server-Reihenfolge (strikt neueste zuerst) wörtlich, ohne Sortierung. Eine ältere, noch ungelesene Kundennachricht sinkt unter neueres, schon gelesenes Geplauder. Fix: den geteilten `sortThreads`-Helfer (ungelesen zuerst, dann neueste innerhalb der Gruppe) vor dem Rendern anwenden.
+
+**WhatsApp, neue ausgehende Konversation.** Kein Compose-Einstieg. Es lässt sich nur innerhalb eines bestehenden eingehenden Threads antworten, proaktive Ansprache („Ihre Reparatur ist fertig") ist unmöglich. Fix: eine „Neue Nachricht"-Aktion im Threadlisten-Header mit Telefon- und Text-Composer über `whatsappApi.send`, mit `validateSend` für die nun getippte Nummer.
+
+**Dokumente, sha256-Integritätshash als GoBD-Signal.** Die `DocumentCard` zeigt nie `sha256Hex`, obwohl `DocumentRow` es trägt und die Kasse einen sha256 anderswo (KYC-Tresor) schon rendert. Fix: `shortHash(row.sha256Hex)` als Integritätszeile auf die Karte; der Helfer lässt sich direkt aus `belege-ui.ts` heben. Auf der Steuerberater-Fläche zählt das Signal mehr als am Telefon.
+
+**Dokumente, Register-Übersicht mit Zählungen.** Keine Gesamt-, Fiskal-, Archiv- oder Pro-Kategorie-Zählungen; das `total`-Feld der Antwort wird geholt, aber ignoriert. Fix: eine kleine Kopfleiste mit Gesamt/Fiskalisch/Archiviert plus Pro-Kategorie-Zählungen am Filter, die geteilten Reducer aus `belege-ui.ts` wiederverwenden.
+
+**Dokumente, ehrliche Trunkierung über die erste Seite hinaus.** Hartes `limit:100`, `total` und `hasMore` werden ignoriert, kein Offset-Paging, kein „mehr vorhanden"-Hinweis. Ein Shop mit über 100 Dokumenten sieht lautlos nur 100, auf der Quelle der Wahrheit. Das Lade-Muster existiert im Haus (Lager), ist hier nur nicht angewandt. Fix: Server-`total` und `hasMore` anzeigen und Offset-Paging ergänzen.
+
+**Tagebuch, lesbares Payload-Rendering.** Der Detaildialog wirft `JSON.stringify(row.payload, null, 2)` in ein `<pre>`: englische Keys, `50.00` ohne Währung, rohe ISO-Zeitstempel, rohe Enum-Token. Der geteilte `payloadEntries`-Helfer (Keys deutsch, Geld als `50,00 €`, de-DE-Daten, Enum deutsch, nur echte IDs mono) ist gebaut, getestet und ungenutzt. Fix: eine humanisierte Key/Value-Ansicht über `payloadEntries`, optional das Roh-JSON hinter einem „Rohdaten"-Schalter.
+
+**Tagebuch, ehrliche Vollständigkeit.** `limit:200`, aber `total` und `hasMore` werden nie gelesen; keine Zähl-, Geladen- oder Trunkierungs-Anzeige. Ab über 200 Ereignissen sieht der Admin lautlos ein Fenster ohne Signal, dass ältere Zeilen existieren. Fix: das Server-`total` zeigen („N Einträge im Zeitraum") und eine Trunkierungs- oder Paging-Anzeige bei `hasMore`.
+
+**Analytics, Geschäftskennzahlen-Trends.** `closingsApi.list` wird nur für DATEV/Kassenbericht/DSFinV-K-Exporte konsumiert, nie um Umsatz-, Handelsergebnis- oder Ankauf-Trends und die Ankauf-gegen-Verkauf-Flussbilanz über abgeschlossene Geschäftstage zu chartern. Die einzigen Trend-Charts sind Metall-Kurs-Sparklines, eine andere Domäne. Fix: falls eine Finanzen- oder Auswertungen-Fläche entsteht, die closings-basierten Trend- und Flussansichten mitnehmen; die Daten werden client-seitig ohnehin schon geholt.
+
+**Analytics, Lagerwert-Snapshot und unrealisierte Marge.** Kein `inventoryValue`-Konsument. Das Lager zeigt pro Artikel den Schmelzwert, aber keinen aggregierten Lagerwert (Listenwert gegen Einkaufswert), keine verfügbare Stückzahl, keinen Marge-Ring. Fix: den aggregierten Lagerwert plus Einkaufswert plus unrealisierte Marge (`financeApi.inventoryValue`) auf einer Finanzen-Fläche oder als Werkstatt-Übersicht-Kachel zeigen.
+
+**Benachrichtigungen, persistentes klassifiziertes Meldungscenter.** Alerts sind flüchtige Toasts ohne Lese-Status, ohne Historie, beim Sign-out gelöscht. Die einzige durchblätterbare Historie ist das rohe, unklassifizierte Tagebuch. Ein verpasster, auto-geschlossener Toast ist unwiederbringlich. Fix: eine „Meldungen"-Fläche (oder ein Alert-Filter plus Klassifikation über das Tagebuch), die die `classify()`-Vokabeln wiederverwendet und den Lese-Status verfolgt.
+
+**Benachrichtigungen, proaktive TSE-Zertifikats-Warnung.** Kein Code liest `/api/bridge/summary`, `DashboardSummary` trägt kein Zert-Feld. Die Kasse kann nur auf ein diskretes `alert.tse_cert_expiry`-Ereignis reagieren, und selbst dann fehlt der Titel-Eintrag, es degradiert zu einem generischen „Hinweis". Kein stehender Countdown. Die Kasse ist das Fiskalgerät, also gehört die Zert-Reserve proaktiv hierher. Fix: `/api/bridge/summary` konsumieren (oder Zert-Tage in die Dashboard-Summary aufnehmen) und spezifische Titel plus Deep-Link für die beiden TSE-Alert-Typen ergänzen.
+
+**Benachrichtigungen, wartende Freigabe.** `command.approval_requested` ist kein `alert.*`-Ereignis, `isAlertEvent()` liefert false, also wird nie getoastet; keine `approvalsPending`-Konsumierung, also keine Live-Zählung. Ein pausierter hochwertiger Verkauf landet nur als rohe Tagebuch-Zeile, ausgerechnet auf dem Gerät, wo er aufgelöst werden soll. Fix: für Admin- oder Zweitkasse-Szenarien bei `command.approval_requested` toasten (oder die Alert-Brücke über den `alert.`-Präfix hinaus erweitern) und ein Live-„Freigaben warten"-Badge zeigen.
+
+**Offline, dauerhafter Read-Cache über Kaltstarts.** Der Port enthält den Persistenz-Port und `installReadCachePersistence`, aber kein Adapter existiert und der Installer hat null Aufrufer. Der Read-Cache ist also nur speicher- und sitzungsgebunden, er überlebt Tab-Wechsel, aber keinen Kaltstart. Bei einem Kassen-Neustart (Auto-Update, Crash, Morgen-Reboot) mit unterbrochenem Tunnel zeigen Lager, Kundenakte und RecentSales leer statt echter Zahlen. Fix: einen Tauri-SQLite-Adapter (`getItem`/`setItem`/`keys`) einmal beim App-Mount installieren, in eine wegwerfbare, nicht-fiskalische Tabelle, getrennt von der GoBD-Outbox.
+
+**Offline, Read-Cache beim Sign-out leeren.** `handleSignOut` ist eine gründliche Kaskade (Reservierungen freigeben, Stores zurücksetzen, Token löschen, Pro-Operator-Storage nuken), ruft aber nie `clearCachedRead()`. Da Sign-out ein In-SPA-Übergang ohne Reload ist, überlebt die Map. Der nächste Kassierer an der geteilten Kasse wird unter denselben Cache-Keys mit der Kundenakte (KYC/PII), RecentSales und Kundenliste des Vorgängers geseedet, am sichtbarsten offline. Auf einem Mehrfach-Kassierer-Gerät (Zweitkasse, Schichtübergabe) wiegt das schwerer als am Telefon. Fix: `clearCachedRead()` neben die bestehenden Resets in `handleSignOut` legen.
+
+**Einstellungen, Storefront-Taxonomie (Sammlungen) verwalten.** Die Kasse liest und weist nur zu (`categoriesApi.tree`/`setForProduct`); Anlegen, Umbenennen, Löschen von Kategorien fehlt komplett. Die geteilten Wrapper existieren repo-weit, werden aber nie importiert. Taxonomie-Governance gehört ins Kommandozentrum mehr als aufs Telefon. Fix: ein Sammlungen-Adminpanel in Einstellungen, ADMIN-gated, über `categoriesApi` create/update/delete, mit der 3-Ebenen-Grenze und dem Lösch-Vorabblock aus Mobile.
+
+**Einstellungen, rollenbewusstes Belegtext-Editieren.** `/belegtexte` rendert die editierbare Textarea plus „Neue Version veröffentlichen" für jeden Operator, ohne Rollencheck, ohne read-only-Hinweis, und der `SurfaceDescriptor` hat kein `adminOnly`-Feld. Ein Nicht-Admin wird erst beim Submit vom Server-Step-up gestoppt, nicht vorab informiert. Das exakte Muster (isAdmin-Gate, „Nur für ADMIN") existiert in Nachbarschirmen. Fix: den Editor auf ADMIN gaten mit read-only-Ansicht für andere Rollen, oder ein `adminOnly`-Flag in den Surface-Descriptor aufnehmen und in der Shell durchsetzen.
+
+**Globale Suche, vereinheitlichte Entitätssuche.** Das Cmd+K-Spotlight matcht nur Surface-Deskriptoren, es navigiert zu Bildschirmen, nie zu Entitäten, und verschiebt die Entitätssuche explizit auf „Phase 1.5 #I-32". Entitätssuche existiert nur fragmentiert (Produkte in Lager, Kunden in der Kundenliste, Belege im Kassenbuch). Es fehlt die eine Box, die alle drei Domänen von überall her spannt. Fix: eine Entitäts-Stufe zu Spotlight hinzufügen, die bei passender Query über Kunden, Produkte und letzte Transaktionen fanout und Treffer unter den Surface-Gruppen deep-linkt.
+
+**Druck, Beleg als PDF oder elektronische Kopie.** Der Verkaufsbeleg ist ausschließlich ESC/POS-Thermodruck, der Kassenbuch-Nachdruck ebenso. Ohne konfigurierten Drucker sagt der Dialog nur „Vorschau ohne Druck", ohne PDF/E-Mail. Der Bezahldialog druckt sogar „Beleg auf Wunsch elektronisch" in den Fuß, es gibt aber keinen Code-Pfad, einen elektronischen Beleg zu liefern. Ein Typst-PDF-Backend (`generate_invoice_pdf`) existiert, ist aber an null Bildschirme verdrahtet. Fix: eine „Als PDF / E-Mail"-Aktion neben „Drucken" in `ReceiptPreview`, die dieselben `ThermalReceiptData` über den vorhandenen `generate_invoice_pdf` (oder `window.print` wie in Schreiben) rendert, mit derselben GoBD-USt-IdNr.-Sperre.
+
+---
+
+## 3. Bereiche auf Parität (keine Lücken)
+
+- **Verkauf (`sell-verkauf`).** Die Kasse ist die kanonische, weit vollständigere Implementierung und besitzt ganze Fähigkeiten, die dem Mobile-Spine fehlen (Karte/ZVT, Bar-plus-Karte-Split, Gutschein, B2B-Reverse-Charge mit VIES, Storno, TSE-Sandwich, Thermodruck, Offline-Queue). Der Mobile-Verkauf ist ein gebauter, aber unverdrahteter Spine ohne Live-Konsument. Die einzige reale Minor-Lücke, die PDF/elektronische Belegkopie, ist oben unter Druck erfasst.
+- **Termine (`appointments-termine`).** Umgekehrte Richtung: die Kasse besitzt das volle Termin-Kommando (FullCalendar, Quick-Create, Drag-Reschedule, Statusübergänge, Google-Kalender-Integration), Mobile hat nach einer Trunk-Konsolidierung gar keine Terminverwaltung mehr. Keine mobil-bessere Fähigkeit fehlt der Kasse.
+
+Auf allen übrigen Achsen (Kassensturz/Schicht, Foto/SEO, Offline-Schreibpfad, Etiketten-/Thermodruck, Steuer-Export) liegt die Kasse gleichauf oder voraus; die Lücken dort sind oben einzeln gelistet, die Restfläche ist paritätisch.
+
+---
+
+## 4. Korrekt ausgeschlossen: mobil-per-Design
+
+Diese Mobile-Funktionen sind bewusst nicht portiert und zählen nicht als Lücken:
+
+- **Gamification (Erfolge/Zielkarte):** komplette Owner-Motivations-Suite (Ränge, Siegel, Serien, Quests, Feier-Animationen), Telefon-Companion-per-Design, gehört nicht auf eine Kommando-Kasse. Einzig relevanter Faden wäre Ziel-gegen-Ist, die Kasse zeigt die Rohzahlen ohnehin, ihr fehlt nur der Ziel-Nenner.
+- **WhatsApp Zwei-Tipp-Sende-Bestätigung und Offline-Auto-Retry:** mobil-per-Design.
+- **Kunden Offline-Schreib-Queue:** mobil-per-Design (die Kasse hat die durablere api-client-Outbox).
+- **Dashboard-Ziele (Einstellungen) und die gamifizierte Break-Even-Feier (Analytics):** mobil-per-Design.
+- **eBay-Zwei-Tipp-Bestätigung** in Mobile ist der Gegenpol zur fehlenden Desktop-Bestätigung, aber die Desktop-Lücke ist oben separat erfasst.
+
+Kurz: die Ausschlüsse sind sauber, sie betreffen Inhaber-Motivation und mobile Netzresilienz, nicht Kommando- oder Compliance-Funktionen.
