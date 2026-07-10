@@ -448,8 +448,12 @@ function TaskDetail({ taskId }: { taskId: string }): JSX.Element {
   });
 
   const updateMeta = useMutation({
-    mutationFn: (body: { title?: string; description?: string | null; priority?: TaskPriority }) =>
-      tasksApi.update(api, taskId, body),
+    mutationFn: (body: {
+      title?: string;
+      description?: string | null;
+      priority?: TaskPriority;
+      dueDate?: string | null;
+    }) => tasksApi.update(api, taskId, body),
     onSuccess: async () => {
       addToast({ tone: 'success', title: 'Aufgabe aktualisiert' });
       await qc.invalidateQueries({ queryKey: ['tasks'] });
@@ -627,16 +631,24 @@ function TaskInlineEdit({
 }: {
   task: TaskRow;
   busy: boolean;
-  onSave: (patch: { title?: string; description?: string | null; priority?: TaskPriority }) => void;
+  onSave: (patch: {
+    title?: string;
+    description?: string | null;
+    priority?: TaskPriority;
+    dueDate?: string | null;
+  }) => void;
 }): JSX.Element {
   const [title, setTitle] = useState<string>(task.title);
   const [description, setDescription] = useState<string>(task.description ?? '');
   const [priority, setPriority] = useState<TaskPriority>(task.priority);
+  // Der Server nimmt ein reines Datum (JJJJ-MM-TT); genau das liefert das Feld.
+  const [dueDate, setDueDate] = useState<string>(taskDueDateInput(task.dueDate));
 
   const dirty =
     title.trim() !== task.title ||
     description !== (task.description ?? '') ||
-    priority !== task.priority;
+    priority !== task.priority ||
+    dueDate !== taskDueDateInput(task.dueDate);
 
   return (
     <ParchmentCard padding="md">
@@ -656,6 +668,25 @@ function TaskInlineEdit({
           maxLength={5000}
           style={{ ...inputStyle, resize: 'vertical' }}
         />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span
+            className="w14-smallcaps"
+            style={{ color: 'var(--w14-ink-aged)', fontSize: '0.78rem', letterSpacing: '0.08em' }}
+          >
+            Fällig am
+          </span>
+          <input
+            type="date"
+            value={dueDate}
+            onChange={(e) => setDueDate(e.target.value)}
+            style={{ ...inputStyle, width: 'auto' }}
+          />
+          {dueDate !== '' && (
+            <Button variant="ghost" size="sm" onClick={() => setDueDate('')} disabled={busy}>
+              Frist entfernen
+            </Button>
+          )}
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span
             className="w14-smallcaps"
@@ -684,6 +715,9 @@ function TaskInlineEdit({
                     ? { description: description.length > 0 ? description : null }
                     : {}),
                   ...(priority !== task.priority ? { priority } : {}),
+                  ...(dueDate !== taskDueDateInput(task.dueDate)
+                    ? { dueDate: dueDate.length > 0 ? dueDate : null }
+                    : {}),
                 })
               }
             >
@@ -848,3 +882,13 @@ const inputStyle: React.CSSProperties = {
   color: 'var(--w14-ink)',
   outline: 'none',
 };
+
+/**
+ * Das Datumsfeld erwartet JJJJ-MM-TT. Der Server liefert entweder genau das
+ * oder einen vollen Zeitstempel; beides wird auf den Tag gekürzt. Kein Datum
+ * ist ein leeres Feld, keine erfundene Frist.
+ */
+function taskDueDateInput(dueDate: string | null): string {
+  if (!dueDate) return '';
+  return dueDate.slice(0, 10);
+}

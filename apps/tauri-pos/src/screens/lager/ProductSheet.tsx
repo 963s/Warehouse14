@@ -865,6 +865,19 @@ function DetailsSection({ product }: { product: ProductDetail }): JSX.Element {
       TAX_TREATMENT_LABEL[product.taxTreatmentCode as TaxTreatmentCode] ?? product.taxTreatmentCode,
     ],
     ['Gewicht', product.weightGrams ? `${formatGrams(product.weightGrams)} g` : '-'],
+    // Feinheit + Feingewicht tragen die §25c-Einordnung (Anlagegold). Der Server
+    // setzt sie beim Anlegen und lässt sie danach nicht mehr ändern, also stehen
+    // sie hier als Tatsache, nicht als Feld.
+    ...(product.karatCode ? ([['Karat', product.karatCode]] as Array<[string, string]>) : []),
+    ...(product.finenessDecimal
+      ? ([['Feinheit', formatFeinheit(product.finenessDecimal)]] as Array<[string, string]>)
+      : []),
+    ...(product.feingewichtGrams
+      ? ([
+          ['Feingewicht', `${formatGrams(product.feingewichtGrams)} g`],
+        ] as Array<[string, string]>)
+      : []),
+    ['Versandmaße', formatVersandmasse(product)],
     ['Einkaufswert', `${formatEur(product.acquisitionCostEur)} €`],
     ['Verkaufspreis', `${formatEur(product.listPriceEur)} €`],
     [
@@ -892,6 +905,24 @@ function DetailsSection({ product }: { product: ProductDetail }): JSX.Element {
   );
 }
 
+/** Feinheit als Promille: „0.9990" liest sich als „999,0 ‰". */
+function formatFeinheit(finenessDecimal: string): string {
+  const n = Number.parseFloat(finenessDecimal);
+  if (!Number.isFinite(n)) return finenessDecimal;
+  return `${(n * 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 })} ‰`;
+}
+
+/** Die drei Außenmaße als „12 × 8 × 3 cm", oder ehrlich „noch nicht gemessen". */
+function formatVersandmasse(product: ProductDetail): string {
+  const parts = [product.lengthCm, product.widthCm, product.heightCm];
+  if (parts.every((p) => p == null)) return 'noch nicht gemessen';
+  const zahl = (raw: string): string => {
+    const n = Number.parseFloat(raw);
+    return Number.isFinite(n) ? n.toLocaleString('de-DE', { maximumFractionDigits: 1 }) : raw;
+  };
+  return `${parts.map((p) => (p ? zahl(p) : '?')).join(' × ')} cm`;
+}
+
 /**
  * StammdatenEditor — correct the three fields a cashier actually gets wrong at
  * intake: the name, the sale price and the condition.
@@ -916,6 +947,10 @@ function StammdatenEditor({ product }: { product: ProductDetail }): JSX.Element 
   const [name, setName] = useState(product.name);
   const [price, setPrice] = useState(product.listPriceEur);
   const [condition, setCondition] = useState(product.condition);
+  // Außenmaße sind nachmessbar: leer heißt „unbekannt", nicht „null Zentimeter".
+  const [lengthCm, setLengthCm] = useState(product.lengthCm ?? '');
+  const [widthCm, setWidthCm] = useState(product.widthCm ?? '');
+  const [heightCm, setHeightCm] = useState(product.heightCm ?? '');
   const [busy, setBusy] = useState(false);
 
   const trimmedName = name.trim();
@@ -923,13 +958,30 @@ function StammdatenEditor({ product }: { product: ProductDetail }): JSX.Element 
   const priceError = isMoneyInput(price) ? null : 'Bitte einen Betrag wie 149,90 eingeben.';
 
   const nextPrice = priceError ? product.listPriceEur : normalizeDecimal(price);
+  const masse = [
+    ['lengthCm', lengthCm, product.lengthCm] as const,
+    ['widthCm', widthCm, product.widthCm] as const,
+    ['heightCm', heightCm, product.heightCm] as const,
+  ];
+  const masseError = masse.some(([, raw]) => raw.trim() !== '' && !isMoneyInput(raw))
+    ? 'Maße bitte in Zentimetern eingeben, z. B. 12,5.'
+    : null;
+  const massePatch: ProductUpdateBody = {};
+  if (masseError === null) {
+    for (const [key, raw, prev] of masse) {
+      const next = raw.trim() === '' ? null : normalizeDecimal(raw);
+      if (next !== (prev ?? null)) massePatch[key] = next;
+    }
+  }
+
   const patch: ProductUpdateBody = {
     ...(trimmedName !== product.name && trimmedName.length > 0 ? { name: trimmedName } : {}),
     ...(nextPrice !== product.listPriceEur ? { listPriceEur: nextPrice } : {}),
     ...(condition !== product.condition ? { condition } : {}),
+    ...massePatch,
   };
   const dirty = Object.keys(patch).length > 0;
-  const blocked = nameError !== null || priceError !== null || !darfBearbeiten;
+  const blocked = nameError !== null || priceError !== null || masseError !== null || !darfBearbeiten;
 
   /** Der Zustand kann ein Wert sein, den die Liste nicht kennt (Altbestand). */
   const conditionKnown = CONDITION_OPTIONS.some((o) => o.value === product.condition);
@@ -999,6 +1051,38 @@ function StammdatenEditor({ product }: { product: ProductDetail }): JSX.Element 
         </Field>
       </div>
 
+      <Field label="Versandmaße in cm (Länge, Breite, Höhe)" error={masseError}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+          <Input
+            value={lengthCm}
+            inputMode="decimal"
+            placeholder="Länge"
+            aria-label="Länge in Zentimetern"
+            onChange={(e) => setLengthCm(e.target.value)}
+            disabled={!darfBearbeiten}
+            style={{ fontFamily: 'var(--w14-font-mono)' }}
+          />
+          <Input
+            value={widthCm}
+            inputMode="decimal"
+            placeholder="Breite"
+            aria-label="Breite in Zentimetern"
+            onChange={(e) => setWidthCm(e.target.value)}
+            disabled={!darfBearbeiten}
+            style={{ fontFamily: 'var(--w14-font-mono)' }}
+          />
+          <Input
+            value={heightCm}
+            inputMode="decimal"
+            placeholder="Höhe"
+            aria-label="Höhe in Zentimetern"
+            onChange={(e) => setHeightCm(e.target.value)}
+            disabled={!darfBearbeiten}
+            style={{ fontFamily: 'var(--w14-font-mono)' }}
+          />
+        </div>
+      </Field>
+
       {/*
         Der Preis eines verkauften Artikels darf korrigiert werden, aber der Beleg
         von damals ändert sich dadurch nicht. Das sagen wir laut, statt es zu
@@ -1044,6 +1128,12 @@ function stammdatenFeldLabel(field: string): string {
       return 'Verkaufspreis';
     case 'condition':
       return 'Zustand';
+    case 'lengthCm':
+      return 'Länge';
+    case 'widthCm':
+      return 'Breite';
+    case 'heightCm':
+      return 'Höhe';
     default:
       return 'weitere Angabe';
   }
