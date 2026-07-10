@@ -91,6 +91,9 @@ const Dokumente = lazy(() =>
 const Ebay = lazy(() =>
   import('../../screens/secondary/Ebay.js').then((m) => ({ default: m.Ebay })),
 );
+const Finanzen = lazy(() =>
+  import('../../screens/secondary/Finanzen.js').then((m) => ({ default: m.Finanzen })),
+);
 const Einstellungen = lazy(() =>
   import('../../screens/secondary/Einstellungen.js').then((m) => ({ default: m.Einstellungen })),
 );
@@ -213,6 +216,15 @@ export const SURFACES: readonly SurfaceDescriptor[] = [
   //    daily glance now lives in the always-visible chrome ticker; the deep
   //    candlestick charts AND the ADMIN "Manueller Override" stay here, reached
   //    via Spotlight or the ticker popover's "Details / Verlauf" link. ─────────
+  {
+    path: '/finanzen',
+    label: 'Finanzen',
+    description: 'Gewinnrechnung, Lagerwert und die gebuchten Ausgaben.',
+    tier: 'secondary',
+    component: Finanzen,
+    searchAliases: ['gewinn', 'verlust', 'ausgaben', 'fixkosten', 'lagerwert', 'profit', 'guv'],
+  },
+
   {
     path: '/kurse',
     label: 'Kurse',
