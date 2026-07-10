@@ -18,11 +18,12 @@ import { useQueryClient } from '@tanstack/react-query';
 import { StaleBadge, useCachedQuery } from '../../offline/index.js';
 import { useState } from 'react';
 
-import { type CustomerDetail, customersApi } from '@warehouse14/api-client';
+import { ApiError, type CustomerDetail, customersApi } from '@warehouse14/api-client';
 import { Button, DiamondRule, MoneyAmount, ParchmentCard, Seal } from '@warehouse14/ui-kit';
-import { formatCustomerAddress } from '@warehouse14/i18n-de';
+import { describeError, formatCustomerAddress } from '@warehouse14/i18n-de';
 
 import { useApiClient } from '../../lib/api-context.js';
+import { useToastStore } from '../../state/toast-store.js';
 
 import { CustomerEditDialog } from './CustomerEditDialog.js';
 import { CustomerEraseDialog } from './CustomerEraseDialog.js';
@@ -71,13 +72,51 @@ function DetailLoaded({ customerId }: { customerId: string }): JSX.Element {
 // ────────────────────────────────────────────────────────────────────────
 
 function CustomerCard({ detail }: { detail: CustomerDetail }): JSX.Element {
+  const api = useApiClient();
   const qc = useQueryClient();
   const [editOpen, setEditOpen] = useState<boolean>(false);
   const [trustOpen, setTrustOpen] = useState<boolean>(false);
   const [kycOpen, setKycOpen] = useState<boolean>(false);
   const [eraseOpen, setEraseOpen] = useState<boolean>(false);
+  const [stamping, setStamping] = useState<boolean>(false);
+  const addToast = useToastStore((st) => st.addToast);
   const blocked = detail.sanctionsMatch || detail.trustLevel === 'BANNED';
   const kycVerified = detail.kycVerifiedAt !== null;
+
+  /**
+   * Den Ausweis gegen die Person bestätigen (§10 GwG). Dieselbe Handlung wie am
+   * Verkaufs- und Ankaufstresen, nur aus der Akte heraus: der Server verlangt
+   * dafür eine PIN-Bestätigung, die der api-client abfängt.
+   */
+  async function stampKyc(): Promise<void> {
+    if (stamping || kycVerified) return;
+    setStamping(true);
+    try {
+      await customersApi.stampKyc(
+        api,
+        detail.id,
+        detail.trustLevel === 'NEW'
+          ? { documentType: 'PERSONALAUSWEIS', promoteTrustLevelTo: 'VERIFIED' }
+          : { documentType: 'PERSONALAUSWEIS' },
+      );
+      addToast({ tone: 'success', title: 'Ausweis bestätigt', body: detail.fullName });
+      await qc.invalidateQueries({ queryKey: ['customers', detail.id] });
+      await qc.invalidateQueries({ queryKey: ['customers', 'list'] });
+    } catch (err) {
+      addToast({
+        tone: 'alert',
+        title: 'Ausweis nicht bestätigt',
+        body:
+          err instanceof ApiError
+            ? err.code === 'STEP_UP_REQUIRED'
+              ? 'PIN-Bestätigung wurde abgebrochen.'
+              : describeError(err)
+            : 'Verbindung gestört.',
+      });
+    } finally {
+      setStamping(false);
+    }
+  }
 
   return (
     <section
@@ -241,10 +280,27 @@ function CustomerCard({ detail }: { detail: CustomerDetail }): JSX.Element {
         </DataGrid>
         <KycLocalDocs customerId={detail.id} onPromoteTrust={() => setTrustOpen(true)} />
 
-        <div style={{ marginTop: 'var(--space-4)', display: 'flex', justifyContent: 'flex-end' }}>
+        <div
+          style={{
+            marginTop: 'var(--space-4)',
+            display: 'flex',
+            justifyContent: 'flex-end',
+            gap: 'var(--space-2)',
+          }}
+        >
           <Button variant="ghost" size="md" onClick={() => setKycOpen(true)}>
             Ausweis erfassen
           </Button>
+          {!kycVerified && (
+            <Button
+              variant="primary"
+              size="md"
+              onClick={() => void stampKyc()}
+              disabled={stamping || detail.sanctionsMatch}
+            >
+              {stamping ? 'Wird bestätigt…' : 'Ausweis bestätigen'}
+            </Button>
+          )}
         </div>
       </ParchmentCard>
 

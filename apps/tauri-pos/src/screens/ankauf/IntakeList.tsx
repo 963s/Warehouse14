@@ -27,6 +27,7 @@ import { Button, DiamondRule, MoneyAmount, ParchmentCard, RomanIndex } from '@wa
 
 import { evaluateKycGate } from '../../lib/ankauf-kyc-gate.js';
 import { useApiClient } from '../../lib/api-context.js';
+import { finenessPresets, matchesPreset } from '../../lib/fineness-presets.js';
 import {
   type SuggestedBuy,
   computeSchmelzwertEur,
@@ -557,13 +558,50 @@ function AddItemForm({
             { value: 'palladium', label: 'Palladium' },
           ]}
         />
-        <FormField label="Karat (z. B. K585)" value={karatCode} onChange={setKaratCode} mono />
-        <FormField
-          label="Feingehalt (0…1)"
-          value={finenessDecimal}
-          onChange={setFinenessDecimal}
-          mono
-        />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <FormField label="Karat (z. B. K585)" value={karatCode} onChange={setKaratCode} mono />
+          <FormField
+            label="Feingehalt (0…1)"
+            value={finenessDecimal}
+            onChange={setFinenessDecimal}
+            mono
+          />
+          {/*
+            Karat und Feingehalt gehören zusammen. Ein Griff setzt beide, damit
+            kein K585 mit 0,750 daneben stehen bleibt. Freitext bleibt möglich.
+          */}
+          {finenessPresets(metal).length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 2 }}>
+              {finenessPresets(metal).map((preset) => {
+                const active = matchesPreset(preset, karatCode, finenessDecimal);
+                return (
+                  <button
+                    key={preset.karatCode}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => {
+                      setKaratCode(preset.karatCode);
+                      setFinenessDecimal(preset.finenessDecimal);
+                    }}
+                    className="w14-tabular"
+                    style={{
+                      fontFamily: 'var(--w14-font-mono)',
+                      fontSize: '0.74rem',
+                      padding: '3px 9px',
+                      cursor: 'pointer',
+                      borderRadius: 'var(--w14-radius-button)',
+                      border: `1px solid ${active ? 'var(--w14-gold)' : 'var(--w14-rule)'}`,
+                      background: active ? 'var(--w14-parchment-3)' : 'transparent',
+                      color: active ? 'var(--w14-gold)' : 'var(--w14-ink-aged)',
+                    }}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <FormField label="Gewicht (g)" value={weightGrams} onChange={setWeightGrams} mono />
           <Button variant="ghost" size="sm" onClick={() => void weighIn()} disabled={weighing}>
