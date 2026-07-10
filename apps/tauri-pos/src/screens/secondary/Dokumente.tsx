@@ -34,7 +34,7 @@ import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
 import { useToastStore } from '../../state/toast-store.js';
-import { describeError } from '@warehouse14/i18n-de';
+import { describeError, shortHash } from '@warehouse14/i18n-de';
 
 const CATEGORY_ORDER: readonly DocumentCategory[] = [
   'AUSWEIS',
@@ -45,6 +45,9 @@ const CATEGORY_ORDER: readonly DocumentCategory[] = [
   'VERSANDBELEG',
 ];
 
+/** Eine Bildschirmseite Dokumente. Der Server paginiert, also paginieren wir. */
+const PAGE_SIZE = 48;
+
 type EntityLinkKind = 'customer' | 'product' | 'transaction' | 'appraisal';
 
 export function Dokumente(): JSX.Element {
@@ -52,10 +55,14 @@ export function Dokumente(): JSX.Element {
   const [category, setCategory] = useState<DocumentCategory | 'ALL'>('ALL');
   const [linkKind, setLinkKind] = useState<EntityLinkKind | ''>('');
   const [linkId, setLinkId] = useState<string>('');
+  const [includeArchived, setIncludeArchived] = useState<boolean>(false);
+  const [offset, setOffset] = useState<number>(0);
   const [uploadOpen, setUploadOpen] = useState<boolean>(false);
 
   const query: ListDocumentsQuery = {
-    limit: 100,
+    limit: PAGE_SIZE,
+    offset,
+    ...(includeArchived ? { includeArchived: true } : {}),
     ...(category !== 'ALL' ? { category } : {}),
     ...(linkKind === 'customer' && linkId.trim() ? { customerId: linkId.trim() } : {}),
     ...(linkKind === 'product' && linkId.trim() ? { productId: linkId.trim() } : {}),
@@ -70,6 +77,13 @@ export function Dokumente(): JSX.Element {
   });
 
   const items = listQ.data?.items ?? [];
+  const total = listQ.data?.total ?? 0;
+  const hasMore = listQ.data?.hasMore ?? false;
+
+  /** Jeder Filterwechsel beginnt die Blätterung von vorn. */
+  function resetPaging(): void {
+    setOffset(0);
+  }
 
   return (
     <section
@@ -95,17 +109,28 @@ export function Dokumente(): JSX.Element {
         >
           Dokumente
         </h1>
-        <Button variant="primary" onClick={() => setUploadOpen(true)}>
-          Hochladen
-        </Button>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 14 }}>
+          <span
+            className="w14-smallcaps"
+            style={{ color: 'var(--w14-ink-faded)', fontSize: '0.74rem', letterSpacing: '0.08em' }}
+          >
+            {listQ.isFetching ? 'lädt…' : `${total} ${total === 1 ? 'Dokument' : 'Dokumente'}`}
+          </span>
+          <Button variant="primary" onClick={() => setUploadOpen(true)}>
+            Hochladen
+          </Button>
+        </div>
       </header>
 
       {/* Filters */}
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <FilterField label="Kategorie">
           <select
             value={category}
-            onChange={(e) => setCategory(e.target.value as DocumentCategory | 'ALL')}
+            onChange={(e) => {
+              setCategory(e.target.value as DocumentCategory | 'ALL');
+              resetPaging();
+            }}
             style={inputStyle}
           >
             <option value="ALL">alle</option>
@@ -119,7 +144,10 @@ export function Dokumente(): JSX.Element {
         <FilterField label="Verknüpft mit">
           <select
             value={linkKind}
-            onChange={(e) => setLinkKind(e.target.value as EntityLinkKind | '')}
+            onChange={(e) => {
+              setLinkKind(e.target.value as EntityLinkKind | '');
+              resetPaging();
+            }}
             style={inputStyle}
           >
             <option value="">egal</option>
@@ -129,17 +157,44 @@ export function Dokumente(): JSX.Element {
             <option value="appraisal">Bewertung</option>
           </select>
         </FilterField>
-        <FilterField label="Entität-UUID">
+        <FilterField label="Verknüpfte Kennung">
           <input
             type="text"
             value={linkId}
-            onChange={(e) => setLinkId(e.target.value)}
-            placeholder="00000000-…"
+            onChange={(e) => {
+              setLinkId(e.target.value);
+              resetPaging();
+            }}
+            placeholder="Kennung einfügen"
             spellCheck={false}
             disabled={linkKind === ''}
             style={{ ...inputStyle, fontFamily: 'var(--w14-font-mono)', minWidth: 240 }}
           />
         </FilterField>
+        <label
+          className="w14-smallcaps"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            paddingBottom: 8,
+            fontSize: '0.74rem',
+            letterSpacing: '0.08em',
+            color: includeArchived ? 'var(--w14-gold)' : 'var(--w14-ink-faded)',
+            cursor: 'pointer',
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={includeArchived}
+            onChange={(e) => {
+              setIncludeArchived(e.target.checked);
+              resetPaging();
+            }}
+            style={{ accentColor: 'var(--w14-gold)' }}
+          />
+          Archivierte einschließen
+        </label>
       </div>
 
       <DiamondRule />
@@ -156,21 +211,66 @@ export function Dokumente(): JSX.Element {
         ) : items.length === 0 ? (
           <ParchmentCard padding="md" style={{ textAlign: 'center' }}>
             <p style={{ margin: 0, fontStyle: 'italic', color: 'var(--w14-ink-faded)' }}>
-              Noch keine Dokumente.
+              {offset > 0
+                ? 'Auf dieser Seite stehen keine Dokumente mehr.'
+                : includeArchived
+                  ? 'Noch keine Dokumente.'
+                  : 'Noch keine aktiven Dokumente. Archivierte sind ausgeblendet.'}
             </p>
           </ParchmentCard>
         ) : (
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
-              gap: 12,
-            }}
-          >
-            {items.map((row) => (
-              <DocumentCard key={row.id} row={row} />
-            ))}
-          </div>
+          <>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+                gap: 12,
+              }}
+            >
+              {items.map((row) => (
+                <DocumentCard key={row.id} row={row} />
+              ))}
+            </div>
+
+            {(offset > 0 || hasMore) && (
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: 12,
+                  marginTop: 16,
+                  paddingTop: 12,
+                  borderTop: '1px solid var(--w14-rule)',
+                }}
+              >
+                <Button
+                  variant="ghost"
+                  onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
+                  disabled={offset === 0 || listQ.isFetching}
+                >
+                  Zurück
+                </Button>
+                <span
+                  className="w14-tabular"
+                  style={{
+                    fontFamily: 'var(--w14-font-mono)',
+                    fontSize: '0.74rem',
+                    color: 'var(--w14-ink-faded)',
+                  }}
+                >
+                  {offset + 1} bis {offset + items.length} von {total}
+                </span>
+                <Button
+                  variant="ghost"
+                  onClick={() => setOffset(offset + PAGE_SIZE)}
+                  disabled={!hasMore || listQ.isFetching}
+                >
+                  Weiter
+                </Button>
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -209,8 +309,18 @@ function DocumentCard({ row }: { row: DocumentRow }): JSX.Element {
   });
 
   const link = describeLink(row);
+  const isArchived = row.archivedAt != null;
+  const digest = shortHash(row.sha256Hex);
+
   return (
-    <ParchmentCard padding="md">
+    <ParchmentCard
+      padding="md"
+      style={
+        isArchived
+          ? { opacity: 0.72, borderStyle: 'dashed', background: 'var(--w14-parchment-1)' }
+          : undefined
+      }
+    >
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <FileIcon mime={row.mimeType} />
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -248,7 +358,10 @@ function DocumentCard({ row }: { row: DocumentRow }): JSX.Element {
           gap: 10,
         }}
       >
-        <CategoryBadge category={row.category} />
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          <CategoryBadge category={row.category} />
+          {isArchived && <ArchivedBadge />}
+        </div>
         <span
           className="w14-tabular"
           style={{
@@ -273,19 +386,73 @@ function DocumentCard({ row }: { row: DocumentRow }): JSX.Element {
           {link}
         </p>
       )}
+
+      {/*
+        GoBD §147: der Beleg muss unveränderbar nachweisbar sein. Die Prüfsumme
+        ist dieser Nachweis. Fehlt sie, sagen wir das, statt Integrität zu
+        suggerieren, die wir nicht belegen können.
+      */}
+      <p
+        style={{
+          margin: '6px 0 0',
+          fontSize: '0.7rem',
+          color: 'var(--w14-ink-faded)',
+        }}
+        title={row.sha256Hex ?? undefined}
+      >
+        {digest ? (
+          <>
+            Prüfsumme <span style={{ fontFamily: 'var(--w14-font-mono)' }}>{digest}</span>
+          </>
+        ) : (
+          <span style={{ fontStyle: 'italic' }}>Ohne Prüfsumme gespeichert</span>
+        )}
+      </p>
+
       <div style={{ marginTop: 10, display: 'flex', justifyContent: 'flex-end' }}>
-        <Button
-          variant="ghost"
-          size="md"
-          onClick={() => {
-            if (window.confirm(`Dokument "${row.fileName}" archivieren?`)) archive.mutate();
-          }}
-          disabled={archive.isPending}
-        >
-          Archivieren
-        </Button>
+        {row.archivedAt ? (
+          <span
+            className="w14-smallcaps"
+            style={{
+              fontSize: '0.68rem',
+              letterSpacing: '0.08em',
+              color: 'var(--w14-ink-faded)',
+            }}
+          >
+            Archiviert am {new Date(row.archivedAt).toLocaleDateString('de-DE')}
+          </span>
+        ) : (
+          <Button
+            variant="ghost"
+            size="md"
+            onClick={() => {
+              if (window.confirm(`Dokument "${row.fileName}" archivieren?`)) archive.mutate();
+            }}
+            disabled={archive.isPending}
+          >
+            Archivieren
+          </Button>
+        )}
       </div>
     </ParchmentCard>
+  );
+}
+
+function ArchivedBadge(): JSX.Element {
+  return (
+    <span
+      className="w14-smallcaps"
+      style={{
+        fontSize: '0.66rem',
+        letterSpacing: '0.08em',
+        padding: '2px 8px',
+        border: '1px dashed var(--w14-ink-faded)',
+        borderRadius: 'var(--w14-radius-button)',
+        color: 'var(--w14-ink-faded)',
+      }}
+    >
+      Archiviert
+    </span>
   );
 }
 
@@ -373,7 +540,7 @@ function UploadDialog({
       if (linkId.trim().length === 0) {
         throw new ApiError({
           code: 'VALIDATION_ERROR',
-          message: 'Bitte verknüpfte Entität-UUID eingeben.',
+          message: 'Bitte die verknüpfte Kennung eingeben.',
           httpStatus: 400,
         });
       }
@@ -399,7 +566,7 @@ function UploadDialog({
       if (!put.ok) {
         throw new ApiError({
           code: 'INTERNAL_ERROR',
-          message: `R2-Upload schlug fehl (HTTP ${put.status}).`,
+          message: `Die Datei konnte nicht gespeichert werden (Code ${put.status}).`,
           httpStatus: put.status,
         });
       }
@@ -593,13 +760,13 @@ function UploadDialog({
                 fontSize: '0.78rem',
               }}
             >
-              UUID
+              Kennung
             </label>
             <input
               type="text"
               value={linkId}
               onChange={(e) => setLinkId(e.target.value)}
-              placeholder="00000000-…"
+              placeholder="Kennung einfügen"
               spellCheck={false}
               style={{ ...inputStyle, fontFamily: 'var(--w14-font-mono)' }}
             />
