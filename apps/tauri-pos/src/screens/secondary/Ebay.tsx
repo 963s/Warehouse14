@@ -1,28 +1,28 @@
 /**
  * Ebay — Tier-2 9-stufige Listing-Pipeline (Phase 2 Day 8).
  *
- * Kanban-style 9 columns (one per ebayState). Cards are products enrolled
- * in the eBay workflow (listedOnEbay = true). Drag-and-drop NOT required:
- *   • click a card → side drawer opens
- *   • drawer shows product header + history timeline + "Übergang zu …"
- *     buttons drawn from ALLOWED_EBAY_TRANSITIONS for the current state
+ * Kanban-style Spalten (eine je ebayState). Karten sind Artikel, die in der
+ * eBay-Zustandsmaschine eingebucht sind (`ebay_state IS NOT NULL`), gefiltert
+ * über `enrolledOnEbay: true`. NICHT über das alte `listedOnEbay`-Flag: das
+ * kippt erst bei einem echten Marktplatz-Push auf true, so dass die Tafel damit
+ * fast immer leer blieb.
  *
- * Since `GET /api/products` does not yet expose ebayState in the row, we
- * fetch the list once and then issue one `productsApi.get()` per row to
- * resolve current states. Cached for 30s, which is fine for the volume
- * of an eBay seller's open listings (typically < 100).
+ * `GET /api/products` liefert `ebayState` direkt auf der Listenzeile, also
+ * genügt EIN Request für die ganze Tafel. Kein Detail-Fächer je Karte mehr.
+ *
+ * Eine führende Spalte zeigt verfügbare, noch nicht eingebuchte Artikel, damit
+ * die Pipeline von hier aus überhaupt begonnen werden kann.
+ *
+ * Deutsche Sprache, Konflikt-Texte und Übergangs-Verben kommen aus
+ * `@warehouse14/i18n-de` — wortgleich mit der Telefon-App.
  */
 
-import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 
 import {
-  ALLOWED_EBAY_TRANSITIONS,
   ApiError,
-  EBAY_STATE_LABELS,
-  EBAY_STATE_ORDER,
   type EbayState,
-  type ProductDetail,
   type ProductListRow,
   ebayApi,
   productsApi,
@@ -31,51 +31,61 @@ import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
 import { useToastStore } from '../../state/toast-store.js';
-import { describeError } from '@warehouse14/i18n-de';
+import {
+  EBAY_STATE_ORDER,
+  type EbayTransitionOption,
+  type SideEffectMeta,
+  describeError,
+  describeSideEffect,
+  entersSoldCluster,
+  nextTransitions,
+  relativeTime,
+  sourceLabel,
+  stateLabel,
+} from '@warehouse14/i18n-de';
+
+/** Wie viele Einbuch-Kandidaten die führende Spalte höchstens anbietet. */
+const ENROLL_CANDIDATE_LIMIT = 50;
 
 export function Ebay(): JSX.Element {
   const api = useApiClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
+  // Die Pipeline: alle Artikel mit einem eBay-Zustand, in EINEM Request.
   const listQ = useQuery({
-    queryKey: ['products', 'list', { listedOnEbay: true, limit: 200 }],
-    queryFn: () => productsApi.list(api, { listedOnEbay: true, limit: 200 }),
+    queryKey: ['products', 'list', { enrolledOnEbay: true, limit: 200 }],
+    queryFn: () => productsApi.list(api, { enrolledOnEbay: true, limit: 200 }),
+    staleTime: 30_000,
+  });
+
+  // Einbuch-Kandidaten: verfügbar im Laden, noch nie in der eBay-Pipeline.
+  const candidatesQ = useQuery({
+    queryKey: [
+      'products',
+      'list',
+      { enrolledOnEbay: false, status: 'AVAILABLE', limit: ENROLL_CANDIDATE_LIMIT },
+    ],
+    queryFn: () =>
+      productsApi.list(api, {
+        enrolledOnEbay: false,
+        status: 'AVAILABLE',
+        limit: ENROLL_CANDIDATE_LIMIT,
+      }),
     staleTime: 30_000,
   });
 
   const rows = listQ.data?.items ?? [];
-
-  // One detail per row — N+1 by design (the volume is small enough).
-  const detailQs = useQueries({
-    queries: rows.map((r) => ({
-      queryKey: ['products', 'detail', r.id] as const,
-      queryFn: () => productsApi.get(api, r.id),
-      staleTime: 30_000,
-    })),
-  });
-
-  const detailById = useMemo(() => {
-    const m = new Map<string, ProductDetail>();
-    detailQs.forEach((q) => {
-      if (q.data) m.set(q.data.id, q.data);
-    });
-    return m;
-  }, [detailQs]);
+  const candidates = candidatesQ.data?.items ?? [];
 
   const byState = useMemo(() => {
-    const buckets = new Map<EbayState | '__NULL__', ProductListRow[]>();
+    const buckets = new Map<EbayState, ProductListRow[]>();
     for (const state of EBAY_STATE_ORDER) buckets.set(state, []);
-    buckets.set('__NULL__', []);
     for (const row of rows) {
-      const detail = detailById.get(row.id);
-      const state = detail?.ebayState ?? '__NULL__';
-      const bucket = buckets.get(state);
-      if (bucket) bucket.push(row);
+      if (row.ebayState == null) continue; // durch den Filter unmöglich, defensiv
+      buckets.get(row.ebayState)?.push(row);
     }
     return buckets;
-  }, [rows, detailById]);
-
-  const totalDetailLoading = detailQs.some((q) => q.isLoading);
+  }, [rows]);
 
   return (
     <section
@@ -105,7 +115,7 @@ export function Ebay(): JSX.Element {
           className="w14-smallcaps"
           style={{ color: 'var(--w14-ink-faded)', fontSize: '0.74rem', letterSpacing: '0.08em' }}
         >
-          {listQ.isFetching || totalDetailLoading ? 'lädt…' : `${rows.length} Artikel`}
+          {listQ.isFetching ? 'lädt…' : `${rows.length} in der Pipeline`}
         </span>
       </header>
 
@@ -115,8 +125,6 @@ export function Ebay(): JSX.Element {
         <KanbanSkeleton />
       ) : listQ.isError ? (
         <ErrorBanner />
-      ) : rows.length === 0 ? (
-        <EmptyState />
       ) : (
         <div
           style={{
@@ -128,13 +136,14 @@ export function Ebay(): JSX.Element {
             paddingBottom: 8,
           }}
         >
-          {EBAY_STATE_ORDER.map((state) => (
+          {candidates.length > 0 && (
             <Column
-              key={state}
-              title={EBAY_STATE_LABELS[state]}
-              count={byState.get(state)?.length ?? 0}
+              title="Nicht eingebucht"
+              hint="Verfügbar im Laden, noch nicht bei eBay."
+              count={candidates.length}
+              muted
             >
-              {(byState.get(state) ?? []).map((row) => (
+              {candidates.map((row) => (
                 <ProductCard
                   key={row.id}
                   row={row}
@@ -143,18 +152,23 @@ export function Ebay(): JSX.Element {
                 />
               ))}
             </Column>
-          ))}
-          {(byState.get('__NULL__')?.length ?? 0) > 0 && (
-            <Column title="ohne State" count={byState.get('__NULL__')?.length ?? 0}>
-              {(byState.get('__NULL__') ?? []).map((row) => (
-                <ProductCard
-                  key={row.id}
-                  row={row}
-                  selected={selectedId === row.id}
-                  onClick={() => setSelectedId(row.id)}
-                />
-              ))}
-            </Column>
+          )}
+
+          {rows.length === 0 && candidates.length === 0 ? (
+            <EmptyState />
+          ) : (
+            EBAY_STATE_ORDER.map((state) => (
+              <Column key={state} title={stateLabel(state)} count={byState.get(state)?.length ?? 0}>
+                {(byState.get(state) ?? []).map((row) => (
+                  <ProductCard
+                    key={row.id}
+                    row={row}
+                    selected={selectedId === row.id}
+                    onClick={() => setSelectedId(row.id)}
+                  />
+                ))}
+              </Column>
+            ))
           )}
         </div>
       )}
@@ -170,11 +184,15 @@ export function Ebay(): JSX.Element {
 
 function Column({
   title,
+  hint,
   count,
+  muted = false,
   children,
 }: {
   title: string;
+  hint?: string;
   count: number;
+  muted?: boolean;
   children: React.ReactNode;
 }): JSX.Element {
   return (
@@ -184,41 +202,49 @@ function Column({
         display: 'flex',
         flexDirection: 'column',
         minHeight: 0,
-        background: 'var(--w14-parchment-1)',
-        border: '1px solid var(--w14-rule)',
+        background: muted ? 'transparent' : 'var(--w14-parchment-1)',
+        border: muted ? '1px dashed var(--w14-rule)' : '1px solid var(--w14-rule)',
         borderRadius: 'var(--w14-radius-card)',
         padding: 8,
         gap: 6,
       }}
     >
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'baseline',
-          padding: '4px 6px',
-        }}
-      >
-        <span
-          className="w14-smallcaps"
-          style={{
-            fontSize: '0.74rem',
-            letterSpacing: '0.08em',
-            color: 'var(--w14-ink-aged)',
-          }}
-        >
-          {title}
-        </span>
-        <span
-          className="w14-tabular"
-          style={{
-            fontFamily: 'var(--w14-font-mono)',
-            fontSize: '0.7rem',
-            color: 'var(--w14-ink-faded)',
-          }}
-        >
-          {count}
-        </span>
+      <div style={{ padding: '4px 6px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <span
+            className="w14-smallcaps"
+            style={{
+              fontSize: '0.74rem',
+              letterSpacing: '0.08em',
+              color: 'var(--w14-ink-aged)',
+            }}
+          >
+            {title}
+          </span>
+          <span
+            className="w14-tabular"
+            style={{
+              fontFamily: 'var(--w14-font-mono)',
+              fontSize: '0.7rem',
+              color: 'var(--w14-ink-faded)',
+            }}
+          >
+            {count}
+          </span>
+        </div>
+        {hint && (
+          <p
+            style={{
+              margin: '3px 0 0',
+              fontSize: '0.68rem',
+              lineHeight: 1.35,
+              color: 'var(--w14-ink-faded)',
+              fontStyle: 'italic',
+            }}
+          >
+            {hint}
+          </p>
+        )}
       </div>
       <div
         style={{
@@ -296,6 +322,11 @@ function ProductDrawer({
   const qc = useQueryClient();
   const addToast = useToastStore((s) => s.addToast);
 
+  /** Ein Schritt, der auf die ausdrückliche Bestätigung des Kassierers wartet. */
+  const [pending, setPending] = useState<EbayTransitionOption | null>(null);
+  /** Der letzte Bestands-Nebeneffekt, sichtbar bis der Kassierer weitergeht. */
+  const [sideEffect, setSideEffect] = useState<SideEffectMeta | null>(null);
+
   const detailQ = useQuery({
     queryKey: ['products', 'detail', productId],
     queryFn: () => productsApi.get(api, productId),
@@ -311,17 +342,29 @@ function ProductDrawer({
   const transition = useMutation({
     mutationFn: (toState: EbayState) => ebayApi.transition(api, productId, { toState }),
     onSuccess: async (res) => {
-      addToast({
-        tone: 'success',
-        title: `Übergang ${res.fromState ?? '-'} → ${res.toState}`,
-        body:
-          res.inventorySideEffect !== 'NONE' ? `Inventar: ${res.inventorySideEffect}` : undefined,
-      });
+      setPending(null);
+
+      const effect = describeSideEffect(res.inventorySideEffect);
+      setSideEffect(effect.show ? effect : null);
+
+      // Ein Konflikt ist KEIN Erfolg. Der Bestand widerspricht dem eBay-Schritt,
+      // das muss als Warnung stehen bleiben, nicht als grüne Bestätigung.
+      if (effect.isConflict) {
+        addToast({ tone: 'alert', title: effect.title, body: effect.message });
+      } else {
+        addToast({
+          tone: 'success',
+          title: `${stateLabel(res.fromState)} → ${stateLabel(res.toState)}`,
+          body: effect.show ? effect.message : undefined,
+        });
+      }
+
       await qc.invalidateQueries({ queryKey: ['products', 'detail', productId] });
       await qc.invalidateQueries({ queryKey: ['products', 'ebay-history', productId] });
       await qc.invalidateQueries({ queryKey: ['products', 'list'] });
     },
     onError: (err: unknown) => {
+      setPending(null);
       addToast({
         tone: 'alert',
         title: 'Übergang abgelehnt',
@@ -331,8 +374,20 @@ function ProductDrawer({
   });
 
   const detail = detailQ.data;
-  const fromKey = detail?.ebayState ?? '__NULL__';
-  const allowed = ALLOWED_EBAY_TRANSITIONS[fromKey] ?? [];
+  const options = nextTransitions(detail?.ebayState ?? null);
+
+  /**
+   * Schritte, die den Bestand reservieren, laufen über eine ausdrückliche
+   * Bestätigung. Alles andere ist umkehrbar und geht direkt.
+   */
+  function requestTransition(opt: EbayTransitionOption): void {
+    setSideEffect(null);
+    if (entersSoldCluster(opt.to)) {
+      setPending(opt);
+      return;
+    }
+    transition.mutate(opt.to);
+  }
 
   return (
     <div
@@ -418,16 +473,24 @@ function ProductDrawer({
                   color: 'var(--w14-gold)',
                 }}
               >
-                {detail.ebayState
-                  ? `Aktuell: ${EBAY_STATE_LABELS[detail.ebayState]}`
-                  : 'Noch nicht enrollt'}
+                Aktuell: {stateLabel(detail.ebayState)}
               </span>
             </div>
           </ParchmentCard>
 
+          {sideEffect && <SideEffectPanel meta={sideEffect} />}
+
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <DiamondRule label="Übergänge" />
-            {allowed.length === 0 ? (
+
+            {pending ? (
+              <ConfirmPanel
+                option={pending}
+                busy={transition.isPending}
+                onConfirm={() => transition.mutate(pending.to)}
+                onCancel={() => setPending(null)}
+              />
+            ) : options.length === 0 ? (
               <p
                 style={{
                   margin: 0,
@@ -439,16 +502,27 @@ function ProductDrawer({
                 Endzustand erreicht.
               </p>
             ) : (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {allowed.map((next) => (
-                  <Button
-                    key={next}
-                    variant={next === 'VERSENDET' || next === 'BEZAHLT' ? 'primary' : 'ghost'}
-                    onClick={() => transition.mutate(next)}
-                    disabled={transition.isPending}
-                  >
-                    → {EBAY_STATE_LABELS[next]}
-                  </Button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {options.map((opt) => (
+                  <div key={opt.to} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <Button
+                      variant={opt.isRevert ? 'ghost' : 'primary'}
+                      onClick={() => requestTransition(opt)}
+                      disabled={transition.isPending}
+                    >
+                      {opt.actionLabel}
+                    </Button>
+                    <span
+                      style={{
+                        fontSize: '0.72rem',
+                        lineHeight: 1.4,
+                        color: 'var(--w14-ink-faded)',
+                        paddingLeft: 2,
+                      }}
+                    >
+                      {opt.hint}
+                    </span>
+                  </div>
                 ))}
               </div>
             )}
@@ -483,18 +557,17 @@ function ProductDrawer({
                 {historyQ.data.items.map((ev) => (
                   <li
                     key={ev.id}
-                    className="w14-tabular"
                     style={{
-                      fontFamily: 'var(--w14-font-mono)',
-                      fontSize: '0.74rem',
+                      fontSize: '0.76rem',
+                      lineHeight: 1.45,
                       color: 'var(--w14-ink-aged)',
                     }}
                   >
-                    {new Date(ev.createdAt).toLocaleString('de-DE')} ·{' '}
-                    <strong style={{ color: 'var(--w14-ink)' }}>
-                      {ev.fromState ?? '∅'} → {ev.toState}
-                    </strong>{' '}
-                    · {ev.changedBySource.toLowerCase()}
+                    <strong style={{ color: 'var(--w14-ink)', fontWeight: 500 }}>
+                      {stateLabel(ev.fromState)} → {stateLabel(ev.toState)}
+                    </strong>
+                    <br />
+                    {sourceLabel(ev.changedBySource)} · {relativeTime(ev.createdAt)}
                   </li>
                 ))}
               </ul>
@@ -503,6 +576,70 @@ function ProductDrawer({
         </>
       )}
     </div>
+  );
+}
+
+/** Der ehrliche Bestands-Hinweis nach einem Übergang (Konflikt bleibt stehen). */
+function SideEffectPanel({ meta }: { meta: SideEffectMeta }): JSX.Element {
+  const accent = meta.isConflict ? 'var(--w14-wax-red)' : 'var(--w14-verdigris)';
+  return (
+    <ParchmentCard padding="md" style={{ border: `1px solid ${accent}` }}>
+      <div
+        role={meta.isConflict ? 'alert' : undefined}
+        style={{ display: 'flex', flexDirection: 'column', gap: 4 }}
+      >
+        <span
+          className="w14-smallcaps"
+          style={{ fontSize: '0.74rem', letterSpacing: '0.08em', color: accent }}
+        >
+          {meta.title}
+        </span>
+        <p style={{ margin: 0, fontSize: '0.82rem', lineHeight: 1.5, color: 'var(--w14-ink-aged)' }}>
+          {meta.message}
+        </p>
+      </div>
+    </ParchmentCard>
+  );
+}
+
+/**
+ * Die Bestätigung vor einem Schritt, der den Bestand serverseitig reserviert.
+ * Ein Fehlgriff hier verkauft einen Artikel zweimal — deshalb kein Ein-Klick.
+ */
+function ConfirmPanel({
+  option,
+  busy,
+  onConfirm,
+  onCancel,
+}: {
+  option: EbayTransitionOption;
+  busy: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}): JSX.Element {
+  return (
+    <ParchmentCard padding="md" style={{ border: '1px solid var(--w14-gold)' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <span
+          className="w14-smallcaps"
+          style={{ fontSize: '0.74rem', letterSpacing: '0.08em', color: 'var(--w14-gold)' }}
+        >
+          Bestätigung erforderlich
+        </span>
+        <p style={{ margin: 0, fontSize: '0.86rem', lineHeight: 1.5, color: 'var(--w14-ink-aged)' }}>
+          „{option.actionLabel}" reserviert den Artikel im Lager, damit er nicht zusätzlich im Laden
+          verkauft wird. Ist der eBay-Verkauf sicher?
+        </p>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Button variant="primary" onClick={onConfirm} disabled={busy}>
+            {busy ? 'Wird gebucht…' : 'Ja, buchen'}
+          </Button>
+          <Button variant="ghost" onClick={onCancel} disabled={busy}>
+            Abbrechen
+          </Button>
+        </div>
+      </div>
+    </ParchmentCard>
   );
 }
 
@@ -541,7 +678,7 @@ function KanbanSkeleton(): JSX.Element {
 
 function EmptyState(): JSX.Element {
   return (
-    <div style={{ display: 'grid', placeItems: 'center', padding: 32 }}>
+    <div style={{ display: 'grid', placeItems: 'center', padding: 32, flex: 1 }}>
       <ParchmentCard padding="lg" style={{ textAlign: 'center', maxWidth: 480 }}>
         <DiamondRule />
         <p

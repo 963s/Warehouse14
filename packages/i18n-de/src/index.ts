@@ -11,3 +11,4 @@
  */
 export * from "./german-text"
 export * from "./audit-vocab"
+export * from "./ebay-vocab"
