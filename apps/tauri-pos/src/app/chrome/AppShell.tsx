@@ -25,6 +25,7 @@
  * on sign-out via React's natural unmount.
  */
 
+import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 
@@ -33,6 +34,7 @@ import { ErrorBoundary, ToastContainer } from '@warehouse14/ui-kit';
 
 import { useAlertSubscription } from '../../hooks/useAlertSubscription.js';
 import { useApiClient } from '../../lib/api-context.js';
+import { clearCachedRead } from '../../offline/index.js';
 import { releaseCart } from '../../lib/release-cart.js';
 import { clearSessionToken } from '../../lib/session-token.js';
 import { useAnkaufCartStore } from '../../state/ankauf-cart-store.js';
@@ -81,6 +83,7 @@ export function AppShell(): JSX.Element {
   const location = useLocation();
   const navigate = useNavigate();
   const api = useApiClient();
+  const qc = useQueryClient();
 
   const setUnauthenticated = useSessionStore((s) => s.setUnauthenticated);
   const clearLedger = useLedgerFeed((s) => s.clear);
@@ -161,7 +164,12 @@ export function AppShell(): JSX.Element {
     //   3. Reset Bewertung context (customer id + appraisal id — pure PII).
     //   4. Sign out on the server (best-effort).
     //   5. Wipe Zustand stores (in-memory).
-    //   6. NUKE every per-operator localStorage key so a crash-relaunch
+    //   6. Wipe BOTH read caches: the TanStack query cache (in-memory) and the
+    //      offline read cache (in-memory + on disk). The Kunden panels snapshot
+    //      customer records through `useCachedQuery`, so without this the next
+    //      cashier on a shared till inherits the previous one's customer data,
+    //      and the disk copy survives a relaunch.
+    //   7. NUKE every per-operator localStorage key so a crash-relaunch
     //      doesn't rehydrate stale state under the next cashier.
     //
     // Reservation hygiene FIRST because POS reservations have no
@@ -194,6 +202,12 @@ export function AppShell(): JSX.Element {
     clearRecents();
     clearToasts();
 
+    // Every read this operator made: TanStack's in-memory cache and the offline
+    // snapshot cache (which also purges its on-disk copies). Customer records,
+    // sales history and till figures must not outlive the session that read them.
+    qc.clear();
+    clearCachedRead();
+
     // Belt-and-braces: even if a store's `reset()` left its persisted
     // payload behind (race against Zustand's debounced write), we
     // remove the keys ourselves. Safe to call without a Tauri webview —
@@ -214,6 +228,7 @@ export function AppShell(): JSX.Element {
     clearLedger,
     clearRecents,
     clearToasts,
+    qc,
     setUnauthenticated,
     snapshotAndClearCart,
   ]);

@@ -1,10 +1,17 @@
 /**
  * Kasse — Tier-1 surface #4 (memory.md §11.3).
  *
- * Three sub-views driven by `useCurrentShift`:
+ * Four sub-views driven by `useCurrentShift`:
  *   • loading              → minimal Splash
+ *   • read failed          → <KasseReadError/>      (we do NOT know the state)
  *   • shift === null       → <ShiftOpenPanel/>      (open a new shift)
  *   • shift.status==='OPEN'→ <KassenbuchPanel/>     (live management + Z-Bon)
+ *
+ * The read-failure branch is not cosmetic. `data === undefined` means the call
+ * did not answer; it does NOT mean "no shift is open". Treating the two alike
+ * invited the operator to open a SECOND shift over a live one, which splits the
+ * day's cash across two Kassenbücher. On a failed read we say so and offer a
+ * retry, and we never render the open-a-shift panel.
  *
  * Per §10/§11 the chrome (Karteikasten + sub-breadcrumb if applicable) is
  * owned by AppShell; this file owns ONLY the surface body.
@@ -17,7 +24,9 @@
  *   • Z-Bon clean    → success
  */
 
-import { DiamondRule, ParchmentCard, Seal } from '@warehouse14/ui-kit';
+import { ApiError } from '@warehouse14/api-client';
+import { describeError } from '@warehouse14/i18n-de';
+import { Button, DiamondRule, ParchmentCard, Seal } from '@warehouse14/ui-kit';
 
 import { useCurrentShift } from '../../hooks/useCurrentShift.js';
 
@@ -26,9 +35,20 @@ import { KassenbuchPanel } from './KassenbuchPanel.js';
 import { ShiftOpenPanel } from './ShiftOpenPanel.js';
 
 export function Kasse(): JSX.Element {
-  const { data, isLoading } = useCurrentShift();
+  const { data, isLoading, isError, error, isFetching, refetch } = useCurrentShift();
 
   if (isLoading && data === undefined) return <KasseLoadingSplash />;
+
+  // An unanswered read is not an empty till. Say what we know, and no more.
+  if (data === undefined) {
+    return (
+      <KasseReadError
+        detail={isError && error instanceof ApiError ? describeError(error) : null}
+        busy={isFetching}
+        onRetry={() => void refetch()}
+      />
+    );
+  }
 
   // The purpose banner sits above BOTH sub-views — the owner has to meet the
   // "Tageskasse ≠ checkout" concept no matter which state the day is in.
@@ -37,7 +57,64 @@ export function Kasse(): JSX.Element {
       <div style={{ padding: 'var(--space-5) var(--space-7) 0' }}>
         <KassePurposeBanner />
       </div>
-      {data === null || data === undefined ? <ShiftOpenPanel /> : <KassenbuchPanel shift={data} />}
+      {data === null ? <ShiftOpenPanel /> : <KassenbuchPanel shift={data} />}
+    </div>
+  );
+}
+
+/**
+ * The honest unknown. We deliberately offer no "Kasse öffnen" here: opening a
+ * shift while a live one is unreadable would split the day's cash in two.
+ */
+function KasseReadError({
+  detail,
+  busy,
+  onRetry,
+}: {
+  detail: string | null;
+  busy: boolean;
+  onRetry: () => void;
+}): JSX.Element {
+  return (
+    <div style={{ flex: 1, display: 'grid', placeItems: 'center', padding: 'var(--space-7)' }}>
+      <ParchmentCard
+        padding="lg"
+        style={{
+          width: 'min(460px, 100%)',
+          textAlign: 'center',
+          border: '1px solid var(--w14-wax-red)',
+        }}
+      >
+        <Seal size="md" tone="faded" label="4" />
+        <h2
+          style={{
+            fontFamily: 'var(--w14-font-display)',
+            fontWeight: 500,
+            margin: 'var(--space-4) 0 var(--space-1)',
+            fontSize: '1.4rem',
+          }}
+        >
+          Kassenzustand unbekannt
+        </h2>
+        <DiamondRule />
+        <p
+          role="alert"
+          style={{
+            margin: 'var(--space-3) 0 0',
+            fontSize: '0.9rem',
+            lineHeight: 1.6,
+            color: 'var(--w14-ink-aged)',
+          }}
+        >
+          {detail ?? 'Die Kasse konnte nicht gelesen werden.'} Ob eine Schicht offen ist, lässt sich
+          gerade nicht sagen. Bitte nicht neu öffnen, sondern erneut laden.
+        </p>
+        <div style={{ marginTop: 'var(--space-5)' }}>
+          <Button variant="primary" onClick={onRetry} disabled={busy}>
+            {busy ? 'Wird geladen…' : 'Erneut laden'}
+          </Button>
+        </div>
+      </ParchmentCard>
     </div>
   );
 }
