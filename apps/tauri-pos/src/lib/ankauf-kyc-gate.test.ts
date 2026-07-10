@@ -122,3 +122,56 @@ describe('evaluateKycGate — §10 aggregation (Ankauf linked-transaction banner
     expect(r.aggregateReached).toBe(false);
   });
 });
+
+describe('evaluateKycGate — §15 GwG verstärkte Sorgfaltspflichten (PEP)', () => {
+  const pep = (kycVerifiedAt: string | null) => ({ kycVerifiedAt, pepMatch: true });
+
+  it('a PEP seller flags enhanced due diligence even at one cent', () => {
+    const r = evaluateKycGate({
+      direction: 'ANKAUF',
+      totalCents: toCents('0.01'),
+      customer: pep(null),
+    });
+    expect(r.enhancedDueDiligence).toBe(true);
+  });
+
+  it('a stamped KYC does NOT clear the PEP obligation', () => {
+    const r = evaluateKycGate({
+      direction: 'ANKAUF',
+      totalCents: toCents('500.00'),
+      customer: pep('2026-01-01T00:00:00Z'),
+    });
+    expect(r.kycVerified).toBe(true);
+    expect(r.required).toBe(false);
+    expect(r.enhancedDueDiligence).toBe(true);
+  });
+
+  it('a PEP buying below the §10 threshold on VERKAUF still flags', () => {
+    const r = evaluateKycGate({
+      direction: 'VERKAUF',
+      totalCents: toCents('10.00'),
+      customer: pep(null),
+    });
+    expect(r.thresholdReached).toBe(false);
+    expect(r.required).toBe(false);
+    expect(r.enhancedDueDiligence).toBe(true);
+  });
+
+  it('a non-PEP customer never flags', () => {
+    const r = evaluateKycGate({
+      direction: 'ANKAUF',
+      totalCents: toCents('500.00'),
+      customer: customer(null),
+    });
+    expect(r.enhancedDueDiligence).toBe(false);
+  });
+
+  it('no customer selected → nothing to flag', () => {
+    const r = evaluateKycGate({
+      direction: 'ANKAUF',
+      totalCents: toCents('500.00'),
+      customer: null,
+    });
+    expect(r.enhancedDueDiligence).toBe(false);
+  });
+});

@@ -172,6 +172,7 @@ function CustomerCard({ detail }: { detail: CustomerDetail }): JSX.Element {
               trust={detail.trustLevel}
               sanctions={detail.sanctionsMatch}
             />
+            {detail.pepMatch && <PepChip />}
             <Button variant="ghost" size="sm" onClick={() => setTrustOpen(true)}>
               Trust ändern
             </Button>
@@ -413,6 +414,30 @@ function DataRow({
         </span>
       )}
     </div>
+  );
+}
+
+/**
+ * PepChip — §15 GwG. A politically exposed person is not blocked, but every
+ * dealing with them carries verstärkte Sorgfaltspflichten. The marker stands
+ * beside the trust chip rather than replacing it: a PEP can also be VERIFIED.
+ */
+function PepChip(): JSX.Element {
+  return (
+    <span
+      className="w14-smallcaps"
+      title="Politisch exponierte Person. Verstärkte Sorgfaltspflicht nach §15 GwG."
+      style={{
+        fontSize: '0.85rem',
+        letterSpacing: '0.08em',
+        padding: 'var(--space-1) var(--space-3)',
+        borderRadius: 'var(--w14-radius-button)',
+        border: '1px solid var(--w14-gold)',
+        color: 'var(--w14-gold)',
+      }}
+    >
+      Politisch exponiert
+    </span>
   );
 }
 

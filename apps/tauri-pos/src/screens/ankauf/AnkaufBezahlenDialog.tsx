@@ -106,6 +106,8 @@ export function AnkaufBezahlenDialog({
    * blip) sends the SAME key. The server's partial UNIQUE INDEX dedupes on it.
    */
   const idempotencyKeyRef = useRef<string>(crypto.randomUUID());
+  /** §15 GwG: der Kassierer bestätigt die verstärkte Sorgfaltspflicht bewusst. */
+  const [pepAcknowledged, setPepAcknowledged] = useState(false);
 
   const customerQ = useQuery({
     queryKey: ['customers', customerId],
@@ -122,6 +124,7 @@ export function AnkaufBezahlenDialog({
       setStampingKyc(false);
       setError(null);
       setFinalized(null);
+      setPepAcknowledged(false);
       inFlightRef.current = false;
       idempotencyKeyRef.current = crypto.randomUUID();
     }
@@ -149,6 +152,9 @@ export function AnkaufBezahlenDialog({
   const kycVerified = kycGate.kycVerified;
   const blocked = customer?.sanctionsMatch === true || customer?.trustLevel === 'BANNED';
   const needsKycStamp = triggersGwgGate && !kycVerified;
+  // Eine politisch exponierte Person darf verkaufen, aber nur unter verstärkter
+  // Sorgfaltspflicht. Kein stiller Durchlauf: der Kassierer bestätigt sie.
+  const needsPepAcknowledgement = kycGate.enhancedDueDiligence && !pepAcknowledged;
 
   const payoutValid =
     payoutMethod === 'CASH' ||
@@ -160,6 +166,7 @@ export function AnkaufBezahlenDialog({
     finalized === null &&
     !blocked &&
     !needsKycStamp &&
+    !needsPepAcknowledgement &&
     payoutValid &&
     items.length > 0 &&
     customerId !== null;
@@ -552,6 +559,9 @@ export function AnkaufBezahlenDialog({
             triggersGwgGate={triggersGwgGate}
             needsKycStamp={needsKycStamp}
             blocked={blocked}
+            enhancedDueDiligence={kycGate.enhancedDueDiligence}
+            pepAcknowledged={pepAcknowledged}
+            onPepAcknowledge={setPepAcknowledged}
             error={error}
             canSubmit={canSubmit}
             submitting={submitting}
@@ -583,6 +593,10 @@ function ReviewPhase(props: {
   triggersGwgGate: boolean;
   needsKycStamp: boolean;
   blocked: boolean;
+  /** §15 GwG — the selected seller is a politically exposed person. */
+  enhancedDueDiligence: boolean;
+  pepAcknowledged: boolean;
+  onPepAcknowledge: (next: boolean) => void;
   error: string | null;
   canSubmit: boolean;
   submitting: boolean;
@@ -604,6 +618,9 @@ function ReviewPhase(props: {
     triggersGwgGate,
     needsKycStamp,
     blocked,
+    enhancedDueDiligence,
+    pepAcknowledged,
+    onPepAcknowledge,
     error,
     canSubmit,
     submitting,
@@ -680,6 +697,40 @@ function ReviewPhase(props: {
           <p style={{ margin: 0, color: 'var(--w14-wax-red)', fontWeight: 500 }}>
             Geschäft mit diesem Verkäufer nicht zulässig. Sanktion oder Sperre.
           </p>
+        </ParchmentCard>
+      )}
+
+      {!blocked && enhancedDueDiligence && (
+        <ParchmentCard padding="md" style={{ marginTop: 12, border: '2px solid var(--w14-gold)' }}>
+          <p
+            role="alert"
+            style={{ margin: 0, color: 'var(--w14-ink-aged)', fontSize: '0.88rem', lineHeight: 1.55 }}
+          >
+            <strong style={{ color: 'var(--w14-gold)' }}>
+              Politisch exponierte Person.
+            </strong>{' '}
+            Der Ankauf ist zulässig, verlangt aber die verstärkte Sorgfaltspflicht: Herkunft der
+            Ware und der Mittel prüfen, den Vorgang festhalten und die Ladenleitung informieren.
+          </p>
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              marginTop: 10,
+              cursor: 'pointer',
+              fontSize: '0.88rem',
+              color: 'var(--w14-ink)',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={pepAcknowledged}
+              onChange={(e) => onPepAcknowledge(e.target.checked)}
+              style={{ accentColor: 'var(--w14-gold)', width: 18, height: 18 }}
+            />
+            Verstärkte Sorgfaltspflicht beachtet
+          </label>
         </ParchmentCard>
       )}
 

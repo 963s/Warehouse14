@@ -18,6 +18,13 @@ import { toCents } from './intake-math.js';
 export interface KycGateCustomer {
   /** ISO timestamp KYC was stamped, or null if never verified. */
   kycVerifiedAt: string | null;
+  /**
+   * §15 GwG — the customer is a politically exposed person. This is NOT a block:
+   * the buy may proceed under verstärkte Sorgfaltspflichten (enhanced due
+   * diligence), which the operator must consciously acknowledge. Absent on
+   * callers that have only a list row; treated as false.
+   */
+  pepMatch?: boolean;
 }
 
 /**
@@ -67,6 +74,13 @@ export interface KycGateDecision {
   required: boolean;
   /** Which rule made it required, for the banner wording. Null when not required. */
   reason: 'single' | 'aggregate' | null;
+  /**
+   * §15 GwG: a politically exposed person is selected, so the payout demands
+   * verstärkte Sorgfaltspflichten. Unlike a sanctions hit this does not forbid
+   * the buy; the UI must make the operator acknowledge it before paying out.
+   * False when no customer is selected.
+   */
+  enhancedDueDiligence: boolean;
 }
 
 /** GwG threshold in integer cents, computed once. */
@@ -91,5 +105,17 @@ export function evaluateKycGate(params: KycGateParams): KycGateDecision {
   const required = trips && customer != null && !kycVerified;
   const reason = !required ? null : thresholdReached ? 'single' : 'aggregate';
 
-  return { thresholdReached, aggregateReached, aggregateCents, kycVerified, required, reason };
+  // §15 GwG stands on its own: it applies to a PEP at any amount, whether or not
+  // the §10 identity threshold trips and whether or not KYC is already stamped.
+  const enhancedDueDiligence = customer != null && customer.pepMatch === true;
+
+  return {
+    thresholdReached,
+    aggregateReached,
+    aggregateCents,
+    kycVerified,
+    required,
+    reason,
+    enhancedDueDiligence,
+  };
 }
