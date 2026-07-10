@@ -41,6 +41,11 @@ import { describeError } from '@warehouse14/i18n-de';
 // ════════════════════════════════════════════════════════════════════════
 
 const THREADS_KEY = ['whatsapp', 'threads'] as const;
+
+/** Abfragetakt der Konversationsliste, solange der Bildschirm offen ist. */
+const THREADS_POLL_MS = 20_000;
+/** Abfragetakt der offenen Konversation (neue eingehende Nachrichten). */
+const THREAD_POLL_MS = 15_000;
 const threadKey = (phone: string): readonly unknown[] => ['whatsapp', 'thread', phone];
 
 // ════════════════════════════════════════════════════════════════════════
@@ -80,13 +85,32 @@ interface ThreadListProps {
 
 function ThreadList({ selectedPhone, onSelect }: ThreadListProps): JSX.Element {
   const api = useApiClient();
+
+  // An inbox that never refreshes is not an inbox. The app-wide query defaults
+  // turn `refetchOnWindowFocus` off (right for fiscal reads, wrong for a live
+  // channel), so this surface opts back in and polls while it is open.
   const listQ = useQuery({
     queryKey: THREADS_KEY,
     queryFn: () => whatsappApi.listThreads(api),
     staleTime: 15_000,
+    refetchInterval: THREADS_POLL_MS,
+    refetchOnWindowFocus: true,
   });
 
-  const items = listQ.data?.items ?? [];
+  // Unanswered customers come first; among equals, the most recent message.
+  // The server returns lastMessageAt order only, which buries an unread thread
+  // as soon as any other conversation moves.
+  const items = useMemo(() => {
+    const rows = listQ.data?.items ?? [];
+    return [...rows].sort((a, b) => {
+      const aUnread = a.unreadCount > 0 ? 1 : 0;
+      const bUnread = b.unreadCount > 0 ? 1 : 0;
+      if (aUnread !== bUnread) return bUnread - aUnread;
+      return Date.parse(b.lastMessageAt) - Date.parse(a.lastMessageAt);
+    });
+  }, [listQ.data]);
+
+  const unreadThreads = items.reduce((n, t) => (t.unreadCount > 0 ? n + 1 : n), 0);
 
   return (
     <aside
@@ -123,12 +147,16 @@ function ThreadList({ selectedPhone, onSelect }: ThreadListProps): JSX.Element {
         <span
           className="w14-smallcaps"
           style={{
-            color: 'var(--w14-ink-faded)',
+            color: unreadThreads > 0 ? 'var(--w14-gold)' : 'var(--w14-ink-faded)',
             fontSize: '0.72rem',
             letterSpacing: '0.08em',
           }}
         >
-          {listQ.isFetching ? 'lädt…' : `${items.length}`}
+          {listQ.isFetching
+            ? 'lädt…'
+            : unreadThreads > 0
+              ? `${unreadThreads} offen von ${items.length}`
+              : `${items.length}`}
         </span>
       </header>
       <DiamondRule />
@@ -289,6 +317,8 @@ function ConversationPane({ phone }: { phone: string | null }): JSX.Element {
     queryFn: () => whatsappApi.getThread(api, phone!),
     staleTime: 5_000,
     enabled: phone !== null,
+    refetchInterval: phone !== null ? THREAD_POLL_MS : false,
+    refetchOnWindowFocus: true,
   });
 
   const messages = useMemo<WhatsAppMessage[]>(() => {
