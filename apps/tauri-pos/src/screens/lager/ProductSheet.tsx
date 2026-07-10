@@ -73,6 +73,7 @@ import { PRODUCT_STATUS_LABEL } from '../../lib/product-status-label.js';
 import { TAX_TREATMENT_LABEL } from '../../lib/tax-treatment-label.js';
 import { type StampErhaltung, formatStampDisplay, sortierTipp } from '../../lib/taxonomy-hints.js';
 import { useLabelPrinter } from '../../lib/use-label-printer.js';
+import { useSessionStore } from '../../state/session-store.js';
 import { useToastStore } from '../../state/toast-store.js';
 import { describeError } from '@warehouse14/i18n-de';
 
@@ -817,6 +818,7 @@ function ManageBody({
             <AccordionItem id="details" title="Details" defaultOpen={!justCreated}>
               <div style={{ display: 'grid', gap: 18 }}>
                 <DetailsSection product={product} />
+                <StammdatenEditor key={`stamm-${product.updatedAt}`} product={product} />
                 <DetailsEditor key={product.updatedAt} product={product} />
               </div>
             </AccordionItem>
@@ -888,6 +890,163 @@ function DetailsSection({ product }: { product: ProductDetail }): JSX.Element {
       ))}
     </dl>
   );
+}
+
+/**
+ * StammdatenEditor — correct the three fields a cashier actually gets wrong at
+ * intake: the name, the sale price and the condition.
+ *
+ * Before this existed, a typo in the name or a mispriced item was permanent
+ * from the till: manage mode edited only the description, the collector
+ * metadata and the SEO block, and PreisSection could merely flip a DRAFT to
+ * AVAILABLE. The server has always accepted all three through PUT
+ * /api/products/:id.
+ *
+ * The PUT is a diff: only fields the operator actually changed are sent, so a
+ * save never rewrites a value someone else edited in the meantime.
+ */
+function StammdatenEditor({ product }: { product: ProductDetail }): JSX.Element {
+  const api = useApiClient();
+  const qc = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  // PUT /api/products/:id verlangt die Ladenleitung. Ein Speichern-Knopf, der
+  // immer mit 403 endet, wäre eine Lüge: wir sperren die Felder stattdessen.
+  const darfBearbeiten = useSessionStore((s) => s.actor?.role === 'ADMIN');
+
+  const [name, setName] = useState(product.name);
+  const [price, setPrice] = useState(product.listPriceEur);
+  const [condition, setCondition] = useState(product.condition);
+  const [busy, setBusy] = useState(false);
+
+  const trimmedName = name.trim();
+  const nameError = trimmedName.length === 0 ? 'Ein Name ist nötig.' : null;
+  const priceError = isMoneyInput(price) ? null : 'Bitte einen Betrag wie 149,90 eingeben.';
+
+  const nextPrice = priceError ? product.listPriceEur : normalizeDecimal(price);
+  const patch: ProductUpdateBody = {
+    ...(trimmedName !== product.name && trimmedName.length > 0 ? { name: trimmedName } : {}),
+    ...(nextPrice !== product.listPriceEur ? { listPriceEur: nextPrice } : {}),
+    ...(condition !== product.condition ? { condition } : {}),
+  };
+  const dirty = Object.keys(patch).length > 0;
+  const blocked = nameError !== null || priceError !== null || !darfBearbeiten;
+
+  /** Der Zustand kann ein Wert sein, den die Liste nicht kennt (Altbestand). */
+  const conditionKnown = CONDITION_OPTIONS.some((o) => o.value === product.condition);
+
+  async function save(): Promise<void> {
+    if (!dirty || blocked || busy) return;
+    setBusy(true);
+    try {
+      const res = await productsApi.update(api, product.id, patch);
+      await qc.invalidateQueries({ queryKey: productDetailQueryKey(product.id) });
+      await qc.invalidateQueries({ queryKey: ['products', 'list'] });
+      addToast({
+        tone: 'success',
+        title: 'Stammdaten gespeichert',
+        body:
+          res.changedFields.length > 0
+            ? res.changedFields.map(stammdatenFeldLabel).join(', ')
+            : product.sku,
+      });
+    } catch (err) {
+      addToast({
+        tone: 'alert',
+        title: 'Speichern fehlgeschlagen',
+        body: err instanceof ApiError ? describeError(err) : 'Bitte erneut versuchen.',
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 12 }}>
+      <span style={MINI_LABEL}>Stammdaten bearbeiten</span>
+
+      <Field label="Name" required error={nameError}>
+        <Input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          maxLength={200}
+          disabled={!darfBearbeiten}
+        />
+      </Field>
+
+      <div style={TWO_COL}>
+        <Field label="Verkaufspreis (€)" required error={priceError}>
+          <Input
+            value={price}
+            inputMode="decimal"
+            onChange={(e) => setPrice(e.target.value)}
+            disabled={!darfBearbeiten}
+            style={{ fontFamily: 'var(--w14-font-mono)' }}
+          />
+        </Field>
+        <Field label="Zustand">
+          <Select
+            value={condition}
+            onChange={(e) => setCondition(e.target.value)}
+            disabled={!darfBearbeiten}
+          >
+            {!conditionKnown && <option value={product.condition}>{product.condition}</option>}
+            {CONDITION_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      </div>
+
+      {/*
+        Der Preis eines verkauften Artikels darf korrigiert werden, aber der Beleg
+        von damals ändert sich dadurch nicht. Das sagen wir laut, statt es zu
+        verschweigen.
+      */}
+      {(product.status === 'SOLD' || product.status === 'RESERVED') && (
+        <p
+          style={{
+            margin: 0,
+            fontSize: '0.8rem',
+            lineHeight: 1.5,
+            color: 'var(--w14-ink-faded)',
+          }}
+        >
+          {product.status === 'SOLD'
+            ? 'Der Artikel ist bereits verkauft. Eine Preisänderung wirkt nur auf künftige Belege, der abgeschlossene Beleg bleibt unverändert.'
+            : 'Der Artikel ist gerade reserviert. Eine Preisänderung gilt erst für den nächsten Vorgang.'}
+        </p>
+      )}
+
+      {!darfBearbeiten && (
+        <p style={{ margin: 0, fontSize: '0.8rem', lineHeight: 1.5, color: 'var(--w14-ink-faded)' }}>
+          Name, Preis und Zustand ändert nur die Ladenleitung.
+        </p>
+      )}
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <Button variant="primary" onClick={() => void save()} disabled={!dirty || blocked || busy}>
+          {busy ? 'Speichert…' : 'Stammdaten speichern'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** Serverfeld → deutsches Wort, für die Erfolgsmeldung nach dem Speichern. */
+function stammdatenFeldLabel(field: string): string {
+  switch (field) {
+    case 'name':
+      return 'Name';
+    case 'listPriceEur':
+    case 'list_price_eur':
+      return 'Verkaufspreis';
+    case 'condition':
+      return 'Zustand';
+    default:
+      return 'weitere Angabe';
+  }
 }
 
 /**
@@ -1182,7 +1341,7 @@ function PreisSection({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
       <div className="w14-tabular" style={{ fontFamily: 'var(--w14-font-mono)' }}>
-        Verkaufspreis: {product.listPriceEur} €
+        Verkaufspreis: {formatEur(product.listPriceEur)} €
       </div>
       {product.status === 'DRAFT' ? (
         canPublish ? (
