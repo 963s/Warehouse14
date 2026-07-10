@@ -72,82 +72,12 @@ export const KYC_DOC_TYPE_OPTIONS: ReadonlyArray<{ value: KycDocumentType; label
 // Pure + total: never throws, returns null only for genuinely empty input.
 // ───────────────────────────────────────────────────────────────────────────
 
-/** ISO-3166 alpha-2 → German country name, for the few we actually see. */
-const COUNTRY_DE: Readonly<Record<string, string>> = {
-  DE: "Deutschland",
-  AT: "Österreich",
-  CH: "Schweiz",
-  FR: "Frankreich",
-  NL: "Niederlande",
-  BE: "Belgien",
-  LU: "Luxemburg",
-  IT: "Italien",
-  ES: "Spanien",
-  PL: "Polen",
-}
+// Die Anschrift-Faltung lebt in @warehouse14/i18n-de, damit Telefon und Kasse
+// dieselbe Zeile zeigen. Hier nur re-exportiert, damit die Bildschirme ihre eine
+// Import-Adresse behalten.
+import { formatCustomerAddress } from "@warehouse14/i18n-de"
 
-/** Shape a structured-address blob can take (all fields optional). */
-type StructuredAddress = {
-  street?: unknown
-  postalCode?: unknown
-  city?: unknown
-  country?: unknown
-}
-
-function asTrimmed(value: unknown): string | null {
-  if (typeof value !== "string") return null
-  const trimmed = value.trim()
-  return trimmed.length > 0 ? trimmed : null
-}
-
-/**
- * Fold a structured-address object into a clean German one-liner:
- *   „Bahnhofstraße 31, 79576 Weil am Rhein, Deutschland". Country reads German
- * (DE → Deutschland); an unknown code falls back to the raw code (still no
- * English key leaks). Returns null when the object carries no usable field.
- */
-function joinStructuredAddress(obj: StructuredAddress): string | null {
-  const street = asTrimmed(obj.street)
-  const postalCode = asTrimmed(obj.postalCode)
-  const city = asTrimmed(obj.city)
-  const countryRaw = asTrimmed(obj.country)
-  const country = countryRaw
-    ? (COUNTRY_DE[countryRaw.toUpperCase()] ?? countryRaw)
-    : null
-
-  const cityLine = [postalCode, city].filter(Boolean).join(" ")
-  const parts = [street, cityLine || null, country].filter(
-    (p): p is string => p != null && p.length > 0,
-  )
-  return parts.length > 0 ? parts.join(", ") : null
-}
-
-/**
- * Render a customer's `address` for display. Detects + folds a JSON structured
- * address into a German one-liner; otherwise returns the trimmed plain string.
- * `null` for empty/blank input — the caller decides the placeholder („—").
- */
-export function formatCustomerAddress(address: string | null | undefined): string | null {
-  const trimmed = asTrimmed(address)
-  if (trimmed == null) return null
-  // Only attempt a parse when it actually looks like a JSON object — cheap guard
-  // so a normal street string never pays the try/catch.
-  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
-    try {
-      const parsed: unknown = JSON.parse(trimmed)
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        const folded = joinStructuredAddress(parsed as StructuredAddress)
-        // A JSON object with no usable address field → show nothing rather than
-        // the raw blob (never leak `{...}` with English keys to the owner).
-        if (folded != null) return folded
-        return null
-      }
-    } catch {
-      // Not valid JSON after all — fall through and show the literal string.
-    }
-  }
-  return trimmed
-}
+export { formatCustomerAddress }
 
 /**
  * The value to prefill the „Adresse" edit input with. Same folding as the

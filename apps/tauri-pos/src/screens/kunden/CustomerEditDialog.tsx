@@ -26,7 +26,7 @@ import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 import { useApiClient } from '../../lib/api-context.js';
 import { germanDateToIso, isoToGermanDate } from '../../lib/german-date.js';
 import { useToastStore } from '../../state/toast-store.js';
-import { describeError } from '@warehouse14/i18n-de';
+import { describeError, formatCustomerAddress } from '@warehouse14/i18n-de';
 
 export interface CustomerEditDialogProps {
   open: boolean;
@@ -47,7 +47,10 @@ export function CustomerEditDialog({
   const [dateOfBirth, setDateOfBirth] = useState<string>(isoToGermanDate(customer.dateOfBirth));
   const [email, setEmail] = useState<string>(customer.email ?? '');
   const [phone, setPhone] = useState<string>(customer.phone ?? '');
-  const [address, setAddress] = useState<string>(customer.address ?? '');
+  // Eine strukturierte Anschrift liegt als JSON in der Spalte. Der Kassierer
+  // bearbeitet die gefaltete deutsche Zeile, nie den rohen Block.
+  const [address, setAddress] = useState<string>(formatCustomerAddress(customer.address) ?? '');
+  const [vatId, setVatId] = useState<string>(customer.vatId ?? '');
   const [notes, setNotes] = useState<string>(customer.notes ?? '');
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,7 +62,8 @@ export function CustomerEditDialog({
     setDateOfBirth(isoToGermanDate(customer.dateOfBirth));
     setEmail(customer.email ?? '');
     setPhone(customer.phone ?? '');
-    setAddress(customer.address ?? '');
+    setAddress(formatCustomerAddress(customer.address) ?? '');
+    setVatId(customer.vatId ?? '');
     setNotes(customer.notes ?? '');
     setSubmitting(false);
     setError(null);
@@ -90,7 +94,12 @@ export function CustomerEditDialog({
       body.dateOfBirth = dobIso;
     if ((email.trim() || null) !== customer.email) body.email = trimOrNull(email);
     if ((phone.trim() || null) !== customer.phone) body.phone = trimOrNull(phone);
-    if ((address.trim() || null) !== customer.address) body.address = trimOrNull(address);
+    // Gegen die GEFALTETE Anschrift vergleichen: ein unberührtes Feld darf eine
+    // strukturierte Adresse niemals still in eine Klartextzeile umschreiben.
+    if ((address.trim() || null) !== (formatCustomerAddress(customer.address) ?? null))
+      body.address = trimOrNull(address);
+    const nextVatId = vatId.trim().toUpperCase();
+    if ((nextVatId || null) !== customer.vatId) body.vatId = nextVatId.length > 0 ? nextVatId : null;
     if ((notes.trim() || null) !== customer.notes) body.notes = trimOrNull(notes);
     return body;
   };
@@ -219,6 +228,7 @@ export function CustomerEditDialog({
           <Field label="E-Mail" value={email} onChange={setEmail} type="email" />
           <Field label="Telefon" value={phone} onChange={setPhone} mono />
           <Field label="Adresse" value={address} onChange={setAddress} multiline colSpan={2} />
+          <Field label="USt-IdNr." value={vatId} onChange={setVatId} mono />
           <Field
             label="Notizen (z. B. Personalausweis-Nr.)"
             value={notes}

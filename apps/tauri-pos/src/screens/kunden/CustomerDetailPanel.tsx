@@ -20,6 +20,7 @@ import { useState } from 'react';
 
 import { type CustomerDetail, customersApi } from '@warehouse14/api-client';
 import { Button, DiamondRule, MoneyAmount, ParchmentCard, Seal } from '@warehouse14/ui-kit';
+import { formatCustomerAddress } from '@warehouse14/i18n-de';
 
 import { useApiClient } from '../../lib/api-context.js';
 
@@ -184,7 +185,9 @@ function CustomerCard({ detail }: { detail: CustomerDetail }): JSX.Element {
           <DataRow label="Geburtsdatum" value={detail.dateOfBirth} mono />
           <DataRow label="E-Mail" value={detail.email} />
           <DataRow label="Telefon" value={detail.phone} mono />
-          <DataRow label="Adresse" value={detail.address} multiline />
+          {/* Eine strukturierte Anschrift kommt als JSON. Gefaltet, nie roh. */}
+          <DataRow label="Adresse" value={formatCustomerAddress(detail.address)} multiline />
+          <DataRow label="USt-IdNr." value={detail.vatId} mono />
           <DataRow label="Notizen" value={detail.notes} multiline />
         </DataGrid>
 
