@@ -963,8 +963,13 @@ function StammdatenEditor({ product }: { product: ProductDetail }): JSX.Element 
     ['widthCm', widthCm, product.widthCm] as const,
     ['heightCm', heightCm, product.heightCm] as const,
   ];
-  const masseError = masse.some(([, raw]) => raw.trim() !== '' && !isMoneyInput(raw))
-    ? 'Maße bitte in Zentimetern eingeben, z. B. 12,5.'
+  // Ein leeres Feld heißt „unbekannt". Eine Null heißt „null Zentimeter", und
+  // das gibt es an keinem Paket. Beides darf nicht dasselbe schreiben.
+  const masseError = masse.some(
+    ([, raw]) =>
+      raw.trim() !== '' && (!isMoneyInput(raw) || Number.parseFloat(normalizeDecimal(raw)) <= 0),
+  )
+    ? 'Maße bitte in Zentimetern eingeben, z. B. 12,5. Null ist kein Maß.'
     : null;
   const massePatch: ProductUpdateBody = {};
   if (masseError === null) {

@@ -98,8 +98,11 @@ export function CustomerEditDialog({
     // strukturierte Adresse niemals still in eine Klartextzeile umschreiben.
     if ((address.trim() || null) !== (formatCustomerAddress(customer.address) ?? null))
       body.address = trimOrNull(address);
+    // Gross/klein vergleichen, nicht schreiben: sonst gilt eine unberührte
+    // klein gespeicherte USt-IdNr. beim Öffnen sofort als geändert.
     const nextVatId = vatId.trim().toUpperCase();
-    if ((nextVatId || null) !== customer.vatId) body.vatId = nextVatId.length > 0 ? nextVatId : null;
+    const prevVatId = (customer.vatId ?? '').trim().toUpperCase();
+    if (nextVatId !== prevVatId) body.vatId = nextVatId.length > 0 ? nextVatId : null;
     if ((notes.trim() || null) !== customer.notes) body.notes = trimOrNull(notes);
     return body;
   };

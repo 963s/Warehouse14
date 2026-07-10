@@ -217,6 +217,18 @@ export function Dokumente(): JSX.Element {
                   ? 'Noch keine Dokumente.'
                   : 'Noch keine aktiven Dokumente. Archivierte sind ausgeblendet.'}
             </p>
+            {/*
+              Eine leere Folgeseite darf keine Sackgasse sein: ohne diesen Weg
+              zurück bliebe der Kassierer auf offset > 0 stehen, weil die
+              Blätterung nur unter einer gefüllten Liste steht.
+            */}
+            {offset > 0 && (
+              <div style={{ marginTop: 12 }}>
+                <Button variant="ghost" onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}>
+                  Zurück
+                </Button>
+              </div>
+            )}
           </ParchmentCard>
         ) : (
           <>
