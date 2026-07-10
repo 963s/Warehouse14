@@ -3,7 +3,12 @@
  *
  * Top bar: event-type dropdown + date range + actor input + live SSE toggle.
  * Body: chronological list (newest first) of ledger_events rows. Each
- * row expands to show its JSON payload and SHA-256 row hash.
+ * row expands to show its payload as readable German field rows plus the
+ * SHA-256 row hash.
+ *
+ * Every machine string the ledger carries (event type, entity table, actor id,
+ * payload keys) is translated through `@warehouse14/i18n-de` before it reaches
+ * the operator. The audit trail is read by people, not by developers.
  *
  * The "Live" toggle subscribes to the Werkstatt ledger-feed-store so any
  * new event lands at the top while the user is on this screen.
@@ -19,6 +24,15 @@ import {
   isAlertEvent,
   ledgerQueryApi,
 } from '@warehouse14/api-client';
+import {
+  actorInfo,
+  entityLabel,
+  eventLabel,
+  formatEventDate,
+  hasPayload,
+  payloadEntries,
+  shortId,
+} from '@warehouse14/i18n-de';
 import { DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
@@ -185,7 +199,7 @@ export function Tagebuch(): JSX.Element {
               <optgroup key={g.label} label={g.label}>
                 {g.values.map((v) => (
                   <option key={v} value={v}>
-                    {v}
+                    {eventLabel(v)}
                   </option>
                 ))}
               </optgroup>
@@ -208,12 +222,12 @@ export function Tagebuch(): JSX.Element {
             style={inputStyle}
           />
         </FilterField>
-        <FilterField label="Actor-UUID">
+        <FilterField label="Mitarbeiter-Kennung">
           <input
             type="text"
             value={actorUserId}
             onChange={(e) => setActorUserId(e.target.value)}
-            placeholder="00000000-…"
+            placeholder="Kennung einfügen"
             spellCheck={false}
             style={{ ...inputStyle, fontFamily: 'var(--w14-font-mono)', minWidth: 220 }}
           />
@@ -272,85 +286,140 @@ function EventRow({
   onToggle: () => void;
 }): JSX.Element {
   const isAlert = isAlertEvent({ event_type: row.eventType });
+  const actor = actorInfo(row.actorUserId, row.payload);
+  const entity = shortId(row.entityId);
+  const stamp = formatEventDate(row.createdAt);
+  const fields = expanded ? payloadEntries(row.payload) : [];
+
   return (
     <ParchmentCard
       padding="sm"
       onClick={onToggle}
       style={{
         cursor: 'pointer',
-        borderLeft: isAlert ? '3px solid var(--w14-wax-red)' : '3px solid var(--w14-rule)',
+        border: isAlert ? '1px solid var(--w14-wax-red)' : '1px solid var(--w14-rule)',
         background: expanded ? 'var(--w14-parchment-2)' : 'var(--w14-parchment-1)',
       }}
     >
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: '140px 1fr 220px',
+          gridTemplateColumns: '1fr auto',
           gap: 12,
           alignItems: 'baseline',
-          fontFamily: 'var(--w14-font-mono)',
-          fontSize: '0.78rem',
         }}
       >
-        <span className="w14-tabular" style={{ color: 'var(--w14-ink-faded)' }}>
-          #{row.id.toString().padStart(6, '0')}
-        </span>
         <span
           style={{
-            color: isAlert ? 'var(--w14-wax-red)' : 'var(--w14-ink-aged)',
-            fontWeight: isAlert ? 600 : 400,
+            fontFamily: 'var(--w14-font-display)',
+            fontSize: '0.94rem',
+            fontWeight: isAlert ? 600 : 500,
+            color: isAlert ? 'var(--w14-wax-red)' : 'var(--w14-ink)',
           }}
         >
-          {row.eventType}
+          {isAlert && (
+            <span
+              className="w14-smallcaps"
+              style={{
+                marginRight: 8,
+                fontSize: '0.66rem',
+                letterSpacing: '0.08em',
+                border: '1px solid var(--w14-wax-red)',
+                borderRadius: 3,
+                padding: '1px 5px',
+                verticalAlign: '2px',
+              }}
+            >
+              Alarm
+            </span>
+          )}
+          {eventLabel(row.eventType)}
         </span>
-        <span className="w14-tabular" style={{ color: 'var(--w14-ink-faded)', textAlign: 'right' }}>
-          {new Date(row.createdAt).toLocaleString('de-DE')}
+        <span
+          className="w14-tabular"
+          style={{
+            fontFamily: 'var(--w14-font-mono)',
+            fontSize: '0.74rem',
+            color: 'var(--w14-ink-faded)',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {stamp ?? 'Zeit unbekannt'}
         </span>
       </div>
       <div
-        className="w14-tabular"
         style={{
           marginTop: 4,
-          fontFamily: 'var(--w14-font-mono)',
-          fontSize: '0.7rem',
+          fontSize: '0.74rem',
           color: 'var(--w14-ink-faded)',
         }}
       >
-        {row.entityTable}/{row.entityId.slice(0, 8)}
-        {row.actorUserId && ` · von ${row.actorUserId.slice(0, 8)}`}
+        {entityLabel(row.entityTable)}
+        {entity && <span style={{ fontFamily: 'var(--w14-font-mono)' }}> {entity}</span>} · von{' '}
+        {actor.label}
       </div>
 
       {expanded && (
         <div style={{ marginTop: 10 }}>
-          <pre
-            style={{
-              margin: 0,
-              padding: 10,
-              background: 'var(--w14-parchment)',
-              border: '1px solid var(--w14-rule)',
-              borderRadius: 4,
-              fontFamily: 'var(--w14-font-mono)',
-              fontSize: '0.72rem',
-              color: 'var(--w14-ink-aged)',
-              maxHeight: 240,
-              overflow: 'auto',
-            }}
-          >
-            {JSON.stringify(row.payload, null, 2)}
-          </pre>
+          {!hasPayload(row.payload) ? (
+            <p
+              style={{
+                margin: 0,
+                fontStyle: 'italic',
+                fontSize: '0.78rem',
+                color: 'var(--w14-ink-faded)',
+              }}
+            >
+              Keine weiteren Angaben zu diesem Eintrag.
+            </p>
+          ) : (
+            <dl
+              style={{
+                margin: 0,
+                display: 'grid',
+                gridTemplateColumns: 'minmax(140px, max-content) 1fr',
+                columnGap: 12,
+                rowGap: 4,
+                padding: 10,
+                background: 'var(--w14-parchment)',
+                border: '1px solid var(--w14-rule)',
+                borderRadius: 4,
+                maxHeight: 260,
+                overflowY: 'auto',
+                fontSize: '0.76rem',
+              }}
+            >
+              {fields.map((f) => (
+                <div key={f.key} style={{ display: 'contents' }}>
+                  <dt style={{ color: 'var(--w14-ink-faded)' }}>{f.label}</dt>
+                  <dd
+                    className={f.mono ? 'w14-tabular' : undefined}
+                    style={{
+                      margin: 0,
+                      color: 'var(--w14-ink-aged)',
+                      fontFamily: f.mono ? 'var(--w14-font-mono)' : 'inherit',
+                      wordBreak: f.mono ? 'break-all' : 'normal',
+                    }}
+                  >
+                    {f.value}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          )}
           {row.rowHashHex && (
             <small
               className="w14-tabular"
               style={{
                 display: 'block',
-                marginTop: 4,
-                fontFamily: 'var(--w14-font-mono)',
-                fontSize: '0.66rem',
+                marginTop: 6,
+                fontSize: '0.68rem',
                 color: 'var(--w14-ink-faded)',
                 wordBreak: 'break-all',
               }}
             >
-              row_hash: {row.rowHashHex}
+              Prüfsumme{' '}
+              <span style={{ fontFamily: 'var(--w14-font-mono)' }}>{row.rowHashHex}</span>
             </small>
           )}
         </div>
