@@ -57,3 +57,44 @@ describe("profitSteps", () => {
     expect(profitSteps(skewed).at(-1)?.cents).toBe(1)
   })
 })
+
+import { closingsTrend } from "./finance-vocab"
+
+describe("closingsTrend", () => {
+  const day = (businessDay: string, v: string, a: string, state: "COUNTING" | "FINALIZED" = "FINALIZED") =>
+    ({ businessDay, state, netVerkaufEur: v, netAnkaufEur: a })
+
+  it("keeps only finalized days, oldest first", () => {
+    const rows = [
+      day("2026-07-03", "300", "100"),
+      day("2026-07-01", "100", "40"),
+      day("2026-07-04", "0", "0", "COUNTING"),
+      day("2026-07-02", "200", "50"),
+    ]
+    const trend = closingsTrend(rows)
+    expect(trend.map((t) => t.businessDay)).toEqual(["2026-07-01", "2026-07-02", "2026-07-03"])
+  })
+
+  it("computes the daily flow as verkauf minus ankauf", () => {
+    const trend = closingsTrend([day("2026-07-01", "300", "120")])
+    expect(trend[0]).toMatchObject({ verkauf: 300, ankauf: 120, fluss: 180 })
+  })
+
+  it("windows to the last N finalized days", () => {
+    const rows = Array.from({ length: 20 }, (_, i) =>
+      day(`2026-07-${String(i + 1).padStart(2, "0")}`, "10", "5"),
+    )
+    expect(closingsTrend(rows, 5)).toHaveLength(5)
+    expect(closingsTrend(rows, 5)[0]?.businessDay).toBe("2026-07-16")
+  })
+
+  it("reads machine format and German display format, and never throws on junk", () => {
+    // Server machine format (dot decimal, no thousands separator).
+    expect(closingsTrend([day("2026-07-01", "1234.50", "0")])[0]?.verkauf).toBeCloseTo(1234.5, 2)
+    // German display format (dot thousands, comma decimal).
+    expect(closingsTrend([day("2026-07-02", "1.234,50", "not-a-number")])[0]).toMatchObject({
+      verkauf: 1234.5,
+      ankauf: 0,
+    })
+  })
+})

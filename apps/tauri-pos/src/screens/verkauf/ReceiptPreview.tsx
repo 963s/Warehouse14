@@ -15,7 +15,39 @@
 
 import { Button } from '@warehouse14/ui-kit';
 
+import {
+  type InvoiceData,
+  pdfBytesToObjectUrl,
+  useInvoicePdf,
+} from '../../hooks/useInvoicePdf.js';
 import type { ThermalReceiptData } from '../../lib/hardware-client.js';
+
+/**
+ * Map the thermal receipt to the Typst invoice input. Both describe the SAME
+ * finalized sale; the PDF is just a second rendering of it. The VAT rate is
+ * pulled from the per-line label ("19%" → "19"); a margin/§25c line carries no
+ * rate and stays empty. Any §-paragraph line in the footer becomes the legal
+ * tax note printed on the PDF.
+ */
+function thermalToInvoiceData(data: ThermalReceiptData): InvoiceData {
+  const taxNote = data.footerLines.find((l) => l.includes('§'));
+  return {
+    invoiceNumber: data.receiptLocator,
+    date: new Date(data.printedAt).toLocaleDateString('de-DE'),
+    sellerName: data.shopName,
+    items: data.items.map((it) => ({
+      description: it.name,
+      quantity: it.quantity,
+      unitPriceEur: it.unitPriceEur,
+      vatRate: it.vatLabel.replace(/[^\d]/g, ''),
+      totalEur: it.lineTotalEur,
+    })),
+    subtotalEur: data.subtotalEur,
+    vatTotalEur: data.vatEur,
+    totalEur: data.totalEur,
+    ...(taxNote ? { taxNote } : {}),
+  };
+}
 
 // Physical thermal-paper cream — kept as a literal (not a theme token) so the
 // printed-preview stays paper-white regardless of light/dark. Aligned to the
@@ -77,6 +109,22 @@ export function ReceiptPreview({
    */
   lockedReason?: string | null;
 }): JSX.Element {
+  const pdf = useInvoicePdf();
+
+  // Same finalized sale, second rendering. The GoBD USt-IdNr. lock that blocks
+  // printing blocks the PDF too: a receipt must never carry a fake or blank VAT
+  // id, on paper or in a file.
+  async function handlePdf(): Promise<void> {
+    if (lockedReason) return;
+    try {
+      const bytes = await pdf.generatePdf(thermalToInvoiceData(data));
+      const url = pdfBytesToObjectUrl(bytes);
+      window.open(url, '_blank', 'noopener');
+    } catch {
+      // pdf.error already carries the German sentence; the banner shows it.
+    }
+  }
+
   return (
     // biome-ignore lint/a11y/useSemanticElements: backdrop-overlay modal; a native <dialog> needs imperative showModal()/focus-trap wiring beyond this scope.
     // biome-ignore lint/a11y/useKeyWithClickEvents: backdrop click dismisses; the dialog has explicit buttons + the parent handles Esc.
@@ -306,6 +354,14 @@ export function ReceiptPreview({
             Schließen
           </Button>
           <Button
+            variant="ghost"
+            size="md"
+            onClick={() => void handlePdf()}
+            disabled={printing || pdf.loading || Boolean(lockedReason)}
+          >
+            {pdf.loading ? 'Erzeugt PDF…' : 'Als PDF'}
+          </Button>
+          <Button
             variant="primary"
             size="md"
             onClick={onPrint}
@@ -314,6 +370,18 @@ export function ReceiptPreview({
             {printing ? 'Druckt…' : 'Drucken'}
           </Button>
         </div>
+        {pdf.error && (
+          <div
+            role="alert"
+            style={{
+              color: 'var(--w14-wax-red)',
+              fontSize: '0.82rem',
+              marginTop: 4,
+            }}
+          >
+            {pdf.error}
+          </div>
+        )}
         {lockedReason && (
           <div
             role="alert"

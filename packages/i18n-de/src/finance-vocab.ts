@@ -81,6 +81,56 @@ export interface ProfitLike {
   netProfitCents: number
 }
 
+// ── Geschäftsverlauf (Trend aus abgeschlossenen Kassenabschlüssen) ────────────
+// Nur FINALISIERTE Tage tragen einen belastbaren Wert; ein laufender Tag
+// (COUNTING) ist unvollständig und wird ausgelassen. Die Euro-Zeichenketten
+// werden nur für die Balkenhöhe in Zahlen gelesen, nie für eine Geldrechnung.
+
+export interface ClosingLike {
+  businessDay: string
+  state: "COUNTING" | "FINALIZED"
+  netVerkaufEur: string
+  netAnkaufEur: string
+}
+
+export interface TrendDay {
+  businessDay: string
+  verkauf: number
+  ankauf: number
+  /** Verkauf minus Ankauf: der Nettozufluss des Tages. */
+  fluss: number
+}
+
+/**
+ * Eine Euro-Zeichenkette rein zur Anzeige-Skalierung in eine Zahl lesen. Der
+ * Server liefert Maschinenformat („1234.50"); ein deutsches Anzeigeformat
+ * („1.234,50") wird ebenfalls sauber gelesen (Tausenderpunkt weg, Komma zu
+ * Punkt). Nie für eine Geldrechnung, nur für die Balkenhöhe.
+ */
+function euroToNumber(s: string): number {
+  const german = s.includes(",")
+  const normalized = german ? s.replace(/\./g, "").replace(",", ".") : s
+  const n = Number.parseFloat(normalized)
+  return Number.isFinite(n) ? n : 0
+}
+
+/**
+ * Die letzten `limit` abgeschlossenen Geschäftstage in chronologischer
+ * Reihenfolge (ältester zuerst), als Trend-Punkte. Laufende Tage fallen weg.
+ */
+export function closingsTrend(closings: readonly ClosingLike[], limit = 14): TrendDay[] {
+  const finalized = closings
+    .filter((c) => c.state === "FINALIZED")
+    .slice()
+    .sort((a, b) => a.businessDay.localeCompare(b.businessDay))
+  const window = finalized.slice(-limit)
+  return window.map((c) => {
+    const verkauf = euroToNumber(c.netVerkaufEur)
+    const ankauf = euroToNumber(c.netAnkaufEur)
+    return { businessDay: c.businessDay, verkauf, ankauf, fluss: verkauf - ankauf }
+  })
+}
+
 export function profitSteps(p: ProfitLike): ProfitStep[] {
   return [
     {

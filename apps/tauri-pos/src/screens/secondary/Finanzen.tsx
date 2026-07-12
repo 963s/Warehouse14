@@ -28,13 +28,16 @@ import {
   EXPENSE_CATEGORIES,
   type ExpenseCategory,
   type FinancePeriod,
+  closingsApi,
   expensesApi,
   financeApi,
   fixedCostsApi,
 } from '@warehouse14/api-client';
 import {
   FINANCE_PERIOD_LABELS,
+  type TrendDay,
   centsToDecimalString,
+  closingsTrend,
   describeError,
   expenseCategoryLabel,
   formatCents,
@@ -89,6 +92,13 @@ export function Finanzen(): JSX.Element {
     queryFn: () => fixedCostsApi.list(api, { activeOnly: true, limit: 25 }),
     staleTime: 60_000,
   });
+
+  const closingsQ = useQuery({
+    queryKey: ['finance', 'closings-trend'],
+    queryFn: () => closingsApi.list(api),
+    staleTime: 60_000,
+  });
+  const trend = closingsTrend(closingsQ.data?.items ?? []);
 
   return (
     <section
@@ -187,6 +197,20 @@ export function Finanzen(): JSX.Element {
               </div>
             ))}
           </div>
+        )}
+      </ParchmentCard>
+
+      {/* ── Geschäftsverlauf (abgeschlossene Tage) ─────────────────────── */}
+      <ParchmentCard padding="md">
+        <DiamondRule label="Geschäftsverlauf · abgeschlossene Tage" />
+        {closingsQ.isLoading ? (
+          <Lade />
+        ) : closingsQ.isError ? (
+          <Fehler was="Der Geschäftsverlauf" />
+        ) : trend.length === 0 ? (
+          <Leer text="Noch kein abgeschlossener Geschäftstag. Der Verlauf zeigt nur finalisierte Tage." />
+        ) : (
+          <ClosingsTrendChart trend={trend} />
         )}
       </ParchmentCard>
 
@@ -646,6 +670,110 @@ const buchInput: React.CSSProperties = {
 // ════════════════════════════════════════════════════════════════════════
 // Kleinteile
 // ════════════════════════════════════════════════════════════════════════
+
+/**
+ * ClosingsTrendChart — ehrliche vertikale Balken je abgeschlossenem Tag.
+ * Verkauf (verdigris) und Ankauf (Messing) stehen nebeneinander, skaliert auf
+ * den größten Wert im Fenster. Keine SVG-Abhängigkeit, keine erfundenen Punkte.
+ */
+function ClosingsTrendChart({ trend }: { trend: TrendDay[] }): JSX.Element {
+  const max = Math.max(1, ...trend.map((d) => Math.max(d.verkauf, d.ankauf)));
+  const gesamtFluss = trend.reduce((s, d) => s + d.fluss, 0);
+
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'flex-end',
+          gap: 6,
+          height: 120,
+          overflowX: 'auto',
+          paddingBottom: 4,
+        }}
+      >
+        {trend.map((d) => (
+          <div
+            key={d.businessDay}
+            title={`${new Date(d.businessDay).toLocaleDateString('de-DE')} · Verkauf ${d.verkauf.toLocaleString('de-DE', { minimumFractionDigits: 2 })} € · Ankauf ${d.ankauf.toLocaleString('de-DE', { minimumFractionDigits: 2 })} €`}
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 3,
+              minWidth: 26,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 96 }}>
+              <div
+                aria-hidden
+                style={{
+                  width: 9,
+                  height: `${Math.round((d.verkauf / max) * 96)}px`,
+                  background: 'var(--w14-verdigris)',
+                  borderRadius: '2px 2px 0 0',
+                }}
+              />
+              <div
+                aria-hidden
+                style={{
+                  width: 9,
+                  height: `${Math.round((d.ankauf / max) * 96)}px`,
+                  background: 'var(--w14-gold)',
+                  borderRadius: '2px 2px 0 0',
+                }}
+              />
+            </div>
+            <span
+              className="w14-tabular"
+              style={{
+                fontFamily: 'var(--w14-font-mono)',
+                fontSize: '0.62rem',
+                color: 'var(--w14-ink-faded)',
+              }}
+            >
+              {d.businessDay.slice(5)}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'baseline',
+          marginTop: 10,
+          gap: 12,
+        }}
+      >
+        <div style={{ display: 'flex', gap: 14, fontSize: '0.74rem' }}>
+          <LegendeDot farbe="var(--w14-verdigris)" text="Verkauf" />
+          <LegendeDot farbe="var(--w14-gold)" text="Ankauf" />
+        </div>
+        <span style={{ fontSize: '0.8rem', color: 'var(--w14-ink-aged)' }}>
+          Nettozufluss im Zeitraum:{' '}
+          <strong>
+            {gesamtFluss.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
+            €
+          </strong>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function LegendeDot({ farbe, text }: { farbe: string; text: string }): JSX.Element {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+      <span
+        aria-hidden
+        style={{ width: 9, height: 9, borderRadius: 2, background: farbe, display: 'inline-block' }}
+      />
+      <span style={{ color: 'var(--w14-ink-faded)' }}>{text}</span>
+    </span>
+  );
+}
 
 function Zeile({
   label,
