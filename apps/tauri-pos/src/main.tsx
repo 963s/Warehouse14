@@ -14,11 +14,17 @@ import '@warehouse14/ui-kit/styles.css';
 
 import { App } from './app/App.js';
 import { ApiClientProvider } from './lib/api-context.js';
+import { installDurableReadCache } from './offline/read-cache-sqlite.js';
 import { initTheme } from './state/theme-store.js';
 
 // Apply the persisted light/dark theme before the first paint (single source of
 // truth — the same store the toggle + Cmd+Shift+D read, Phase 7.1).
 initTheme();
+
+// Make the last-good read cache durable across cold starts (auto-update, crash,
+// morning reboot). Installs a throwaway SQLite table via the already-shipped
+// plugin; outside a Tauri webview it no-ops and the cache stays memory-only.
+installDurableReadCache();
 
 const queryClient = new QueryClient({
   defaultOptions: {
