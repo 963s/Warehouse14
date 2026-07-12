@@ -154,26 +154,42 @@ export function Tagebuch(): JSX.Element {
         >
           Tagebuch
         </h1>
-        <label
-          className="w14-smallcaps"
-          style={{
-            fontSize: '0.74rem',
-            letterSpacing: '0.08em',
-            color: liveOn ? 'var(--w14-gold)' : 'var(--w14-ink-faded)',
-            display: 'flex',
-            gap: 6,
-            alignItems: 'center',
-            cursor: 'pointer',
-          }}
-        >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          {!listQ.isLoading && !listQ.isError && listQ.data && (
+            <span
+              className="w14-smallcaps"
+              style={{
+                fontSize: '0.72rem',
+                letterSpacing: '0.08em',
+                color: 'var(--w14-ink-faded)',
+              }}
+            >
+              {listQ.data.hasMore
+                ? `${listQ.data.items.length} von ${listQ.data.total} Einträgen`
+                : `${listQ.data.total} ${listQ.data.total === 1 ? 'Eintrag' : 'Einträge'}`}
+            </span>
+          )}
+          <label
+            className="w14-smallcaps"
+            style={{
+              fontSize: '0.74rem',
+              letterSpacing: '0.08em',
+              color: liveOn ? 'var(--w14-gold)' : 'var(--w14-ink-faded)',
+              display: 'flex',
+              gap: 6,
+              alignItems: 'center',
+              cursor: 'pointer',
+            }}
+          >
           <input
             type="checkbox"
             checked={liveOn}
             onChange={(e) => setLiveOn(e.target.checked)}
             style={{ accentColor: 'var(--w14-gold)' }}
           />
-          Live-Stream
-        </label>
+            Live-Stream
+          </label>
+        </div>
       </header>
 
       {/* Filter bar */}

@@ -208,6 +208,15 @@ export function Finanzen(): JSX.Element {
                 wert={inventoryQ.data.availableCount.toLocaleString('de-DE')}
                 hinweis="Nur verkaufsbereite Stücke, ohne Entwürfe."
               />
+              <div style={{ borderTop: '1px solid var(--w14-rule)', marginTop: 6, paddingTop: 6 }}>
+                <Zeile
+                  label="Unrealisierte Marge"
+                  wert={formatCents(
+                    inventoryQ.data.listValueCents - inventoryQ.data.acquisitionValueCents,
+                  )}
+                  hinweis="Verkaufswert minus Einkaufswert. Erst beim Verkauf realisiert."
+                />
+              </div>
             </div>
           )}
         </ParchmentCard>

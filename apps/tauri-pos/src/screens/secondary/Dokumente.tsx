@@ -15,7 +15,7 @@
  *   3. POST metadata to `/api/documents` (returned by `documentsApi.create`)
  */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 
 import {
@@ -79,6 +79,29 @@ export function Dokumente(): JSX.Element {
   const items = listQ.data?.items ?? [];
   const total = listQ.data?.total ?? 0;
   const hasMore = listQ.data?.hasMore ?? false;
+
+  // Echte Pro-Kategorie-Zählungen: je Kategorie EIN winziger Request, der nur
+  // das `total` des Servers liest (limit 1). Keine erfundene Zahl aus der
+  // aktuellen Seite. Nur ohne Entitäts-Filter sichtbar (dort wäre die
+  // Kategorie-Verteilung eines einzelnen Vorgangs bedeutungslos), 5 min gecacht.
+  const showCounts = linkKind === '';
+  const countQs = useQueries({
+    queries: CATEGORY_ORDER.map((c) => ({
+      queryKey: ['documents', 'count', { category: c, includeArchived }],
+      queryFn: () =>
+        documentsApi.list(api, {
+          category: c,
+          limit: 1,
+          ...(includeArchived ? { includeArchived: true } : {}),
+        }),
+      staleTime: 300_000,
+      enabled: showCounts,
+    })),
+  });
+  const categoryCounts = useMemo(
+    () => CATEGORY_ORDER.map((c, i) => ({ category: c, count: countQs[i]?.data?.total ?? null })),
+    [countQs],
+  );
 
   /** Jeder Filterwechsel beginnt die Blätterung von vorn. */
   function resetPaging(): void {
@@ -196,6 +219,45 @@ export function Dokumente(): JSX.Element {
           Archivierte einschließen
         </label>
       </div>
+
+      {/* Pro-Kategorie-Register: echte Server-Zählungen, zugleich Schnellfilter. */}
+      {showCounts && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {categoryCounts.map(({ category: c, count }) => {
+            const active = category === c;
+            return (
+              <button
+                key={c}
+                type="button"
+                aria-pressed={active}
+                onClick={() => {
+                  setCategory(active ? 'ALL' : c);
+                  resetPaging();
+                }}
+                className="w14-smallcaps"
+                style={{
+                  fontSize: '0.7rem',
+                  letterSpacing: '0.06em',
+                  padding: '3px 10px',
+                  cursor: 'pointer',
+                  borderRadius: 'var(--w14-radius-button)',
+                  border: `1px solid ${active ? 'var(--w14-gold)' : 'var(--w14-rule)'}`,
+                  background: active ? 'var(--w14-parchment-3)' : 'transparent',
+                  color: active ? 'var(--w14-gold)' : 'var(--w14-ink-aged)',
+                }}
+              >
+                {DOCUMENT_CATEGORY_LABELS[c]}
+                <span
+                  className="w14-tabular"
+                  style={{ marginLeft: 6, fontFamily: 'var(--w14-font-mono)', opacity: 0.8 }}
+                >
+                  {count == null ? '·' : count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       <DiamondRule />
 

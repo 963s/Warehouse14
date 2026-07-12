@@ -30,7 +30,7 @@ import { useApiClient } from '../../lib/api-context.js';
 import { useToastStore } from '../../state/toast-store.js';
 
 import { ShippingLabelButton } from './ShippingLabelButton.js';
-import { describeError } from '@warehouse14/i18n-de';
+import { compareByDue, describeError, dueUrgency } from '@warehouse14/i18n-de';
 
 // ────────────────────────────────────────────────────────────────────────
 // Filter chips
@@ -189,7 +189,15 @@ function TaskListPanel({
     },
   });
 
-  const items = listQ.data?.items ?? [];
+  // Die Server-Reihenfolge bringt überfällige Aufgaben nicht nach oben. Wir
+  // sortieren sie: überfällig zuerst, dann heute, dann nach Frist, undatiert
+  // zuletzt. Der Server bleibt die Wahrheit über den Inhalt, nur die Reihenfolge
+  // hilft dem Blick.
+  const rawItems = listQ.data?.items ?? [];
+  const total = listQ.data?.total ?? rawItems.length;
+  const hasMore = listQ.data?.hasMore ?? false;
+  const items = [...rawItems].sort((a, b) => compareByDue(a, b));
+  const overdueCount = items.reduce((n, t) => (dueUrgency(t) === 'overdue' ? n + 1 : n), 0);
 
   return (
     <section
@@ -220,7 +228,9 @@ function TaskListPanel({
           className="w14-smallcaps"
           style={{ color: 'var(--w14-ink-faded)', fontSize: '0.72rem', letterSpacing: '0.08em' }}
         >
-          {listQ.isFetching ? 'lädt…' : `${items.length}`}
+          {listQ.isFetching
+            ? 'lädt…'
+            : `${overdueCount > 0 ? `${overdueCount} überfällig · ` : ''}${total}${hasMore ? '+' : ''}`}
         </span>
       </header>
 
@@ -375,11 +385,31 @@ function TaskRowCard({
             <span className="w14-smallcaps" style={{ letterSpacing: '0.06em' }}>
               {STATUS_LABEL[task.status]}
             </span>
-            {task.dueDate && (
-              <span className="w14-tabular">
-                · fällig {new Date(task.dueDate).toLocaleDateString('de-DE')}
-              </span>
-            )}
+            {task.dueDate &&
+              (() => {
+                const urgency = dueUrgency(task);
+                const color =
+                  urgency === 'overdue'
+                    ? 'var(--w14-wax-red)'
+                    : urgency === 'today'
+                      ? 'var(--w14-gold)'
+                      : 'var(--w14-ink-faded)';
+                const prefix =
+                  urgency === 'overdue'
+                    ? 'überfällig seit '
+                    : urgency === 'today'
+                      ? 'heute fällig · '
+                      : 'fällig ';
+                return (
+                  <span
+                    className="w14-tabular"
+                    style={{ color, fontWeight: urgency === 'overdue' ? 600 : 400 }}
+                  >
+                    · {prefix}
+                    {new Date(task.dueDate).toLocaleDateString('de-DE')}
+                  </span>
+                );
+              })()}
           </div>
         </div>
       </div>
