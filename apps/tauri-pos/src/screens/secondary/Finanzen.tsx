@@ -20,10 +20,13 @@
  * PIN-Bestätigung und ist noch nicht Teil dieses Bildschirms; die Liste ist es.
  */
 
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
 import {
+  ApiError,
+  EXPENSE_CATEGORIES,
+  type ExpenseCategory,
   type FinancePeriod,
   expensesApi,
   financeApi,
@@ -32,20 +35,30 @@ import {
 import {
   FINANCE_PERIOD_LABELS,
   centsToDecimalString,
+  describeError,
   expenseCategoryLabel,
   formatCents,
   formatGrams,
   profitSteps,
 } from '@warehouse14/i18n-de';
-import { DiamondRule, MoneyAmount, ParchmentCard } from '@warehouse14/ui-kit';
+import { Button, DiamondRule, MoneyAmount, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
+import { isMoneyInput, normalizeDecimal } from '../../lib/decimal.js';
+import { toCents } from '../../lib/money-core.js';
+import { useSessionStore } from '../../state/session-store.js';
+import { useToastStore } from '../../state/toast-store.js';
 
 const PERIODS: readonly FinancePeriod[] = ['day', 'month'];
 
 export function Finanzen(): JSX.Element {
   const api = useApiClient();
   const [period, setPeriod] = useState<FinancePeriod>('day');
+  // Ausgaben und Fixkosten buchen verlangt die Ladenleitung; der Server erzwingt
+  // ADMIN plus PIN-Bestätigung, die der api-client abfängt.
+  const darfBuchen = useSessionStore((s) => s.actor?.role === 'ADMIN');
+  const [expenseOpen, setExpenseOpen] = useState<boolean>(false);
+  const [fixedOpen, setFixedOpen] = useState<boolean>(false);
 
   const profitQ = useQuery({
     queryKey: ['finance', 'profit', period],
@@ -240,7 +253,18 @@ export function Finanzen(): JSX.Element {
 
       {/* ── Ausgaben ───────────────────────────────────────────────────── */}
       <ParchmentCard padding="md">
-        <DiamondRule label="Letzte Ausgaben" />
+        <div
+          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 }}
+        >
+          <div style={{ flex: 1 }}>
+            <DiamondRule label="Letzte Ausgaben" />
+          </div>
+          {darfBuchen && (
+            <Button variant="ghost" size="sm" onClick={() => setExpenseOpen(true)}>
+              + Ausgabe buchen
+            </Button>
+          )}
+        </div>
         {expensesQ.isLoading ? (
           <Lade />
         ) : expensesQ.isError || !expensesQ.data ? (
@@ -282,14 +306,27 @@ export function Finanzen(): JSX.Element {
             ))}
           </ul>
         )}
-        <p style={{ margin: '10px 0 0', fontSize: '0.76rem', color: 'var(--w14-ink-faded)' }}>
-          Ausgaben bucht die Ladenleitung. Dieser Bildschirm zeigt sie nur.
-        </p>
+        {!darfBuchen && (
+          <p style={{ margin: '10px 0 0', fontSize: '0.76rem', color: 'var(--w14-ink-faded)' }}>
+            Ausgaben bucht die Ladenleitung. Dieser Bildschirm zeigt sie nur.
+          </p>
+        )}
       </ParchmentCard>
 
       {/* ── Fixkosten ──────────────────────────────────────────────────── */}
       <ParchmentCard padding="md">
-        <DiamondRule label="Laufende Fixkosten" />
+        <div
+          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 }}
+        >
+          <div style={{ flex: 1 }}>
+            <DiamondRule label="Laufende Fixkosten" />
+          </div>
+          {darfBuchen && (
+            <Button variant="ghost" size="sm" onClick={() => setFixedOpen(true)}>
+              + Fixkosten erfassen
+            </Button>
+          )}
+        </div>
         {fixedQ.isLoading ? (
           <Lade />
         ) : fixedQ.isError || !fixedQ.data ? (
@@ -325,9 +362,286 @@ export function Finanzen(): JSX.Element {
           </ul>
         )}
       </ParchmentCard>
+
+      {expenseOpen && <ExpenseDialog onClose={() => setExpenseOpen(false)} />}
+      {fixedOpen && <FixedCostDialog onClose={() => setFixedOpen(false)} />}
     </section>
   );
 }
+
+// ════════════════════════════════════════════════════════════════════════
+// Buch-Dialoge (ADMIN + Step-up über den api-client-Interceptor)
+// ════════════════════════════════════════════════════════════════════════
+
+/** Der heutige Tag als JJJJ-MM-TT (lokal), der Vorgabewert für eine Ausgabe. */
+function heuteLokal(): string {
+  const d = new Date();
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** Euro-Eingabe zu ganzen Cent. Der Server nimmt eine ganze Zahl Cent. */
+function eurToCents(raw: string): number {
+  return Number(toCents(normalizeDecimal(raw)));
+}
+
+function ExpenseDialog({ onClose }: { onClose: () => void }): JSX.Element {
+  const api = useApiClient();
+  const qc = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+
+  const [date, setDate] = useState<string>(heuteLokal());
+  const [category, setCategory] = useState<ExpenseCategory>('WARENEINKAUF');
+  const [amount, setAmount] = useState<string>('');
+  const [note, setNote] = useState<string>('');
+
+  const amountValid = isMoneyInput(amount) && eurToCents(amount) > 0;
+
+  const create = useMutation({
+    mutationFn: () =>
+      expensesApi.create(api, {
+        date,
+        category,
+        amountCents: eurToCents(amount),
+        ...(note.trim().length > 0 ? { note: note.trim() } : {}),
+      }),
+    onSuccess: async (row) => {
+      addToast({
+        tone: 'success',
+        title: 'Ausgabe gebucht',
+        body: `${expenseCategoryLabel(row.category)} · ${formatCents(row.amountCents)}`,
+      });
+      await qc.invalidateQueries({ queryKey: ['finance'] });
+      onClose();
+    },
+    onError: (err: unknown) => {
+      addToast({
+        tone: 'alert',
+        title: 'Buchung fehlgeschlagen',
+        body: err instanceof ApiError ? describeError(err) : 'Bitte erneut versuchen.',
+      });
+    },
+  });
+
+  return (
+    <BuchDialog title="Ausgabe buchen" onClose={onClose}>
+      <FeldLabel>Datum</FeldLabel>
+      <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={buchInput} />
+
+      <FeldLabel>Kategorie</FeldLabel>
+      <select
+        value={category}
+        onChange={(e) => setCategory(e.target.value as ExpenseCategory)}
+        style={buchInput}
+      >
+        {EXPENSE_CATEGORIES.map((c) => (
+          <option key={c} value={c}>
+            {expenseCategoryLabel(c)}
+          </option>
+        ))}
+      </select>
+
+      <FeldLabel>Betrag (€)</FeldLabel>
+      <input
+        value={amount}
+        inputMode="decimal"
+        onChange={(e) => setAmount(e.target.value)}
+        placeholder="z. B. 149,90"
+        style={{ ...buchInput, fontFamily: 'var(--w14-font-mono)' }}
+      />
+
+      <FeldLabel>Notiz (optional)</FeldLabel>
+      <input
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        maxLength={500}
+        style={buchInput}
+      />
+
+      <BuchAktionen
+        onClose={onClose}
+        busy={create.isPending}
+        disabled={!amountValid || create.isPending}
+        onSave={() => create.mutate()}
+      />
+    </BuchDialog>
+  );
+}
+
+function FixedCostDialog({ onClose }: { onClose: () => void }): JSX.Element {
+  const api = useApiClient();
+  const qc = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+
+  const [label, setLabel] = useState<string>('');
+  const [amount, setAmount] = useState<string>('');
+  const [activeFrom, setActiveFrom] = useState<string>(heuteLokal());
+
+  const labelValid = label.trim().length >= 2;
+  const amountValid = isMoneyInput(amount) && eurToCents(amount) > 0;
+
+  const create = useMutation({
+    mutationFn: () =>
+      fixedCostsApi.create(api, {
+        label: label.trim(),
+        monthlyAmountCents: eurToCents(amount),
+        activeFrom,
+      }),
+    onSuccess: async (row) => {
+      addToast({
+        tone: 'success',
+        title: 'Fixkosten erfasst',
+        body: `${row.label} · ${formatCents(row.monthlyAmountCents)} / Monat`,
+      });
+      await qc.invalidateQueries({ queryKey: ['finance'] });
+      onClose();
+    },
+    onError: (err: unknown) => {
+      addToast({
+        tone: 'alert',
+        title: 'Erfassen fehlgeschlagen',
+        body: err instanceof ApiError ? describeError(err) : 'Bitte erneut versuchen.',
+      });
+    },
+  });
+
+  return (
+    <BuchDialog title="Fixkosten erfassen" onClose={onClose}>
+      <FeldLabel>Bezeichnung</FeldLabel>
+      <input
+        value={label}
+        onChange={(e) => setLabel(e.target.value)}
+        placeholder="z. B. Ladenmiete"
+        maxLength={120}
+        style={buchInput}
+      />
+
+      <FeldLabel>Monatlicher Betrag (€)</FeldLabel>
+      <input
+        value={amount}
+        inputMode="decimal"
+        onChange={(e) => setAmount(e.target.value)}
+        placeholder="z. B. 1.200,00"
+        style={{ ...buchInput, fontFamily: 'var(--w14-font-mono)' }}
+      />
+
+      <FeldLabel>Läuft seit</FeldLabel>
+      <input
+        type="date"
+        value={activeFrom}
+        onChange={(e) => setActiveFrom(e.target.value)}
+        style={buchInput}
+      />
+
+      <BuchAktionen
+        onClose={onClose}
+        busy={create.isPending}
+        disabled={!labelValid || !amountValid || create.isPending}
+        onSave={() => create.mutate()}
+      />
+    </BuchDialog>
+  );
+}
+
+function BuchDialog({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}): JSX.Element {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(20, 16, 10, 0.55)',
+        display: 'grid',
+        placeItems: 'center',
+        padding: 24,
+        zIndex: 100,
+      }}
+    >
+      <ParchmentCard
+        padding="lg"
+        onClick={(e) => e.stopPropagation()}
+        style={{ width: 'min(440px, 100%)' }}
+      >
+        <h2
+          style={{
+            margin: 0,
+            fontFamily: 'var(--w14-font-display)',
+            fontWeight: 500,
+            fontSize: '1.2rem',
+          }}
+        >
+          {title}
+        </h2>
+        <DiamondRule />
+        {children}
+      </ParchmentCard>
+    </div>
+  );
+}
+
+function FeldLabel({ children }: { children: React.ReactNode }): JSX.Element {
+  return (
+    <label
+      className="w14-smallcaps"
+      style={{
+        display: 'block',
+        marginTop: 12,
+        color: 'var(--w14-ink-aged)',
+        letterSpacing: '0.08em',
+        fontSize: '0.76rem',
+      }}
+    >
+      {children}
+    </label>
+  );
+}
+
+function BuchAktionen({
+  onClose,
+  onSave,
+  busy,
+  disabled,
+}: {
+  onClose: () => void;
+  onSave: () => void;
+  busy: boolean;
+  disabled: boolean;
+}): JSX.Element {
+  return (
+    <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 18 }}>
+      <Button variant="ghost" onClick={onClose} disabled={busy}>
+        Abbrechen
+      </Button>
+      <Button variant="primary" onClick={onSave} disabled={disabled}>
+        {busy ? 'Bucht…' : 'Buchen'}
+      </Button>
+    </div>
+  );
+}
+
+const buchInput: React.CSSProperties = {
+  width: '100%',
+  marginTop: 4,
+  padding: '8px 10px',
+  border: '1px solid var(--w14-rule)',
+  borderRadius: 4,
+  backgroundColor: 'var(--w14-parchment)',
+  fontFamily: 'var(--w14-font-body)',
+  fontSize: '0.9rem',
+  color: 'var(--w14-ink)',
+  outline: 'none',
+};
 
 // ════════════════════════════════════════════════════════════════════════
 // Kleinteile

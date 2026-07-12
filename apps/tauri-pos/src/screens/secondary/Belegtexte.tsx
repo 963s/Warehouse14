@@ -26,6 +26,7 @@ import {
 import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
+import { useSessionStore } from '../../state/session-store.js';
 import { useToastStore } from '../../state/toast-store.js';
 import { describeError } from '@warehouse14/i18n-de';
 
@@ -253,6 +254,10 @@ function EditorPane({ kind }: { kind: BelegtextKind }): JSX.Element {
   const api = useApiClient();
   const qc = useQueryClient();
   const addToast = useToastStore((s) => s.addToast);
+  // Belegtexte sind fiskalisch bindend. Der Server verlangt ADMIN plus Step-up.
+  // Eine andere Rolle darf lesen, aber nicht in ein Feld tippen, das erst beim
+  // Absenden mit 403 endet: read-only mit klarem Hinweis statt später Ablehnung.
+  const darfEditieren = useSessionStore((st) => st.actor?.role === 'ADMIN');
 
   const currentQ = useQuery({
     queryKey: ['belegtext', 'current', kind],
@@ -333,17 +338,37 @@ function EditorPane({ kind }: { kind: BelegtextKind }): JSX.Element {
         </span>
       </header>
 
+      {!darfEditieren && (
+        <p
+          role="note"
+          style={{
+            margin: 0,
+            padding: '8px 12px',
+            borderRadius: 'var(--w14-radius-card)',
+            border: '1px solid var(--w14-rule)',
+            background: 'var(--w14-parchment-2)',
+            color: 'var(--w14-ink-aged)',
+            fontSize: '0.86rem',
+            lineHeight: 1.5,
+          }}
+        >
+          Nur die Ladenleitung darf Belegtexte ändern. Sie sehen die aktuelle Version, können sie
+          aber nicht bearbeiten.
+        </p>
+      )}
       <textarea
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         rows={14}
         placeholder="Bitte Belegtext eingeben…"
         spellCheck
+        readOnly={!darfEditieren}
         style={{
           ...inputStyle,
           resize: 'vertical',
           fontFamily: 'var(--w14-font-body)',
           minHeight: 220,
+          opacity: darfEditieren ? 1 : 0.75,
         }}
       />
       <small
@@ -356,13 +381,15 @@ function EditorPane({ kind }: { kind: BelegtextKind }): JSX.Element {
         {draft.length}/4000 Zeichen
       </small>
 
-      <input
-        value={notes}
-        onChange={(e) => setNotes(e.target.value)}
-        placeholder="Optional: Begründung für diese Version"
-        maxLength={1000}
-        style={inputStyle}
-      />
+      {darfEditieren && (
+        <input
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Optional: Begründung für diese Version"
+          maxLength={1000}
+          style={inputStyle}
+        />
+      )}
 
       <DiamondRule label="Diff zum aktuellen Text" />
       {currentText === '' ? (
@@ -423,15 +450,17 @@ function EditorPane({ kind }: { kind: BelegtextKind }): JSX.Element {
         </pre>
       )}
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
-        <Button
-          variant="primary"
-          disabled={!dirty || publish.isPending}
-          onClick={() => publish.mutate()}
-        >
-          {publish.isPending ? 'Veröffentlicht…' : 'Neue Version veröffentlichen'}
-        </Button>
-      </div>
+      {darfEditieren && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
+          <Button
+            variant="primary"
+            disabled={!dirty || publish.isPending}
+            onClick={() => publish.mutate()}
+          >
+            {publish.isPending ? 'Veröffentlicht…' : 'Neue Version veröffentlichen'}
+          </Button>
+        </div>
+      )}
     </section>
   );
 }

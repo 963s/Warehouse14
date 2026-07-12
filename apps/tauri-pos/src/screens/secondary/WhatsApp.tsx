@@ -67,7 +67,11 @@ export function WhatsApp(): JSX.Element {
         flex: 1,
       }}
     >
-      <ThreadList selectedPhone={selectedPhone} onSelect={setSelectedPhone} />
+      <ThreadList
+        selectedPhone={selectedPhone}
+        onSelect={setSelectedPhone}
+        onComposed={setSelectedPhone}
+      />
       <ConversationPane phone={selectedPhone} />
       <ThreadSidebar phone={selectedPhone} />
     </section>
@@ -81,10 +85,13 @@ export function WhatsApp(): JSX.Element {
 interface ThreadListProps {
   selectedPhone: string | null;
   onSelect: (phone: string | null) => void;
+  /** Called with the canonical phone after a brand-new conversation is sent. */
+  onComposed: (phone: string) => void;
 }
 
-function ThreadList({ selectedPhone, onSelect }: ThreadListProps): JSX.Element {
+function ThreadList({ selectedPhone, onSelect, onComposed }: ThreadListProps): JSX.Element {
   const api = useApiClient();
+  const [composeOpen, setComposeOpen] = useState<boolean>(false);
 
   // An inbox that never refreshes is not an inbox. The app-wide query defaults
   // turn `refetchOnWindowFocus` off (right for fiscal reads, wrong for a live
@@ -144,20 +151,40 @@ function ThreadList({ selectedPhone, onSelect }: ThreadListProps): JSX.Element {
         >
           WhatsApp
         </h2>
-        <span
-          className="w14-smallcaps"
-          style={{
-            color: unreadThreads > 0 ? 'var(--w14-gold)' : 'var(--w14-ink-faded)',
-            fontSize: '0.72rem',
-            letterSpacing: '0.08em',
-          }}
-        >
-          {listQ.isFetching
-            ? 'lädt…'
-            : unreadThreads > 0
-              ? `${unreadThreads} offen von ${items.length}`
-              : `${items.length}`}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+          <span
+            className="w14-smallcaps"
+            style={{
+              color: unreadThreads > 0 ? 'var(--w14-gold)' : 'var(--w14-ink-faded)',
+              fontSize: '0.72rem',
+              letterSpacing: '0.08em',
+            }}
+          >
+            {listQ.isFetching
+              ? 'lädt…'
+              : unreadThreads > 0
+                ? `${unreadThreads} offen von ${items.length}`
+                : `${items.length}`}
+          </span>
+          <button
+            type="button"
+            onClick={() => setComposeOpen(true)}
+            aria-label="Neue Nachricht"
+            title="Neue Nachricht"
+            style={{
+              background: 'transparent',
+              border: '1px solid var(--w14-rule)',
+              borderRadius: 'var(--w14-radius-button)',
+              cursor: 'pointer',
+              color: 'var(--w14-ink-aged)',
+              fontSize: '0.86rem',
+              lineHeight: 1,
+              padding: '4px 8px',
+            }}
+          >
+            + Neu
+          </button>
+        </div>
       </header>
       <DiamondRule />
 
@@ -179,9 +206,168 @@ function ThreadList({ selectedPhone, onSelect }: ThreadListProps): JSX.Element {
           />
         ))
       )}
+
+      {composeOpen && (
+        <ComposeDialog
+          onClose={() => setComposeOpen(false)}
+          onSent={(phone) => {
+            setComposeOpen(false);
+            onComposed(phone);
+          }}
+        />
+      )}
     </aside>
   );
 }
+
+/**
+ * ComposeDialog — eine neue, ausgehende Konversation starten.
+ *
+ * Bisher ließ sich nur INNERHALB eines eingehenden Threads antworten, eine
+ * proaktive Ansprache („Ihre Reparatur ist fertig") war unmöglich. Der Server
+ * kanonisiert die Nummer selbst; wir prüfen hier nur grob (Ziffern, Länge) und
+ * springen nach dem Senden in den nun entstandenen Thread.
+ */
+function ComposeDialog({
+  onClose,
+  onSent,
+}: {
+  onClose: () => void;
+  onSent: (canonicalPhone: string) => void;
+}): JSX.Element {
+  const api = useApiClient();
+  const qc = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+
+  const [phone, setPhone] = useState<string>('');
+  const [body, setBody] = useState<string>('');
+
+  // Grobe Vorprüfung, damit ein offensichtlicher Fehler nicht erst der Server
+  // ablehnt. Der Server bleibt die Wahrheit über die endgültige Kanonform.
+  const digits = phone.replace(/[^\d]/g, '');
+  const phoneValid = digits.length >= 6 && digits.length <= 15;
+  const bodyValid = body.trim().length > 0 && body.trim().length <= 4000;
+
+  const send = useMutation({
+    mutationFn: () => whatsappApi.send(api, { toPhone: phone.trim(), body: body.trim() }),
+    onSuccess: async (res) => {
+      addToast({ tone: 'success', title: 'Nachricht gesendet', body: res.toPhone });
+      await qc.invalidateQueries({ queryKey: ['whatsapp'] });
+      onSent(res.toPhone);
+    },
+    onError: (err: unknown) => {
+      addToast({
+        tone: 'alert',
+        title: 'Senden fehlgeschlagen',
+        body: err instanceof ApiError ? describeError(err) : 'Bitte erneut versuchen.',
+      });
+    },
+  });
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Neue Nachricht"
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(20, 16, 10, 0.55)',
+        display: 'grid',
+        placeItems: 'center',
+        padding: 24,
+        zIndex: 100,
+      }}
+    >
+      <ParchmentCard
+        padding="lg"
+        onClick={(e) => e.stopPropagation()}
+        style={{ width: 'min(440px, 100%)' }}
+      >
+        <h2
+          style={{
+            margin: 0,
+            fontFamily: 'var(--w14-font-display)',
+            fontWeight: 500,
+            fontSize: '1.2rem',
+          }}
+        >
+          Neue Nachricht
+        </h2>
+        <DiamondRule />
+
+        <label
+          className="w14-smallcaps"
+          style={{
+            display: 'block',
+            marginTop: 8,
+            color: 'var(--w14-ink-aged)',
+            letterSpacing: '0.08em',
+            fontSize: '0.76rem',
+          }}
+        >
+          Telefonnummer (mit Landesvorwahl)
+        </label>
+        <input
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          placeholder="z. B. +49 151 12345678"
+          inputMode="tel"
+          spellCheck={false}
+          style={{ ...composeInputStyle, fontFamily: 'var(--w14-font-mono)' }}
+        />
+
+        <label
+          className="w14-smallcaps"
+          style={{
+            display: 'block',
+            marginTop: 12,
+            color: 'var(--w14-ink-aged)',
+            letterSpacing: '0.08em',
+            fontSize: '0.76rem',
+          }}
+        >
+          Nachricht
+        </label>
+        <textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          rows={4}
+          maxLength={4000}
+          placeholder="Ihre Nachricht…"
+          style={{ ...composeInputStyle, resize: 'vertical', minHeight: 90 }}
+        />
+
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 16 }}>
+          <Button variant="ghost" onClick={onClose} disabled={send.isPending}>
+            Abbrechen
+          </Button>
+          <Button
+            variant="primary"
+            disabled={!phoneValid || !bodyValid || send.isPending}
+            onClick={() => send.mutate()}
+          >
+            {send.isPending ? 'Sendet…' : 'Senden'}
+          </Button>
+        </div>
+      </ParchmentCard>
+    </div>
+  );
+}
+
+const composeInputStyle: React.CSSProperties = {
+  width: '100%',
+  marginTop: 4,
+  padding: '8px 10px',
+  border: '1px solid var(--w14-rule)',
+  borderRadius: 4,
+  backgroundColor: 'var(--w14-parchment)',
+  fontFamily: 'var(--w14-font-body)',
+  fontSize: '0.9rem',
+  color: 'var(--w14-ink)',
+  outline: 'none',
+};
 
 function ThreadRow({
   thread,
