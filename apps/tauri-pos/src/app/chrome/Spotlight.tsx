@@ -1,26 +1,32 @@
 /**
  * Spotlight — the Cmd+K palette. The only chord shortcut Warehouse14 ships.
  *
- * Locked by memory.md §11.6:
- *   • centred parchment-2 modal, 560 px wide, marbled-noise overlay
- *   • monospaced input with gold underline on focus
- *   • three groups separated by <DiamondRule>:
- *       Zuletzt   — last 3 visited (from recents-store)
- *       Karteikasten — 8 Tier 1 surfaces
- *       Weitere   — 7 Tier 2 surfaces
- *   • ↑ / ↓ + Enter to navigate; Esc dismisses
- *   • mouse hover synchronises with keyboard focus (no dual focus model)
- *   • empty input → all results visible; non-empty input → fuzzy filter
- *     across `label`, `description`, and `searchAliases`
+ * Two kinds of result, in this order:
+ *   • Entities — customers and products matching the query, fetched live from
+ *     the shared api-client and deep-linked to their surface (`/kunden?id=…`,
+ *     `/lager?produkt=…`). This is the one box that spans domains from anywhere.
+ *   • Surfaces — the Tier-1 Karteikasten and Tier-2 screens, fuzzy-matched on
+ *     label / description / path / aliases, plus the last-visited list when the
+ *     input is empty.
  *
- * Entity search (customers / products / appraisals) lives in Phase 1.5 #I-32.
+ * Entity search covers customers + products because those are the domains with
+ * a real detail surface to land on. Transactions have no standalone detail
+ * route (recent sales live inside a shift's Kassenbuch), so a transaction hit
+ * would deep-link nowhere useful; it is deliberately left out rather than
+ * offered as a dead end.
+ *
+ * ↑ / ↓ + Enter navigate; Esc dismisses; hover syncs with keyboard focus.
  */
 
+import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+import { customersApi, productsApi } from '@warehouse14/api-client';
 import { DiamondRule, MagnifierIcon, ParchmentCard } from '@warehouse14/ui-kit';
 
+import { useApiClient } from '../../lib/api-context.js';
+import { formatEur } from '../../lib/decimal.js';
 import { useRecents } from '../../state/recents-store.js';
 import {
   PRIMARY_SURFACES,
@@ -34,14 +40,23 @@ export interface SpotlightProps {
   onClose: () => void;
 }
 
-interface ResultRow {
-  surface: SurfaceDescriptor;
-  group: 'zuletzt' | 'karteikasten' | 'weitere';
+type SpotGroup = 'zuletzt' | 'kunden' | 'artikel' | 'karteikasten' | 'weitere';
+
+/** One normalized palette row — a surface or a live entity, rendered the same. */
+interface SpotItem {
+  key: string;
+  group: SpotGroup;
+  /** Path (with query) to navigate to on activation. */
+  navigate: string;
+  glyph: string;
+  glyphGold: boolean;
+  primary: string;
+  secondary: string;
+  trailing: string;
 }
 
-function matches(s: SurfaceDescriptor, query: string): boolean {
-  if (query.length === 0) return true;
-  const q = query.toLowerCase().trim();
+function surfaceMatches(s: SurfaceDescriptor, q: string): boolean {
+  if (q.length === 0) return true;
   if (s.label.toLowerCase().includes(q)) return true;
   if (s.description.toLowerCase().includes(q)) return true;
   if (s.path.toLowerCase().includes(q)) return true;
@@ -50,51 +65,115 @@ function matches(s: SurfaceDescriptor, query: string): boolean {
   return false;
 }
 
+function surfaceToItem(s: SurfaceDescriptor, group: SpotGroup): SpotItem {
+  return {
+    key: `surface-${s.path}`,
+    group,
+    navigate: s.path,
+    glyph: s.digit !== undefined ? String(s.digit) : '◆',
+    glyphGold: s.digit !== undefined,
+    primary: s.label,
+    secondary: s.description,
+    trailing: s.path,
+  };
+}
+
 export function Spotlight({ open, onClose }: SpotlightProps): JSX.Element | null {
   const navigate = useNavigate();
+  const api = useApiClient();
   const recents = useRecents((s) => s.paths);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const [query, setQuery] = useState<string>('');
+  const [debounced, setDebounced] = useState<string>('');
   const [activeIdx, setActiveIdx] = useState<number>(0);
 
   // Reset state every time the modal opens.
   useEffect(() => {
     if (open) {
       setQuery('');
+      setDebounced('');
       setActiveIdx(0);
-      // Focus runs after the next paint so the input is mounted.
       window.requestAnimationFrame(() => inputRef.current?.focus());
     }
   }, [open]);
 
-  const rows: ResultRow[] = useMemo(() => {
-    const acc: ResultRow[] = [];
+  // Debounce the query that reaches the network (surface filtering stays instant).
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(query.trim()), 180);
+    return () => clearTimeout(t);
+  }, [query]);
 
-    // Zuletzt — only when no query (the recents list otherwise becomes noise).
-    if (query.length === 0) {
+  const entityEnabled = open && debounced.length >= 2;
+
+  const customersQ = useQuery({
+    queryKey: ['spotlight', 'customers', debounced],
+    queryFn: () => customersApi.list(api, { q: debounced, limit: 5 }),
+    enabled: entityEnabled,
+    staleTime: 15_000,
+  });
+
+  const productsQ = useQuery({
+    queryKey: ['spotlight', 'products', debounced],
+    queryFn: () => productsApi.list(api, { q: debounced, limit: 5 }),
+    enabled: entityEnabled,
+    staleTime: 15_000,
+  });
+
+  const items: SpotItem[] = useMemo(() => {
+    const q = query.toLowerCase().trim();
+    const acc: SpotItem[] = [];
+
+    // Live entities first — they are the answer to a typed name/SKU.
+    for (const c of customersQ.data?.items ?? []) {
+      acc.push({
+        key: `kunde-${c.id}`,
+        group: 'kunden',
+        navigate: `/kunden?id=${encodeURIComponent(c.id)}`,
+        glyph: '☞',
+        glyphGold: true,
+        primary: c.fullName,
+        secondary: `Kunde · ${c.customerNumber}`,
+        trailing: 'Kundenakte',
+      });
+    }
+    for (const p of productsQ.data?.items ?? []) {
+      acc.push({
+        key: `artikel-${p.id}`,
+        group: 'artikel',
+        navigate: `/lager?produkt=${encodeURIComponent(p.id)}`,
+        glyph: '◈',
+        glyphGold: true,
+        primary: p.name,
+        secondary: `${p.sku} · ${formatEur(p.listPriceEur)} €`,
+        trailing: 'Artikel',
+      });
+    }
+
+    // Zuletzt — only when the input is empty (otherwise it is noise).
+    if (q.length === 0) {
       for (const path of recents) {
         const s = findSurfaceByPath(path);
-        if (s) acc.push({ surface: s, group: 'zuletzt' });
+        if (s) acc.push(surfaceToItem(s, 'zuletzt'));
       }
     }
     for (const s of PRIMARY_SURFACES) {
-      if (matches(s, query)) acc.push({ surface: s, group: 'karteikasten' });
+      if (surfaceMatches(s, q)) acc.push(surfaceToItem(s, 'karteikasten'));
     }
     for (const s of SECONDARY_SURFACES) {
-      if (matches(s, query)) acc.push({ surface: s, group: 'weitere' });
+      if (surfaceMatches(s, q)) acc.push(surfaceToItem(s, 'weitere'));
     }
     return acc;
-  }, [query, recents]);
+  }, [query, recents, customersQ.data, productsQ.data]);
 
   // Keep activeIdx in range when the result set shrinks.
   useEffect(() => {
-    if (activeIdx >= rows.length) setActiveIdx(Math.max(0, rows.length - 1));
-  }, [activeIdx, rows.length]);
+    if (activeIdx >= items.length) setActiveIdx(Math.max(0, items.length - 1));
+  }, [activeIdx, items.length]);
 
-  const activate = (row: ResultRow | undefined): void => {
-    if (!row) return;
-    navigate(row.surface.path);
+  const activate = (item: SpotItem | undefined): void => {
+    if (!item) return;
+    navigate(item.navigate);
     onClose();
   };
 
@@ -108,7 +187,7 @@ export function Spotlight({ open, onClose }: SpotlightProps): JSX.Element | null
       }
       if (ev.key === 'ArrowDown') {
         ev.preventDefault();
-        setActiveIdx((i) => Math.min(rows.length - 1, i + 1));
+        setActiveIdx((i) => Math.min(items.length - 1, i + 1));
         return;
       }
       if (ev.key === 'ArrowUp') {
@@ -118,16 +197,18 @@ export function Spotlight({ open, onClose }: SpotlightProps): JSX.Element | null
       }
       if (ev.key === 'Enter') {
         ev.preventDefault();
-        activate(rows[activeIdx]);
+        activate(items[activeIdx]);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-    // We deliberately depend on rows + activeIdx so Enter sees fresh state.
+    // Depend on items + activeIdx so Enter sees fresh state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, rows, activeIdx, onClose]);
+  }, [open, items, activeIdx, onClose]);
 
   if (!open) return null;
+
+  const entitiesLoading = entityEnabled && (customersQ.isFetching || productsQ.isFetching);
 
   return (
     <div
@@ -140,8 +221,6 @@ export function Spotlight({ open, onClose }: SpotlightProps): JSX.Element | null
         paddingTop: '12vh',
       }}
     >
-      {/* Backdrop — a real button so click- and keyboard-dismiss are equivalent
-          and it is announced as a control rather than a bare clickable div. */}
       <button
         type="button"
         aria-label="Suche schließen"
@@ -161,8 +240,6 @@ export function Spotlight({ open, onClose }: SpotlightProps): JSX.Element | null
         aria-modal="true"
         aria-label="Suchen"
         padding="none"
-        // Stop the click from bubbling to the backdrop; this card is the dialog
-        // surface, not a control, so no keyboard handler is needed here.
         onClick={(ev) => ev.stopPropagation()}
         style={{
           position: 'relative',
@@ -171,7 +248,6 @@ export function Spotlight({ open, onClose }: SpotlightProps): JSX.Element | null
           overflow: 'hidden',
         }}
       >
-        {/* Input row */}
         <div
           style={{
             display: 'flex',
@@ -189,7 +265,7 @@ export function Spotlight({ open, onClose }: SpotlightProps): JSX.Element | null
               setQuery(ev.target.value);
               setActiveIdx(0);
             }}
-            placeholder="Suchen…"
+            placeholder="Suchen: Kunde, Artikel oder Bereich…"
             spellCheck={false}
             style={{
               flex: 1,
@@ -215,23 +291,22 @@ export function Spotlight({ open, onClose }: SpotlightProps): JSX.Element | null
             style={{
               fontFamily: 'var(--w14-font-mono)',
               fontSize: '0.72rem',
-              color: 'var(--w14-ink-faded)',
+              color: entitiesLoading ? 'var(--w14-gold)' : 'var(--w14-ink-faded)',
               border: '1px solid var(--w14-rule)',
               borderRadius: 4,
               padding: '2px 6px',
             }}
           >
-            Esc
+            {entitiesLoading ? 'sucht…' : 'Esc'}
           </span>
         </div>
 
-        {/* Results */}
         <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
-          {rows.length === 0 ? (
+          {items.length === 0 ? (
             <EmptyState />
           ) : (
             <ResultList
-              rows={rows}
+              items={items}
               activeIdx={activeIdx}
               onHover={setActiveIdx}
               onActivate={activate}
@@ -257,13 +332,7 @@ function EmptyState(): JSX.Element {
       >
         Was lange ruht, spricht leise.
       </p>
-      <p
-        style={{
-          margin: '8px 0 0',
-          color: 'var(--w14-ink-faded)',
-          fontSize: '0.78rem',
-        }}
-      >
+      <p style={{ margin: '8px 0 0', color: 'var(--w14-ink-faded)', fontSize: '0.78rem' }}>
         Nichts gefunden.
       </p>
     </div>
@@ -271,47 +340,41 @@ function EmptyState(): JSX.Element {
 }
 
 function ResultList({
-  rows,
+  items,
   activeIdx,
   onHover,
   onActivate,
 }: {
-  rows: ResultRow[];
+  items: SpotItem[];
   activeIdx: number;
   onHover: (i: number) => void;
-  onActivate: (row: ResultRow) => void;
+  onActivate: (item: SpotItem) => void;
 }): JSX.Element {
-  // Compute group boundaries so we render a <DiamondRule> between them.
   const groupBoundaries: number[] = [];
   let lastGroup: string | null = null;
-  rows.forEach((row, i) => {
-    if (row.group !== lastGroup) {
+  items.forEach((item, i) => {
+    if (item.group !== lastGroup) {
       groupBoundaries.push(i);
-      lastGroup = row.group;
+      lastGroup = item.group;
     }
   });
 
-  // Each row is a real <button> (ResultRowItem), so we use a plain semantic
-  // list rather than the ARIA listbox/option pattern — layering listbox roles
-  // on top of focusable buttons is contradictory. Keyboard navigation is driven
-  // by the global keydown handler + `active`, and the active row is exposed via
-  // aria-current on the button itself.
   return (
     <ul style={{ listStyle: 'none', padding: '8px 0', margin: 0 }}>
-      {rows.map((row, i) => {
+      {items.map((item, i) => {
         const startsGroup = groupBoundaries.includes(i);
         return (
-          <li key={`${row.group}-${row.surface.path}`} style={{ listStyle: 'none' }}>
+          <li key={item.key} style={{ listStyle: 'none' }}>
             {startsGroup && (
               <div style={{ padding: '8px 16px 2px' }}>
-                <GroupLabel group={row.group} />
+                <GroupLabel group={item.group} />
               </div>
             )}
             <ResultRowItem
-              row={row}
+              item={item}
               active={i === activeIdx}
               onMouseEnter={() => onHover(i)}
-              onClick={() => onActivate(row)}
+              onClick={() => onActivate(item)}
             />
           </li>
         );
@@ -320,28 +383,33 @@ function ResultList({
   );
 }
 
-function GroupLabel({ group }: { group: ResultRow['group'] }): JSX.Element {
-  const label =
-    group === 'zuletzt' ? 'Zuletzt' : group === 'karteikasten' ? 'Karteikasten' : 'Weitere';
+const GROUP_LABELS: Readonly<Record<SpotGroup, string>> = {
+  zuletzt: 'Zuletzt',
+  kunden: 'Kunden',
+  artikel: 'Artikel',
+  karteikasten: 'Karteikasten',
+  weitere: 'Weitere',
+};
+
+function GroupLabel({ group }: { group: SpotGroup }): JSX.Element {
   return (
     <div style={{ padding: '6px 0' }}>
-      <DiamondRule label={label} />
+      <DiamondRule label={GROUP_LABELS[group]} />
     </div>
   );
 }
 
 function ResultRowItem({
-  row,
+  item,
   active,
   onMouseEnter,
   onClick,
 }: {
-  row: ResultRow;
+  item: SpotItem;
   active: boolean;
   onMouseEnter: () => void;
   onClick: () => void;
 }): JSX.Element {
-  const { surface } = row;
   return (
     <button
       type="button"
@@ -367,30 +435,26 @@ function ResultRowItem({
         style={{
           fontFamily: 'var(--w14-font-mono)',
           fontSize: '0.86rem',
-          color: surface.digit !== undefined ? 'var(--w14-gold)' : 'var(--w14-ink-faded)',
+          color: item.glyphGold ? 'var(--w14-gold)' : 'var(--w14-ink-faded)',
           minWidth: 16,
         }}
       >
-        {surface.digit ?? '◆'}
+        {item.glyph}
       </span>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
         <span
           style={{
             fontFamily: 'var(--w14-font-display)',
             fontWeight: 500,
             fontSize: '0.95rem',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
           }}
         >
-          {surface.label}
+          {item.primary}
         </span>
-        <span
-          style={{
-            color: 'var(--w14-ink-faded)',
-            fontSize: '0.78rem',
-          }}
-        >
-          {surface.description}
-        </span>
+        <span style={{ color: 'var(--w14-ink-faded)', fontSize: '0.78rem' }}>{item.secondary}</span>
       </div>
       <span
         style={{
@@ -399,7 +463,7 @@ function ResultRowItem({
           color: 'var(--w14-ink-faded)',
         }}
       >
-        {surface.path}
+        {item.trailing}
       </span>
     </button>
   );
