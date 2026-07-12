@@ -306,6 +306,7 @@ const CustomerRow = memo(
               kycVerified={verified}
               trust={row.trustLevel}
               sanctions={row.sanctionsMatch}
+              pep={row.pepMatch}
             />
             <span
               className="w14-tabular"
@@ -329,19 +330,42 @@ function TrustChip({
   kycVerified,
   trust,
   sanctions,
+  pep = false,
 }: {
   kycVerified: boolean;
   trust: 'NEW' | 'VERIFIED' | 'VIP' | 'SUSPICIOUS' | 'BANNED';
   sanctions: boolean;
+  /** §15 GwG — shown alongside (not instead of) the trust chip; a PEP may be VERIFIED. */
+  pep?: boolean;
 }): JSX.Element {
-  if (sanctions) {
-    return <Chip color="var(--w14-wax-red)">Sanktion</Chip>;
-  }
-  if (trust === 'BANNED') return <Chip color="var(--w14-wax-red)">gesperrt</Chip>;
-  if (trust === 'SUSPICIOUS') return <Chip color="var(--w14-wax-red)">beobachten</Chip>;
-  if (trust === 'VIP') return <Chip color="var(--w14-gold)">◆◆ VIP</Chip>;
-  if (kycVerified) return <Chip color="var(--w14-gold)">KYC ✓</Chip>;
-  return <Chip color="var(--w14-ink-faded)">ohne KYC</Chip>;
+  const primary = ((): JSX.Element => {
+    if (sanctions) return <Chip color="var(--w14-wax-red)">Sanktion</Chip>;
+    if (trust === 'BANNED') return <Chip color="var(--w14-wax-red)">gesperrt</Chip>;
+    if (trust === 'SUSPICIOUS') return <Chip color="var(--w14-wax-red)">beobachten</Chip>;
+    if (trust === 'VIP') return <Chip color="var(--w14-gold)">◆◆ VIP</Chip>;
+    if (kycVerified) return <Chip color="var(--w14-gold)">KYC ✓</Chip>;
+    return <Chip color="var(--w14-ink-faded)">ohne KYC</Chip>;
+  })();
+  if (!pep) return primary;
+  return (
+    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+      <span
+        className="w14-smallcaps"
+        title="Politisch exponierte Person (§15 GwG)"
+        style={{
+          fontSize: '0.72rem',
+          letterSpacing: '0.08em',
+          color: 'var(--w14-gold)',
+          border: '1px solid var(--w14-gold)',
+          borderRadius: 'var(--w14-radius-button)',
+          padding: '1px 6px',
+        }}
+      >
+        PEP
+      </span>
+      {primary}
+    </span>
+  );
 }
 
 function Chip({ color, children }: { color: string; children: React.ReactNode }): JSX.Element {

@@ -304,6 +304,7 @@ function CustomerResultRow({
             kyc={row.kycVerifiedAt !== null}
             trust={row.trustLevel}
             sanctions={row.sanctionsMatch}
+            pep={row.pepMatch}
           />
           <span
             className="w14-tabular"
@@ -322,6 +323,35 @@ function CustomerResultRow({
 }
 
 function KycChip({
+  kyc,
+  trust,
+  sanctions,
+  pep = false,
+}: {
+  kyc: boolean;
+  trust: 'NEW' | 'VERIFIED' | 'VIP' | 'SUSPICIOUS' | 'BANNED';
+  sanctions: boolean;
+  pep?: boolean;
+}): JSX.Element {
+  const primary = renderPrimaryChip({ kyc, trust, sanctions });
+  if (!pep) return primary;
+  return (
+    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+      (
+        <span
+          className="w14-smallcaps"
+          title="Politisch exponierte Person (§15 GwG)"
+          style={{ fontSize: '0.72rem', letterSpacing: '0.08em', color: 'var(--w14-gold)', border: '1px solid var(--w14-gold)', borderRadius: 'var(--w14-radius-button)', padding: '1px 6px' }}
+        >
+          PEP
+        </span>
+      )
+      {primary}
+    </span>
+  );
+}
+
+function renderPrimaryChip({
   kyc,
   trust,
   sanctions,

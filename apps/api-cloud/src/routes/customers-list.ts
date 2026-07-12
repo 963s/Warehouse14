@@ -114,6 +114,7 @@ const customersListRoute: FastifyPluginAsync = async (app) => {
           kyc_verified_at: Date | null;
           trust_level: string;
           sanctions_match: boolean;
+          pep_match: boolean;
           cumulative_ankauf_eur: string;
           cumulative_spend_eur: string;
           created_at: Date;
@@ -128,6 +129,7 @@ const customersListRoute: FastifyPluginAsync = async (app) => {
             kyc_verified_at,
             trust_level::text                AS trust_level,
             sanctions_match,
+            pep_match,
             cumulative_ankauf_eur,
             cumulative_spend_eur,
             created_at,
@@ -166,6 +168,7 @@ const customersListRoute: FastifyPluginAsync = async (app) => {
           kycVerifiedAt: r.kyc_verified_at ? new Date(r.kyc_verified_at).toISOString() : null,
           trustLevel: r.trust_level as 'NEW' | 'VERIFIED' | 'VIP' | 'SUSPICIOUS' | 'BANNED',
           sanctionsMatch: r.sanctions_match,
+          pepMatch: r.pep_match,
           cumulativeAnkaufEur: r.cumulative_ankauf_eur,
           cumulativeSpendEur: r.cumulative_spend_eur,
           createdAt: new Date(r.created_at).toISOString(),

@@ -352,6 +352,34 @@ describe('Day 17 — catalog + customers + debt + audit fixes', () => {
       });
       expect(res.statusCode).toBe(403);
     });
+
+    it('GET /api/customers returns pepMatch on the list row (§15 GwG picker signal)', async () => {
+      // Create a customer, then flag it PEP directly (the sanctions/PEP screener
+      // sets these columns; the route only reads them).
+      const create = await app.inject({
+        method: 'POST',
+        url: '/api/customers',
+        headers: headers(ownerToken),
+        payload: { fullName: 'Politisch Exponiert', preferredLanguage: 'de' },
+      });
+      const { id } = create.json() as { id: string };
+      await migratorSql`UPDATE customers SET pep_match = TRUE WHERE id = ${id}::uuid`;
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/customers?q=Politisch',
+        headers: headers(ownerToken),
+      });
+      expect(res.statusCode).toBe(200);
+      const out = res.json() as {
+        items: Array<{ id: string; pepMatch: boolean; sanctionsMatch: boolean }>;
+      };
+      const row = out.items.find((r) => r.id === id);
+      expect(row).toBeDefined();
+      // The list row now carries the field (previously only the detail route did).
+      expect(row!.pepMatch).toBe(true);
+      expect(row!.sanctionsMatch).toBe(false);
+    });
   });
 
   // ════════════════════════════════════════════════════════════════════

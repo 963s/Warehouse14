@@ -356,11 +356,16 @@ function ResultRow({
             {row.customerNumber}
           </div>
         </div>
-        <KycChip
-          kyc={row.kycVerifiedAt !== null}
-          trust={row.trustLevel}
-          sanctions={row.sanctionsMatch}
-        />
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {row.pepMatch && (
+            <span className="w14-smallcaps" title="Politisch exponierte Person (§15 GwG)" style={{ fontSize: '0.72rem', letterSpacing: '0.08em', color: 'var(--w14-gold)', border: '1px solid var(--w14-gold)', borderRadius: 'var(--w14-radius-button)', padding: '1px 6px' }}>PEP</span>
+          )}
+          <KycChip
+            kyc={row.kycVerifiedAt !== null}
+            trust={row.trustLevel}
+            sanctions={row.sanctionsMatch}
+          />
+        </div>
       </div>
     </ParchmentCard>
   );

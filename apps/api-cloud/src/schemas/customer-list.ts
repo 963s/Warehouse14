@@ -64,6 +64,12 @@ export const CustomerListRow = Type.Object({
     Type.Literal('BANNED'),
   ]),
   sanctionsMatch: Type.Boolean(),
+  /**
+   * §15 GwG — politically exposed person. NOT a block like a sanctions hit;
+   * the picker shows it so the operator meets the enhanced-due-diligence signal
+   * before selecting the customer, not only inside the detail file.
+   */
+  pepMatch: Type.Boolean(),
   cumulativeAnkaufEur: Type.String(),
   cumulativeSpendEur: Type.String(),
   createdAt: Type.String({ format: 'date-time' }),

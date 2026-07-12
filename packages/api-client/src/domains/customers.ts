@@ -80,6 +80,12 @@ export interface CustomerListRow {
   kycVerifiedAt: string | null;
   trustLevel: CustomerTrustLevel;
   sanctionsMatch: boolean;
+  /**
+   * §15 GwG — politically exposed person. Surfaced on the list row so a picker
+   * can flag the enhanced-due-diligence signal before the customer is chosen,
+   * not only on the detail file. Distinct from `sanctionsMatch`, which blocks.
+   */
+  pepMatch: boolean;
   cumulativeAnkaufEur: string;
   cumulativeSpendEur: string;
   createdAt: string;
