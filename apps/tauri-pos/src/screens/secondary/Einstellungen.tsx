@@ -31,6 +31,7 @@ import { useSessionStore } from '../../state/session-store.js';
 import { useToastStore } from '../../state/toast-store.js';
 import { Belegdesigner } from './Belegdesigner.js';
 import { GeraeteManager } from './GeraeteManager.js';
+import { SammlungenSection } from './SammlungenSection.js';
 import { IntegrationenSection } from './IntegrationenSection.js';
 import { SteuerComplianceSection } from './SteuerComplianceSection.js';
 
@@ -42,6 +43,7 @@ type SectionId =
   | 'social'
   | 'chatwoot'
   | 'beleg'
+  | 'sammlungen'
   | 'steuer';
 
 type SectionDef = {
@@ -90,6 +92,13 @@ const SECTIONS: SectionDef[] = [
     desc: 'Chatwoot Live-Chat',
   },
   { id: 'beleg', label: 'Beleg & Shop', icon: <IconReceipt size={18} />, desc: 'Geschäftsdaten' },
+  {
+    id: 'sammlungen',
+    label: 'Sammlungen',
+    icon: <IconBox size={18} />,
+    desc: 'Web-Shop-Kategorien',
+    adminOnly: true,
+  },
   {
     id: 'steuer',
     label: 'Steuer-Export & Compliance',
@@ -190,6 +199,7 @@ export function Einstellungen(): JSX.Element {
         {activeSection === 'social' && <SocialSection />}
         {activeSection === 'chatwoot' && <ChatwootSection />}
         {activeSection === 'beleg' && <BelegSection />}
+        {activeSection === 'sammlungen' && isAdmin && <SammlungenSection />}
         {activeSection === 'steuer' && isAdmin && <SteuerComplianceSection />}
       </div>
     </section>
