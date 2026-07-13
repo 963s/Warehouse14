@@ -339,6 +339,16 @@ export interface ThermalReceiptData {
   tseTransactionNumber: string;
   tseQrPayload: string;
   footerLines: string[];
+  /**
+   * Which document this is. Absent = a sale (`VERKAUF`), the historical default.
+   * `ANKAUF` makes the preview + PDF print an „Ankaufbeleg" heading and the
+   * seller line. Optional so the Rust thermal struct (no `deny_unknown_fields`)
+   * simply ignores it on the current binary; the footer still carries the legal
+   * declaration there.
+   */
+  documentKind?: 'VERKAUF' | 'ANKAUF';
+  /** The other party on an Ankaufbeleg, e.g. „Verkäufer: Hans Mustermann". */
+  counterpartyLabel?: string | null;
 }
 
 export const thermalClient = {

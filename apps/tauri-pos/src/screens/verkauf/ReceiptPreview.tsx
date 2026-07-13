@@ -196,6 +196,22 @@ export function ReceiptPreview({
 
           <Rule />
 
+          {/* Document kind — an Ankaufbeleg names itself and its seller. */}
+          {data.documentKind === 'ANKAUF' && (
+            <div
+              className="w14-smallcaps"
+              style={{
+                textAlign: 'center',
+                letterSpacing: '0.1em',
+                fontSize: '0.82rem',
+                color: INK,
+                padding: '2px 0',
+              }}
+            >
+              Ankaufbeleg
+            </div>
+          )}
+
           {/* Meta */}
           <div style={{ display: 'grid', gap: 2 }}>
             <div style={rowStyle}>
@@ -210,6 +226,12 @@ export function ReceiptPreview({
               <span>Kassierer</span>
               <span>{data.cashierName}</span>
             </div>
+            {data.counterpartyLabel && (
+              <div style={rowStyle}>
+                <span>Verkäufer</span>
+                <span>{data.counterpartyLabel.replace(/^Verkäufer:\s*/, '')}</span>
+              </div>
+            )}
           </div>
 
           <Rule />

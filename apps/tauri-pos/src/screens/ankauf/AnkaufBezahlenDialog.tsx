@@ -42,6 +42,8 @@ import { evaluateKycGate } from '../../lib/ankauf-kyc-gate.js';
 import { resolveDeviceId, useApiClient } from '../../lib/api-context.js';
 import { posIntentsStore, sealFiscalRequest } from '../../lib/pos-intents-store.js';
 import { fromCents, sumNegotiatedCents } from '../../lib/intake-math.js';
+import { type AnkaufReceiptTse, buildAnkaufReceipt } from '../../lib/ankauf-receipt.js';
+import { type ThermalReceiptData, thermalClient } from '../../lib/hardware-client.js';
 import {
   type TseSessionResult,
   closeTseSession,
@@ -50,12 +52,15 @@ import {
   openTseSession,
 } from '../../lib/tse-service.js';
 import { computeAmountsPerVatId } from '../../lib/tse-vat.js';
+import { isReceiptShopValid, resolveShopInfo, useShopInfo } from '../../hooks/useShopInfo.js';
 import {
   selectAnkaufCustomerId,
   selectAnkaufItems,
   useAnkaufCartStore,
 } from '../../state/ankauf-cart-store.js';
 import { useHardwareStore } from '../../state/hardware-store.js';
+import { useLastReceiptStore } from '../../state/last-receipt-store.js';
+import { useSessionStore } from '../../state/session-store.js';
 import { isStepUpCancelled } from '../../state/step-up-store.js';
 import { useToastStore } from '../../state/toast-store.js';
 import { describeError } from '@warehouse14/i18n-de';
@@ -74,6 +79,9 @@ export function AnkaufBezahlenDialog({
   const addToast = useToastStore((s) => s.addToast);
   const printer = useLabelPrinter();
   const hardwareCfg = useHardwareStore((s) => s.config);
+  const { data: shopApi } = useShopInfo();
+  const sessionActor = useSessionStore((s) => s.actor);
+  const setLastReceipt = useLastReceiptStore((s) => s.setLastReceipt);
   const items = useAnkaufCartStore(selectAnkaufItems);
   const customerId = useAnkaufCartStore(selectAnkaufCustomerId);
   const payoutMethod = useAnkaufCartStore((s) => s.payoutMethod);
@@ -88,6 +96,8 @@ export function AnkaufBezahlenDialog({
   const [stampingKyc, setStampingKyc] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [finalized, setFinalized] = useState<AnkaufResponse | null>(null);
+  /** The printable Ankaufbeleg, built once the buy-in + TSE resolve. */
+  const [ankaufReceipt, setAnkaufReceipt] = useState<ThermalReceiptData | null>(null);
 
   /**
    * §19.3 W-1 — synchronous mutex (mirrors Verkauf BezahlenDialog).
@@ -207,6 +217,74 @@ export function AnkaufBezahlenDialog({
   }, [addToast, api, customer, qc, stampingKyc]);
 
   // ── Finalize Ankauf ──
+  /**
+   * Build the Ankaufbeleg from the finalized buy-in + the client TSE result,
+   * remember it for reprint (Kasse „letzten Beleg drucken"), and return it so
+   * the ReceiptPhase can print it. The buy-in is already a TSE-signed fiscal
+   * transaction; this only renders it.
+   */
+  const buildAndStoreReceipt = useCallback(
+    (result: AnkaufResponse, tse: AnkaufReceiptTse | null): ThermalReceiptData => {
+      const receipt = buildAnkaufReceipt({
+        shop: resolveShopInfo(shopApi),
+        receiptLocator: result.receiptLocator,
+        finalizedAtIso: result.finalizedAt,
+        cashierName: sessionActor?.isOwner ? 'Inhaber' : 'Bediener',
+        sellerName: customer?.fullName ?? null,
+        payoutMethod,
+        items: items.map((it) => ({ name: it.name, negotiatedPriceEur: it.negotiatedPriceEur })),
+        totalEur: result.totalEur,
+        tse,
+      });
+      setAnkaufReceipt(receipt);
+      setLastReceipt(receipt);
+      return receipt;
+    },
+    [shopApi, sessionActor, customer, payoutMethod, items, setLastReceipt],
+  );
+
+  // A Beleg must never print a blank/fake USt-IdNr. (§14 UStG / GoBD): if the
+  // shop VAT id is unconfigured, lock the print with an honest reason.
+  const receiptLocked = !isReceiptShopValid(resolveShopInfo(shopApi));
+  const canPrintReceipt =
+    hardwareCfg.thermal.mode === 'usb'
+      ? hardwareCfg.thermal.printerName.length > 0
+      : hardwareCfg.thermal.ip.length > 0;
+
+  const printAnkaufReceipt = useCallback(async (): Promise<void> => {
+    if (!ankaufReceipt) return;
+    if (receiptLocked) {
+      addToast({
+        tone: 'alert',
+        title: 'USt-IdNr. fehlt',
+        body: 'Bitte die USt-IdNr. des Ladens unter „Einstellungen" hinterlegen.',
+      });
+      return;
+    }
+    if (!canPrintReceipt) {
+      addToast({
+        tone: 'info',
+        title: 'Kein Drucker',
+        body: 'Beleg nur als Vorschau. Drucker unter „Geräte" einrichten.',
+      });
+      return;
+    }
+    try {
+      const endpoint =
+        hardwareCfg.thermal.mode === 'usb'
+          ? { ip: '', port: 9100, printerName: hardwareCfg.thermal.printerName }
+          : { ip: hardwareCfg.thermal.ip, port: hardwareCfg.thermal.port };
+      await thermalClient.print(endpoint, ankaufReceipt);
+      addToast({ tone: 'success', title: 'Ankaufbeleg gedruckt' });
+    } catch {
+      addToast({
+        tone: 'alert',
+        title: 'Druck fehlgeschlagen',
+        body: 'Drucker prüfen. Der Beleg bleibt über die Kasse nachdruckbar.',
+      });
+    }
+  }, [ankaufReceipt, receiptLocked, canPrintReceipt, hardwareCfg.thermal, addToast]);
+
   const submit = useCallback(async (): Promise<void> => {
     // §19.3 W-1 mutex: read+set SYNCHRONOUSLY, BEFORE the canSubmit guard,
     // so a double-click that beats React's state commit can't post twice.
@@ -302,6 +380,9 @@ export function AnkaufBezahlenDialog({
       // persist the signature against the finalized transaction (GoBD / BSI
       // TR-03153). Both steps are best-effort: a failure NEVER unwinds the booked
       // Ankauf — the signature falls into the offline queue and is nachgereicht.
+      // The TSE result the printed Ankaufbeleg carries; null until the FINISH
+      // signs (or stays null on a TSE outage → the Beleg prints „TSE Ausfall").
+      let tseForReceipt: AnkaufReceiptTse | null = null;
       if ('intention' in tseIntentionRes) {
         // An Ankauf cart shares ONE tax treatment (the MIXED guard enforces it),
         // so the signed VAT breakdown is a single bucket = total under that
@@ -327,6 +408,12 @@ export function AnkaufBezahlenDialog({
         });
         if (finishRes.kind === 'signed') {
           const sig = finishRes.signature;
+          tseForReceipt = {
+            signatureValue: sig.signatureValue,
+            signatureCounter: sig.signatureCounter,
+            transactionNumber: sig.transactionNumber,
+            qrPayload: sig.qrCodePayload,
+          };
           try {
             await transactionsApi.recordTseSignature(api, result.transactionId, {
               fiskalyTssId: hardwareCfg.tse.tssId,
@@ -386,6 +473,10 @@ export function AnkaufBezahlenDialog({
           body: 'Ankauf wurde ohne Signatur abgeschlossen.',
         });
       }
+
+      // Build the printable + reprintable Ankaufbeleg now that the buy-in +
+      // TSE have resolved (with or without a signature).
+      buildAndStoreReceipt(result, tseForReceipt);
 
       if (result.createdProducts.length > 0) {
         const bySkuMap = new Map(items.map((it) => [it.sku, it]));
@@ -457,6 +548,10 @@ export function AnkaufBezahlenDialog({
           });
           void printer.print(labelsToPrint);
         }
+
+        // Offline: the signature is nachgereicht on sync, so the Beleg prints
+        // „TSE Ausfall" for now (honest) but is fully reprintable.
+        buildAndStoreReceipt(offlineResult, null);
 
         await Promise.all([
           qc.invalidateQueries({ queryKey: dashboardQueryKey }),
@@ -543,6 +638,9 @@ export function AnkaufBezahlenDialog({
             finalized={finalized}
             customerName={customer?.fullName ?? ''}
             items={items}
+            hasReceipt={ankaufReceipt !== null}
+            receiptLocked={receiptLocked}
+            onPrintReceipt={() => void printAnkaufReceipt()}
             onDismiss={dismissAfterFinalize}
           />
         ) : (
@@ -980,11 +1078,17 @@ function ReceiptPhase({
   finalized,
   customerName,
   items,
+  hasReceipt,
+  receiptLocked,
+  onPrintReceipt,
   onDismiss,
 }: {
   finalized: AnkaufResponse;
   customerName: string;
   items: readonly IntakeItem[];
+  hasReceipt: boolean;
+  receiptLocked: boolean;
+  onPrintReceipt: () => void;
   onDismiss: () => void;
 }): JSX.Element {
   const printer = useLabelPrinter();
@@ -1117,6 +1221,30 @@ function ReceiptPhase({
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {hasReceipt && (
+        <div style={{ marginTop: 18 }}>
+          <DiamondRule label="Ankaufbeleg" />
+          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 8 }}>
+            <Button variant="primary" size="md" onClick={onPrintReceipt}>
+              Ankaufbeleg drucken
+            </Button>
+          </div>
+          <p
+            style={{
+              margin: '8px 0 0',
+              textAlign: 'center',
+              fontSize: '0.78rem',
+              color: 'var(--w14-ink-faded)',
+              lineHeight: 1.5,
+            }}
+          >
+            {receiptLocked
+              ? 'Zum Druck fehlt die USt-IdNr. des Ladens (Einstellungen). Der Beleg bleibt über die Kasse nachdruckbar.'
+              : 'Auch später über die Kasse nachdruckbar („letzten Beleg drucken").'}
+          </p>
         </div>
       )}
 
