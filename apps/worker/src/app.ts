@@ -38,6 +38,7 @@ import {
   storefrontCartSweeperJob,
   tseArchiveExporterJob,
   tseCertCheckerJob,
+  workerJobRunsRetentionJob,
 } from './jobs/index.js';
 import { createMetalPriceProvider } from './jobs/providers/index.js';
 import { createAnthropicVisionClient } from './lib/anthropic-vision-client.js';
@@ -116,6 +117,7 @@ export async function buildWorker(opts: BuildWorkerOpts): Promise<WorkerHandle> 
   runner.register(posReservationSweeperJob);
   runner.register(chainVerifierJob);
   runner.register(sessionsCleanupJob);
+  runner.register(workerJobRunsRetentionJob);
   runner.register(anomalyWatchdogJob);
   runner.register(
     lbmaPricesJob({

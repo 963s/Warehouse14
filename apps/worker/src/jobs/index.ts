@@ -14,6 +14,7 @@ export { posReservationSweeperJob } from './pos-reservation-sweeper.js';
 export { ebaySyncJob } from './ebay-sync.js';
 export { chainVerifierJob } from './chain-verifier.js';
 export { sessionsCleanupJob } from './sessions-cleanup.js';
+export { workerJobRunsRetentionJob } from './worker-job-runs-retention.js';
 export { anomalyWatchdogJob } from './anomaly-watchdog.js';
 export { lbmaPricesJob } from './lbma-prices.js';
 export { dsfinvkDailyExportJob } from './dsfinvk-daily-export.js';
