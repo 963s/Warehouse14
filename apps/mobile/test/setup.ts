@@ -25,30 +25,14 @@ jest.doMock("react-native", () => {
   )
 })
 
-jest.mock("i18next", () => ({
-  currentLocale: "en",
-  t: (key: string, params: Record<string, string>) => {
-    return `${key} ${JSON.stringify(params)}`
-  },
-  translate: (key: string, params: Record<string, string>) => {
-    return `${key} ${JSON.stringify(params)}`
-  },
-}))
+// The react-i18next stack (`i18next` + `src/i18n/`) was removed when the app
+// moved to the shared German spine `@warehouse14/i18n-de`. Mocking those deleted
+// modules here made this setup file throw at load and took down the WHOLE suite,
+// including the purification guard. No runtime code imports i18next anymore.
 
 jest.mock("expo-localization", () => ({
   ...jest.requireActual("expo-localization"),
-  getLocales: () => [{ languageTag: "en-US", textDirection: "ltr" }],
-}))
-
-jest.mock("../src/i18n/index.ts", () => ({
-  i18n: {
-    isInitialized: true,
-    language: "en",
-    t: (key: string, params: Record<string, string>) => {
-      return `${key} ${JSON.stringify(params)}`
-    },
-    numberToCurrency: jest.fn(),
-  },
+  getLocales: () => [{ languageTag: "de-DE", textDirection: "ltr" }],
 }))
 
 declare const tron // eslint-disable-line @typescript-eslint/no-unused-vars
