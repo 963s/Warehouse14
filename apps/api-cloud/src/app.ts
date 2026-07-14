@@ -94,6 +94,7 @@ import productsEbayPublishRoute from './routes/products-ebay-publish.js';
 import productsEbayRoutes from './routes/products-ebay.js';
 import productsListRoute from './routes/products-list.js';
 import productsRoutes from './routes/products.js';
+import realtimeSessionRoute from './routes/realtime-session.js';
 import registersRoute from './routes/registers.js';
 // Day 21 — Retail Core
 import settingsRoute from './routes/settings.js';
@@ -292,6 +293,8 @@ export async function buildApp(opts: BuildAppOpts): Promise<FastifyInstance> {
   await app.register(calendarRoute);
   await app.register(shopInfoRoute);
   await app.register(aiComposeRoute, { env: opts.env });
+  // ── Jarvis voice assistant — ephemeral Realtime session minting ──
+  await app.register(realtimeSessionRoute, { env: opts.env });
   await app.register(ledgerRoutes);
   // ── Epic K: DSFinV-K / DATEV fiscal exports ──────────────────────
   await app.register(closingExportRoute);

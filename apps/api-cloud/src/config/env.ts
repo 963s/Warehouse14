@@ -397,6 +397,38 @@ const EnvSchema = Type.Object({
     default: '',
     description: 'Fallback eBay category id for offers. Empty → offer omits categoryId.',
   }),
+
+  // ── Jarvis voice assistant (OpenAI Realtime) ───────────────────────
+  // The read-only talking assistant needs ONLY OPENAI_API_KEY. It is
+  // minted into a short-lived ephemeral token by POST /api/realtime/session,
+  // so the key never leaves the server. Empty ⇒ the assistant is disabled.
+  OPENAI_API_KEY: Type.String({
+    default: '',
+    description:
+      'OpenAI API key for the Jarvis Realtime voice assistant. Server-side only; the app receives ' +
+      'only a short-lived ephemeral token. Empty ⇒ POST /api/realtime/session returns 503.',
+  }),
+  OPENAI_REALTIME_MODEL: Type.String({
+    default: 'gpt-realtime-2.1-mini',
+    description:
+      'OpenAI Realtime model for the voice assistant. mini keeps per-minute cost low; a full model ' +
+      'can be selected per session for complex reasoning.',
+  }),
+  OPENAI_REALTIME_VOICE: Type.String({
+    default: 'cedar',
+    description: 'Realtime voice name (e.g. cedar, marin, alloy).',
+  }),
+  // Reserved for the FUTURE executor (drafts replies, runs approved actions).
+  // Not used by the read-only assistant; wired in a later phase.
+  DEEPSEEK_API_KEY: Type.String({
+    default: '',
+    description:
+      'DeepSeek API key for the future executor model (OpenAI-compatible endpoint). Empty ⇒ executor disabled.',
+  }),
+  DEEPSEEK_BASE_URL: Type.String({
+    default: 'https://api.deepseek.com',
+    description: 'DeepSeek OpenAI-compatible base URL for the future executor.',
+  }),
 });
 
 export type Env = Static<typeof EnvSchema>;

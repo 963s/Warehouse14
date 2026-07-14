@@ -11,10 +11,13 @@
 import type { ToolRegistration } from '../types.js';
 import { appraiseEstateItemTool } from './appraise-estate-item.js';
 import { generateSeoDescriptionTool } from './generate-seo-description.js';
+import { situationReportTool } from './situation-report.js';
 
 export const MCP_TOOLS: ReadonlyArray<ToolRegistration> = [
   generateSeoDescriptionTool,
   appraiseEstateItemTool,
+  // ── Jarvis read-only situation awareness ──────────────────────────
+  situationReportTool,
 ];
 
 /** Build a name → registration lookup. Called once per process. */
