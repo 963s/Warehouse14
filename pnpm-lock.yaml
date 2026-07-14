@@ -502,6 +502,9 @@ importers:
       react:
         specifier: 18.3.1
         version: 18.3.1
+      react-ai-voice-visualizer:
+        specifier: ^0.1.6
+        version: 0.1.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       react-dom:
         specifier: 18.3.1
         version: 18.3.1(react@18.3.1)
@@ -8649,6 +8652,12 @@ packages:
     resolution: {integrity: sha512-Hrgsx+orqoygnmhFbKaHE6c296J+HTAQXoxEF6gNupROmmGJRoyzfG3ccAveqCBrwr/2yxQ5BVd/GTl5agOwSg==}
     engines: {node: '>= 0.6'}
 
+  react-ai-voice-visualizer@0.1.6:
+    resolution: {integrity: sha512-/L2fS0QpqsvzH1nvyXrJmvw8gCKPLvgato7uqY9jb68xl+bzDdOw/J0fKntpXQH8YzcSSUUJ9tlzSZWznXl9Mg==}
+    peerDependencies:
+      react: ^18.0.0
+      react-dom: ^18.0.0
+
   react-devtools-core@6.1.5:
     resolution: {integrity: sha512-ePrwPfxAnB+7hgnEr8vpKxL9cmnp7F322t8oqcPshbIQQhDKgFDW4tjhF2wjVbdXF9O/nyuy3sQWd9JGpiLPvA==}
 
@@ -9215,6 +9224,9 @@ packages:
 
   simple-swizzle@0.2.4:
     resolution: {integrity: sha512-nAu1WFPQSMNr2Zn9PGSZK9AGn4t/y97lEm+MXTtUDwfP0ksAIX4nO+6ruD9Jwut4C49SB1Ws+fbXsm/yScWOHw==}
+
+  simplex-noise@4.0.3:
+    resolution: {integrity: sha512-qSE2I4AngLQG7BXqoZj51jokT4WUXe8mOBrvfOXpci8+6Yu44+/dD5zqDpOx3Ux792eamTd2lLcI8jqFntk/lg==}
 
   sisteransi@1.0.5:
     resolution: {integrity: sha512-bLGGlR1QxBcynn2d5YmDX4MGjlZvy2MRBDRNHLJ8VI6l6+9FUiyTFNJ0IveOSP0bcXgVDPRcfGqA0pjaqUpfVg==}
@@ -19792,6 +19804,12 @@ snapshots:
 
   range-parser@1.2.1: {}
 
+  react-ai-voice-visualizer@0.1.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
+    dependencies:
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+      simplex-noise: 4.0.3
+
   react-devtools-core@6.1.5:
     dependencies:
       shell-quote: 1.8.4
@@ -20494,6 +20512,8 @@ snapshots:
   simple-swizzle@0.2.4:
     dependencies:
       is-arrayish: 0.3.4
+
+  simplex-noise@4.0.3: {}
 
   sisteransi@1.0.5: {}
 
