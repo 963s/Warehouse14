@@ -98,12 +98,17 @@ jobs:
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile=false
 
-      - name: Build all internal packages (Drizzle, ui-kit, api-client)
+      - name: Build all internal packages tauri-pos imports (dist-based workspace deps)
+        # tauri-pos imports these as built packages (main -> ./dist). Vite fails
+        # to resolve any that is not built. i18n-de + appointments were extracted
+        # after v0.4.33, so they MUST be built here alongside the original four.
         run: |
           pnpm --filter @warehouse14/inventory-lock build
           pnpm --filter @warehouse14/db build
           pnpm --filter @warehouse14/ui-kit build
           pnpm --filter @warehouse14/api-client build
+          pnpm --filter @warehouse14/i18n-de build
+          pnpm --filter @warehouse14/appointments build
 
       - name: Patch updater endpoint with this repo's coordinates
         # The committed tauri.conf.json carries __GITHUB_OWNER__ /
