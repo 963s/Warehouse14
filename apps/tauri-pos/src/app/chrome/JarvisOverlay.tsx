@@ -1,29 +1,35 @@
 /**
  * JarvisOverlay — „Vierzehn", the dramatic voice-assistant surface.
  *
- * The support button opens this full-screen command center. The orb + waveform
- * come from the MIT `react-ai-voice-visualizer` (Canvas), re-themed to the
- * Warehouse 14 brass identity. It is driven by the real Realtime session
- * (`useRealtimeSession`): the orb analyses the microphone while listening and
- * the model's audio while speaking, so it reacts to the actual conversation.
- * Audio devices are auto-discovered in the background (`useAudioDevices`).
+ * The visual is the ready-made `react-ai-voice-visualizer` (MIT, Canvas): the
+ * arc-reactor rings of `VoiceRing` wrapped around the pulsing „brain" of
+ * `VoiceNeural`, re-themed to the Warehouse 14 brass identity. Both react to the
+ * live Realtime session (`useRealtimeSession`) — the analyser follows whoever is
+ * talking (the mic while listening, the model while speaking).
  *
- * The session connects on the owner's tap („Sprich mit mir"), never on its own,
- * so cost stays low and the mic is only live when asked. The persona (security
- * spine: read-only, refuses code, offers a dev ticket) lives server-side and
- * rides in the ephemeral session.
+ * The session AUTO-CONNECTS the moment the overlay opens (the owner already
+ * summoned it), and Vierzehn greets first, in German, by voice. Closing the
+ * overlay disconnects. The persona (security spine: read-only, refuses code,
+ * offers a dev ticket) lives server-side and rides in the ephemeral session.
+ *
+ * To swap the centre visual, change HERO/RING below to any of the library's
+ * ready-made components: VoiceNeural, VoiceRing, VoiceParticles, VoiceOrb,
+ * AudioReactiveMesh — they share the same (volume, state, size, colors) props.
  *
  * DESIGN NOTE — deliberate opt-out: this surface is intentionally an always-dark
- * brass „command center" and does NOT follow the app's light/dark tokens. It is
- * a full-screen takeover, so it commits to one dramatic look on purpose; the few
- * brass/ink values are local constants rather than `--w14-*` tokens for that
- * reason. Everything else (focus trap, restore, scroll-lock, aria) mirrors the
- * house `ModalShell` so the a11y contract still holds.
+ * brass „command center" and does NOT follow the app's light/dark tokens. Focus
+ * trap, restore, scroll-lock and aria still mirror the house `ModalShell`.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { VoiceOrb, Waveform, useAudioAnalyser, type VoiceState } from 'react-ai-voice-visualizer';
+import {
+  VoiceNeural,
+  VoiceRing,
+  Waveform,
+  useAudioAnalyser,
+  type VoiceState,
+} from 'react-ai-voice-visualizer';
 
 import { useAudioDevices } from './useAudioDevices.js';
 import { type JarvisState, useRealtimeSession } from './useRealtimeSession.js';
@@ -53,10 +59,10 @@ const ORB_STATE: Record<JarvisState, VoiceState> = {
   error: 'idle',
 };
 
-/** Orb diameter that always leaves room for the surrounding stack on short windows. */
-function pickOrbSize(): number {
-  if (typeof window === 'undefined') return 210;
-  return Math.max(140, Math.min(220, Math.round(window.innerHeight * 0.26)));
+/** Hero diameter that always leaves room for the surrounding stack on short windows. */
+function pickHeroSize(): number {
+  if (typeof window === 'undefined') return 240;
+  return Math.max(180, Math.min(280, Math.round(window.innerHeight * 0.32)));
 }
 
 function brace(pos: 'tl' | 'tr' | 'bl' | 'br'): React.CSSProperties {
@@ -76,31 +82,24 @@ function brace(pos: 'tl' | 'tr' | 'bl' | 'br'): React.CSSProperties {
 
 export function JarvisOverlay({ onClose }: { onClose: () => void }): JSX.Element {
   const { selectedMicId } = useAudioDevices();
-  const { state, error, micStream, connect, disconnect } = useRealtimeSession(selectedMicId);
+  const { state, error, micStream, modelStream, connect, disconnect } =
+    useRealtimeSession(selectedMicId);
 
-  // Honor the OS reduced-motion setting for the Canvas visualisers (the CSS
-  // entrance animation is already guarded below).
-  const reducedMotion =
-    typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-
-  // Analyse the mic — a stable stream for the whole session. Swapping to the
-  // model stream on each turn would tear down and rebuild the AudioContext (a
-  // per-turn hitch); the orb's speaking animation is state-driven, so it stays
-  // alive while Vierzehn talks even without the model's audio levels.
-  const { frequencyData, timeDomainData, volume } = useAudioAnalyser(
-    reducedMotion ? null : micStream,
-    ANALYSER_OPTS,
-  );
+  // Analyse whoever is talking so the visual reacts to the real conversation:
+  // the model while it speaks, the mic otherwise.
+  const activeStream = state === 'speaking' ? modelStream : micStream;
+  const { frequencyData, timeDomainData, volume } = useAudioAnalyser(activeStream, ANALYSER_OPTS);
 
   const connected = state !== 'idle' && state !== 'error';
+  const orbState = ORB_STATE[state];
 
   const panelRef = useRef<HTMLDivElement>(null);
   const primaryBtnRef = useRef<HTMLButtonElement>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
 
-  const [orbSize, setOrbSize] = useState<number>(() => pickOrbSize());
+  const [heroSize, setHeroSize] = useState<number>(() => pickHeroSize());
   useEffect(() => {
-    const onResize = (): void => setOrbSize(pickOrbSize());
+    const onResize = (): void => setHeroSize(pickHeroSize());
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
@@ -109,6 +108,14 @@ export function JarvisOverlay({ onClose }: { onClose: () => void }): JSX.Element
     disconnect();
     onClose();
   }, [disconnect, onClose]);
+
+  // Auto-connect the moment the overlay opens — the owner already summoned it,
+  // so Vierzehn wakes and greets immediately (no „press and talk" step).
+  useEffect(() => {
+    void connect();
+    // connect() guards against a double start; run once on open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Capture the trigger, lock body scroll, move focus in — restore + unlock on close.
   useEffect(() => {
@@ -157,6 +164,8 @@ export function JarvisOverlay({ onClose }: { onClose: () => void }): JSX.Element
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [handleClose]);
+
+  const neuralSize = Math.round(heroSize * 0.78);
 
   return createPortal(
     <div
@@ -222,10 +231,10 @@ export function JarvisOverlay({ onClose }: { onClose: () => void }): JSX.Element
         <span aria-live="polite">Status · {STATUS_LABEL[state]}</span>
       </div>
 
-      {/* Scroll region: centers the stack when it fits, scrolls when the window
-          is short so the „Sprich mit mir" CTA is never clipped off-screen. */}
+      {/* Scroll region: centres the stack when it fits, scrolls when the window
+          is short so the actions are never clipped off-screen. */}
       <div style={{ position: 'absolute', inset: 0, overflowY: 'auto', display: 'flex' }}>
-        <div style={{ margin: 'auto', display: 'grid', placeItems: 'center', gap: 18, textAlign: 'center', padding: '72px 24px' }}>
+        <div style={{ margin: 'auto', display: 'grid', placeItems: 'center', gap: 20, textAlign: 'center', padding: '76px 24px' }}>
           <div
             style={{
               fontFamily: 'var(--w14-font-display, Georgia, serif)',
@@ -239,35 +248,35 @@ export function JarvisOverlay({ onClose }: { onClose: () => void }): JSX.Element
             Vierzehn
           </div>
 
-          <div aria-hidden>
-            {reducedMotion ? (
-              <div
-                style={{
-                  width: orbSize,
-                  height: orbSize,
-                  borderRadius: '50%',
-                  background: `radial-gradient(circle at 50% 40%, ${BRASS}, ${WAX} 60%, rgba(35,26,12,0.2) 82%)`,
-                  boxShadow: '0 0 40px rgba(230,194,115,0.35)',
-                }}
-              />
-            ) : (
-              <VoiceOrb
+          {/* The hero: arc-reactor rings (VoiceRing) around the neural brain
+              (VoiceNeural), both from the library, layered + brass-themed. */}
+          <div aria-hidden style={{ position: 'relative', width: heroSize, height: heroSize }}>
+            <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center' }}>
+              <VoiceRing
                 audioData={frequencyData}
                 volume={volume}
-                state={ORB_STATE[state]}
-                size={orbSize}
+                state={orbState}
+                size={heroSize}
                 primaryColor={BRASS}
                 secondaryColor={WAX}
-                glowIntensity={1.5}
+                rotationSpeed={1.2}
               />
-            )}
+            </div>
+            <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center' }}>
+              <VoiceNeural
+                volume={volume}
+                state={orbState}
+                size={neuralSize}
+                primaryColor={BRASS}
+                secondaryColor={WAX}
+                nodeCount={44}
+              />
+            </div>
           </div>
 
-          {!reducedMotion && (
-            <div aria-hidden style={{ width: 'min(420px, 78vw)', height: 44 }}>
-              <Waveform timeDomainData={timeDomainData} height={44} color={BRASS} animated />
-            </div>
-          )}
+          <div aria-hidden style={{ width: 'min(420px, 78vw)', height: 40 }}>
+            <Waveform timeDomainData={timeDomainData} height={40} color={BRASS} animated />
+          </div>
 
           <p
             style={{
@@ -280,9 +289,8 @@ export function JarvisOverlay({ onClose }: { onClose: () => void }): JSX.Element
               margin: '4px 0 0',
             }}
           >
-            Ich bin Vierzehn, dein Sprachassistent. Tippe auf „Sprich mit mir", dann hören wir uns.
-            Zurzeit lese und berichte ich, zum Beispiel den Stand des Tages. Handeln wie Senden,
-            Drucken oder Buchen richtet Basel gerade ein.
+            Ich bin Vierzehn, Ihr Sprachassistent. Sprechen Sie einfach, ich höre zu. Zurzeit lese
+            und berichte ich, zum Beispiel den Stand des Tages.
           </p>
 
           {error && (
@@ -319,7 +327,7 @@ export function JarvisOverlay({ onClose }: { onClose: () => void }): JSX.Element
                   ? 'Erneut verbinden'
                   : connected
                     ? 'Beenden'
-                    : 'Sprich mit mir'}
+                    : 'Sprechen'}
             </button>
             <button
               type="button"

@@ -268,6 +268,17 @@ export function useRealtimeSession(micDeviceId?: string): UseRealtimeSession {
             },
           }),
         );
+        // Greet first, immediately, in German — Vierzehn speaks before the owner
+        // does, so there is no „press and talk" step.
+        dc.send(
+          JSON.stringify({
+            type: 'response.create',
+            response: {
+              instructions:
+                'Begrüße den Inhaber jetzt sofort, kurz und herzlich auf Deutsch: „Guten Tag, mein Herr. Wie kann ich Ihnen helfen?"',
+            },
+          }),
+        );
         setState('listening');
       };
       dc.onmessage = (e) => {
