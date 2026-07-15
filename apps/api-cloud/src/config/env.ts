@@ -416,8 +416,8 @@ const EnvSchema = Type.Object({
       'German voice; the mini is the cheaper fallback.',
   }),
   OPENAI_REALTIME_VOICE: Type.String({
-    default: 'marin',
-    description: 'Realtime voice name (e.g. marin, cedar, alloy).',
+    default: 'cedar',
+    description: 'Realtime voice name (e.g. cedar or marin (2026), ash, echo).',
   }),
   // Reserved for the FUTURE executor (drafts replies, runs approved actions).
   // Not used by the read-only assistant; wired in a later phase.

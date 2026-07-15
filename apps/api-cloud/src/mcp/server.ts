@@ -341,7 +341,12 @@ const mcpServer: FastifyPluginAsync = async (app) => {
               };
               return reply.status(200).send(err);
             }
-            const result = await callTool(app.db, req.log, req.actor!, body.id, params, assistantScoped);
+            // Audit request_id is a UUID column, so pass the HTTP request id
+            // (genReqId = crypto.randomUUID), NOT the JSON-RPC body.id — the
+            // latter is a client-chosen string (the OpenAI "call_…" id for the
+            // Jarvis relay), which is not a UUID and made every tool call crash
+            // the audit INSERT. The JSON-RPC response still echoes body.id below.
+            const result = await callTool(app.db, req.log, req.actor!, req.id, params, assistantScoped);
             const ok: JsonRpcSuccess<ToolResult> = {
               jsonrpc: '2.0',
               id: body.id,
