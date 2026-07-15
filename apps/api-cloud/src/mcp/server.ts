@@ -35,7 +35,7 @@
 
 import { Value } from '@sinclair/typebox/value';
 import { sql } from 'drizzle-orm';
-import type { FastifyBaseLogger, FastifyPluginAsync } from 'fastify';
+import type { FastifyBaseLogger, FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 
 import type { AppDb } from '@warehouse14/db/client';
 import { mcpToolInvocations } from '@warehouse14/db/schema';
@@ -164,9 +164,13 @@ async function auditCloseFailure(input: AuditCloseFailureInput): Promise<void> {
 // JSON-RPC method handlers
 // ────────────────────────────────────────────────────────────────────────
 
-function listTools(): { tools: Array<Omit<ToolManifest, 'requiredRoles'>> } {
-  const manifests: Array<Omit<ToolManifest, 'requiredRoles'>> = [];
+type PublicManifest = Omit<ToolManifest, 'requiredRoles' | 'assistantExposed'>;
+
+function listTools(assistantScoped: boolean): { tools: PublicManifest[] } {
+  const manifests: PublicManifest[] = [];
   for (const t of TOOL_MAP.values()) {
+    // On the assistant path, only advertise tools the assistant may run.
+    if (assistantScoped && !t.manifest.assistantExposed) continue;
     manifests.push({
       name: t.manifest.name,
       description: t.manifest.description,
@@ -188,10 +192,24 @@ async function callTool(
   actor: Actor,
   requestId: string,
   params: CallParams,
+  assistantScoped: boolean,
 ): Promise<ToolResult> {
   const reg = TOOL_MAP.get(params.name);
   if (!reg) {
     throw new ToolDispatchError(JsonRpcErrorCode.TOOL_NOT_FOUND, `Unknown tool: ${params.name}`);
+  }
+
+  // 0. Assistant-scope gate. The Vierzehn voice relay forwards an UNTRUSTED
+  //    model's tool names; on that path only tools explicitly flagged
+  //    `assistantExposed` may run — INDEPENDENT of the actor's role. This is
+  //    the real structural boundary; the advertised manifest is only advisory.
+  //    A hallucinating or injected model naming a withheld mutation tool
+  //    (e.g. generate_seo_description) is rejected here, not executed.
+  if (assistantScoped && !reg.manifest.assistantExposed) {
+    throw new ToolDispatchError(
+      JsonRpcErrorCode.TOOL_REJECTED,
+      `Tool ${params.name} is not available to the assistant.`,
+    );
   }
 
   // 1. Role gate per tool manifest.
@@ -264,19 +282,16 @@ class ToolDispatchError extends Error {
 // ────────────────────────────────────────────────────────────────────────
 
 const mcpServer: FastifyPluginAsync = async (app) => {
-  app.post(
-    '/api/mcp',
-    {
-      schema: {
-        tags: ['mcp'],
-        summary:
-          'Model Context Protocol JSON-RPC 2.0 endpoint. Supports tools/list and tools/call. ADMIN-only.',
-        // Body shape is JSON-RPC — we don't TypeBox-validate the envelope
-        // because we need to surface JSON-RPC error codes for malformed
-        // input, which a Fastify 400 wouldn't.
-      },
-    },
-    async (req, reply) => {
+  /**
+   * One handler, two mount points. `assistantScoped` is bound per ROUTE, never
+   * read from the request — a client cannot widen its own scope by flipping a
+   * flag. `/api/mcp` is the general ADMIN endpoint; `/api/mcp/assistant` is the
+   * only path the Vierzehn voice relay uses and hard-denies any tool that is
+   * not `assistantExposed`, regardless of the actor's role.
+   */
+  const makeHandler =
+    (assistantScoped: boolean) =>
+    async (req: FastifyRequest, reply: FastifyReply): Promise<unknown> => {
       requireAuth(req);
       requireRole(req, 'ADMIN');
 
@@ -309,7 +324,7 @@ const mcpServer: FastifyPluginAsync = async (app) => {
             const ok: JsonRpcSuccess<ReturnType<typeof listTools>> = {
               jsonrpc: '2.0',
               id: body.id,
-              result: listTools(),
+              result: listTools(assistantScoped),
             };
             return reply.status(200).send(ok);
           }
@@ -326,7 +341,7 @@ const mcpServer: FastifyPluginAsync = async (app) => {
               };
               return reply.status(200).send(err);
             }
-            const result = await callTool(app.db, req.log, req.actor!, body.id, params);
+            const result = await callTool(app.db, req.log, req.actor!, body.id, params, assistantScoped);
             const ok: JsonRpcSuccess<ToolResult> = {
               jsonrpc: '2.0',
               id: body.id,
@@ -367,7 +382,34 @@ const mcpServer: FastifyPluginAsync = async (app) => {
         };
         return reply.status(200).send(out);
       }
+    };
+
+  // Body shape is JSON-RPC — we don't TypeBox-validate the envelope because we
+  // need to surface JSON-RPC error codes for malformed input, which a Fastify
+  // 400 wouldn't.
+  app.post(
+    '/api/mcp',
+    {
+      schema: {
+        tags: ['mcp'],
+        summary:
+          'Model Context Protocol JSON-RPC 2.0 endpoint. Supports tools/list and tools/call. ADMIN-only.',
+      },
     },
+    makeHandler(false),
+  );
+
+  app.post(
+    '/api/mcp/assistant',
+    {
+      schema: {
+        tags: ['mcp'],
+        summary:
+          'Assistant-scoped MCP endpoint for the Vierzehn voice relay. ADMIN-only, and additionally ' +
+          'refuses any tool not flagged assistantExposed regardless of role.',
+      },
+    },
+    makeHandler(true),
   );
 };
 

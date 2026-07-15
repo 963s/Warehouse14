@@ -81,6 +81,9 @@ export const openDevTicketTool: ToolRegistration = {
     inputSchema: OpenDevTicketArgs,
     requiredRoles: ['ADMIN'],
     isMutation: true,
+    // The one deliberate write the assistant may make: forward a request to
+    // the developer. Records an internal task; touches no fiscal/system state.
+    assistantExposed: true,
   },
   handler: handler as ToolHandler<unknown>,
 };

@@ -262,6 +262,8 @@ export const generateSeoDescriptionTool: ToolRegistration = {
     inputSchema: GenerateSeoDescriptionArgs,
     requiredRoles: ['ADMIN'],
     isMutation: true,
+    // Writes to the products table — the voice assistant must never reach it.
+    assistantExposed: false,
   },
   handler: handler as ToolHandler<unknown>,
 };

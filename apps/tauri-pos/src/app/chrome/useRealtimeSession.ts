@@ -5,13 +5,15 @@
  *   1. POST /api/realtime/session  → ephemeral token + persona + read-only tools.
  *   2. WebRTC peer connection to OpenAI Realtime, mic in, model audio out.
  *   3. data channel "oai-events": push the tools + turn detection; on a
- *      function call, RELAY it to POST /api/mcp (the app's own authenticated
- *      session + mTLS reach it) and send the result back. OpenAI never touches
- *      our server directly, so the zero-trust gate stays intact.
+ *      function call, RELAY it to POST /api/mcp/assistant (the app's own
+ *      authenticated session + mTLS reach it). That route enforces the
+ *      assistant tool allowlist server-side, so even a hallucinating model
+ *      cannot reach a withheld mutation tool. OpenAI never touches our server.
  *
  * Exposes a small state machine + the mic/model streams so JarvisOverlay can
- * drive the orb. NOTE: live-verify with the API key set + api deployed; the
- * exact Realtime event names are pinned to the 2026 WebRTC contract.
+ * drive the orb. The WebRTC handshake targets the GA `…/v1/realtime/calls`
+ * endpoint; model audio plays through a real (hidden, DOM-attached) element so
+ * it is audible on the WebKit WebViews the desktop app ships.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -49,7 +51,9 @@ export interface UseRealtimeSession {
   disconnect: () => void;
 }
 
-const OPENAI_REALTIME_SDP_URL = 'https://api.openai.com/v1/realtime';
+// GA WebRTC endpoint. The SDP offer is POSTed here with the ephemeral token;
+// the older `/v1/realtime` path is the deprecated beta and rejects GA keys.
+const OPENAI_REALTIME_SDP_URL = 'https://api.openai.com/v1/realtime/calls';
 
 /**
  * A local failure whose `reason` is ALREADY a safe German sentence, so the
@@ -73,23 +77,42 @@ export function useRealtimeSession(micDeviceId?: string): UseRealtimeSession {
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const dcRef = useRef<RTCDataChannel | null>(null);
   const audioElRef = useRef<HTMLAudioElement | null>(null);
+  const micStreamRef = useRef<MediaStream | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  // Set synchronously at the top of connect() so a rapid second tap (or a
+  // close mid-connect) cannot start a second peer connection or leave a mic on.
+  const connectingRef = useRef(false);
 
-  const disconnect = useCallback(() => {
+  // Release EVERY live resource. Idempotent, and never leaves the mic hot:
+  // the mic is stopped from its own ref, so a stream acquired but not yet added
+  // to the peer connection is still stopped.
+  const teardown = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
     dcRef.current?.close();
     dcRef.current = null;
+    micStreamRef.current?.getTracks().forEach((t) => t.stop());
+    micStreamRef.current = null;
     pcRef.current?.getSenders().forEach((s) => s.track?.stop());
     pcRef.current?.close();
     pcRef.current = null;
     if (audioElRef.current) {
+      audioElRef.current.pause();
       audioElRef.current.srcObject = null;
+      audioElRef.current.remove();
       audioElRef.current = null;
     }
     setMicStream(null);
     setModelStream(null);
-    setState('idle');
   }, []);
 
-  // Relay a model tool call to the app's authenticated MCP endpoint.
+  const disconnect = useCallback(() => {
+    teardown();
+    setState('idle');
+  }, [teardown]);
+
+  // Relay a model tool call to the assistant-scoped MCP endpoint. That route
+  // refuses any tool not flagged assistantExposed, regardless of role.
   const relayToolCall = useCallback(
     async (callId: string, name: string, argsJson: string): Promise<void> => {
       const dc = dcRef.current;
@@ -102,7 +125,7 @@ export function useRealtimeSession(micDeviceId?: string): UseRealtimeSession {
       }
       let output: unknown;
       try {
-        const env = await api.request<McpEnvelope>('POST', '/api/mcp', {
+        const env = await api.request<McpEnvelope>('POST', '/api/mcp/assistant', {
           jsonrpc: '2.0',
           id: callId,
           method: 'tools/call',
@@ -132,7 +155,7 @@ export function useRealtimeSession(micDeviceId?: string): UseRealtimeSession {
         setState('listening');
       } else if (type === 'response.created') {
         setState('thinking');
-      } else if (type === 'response.output_audio.delta' || type === 'output_audio_buffer.started') {
+      } else if (type === 'output_audio_buffer.started') {
         setState('speaking');
       } else if (type === 'response.done' || type === 'output_audio_buffer.stopped') {
         setState('listening');
@@ -152,31 +175,49 @@ export function useRealtimeSession(micDeviceId?: string): UseRealtimeSession {
   );
 
   const connect = useCallback(async (): Promise<void> => {
-    if (pcRef.current) return;
+    if (pcRef.current || connectingRef.current) return;
+    connectingRef.current = true;
     setError(null);
     setState('connecting');
+    const ac = new AbortController();
+    abortRef.current = ac;
     try {
       const session = await api.request<SessionResponse>('POST', '/api/realtime/session');
+      if (ac.signal.aborted) {
+        teardown();
+        return;
+      }
 
       const pc = new RTCPeerConnection();
       pcRef.current = pc;
 
-      // Model audio out.
+      // Model audio out. A real, DOM-attached element that we explicitly
+      // play() — a detached autoplay element is unreliable for a live WebRTC
+      // stream on WebKit (the macOS/Linux desktop targets).
       const audioEl = new Audio();
       audioEl.autoplay = true;
+      audioEl.style.display = 'none';
+      document.body.appendChild(audioEl);
       audioElRef.current = audioEl;
       pc.ontrack = (e) => {
         const [remote] = e.streams;
-        if (remote) {
-          audioEl.srcObject = remote;
-          setModelStream(remote);
-        }
+        if (!remote) return;
+        audioEl.srcObject = remote;
+        setModelStream(remote);
+        void audioEl.play().catch((err) => {
+          if (typeof console !== 'undefined') console.error('[Vierzehn] Audio-Wiedergabe blockiert', err);
+        });
       };
 
       // Mic in.
       const mic = await navigator.mediaDevices.getUserMedia({
         audio: micDeviceId ? { deviceId: { exact: micDeviceId } } : true,
       });
+      micStreamRef.current = mic;
+      if (ac.signal.aborted) {
+        teardown();
+        return;
+      }
       setMicStream(mic);
       mic.getTracks().forEach((t) => pc.addTrack(t, mic));
 
@@ -188,6 +229,7 @@ export function useRealtimeSession(micDeviceId?: string): UseRealtimeSession {
           JSON.stringify({
             type: 'session.update',
             session: {
+              type: 'realtime',
               instructions: session.instructions,
               tools: session.tools.map((t) => ({
                 type: 'function',
@@ -196,7 +238,7 @@ export function useRealtimeSession(micDeviceId?: string): UseRealtimeSession {
                 parameters: t.parameters,
               })),
               tool_choice: 'auto',
-              turn_detection: { type: 'server_vad' },
+              audio: { input: { turn_detection: { type: 'server_vad' } } },
             },
           }),
         );
@@ -213,6 +255,10 @@ export function useRealtimeSession(micDeviceId?: string): UseRealtimeSession {
       // SDP handshake with the ephemeral token.
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
+      if (ac.signal.aborted) {
+        teardown();
+        return;
+      }
       const sdpRes = await fetch(`${OPENAI_REALTIME_SDP_URL}?model=${encodeURIComponent(session.model)}`, {
         method: 'POST',
         body: offer.sdp ?? '',
@@ -220,12 +266,21 @@ export function useRealtimeSession(micDeviceId?: string): UseRealtimeSession {
           Authorization: `Bearer ${session.clientSecret}`,
           'Content-Type': 'application/sdp',
         },
+        signal: ac.signal,
       });
       if (!sdpRes.ok) {
         throw new VierzehnError('Der Sprachdienst hat die Verbindung abgelehnt. Bitte später erneut versuchen.');
       }
-      await pc.setRemoteDescription({ type: 'answer', sdp: await sdpRes.text() });
+      const answer = await sdpRes.text();
+      if (ac.signal.aborted) {
+        teardown();
+        return;
+      }
+      await pc.setRemoteDescription({ type: 'answer', sdp: answer });
     } catch (err) {
+      // A user-initiated cancel (disconnect aborted the fetch) already tore
+      // everything down — do not surface it as an error.
+      if (ac.signal.aborted) return;
       if (typeof console !== 'undefined') console.error('[Vierzehn] Verbindung fehlgeschlagen', err);
       const reason =
         err instanceof VierzehnError
@@ -233,14 +288,16 @@ export function useRealtimeSession(micDeviceId?: string): UseRealtimeSession {
           : err instanceof DOMException && (err.name === 'NotAllowedError' || err.name === 'NotFoundError')
             ? 'Kein Zugriff auf das Mikrofon. Bitte die Freigabe erlauben und erneut versuchen.'
             : describeError(err);
+      teardown();
       setError(reason);
       setState('error');
-      disconnect();
+    } finally {
+      connectingRef.current = false;
     }
-  }, [api, micDeviceId, handleEvent, disconnect]);
+  }, [api, micDeviceId, handleEvent, teardown]);
 
   // Always tear down on unmount.
-  useEffect(() => () => disconnect(), [disconnect]);
+  useEffect(() => () => teardown(), [teardown]);
 
   return { state, error, micStream, modelStream, connect, disconnect };
 }

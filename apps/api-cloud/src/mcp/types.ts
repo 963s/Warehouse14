@@ -102,6 +102,19 @@ export interface ToolManifest {
   requiredRoles: ReadonlyArray<'ADMIN' | 'CASHIER' | 'READONLY'>;
   /** True ⇒ this tool mutates DB state. Surfaces in the audit row. */
   isMutation: boolean;
+  /**
+   * True ⇒ the Vierzehn (Jarvis) voice assistant may invoke this tool. This is
+   * the SINGLE source of truth for the assistant's tool boundary: it gates both
+   * what `/api/realtime/session` advertises to the model AND what the
+   * `/api/mcp/assistant` execution route will actually run (server.ts).
+   *
+   * The assistant relays an UNTRUSTED model's tool names, so anything left
+   * exposed is reachable by a hallucinating or prompt-injected model — the
+   * advertised manifest is not a security boundary on its own. A mutating tool
+   * that is not an explicit, safe escape hatch MUST be `false`. Fail closed:
+   * when in doubt, `false`.
+   */
+  assistantExposed: boolean;
 }
 
 /**

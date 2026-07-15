@@ -135,6 +135,8 @@ export const situationReportTool: ToolRegistration = {
     inputSchema: SituationReportArgs,
     requiredRoles: ['ADMIN', 'CASHIER'],
     isMutation: false,
+    // Read-only daily situation, no personal data — safe for the assistant.
+    assistantExposed: true,
   },
   handler: handler as ToolHandler<unknown>,
 };

@@ -302,6 +302,8 @@ export const appraiseEstateItemTool: ToolRegistration = {
     inputSchema: AppraiseEstateItemArgs,
     requiredRoles: ['ADMIN', 'CASHIER'],
     isMutation: false,
+    // Read-only valuation, no PII — safe for the voice assistant.
+    assistantExposed: true,
   },
   handler: handler as ToolHandler<unknown>,
 };

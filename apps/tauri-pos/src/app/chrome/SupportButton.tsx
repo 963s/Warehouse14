@@ -3,8 +3,9 @@
  * voice assistant. A tap opens the dramatic Jarvis overlay; a right-click (or
  * long-press) still copies the support code so an actual problem can be reported.
  *
- * The assistant itself is read-only and honest that it is „still under
- * construction by Basel" until the Realtime brain is wired (JarvisOverlay).
+ * The assistant is read-only: it reads and reports (and can open a dev ticket
+ * for Basel), but never runs code or touches the system. The live voice session
+ * is wired in JarvisOverlay via `useRealtimeSession`.
  */
 
 import { useCallback, useState } from 'react';

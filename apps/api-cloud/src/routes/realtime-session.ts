@@ -139,13 +139,12 @@ const realtimeSessionRoute: FastifyPluginAsync<{ env: Env }> = async (app, opts)
       const model = opts.env.OPENAI_REALTIME_MODEL;
       const voice = opts.env.OPENAI_REALTIME_VOICE;
 
-      // The assistant gets the READ-ONLY tools plus a small allowlist of safe
-      // actions it is explicitly permitted to take (opening a dev ticket). No
-      // code-execution or system-mutating tool is ever handed over.
-      const ASSISTANT_ALLOWED_ACTIONS = new Set(['open_dev_ticket']);
-      const tools = MCP_TOOLS.filter(
-        (t) => !t.manifest.isMutation || ASSISTANT_ALLOWED_ACTIONS.has(t.manifest.name),
-      ).map((t) => ({
+      // The assistant is advertised ONLY the tools flagged `assistantExposed`
+      // (mcp/types.ts). That SAME flag is enforced server-side at execution on
+      // the /api/mcp/assistant route the app relays to, so what the model is
+      // told and what the server will run read one source of truth and can
+      // never drift. A withheld mutation tool is unreachable, not just unlisted.
+      const tools = MCP_TOOLS.filter((t) => t.manifest.assistantExposed).map((t) => ({
         name: t.manifest.name,
         description: t.manifest.description,
         parameters: t.manifest.inputSchema,

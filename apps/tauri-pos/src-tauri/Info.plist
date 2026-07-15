@@ -24,5 +24,10 @@
   <dict>
     <key>NSCameraUsageDescription</key>
     <string>Warehouse14 benötigt Zugriff auf die Kamera, um in der Foto-Werkstatt Produkt- und Ausweisfotos aufzunehmen.</string>
+    <!-- Same WKWebview getUserMedia gate as the camera above: without this
+         string the packaged build leaves the microphone unavailable, so the
+         Vierzehn voice assistant cannot hear the operator. -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Warehouse14 benötigt Zugriff auf das Mikrofon, damit Sie mit dem Sprachassistenten Vierzehn sprechen können.</string>
   </dict>
 </plist>
