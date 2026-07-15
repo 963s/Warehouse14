@@ -82,6 +82,7 @@ export const customerOverviewTool: ToolRegistration = {
     inputSchema: CustomerOverviewArgs,
     requiredRoles: ['ADMIN', 'CASHIER'],
     isMutation: false,
+    // Aggregate customer counts only — no PII decrypted, no row-level data — safe for the assistant.
     assistantExposed: true,
   },
   handler: handler as ToolHandler<unknown>,
