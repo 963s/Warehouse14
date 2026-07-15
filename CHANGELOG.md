@@ -6,6 +6,15 @@ and the project adheres to [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-15
+
+- Neuer Sprachassistent „Vierzehn": Sie sprechen einfach mit der Kasse. Er liest und berichtet, zum Beispiel den Stand des Tages, und begrüßt Sie beim Öffnen auf Deutsch.
+- Dunkelmodus: die ganze App in einem warmen, augenschonenden Dunkel, umschaltbar über die Kopfzeile.
+- Stabilere Verbindung: klare Meldungen bei Netzausfall, keine hängende Ansicht mehr, schnellere Fehlererkennung.
+- Sichtbarere aktive Zustände und Schalter; ein Farbfehler in Verkauf und Einstellungen wurde behoben.
+- Überarbeitetes Aktualisierungs-Center: grüner Hinweis bei neuer Version, mit einer Liste der Neuerungen.
+- Allgemeine Fehlerbehebungen und Politur der Bedienung.
+
 ## [0.4.11] — 2026-06-10
 
 - **World-class cashier & inventory redesign** (grounded in a 13-agent UX-research

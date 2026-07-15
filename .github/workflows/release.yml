@@ -123,6 +123,32 @@ jobs:
           echo "Patched updater endpoint:"
           grep -A1 endpoints "$CONF" | head -3
 
+      - name: Assemble release notes from CHANGELOG.md
+        # The in-app „Was ist neu" list is the updater manifest's `notes`, which
+        # tauri-action fills from releaseBody. Pull this version's section out of
+        # CHANGELOG.md so each release carries its own German change list.
+        shell: bash
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          NOTES=$(awk -v ver="$VER" '
+            index($0, "## [" ver "]") == 1 { grab=1; next }
+            grab && /^## \[/ { exit }
+            grab { print }
+          ' CHANGELOG.md | sed '/^[[:space:]]*$/d')
+          if [ -z "$NOTES" ]; then
+            NOTES="Neue Version ${GITHUB_REF_NAME}. Fehlerbehebungen und Verbesserungen."
+          fi
+          {
+            echo "RELEASE_NOTES<<__W14_EOF__"
+            echo "## Warehouse14 POS ${GITHUB_REF_NAME}"
+            echo ""
+            echo "${NOTES}"
+            echo ""
+            echo "Automatisches Update. Jede installierte Kopie holt sich diese Version."
+            echo "__W14_EOF__"
+          } >> "$GITHUB_ENV"
+          echo "Assembled release notes:"; echo "${NOTES}"
+
       - name: Build + bundle + release
         uses: tauri-apps/tauri-action@v0
         env:
@@ -134,19 +160,7 @@ jobs:
           args: --target ${{ matrix.rust-target }}
           tagName: ${{ github.ref_name }}
           releaseName: 'Warehouse14 POS ${{ github.ref_name }}'
-          releaseBody: |
-            ## Warehouse14 POS — ${{ github.ref_name }}
-
-            Auto-update target. Every installed copy that polls this
-            release will pick it up within an hour (manual "Check for
-            updates" via the in-app banner triggers it immediately).
-
-            Built for:
-              • macOS Apple Silicon (arm64)  →  `.dmg` + `.app.tar.gz`
-              • macOS Intel (x86_64)         →  `.dmg` + `.app.tar.gz`
-              • Windows x86_64               →  `.exe` (NSIS) + `.exe.sig`
-
-            See `CHANGELOG.md` for the full change list.
+          releaseBody: ${{ env.RELEASE_NOTES }}
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true

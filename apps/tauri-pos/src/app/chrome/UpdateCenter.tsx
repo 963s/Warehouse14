@@ -109,11 +109,11 @@ export function UpdateCenter({ open, onClose }: UpdateCenterProps): JSX.Element 
               <>
                 <StatusRow
                   icon={<span aria-hidden>✦</span>}
-                  tone="gold"
+                  tone="ok"
                   title={`Neue Version ${version} verfügbar`}
                   body={`Installierte Version: v${currentVersion}.`}
                 />
-                {notes && <div style={NOTES_STYLE}>{notes}</div>}
+                {notes && <WhatsNew notes={notes} />}
               </>
             )}
 
@@ -124,7 +124,7 @@ export function UpdateCenter({ open, onClose }: UpdateCenterProps): JSX.Element 
             {status === 'ready' && (
               <StatusRow
                 icon={<IconCheck size={18} />}
-                tone="gold"
+                tone="ok"
                 title="Update bereit"
                 body={`Version ${version ?? ''} wurde geladen. Die App startet beim Neustart in der neuen Version.`}
               />
@@ -329,5 +329,35 @@ function OpenSaleWarning(): JSX.Element {
       title="Offener Verkauf"
       body="Eine Aktualisierung erfordert einen Neustart. Offenen Verkauf zuerst abschließen? Nicht abgeschlossene Positionen gehen beim Neustart verloren."
     />
+  );
+}
+
+/**
+ * „Was ist neu" — the release notes of the offered version, rendered as a clean
+ * bullet list. Notes arrive as the release body (one change per line, often
+ * markdown bullets); strip the marker + any heading lines and list the rest.
+ */
+function WhatsNew({ notes }: { notes: string }): JSX.Element {
+  const items = notes
+    .split('\n')
+    .map((l) => l.replace(/^\s*[-*•]\s*/, '').trim())
+    .filter((l) => l.length > 0 && !l.startsWith('#'));
+  return (
+    <div style={NOTES_STYLE}>
+      <div className="w14-smallcaps" style={{ ...SMALLCAPS_LABEL, marginBottom: 8 }}>
+        Was ist neu
+      </div>
+      {items.length > 0 ? (
+        <ul style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 6 }}>
+          {items.map((item, i) => (
+            <li key={i} style={{ lineHeight: 1.45 }}>
+              {item}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div style={{ whiteSpace: 'pre-wrap' }}>{notes}</div>
+      )}
+    </div>
   );
 }
