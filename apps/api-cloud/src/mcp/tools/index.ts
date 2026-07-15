@@ -11,15 +11,20 @@
 import type { ToolRegistration } from '../types.js';
 import { agendaTool } from './agenda.js';
 import { appraiseEstateItemTool } from './appraise-estate-item.js';
+import { channelsOverviewTool } from './channels-overview.js';
 import { customerOverviewTool } from './customer-overview.js';
 import { financeOverviewTool } from './finance-overview.js';
 import { findCustomerTool } from './find-customer.js';
 import { findProductTool } from './find-product.js';
 import { generateSeoDescriptionTool } from './generate-seo-description.js';
 import { inventoryOverviewTool } from './inventory-overview.js';
+import { listProductsTool } from './list-products.js';
 import { openDevTicketTool } from './open-dev-ticket.js';
+import { productDetailsTool } from './product-details.js';
+import { salesBreakdownTool } from './sales-breakdown.js';
 import { salesReportTool } from './sales-report.js';
 import { situationReportTool } from './situation-report.js';
+import { topCustomersTool } from './top-customers.js';
 
 export const MCP_TOOLS: ReadonlyArray<ToolRegistration> = [
   generateSeoDescriptionTool,
@@ -29,10 +34,15 @@ export const MCP_TOOLS: ReadonlyArray<ToolRegistration> = [
   // ── Jarvis read-only shop access (customers, inventory, money, agenda) ──
   findCustomerTool,
   customerOverviewTool,
+  topCustomersTool,
   findProductTool,
+  listProductsTool,
+  productDetailsTool,
   inventoryOverviewTool,
   salesReportTool,
+  salesBreakdownTool,
   financeOverviewTool,
+  channelsOverviewTool,
   agendaTool,
   // ── Jarvis safe escape hatch: forward a request to the developer ──
   openDevTicketTool,
