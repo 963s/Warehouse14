@@ -76,11 +76,21 @@ function brace(pos: 'tl' | 'tr' | 'bl' | 'br'): React.CSSProperties {
 
 export function JarvisOverlay({ onClose }: { onClose: () => void }): JSX.Element {
   const { selectedMicId } = useAudioDevices();
-  const { state, error, micStream, modelStream, connect, disconnect } = useRealtimeSession(selectedMicId);
+  const { state, error, micStream, connect, disconnect } = useRealtimeSession(selectedMicId);
 
-  // Analyse whichever side is talking: the model while it speaks, else the mic.
-  const activeStream = state === 'speaking' ? modelStream : micStream;
-  const { frequencyData, timeDomainData, volume } = useAudioAnalyser(activeStream, ANALYSER_OPTS);
+  // Honor the OS reduced-motion setting for the Canvas visualisers (the CSS
+  // entrance animation is already guarded below).
+  const reducedMotion =
+    typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+  // Analyse the mic — a stable stream for the whole session. Swapping to the
+  // model stream on each turn would tear down and rebuild the AudioContext (a
+  // per-turn hitch); the orb's speaking animation is state-driven, so it stays
+  // alive while Vierzehn talks even without the model's audio levels.
+  const { frequencyData, timeDomainData, volume } = useAudioAnalyser(
+    reducedMotion ? null : micStream,
+    ANALYSER_OPTS,
+  );
 
   const connected = state !== 'idle' && state !== 'error';
 
@@ -230,20 +240,34 @@ export function JarvisOverlay({ onClose }: { onClose: () => void }): JSX.Element
           </div>
 
           <div aria-hidden>
-            <VoiceOrb
-              audioData={frequencyData}
-              volume={volume}
-              state={ORB_STATE[state]}
-              size={orbSize}
-              primaryColor={BRASS}
-              secondaryColor={WAX}
-              glowIntensity={1.5}
-            />
+            {reducedMotion ? (
+              <div
+                style={{
+                  width: orbSize,
+                  height: orbSize,
+                  borderRadius: '50%',
+                  background: `radial-gradient(circle at 50% 40%, ${BRASS}, ${WAX} 60%, rgba(35,26,12,0.2) 82%)`,
+                  boxShadow: '0 0 40px rgba(230,194,115,0.35)',
+                }}
+              />
+            ) : (
+              <VoiceOrb
+                audioData={frequencyData}
+                volume={volume}
+                state={ORB_STATE[state]}
+                size={orbSize}
+                primaryColor={BRASS}
+                secondaryColor={WAX}
+                glowIntensity={1.5}
+              />
+            )}
           </div>
 
-          <div aria-hidden style={{ width: 'min(420px, 78vw)', height: 44 }}>
-            <Waveform timeDomainData={timeDomainData} height={44} color={BRASS} animated />
-          </div>
+          {!reducedMotion && (
+            <div aria-hidden style={{ width: 'min(420px, 78vw)', height: 44 }}>
+              <Waveform timeDomainData={timeDomainData} height={44} color={BRASS} animated />
+            </div>
+          )}
 
           <p
             style={{
@@ -289,7 +313,13 @@ export function JarvisOverlay({ onClose }: { onClose: () => void }): JSX.Element
                 boxShadow: '0 0 20px rgba(230,194,115,0.3)',
               }}
             >
-              {state === 'connecting' ? 'Verbinde…' : connected ? 'Beenden' : 'Sprich mit mir'}
+              {state === 'connecting'
+                ? 'Verbinde…'
+                : state === 'error'
+                  ? 'Erneut verbinden'
+                  : connected
+                    ? 'Beenden'
+                    : 'Sprich mit mir'}
             </button>
             <button
               type="button"

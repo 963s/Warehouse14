@@ -40,12 +40,12 @@ export function UpdateButton(): JSX.Element {
           width: 36,
           height: 36,
           flex: '0 0 auto',
-          color: hasUpdate ? 'var(--w14-gold)' : 'var(--w14-ink-faded)',
+          color: hasUpdate ? 'var(--w14-gilt)' : 'var(--w14-ink-faded)',
           background: 'transparent',
-          border: `1px solid ${hasUpdate ? 'var(--w14-gold)' : 'var(--w14-rule)'}`,
+          border: `1px solid ${hasUpdate ? 'var(--w14-gilt)' : 'var(--w14-rule)'}`,
           borderRadius: 'var(--w14-radius-button)',
           cursor: 'pointer',
-          boxShadow: hasUpdate ? '0 0 0 2px var(--w14-gold-faint, rgba(176,141,87,0.18))' : 'none',
+          boxShadow: hasUpdate ? '0 0 0 2px rgb(var(--w14-gilt-rgb) / 0.18)' : 'none',
         }}
       >
         <style>{SPIN_KEYFRAMES}</style>

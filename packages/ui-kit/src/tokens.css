@@ -65,6 +65,13 @@
   --w14-danger: var(--w14-wax-red);
   --w14-status-alert: var(--w14-wax-red);
   --w14-success: var(--w14-verdigris);
+  /* Accent = verdigris, aliased so the many active/selected fills across the app
+     that reach for --w14-accent actually resolve (an undefined custom property
+     collapses the fill to transparent — an invisible active state). The catalog
+     filter, settings toggles, the offline dot and picker highlights all depend
+     on this. --w14-accent-ink is the AA-safe near-white text that sits on it. */
+  --w14-accent: var(--w14-verdigris);
+  --w14-accent-ink: #f8f6f1;
 
   /* ─── RGB channel triplets — REQUIRED for Tailwind slash-opacity ──── */
   --w14-parchment-rgb: 239 236 227;

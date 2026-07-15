@@ -56,7 +56,9 @@ export function HealthDot(): JSX.Element {
     };
   } else if (health === 'offline') {
     v = {
-      color: 'var(--w14-accent)',
+      // Offline is neutral-cautionary (queued, will auto-send) — a warm terra,
+      // NOT verdigris (that reads as „alles in Ordnung") and NOT alarm-red.
+      color: 'var(--w14-terra)',
       label: `Offline, ${pendingCount} in Warteschlange`,
       detail: 'Ohne Verbindung. Die Vorgänge werden gesendet, sobald das Netz zurück ist.',
       code: 'W14-NET-OFFLINE',

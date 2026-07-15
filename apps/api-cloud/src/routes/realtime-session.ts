@@ -169,6 +169,9 @@ const realtimeSessionRoute: FastifyPluginAsync<{ env: Env }> = async (app, opts)
               audio: { output: { voice } },
             },
           }),
+          // A stalled OpenAI must not hang the handler/socket; the catch below
+          // maps the resulting AbortError to the 502 „nicht erreichbar" line.
+          signal: AbortSignal.timeout(10_000),
         });
         openaiJson = (await res.json().catch(() => ({}))) as Record<string, unknown>;
         if (!res.ok) {

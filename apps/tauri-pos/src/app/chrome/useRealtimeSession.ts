@@ -125,12 +125,17 @@ export function useRealtimeSession(micDeviceId?: string): UseRealtimeSession {
       }
       let output: unknown;
       try {
-        const env = await api.request<McpEnvelope>('POST', '/api/mcp/assistant', {
-          jsonrpc: '2.0',
-          id: callId,
-          method: 'tools/call',
-          params: { name, arguments: args },
-        });
+        const env = await api.request<McpEnvelope>(
+          'POST',
+          '/api/mcp/assistant',
+          {
+            jsonrpc: '2.0',
+            id: callId,
+            method: 'tools/call',
+            params: { name, arguments: args },
+          },
+          { custom: { skipOfflineQueue: true } },
+        );
         // The model reads this JSON back and speaks it, so the failure branch
         // must be a stable German line, never the raw envelope/transport text.
         output = env.error ? { error: 'Das Werkzeug konnte nicht ausgeführt werden.' } : (env.result?.data ?? {});
@@ -181,8 +186,23 @@ export function useRealtimeSession(micDeviceId?: string): UseRealtimeSession {
     setState('connecting');
     const ac = new AbortController();
     abortRef.current = ac;
+    // A drop AFTER a successful connect (ICE failed, or the data channel closed)
+    // must surface the loss and free the mic, never hang the UI in listening/
+    // speaking. Guarded so our own teardown (which aborts `ac` first) does not
+    // flash a spurious error.
+    const dropOut = (): void => {
+      if (ac.signal.aborted) return;
+      if (typeof console !== 'undefined') console.error('[Vierzehn] Verbindung verloren');
+      teardown();
+      setError('Die Verbindung zur Sprachsitzung wurde unterbrochen. Bitte erneut verbinden.');
+      setState('error');
+    };
     try {
-      const session = await api.request<SessionResponse>('POST', '/api/realtime/session');
+      // A voice session has no durable intent — it must NEVER be enqueued into
+      // the offline/fiscal outbox (that queue is for sales, Ankäufe, Stornos).
+      const session = await api.request<SessionResponse>('POST', '/api/realtime/session', undefined, {
+        custom: { skipOfflineQueue: true },
+      });
       if (ac.signal.aborted) {
         teardown();
         return;
@@ -190,6 +210,12 @@ export function useRealtimeSession(micDeviceId?: string): UseRealtimeSession {
 
       const pc = new RTCPeerConnection();
       pcRef.current = pc;
+
+      // `failed` is terminal (a brief `disconnected` blip can still recover on
+      // its own); `closed` is our own teardown, ignored via the abort guard.
+      pc.onconnectionstatechange = () => {
+        if (pc.connectionState === 'failed') dropOut();
+      };
 
       // Model audio out. A real, DOM-attached element that we explicitly
       // play() — a detached autoplay element is unreliable for a live WebRTC
@@ -251,23 +277,47 @@ export function useRealtimeSession(micDeviceId?: string): UseRealtimeSession {
           /* ignore non-JSON frames */
         }
       };
+      // The events channel closing/erroring unexpectedly means the session died.
+      dc.onclose = () => dropOut();
+      dc.onerror = () => dropOut();
 
-      // SDP handshake with the ephemeral token.
+      // SDP handshake with the ephemeral token. Bounded by the user's Abort OR
+      // a 15s timeout, so a stalled upstream never leaves the UI in „Verbinde…".
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       if (ac.signal.aborted) {
         teardown();
         return;
       }
-      const sdpRes = await fetch(`${OPENAI_REALTIME_SDP_URL}?model=${encodeURIComponent(session.model)}`, {
-        method: 'POST',
-        body: offer.sdp ?? '',
-        headers: {
-          Authorization: `Bearer ${session.clientSecret}`,
-          'Content-Type': 'application/sdp',
-        },
-        signal: ac.signal,
-      });
+      const sdpAc = new AbortController();
+      const onUserAbort = (): void => sdpAc.abort();
+      ac.signal.addEventListener('abort', onUserAbort, { once: true });
+      let sdpTimedOut = false;
+      const sdpTimer = setTimeout(() => {
+        sdpTimedOut = true;
+        sdpAc.abort();
+      }, 15000);
+      let sdpRes: Response;
+      try {
+        sdpRes = await fetch(`${OPENAI_REALTIME_SDP_URL}?model=${encodeURIComponent(session.model)}`, {
+          method: 'POST',
+          body: offer.sdp ?? '',
+          headers: {
+            Authorization: `Bearer ${session.clientSecret}`,
+            'Content-Type': 'application/sdp',
+          },
+          signal: sdpAc.signal,
+        });
+      } catch (fetchErr) {
+        if (ac.signal.aborted) return; // user closed; teardown already ran
+        if (sdpTimedOut) {
+          throw new VierzehnError('Zeitüberschreitung beim Verbinden. Bitte später erneut versuchen.');
+        }
+        throw fetchErr; // genuine transport error → outer catch → describeError
+      } finally {
+        clearTimeout(sdpTimer);
+        ac.signal.removeEventListener('abort', onUserAbort);
+      }
       if (!sdpRes.ok) {
         throw new VierzehnError('Der Sprachdienst hat die Verbindung abgelehnt. Bitte später erneut versuchen.');
       }
