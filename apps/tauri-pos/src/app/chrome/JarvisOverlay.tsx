@@ -36,6 +36,7 @@ import {
 } from 'react-ai-voice-visualizer';
 import { invoke } from '@tauri-apps/api/core';
 
+import { JarvisWidgetLayer } from './JarvisWidgets.js';
 import { useAudioDevices } from './useAudioDevices.js';
 import { type JarvisState, useRealtimeSession } from './useRealtimeSession.js';
 
@@ -304,7 +305,6 @@ export function JarvisOverlay({ onClose }: { onClose: () => void }): JSX.Element
       {/* Hero band — the huge, screen-filling visual. Sized to this band, live. */}
       <div
         ref={heroBandRef}
-        aria-hidden
         style={{
           flex: '1 1 auto',
           minHeight: 0,
@@ -314,6 +314,7 @@ export function JarvisOverlay({ onClose }: { onClose: () => void }): JSX.Element
           zIndex: 0,
         }}
       >
+       <div aria-hidden style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center' }}>
         {mode.id === 'neural' && (
           <div style={{ position: 'relative', width: heroSize, height: heroSize }}>
             <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center' }}>
@@ -361,6 +362,12 @@ export function JarvisOverlay({ onClose }: { onClose: () => void }): JSX.Element
             color={primary}
           />
         )}
+       </div>
+
+        {/* The dramatic on-screen card Vierzehn paints while it speaks about the
+            numbers it just read (revenue, day summary, finances, a product or
+            customer, the agenda). Sits over the orb; auto-dismisses. */}
+        <JarvisWidgetLayer primary={primary} secondary={secondary} />
       </div>
 
       {/* Bottom band — waveform, persona line, failure, controls. */}

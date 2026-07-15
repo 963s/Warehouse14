@@ -20,6 +20,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { describeError } from '@warehouse14/i18n-de';
 import { useApiClient } from '../../lib/api-context.js';
+import { dismissWidget, presentWidget, widgetForTool } from './jarvis-widget-store.js';
 
 export type JarvisState =
   | 'idle'
@@ -66,6 +67,12 @@ export interface UseRealtimeSession {
 // GA WebRTC endpoint. The SDP offer is POSTed here with the ephemeral token;
 // the older `/v1/realtime` path is the deprecated beta and rejects GA keys.
 const OPENAI_REALTIME_SDP_URL = 'https://api.openai.com/v1/realtime/calls';
+
+// Output loudness. A plain <audio>.volume is clamped to 1.0, so Vierzehn was too
+// quiet. We route the model stream through a Web Audio GainNode (no upper clamp)
+// to AMPLIFY, followed by a brick-wall limiter so the boost never hard-clips.
+// Tunable up toward ~4.0 if still quiet on the shipped WebView; never above ~4.
+const OUTPUT_GAIN = 2.4;
 
 /**
  * A local failure whose `reason` is ALREADY a safe German sentence, so the
@@ -183,6 +190,7 @@ export function useRealtimeSession(micDeviceId?: string): UseRealtimeSession {
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const dcRef = useRef<RTCDataChannel | null>(null);
   const audioElRef = useRef<HTMLAudioElement | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   // Set synchronously at the top of connect() so a rapid second tap (or a
@@ -208,8 +216,58 @@ export function useRealtimeSession(micDeviceId?: string): UseRealtimeSession {
       audioElRef.current.remove();
       audioElRef.current = null;
     }
+    if (audioCtxRef.current) {
+      void audioCtxRef.current.close().catch(() => {});
+      audioCtxRef.current = null;
+    }
+    dismissWidget();
     setMicStream(null);
     setModelStream(null);
+  }, []);
+
+  // Boost the model audio through Web Audio. The hidden <audio> element stays the
+  // reliable WebKit sink, but is MUTED once the boosted graph is actually running
+  // so only the amplified path is heard — and left UNMUTED whenever the graph
+  // cannot start (autoplay-suspended context), so audio is never lost to silence.
+  const attachOutputBoost = useCallback((remote: MediaStream): void => {
+    const el = audioElRef.current;
+    try {
+      const Ctx: typeof AudioContext | undefined =
+        window.AudioContext ??
+        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!Ctx) return; // no Web Audio → the element plays at its native 1.0
+      const ctx = audioCtxRef.current ?? new Ctx();
+      audioCtxRef.current = ctx;
+
+      const source = ctx.createMediaStreamSource(remote);
+      const gain = ctx.createGain();
+      gain.gain.value = OUTPUT_GAIN;
+      const limiter = ctx.createDynamicsCompressor();
+      limiter.threshold.value = -3;
+      limiter.knee.value = 0;
+      limiter.ratio.value = 20;
+      limiter.attack.value = 0.003;
+      limiter.release.value = 0.25;
+      source.connect(gain);
+      gain.connect(limiter);
+      limiter.connect(ctx.destination);
+
+      // Mute the element ONLY while the boosted graph is truly running (avoids
+      // both double audio and silence-behind-a-suspended-context).
+      const syncMute = (): void => {
+        if (audioElRef.current) audioElRef.current.muted = ctx.state === 'running';
+      };
+      void ctx.resume().then(syncMute, syncMute);
+      if (ctx.state !== 'running') {
+        // Unlock on the next interaction if WebKit suspended the context.
+        const unlock = (): void => void ctx.resume().then(syncMute, syncMute);
+        window.addEventListener('pointerdown', unlock, { once: true });
+      }
+    } catch (err) {
+      if (typeof console !== 'undefined')
+        console.error('[Vierzehn] Audio-Verstärkung nicht möglich', err);
+      if (el) el.muted = false; // fall back to the element at native volume
+    }
   }, []);
 
   const disconnect = useCallback(() => {
@@ -245,6 +303,13 @@ export function useRealtimeSession(micDeviceId?: string): UseRealtimeSession {
         // The model reads this JSON back and speaks it, so the failure branch
         // must be a stable German line, never the raw envelope/transport text.
         output = env.error ? { error: 'Das Werkzeug konnte nicht ausgeführt werden.' } : (env.result?.data ?? {});
+        // Tee the read into the on-screen "dramatic display" layer — a pure side
+        // effect of the read the model already made. A non-presentable tool
+        // (ticket, appraise, empty search) leaves any current widget in place.
+        if (!env.error) {
+          const w = widgetForTool(name, env.result?.data ?? null);
+          if (w) presentWidget(w);
+        }
       } catch (err) {
         output = { error: describeError(err) };
       }
@@ -344,6 +409,8 @@ export function useRealtimeSession(micDeviceId?: string): UseRealtimeSession {
         if (!remote) return;
         audioEl.srcObject = remote;
         setModelStream(remote);
+        // Amplify through Web Audio (the element alone caps at 1.0 and is too quiet).
+        attachOutputBoost(remote);
         void audioEl.play().catch((err) => {
           if (typeof console !== 'undefined') console.error('[Vierzehn] Audio-Wiedergabe blockiert', err);
         });
@@ -377,7 +444,12 @@ export function useRealtimeSession(micDeviceId?: string): UseRealtimeSession {
                 parameters: t.parameters,
               })),
               tool_choice: 'auto',
-              audio: { input: { turn_detection: { type: 'server_vad' } } },
+              audio: {
+                input: { turn_detection: { type: 'server_vad' } },
+                // A hair faster than 1.0 counters the 2.x generation's reported
+                // slow non-English pacing, keeping German lively but clear.
+                output: { speed: 1.05 },
+              },
             },
           }),
         );

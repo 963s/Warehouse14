@@ -6,6 +6,13 @@ and the project adheres to [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-07-15
+
+- Vierzehn ist jetzt deutlich lauter und klarer zu hören, mit sauberem Hochdeutsch und einer natürlicheren Stimme.
+- Vierzehn zeigt jetzt, was er sagt: während er über Zahlen spricht, erscheint eine dramatische Karte auf dem Bildschirm. Der Umsatz als große, hochzählende Zahl; der Stand des Tages mit Metallpreisen; die Finanzen; ein gefundener Artikel oder Kunde; die Agenda.
+- Vierzehn liest jetzt das ganze Haus: Umsätze, Finanzen, Bestand, Artikel, Kunden, Termine und Aufgaben, und antwortet mit echten Zahlen statt abzulehnen.
+- Allgemeine Verbesserungen und Politur.
+
 ## [0.5.1] - 2026-07-15
 
 - Vierzehn hört jetzt zuverlässig: das Mikrofon wird beim Start automatisch angefragt, danach wacht der Sprachassistent sofort auf und begrüßt Sie. Bei gesperrtem Mikrofon führt ein Knopf direkt zu den Systemeinstellungen.
