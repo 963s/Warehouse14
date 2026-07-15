@@ -415,8 +415,8 @@ const EnvSchema = Type.Object({
       'can be selected per session for complex reasoning.',
   }),
   OPENAI_REALTIME_VOICE: Type.String({
-    default: 'cedar',
-    description: 'Realtime voice name (e.g. cedar, marin, alloy).',
+    default: 'marin',
+    description: 'Realtime voice name (e.g. marin, cedar, alloy).',
   }),
   // Reserved for the FUTURE executor (drafts replies, runs approved actions).
   // Not used by the read-only assistant; wired in a later phase.

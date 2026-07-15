@@ -43,13 +43,16 @@ const handler: ToolHandler<ArgsShape> = async (
   const title = `Jarvis-Anfrage: ${args.title}`.slice(0, 200);
 
   // OPEN task: no lifecycle timestamps (satisfies the open_no_timestamps CHECK);
-  // status OPEN + priority NORMAL come from the column defaults. Assigned to and
-  // created by the current owner so it lands in the owner's day-list.
+  // status OPEN comes from the column default. Assigned to + created by the
+  // current owner so it lands in the owner's day-list, and priority HIGH so a
+  // Jarvis request rises to the top of the Aufgaben list (sorted priority desc)
+  // and is easy to find + close.
   const inserted = await ctx.db
     .insert(internalTasks)
     .values({
       title,
       description: args.request,
+      priority: 'HIGH',
       assignedToUserId: ctx.actor.id,
       createdByUserId: ctx.actor.id,
     })

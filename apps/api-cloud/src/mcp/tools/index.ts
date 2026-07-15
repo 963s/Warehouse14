@@ -9,9 +9,14 @@
  */
 
 import type { ToolRegistration } from '../types.js';
+import { agendaTool } from './agenda.js';
 import { appraiseEstateItemTool } from './appraise-estate-item.js';
+import { financeOverviewTool } from './finance-overview.js';
+import { findCustomerTool } from './find-customer.js';
+import { findProductTool } from './find-product.js';
 import { generateSeoDescriptionTool } from './generate-seo-description.js';
 import { openDevTicketTool } from './open-dev-ticket.js';
+import { salesReportTool } from './sales-report.js';
 import { situationReportTool } from './situation-report.js';
 
 export const MCP_TOOLS: ReadonlyArray<ToolRegistration> = [
@@ -19,6 +24,12 @@ export const MCP_TOOLS: ReadonlyArray<ToolRegistration> = [
   appraiseEstateItemTool,
   // ── Jarvis read-only situation awareness ──────────────────────────
   situationReportTool,
+  // ── Jarvis read-only shop access (customers, inventory, money, agenda) ──
+  findCustomerTool,
+  findProductTool,
+  salesReportTool,
+  financeOverviewTool,
+  agendaTool,
   // ── Jarvis safe escape hatch: forward a request to the developer ──
   openDevTicketTool,
 ];
