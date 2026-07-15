@@ -1,87 +1,82 @@
 /**
  * JarvisOverlay — „Vierzehn", the dramatic voice-assistant surface.
  *
- * The support button opens this full-screen command-center overlay. The orb +
- * waveform come from the MIT `react-ai-voice-visualizer` library (Canvas, zero
- * heavy deps); we re-theme it to the Warehouse 14 brass identity and drive it
- * from the live microphone so the orb reacts to the owner's real voice.
+ * The support button opens this full-screen command center. The orb + waveform
+ * come from the MIT `react-ai-voice-visualizer` (Canvas), re-themed to the
+ * Warehouse 14 brass identity. It is driven by the real Realtime session
+ * (`useRealtimeSession`): the orb analyses the microphone while listening and
+ * the model's audio while speaking, so it reacts to the actual conversation.
+ * Audio devices are auto-discovered in the background (`useAudioDevices`).
  *
- * PHASE 1 (this file): the VISUAL surface + real mic reactivity, standalone.
- * The OpenAI Realtime brain (POST /api/realtime/session → WebRTC → tool relay
- * to /api/mcp) plugs into `state` + `audioData` next, without touching the look.
- * Until then the persona is honest: read-only, „still under construction".
+ * The session connects on the owner's tap („Sprich mit mir"), never on its own,
+ * so cost stays low and the mic is only live when asked. The persona (security
+ * spine: read-only, refuses code, offers a dev ticket) lives server-side and
+ * rides in the ephemeral session.
+ *
+ * Live-verify with OPENAI_API_KEY set + the api deployed. Mounted only while open.
  */
 
-import { useCallback, useEffect } from 'react';
+import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import {
-  VoiceOrb,
-  Waveform,
-  useAudioAnalyser,
-  useMicrophoneStream,
-  type VoiceState,
-} from 'react-ai-voice-visualizer';
+import { VoiceOrb, Waveform, useAudioAnalyser, type VoiceState } from 'react-ai-voice-visualizer';
 
-// Warehouse 14 identity, pushed a touch futuristic for the orb glow.
+import { useAudioDevices } from './useAudioDevices.js';
+import { type JarvisState, useRealtimeSession } from './useRealtimeSession.js';
+
 const BRASS = '#e6c273';
 const WAX = '#df7259';
 const INK = '#0d0b07';
 
-const STATUS_LABEL: Record<VoiceState, string> = {
+const STATUS_LABEL: Record<JarvisState, string> = {
   idle: 'Bereit',
+  connecting: 'Verbinde',
   listening: 'Hört zu',
   thinking: 'Denkt nach',
   speaking: 'Spricht',
+  error: 'Fehler',
 };
 
-export interface JarvisOverlayProps {
-  open: boolean;
-  onClose: () => void;
+const ORB_STATE: Record<JarvisState, VoiceState> = {
+  idle: 'idle',
+  connecting: 'thinking',
+  listening: 'listening',
+  thinking: 'thinking',
+  speaking: 'speaking',
+  error: 'idle',
+};
+
+function brace(pos: 'tl' | 'tr' | 'bl' | 'br'): React.CSSProperties {
+  const s: React.CSSProperties = {
+    position: 'absolute',
+    width: 34,
+    height: 34,
+    borderColor: 'rgba(230,194,115,0.55)',
+    borderStyle: 'solid',
+    borderWidth: 0,
+  };
+  if (pos === 'tl') return { ...s, top: 18, left: 18, borderTopWidth: 2, borderLeftWidth: 2 };
+  if (pos === 'tr') return { ...s, top: 18, right: 18, borderTopWidth: 2, borderRightWidth: 2 };
+  if (pos === 'bl') return { ...s, bottom: 18, left: 18, borderBottomWidth: 2, borderLeftWidth: 2 };
+  return { ...s, bottom: 18, right: 18, borderBottomWidth: 2, borderRightWidth: 2 };
 }
 
-export function JarvisOverlay({ open, onClose }: JarvisOverlayProps): JSX.Element | null {
-  const { stream, isActive, error, start, stop } = useMicrophoneStream();
-  const { frequencyData, timeDomainData, volume } = useAudioAnalyser(stream, { fftSize: 256 });
+export function JarvisOverlay({ onClose }: { onClose: () => void }): JSX.Element {
+  const { selectedMicId } = useAudioDevices();
+  const { state, error, micStream, modelStream, connect, disconnect } = useRealtimeSession(selectedMicId);
 
-  // Phase 1: state follows the mic (idle ↔ listening). Phase 2 drives it from
-  // the Realtime session (thinking on tool call, speaking on model audio).
-  const state: VoiceState = isActive ? 'listening' : 'idle';
+  // Analyse whichever side is talking: the model while it speaks, else the mic.
+  const activeStream = state === 'speaking' ? modelStream : micStream;
+  const { frequencyData, timeDomainData, volume } = useAudioAnalyser(activeStream, { fftSize: 256 });
 
-  // Close on Escape; always release the mic when the overlay goes away.
+  const connected = state !== 'idle' && state !== 'error';
+
   useEffect(() => {
-    if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
-
-  useEffect(() => {
-    if (!open && isActive) stop();
-  }, [open, isActive, stop]);
-
-  const toggleMic = useCallback(() => {
-    if (isActive) stop();
-    else void start();
-  }, [isActive, start, stop]);
-
-  if (!open) return null;
-
-  const brace = (pos: 'tl' | 'tr' | 'bl' | 'br'): React.CSSProperties => {
-    const s: React.CSSProperties = {
-      position: 'absolute',
-      width: 34,
-      height: 34,
-      borderColor: 'rgba(230,194,115,0.55)',
-      borderStyle: 'solid',
-      borderWidth: 0,
-    };
-    if (pos === 'tl') return { ...s, top: 18, left: 18, borderTopWidth: 2, borderLeftWidth: 2 };
-    if (pos === 'tr') return { ...s, top: 18, right: 18, borderTopWidth: 2, borderRightWidth: 2 };
-    if (pos === 'bl') return { ...s, bottom: 18, left: 18, borderBottomWidth: 2, borderLeftWidth: 2 };
-    return { ...s, bottom: 18, right: 18, borderBottomWidth: 2, borderRightWidth: 2 };
-  };
+  }, [onClose]);
 
   return createPortal(
     <div
@@ -97,18 +92,14 @@ export function JarvisOverlay({ open, onClose }: JarvisOverlayProps): JSX.Elemen
         color: BRASS,
         background: `radial-gradient(120% 90% at 50% 30%, rgba(35,26,12,0.72), rgba(8,7,4,0.92) 70%), ${INK}`,
         backdropFilter: 'blur(6px)',
-        // scanline texture — the sci-fi tell, very faint
-        backgroundBlendMode: 'normal',
         animation: 'w14JarvisIn 420ms cubic-bezier(0.2,0.8,0.2,1) both',
       }}
     >
       <style>{`
         @keyframes w14JarvisIn { from { opacity: 0; transform: scale(1.03); } to { opacity: 1; transform: none; } }
-        @keyframes w14Scan { from { background-position: 0 0; } to { background-position: 0 6px; } }
         @media (prefers-reduced-motion: reduce) { [data-w14-jarvis] { animation: none !important; } }
       `}</style>
 
-      {/* scanlines */}
       <div
         aria-hidden
         style={{
@@ -119,13 +110,11 @@ export function JarvisOverlay({ open, onClose }: JarvisOverlayProps): JSX.Elemen
             'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(230,194,115,0.03) 2px, rgba(230,194,115,0.03) 3px)',
         }}
       />
-      {/* corner braces */}
       <div aria-hidden style={brace('tl')} />
       <div aria-hidden style={brace('tr')} />
       <div aria-hidden style={brace('bl')} />
       <div aria-hidden style={brace('br')} />
 
-      {/* top HUD readout */}
       <div
         style={{
           position: 'absolute',
@@ -147,7 +136,6 @@ export function JarvisOverlay({ open, onClose }: JarvisOverlayProps): JSX.Elemen
         <span>Status · {STATUS_LABEL[state]}</span>
       </div>
 
-      {/* centre column: wordmark, orb, waveform, persona, controls */}
       <div data-w14-jarvis style={{ display: 'grid', placeItems: 'center', gap: 18, textAlign: 'center' }}>
         <div
           style={{
@@ -165,7 +153,7 @@ export function JarvisOverlay({ open, onClose }: JarvisOverlayProps): JSX.Elemen
         <VoiceOrb
           audioData={frequencyData}
           volume={volume}
-          state={state}
+          state={ORB_STATE[state]}
           size={230}
           primaryColor={BRASS}
           secondaryColor={WAX}
@@ -193,14 +181,15 @@ export function JarvisOverlay({ open, onClose }: JarvisOverlayProps): JSX.Elemen
 
         {error && (
           <p style={{ fontFamily: 'var(--w14-font-mono, monospace)', fontSize: '0.72rem', color: WAX }}>
-            Kein Mikrofonzugriff. Bitte in den Systemeinstellungen erlauben.
+            {error}
           </p>
         )}
 
         <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
           <button
             type="button"
-            onClick={toggleMic}
+            onClick={() => (connected ? disconnect() : void connect())}
+            disabled={state === 'connecting'}
             style={{
               fontFamily: 'var(--w14-font-body, system-ui, sans-serif)',
               fontSize: '0.9rem',
@@ -211,15 +200,19 @@ export function JarvisOverlay({ open, onClose }: JarvisOverlayProps): JSX.Elemen
               border: `1px solid ${BRASS}`,
               borderRadius: 'var(--w14-radius-button, 8px)',
               padding: '11px 26px',
-              cursor: 'pointer',
+              cursor: state === 'connecting' ? 'default' : 'pointer',
+              opacity: state === 'connecting' ? 0.7 : 1,
               boxShadow: '0 0 20px rgba(230,194,115,0.3)',
             }}
           >
-            {isActive ? 'Zuhören beenden' : 'Sprich mit mir'}
+            {state === 'connecting' ? 'Verbinde…' : connected ? 'Beenden' : 'Sprich mit mir'}
           </button>
           <button
             type="button"
-            onClick={onClose}
+            onClick={() => {
+              disconnect();
+              onClose();
+            }}
             style={{
               fontFamily: 'var(--w14-font-body, system-ui, sans-serif)',
               fontSize: '0.9rem',

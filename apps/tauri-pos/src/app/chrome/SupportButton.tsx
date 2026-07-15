@@ -52,7 +52,7 @@ export function SupportButton(): JSX.Element {
       >
         <IconSupport size={18} />
       </button>
-      <JarvisOverlay open={jarvisOpen} onClose={close} />
+      {jarvisOpen && <JarvisOverlay onClose={close} />}
     </>
   );
 }
