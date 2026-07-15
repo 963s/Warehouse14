@@ -23,7 +23,12 @@ export interface AudioDevices {
 }
 
 function pickDefault(list: MediaDeviceInfo[]): string | undefined {
-  return (list.find((d) => d.deviceId === 'default') ?? list[0])?.deviceId;
+  // WebKit (the desktop WebView) exposes no Chromium-style 'default' pseudo-device
+  // and, before a permission grant, emits entries with an EMPTY deviceId. An empty
+  // id must read as „no selection" (undefined → the OS default mic), never get
+  // pinned into a `{ deviceId: { exact: '' } }` constraint that then over-constrains.
+  const picked = (list.find((d) => d.deviceId === 'default') ?? list[0])?.deviceId;
+  return picked ? picked : undefined;
 }
 
 export function useAudioDevices(): AudioDevices {

@@ -6,6 +6,14 @@ and the project adheres to [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-07-15
+
+- Vierzehn hört jetzt zuverlässig: das Mikrofon wird beim Start automatisch angefragt, danach wacht der Sprachassistent sofort auf und begrüßt Sie. Bei gesperrtem Mikrofon führt ein Knopf direkt zu den Systemeinstellungen.
+- Vierzehn ganz neu gestaltet: eine bildschirmfüllende Darstellung mit drei umschaltbaren Ansichten (Reaktor, Partikel, Gewebe), jede in eigener Farbe.
+- Verkauf: der Warenkorb bleibt kompakt, „Bezahlen" ist jetzt immer sichtbar, auch bei vielen Positionen. Kein Herunterscrollen mehr.
+- Ruhigerer Dunkelmodus in kühlem Schiefer, ohne Gelbstich.
+- Allgemeine Fehlerbehebungen und Politur der Bedienung.
+
 ## [0.5.0] - 2026-07-15
 
 - Neuer Sprachassistent „Vierzehn": Sie sprechen einfach mit der Kasse. Er liest und berichtet, zum Beispiel den Stand des Tages, und begrüßt Sie beim Öffnen auf Deutsch.

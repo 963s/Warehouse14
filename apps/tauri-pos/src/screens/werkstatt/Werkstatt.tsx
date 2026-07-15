@@ -63,7 +63,11 @@ export function Werkstatt(): JSX.Element {
     <div
       className="w14-paper-noise"
       style={{
-        minHeight: '100dvh',
+        // Fill the bounded <main> exactly (like Verkauf/Lager/Einstellungen). Using
+        // min-height:100dvh here would exceed <main> by the header+ticker height and
+        // force a permanent redundant scrollbar on the home surface.
+        height: '100%',
+        minHeight: 0,
         display: 'flex',
         flexDirection: 'column',
         background: 'var(--w14-parchment)',

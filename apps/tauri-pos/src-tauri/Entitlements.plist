@@ -3,15 +3,27 @@
 <!--
   Code-signing entitlements for Warehouse14 POS (macOS).
 
-  Referenced from tauri.conf.json -> bundle.macOS.entitlements. These are
-  only enforced for a SIGNED build with the hardened runtime; an ad-hoc
-  ("-") local build still works without them, but the production /
-  notarized OTA build needs them or the camera is silently denied.
+  Referenced from tauri.conf.json -> bundle.macOS.entitlements.
+
+  IMPORTANT — the hardened runtime is ON even for our ad-hoc ("-") build.
+  Tauri's bundler signs with `--options runtime` by default (hardenedRuntime
+  is not disabled in tauri.conf.json), so it applies to the ad-hoc signature
+  too. That means the resource-access entitlements below are ENFORCED right
+  now, not only on a future Developer-ID / notarized build. Do NOT delete a
+  device entitlement believing "ad-hoc ignores it" — it does not, and removing
+  one silently denies that capability below the web layer.
 
     com.apple.security.device.camera
-        Grants the in-app camera (Foto-Werkstatt getUserMedia). Without
-        it, a hardened-runtime app cannot open the camera even though
-        NSCameraUsageDescription is present.
+        Grants the in-app camera (Foto-Werkstatt getUserMedia). Without it the
+        WKWebview camera request is refused before the web layer and
+        getUserMedia rejects.
+
+    com.apple.security.device.audio-input
+        Grants the microphone (Vierzehn voice assistant getUserMedia). Exact
+        parity with the camera above: NSMicrophoneUsageDescription in
+        Info.plist covers the TCC prompt, but under the hardened runtime the
+        capture is still refused unless this entitlement is present. Its
+        absence was the root cause of "Kein Zugriff auf das Mikrofon".
 
     com.apple.security.cs.allow-jit
     com.apple.security.cs.allow-unsigned-executable-memory
@@ -21,6 +33,8 @@
 <plist version="1.0">
   <dict>
     <key>com.apple.security.device.camera</key>
+    <true/>
+    <key>com.apple.security.device.audio-input</key>
     <true/>
     <key>com.apple.security.cs.allow-jit</key>
     <true/>

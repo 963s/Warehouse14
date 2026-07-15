@@ -208,62 +208,70 @@
    toggle stamps data-theme="dark" on <html>; these rules win over :root.
    ═══════════════════════════════════════════════════════════════════════ */
 :root[data-theme="dark"] {
+  /* ── Cool slate ───────────────────────────────────────────────────────
+     A deliberately COOL, blue-grey ground — no warm/amber cast. The surfaces
+     carry a faint blue bias (not warmth-by-default), ink is a cool near-white,
+     and the metallic „gilt" thread is muted so it reads as a restrained accent
+     on a cool base, never as an overall yellow tint. The positive/accent green
+     (verdigris) is kept — it is cool and is the app's living-signal colour. */
+
   /* Surfaces — deepest ground, then two lifted surfaces. */
-  --w14-parchment: #17130d;
-  --w14-parchment-2: #221d15;
-  --w14-parchment-3: #2d2619;
+  --w14-parchment: #111418;
+  --w14-parchment-2: #192026;
+  --w14-parchment-3: #232c34;
 
-  /* Ink — warm cream text on the aged ground. */
-  --w14-ink: #ece4d3;
-  --w14-ink-aged: #b8ab93;
-  --w14-ink-faded: #988b70;
-  --w14-rule: #342d20;
+  /* Ink — cool near-white on the slate ground. */
+  --w14-ink: #e6edf3;
+  --w14-ink-aged: #aeb9c4;
+  --w14-ink-faded: #8b98a6;
+  --w14-rule: #2b333d;
 
-  /* Quiet emphasis (legacy „gold" = quiet ink) → a quiet warm light. */
-  --w14-gold: #d8cbb2;
-  --w14-gold-soft: #ab9d82;
-  --w14-gold-deep: #ece4d3;
+  /* Quiet emphasis (legacy „gold" = quiet ink) → a quiet cool light. */
+  --w14-gold: #ccd6e0;
+  --w14-gold-soft: #9aa7b4;
+  --w14-gold-deep: #e6edf3;
 
-  /* Gilt — brightened so the gilded edge still reads on the dark ground. */
-  --w14-gilt: #c9a24e;
-  --w14-gilt-deep: #ad8a3f;
+  /* Gilt — muted metallic thread; a restrained gold accent, not a yellow wash. */
+  --w14-gilt: #c3ac74;
+  --w14-gilt-deep: #a58f5c;
 
-  /* Functional — brightened for legibility as text on the dark ground. */
-  --w14-verdigris: #6fae86;
-  --w14-wax-red: #e07152;
-  --w14-wax-red-soft: #e8a892;
-  --w14-forest: #7f9270;
-  --w14-terra: #c6824f;
+  /* Functional — brightened for legibility as text on the slate ground. */
+  --w14-verdigris: #5cc38d;
+  --w14-wax-red: #ee7461;
+  --w14-wax-red-soft: #f0a091;
+  --w14-forest: #78998a;
+  --w14-terra: #c08a5e;
 
-  /* The accent fill is now the BRIGHT patina, so its text flips to dark ink. */
-  --w14-accent-ink: #16130e;
+  /* The accent fill is the bright patina green, so its text flips to dark slate. */
+  --w14-accent-ink: #0c1013;
 
   /* RGB triplets — MUST mirror the overrides above (slash-opacity reads these). */
-  --w14-parchment-rgb: 23 19 13;
-  --w14-parchment-2-rgb: 34 29 21;
-  --w14-parchment-3-rgb: 45 38 25;
-  --w14-ink-rgb: 236 228 211;
-  --w14-ink-aged-rgb: 184 171 147;
-  --w14-ink-faded-rgb: 152 139 112;
-  --w14-rule-rgb: 52 45 32;
-  --w14-gold-rgb: 216 203 178;
-  --w14-gold-soft-rgb: 171 157 130;
-  --w14-gold-deep-rgb: 236 228 211;
-  --w14-gilt-rgb: 201 162 78;
-  --w14-gilt-deep-rgb: 173 138 63;
-  --w14-verdigris-rgb: 111 174 134;
-  --w14-wax-red-rgb: 224 113 82;
-  --w14-forest-rgb: 127 146 112;
-  --w14-terra-rgb: 198 130 79;
+  --w14-parchment-rgb: 17 20 24;
+  --w14-parchment-2-rgb: 25 32 38;
+  --w14-parchment-3-rgb: 35 44 52;
+  --w14-ink-rgb: 230 237 243;
+  --w14-ink-aged-rgb: 174 185 196;
+  --w14-ink-faded-rgb: 139 152 166;
+  --w14-rule-rgb: 43 51 61;
+  --w14-gold-rgb: 204 214 224;
+  --w14-gold-soft-rgb: 154 167 180;
+  --w14-gold-deep-rgb: 230 237 243;
+  --w14-gilt-rgb: 195 172 116;
+  --w14-gilt-deep-rgb: 165 143 92;
+  --w14-verdigris-rgb: 92 195 141;
+  --w14-wax-red-rgb: 238 116 97;
+  --w14-wax-red-soft-rgb: 240 160 145;
+  --w14-forest-rgb: 120 153 138;
+  --w14-terra-rgb: 192 138 94;
 
   /* Shadows — ink-tinted shadows vanish on dark; use black + depth. */
   --w14-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.40), 0 1px 3px rgba(0, 0, 0, 0.50);
   --w14-shadow-lift: 0 6px 16px rgba(0, 0, 0, 0.50);
   --w14-shadow-modal: 0 18px 44px rgba(0, 0, 0, 0.62);
 
-  /* Scrims + focus — darker scrim; a light focus halo (ink is now light). */
+  /* Scrims + focus — darker scrim; a cool light focus halo (ink is now light). */
   --w14-overlay: rgba(0, 0, 0, 0.60);
-  --w14-focus-shadow: 0 0 0 3px rgba(236, 228, 211, 0.35);
+  --w14-focus-shadow: 0 0 0 3px rgba(230, 237, 243, 0.35);
 }
 
 /* ────────────────────────────────────────────────────────────────────

@@ -22,6 +22,35 @@ pub async fn list_system_printers() -> HwResult<Vec<SystemPrinter>> {
     list_system_printers_impl().await
 }
 
+/// Open the OS "Microphone" privacy pane so the owner can grant Vierzehn the
+/// microphone from inside the app when a capture was denied. Opened from Rust
+/// (not the JS shell plugin) because the JS shell scope validator rejects the
+/// `x-apple.systempreferences:` / `ms-settings:` schemes. The URL is a fixed
+/// per-OS constant — never interpolated from anything the web layer sends.
+#[tauri::command]
+pub async fn open_microphone_settings(app_handle: tauri::AppHandle) -> HwResult<()> {
+    #[cfg(target_os = "macos")]
+    let url = "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone";
+    #[cfg(target_os = "windows")]
+    let url = "ms-settings:privacy-microphone";
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    let url = "";
+
+    if url.is_empty() {
+        return Ok(());
+    }
+
+    #[allow(deprecated)]
+    {
+        use tauri_plugin_shell::ShellExt;
+        app_handle
+            .shell()
+            .open(url.to_string(), None)
+            .map_err(|e| crate::error::HardwareError::Internal(format!("shell::open failed: {e}")))?;
+    }
+    Ok(())
+}
+
 /// Windows: enumerate spooler queues via `EnumPrinters` (status best-effort
 /// "unknown" — the Gerätemanager dropdown only needs the names).
 #[cfg(target_os = "windows")]

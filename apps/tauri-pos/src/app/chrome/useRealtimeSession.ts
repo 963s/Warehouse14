@@ -42,9 +42,21 @@ interface McpEnvelope {
   error?: { message?: string };
 }
 
+/**
+ * A user-facing failure: an already-safe German title + detail, plus whether a
+ * „Systemeinstellungen öffnen" affordance makes sense (only for permission
+ * denials, where the owner can actually grant access). Never carries a raw wire
+ * message — every path builds this from safe copy or `describeError`.
+ */
+export interface VierzehnFailure {
+  title: string;
+  detail: string;
+  canOpenSettings: boolean;
+}
+
 export interface UseRealtimeSession {
   state: JarvisState;
-  error: string | null;
+  failure: VierzehnFailure | null;
   micStream: MediaStream | null;
   modelStream: MediaStream | null;
   connect: () => Promise<void>;
@@ -67,10 +79,104 @@ class VierzehnError extends Error {
   }
 }
 
+/** A capture failure carrying an already-classified, safe German VierzehnFailure. */
+class MicError extends Error {
+  constructor(readonly failure: VierzehnFailure) {
+    super(failure.title);
+    this.name = 'MicError';
+  }
+}
+
+/**
+ * getUserMedia rejections are NOT reliably `instanceof DOMException` on WebKit
+ * (the desktop WebView): OverconstrainedError is its own interface there, so an
+ * instanceof gate silently drops it. Read the name + constraint by duck-typing.
+ */
+function errName(err: unknown): string {
+  return err != null && typeof err === 'object' && 'name' in err
+    ? String((err as { name?: unknown }).name ?? '')
+    : '';
+}
+function isOverconstrained(err: unknown): boolean {
+  // The OverconstrainedError-specific `constraint` property is the reliable signal
+  // for a gone/incompatible saved device, name or no name.
+  return err != null && typeof err === 'object' && 'constraint' in err;
+}
+
+/** Translate a getUserMedia rejection into a typed, honest German failure. */
+function classifyMic(err: unknown): VierzehnFailure {
+  const name = errName(err);
+  if (name === 'NotAllowedError' || name === 'PermissionDeniedError' || name === 'SecurityError') {
+    return {
+      title: 'Mikrofon ist gesperrt',
+      detail:
+        'Warehouse14 hat keinen Zugriff auf das Mikrofon. Bitte die Freigabe erlauben, dann erneut versuchen.',
+      canOpenSettings: true,
+    };
+  }
+  if (
+    isOverconstrained(err) ||
+    name === 'NotFoundError' ||
+    name === 'OverconstrainedError' ||
+    name === 'ConstraintNotSatisfiedError'
+  ) {
+    return {
+      title: 'Kein Mikrofon gefunden',
+      detail:
+        'Es ist kein Mikrofon angeschlossen. Bitte ein Mikrofon anschließen und erneut versuchen.',
+      canOpenSettings: false,
+    };
+  }
+  if (name === 'NotReadableError' || name === 'TrackStartError') {
+    return {
+      title: 'Mikrofon ist belegt',
+      detail:
+        'Das Mikrofon wird gerade von einem anderen Programm verwendet. Bitte das Programm schließen und erneut versuchen.',
+      canOpenSettings: false,
+    };
+  }
+  return {
+    title: 'Mikrofon nicht verfügbar',
+    detail: 'Der Zugriff auf das Mikrofon ist fehlgeschlagen. Bitte erneut versuchen.',
+    canOpenSettings: true,
+  };
+}
+
+/**
+ * Acquire the mic. If a SAVED device id (passed as `{ deviceId: { exact } }`)
+ * is gone — an unplugged headset — that throws OverconstrainedError/NotFound;
+ * retry once with the system default rather than fail. Any capture failure is
+ * rethrown as a typed MicError so the overlay shows honest German + the right
+ * recovery affordance.
+ */
+async function acquireMic(micDeviceId?: string): Promise<MediaStream> {
+  const preferred: MediaStreamConstraints = {
+    audio: micDeviceId ? { deviceId: { exact: micDeviceId } } : true,
+  };
+  try {
+    return await navigator.mediaDevices.getUserMedia(preferred);
+  } catch (err) {
+    const name = errName(err);
+    const staleDevice =
+      isOverconstrained(err) ||
+      name === 'OverconstrainedError' ||
+      name === 'ConstraintNotSatisfiedError' ||
+      name === 'NotFoundError';
+    if (staleDevice && micDeviceId) {
+      try {
+        return await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch (retryErr) {
+        throw new MicError(classifyMic(retryErr));
+      }
+    }
+    throw new MicError(classifyMic(err));
+  }
+}
+
 export function useRealtimeSession(micDeviceId?: string): UseRealtimeSession {
   const api = useApiClient();
   const [state, setState] = useState<JarvisState>('idle');
-  const [error, setError] = useState<string | null>(null);
+  const [failure, setFailure] = useState<VierzehnFailure | null>(null);
   const [micStream, setMicStream] = useState<MediaStream | null>(null);
   const [modelStream, setModelStream] = useState<MediaStream | null>(null);
 
@@ -173,7 +279,11 @@ export function useRealtimeSession(micDeviceId?: string): UseRealtimeSession {
         );
       } else if (type === 'error') {
         if (typeof console !== 'undefined') console.error('[Vierzehn] Realtime-Fehler', evt.error);
-        setError('Es gab ein Problem in der Sprachsitzung. Bitte erneut verbinden.');
+        setFailure({
+          title: 'Sprachsitzung gestört',
+          detail: 'Es gab ein Problem in der Sprachsitzung. Bitte erneut versuchen.',
+          canOpenSettings: false,
+        });
       }
     },
     [relayToolCall],
@@ -182,7 +292,7 @@ export function useRealtimeSession(micDeviceId?: string): UseRealtimeSession {
   const connect = useCallback(async (): Promise<void> => {
     if (pcRef.current || connectingRef.current) return;
     connectingRef.current = true;
-    setError(null);
+    setFailure(null);
     setState('connecting');
     const ac = new AbortController();
     abortRef.current = ac;
@@ -194,7 +304,11 @@ export function useRealtimeSession(micDeviceId?: string): UseRealtimeSession {
       if (ac.signal.aborted) return;
       if (typeof console !== 'undefined') console.error('[Vierzehn] Verbindung verloren');
       teardown();
-      setError('Die Verbindung zur Sprachsitzung wurde unterbrochen. Bitte erneut verbinden.');
+      setFailure({
+        title: 'Verbindung unterbrochen',
+        detail: 'Die Verbindung zur Sprachsitzung wurde unterbrochen. Bitte erneut versuchen.',
+        canOpenSettings: false,
+      });
       setState('error');
     };
     try {
@@ -235,10 +349,9 @@ export function useRealtimeSession(micDeviceId?: string): UseRealtimeSession {
         });
       };
 
-      // Mic in.
-      const mic = await navigator.mediaDevices.getUserMedia({
-        audio: micDeviceId ? { deviceId: { exact: micDeviceId } } : true,
-      });
+      // Mic in. `acquireMic` retries past a stale saved device and rethrows any
+      // capture failure as a typed MicError → honest German + recovery button.
+      const mic = await acquireMic(micDeviceId);
       micStreamRef.current = mic;
       if (ac.signal.aborted) {
         teardown();
@@ -343,14 +456,18 @@ export function useRealtimeSession(micDeviceId?: string): UseRealtimeSession {
       // everything down — do not surface it as an error.
       if (ac.signal.aborted) return;
       if (typeof console !== 'undefined') console.error('[Vierzehn] Verbindung fehlgeschlagen', err);
-      const reason =
-        err instanceof VierzehnError
-          ? err.reason
-          : err instanceof DOMException && (err.name === 'NotAllowedError' || err.name === 'NotFoundError')
-            ? 'Kein Zugriff auf das Mikrofon. Bitte die Freigabe erlauben und erneut versuchen.'
-            : describeError(err);
+      const nextFailure: VierzehnFailure =
+        err instanceof MicError
+          ? err.failure
+          : err instanceof VierzehnError
+            ? { title: 'Verbindung fehlgeschlagen', detail: err.reason, canOpenSettings: false }
+            : {
+                title: 'Verbindung fehlgeschlagen',
+                detail: describeError(err),
+                canOpenSettings: false,
+              };
       teardown();
-      setError(reason);
+      setFailure(nextFailure);
       setState('error');
     } finally {
       connectingRef.current = false;
@@ -360,5 +477,5 @@ export function useRealtimeSession(micDeviceId?: string): UseRealtimeSession {
   // Always tear down on unmount.
   useEffect(() => () => teardown(), [teardown]);
 
-  return { state, error, micStream, modelStream, connect, disconnect };
+  return { state, failure, micStream, modelStream, connect, disconnect };
 }

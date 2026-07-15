@@ -26,7 +26,7 @@
  */
 
 import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 import { authPin } from '@warehouse14/api-client';
@@ -76,6 +76,7 @@ import { MetalTicker } from './MetalTicker.js';
 import { Spotlight } from './Spotlight.js';
 import { StepUpModal } from './StepUpModal.js';
 import { SubBreadcrumb } from './SubBreadcrumb.js';
+import { usePrimeMicPermission } from './usePrimeMicPermission.js';
 import { isAnyDialogOpen, isTextEntryElement, resolveDigitNavPath } from './digit-nav.js';
 import { PRIMARY_SURFACES, SECONDARY_SURFACES, findSurfaceByPath } from './surface-registry.js';
 
@@ -103,8 +104,17 @@ export function AppShell(): JSX.Element {
 
   const [spotlightOpen, setSpotlightOpen] = useState(false);
 
+  // <main> owns the scroll now (see the shell height note below). Reset it to the
+  // top on every route change so a new surface never opens mid-scroll.
+  const mainRef = useRef<HTMLElement>(null);
+
   // Subscribe SSE alerts → toast queue (memory.md #76 ⑦).
   useAlertSubscription();
+
+  // Ask for the microphone once, early + quietly, so Vierzehn later wakes and
+  // greets with no prompt in the owner's way. A denial here is handled by
+  // Vierzehn's own recovery flow, never surfaced from the prime.
+  usePrimeMicPermission();
 
   // Reflect the theme onto <html data-theme>.
   useEffect(() => {
@@ -117,6 +127,12 @@ export function AppShell(): JSX.Element {
     const s = findSurfaceByPath(location.pathname);
     if (s) pushRecent(s.path);
   }, [location.pathname, pushRecent]);
+
+  // <main> owns the scroll — reset it to the top on each route change so a new
+  // surface never opens already scrolled down (the body used to do this for free).
+  useEffect(() => {
+    mainRef.current?.scrollTo({ top: 0 });
+  }, [location.pathname]);
 
   // Global key bindings — Cmd+K opens Spotlight; Cmd+Shift+D toggles theme;
   // bare 1–8 jump to the primary surfaces the rail labels (UX P0).
@@ -254,7 +270,13 @@ export function AppShell(): JSX.Element {
     <div
       className="w14-paper-noise"
       style={{
-        minHeight: '100dvh',
+        // A BOUNDED viewport height (not min-height) is what makes the app-shell
+        // model work: the header + ticker stay fixed and the routed surface owns
+        // its own scroll below. With min-height the page grew with content and the
+        // body scrolled, so a long Verkauf cart pushed the pinned „Bezahlen" footer
+        // off-screen. height + overflow:hidden freezes the frame; <main> scrolls.
+        height: '100dvh',
+        overflow: 'hidden',
         display: 'flex',
         flexDirection: 'column',
         background: 'var(--w14-parchment)',
@@ -274,11 +296,16 @@ export function AppShell(): JSX.Element {
       <MetalTicker />
 
       <main
+        ref={mainRef}
         style={{
           flex: 1,
           minHeight: 0,
           display: 'flex',
           flexDirection: 'column',
+          // Long surfaces (forms, lists) scroll HERE, not the body. A surface that
+          // fills the height (Verkauf) instead scrolls inside its own panels, so
+          // its „Bezahlen" footer never leaves the frame.
+          overflowY: 'auto',
         }}
       >
         {/* Per-route error boundary: a crash in one surface must not take
