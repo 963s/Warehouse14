@@ -5,13 +5,13 @@
 
   Referenced from tauri.conf.json -> bundle.macOS.entitlements.
 
-  IMPORTANT — the hardened runtime is ON even for our ad-hoc ("-") build.
-  Tauri's bundler signs with `--options runtime` by default (hardenedRuntime
-  is not disabled in tauri.conf.json), so it applies to the ad-hoc signature
-  too. That means the resource-access entitlements below are ENFORCED right
-  now, not only on a future Developer-ID / notarized build. Do NOT delete a
-  device entitlement believing "ad-hoc ignores it" — it does not, and removing
-  one silently denies that capability below the web layer.
+  IMPORTANT. The hardened runtime is ON even for our ad-hoc ("-") build.
+  Tauri's bundler signs with the runtime option enabled by default
+  (hardenedRuntime is not disabled in tauri.conf.json), so it applies to the
+  ad-hoc signature too. That means the resource-access entitlements below are
+  ENFORCED right now, not only on a future Developer-ID / notarized build. Do
+  NOT delete a device entitlement believing "ad-hoc ignores it", it does not,
+  and removing one silently denies that capability below the web layer.
 
     com.apple.security.device.camera
         Grants the in-app camera (Foto-Werkstatt getUserMedia). Without it the
