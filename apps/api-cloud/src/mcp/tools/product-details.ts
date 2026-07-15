@@ -170,7 +170,8 @@ const handler: ToolHandler<ProductDetailsArgs> = async (
   if (cls) parts.push(`${cls}.`);
   if (product.metalDe) {
     let m = product.metalDe;
-    if (product.feingewichtGrams) m += `, Feingewicht ${product.feingewichtGrams} Gramm`;
+    if (product.feingewichtGrams)
+      m += `, Feingewicht ${String(product.feingewichtGrams).replace('.', ',')} Gramm`;
     parts.push(`${m}.`);
   }
   if (product.listPriceEur) {

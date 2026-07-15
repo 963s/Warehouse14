@@ -25,6 +25,7 @@ type Row = {
   cumulative_spend_eur: string;
   cumulative_ankauf_eur: string;
   trust_level: string;
+  total_with_revenue: number;
 }
 
 const handler: ToolHandler<Record<string, never>> = async (
@@ -35,7 +36,8 @@ const handler: ToolHandler<Record<string, never>> = async (
       customer_number,
       cumulative_spend_eur::text  AS cumulative_spend_eur,
       cumulative_ankauf_eur::text AS cumulative_ankauf_eur,
-      trust_level::text           AS trust_level
+      trust_level::text           AS trust_level,
+      COUNT(*) OVER ()::int       AS total_with_revenue
     FROM customers
     WHERE soft_deleted_at IS NULL
       AND cumulative_spend_eur > 0
@@ -53,7 +55,15 @@ const handler: ToolHandler<Record<string, never>> = async (
     trustLevelDe: labelDe(TRUST_LEVEL_DE, r.trust_level),
   }));
 
-  const data = { count: customers.length, customers, asOf: new Date().toISOString() };
+  // The real number of revenue customers (window count, evaluated before LIMIT),
+  // so the spoken "Insgesamt" is honest even when more than 10 customers exist.
+  const totalWithRevenue = Number(rows[0]?.total_with_revenue ?? customers.length);
+  const data = {
+    count: customers.length,
+    totalWithRevenue,
+    customers,
+    asOf: new Date().toISOString(),
+  };
 
   let summary: string;
   if (customers.length === 0) {
@@ -69,7 +79,7 @@ const handler: ToolHandler<Record<string, never>> = async (
           (c.trustLevelDe ? `, Vertrauensstufe ${c.trustLevelDe}` : ''),
       )
       .join('. ');
-    summary = `Ihre umsatzstärksten Kunden: ${top}. Insgesamt ${customers.length} Kunden mit Umsatz.`;
+    summary = `Ihre umsatzstärksten Kunden: ${top}. Insgesamt ${totalWithRevenue} Kunden mit Umsatz.`;
   }
 
   return { content: [{ type: 'text', text: summary }], data };
