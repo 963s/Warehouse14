@@ -409,10 +409,11 @@ const EnvSchema = Type.Object({
       'only a short-lived ephemeral token. Empty ⇒ POST /api/realtime/session returns 503.',
   }),
   OPENAI_REALTIME_MODEL: Type.String({
-    default: 'gpt-realtime-2.1-mini',
+    default: 'gpt-realtime-2.1',
     description:
-      'OpenAI Realtime model for the voice assistant. mini keeps per-minute cost low; a full model ' +
-      'can be selected per session for complex reasoning.',
+      'OpenAI Realtime model for the voice assistant. The full gpt-realtime-2.1 follows instructions ' +
+      'markedly better than the mini, which holds cleaner Hochdeutsch + stable prosody for a premium ' +
+      'German voice; the mini is the cheaper fallback.',
   }),
   OPENAI_REALTIME_VOICE: Type.String({
     default: 'marin',
