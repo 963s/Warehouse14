@@ -217,7 +217,7 @@ export async function buildApp(opts: BuildAppOpts): Promise<FastifyInstance> {
   await app.register(errorHandlerPlugin);
 
   // 12. Routes.
-  await app.register(healthRoute);
+  await app.register(healthRoute, { env: opts.env });
   await app.register(authPinRoutes, { env: opts.env });
   await app.register(authSessionRoutes);
   await app.register(inventoryReserve);
