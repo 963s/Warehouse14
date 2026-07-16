@@ -445,11 +445,29 @@ export function useRealtimeSession(micDeviceId?: string): UseRealtimeSession {
               })),
               tool_choice: 'auto',
               audio: {
-                input: { turn_detection: { type: 'server_vad' } },
+                input: {
+                  // A shop has customers, radio and coins on glass. The 0.5/500ms
+                  // defaults let that noise open a turn, and every false turn is a
+                  // billed response. Tightened so only real speech opens a turn.
+                  turn_detection: {
+                    type: 'server_vad',
+                    threshold: 0.65,
+                    silence_duration_ms: 700,
+                  },
+                  // The mic sits across the counter, not on a headset.
+                  noise_reduction: { type: 'far_field' },
+                },
                 // A hair faster than 1.0 counters the 2.x generation's reported
                 // slow non-English pacing, keeping German lively but clear.
                 output: { speed: 1.05 },
               },
+              // Re-asserted here, not only at the mint: this session.update owns
+              // the session config once the channel opens, so a server-side value
+              // could be dropped. Audio output is the biggest line of the bill and
+              // the API default is `inf`; 1200 tokens is ~60s, so it only ever
+              // clips a runaway, never an honest answer.
+              max_output_tokens: 1200,
+              truncation: { type: 'retention_ratio', retention_ratio: 0.8 },
             },
           }),
         );

@@ -60,6 +60,67 @@ export interface AgendaData {
   appointmentsUpcoming?: number;
   openTasks?: number;
 }
+export interface ProductListRow {
+  name?: string;
+  sku?: string;
+  statusDe?: string;
+  itemTypeDe?: string;
+  listPriceEur?: string;
+  liveWeb?: boolean;
+  liveEbay?: boolean;
+}
+export interface ProductListData {
+  count?: number;
+  products?: ProductListRow[];
+}
+export interface InventoryData {
+  totalActive?: number;
+  availableCount?: number;
+  reservedCount?: number;
+  soldCount?: number;
+  availableValueEur?: string;
+  publishedCount?: number;
+  ebayCount?: number;
+}
+export interface SalesBreakdownData {
+  period?: string;
+  saleCount?: number;
+  totalUnits?: number;
+  totalRevenueEur?: string;
+  avgSaleEur?: string;
+  byItemType?: Array<{ itemTypeDe?: string; units?: number; revenueEur?: string }>;
+  topProducts?: Array<{ name?: string; revenueEur?: string }>;
+}
+export interface ChannelsData {
+  ebayOnline?: number;
+  ebayToShip?: number;
+  ebayProblem?: number;
+  whatsappUnhandledThreads?: number;
+  whatsappUnhandledMessages?: number;
+  documentsTotal?: number;
+  pendingAppraisals?: number;
+  openStorefrontOrders?: number;
+  checkoutInProgress?: number;
+}
+export interface TopCustomersData {
+  count?: number;
+  totalWithRevenue?: number;
+  customers?: Array<{
+    rank?: number;
+    customerNumber?: string;
+    cumulativeSpendEur?: string;
+    trustLevelDe?: string;
+  }>;
+}
+export interface CustomerBaseData {
+  totalActive?: number;
+  buyers?: number;
+  sellers?: number;
+  kycVerified?: number;
+  watchlist?: number;
+  totalSpendEur?: string;
+  totalAnkaufEur?: string;
+}
 
 export type JarvisWidget =
   | { kind: 'revenue'; data: SalesData }
@@ -67,7 +128,13 @@ export type JarvisWidget =
   | { kind: 'finance'; data: FinanceData }
   | { kind: 'product'; data: ProductData }
   | { kind: 'customer'; data: CustomerData }
-  | { kind: 'agenda'; data: AgendaData };
+  | { kind: 'agenda'; data: AgendaData }
+  | { kind: 'productList'; data: ProductListData }
+  | { kind: 'inventory'; data: InventoryData }
+  | { kind: 'salesBreakdown'; data: SalesBreakdownData }
+  | { kind: 'channels'; data: ChannelsData }
+  | { kind: 'topCustomers'; data: TopCustomersData }
+  | { kind: 'customerBase'; data: CustomerBaseData };
 
 // ── The store ──────────────────────────────────────────────────────────────
 
@@ -130,6 +197,32 @@ export function widgetForTool(name: string, data: unknown): JarvisWidget | null 
     }
     case 'agenda':
       return { kind: 'agenda', data: d as AgendaData };
+    case 'list_products': {
+      // The browse tool: show the rows, not just speak the top three. Nothing to
+      // paint on an empty result, so the last widget stays.
+      const rows = d.products;
+      return Array.isArray(rows) && rows.length > 0 ? { kind: 'productList', data: d as ProductListData } : null;
+    }
+    case 'product_details': {
+      // The deep-dive returns { found, product }. Reuse the product card.
+      const p = d.product;
+      return d.found === true && p != null && typeof p === 'object'
+        ? { kind: 'product', data: p as ProductData }
+        : null;
+    }
+    case 'inventory_overview':
+      return { kind: 'inventory', data: d as InventoryData };
+    case 'sales_breakdown':
+      // An empty period has nothing to chart; the spoken line carries it.
+      return Number(d.saleCount ?? 0) > 0 ? { kind: 'salesBreakdown', data: d as SalesBreakdownData } : null;
+    case 'channels_overview':
+      return { kind: 'channels', data: d as ChannelsData };
+    case 'top_customers': {
+      const rows = d.customers;
+      return Array.isArray(rows) && rows.length > 0 ? { kind: 'topCustomers', data: d as TopCustomersData } : null;
+    }
+    case 'customer_overview':
+      return { kind: 'customerBase', data: d as CustomerBaseData };
     default:
       return null;
   }

@@ -189,6 +189,17 @@ const realtimeSessionRoute: FastifyPluginAsync<{ env: Env }> = async (app, opts)
               model,
               instructions: ASSISTANT_INSTRUCTIONS,
               audio: { output: { voice } },
+              // Cost guards. Audio OUTPUT is the single biggest line of the
+              // realtime bill, and the API default is `inf`: one runaway answer
+              // can bill minutes of speech. 1200 tokens is ~60 seconds, far above
+              // any honest two-to-three-sentence reply, so it only ever clips a
+              // runaway. GA field name is `max_output_tokens` (1 bis 4096); the
+              // beta name `max_response_output_tokens` is dead.
+              max_output_tokens: 1200,
+              // Insurance only: gpt-realtime-2.1(-mini) carries a 128k context and
+              // an hour of talk accrues far less, so this never fires today. It
+              // costs nothing and bounds the bill if a session ever ran long.
+              truncation: { type: 'retention_ratio', retention_ratio: 0.8 },
             },
           }),
           // A stalled OpenAI must not hang the handler/socket; the catch below
