@@ -316,9 +316,15 @@ const authPinRoutes: FastifyPluginAsync<{ env: Env }> = async (app, opts) => {
         throw new PinLockedError(decision.newState.lockedUntil!);
       }
       if (decision.kind === 'failed') {
-        throw new UnauthorizedError(
-          `Invalid PIN (${PIN_FAILED_THRESHOLD - decision.newState.failedAttempts} attempts remaining)`,
-        );
+        // No attempt counter in the reply. This route answers ANONYMOUS callers
+        // from the open internet (verified 2026-07-16: a bare
+        // POST /api/auth/pin-login {"pin":"9137"} from an unauthenticated client
+        // returned "Invalid PIN (5 attempts remaining)"), and the count is live
+        // state of the OWNER's account handed to a stranger. It also paces a
+        // brute-force for free: stop at nine, wait, resume, never trip the lock.
+        // A locked-out attempt still reports the lock and its expiry via
+        // PinLockedError, so a real person still learns why they are stuck.
+        throw new UnauthorizedError('Invalid PIN.');
       }
 
       // Success — create a session. TTL depends on is_owner per ADR-0022 §2.
@@ -454,9 +460,15 @@ const authPinRoutes: FastifyPluginAsync<{ env: Env }> = async (app, opts) => {
         throw new PinLockedError(decision.newState.lockedUntil!);
       }
       if (decision.kind === 'failed') {
-        throw new UnauthorizedError(
-          `Invalid PIN (${PIN_FAILED_THRESHOLD - decision.newState.failedAttempts} attempts remaining)`,
-        );
+        // No attempt counter in the reply. This route answers ANONYMOUS callers
+        // from the open internet (verified 2026-07-16: a bare
+        // POST /api/auth/pin-login {"pin":"9137"} from an unauthenticated client
+        // returned "Invalid PIN (5 attempts remaining)"), and the count is live
+        // state of the OWNER's account handed to a stranger. It also paces a
+        // brute-force for free: stop at nine, wait, resume, never trip the lock.
+        // A locked-out attempt still reports the lock and its expiry via
+        // PinLockedError, so a real person still learns why they are stuck.
+        throw new UnauthorizedError('Invalid PIN.');
       }
 
       // Duress at step-up: refresh the window normally, then alarm in background.

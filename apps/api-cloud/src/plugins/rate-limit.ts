@@ -60,6 +60,23 @@ const PREFIX_LIMITS: readonly PrefixLimit[] = [
   // storno reverses one. Both are forensically heavy and must not be flooded.
   { prefix: '/api/transactions/finalize', max: 30 },
   { prefix: '/api/transactions/storno', max: 30 },
+  // PIN login — 5/min/IP. MUST stay ABOVE the '/api/auth/' rule below:
+  // matchPrefixLimit returns the FIRST match, not the strictest one, so a
+  // general rule listed first would shadow this one.
+  //
+  // Why this needs its own, much tighter rule: this route's secret is FOUR
+  // DIGITS, a 10,000 keyspace, and the body is just {"pin":"NNNN"} — no email.
+  // The device selects the user, so an anonymous request is measured straight
+  // against the owner's hash. Verified from the open internet on 2026-07-16:
+  // POST /api/auth/pin-login {"pin":"9137"} answered 401 "Invalid PIN", i.e.
+  // the device resolved and only the four digits stood in the way. At the old
+  // 20/min the whole keyspace is ~8 hours per IP; at 5/min it is ~33 hours,
+  // and every attempt is now loud. An owner re-typing a PIN never exceeds two
+  // or three tries a minute, so this cannot lock a real person out.
+  //
+  // This bounds ONE IP. It does not stop a distributed attempt — the per-user
+  // lockout is what does that, and it is untouched here by explicit request.
+  { prefix: '/api/auth/pin-login', max: 5 },
   // Auth surface — 20/min/IP. Email/password sign-in + PIN step-up are the
   // brute-force surface; the DB-side PIN lockout (10 tries → 1 min) is the real
   // backstop. This HTTP cap is generous enough that an owner re-typing his PIN
