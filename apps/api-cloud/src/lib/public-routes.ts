@@ -74,6 +74,16 @@ export const AUTHENTICATED_PATHS_UNDER_PUBLIC_PREFIX: ReadonlySet<string> = new 
   // not call requireAuth (the actor doesn't exist yet) but it does require
   // the device fingerprint to be loaded.
   '/api/auth/pin-login',
+  // Both PIN-setting routes call requireAuth(req) in their handlers, so without
+  // an entry here the preHandler skipped them, req.actor was never populated and
+  // requireAuth always threw: the routes failed CLOSED and were unusable. That is
+  // catch #76 all over again — it silently cost staff the ability to change their
+  // POS PIN at all, and to set or rotate the DURESS PIN, which is the safety
+  // control for an armed robbery. Fails-closed is not a hole, but a safety
+  // control nobody can arm is its own emergency. Guarded by
+  // tests/auth-public-routes.test.ts so a third one cannot slip in.
+  '/api/auth/pin/set',
+  '/api/auth/duress-pin/set',
 ]);
 
 /**

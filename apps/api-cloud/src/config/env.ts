@@ -299,6 +299,17 @@ const EnvSchema = Type.Object({
   // ── Telemetry (GlitchTip / Sentry-compatible) ────────────────────────
   // Optional + fail-safe: empty → telemetry disabled, the app boots normally.
   SENTRY_DSN: Type.Optional(Type.String({ default: '' })),
+  // ── Prometheus scrape token (plugins/metrics.ts) ─────────────────────
+  // Bearer token a scraper must present to read /metrics IN PRODUCTION. This
+  // one is fail-SHUT, not fail-safe: empty in production → /metrics answers 404
+  // to everyone. That is deliberate. An open /metrics is a free health, traffic
+  // and error-rate oracle for anyone probing the shop, and no scraper exists
+  // today, so the safe default is closed. Development ignores this entirely.
+  METRICS_TOKEN: Type.String({
+    default: '',
+    description:
+      'Bearer token required to scrape /metrics in production. Empty → /metrics is closed (404).',
+  }),
   // ── Chatwoot omnichannel inbox (Decision #48) ────────────────────────
   // Empty defaults → the Chatwoot webhook is inert; the app boots without it.
   CHATWOOT_URL: Type.String({

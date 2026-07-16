@@ -53,17 +53,34 @@ const swaggerPlugin: FastifyPluginAsync<SwaggerPluginOpts> = async (app, opts) =
           },
         },
       },
+      // The contract must state what the server actually does. The schemes above
+      // were declared but never APPLIED, so the document said `security: null` —
+      // "this whole API is open". It is not: plugins/auth.ts installs a global
+      // default-deny preHandler and lib/public-routes.ts holds the only allowlist.
+      // A passive audit read that null, graded the API "D — fully unauthenticated",
+      // and raised four CRITICAL findings that were all false. A contract that lies
+      // about its own security costs a review cycle at best and a real miss at
+      // worst. Declaring the default here makes the document tell the truth; the
+      // genuinely public routes override it with `security: []` on their own
+      // schema. The enforcement remains the preHandler, never this line.
+      security: [{ sessionCookie: [] }],
     },
   });
 
-  await app.register(fastifySwaggerUi, {
-    routePrefix: '/docs',
-    uiConfig: {
-      docExpansion: 'list',
-      deepLinking: true,
-    },
-    staticCSP: true,
-  });
+  // The Swagger UI hands a visitor the complete 162-route map of an ERP that
+  // holds gold, cash, KYC ID scans and tax records: every path, parameter, and
+  // shape an attacker would otherwise have to guess. Reconnaissance is the step
+  // this closes. It stays fully open in development, where that map is the point.
+  if (opts.env.NODE_ENV !== 'production') {
+    await app.register(fastifySwaggerUi, {
+      routePrefix: '/docs',
+      uiConfig: {
+        docExpansion: 'list',
+        deepLinking: true,
+      },
+      staticCSP: true,
+    });
+  }
 };
 
 export default fastifyPlugin(swaggerPlugin, {

@@ -167,7 +167,7 @@ export async function buildApp(opts: BuildAppOpts): Promise<FastifyInstance> {
   });
 
   // 1. Metrics — early, so it wraps every later route.
-  await app.register(metricsPlugin);
+  await app.register(metricsPlugin, { env: opts.env });
 
   // 1.5 Security headers + CORS (Day 16 audit A-3 + A-4) — must be FIRST
   //     before any handler emits a response, so even error replies carry
