@@ -44,6 +44,7 @@ import requestContextPlugin from './plugins/request-context.js';
 import securityHeadersPlugin from './plugins/security-headers.js';
 import storefrontSessionPlugin from './plugins/storefront-session.js';
 import swaggerPlugin from './plugins/swagger.js';
+import adminGoogleAuthRoutes from './routes/admin-auth-google.js';
 import aiComposeRoute from './routes/ai-compose.js';
 import appointmentsRoutes from './routes/appointments.js';
 // Day 22 — Konvolut + Appraisals
@@ -220,6 +221,10 @@ export async function buildApp(opts: BuildAppOpts): Promise<FastifyInstance> {
   await app.register(healthRoute, { env: opts.env });
   await app.register(authPinRoutes, { env: opts.env });
   await app.register(authSessionRoutes);
+  // Phase 1 — staff/owner Sign-in-with-Google (the enterprise-grade replacement
+  // for the PIN front door). Resolves the verified Google email against `users`
+  // and 403s anything not provisioned; mints the same session shape as pin-login.
+  await app.register(adminGoogleAuthRoutes, { env: opts.env });
   await app.register(inventoryReserve);
   await app.register(inventoryRelease);
   await app.register(productsRoutes, { env: opts.env });

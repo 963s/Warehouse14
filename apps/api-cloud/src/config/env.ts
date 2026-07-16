@@ -222,6 +222,37 @@ const EnvSchema = Type.Object({
     description:
       'OAuth client secret for the storefront Google login. Server-side only — never sent to the browser.',
   }),
+  // ── Staff / Owner Google Sign-In (admin OAuth) ───────────────────────
+  // A SEPARATE OAuth client from the storefront + Calendar: staff login needs
+  // its own "Web application" OAuth 2.0 Client ID. The consent screen is
+  // org-restricted (Workspace-internal), so only warehouse14.de accounts can
+  // authorise; the server ALSO resolves the verified email against the `users`
+  // table and 403s any address that is not a provisioned staff member. Empty
+  // defaults -> the admin Google route answers 503 and the app boots fine.
+  GOOGLE_STAFF_CLIENT_ID: Type.String({
+    default: '',
+    description:
+      'OAuth 2.0 Web-application Client ID for staff/owner Sign-in-with-Google. Empty -> admin Google login disabled.',
+  }),
+  GOOGLE_STAFF_CLIENT_SECRET: Type.String({
+    default: '',
+    description:
+      'OAuth client secret for the staff Google login. Server-side only, never sent to the browser.',
+  }),
+  ADMIN_PUBLIC_URL: Type.String({
+    default: '',
+    description:
+      'Public origin of the API used to build the staff Google redirect URI ' +
+      '<origin>/api/admin/auth/google/callback. Must EXACTLY match the URI registered ' +
+      'on the Google OAuth client (e.g. https://api.warehouse14.de). Empty -> admin Google login disabled.',
+  }),
+  STAFF_GOOGLE_HD: Type.String({
+    default: '',
+    description:
+      'Optional Google Workspace domain hint (e.g. warehouse14.de) added as the ' +
+      'oauth "hd" parameter to pre-select the org account. UX only, not a security ' +
+      'boundary: the org-restricted consent screen and the users-table lookup are.',
+  }),
   STOREFRONT_PUBLIC_URL: Type.String({
     default: '',
     description:

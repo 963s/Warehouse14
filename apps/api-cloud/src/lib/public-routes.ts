@@ -22,6 +22,12 @@ export const PUBLIC_PREFIXES = [
   // AND the mTLS preHandler (no device cert involved).
   '/api/storefront/',
   '/api/webhooks/',
+  // Phase 1 — staff/owner Sign-in-with-Google. Only the OAuth start + callback
+  // live under this prefix; both must run unauthenticated and WITHOUT the mTLS
+  // device gate (the browser round-trip carries no session and no device cert).
+  // The callback's own users-table lookup is the authorisation gate. No other
+  // /api/admin/* route sits under this prefix, so nothing else is exposed.
+  '/api/admin/auth/google/',
 ] as const;
 
 /**
