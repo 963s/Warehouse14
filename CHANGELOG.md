@@ -6,6 +6,21 @@ and the project adheres to [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-07-17
+
+- Anmeldung mit Google: Sie melden sich mit dem Warehouse14-Google-Konto an und vergeben danach einen eigenen Code oder ein Passwort, das nur auf diesem Gerät gespeichert wird. Die PIN-Anmeldung bleibt als Alternative erhalten.
+- Sicherer Start: die App öffnet nie mehr von selbst. Bei jedem Öffnen ist der Gerätecode Pflicht (nicht mehr überspringbar), und nach fünf Minuten ohne Bedienung sperrt sie sich wieder. Die Google-Identität wird verlangt, sobald die Sitzung abläuft. Eine gespeicherte Sitzung allein reicht nie, um hineinzukommen.
+- Vollständiges Profil statt des „14"-Siegels: oben links zeigt ein Messing-Medaillon jetzt Ihr Google-Bild (oder Ihre Initialen). Ein Klick öffnet Name, angemeldete E-Mail, Ihre Rolle mit den zugehörigen Berechtigungen, die Gültigkeit der Sitzung und die Abmeldung an einer einzigen Stelle.
+- Neue Zielkarte: die Ziele des Hauses als lebendige Instrumententafel mit echten Live-Werten (Umsatz, Bestand, Gold und Silber, Gewinn). Jedes Instrument ist fein ausgearbeitet wie echtes Werkstatt-Gerät: Messing-Manometer mit gravierten Zahlenskalen und Zeigern aus gebläutem Stahl, ein Thermometer, Glasgefäße voller geschmolzenem Gold und Silber, hölzerne Schatztruhen mit Messingbeschlägen und Nieten, eine Balkenwaage mit Ketten sowie eine gealterte Schatzkarte mit Galeone und Kompassrose.
+- Neue Risikoanalyse: Warnsignale und die Kunden-Beobachtungsliste an einem Ort, samt Edge-Schutz von Cloudflare, der zeigt, wie viele Bedrohungen am Rand gestoppt wurden, an welchen Tagen und aus welchen Ländern sie kamen.
+- Neues Schaufenster: wer vor dem Fenster steht. Besucher pro Tag, Seitenaufrufe, Herkunftsländer, verwendete Browser, der getrennt ausgewiesene Anteil des Ladens gegenüber der App-Schnittstelle und die Frage, ob der Laden sauber geantwortet hat. Besucher sind bewusst keine Kunden und werden nie über Tage addiert.
+- Neues Team und Rollen: Mitarbeiter über ihre Google-E-Mail freischalten, die Rolle setzen und den Zugang wieder entziehen.
+- API-Schlüssel in den Einstellungen: programmatische Zugänge für Agenten oder Dienste anlegen, mit fester Rolle und optionaler Nur-Lesen-Beschränkung. Der Schlüssel wird nur einmal angezeigt.
+- Kundenakte: die Gesamtzahl der Kunden und der letzte Vorgang je Kunde werden jetzt angezeigt.
+- Vierzehn kann auf Zuruf einen Artikel als Entwurf anlegen (nach gesprochener Bestätigung) und bleibt bei längeren Gesprächen zuverlässig verbunden.
+- Ehrliche Fehlerantworten am Rand: ein fehlerhaft gesendeter Aufruf wird jetzt als solcher beantwortet (nicht mehr als Serverfehler), und eine noch nicht eingerichtete Funktion (Kartenzahlung, Fotospeicher) meldet ehrlich „nicht verfügbar" statt einen Absturz vorzutäuschen. Das hält die Störungsanzeige im Schaufenster sauber.
+- Allgemeine Verbesserungen und Politur.
+
 ## [0.5.2] - 2026-07-15
 
 - Vierzehn ist jetzt deutlich lauter und klarer zu hören, mit sauberem Hochdeutsch und einer natürlicheren Stimme.

@@ -19,6 +19,21 @@ export interface SessionActor {
   isOwner: boolean;
 }
 
+/**
+ * Human-facing profile of the signed-in operator — kept OUT of `SessionActor`
+ * (which is deliberately PII-free) and carried alongside it so the shell can
+ * show who is logged in. For a Google sign-in this is the verified Google
+ * identity; a PIN session carries the email only.
+ */
+export interface AuthProfile {
+  /** The verified account email. */
+  email: string;
+  /** Google display name; null for a PIN session (no Google identity). */
+  displayName: string | null;
+  /** Google profile-picture URL; null when unavailable. */
+  avatarUrl: string | null;
+}
+
 // ────────────────────────────────────────────────────────────────────────
 // POST /api/auth/pin-login
 // ────────────────────────────────────────────────────────────────────────
@@ -32,6 +47,8 @@ export interface PinLoginResponse {
   ok: true;
   sessionExpiresAt: string;
   actor: SessionActor;
+  /** Who signed in (Google identity or the staff email). Optional for back-compat. */
+  profile?: AuthProfile;
   /**
    * The session token (same value as the `warehouse14.session` cookie). The
    * POS stores this and sends it as `Authorization: Bearer` so auth survives
@@ -60,6 +77,8 @@ export interface PinStepUpResponse {
 export interface AuthSessionResponse {
   ok: true;
   actor: SessionActor;
+  /** Who is signed in. Optional for back-compat with older servers. */
+  profile?: AuthProfile;
   lastPinStepUpAt: string | null;
   expiresAt: string;
 }

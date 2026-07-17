@@ -253,6 +253,18 @@ const EnvSchema = Type.Object({
       'oauth "hd" parameter to pre-select the org account. UX only, not a security ' +
       'boundary: the org-restricted consent screen and the users-table lookup are.',
   }),
+  CLOUDFLARE_API_TOKEN: Type.String({
+    default: '',
+    description:
+      'Cloudflare API token with Analytics:Read for the zone. Powers the "Edge-Schutz" panel ' +
+      '(blocked-attack counts + types) in Risikoanalyse. Empty → the panel shows a calm ' +
+      '"nicht konfiguriert" state instead of a fabricated figure. Read-only; never exposed to clients.',
+  }),
+  CLOUDFLARE_ZONE_ID: Type.String({
+    default: '',
+    description:
+      'Cloudflare zone id whose firewall analytics the Edge-Schutz panel reads. Empty disables the panel.',
+  }),
   STOREFRONT_PUBLIC_URL: Type.String({
     default: '',
     description:

@@ -12,6 +12,7 @@ import type { ToolRegistration } from '../types.js';
 import { agendaTool } from './agenda.js';
 import { appraiseEstateItemTool } from './appraise-estate-item.js';
 import { channelsOverviewTool } from './channels-overview.js';
+import { createProductTool } from './create-product.js';
 import { customerOverviewTool } from './customer-overview.js';
 import { financeOverviewTool } from './finance-overview.js';
 import { findCustomerTool } from './find-customer.js';
@@ -44,7 +45,10 @@ export const MCP_TOOLS: ReadonlyArray<ToolRegistration> = [
   financeOverviewTool,
   channelsOverviewTool,
   agendaTool,
-  // ── Jarvis safe escape hatch: forward a request to the developer ──
+  // ── Jarvis deliberate writes (safe by construction) ──────────────
+  // create_product only ever makes a DRAFT (never fiscal); open_dev_ticket only
+  // records an internal task. Both are guarded + audited.
+  createProductTool,
   openDevTicketTool,
 ];
 

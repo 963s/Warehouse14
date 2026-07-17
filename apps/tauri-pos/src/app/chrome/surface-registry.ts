@@ -125,6 +125,16 @@ const Konfliktpostfach = lazy(() =>
     default: m.Konfliktpostfach,
   })),
 );
+const Zielkarte = lazy(() =>
+  import('../../screens/zielkarte/Zielkarte.js').then((m) => ({ default: m.Zielkarte })),
+);
+const Risikoanalyse = lazy(() =>
+  import('../../screens/risiko/Risikoanalyse.js').then((m) => ({ default: m.Risikoanalyse })),
+);
+const Schaufenster = lazy(() =>
+  import('../../screens/schaufenster/Schaufenster.js').then((m) => ({ default: m.Schaufenster })),
+);
+const Team = lazy(() => import('../../screens/team/Team.js').then((m) => ({ default: m.Team })));
 
 export const SURFACES: readonly SurfaceDescriptor[] = [
   // ── Tier 1 — 6 frontline chips, action-frequency order (ADR Option B) ─
@@ -371,6 +381,39 @@ export const SURFACES: readonly SurfaceDescriptor[] = [
       'gobd',
       'abschluss',
     ],
+  },
+  // ── New management additions (Tier-2, Spotlight-reachable) ────────────
+  {
+    path: '/zielkarte',
+    label: 'Zielkarte',
+    description: 'Lebendige Instrumententafel der Hausziele: Umsatz, Bestand, Metalle, Gewinn.',
+    tier: 'secondary',
+    component: Zielkarte,
+    searchAliases: ['ziel', 'ziele', 'zielkarte', 'instrumente', 'kennzahlen', 'gauges', 'dashboard'],
+  },
+  {
+    path: '/risiko',
+    label: 'Risikoanalyse',
+    description: 'Warnungen und Kunden-Beobachtungsliste aus den Geldwäsche-Meldern.',
+    tier: 'secondary',
+    component: Risikoanalyse,
+    searchAliases: ['risiko', 'aml', 'gwg', 'sanktionen', 'pep', 'warnung', 'watchlist', 'compliance'],
+  },
+  {
+    path: '/schaufenster',
+    label: 'Schaufenster',
+    description: 'Wer vor dem Fenster steht: Besucher, Herkunft und Gesundheit des Ladens.',
+    tier: 'secondary',
+    component: Schaufenster,
+    searchAliases: ['schaufenster', 'besucher', 'reichweite', 'webshop', 'laden', 'traffic', 'zugriffe', 'cloudflare'],
+  },
+  {
+    path: '/team',
+    label: 'Team & Rollen',
+    description: 'Mitarbeiter freischalten, Rolle setzen, Zugang entziehen (Inhaber).',
+    tier: 'secondary',
+    component: Team,
+    searchAliases: ['team', 'mitarbeiter', 'rollen', 'personal', 'staff', 'benutzer', 'zugang'],
   },
 ] as const;
 

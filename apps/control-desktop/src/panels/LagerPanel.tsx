@@ -20,6 +20,7 @@ import {
 } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../api-context.js';
+import { ProductCreateDialog } from '../components/ProductCreateDialog.js';
 import { StatusDot, type StatusTone } from '../components/StatusDot.js';
 import { describeError } from '@warehouse14/i18n-de';
 
@@ -82,6 +83,7 @@ export function LagerPanel(): JSX.Element {
   const [q, setQ] = useState('');
   const [editId, setEditId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
+  const [creating, setCreating] = useState(false);
   const [toasts, setToasts] = useState<ToastShape[]>([]);
 
   const pushToast = (tone: ToastShape['tone'], title: string, body?: string): void => {
@@ -157,22 +159,27 @@ export function LagerPanel(): JSX.Element {
         <p style={caption}>
           Bestand steuern. Status, eBay, Listenpreis bearbeiten, veröffentlichen.
         </p>
-        <input
-          className="w14cd-focusable"
-          type="search"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Suche SKU / Name"
-          style={{
-            padding: '6px 12px',
-            border: '1px solid var(--w14-ink-faded)',
-            borderRadius: 'var(--w14-radius-button)',
-            background: 'var(--w14-parchment)',
-            color: 'var(--w14-ink)',
-            fontFamily: 'var(--w14-font-body)',
-            minWidth: 220,
-          }}
-        />
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <input
+            className="w14cd-focusable"
+            type="search"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Suche SKU / Name"
+            style={{
+              padding: '6px 12px',
+              border: '1px solid var(--w14-ink-faded)',
+              borderRadius: 'var(--w14-radius-button)',
+              background: 'var(--w14-parchment)',
+              color: 'var(--w14-ink)',
+              fontFamily: 'var(--w14-font-body)',
+              minWidth: 220,
+            }}
+          />
+          <Button variant="primary" size="sm" onClick={() => setCreating(true)}>
+            Neuer Artikel
+          </Button>
+        </div>
       </div>
 
       {query.isLoading ? (
@@ -313,6 +320,7 @@ export function LagerPanel(): JSX.Element {
         </ParchmentCard>
       )}
 
+      {creating && <ProductCreateDialog onClose={() => setCreating(false)} />}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
     </>
   );

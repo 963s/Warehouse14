@@ -118,6 +118,7 @@ const customersListRoute: FastifyPluginAsync = async (app) => {
           cumulative_ankauf_eur: string;
           cumulative_spend_eur: string;
           created_at: Date;
+          last_order_at: Date | null;
           total_count: number;
         }>(sql`
         WITH matched AS (
@@ -133,6 +134,10 @@ const customersListRoute: FastifyPluginAsync = async (app) => {
             cumulative_ankauf_eur,
             cumulative_spend_eur,
             created_at,
+            -- Last fiscal activity (any direction) — index-backed by
+            -- transactions_customer_idx (customer_id, finalized_at DESC).
+            (SELECT MAX(t.finalized_at) FROM transactions t WHERE t.customer_id = customers.id)
+                                             AS last_order_at,
             COUNT(*) OVER ()                 AS total_count
           FROM customers
           WHERE soft_deleted_at IS NULL
@@ -172,6 +177,7 @@ const customersListRoute: FastifyPluginAsync = async (app) => {
           cumulativeAnkaufEur: r.cumulative_ankauf_eur,
           cumulativeSpendEur: r.cumulative_spend_eur,
           createdAt: new Date(r.created_at).toISOString(),
+          lastOrderAt: r.last_order_at ? new Date(r.last_order_at).toISOString() : null,
         })),
         total: result.total,
         limit,

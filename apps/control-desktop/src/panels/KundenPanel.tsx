@@ -16,9 +16,10 @@ import {
   type CustomerKycStatus,
   type CustomerTrustLevel,
 } from '@warehouse14/api-client';
-import { DiamondRule, MoneyAmount, ParchmentCard } from '@warehouse14/ui-kit';
+import { Button, DiamondRule, MoneyAmount, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../api-context.js';
+import { CustomerCreateDialog } from '../components/CustomerCreateDialog.js';
 import { CustomerEditDialog } from '../components/CustomerEditDialog.js';
 import { StatusDot, type StatusTone } from '../components/StatusDot.js';
 
@@ -64,6 +65,7 @@ export function KundenPanel(): JSX.Element {
   const { baseUrl, client } = useApiClient();
   const [q, setQ] = useState('');
   const [editing, setEditing] = useState<CustomerRow | null>(null);
+  const [creating, setCreating] = useState(false);
 
   const query = useQuery<CustomersResponse>({
     queryKey: ['customers', baseUrl],
@@ -92,22 +94,27 @@ export function KundenPanel(): JSX.Element {
         <p style={caption}>
           Kundenstamm. KYC, Vertrauensstufe, Sanktionen, Umsätze. Zeile wählen zum Bearbeiten.
         </p>
-        <input
-          className="w14cd-focusable"
-          type="search"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Suche Name"
-          style={{
-            padding: '6px 12px',
-            border: '1px solid var(--w14-ink-faded)',
-            borderRadius: 'var(--w14-radius-button)',
-            background: 'var(--w14-parchment)',
-            color: 'var(--w14-ink)',
-            fontFamily: 'var(--w14-font-body)',
-            minWidth: 220,
-          }}
-        />
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <input
+            className="w14cd-focusable"
+            type="search"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Suche Name"
+            style={{
+              padding: '6px 12px',
+              border: '1px solid var(--w14-ink-faded)',
+              borderRadius: 'var(--w14-radius-button)',
+              background: 'var(--w14-parchment)',
+              color: 'var(--w14-ink)',
+              fontFamily: 'var(--w14-font-body)',
+              minWidth: 220,
+            }}
+          />
+          <Button variant="primary" size="sm" onClick={() => setCreating(true)}>
+            Neuer Kunde
+          </Button>
+        </div>
       </div>
 
       {query.isLoading ? (
@@ -186,6 +193,7 @@ export function KundenPanel(): JSX.Element {
       )}
 
       {editing && <CustomerEditDialog customer={editing} onClose={() => setEditing(null)} />}
+      {creating && <CustomerCreateDialog onClose={() => setCreating(false)} />}
     </>
   );
 }

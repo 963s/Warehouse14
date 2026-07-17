@@ -76,8 +76,8 @@ class ProductAlreadyArchivedError extends DomainError {
 }
 
 class R2NotConfiguredError extends DomainError {
-  public readonly httpStatus = 500;
-  public readonly code: ApiErrorCode = 'INTERNAL_ERROR';
+  public readonly httpStatus = 503;
+  public readonly code: ApiErrorCode = 'SERVICE_UNAVAILABLE';
 }
 
 /** Raised when a product is not in a deletable state (only unsold DRAFTs go). */

@@ -33,12 +33,14 @@ import { Belegdesigner } from './Belegdesigner.js';
 import { GeraeteManager } from './GeraeteManager.js';
 import { SammlungenSection } from './SammlungenSection.js';
 import { IntegrationenSection } from './IntegrationenSection.js';
+import { ApiKeysSection } from './ApiKeysSection.js';
 import { SteuerComplianceSection } from './SteuerComplianceSection.js';
 
 type SectionId =
   | 'hardware'
   | 'ai'
   | 'integrationen'
+  | 'apikeys'
   | 'server'
   | 'social'
   | 'chatwoot'
@@ -72,6 +74,13 @@ const SECTIONS: SectionDef[] = [
     label: 'Integrationen',
     icon: <IconServer size={18} />,
     desc: 'API-Schlüssel · Dienste',
+  },
+  {
+    id: 'apikeys',
+    label: 'API-Schlüssel',
+    icon: <IconServer size={18} />,
+    desc: 'Programmatische Zugänge',
+    adminOnly: true,
   },
   {
     id: 'server',
@@ -195,6 +204,7 @@ export function Einstellungen(): JSX.Element {
         {activeSection === 'hardware' && <GeraeteManager />}
         {activeSection === 'ai' && <AiSection />}
         {activeSection === 'integrationen' && <IntegrationenSection />}
+        {activeSection === 'apikeys' && isAdmin && <ApiKeysSection />}
         {activeSection === 'server' && <ServerSection />}
         {activeSection === 'social' && <SocialSection />}
         {activeSection === 'chatwoot' && <ChatwootSection />}

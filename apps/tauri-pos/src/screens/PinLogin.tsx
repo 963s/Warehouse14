@@ -25,7 +25,7 @@ import { setSessionToken } from '../lib/session-token.js';
 import { useSessionStore } from '../state/session-store.js';
 import { describeError } from '@warehouse14/i18n-de';
 
-export function PinLogin(): JSX.Element {
+export function PinLogin({ onUseGoogle }: { onUseGoogle?: () => void }): JSX.Element {
   const api = useApiClient();
   const setFromLogin = useSessionStore((s) => s.setFromLogin);
 
@@ -202,6 +202,24 @@ export function PinLogin(): JSX.Element {
         >
           Antiquitäten · Briefmarken · Münzen
         </p>
+        {onUseGoogle && (
+          <button
+            type="button"
+            onClick={onUseGoogle}
+            style={{
+              marginTop: 12,
+              background: 'none',
+              border: 'none',
+              color: 'var(--w14-ink-faded)',
+              fontFamily: 'var(--w14-font-display)',
+              fontStyle: 'italic',
+              cursor: 'pointer',
+              fontSize: '0.85rem',
+            }}
+          >
+            Mit Google anmelden
+          </button>
+        )}
       </ParchmentCard>
     </div>
   );

@@ -10,7 +10,7 @@
 import { and, eq, isNull } from 'drizzle-orm';
 
 import type { AppDb } from '@warehouse14/db/client';
-import { sessions, users } from '@warehouse14/db/schema';
+import { apiKeys, sessions, users } from '@warehouse14/db/schema';
 
 export type ActorRole = 'ADMIN' | 'CASHIER' | 'READONLY';
 
@@ -19,6 +19,13 @@ export interface Actor {
   role: ActorRole;
   isOwner: boolean;
   preferredLanguage: 'de' | 'en' | 'ar';
+  /**
+   * Set ONLY when the request authenticated with an API key (Track E). Carries
+   * the `api_keys.id` for per-key rate-limiting + audit. `id` still points at a
+   * real `users.id` (the key's creator) so audit FKs and ownership joins hold;
+   * `isOwner` is always false for a key, so owner-only operations are refused.
+   */
+  apiKeyId?: string;
 }
 
 export interface ActorWithSession {
@@ -70,5 +77,68 @@ export async function loadActorBySession(
     sessionId: r.sessionId,
     lastPinStepUpAt: r.lastPinStepUpAt,
     sessionExpiresAt: r.sessionExpiresAt,
+  };
+}
+
+/** Resolved API-key principal (Track E). */
+export interface ApiKeyPrincipal {
+  actor: Actor;
+  /** Hard block on all mutations when true. */
+  readOnly: boolean;
+  /** Effective session expiry for the synthetic session (key expiry, or far future). */
+  sessionExpiresAt: Date;
+  /** Last-used stamp, for throttling the write-back. */
+  lastUsedAt: Date | null;
+}
+
+/** Ten years out — the synthetic-session expiry for a key that never expires. */
+const NON_EXPIRING = () => new Date(Date.now() + 10 * 365 * 24 * 60 * 60_000);
+
+/**
+ * Resolve an API key by its SHA-256 hash to a non-interactive principal.
+ *
+ * Returns null (→ 401) when the key is unknown, revoked, expired, or its owner
+ * is soft-deleted. The actor's `id` is the key creator's `users.id` (audit FKs
+ * hold), `isOwner` is forced false (owner-only ops refused), and `apiKeyId`
+ * carries the key id for per-key rate-limiting + audit.
+ */
+export async function loadActorByApiKey(
+  db: AppDb,
+  tokenHash: string,
+): Promise<ApiKeyPrincipal | null> {
+  const rows = await db
+    .select({
+      keyId: apiKeys.id,
+      role: apiKeys.role,
+      readOnly: apiKeys.readOnly,
+      ownerId: apiKeys.createdByUserId,
+      expiresAt: apiKeys.expiresAt,
+      revokedAt: apiKeys.revokedAt,
+      lastUsedAt: apiKeys.lastUsedAt,
+      ownerPref: users.preferredLanguage,
+      ownerDeletedAt: users.softDeletedAt,
+    })
+    .from(apiKeys)
+    .innerJoin(users, eq(users.id, apiKeys.createdByUserId))
+    .where(eq(apiKeys.tokenHash, tokenHash))
+    .limit(1);
+
+  const r = rows[0];
+  if (!r) return null;
+  if (r.revokedAt) return null;
+  if (r.ownerDeletedAt) return null;
+  if (r.expiresAt && r.expiresAt.getTime() < Date.now()) return null;
+
+  return {
+    actor: {
+      id: r.ownerId,
+      role: r.role as ActorRole,
+      isOwner: false,
+      preferredLanguage: r.ownerPref as 'de' | 'en' | 'ar',
+      apiKeyId: r.keyId,
+    },
+    readOnly: r.readOnly,
+    sessionExpiresAt: r.expiresAt ?? NON_EXPIRING(),
+    lastUsedAt: r.lastUsedAt,
   };
 }

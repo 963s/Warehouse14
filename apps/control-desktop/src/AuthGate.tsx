@@ -17,8 +17,9 @@
 import { Button, DiamondRule, ParchmentCard, Seal } from '@warehouse14/ui-kit';
 
 import { App } from './App.js';
+import { LocalLockGate } from './components/LocalLockGate.js';
 import { useSessionProbe } from './hooks/useSessionProbe.js';
-import { PinLogin } from './screens/PinLogin.js';
+import { GoogleLogin } from './screens/GoogleLogin.js';
 import { useSessionStore } from './state/session-store.js';
 
 export function AuthGate(): JSX.Element {
@@ -26,8 +27,14 @@ export function AuthGate(): JSX.Element {
   const status = useSessionStore((s) => s.status);
   const retryProbe = useSessionStore((s) => s.retryProbe);
 
-  if (status === 'authenticated') return <App />;
-  if (status === 'unauthenticated') return <PinLogin />;
+  if (status === 'authenticated') {
+    return (
+      <LocalLockGate>
+        <App />
+      </LocalLockGate>
+    );
+  }
+  if (status === 'unauthenticated') return <GoogleLogin />;
   if (status === 'unreachable') return <ServerUnreachable onRetry={retryProbe} />;
   return <Splash />;
 }

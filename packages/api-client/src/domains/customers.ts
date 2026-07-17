@@ -89,6 +89,8 @@ export interface CustomerListRow {
   cumulativeAnkaufEur: string;
   cumulativeSpendEur: string;
   createdAt: string;
+  /** Last fiscal activity (any direction), or null if the customer never transacted. */
+  lastOrderAt: string | null;
 }
 
 export interface CustomerListResponse {

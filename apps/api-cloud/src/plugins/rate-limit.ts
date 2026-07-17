@@ -134,8 +134,11 @@ const rateLimitPlugin: FastifyPluginAsync<RateLimitPluginOpts> = async (app, opt
     // public webhooks `req.actor` is null, so the key correctly falls back to
     // IP — which is what brute-force / flood defense needs.
     keyGenerator: (req: FastifyRequest): string => {
-      const actor = (req as FastifyRequest & { actor?: { id: string } | null }).actor;
-      return actor?.id ?? req.ip ?? 'unknown';
+      const actor = (
+        req as FastifyRequest & { actor?: { id: string; apiKeyId?: string } | null }
+      ).actor;
+      // Per-API-key bucket when a key is presented, else per-actor, else per-IP.
+      return actor?.apiKeyId ?? actor?.id ?? req.ip ?? 'unknown';
     },
 
     // Error message is replaced by our error-handler's RATE_LIMITED code;

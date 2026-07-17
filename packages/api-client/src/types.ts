@@ -22,6 +22,8 @@ export type ApiErrorCode =
   | 'DEVICE_NOT_AUTHORIZED'
   | 'RATE_LIMITED'
   | 'EXTERNAL_SERVICE_FAILED'
+  /** An optional capability (Stripe/R2/AI) is not configured — a 503, not a crash. */
+  | 'SERVICE_UNAVAILABLE'
   | 'INTERNAL_ERROR';
 
 export interface RequestOptions {

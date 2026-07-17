@@ -21,14 +21,19 @@
  */
 
 import { betterAuth } from 'better-auth';
+import { eq } from 'drizzle-orm';
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import fastifyPlugin from 'fastify-plugin';
 import pg from 'pg';
 
 const { Pool } = pg;
 
+import { apiKeys } from '@warehouse14/db/schema';
+
 import type { Env } from '../config/env.js';
-import { loadActorBySession } from '../lib/actor.js';
+import { loadActorByApiKey, loadActorBySession } from '../lib/actor.js';
+import { hashApiKey, isApiKeyToken } from '../lib/api-key.js';
+import { ForbiddenError } from '../lib/auth-policy.js';
 import { isPublicRoute } from '../lib/public-routes.js';
 
 declare module 'fastify' {
@@ -153,6 +158,40 @@ const authPlugin: FastifyPluginAsync<AuthPluginOpts> = async (app, opts) => {
       }
     }
     if (!sessionToken) return; // unauthenticated; route helpers throw.
+
+    // ── API-key principals (Track E) ──────────────────────────────────────
+    // A Bearer value carrying the `w14k_` marker is a programmatic API key, not
+    // a session token. Resolve it against `api_keys` → a non-interactive actor.
+    if (isApiKeyToken(sessionToken)) {
+      const principal = await loadActorByApiKey(app.db, hashApiKey(sessionToken));
+      if (!principal) return; // unknown / revoked / expired → unauthenticated
+      // A read-only key can NEVER mutate — fail closed at the gate.
+      if (principal.readOnly && req.method !== 'GET' && req.method !== 'HEAD') {
+        throw new ForbiddenError('Dieser API-Schlüssel ist schreibgeschützt.');
+      }
+      req.actor = principal.actor;
+      // A synthetic session so `requireAuth` passes. `lastPinStepUpAt` is null,
+      // so every step-up-gated (most sensitive) operation is refused for a key.
+      req.session = {
+        actor: principal.actor,
+        sessionId: principal.actor.apiKeyId ?? 'api-key',
+        lastPinStepUpAt: null,
+        sessionExpiresAt: principal.sessionExpiresAt,
+      };
+      // Throttled last-used stamp (at most once a minute), fire-and-forget.
+      const keyId = principal.actor.apiKeyId;
+      if (
+        keyId &&
+        (!principal.lastUsedAt || Date.now() - principal.lastUsedAt.getTime() > 60_000)
+      ) {
+        void app.db
+          .update(apiKeys)
+          .set({ lastUsedAt: new Date(), lastUsedIp: req.ip ?? null })
+          .where(eq(apiKeys.id, keyId))
+          .catch(() => undefined);
+      }
+      return;
+    }
 
     // The cookie carries the session token. Look up the session by token,
     // then load the actor+session bundle.

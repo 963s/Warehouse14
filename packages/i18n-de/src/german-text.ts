@@ -337,6 +337,8 @@ const STATIC_ERROR_LINES: Readonly<Record<StaticErrorCode, string>> = {
   SANCTIONS_BLOCK: "Sanktionslisten-Treffer die Buchung ist gesperrt. Bitte intern prüfen.",
   STORNO_OF_STORNO: "Eine Stornierung kann nicht erneut storniert werden.",
   EXTERNAL_SERVICE_FAILED: "Der externe Dienst hat abgelehnt die Aktion wurde nicht ausgeführt.",
+  SERVICE_UNAVAILABLE:
+    "Diese Funktion ist derzeit nicht eingerichtet und steht noch nicht zur Verfügung.",
   INTERNAL_ERROR:
     "Es ist ein unerwarteter Serverfehler aufgetreten. Bitte später erneut versuchen.",
 }

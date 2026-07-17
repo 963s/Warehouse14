@@ -40,6 +40,15 @@ const FILTER_CHIPS: Array<{ value: FilterTab; label: string }> = [
   { value: 'BLOCKED', label: 'Gesperrt' },
 ];
 
+/** Compact `TT.MM.JJ` for the per-row last-activity line. */
+function formatDay(iso: string): string {
+  return new Intl.DateTimeFormat('de-DE', {
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit',
+  }).format(new Date(iso));
+}
+
 export interface CustomerListPanelProps {
   selectedId: string | null;
   onSelect: (id: string | null) => void;
@@ -138,7 +147,11 @@ export function CustomerListPanel({ selectedId, onSelect }: CustomerListPanelPro
         >
           {/* Honest last-good marker: only while showing the cached seed offline. */}
           {q.fromCache && <StaleBadge cachedAt={q.cachedAt} stale={q.isStale} />}
-          {q.isFetching ? 'sucht…' : `${items.length}`}
+          {q.isFetching
+            ? 'sucht…'
+            : filter === 'ALL' && debouncedQ.length === 0 && q.data?.total != null
+              ? `${q.data.total} Kunden`
+              : `${items.length}`}
         </span>
       </header>
 
@@ -317,6 +330,17 @@ const CustomerRow = memo(
               }}
             >
               Ank. <MoneyAmount valueEur={row.cumulativeAnkaufEur} />
+            </span>
+            <span
+              className="w14-tabular"
+              style={{
+                fontFamily: 'var(--w14-font-mono)',
+                fontSize: '0.7rem',
+                color: 'var(--w14-ink-faded)',
+              }}
+              title="Letzter Vorgang (Verkauf oder Ankauf)"
+            >
+              {row.lastOrderAt ? `zuletzt ${formatDay(row.lastOrderAt)}` : 'kein Vorgang'}
             </span>
           </div>
         </div>

@@ -74,6 +74,19 @@ const OPENAI_REALTIME_SDP_URL = 'https://api.openai.com/v1/realtime/calls';
 // Tunable up toward ~4.0 if still quiet on the shipped WebView; never above ~4.
 const OUTPUT_GAIN = 2.4;
 
+// Auto-reconnect (C3). The OpenAI Realtime session has a maximum lifetime
+// (~30–60 min); when it ends, or a transient network blip drops the peer, the
+// owner should not have to notice and re-open Vierzehn mid-conversation. We
+// silently re-mint a fresh session (which re-applies every cost guard) instead
+// of surfacing an error — but ONLY when a session had actually been established,
+// and with a hard cap + backoff so a genuinely broken link fails honestly rather
+// than looping token mints. A session that stayed up past STABLE_MS is treated as
+// healthy, so its next drop starts the budget over (the 60-min auto-cycle); a
+// link that keeps flapping within STABLE_MS burns the budget and then gives up.
+const MAX_RECONNECT_ATTEMPTS = 3;
+const RECONNECT_BASE_MS = 900;
+const STABLE_SESSION_MS = 30_000;
+
 /**
  * A local failure whose `reason` is ALREADY a safe German sentence, so the
  * overlay can show it verbatim. Every other error in the catch is routed
@@ -197,10 +210,28 @@ export function useRealtimeSession(micDeviceId?: string): UseRealtimeSession {
   // close mid-connect) cannot start a second peer connection or leave a mic on.
   const connectingRef = useRef(false);
 
+  // Auto-reconnect bookkeeping (C3). `everConnected` gates reconnect to sessions
+  // that actually came up; `sessionUpSince` measures health; `reconnectAttempts`
+  // is the backoff budget; `userClosed` makes a deliberate close win any race
+  // with an in-flight drop; `reconnectTimer` holds the pending silent retry so a
+  // close/unmount can cancel it. `connectInternalRef` breaks the callback cycle
+  // (a drop handler needs to call the connector, which is defined after it).
+  const everConnectedRef = useRef(false);
+  const sessionUpSinceRef = useRef<number | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+  const userClosedRef = useRef(false);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const connectInternalRef = useRef<((opts: { silent: boolean }) => Promise<void>) | null>(null);
+
   // Release EVERY live resource. Idempotent, and never leaves the mic hot:
   // the mic is stopped from its own ref, so a stream acquired but not yet added
   // to the peer connection is still stopped.
   const teardown = useCallback(() => {
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+    sessionUpSinceRef.current = null;
     abortRef.current?.abort();
     abortRef.current = null;
     dcRef.current?.close();
@@ -271,8 +302,56 @@ export function useRealtimeSession(micDeviceId?: string): UseRealtimeSession {
   }, []);
 
   const disconnect = useCallback(() => {
+    // A deliberate close wins any race with an in-flight drop: no silent
+    // reconnect may fire after this, and the budget resets for next time.
+    userClosedRef.current = true;
+    everConnectedRef.current = false;
+    reconnectAttemptsRef.current = 0;
     teardown();
     setState('idle');
+  }, [teardown]);
+
+  // A drop AFTER a live session came up: silently re-mint a fresh session (which
+  // re-applies every cost guard) up to the backoff budget, instead of stranding
+  // the owner mid-conversation. A deliberate close, an initial-connect failure,
+  // or an exhausted budget falls through to the honest "unterbrochen" error.
+  const handleDrop = useCallback((): void => {
+    if (userClosedRef.current || abortRef.current?.signal.aborted) return;
+    if (!everConnectedRef.current) return; // the initial connect owns its own errors
+
+    // Detach our own handlers first so the teardown below (which closes the data
+    // channel) cannot re-enter this function and double-count a single drop.
+    if (dcRef.current) {
+      dcRef.current.onclose = null;
+      dcRef.current.onerror = null;
+    }
+    if (pcRef.current) pcRef.current.onconnectionstatechange = null;
+
+    const upSince = sessionUpSinceRef.current;
+    const wasStable = upSince != null && Date.now() - upSince > STABLE_SESSION_MS;
+    if (wasStable) reconnectAttemptsRef.current = 0;
+
+    if (reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
+      reconnectAttemptsRef.current += 1;
+      const delay = RECONNECT_BASE_MS * reconnectAttemptsRef.current;
+      teardown(); // frees mic/pc/dc; we re-acquire on the silent reconnect
+      setFailure(null);
+      setState('connecting');
+      reconnectTimerRef.current = setTimeout(() => {
+        reconnectTimerRef.current = null;
+        void connectInternalRef.current?.({ silent: true });
+      }, delay);
+      return;
+    }
+
+    if (typeof console !== 'undefined') console.error('[Vierzehn] Verbindung verloren');
+    teardown();
+    setFailure({
+      title: 'Verbindung unterbrochen',
+      detail: 'Die Verbindung zur Sprachsitzung wurde unterbrochen. Bitte erneut versuchen.',
+      canOpenSettings: false,
+    });
+    setState('error');
   }, [teardown]);
 
   // Relay a model tool call to the assistant-scoped MCP endpoint. That route
@@ -354,28 +433,13 @@ export function useRealtimeSession(micDeviceId?: string): UseRealtimeSession {
     [relayToolCall],
   );
 
-  const connect = useCallback(async (): Promise<void> => {
+  const connectInternal = useCallback(async ({ silent }: { silent: boolean }): Promise<void> => {
     if (pcRef.current || connectingRef.current) return;
     connectingRef.current = true;
     setFailure(null);
     setState('connecting');
     const ac = new AbortController();
     abortRef.current = ac;
-    // A drop AFTER a successful connect (ICE failed, or the data channel closed)
-    // must surface the loss and free the mic, never hang the UI in listening/
-    // speaking. Guarded so our own teardown (which aborts `ac` first) does not
-    // flash a spurious error.
-    const dropOut = (): void => {
-      if (ac.signal.aborted) return;
-      if (typeof console !== 'undefined') console.error('[Vierzehn] Verbindung verloren');
-      teardown();
-      setFailure({
-        title: 'Verbindung unterbrochen',
-        detail: 'Die Verbindung zur Sprachsitzung wurde unterbrochen. Bitte erneut versuchen.',
-        canOpenSettings: false,
-      });
-      setState('error');
-    };
     try {
       // A voice session has no durable intent — it must NEVER be enqueued into
       // the offline/fiscal outbox (that queue is for sales, Ankäufe, Stornos).
@@ -393,7 +457,7 @@ export function useRealtimeSession(micDeviceId?: string): UseRealtimeSession {
       // `failed` is terminal (a brief `disconnected` blip can still recover on
       // its own); `closed` is our own teardown, ignored via the abort guard.
       pc.onconnectionstatechange = () => {
-        if (pc.connectionState === 'failed') dropOut();
+        if (pc.connectionState === 'failed') handleDrop();
       };
 
       // Model audio out. A real, DOM-attached element that we explicitly
@@ -431,6 +495,11 @@ export function useRealtimeSession(micDeviceId?: string): UseRealtimeSession {
       const dc = pc.createDataChannel('oai-events');
       dcRef.current = dc;
       dc.onopen = () => {
+        // The session is live: reconnect logic may now bridge a later drop, and
+        // the health clock starts (a session that outlives STABLE_SESSION_MS
+        // renews the reconnect budget).
+        everConnectedRef.current = true;
+        sessionUpSinceRef.current = Date.now();
         dc.send(
           JSON.stringify({
             type: 'session.update',
@@ -472,16 +541,20 @@ export function useRealtimeSession(micDeviceId?: string): UseRealtimeSession {
           }),
         );
         // Greet first, immediately, in German — Vierzehn speaks before the owner
-        // does, so there is no „press and talk" step.
-        dc.send(
-          JSON.stringify({
-            type: 'response.create',
-            response: {
-              instructions:
-                'Begrüße den Inhaber jetzt sofort, kurz und herzlich auf Deutsch: „Guten Tag, mein Herr. Wie kann ich Ihnen helfen?"',
-            },
-          }),
-        );
+        // does, so there is no „press and talk" step. A SILENT reconnect skips
+        // the greeting: it is resuming an ongoing conversation, not starting one,
+        // so it should not re-announce itself every ~60 minutes.
+        if (!silent) {
+          dc.send(
+            JSON.stringify({
+              type: 'response.create',
+              response: {
+                instructions:
+                  'Begrüße den Inhaber jetzt sofort, kurz und herzlich auf Deutsch: „Guten Tag, mein Herr. Wie kann ich Ihnen helfen?"',
+              },
+            }),
+          );
+        }
         setState('listening');
       };
       dc.onmessage = (e) => {
@@ -492,8 +565,8 @@ export function useRealtimeSession(micDeviceId?: string): UseRealtimeSession {
         }
       };
       // The events channel closing/erroring unexpectedly means the session died.
-      dc.onclose = () => dropOut();
-      dc.onerror = () => dropOut();
+      dc.onclose = () => handleDrop();
+      dc.onerror = () => handleDrop();
 
       // SDP handshake with the ephemeral token. Bounded by the user's Abort OR
       // a 15s timeout, so a stalled upstream never leaves the UI in „Verbinde…".
@@ -545,6 +618,14 @@ export function useRealtimeSession(micDeviceId?: string): UseRealtimeSession {
       // A user-initiated cancel (disconnect aborted the fetch) already tore
       // everything down — do not surface it as an error.
       if (ac.signal.aborted) return;
+      // A SILENT reconnect that fails at the handshake shouldn't strand the owner
+      // on the first blip — route it back through the reconnect budget (which
+      // retries with backoff, or fails honestly once spent). The `finally` below
+      // clears `connectingRef` before the scheduled retry fires.
+      if (silent && !userClosedRef.current && everConnectedRef.current) {
+        handleDrop();
+        return;
+      }
       if (typeof console !== 'undefined') console.error('[Vierzehn] Verbindung fehlgeschlagen', err);
       const nextFailure: VierzehnFailure =
         err instanceof MicError
@@ -562,7 +643,22 @@ export function useRealtimeSession(micDeviceId?: string): UseRealtimeSession {
     } finally {
       connectingRef.current = false;
     }
-  }, [api, micDeviceId, handleEvent, teardown]);
+  }, [api, micDeviceId, handleEvent, teardown, handleDrop]);
+
+  // Keep a stable ref so the drop handler (defined above) can invoke the
+  // connector (defined here) without a circular useCallback dependency.
+  useEffect(() => {
+    connectInternalRef.current = connectInternal;
+  }, [connectInternal]);
+
+  // Public connect: a deliberate open. Resets the reconnect budget + the
+  // user-closed / never-connected flags, then starts a normal greeting session.
+  const connect = useCallback(async (): Promise<void> => {
+    userClosedRef.current = false;
+    everConnectedRef.current = false;
+    reconnectAttemptsRef.current = 0;
+    await connectInternal({ silent: false });
+  }, [connectInternal]);
 
   // Always tear down on unmount.
   useEffect(() => () => teardown(), [teardown]);

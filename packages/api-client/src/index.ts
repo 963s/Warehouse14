@@ -92,6 +92,7 @@ export {
 export {
   authPin,
   type ActorRole,
+  type AuthProfile,
   type AuthSessionResponse,
   type PinLoginRequest,
   type PinLoginResponse,

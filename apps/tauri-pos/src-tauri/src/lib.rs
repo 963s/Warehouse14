@@ -102,6 +102,10 @@ pub fn run() {
             commands::system::list_system_printers,
             // Vierzehn recovery — open the OS microphone privacy pane
             commands::system::open_microphone_settings,
+            // Google sign-in — open the consent page in the OS browser
+            commands::system::open_url,
+            // Google sign-in — in-app account-picker window (no external browser)
+            commands::system::start_google_login,
             // Epic C — encrypted local KYC vault
             commands::kyc::encrypt_and_save_kyc_document,
             commands::kyc::decrypt_and_load_kyc_document,

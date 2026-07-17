@@ -57,6 +57,16 @@ const PinLoginResponse = Type.Object({
     role: Type.Union([Type.Literal('ADMIN'), Type.Literal('CASHIER'), Type.Literal('READONLY')]),
     isOwner: Type.Boolean(),
   }),
+  // Who signed in, for the header profile. A PIN session carries the email only
+  // (no Google name/picture). Optional so older clients ignore it; MUST be in the
+  // schema or Fastify strips it from the serialized body.
+  profile: Type.Optional(
+    Type.Object({
+      email: Type.String(),
+      displayName: Type.Union([Type.String(), Type.Null()]),
+      avatarUrl: Type.Union([Type.String(), Type.Null()]),
+    }),
+  ),
   // The session token, also carried as `Authorization: Bearer` by the Tauri
   // webview (Windows WebView2 drops the cross-site session cookie). MUST be in
   // the response schema or Fastify strips it from the serialized body.
@@ -98,6 +108,7 @@ async function resolveCandidateUser(
 
 interface PinUserState {
   id: string;
+  email: string;
   role: 'ADMIN' | 'CASHIER' | 'READONLY';
   isOwner: boolean;
   posPinHash: string | null;
@@ -113,6 +124,7 @@ async function loadPinUserState(
   const rows = await app.db
     .select({
       id: users.id,
+      email: users.email,
       role: users.role,
       isOwner: users.isOwner,
       posPinHash: users.posPinHash,
@@ -378,6 +390,9 @@ const authPinRoutes: FastifyPluginAsync<{ env: Env }> = async (app, opts) => {
         ok: true as const,
         sessionExpiresAt: expiresAt.toISOString(),
         actor: { id: state.id, role: state.role, isOwner: state.isOwner },
+        // A PIN session has no Google identity — carry the email only, so the
+        // header profile shows the account and initials (never a broken picture).
+        profile: { email: state.email, displayName: null, avatarUrl: null },
         // Also return the token so the Tauri webview can carry it as a Bearer
         // header — the cross-site session cookie is dropped on Windows WebView2.
         token,

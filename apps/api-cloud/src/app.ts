@@ -45,7 +45,9 @@ import securityHeadersPlugin from './plugins/security-headers.js';
 import storefrontSessionPlugin from './plugins/storefront-session.js';
 import swaggerPlugin from './plugins/swagger.js';
 import adminGoogleAuthRoutes from './routes/admin-auth-google.js';
+import adminStaffRoutes from './routes/admin-staff.js';
 import aiComposeRoute from './routes/ai-compose.js';
+import apiKeysRoutes from './routes/api-keys.js';
 import appointmentsRoutes from './routes/appointments.js';
 // Day 22 — Konvolut + Appraisals
 import appraisalRoutes from './routes/appraisals.js';
@@ -102,6 +104,8 @@ import settingsRoute from './routes/settings.js';
 import shiftsRoutes from './routes/shifts.js';
 import shippingRoutes from './routes/shipping.js';
 import shopInfoRoute from './routes/shop-info.js';
+import riskRoutes from './routes/risk.js';
+import storefrontTrafficRoutes from './routes/storefront-traffic.js';
 import sseLedger from './routes/sse-ledger.js';
 import storefrontAppointmentsRoutes from './routes/storefront-appointments.js';
 import storefrontGoogleAuthRoutes from './routes/storefront-auth-google.js';
@@ -225,6 +229,17 @@ export async function buildApp(opts: BuildAppOpts): Promise<FastifyInstance> {
   // for the PIN front door). Resolves the verified Google email against `users`
   // and 403s anything not provisioned; mints the same session shape as pin-login.
   await app.register(adminGoogleAuthRoutes, { env: opts.env });
+  // Track E — API keys (programmatic access for agents / LLMs / integrations).
+  // Management routes are human-admin only (a key cannot manage keys); resolution
+  // of a presented key happens in the auth preHandler.
+  await app.register(apiKeysRoutes);
+  // Track B2 — risk analysis read layer (alert rollup + customer watchlist +
+  // env-gated Cloudflare edge-protection rollup).
+  await app.register(riskRoutes, { env: opts.env });
+  await app.register(storefrontTrafficRoutes, { env: opts.env });
+  // Track A3 — staff administration (Owner + step-up; role writes via the
+  // SECURITY DEFINER provision_staff function).
+  await app.register(adminStaffRoutes);
   await app.register(inventoryReserve);
   await app.register(inventoryRelease);
   await app.register(productsRoutes, { env: opts.env });

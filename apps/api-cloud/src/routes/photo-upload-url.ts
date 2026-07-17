@@ -32,8 +32,8 @@ import {
 } from '../schemas/photo-upload-url.js';
 
 class R2NotConfiguredError extends DomainError {
-  public readonly httpStatus = 500;
-  public readonly code: ApiErrorCode = 'INTERNAL_ERROR';
+  public readonly httpStatus = 503;
+  public readonly code: ApiErrorCode = 'SERVICE_UNAVAILABLE';
 }
 
 const ErrorResponse = Type.Object({

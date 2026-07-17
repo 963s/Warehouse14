@@ -33,6 +33,10 @@ export type ApiErrorCode =
   | 'DEVICE_NOT_AUTHORIZED'
   | 'RATE_LIMITED'
   | 'EXTERNAL_SERVICE_FAILED'
+  /** An optional capability is deliberately not configured in this environment
+   *  (Stripe/R2/AI keys unset). Honest 503 — the shop degrades, it did NOT crash;
+   *  keeps these out of the 500 "unexpected error" bucket that pages on-call. */
+  | 'SERVICE_UNAVAILABLE'
   | 'INTERNAL_ERROR';
 
 interface ApiErrorBody {
@@ -125,6 +129,7 @@ const codeToHttp: Record<ApiErrorCode, number> = {
   DEVICE_NOT_AUTHORIZED: 403,
   RATE_LIMITED: 429,
   EXTERNAL_SERVICE_FAILED: 502,
+  SERVICE_UNAVAILABLE: 503,
   INTERNAL_ERROR: 500,
 };
 
@@ -189,6 +194,19 @@ const errorHandlerPlugin: FastifyPluginAsync = async (app) => {
     }
     if (err.statusCode === 429) {
       send(reply, req, 'RATE_LIMITED', err.message);
+      return;
+    }
+
+    // 4b. Any OTHER client-side (4xx) error Fastify raised before a handler ran:
+    //     a malformed JSON body, an empty body, an unsupported media type. These
+    //     are the caller's fault. Without this branch they fell through to the
+    //     catch-all below and were answered 500 + logged as our error — which
+    //     both lied to the caller and polluted the server-error rate (every bot
+    //     posting garbage looked like an outage).
+    if (typeof err.statusCode === 'number' && err.statusCode >= 400 && err.statusCode < 500) {
+      const code: ApiErrorCode =
+        err.statusCode === 404 ? 'NOT_FOUND' : err.statusCode === 409 ? 'CONFLICT' : 'VALIDATION_ERROR';
+      send(reply, req, code, err.message);
       return;
     }
 

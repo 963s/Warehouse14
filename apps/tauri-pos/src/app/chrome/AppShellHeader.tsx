@@ -13,32 +13,14 @@
 import type { CSSProperties } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
-import type { SessionActor } from '@warehouse14/api-client';
-import { Seal } from '@warehouse14/ui-kit';
-
-import { useSessionStore } from '../../state/session-store.js';
 import { HealthDot } from './HealthDot.js';
 import { IconSettings } from './Icons.js';
+import { ProfileMenu } from './ProfileMenu.js';
 import { SupportButton } from './SupportButton.js';
 import { SurfaceChip } from './SurfaceChip.js';
 import { ThemeToggle } from './ThemeToggle.js';
 import { UpdateButton } from './UpdateButton.js';
-import { HOME_PATH, PRIMARY_SURFACES } from './surface-registry.js';
-
-/** Who is signed in — SessionActor carries no name, so we show the German role. */
-function operatorLabel(actor: SessionActor): string {
-  if (actor.isOwner) return 'Inhaber';
-  switch (actor.role) {
-    case 'ADMIN':
-      return 'Verwaltung';
-    case 'CASHIER':
-      return 'Kasse';
-    case 'READONLY':
-      return 'Nur Lesen';
-    default:
-      return 'Angemeldet';
-  }
-}
+import { PRIMARY_SURFACES } from './surface-registry.js';
 
 export interface AppShellHeaderProps {
   /** Opens the Spotlight palette (Cmd/Ctrl+K). */
@@ -53,7 +35,6 @@ export interface AppShellHeaderProps {
 export function AppShellHeader(_props: AppShellHeaderProps): JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
-  const actor = useSessionStore((s) => s.actor);
 
   const rowStyle: CSSProperties = {
     display: 'grid',
@@ -66,25 +47,9 @@ export function AppShellHeader(_props: AppShellHeaderProps): JSX.Element {
     borderBottom: '1px solid var(--w14-rule)',
   };
 
-  const sealBtn: CSSProperties = {
-    border: 'none',
-    background: 'transparent',
-    cursor: 'pointer',
-    padding: 0,
-    lineHeight: 0,
-  };
-
   return (
     <header style={rowStyle}>
-      <button
-        type="button"
-        title="Werkstatt"
-        aria-label="Zur Werkstatt"
-        style={sealBtn}
-        onClick={() => navigate(HOME_PATH)}
-      >
-        <Seal size="sm" tone={location.pathname === HOME_PATH ? 'gold' : 'ink'} />
-      </button>
+      <ProfileMenu />
 
       <nav
         aria-label="Karteikasten"
@@ -108,38 +73,9 @@ export function AppShellHeader(_props: AppShellHeaderProps): JSX.Element {
         ))}
       </nav>
 
-      {/* Angemeldet · Darstellung · Status-Dot · Einstellungen · Update · Support */}
+      {/* Darstellung · Status-Dot · Einstellungen · Update · Support
+          (identity + Abmelden now live in the ProfileMenu on the left). */}
       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-        {actor && (
-          <button
-            type="button"
-            title="Angemeldet. Zu den Einstellungen (dort Abmelden)"
-            aria-label={`Angemeldet als ${operatorLabel(actor)}`}
-            onClick={() => navigate('/einstellungen')}
-            className="w14-smallcaps"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 'var(--space-1)',
-              height: 28,
-              padding: '0 var(--space-3)',
-              flex: '0 0 auto',
-              letterSpacing: '0.08em',
-              fontSize: '0.72rem',
-              color: 'var(--w14-ink-faded)',
-              background: 'transparent',
-              border: '1px solid var(--w14-rule)',
-              borderRadius: 'var(--w14-radius-button)',
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            <span style={{ color: 'var(--w14-ink-faded)' }}>Angemeldet:</span>
-            <span style={{ color: actor.isOwner ? 'var(--w14-gold)' : 'var(--w14-ink)' }}>
-              {operatorLabel(actor)}
-            </span>
-          </button>
-        )}
         <ThemeToggle />
         <HealthDot />
         <button

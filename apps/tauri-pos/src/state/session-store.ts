@@ -10,7 +10,9 @@
 
 import { create } from 'zustand';
 
-import type { AuthSessionResponse, PinLoginResponse, SessionActor } from '@warehouse14/api-client';
+import type { AuthProfile, AuthSessionResponse, PinLoginResponse, SessionActor } from '@warehouse14/api-client';
+
+import { readProfileCache, writeProfileCache } from '../lib/profile-cache.js';
 
 /**
  * `unreachable` is distinct from `unauthenticated`: the cold-start probe could
@@ -24,6 +26,8 @@ export type SessionStatus = 'unknown' | 'unauthenticated' | 'unreachable' | 'aut
 interface SessionState {
   status: SessionStatus;
   actor: SessionActor | null;
+  /** Who is signed in (email + Google name/picture), for the header profile. */
+  profile: AuthProfile | null;
   lastPinStepUpAt: string | null;
   sessionExpiresAt: string | null;
 
@@ -44,33 +48,47 @@ interface SessionState {
 export const useSessionStore = create<SessionState>((set) => ({
   status: 'unknown',
   actor: null,
+  // Hydrate the last-known profile so the header shows the operator instantly.
+  profile: readProfileCache(),
   lastPinStepUpAt: null,
   sessionExpiresAt: null,
 
-  setFromLogin: (payload) =>
-    set({
+  setFromLogin: (payload) => {
+    if (payload.profile) writeProfileCache(payload.profile);
+    set((s) => ({
       status: 'authenticated',
       actor: payload.actor,
+      // Prefer the fresh profile; keep the cached one if the server omitted it.
+      profile: payload.profile ?? s.profile,
       // PIN login itself is a step-up — the server stamps `lastPinStepUpAt`
       // server-side; we surface "now" for the client clock too.
       lastPinStepUpAt: new Date().toISOString(),
       sessionExpiresAt: payload.sessionExpiresAt,
-    }),
-  setFromProbe: (payload) =>
-    set({
+    }));
+  },
+  setFromProbe: (payload) => {
+    if (payload.profile) writeProfileCache(payload.profile);
+    set((s) => ({
       status: 'authenticated',
       actor: payload.actor,
+      profile: payload.profile ?? s.profile,
       lastPinStepUpAt: payload.lastPinStepUpAt,
       sessionExpiresAt: payload.expiresAt,
-    }),
+    }));
+  },
   recordStepUp: (lastPinStepUpAt) => set({ lastPinStepUpAt }),
-  setUnauthenticated: () =>
+  setUnauthenticated: () => {
+    writeProfileCache(null);
     set({
       status: 'unauthenticated',
       actor: null,
+      profile: null,
       lastPinStepUpAt: null,
       sessionExpiresAt: null,
-    }),
+    });
+  },
+  // Server unreachable ≠ signed out: keep the cached profile so a retry that
+  // reconnects doesn't flash an empty identity.
   setUnreachable: () =>
     set({
       status: 'unreachable',

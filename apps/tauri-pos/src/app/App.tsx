@@ -14,7 +14,7 @@
  * fallback. The per-route boundary inside AppShell is the first line.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 import { Button, DiamondRule, ParchmentCard, Seal } from '@warehouse14/ui-kit';
 import { ErrorBoundary } from '@warehouse14/ui-kit';
@@ -25,6 +25,8 @@ import { useSessionProbe } from '../hooks/useSessionProbe.js';
 import { applyChatwoot } from '../lib/chatwoot.js';
 import { useOfflineReplay } from '../lib/offline-replay.js';
 import { useTseQueueDrain } from '../lib/tse-queue-drain-hook.js';
+import { GoogleLogin } from '../screens/GoogleLogin.js';
+import { LocalLockGate } from '../components/LocalLockGate.js';
 import { PinLogin } from '../screens/PinLogin.js';
 import { useHardwareStore } from '../state/hardware-store.js';
 import { useIntegrationSettings } from '../state/integration-settings-store.js';
@@ -93,15 +95,30 @@ export function App(): JSX.Element {
 
   const retryProbe = useSessionStore((s) => s.retryProbe);
 
+  // Google-first sign-in (Track A1); PIN stays available as a fallback for the
+  // admin who cannot use the org-restricted Google account.
+  const [loginMode, setLoginMode] = useState<'google' | 'pin'>('google');
+
   let body: JSX.Element;
   if (status === 'unknown') {
     body = <Splash />;
   } else if (status === 'authenticated') {
-    body = <AppRouter />;
+    // Identity is established; a local quick-unlock code gates re-entry on this
+    // device (Track A2) before the shell renders.
+    body = (
+      <LocalLockGate>
+        <AppRouter />
+      </LocalLockGate>
+    );
   } else if (status === 'unreachable') {
     body = <ServerUnreachable onRetry={retryProbe} />;
   } else {
-    body = <PinLogin />;
+    body =
+      loginMode === 'pin' ? (
+        <PinLogin onUseGoogle={() => setLoginMode('google')} />
+      ) : (
+        <GoogleLogin onUsePin={() => setLoginMode('pin')} />
+      );
   }
 
   return (

@@ -21,3 +21,4 @@ export * from './accounts.js';
 export * from './sessions.js';
 export * from './verifications.js';
 export * from './twoFactors.js';
+export * from './apiKeys.js';
