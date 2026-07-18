@@ -167,8 +167,9 @@ export interface CustomerDetail {
    * GOOGLE (Google sign-in), EMAIL (online e-mail sign-up), or IN_STORE (created
    * at the counter). `online` is true whenever a self-service webshop account
    * exists — this is how a Google/online customer is recognised in the file.
+   * Optional so an older server (that predates this field) never crashes the UI.
    */
-  registration: {
+  registration?: {
     method: 'GOOGLE' | 'EMAIL' | 'IN_STORE';
     online: boolean;
   };

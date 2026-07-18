@@ -32,13 +32,14 @@ interface CustomerTransactionRow {
   receiptLocator: string;
   direction: 'VERKAUF' | 'ANKAUF';
   totalEur: string;
-  salesChannel: 'POS' | 'WEB' | 'EBAY' | 'PHONE';
+  /** Optional so an older server that omits it never breaks the row. */
+  salesChannel?: 'POS' | 'WEB' | 'EBAY' | 'PHONE';
   finalizedAt: string;
   storno: boolean;
 }
 
 /** Non-POS orders get a channel tag so online vs counter is obvious. */
-const CHANNEL_LABEL: Record<Exclude<CustomerTransactionRow['salesChannel'], 'POS'>, string> = {
+const CHANNEL_LABEL: Record<'WEB' | 'EBAY' | 'PHONE', string> = {
   WEB: 'Online',
   EBAY: 'eBay',
   PHONE: 'Telefon',
@@ -178,7 +179,7 @@ export function CustomerSalesHistory({ customerId }: { customerId: string }): JS
               >
                 {row.direction}
               </span>
-              {row.salesChannel !== 'POS' && (
+              {row.salesChannel && row.salesChannel !== 'POS' && (
                 <span
                   className="w14-smallcaps"
                   style={{
