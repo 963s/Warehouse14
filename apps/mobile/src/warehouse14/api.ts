@@ -115,6 +115,7 @@ import {
   type ListTasksQuery,
   type ListTasksResponse,
   type PhotoRow,
+  type AuthSessionResponse,
   type PinLoginResponse,
   type ProductDetail,
   type ProductListQuery,
@@ -149,7 +150,7 @@ import {
 import { Money } from "@warehouse14/domain/money"
 
 import { classifyScanMatch, type ScanMatch } from "./scan-resolve"
-import { getSessionToken } from "./session"
+import { clearSession, getSessionToken, setAuthTokenSilently, setSession } from "./session"
 import { stepUpService } from "./step-up"
 import { setConnectionProbe } from "./ui/data/connection"
 
@@ -270,6 +271,33 @@ export function pinStepUp(pin: string): Promise<unknown> {
  *  never be replayed if the phone is later lost or stolen. */
 export function signOut(): Promise<unknown> {
   return authPin.signOut(apiClient)
+}
+
+/** Fetch the current session actor + profile (GET /api/auth/session). Used after
+ *  the Google token handoff to resolve the actor the token-only redirect did not
+ *  carry (the same second step the desktop window flow makes). */
+export function authProbe(): Promise<AuthSessionResponse> {
+  return authPin.sessionSafe(apiClient)
+}
+
+/**
+ * Complete an owner Google sign-in. The server's `warehouse14://` redirect only
+ * carried `token` + `expiresAt`, so: store the token (silently, so the auth gate
+ * does not flip mid-handoff), probe `GET /api/auth/session` for the actor, then
+ * flip the session store. Mirrors the desktop `setSessionToken` + `setFromProbe`.
+ * On any failure the silent token is rolled back so the app never lands in a
+ * half-authenticated state.
+ */
+export async function completeGoogleLogin(token: string, expiresAt: string): Promise<void> {
+  setAuthTokenSilently(token)
+  try {
+    const probe = await authProbe()
+    if (!probe.ok || !probe.actor) throw new Error("SESSION_PROBE_FAILED")
+    setSession({ token, actor: probe.actor, expiresAt: probe.expiresAt ?? expiresAt })
+  } catch (e) {
+    clearSession()
+    throw e
+  }
 }
 
 // ── Staff products (the authenticated path — not the public storefront) ──────

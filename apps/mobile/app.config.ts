@@ -48,6 +48,12 @@ module.exports = ({ config }: ConfigContext): Partial<ExpoConfig> => {
             "Warehouse 14 braucht Zugriff auf deine Fotos, um Artikel- und Belegbilder aus dem Studio hochzuladen.",
         },
       ],
+      // Owner Google sign-in: expo-web-browser opens the system browser for the
+      // OAuth hop (Google allows SFSafariViewController / Chrome Custom Tabs, not
+      // an embedded WebView). expo-secure-store persists the session token and the
+      // device-lock hash in the Keychain / Keystore.
+      "expo-web-browser",
+      "expo-secure-store",
     ],
   }
 }

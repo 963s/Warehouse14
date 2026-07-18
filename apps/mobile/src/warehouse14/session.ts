@@ -8,6 +8,7 @@
  * non-React getAuthToken callback) and a useSession() hook (for screens).
  */
 import { useSyncExternalStore } from "react"
+import * as SecureStore from "expo-secure-store"
 import type { SessionActor } from "@warehouse14/api-client"
 
 let token: string | null = null
@@ -15,13 +16,59 @@ let actor: SessionActor | null = null
 let expiresAt: string | null = null
 const listeners = new Set<() => void>()
 
+/** Keychain / Keystore key for the persisted session (survives cold start). */
+const PERSIST_KEY = "w14.session"
+
 function emit(): void {
   for (const l of listeners) l()
+}
+
+/** Fire-and-forget persistence of the current session; a storage failure must
+ *  never break auth. A null session clears the stored copy. */
+function persist(): void {
+  if (token && actor && expiresAt) {
+    void SecureStore.setItemAsync(PERSIST_KEY, JSON.stringify({ token, actor, expiresAt })).catch(
+      () => {},
+    )
+  } else {
+    void SecureStore.deleteItemAsync(PERSIST_KEY).catch(() => {})
+  }
 }
 
 /** Plain getter for the api-client getAuthToken callback (non-React). */
 export function getSessionToken(): string | null {
   return token
+}
+
+/**
+ * Store ONLY the bearer token, without notifying subscribers — so an in-flight
+ * `GET /api/auth/session` probe is authorized WITHOUT flipping the auth gate
+ * mid-handoff. Used by the Google login: token arrives first, the actor is
+ * probed next, then `setSession` emits. Rolls back via `clearSession` on failure.
+ */
+export function setAuthTokenSilently(t: string): void {
+  token = t
+}
+
+/**
+ * Restore a persisted session on cold start, if still valid. Called once at
+ * startup; the LocalLockGate still requires the device code before the shell, so
+ * a stolen unlocked phone with a live token cannot walk straight in.
+ */
+export async function hydrateSession(): Promise<void> {
+  try {
+    const raw = await SecureStore.getItemAsync(PERSIST_KEY)
+    if (!raw) return
+    const parsed = JSON.parse(raw) as { token?: string; actor?: SessionActor; expiresAt?: string }
+    if (!parsed.token || !parsed.actor || !parsed.expiresAt) return
+    if (Date.parse(parsed.expiresAt) <= Date.now()) {
+      void SecureStore.deleteItemAsync(PERSIST_KEY).catch(() => {})
+      return
+    }
+    setSession({ token: parsed.token, actor: parsed.actor, expiresAt: parsed.expiresAt })
+  } catch {
+    // corrupt / unreadable → ignore; the owner signs in again.
+  }
 }
 
 /** Plain (non-React) read of "is there a session" — for imperative guards. */
@@ -42,6 +89,7 @@ export function setSession(next: { token: string; actor: SessionActor; expiresAt
   actor = next.actor
   expiresAt = next.expiresAt
   emit()
+  persist()
 }
 
 export function clearSession(): void {
@@ -50,6 +98,7 @@ export function clearSession(): void {
   actor = null
   expiresAt = null
   emit()
+  persist()
 }
 
 function subscribe(cb: () => void): () => void {

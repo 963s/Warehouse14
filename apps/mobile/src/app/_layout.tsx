@@ -16,7 +16,8 @@ import { createAppStatePersistence } from "@/warehouse14/app-state-persistence"
 import { installOnboardingPersistence } from "@/warehouse14/onboarding"
 import { installPreferencesPersistence } from "@/warehouse14/preferences"
 import { createFileReadCachePersistence, installReadCachePersistence } from "@/warehouse14/offline"
-import { useSession } from "@/warehouse14/session"
+import { LocalLockGate } from "@/warehouse14/LocalLockGate"
+import { hydrateSession, useSession } from "@/warehouse14/session"
 import { StepUpDialogHost } from "@/warehouse14/StepUpDialog"
 import { lightPalette } from "@/warehouse14/theme"
 import { installThemePreferencePersistence } from "@/warehouse14/theme-preference"
@@ -85,7 +86,22 @@ export default function RootLayout() {
     return () => clearTimeout(timer)
   }, [fontsLoaded, fontError])
 
-  const ready = fontsLoaded || fontError || fontTimeout
+  // Restore a persisted session (from the Keychain / Keystore) before the first
+  // render, so an already-signed-in owner lands on the device-lock instead of a
+  // brief login flash. hydrateSession always resolves (it swallows every error),
+  // so this can never hang the splash.
+  const [hydrated, setHydrated] = useState(false)
+  useEffect(() => {
+    let alive = true
+    void hydrateSession().finally(() => {
+      if (alive) setHydrated(true)
+    })
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  const ready = (fontsLoaded || fontError || fontTimeout) && hydrated
 
   useEffect(() => {
     if (ready) SplashScreen.hideAsync()
@@ -107,6 +123,10 @@ export default function RootLayout() {
          * here would fight edge-to-edge.
          */}
         <StatusBar barStyle="dark-content" animated />
+        {/* Device second factor: a valid session still requires the local code
+            (or setting one) before the shell — mirrors the desktop LocalLockGate.
+            Transparent when signed out (the root redirect shows /login). */}
+        <LocalLockGate>
         <Stack
           screenOptions={{
             headerStyle: { backgroundColor: colors.card },
@@ -169,6 +189,7 @@ export default function RootLayout() {
             options={{ presentation: "fullScreenModal", title: "Ausweis erfassen" }}
           />
         </Stack>
+        </LocalLockGate>
         <StepUpDialogHost />
         <ConnectionBannerHost />
         <PortalHost />

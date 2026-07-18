@@ -111,15 +111,12 @@ export interface GoogleIdentity {
 }
 
 /**
- * BACKEND GAP (honest flag): Google sign-in is NOT implemented on the server.
- * The live auth is PIN + per-device mTLS. To ship Google sign-in, the server
- * needs:
- *   1. A `users` table (id, google_sub, email, display_name, role, seal).
- *   2. POST /api/auth/google { idToken } → verify with Google, upsert user,
- *      issue a session token (same shape as pin-login).
- *   3. A per-user PIN (hash) column + POST /api/auth/pin-login accepting a
- *      username OR relying on mTLS for the user + the PIN as the 2nd factor.
- * Until then, the client renders ONLY the PIN path. This constant exists so
- * the UI can feature-detect without faking the capability.
+ * Google sign-in is LIVE via the server-brokered owner flow (the same one the
+ * desktop uses): the phone opens `…/api/admin/auth/google/start` in the system
+ * browser, the server verifies the Google id_token, resolves the email against
+ * the `users` table (403 if not provisioned), mints a session, and hands it back
+ * via the `warehouse14://auth-done` deep link. See `google-login.ts` +
+ * `completeGoogleLogin` in `api.ts`. No client-side id_token exchange and no
+ * mobile Google client are needed. PIN remains as a fallback door.
  */
-export const GOOGLE_SIGN_IN_AVAILABLE = false
+export const GOOGLE_SIGN_IN_AVAILABLE = true

@@ -38,12 +38,13 @@
  * `describeError` message, never a guess.
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
-import { ScrollView, useWindowDimensions, View } from "react-native"
+import { Pressable, ScrollView, useWindowDimensions, View } from "react-native"
 import { ApiError } from "@warehouse14/api-client"
 import Animated from "react-native-reanimated"
 
 import { Text } from "@/components/ui/text"
-import { describeError, pinLogin } from "@/warehouse14/api"
+import { API_BASE_URL, completeGoogleLogin, describeError, pinLogin } from "@/warehouse14/api"
+import { signInWithGoogle } from "@/warehouse14/google-login"
 import { setSession } from "@/warehouse14/session"
 import { useW14Theme } from "@/warehouse14/theme"
 import {
@@ -55,6 +56,7 @@ import {
   useScreenInsets,
 } from "@/warehouse14/ui"
 
+import { GoogleG } from "./_login/GoogleG"
 import { PinPad } from "./_login/PinPad"
 import { WarehouseMark } from "./_login/WarehouseMark"
 
@@ -107,6 +109,38 @@ export default function LoginScreen(): ReactNode {
   const [busy, setBusy] = useState(false)
   // Bumped on each failed attempt → replays the PinPad shake + error flash.
   const [errorNonce, setErrorNonce] = useState(0)
+
+  // Google is the primary door (same system as the desktop); PIN stays as a
+  // fallback the owner can switch to.
+  const [mode, setMode] = useState<"google" | "pin">("google")
+  const [busyGoogle, setBusyGoogle] = useState(false)
+  const [googleError, setGoogleError] = useState<string | null>(null)
+
+  const handleGoogle = useCallback(async () => {
+    setBusyGoogle(true)
+    setGoogleError(null)
+    try {
+      const res = await signInWithGoogle(API_BASE_URL)
+      if (res.ok) {
+        await completeGoogleLogin(res.token, res.expiresAt)
+        haptics.success()
+        // The root auth gate + LocalLockGate take over once the session lands.
+      } else if (res.error) {
+        haptics.error()
+        setGoogleError(
+          res.error === "FORBIDDEN"
+            ? "Dieses Google-Konto ist nicht freigeschaltet. Bitte den Inhaber kontaktieren."
+            : "Die Google-Anmeldung ist fehlgeschlagen. Bitte erneut versuchen.",
+        )
+      }
+      // res.error === null → the owner cancelled the browser; leave the screen calm.
+    } catch {
+      haptics.error()
+      setGoogleError("Die Anmeldung konnte nicht abgeschlossen werden. Bitte erneut versuchen.")
+    } finally {
+      setBusyGoogle(false)
+    }
+  }, [])
 
   // Guards a committed attempt against re-render churn (see file header). The
   // `mounted` ref keeps a late-resolving result from touching torn-down state
@@ -251,39 +285,81 @@ export default function LoginScreen(): ReactNode {
             the dots. */}
         <View style={{ flexGrow: 1 }} />
 
-        {/* PIN entry dots + the clean ink keypad, anchored near the bottom with a
-            balanced inset (equal to the side padding, clear of the home bar).
-            Carries the shake + flash on error. */}
+        {/* The method block, anchored near the bottom. Google is the primary door
+            (same system as the desktop); a link switches to the PIN pad, which
+            carries the shake + flash on error. */}
         <View
           className="w-full items-center"
           style={{ maxWidth: 420, gap: t.space.x4, transform: [{ translateY: -height * 0.05 }] }}
         >
-          {/* One reserved status line ABOVE the pad — the calm prompt, the
-              signing-in state, or the themed error — in a fixed-height slot so the
-              keypad never jumps and stays the bottom-most element with a clean,
-              balanced margin to the home bar. */}
-          <View
-            style={{ minHeight: 22, paddingHorizontal: t.space.x2 }}
-            className="items-center justify-center"
-          >
-            <Animated.View key={statusLabel} entering={itemEnter(0, reduceMotion)}>
-              <Text
-                className={`text-center text-sm font-medium ${error ? "text-destructive" : "text-muted-foreground"}`}
-                numberOfLines={2}
+          {mode === "google" ? (
+            <>
+              <View
+                style={{ minHeight: 22, paddingHorizontal: t.space.x2 }}
+                className="items-center justify-center"
               >
-                {statusLabel}
-              </Text>
-            </Animated.View>
-          </View>
+                <Text
+                  className={`text-center text-sm font-medium ${googleError ? "text-destructive" : "text-muted-foreground"}`}
+                  numberOfLines={2}
+                >
+                  {googleError ?? "Mit dem Warehouse14-Google-Konto anmelden"}
+                </Text>
+              </View>
 
-          <PinPad
-            filled={pin.length}
-            length={PIN_LENGTH}
-            onDigit={onDigit}
-            onBackspace={onBackspace}
-            errorNonce={errorNonce}
-            disabled={busy}
-          />
+              <Pressable
+                onPress={() => void handleGoogle()}
+                disabled={busyGoogle}
+                accessibilityRole="button"
+                className="bg-card border-border w-full flex-row items-center justify-center rounded-2xl border"
+                style={{ maxWidth: 420, height: 54, gap: 10, opacity: busyGoogle ? 0.6 : 1 }}
+              >
+                <GoogleG size={20} />
+                <Text className="text-foreground text-base font-semibold">
+                  {busyGoogle ? "Wird angemeldet …" : "Mit Google anmelden"}
+                </Text>
+              </Pressable>
+
+              <Pressable onPress={() => setMode("pin")} hitSlop={12} className="pt-1">
+                <Text className="text-muted-foreground text-center text-sm underline">
+                  Stattdessen mit PIN anmelden
+                </Text>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              {/* One reserved status line ABOVE the pad — the calm prompt, the
+                  signing-in state, or the themed error — in a fixed-height slot so
+                  the keypad never jumps. */}
+              <View
+                style={{ minHeight: 22, paddingHorizontal: t.space.x2 }}
+                className="items-center justify-center"
+              >
+                <Animated.View key={statusLabel} entering={itemEnter(0, reduceMotion)}>
+                  <Text
+                    className={`text-center text-sm font-medium ${error ? "text-destructive" : "text-muted-foreground"}`}
+                    numberOfLines={2}
+                  >
+                    {statusLabel}
+                  </Text>
+                </Animated.View>
+              </View>
+
+              <PinPad
+                filled={pin.length}
+                length={PIN_LENGTH}
+                onDigit={onDigit}
+                onBackspace={onBackspace}
+                errorNonce={errorNonce}
+                disabled={busy}
+              />
+
+              <Pressable onPress={() => setMode("google")} hitSlop={12} className="pt-1">
+                <Text className="text-muted-foreground text-center text-sm underline">
+                  Mit Google anmelden
+                </Text>
+              </Pressable>
+            </>
+          )}
         </View>
         </View>
       </ScrollView>
