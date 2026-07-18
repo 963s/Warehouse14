@@ -20,7 +20,8 @@ import { SupportButton } from './SupportButton.js';
 import { SurfaceChip } from './SurfaceChip.js';
 import { ThemeToggle } from './ThemeToggle.js';
 import { UpdateButton } from './UpdateButton.js';
-import { PRIMARY_SURFACES } from './surface-registry.js';
+import { PRIMARY_SURFACES, visibleSurfaces } from './surface-registry.js';
+import { useSessionStore } from '../../state/session-store.js';
 
 export interface AppShellHeaderProps {
   /** Opens the Spotlight palette (Cmd/Ctrl+K). */
@@ -35,6 +36,8 @@ export interface AppShellHeaderProps {
 export function AppShellHeader(_props: AppShellHeaderProps): JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
+  const isOwner = useSessionStore((s) => s.actor?.isOwner ?? false);
+  const railSurfaces = visibleSurfaces(PRIMARY_SURFACES, isOwner);
 
   const rowStyle: CSSProperties = {
     display: 'grid',
@@ -61,7 +64,7 @@ export function AppShellHeader(_props: AppShellHeaderProps): JSX.Element {
           scrollbarWidth: 'none',
         }}
       >
-        {PRIMARY_SURFACES.map((s) => (
+        {railSurfaces.map((s) => (
           <SurfaceChip
             key={s.path}
             digit={s.digit ?? 0}

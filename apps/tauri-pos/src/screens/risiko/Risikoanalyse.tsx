@@ -15,17 +15,18 @@ import { useQuery } from '@tanstack/react-query';
 import { DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
+import { Reveal } from '../../lib/motion.js';
 
 type DotTone = 'ok' | 'watch' | 'alert' | 'info';
 
 function Dot({ tone, size = 10 }: { tone: DotTone; size?: number }): JSX.Element {
   const color =
     tone === 'ok'
-      ? '#5aa469'
+      ? 'var(--w14-verdigris)'
       : tone === 'watch'
-        ? 'var(--w14-gold, #c9a55c)'
+        ? 'var(--w14-gilt)'
         : tone === 'alert'
-          ? 'var(--w14-wax-red, #b23a2e)'
+          ? 'var(--w14-wax-red)'
           : 'var(--w14-ink-faded)';
   return (
     <span
@@ -185,7 +186,7 @@ function EdgeSchutz(): JSX.Element {
                       width: '100%',
                       height: h,
                       borderRadius: 2,
-                      background: day.threats === 0 ? 'var(--w14-parchment-3)' : 'var(--w14-gold)',
+                      background: day.threats === 0 ? 'var(--w14-parchment-3)' : 'var(--w14-ink-aged)',
                     }}
                   />
                   <span style={{ fontSize: '0.6rem', color: 'var(--w14-ink-faded)', whiteSpace: 'nowrap' }}>
@@ -215,7 +216,7 @@ function EdgeSchutz(): JSX.Element {
                         style={{
                           width: `${d.totalThreats > 0 ? Math.round((c.threats / d.totalThreats) * 100) : 0}%`,
                           height: '100%',
-                          background: 'var(--w14-gold)',
+                          background: 'var(--w14-ink-aged)',
                         }}
                       />
                     </div>
@@ -280,7 +281,9 @@ export function Risikoanalyse(): JSX.Element {
         Strukturierung, Sanktions- und PEP-Treffer sowie die Beobachtungsliste der Kunden.
       </p>
 
-      <EdgeSchutz />
+      <Reveal index={0}>
+        <EdgeSchutz />
+      </Reveal>
 
       {query.isLoading ? (
         <ParchmentCard tone="parchment" padding="lg" style={{ maxWidth: 920 }}>
@@ -292,13 +295,16 @@ export function Risikoanalyse(): JSX.Element {
         </ParchmentCard>
       ) : (
         <>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 20, maxWidth: 920 }}>
-            <WatchTile label="Verdächtig" value={d.watchlist.suspicious} tone="watch" />
-            <WatchTile label="Gesperrt" value={d.watchlist.banned} tone="alert" />
-            <WatchTile label="Sanktionen" value={d.watchlist.sanctions} tone="alert" />
-            <WatchTile label="PEP" value={d.watchlist.pep} tone="watch" />
-          </div>
+          <Reveal index={1}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 20, maxWidth: 920 }}>
+              <WatchTile label="Verdächtig" value={d.watchlist.suspicious} tone="watch" />
+              <WatchTile label="Gesperrt" value={d.watchlist.banned} tone="alert" />
+              <WatchTile label="Sanktionen" value={d.watchlist.sanctions} tone="alert" />
+              <WatchTile label="PEP" value={d.watchlist.pep} tone="watch" />
+            </div>
+          </Reveal>
 
+          <Reveal index={2}>
           <ParchmentCard tone="parchment" padding="md" style={{ maxWidth: 920, marginBottom: 20 }}>
             <div
               style={{
@@ -334,7 +340,7 @@ export function Risikoanalyse(): JSX.Element {
                         style={{
                           width: `${maxCount > 0 ? Math.round((n / maxCount) * 100) : 0}%`,
                           height: '100%',
-                          background: 'var(--w14-gold)',
+                          background: 'var(--w14-ink-aged)',
                         }}
                       />
                     </div>
@@ -391,6 +397,7 @@ export function Risikoanalyse(): JSX.Element {
               </div>
             )}
           </ParchmentCard>
+          </Reveal>
         </>
       )}
     </div>

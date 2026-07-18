@@ -106,6 +106,7 @@ import shippingRoutes from './routes/shipping.js';
 import shopInfoRoute from './routes/shop-info.js';
 import riskRoutes from './routes/risk.js';
 import storefrontTrafficRoutes from './routes/storefront-traffic.js';
+import systemHealthRoutes from './routes/system-health.js';
 import sseLedger from './routes/sse-ledger.js';
 import storefrontAppointmentsRoutes from './routes/storefront-appointments.js';
 import storefrontGoogleAuthRoutes from './routes/storefront-auth-google.js';
@@ -237,6 +238,10 @@ export async function buildApp(opts: BuildAppOpts): Promise<FastifyInstance> {
   // env-gated Cloudflare edge-protection rollup).
   await app.register(riskRoutes, { env: opts.env });
   await app.register(storefrontTrafficRoutes, { env: opts.env });
+  // Owner "Leitstand" — system-health snapshot (components + integrations +
+  // open problems) in one round-trip. Owner-only; separate from the
+  // METRICS_TOKEN-gated /health so it rides the session/actor path.
+  await app.register(systemHealthRoutes, { env: opts.env });
   // Track A3 — staff administration (Owner + step-up; role writes via the
   // SECURITY DEFINER provision_staff function).
   await app.register(adminStaffRoutes);

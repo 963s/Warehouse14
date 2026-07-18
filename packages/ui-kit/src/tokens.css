@@ -394,3 +394,12 @@ body {
   from { transform: translateX(100%); }
   to { transform: none; }
 }
+
+/* Reveal-on-mount — a calm rise + fade for surface content (dashboards, cards).
+ * Applied via the tauri-pos <Reveal> helper, which owns the per-item stagger
+ * delay and honours prefers-reduced-motion (the global rule above only zeroes
+ * duration, not delay, so the helper drops the delay itself when reduced). */
+@keyframes w14-reveal-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}

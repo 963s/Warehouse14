@@ -78,7 +78,12 @@ import { StepUpModal } from './StepUpModal.js';
 import { SubBreadcrumb } from './SubBreadcrumb.js';
 import { usePrimeMicPermission } from './usePrimeMicPermission.js';
 import { isAnyDialogOpen, isTextEntryElement, resolveDigitNavPath } from './digit-nav.js';
-import { PRIMARY_SURFACES, SECONDARY_SURFACES, findSurfaceByPath } from './surface-registry.js';
+import {
+  PRIMARY_SURFACES,
+  SECONDARY_SURFACES,
+  findSurfaceByPath,
+  visibleSurfaces,
+} from './surface-registry.js';
 
 export function AppShell(): JSX.Element {
   const location = useLocation();
@@ -87,6 +92,7 @@ export function AppShell(): JSX.Element {
   const qc = useQueryClient();
 
   const setUnauthenticated = useSessionStore((s) => s.setUnauthenticated);
+  const isOwner = useSessionStore((s) => s.actor?.isOwner ?? false);
   const clearLedger = useLedgerFeed((s) => s.clear);
   const clearRecents = useRecents((s) => s.clear);
   const snapshotAndClearCart = useCartStore((s) => s.snapshotAndClear);
@@ -159,7 +165,9 @@ export function AppShell(): JSX.Element {
           isTextEntry: isTextEntryElement(document.activeElement),
           isDialogOpen: isAnyDialogOpen(),
         },
-        PRIMARY_SURFACES,
+        // Owner-only surfaces (Leitstand = digit 8) are excluded for non-owners,
+        // so their number key is inert rather than opening a locked screen.
+        visibleSurfaces(PRIMARY_SURFACES, isOwner),
       );
       if (digitPath) {
         ev.preventDefault();
@@ -168,7 +176,7 @@ export function AppShell(): JSX.Element {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [toggleTheme, navigate]);
+  }, [toggleTheme, navigate, isOwner]);
 
   const handleSignOut = useCallback(async () => {
     // §19.2 C-2 + C-3 fix — the full sign-out cascade.

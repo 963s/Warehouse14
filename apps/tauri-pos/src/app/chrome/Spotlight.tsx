@@ -28,11 +28,14 @@ import { DiamondRule, MagnifierIcon, ParchmentCard } from '@warehouse14/ui-kit';
 import { useApiClient } from '../../lib/api-context.js';
 import { formatEur } from '../../lib/decimal.js';
 import { useRecents } from '../../state/recents-store.js';
+import { useSessionStore } from '../../state/session-store.js';
 import {
   PRIMARY_SURFACES,
   SECONDARY_SURFACES,
   type SurfaceDescriptor,
   findSurfaceByPath,
+  isSurfaceVisible,
+  visibleSurfaces,
 } from './surface-registry.js';
 
 export interface SpotlightProps {
@@ -82,6 +85,7 @@ export function Spotlight({ open, onClose }: SpotlightProps): JSX.Element | null
   const navigate = useNavigate();
   const api = useApiClient();
   const recents = useRecents((s) => s.paths);
+  const isOwner = useSessionStore((s) => s.actor?.isOwner ?? false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const [query, setQuery] = useState<string>('');
@@ -154,17 +158,17 @@ export function Spotlight({ open, onClose }: SpotlightProps): JSX.Element | null
     if (q.length === 0) {
       for (const path of recents) {
         const s = findSurfaceByPath(path);
-        if (s) acc.push(surfaceToItem(s, 'zuletzt'));
+        if (s && isSurfaceVisible(s, isOwner)) acc.push(surfaceToItem(s, 'zuletzt'));
       }
     }
-    for (const s of PRIMARY_SURFACES) {
+    for (const s of visibleSurfaces(PRIMARY_SURFACES, isOwner)) {
       if (surfaceMatches(s, q)) acc.push(surfaceToItem(s, 'karteikasten'));
     }
-    for (const s of SECONDARY_SURFACES) {
+    for (const s of visibleSurfaces(SECONDARY_SURFACES, isOwner)) {
       if (surfaceMatches(s, q)) acc.push(surfaceToItem(s, 'weitere'));
     }
     return acc;
-  }, [query, recents, customersQ.data, productsQ.data]);
+  }, [query, recents, customersQ.data, productsQ.data, isOwner]);
 
   // Keep activeIdx in range when the result set shrinks.
   useEffect(() => {

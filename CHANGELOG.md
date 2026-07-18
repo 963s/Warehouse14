@@ -6,6 +6,11 @@ and the project adheres to [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+- Neuer Leitstand (nur für den Inhaber): der Zustand des ganzen Hauses auf einer ruhigen Seite. Ein Urteil oben („Alles in Ordnung", „Achtung erforderlich", „Störung"), der Zustand jedes Bereichs als eigene Kachel (Server, Datenbank mit Schema-Stand, Hintergrund-Jobs, Fiskal mit TSE-Restlaufzeit, Warnsignale, Edge-Schutz), eine Liste der wirklich offenen Probleme mit einem direkten Weg zur Lösung, und die Türen zu Risikoanalyse und Schaufenster an einer Stelle. So sind Risiko, Systemzustand, Probleme und die Firewall endlich verbunden statt versteckt.
+- Kundenakte tiefer: die Suche findet einen Kunden jetzt auch über die Bestellnummer, nicht nur über Name, Kundennummer, E-Mail oder Telefon. In der Akte steht, wie der Kunde entstanden ist (mit Google registriert, online registriert oder im Geschäft angelegt), und jeder Vorgang trägt seine Herkunft als Kennzeichen (Online, eBay oder Telefon gegenüber der Kasse).
+- Ruhigere, reichere Bewegung: neue Bildschirme setzen sich mit einer sanften, gestaffelten Einblendung zusammen statt hart aufzuspringen, und das Profilmenü öffnet sich weich aus dem Medaillon. Alles achtet die Systemeinstellung für reduzierte Bewegung.
+- Feinschliff der Risikoanalyse: die Balken tragen jetzt ruhige Tinte statt eines falschen Goldtons, und die Statuspunkte folgen der Hausfarblehre (grün für ruhig, Gold für Beobachtung, Rot für Alarm).
+
 ## [0.5.3] - 2026-07-17
 
 - Anmeldung mit Google: Sie melden sich mit dem Warehouse14-Google-Konto an und vergeben danach einen eigenen Code oder ein Passwort, das nur auf diesem Gerät gespeichert wird. Die PIN-Anmeldung bleibt als Alternative erhalten.

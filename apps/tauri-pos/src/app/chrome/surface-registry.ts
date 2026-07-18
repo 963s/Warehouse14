@@ -56,6 +56,14 @@ export interface SurfaceDescriptor {
    * for fuzzy search. Useful for synonyms (e.g. "Z-Bon" finds Kasse).
    */
   searchAliases?: readonly string[];
+
+  /**
+   * When true, the surface is visible ONLY to the Owner — hidden from the rail,
+   * the digit-nav, and Spotlight for every other role. The backing route still
+   * enforces its own guard; this is the UI half so a non-owner never sees a
+   * chip they cannot use. Used by the owner Leitstand.
+   */
+  ownerOnly?: boolean;
 }
 
 // ── Tier 1 frontline surfaces — STATIC imports. These render on first paint
@@ -135,6 +143,9 @@ const Schaufenster = lazy(() =>
   import('../../screens/schaufenster/Schaufenster.js').then((m) => ({ default: m.Schaufenster })),
 );
 const Team = lazy(() => import('../../screens/team/Team.js').then((m) => ({ default: m.Team })));
+const Leitstand = lazy(() =>
+  import('../../screens/leitstand/Leitstand.js').then((m) => ({ default: m.Leitstand })),
+);
 
 export const SURFACES: readonly SurfaceDescriptor[] = [
   // ── Tier 1 — 6 frontline chips, action-frequency order (ADR Option B) ─
@@ -415,6 +426,29 @@ export const SURFACES: readonly SurfaceDescriptor[] = [
     component: Team,
     searchAliases: ['team', 'mitarbeiter', 'rollen', 'personal', 'staff', 'benutzer', 'zugang'],
   },
+  // ── Tier 1 (#8) — the Owner Leitstand: system health, open problems, and the
+  //    doors to Risiko + Edge-Schutz + Schaufenster in one control room. Owner
+  //    only (hidden from the rail/digit-nav/Spotlight for every other role). ──
+  {
+    path: '/leitstand',
+    label: 'Leitstand',
+    description: 'Systemzustand, offene Probleme und der Zugang zu Risiko und Edge-Schutz.',
+    digit: 8,
+    tier: 'primary',
+    component: Leitstand,
+    ownerOnly: true,
+    searchAliases: [
+      'leitstand',
+      'system',
+      'systemzustand',
+      'status',
+      'gesundheit',
+      'probleme',
+      'überwachung',
+      'monitoring',
+      'betrieb',
+    ],
+  },
 ] as const;
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -432,6 +466,23 @@ export const SECONDARY_SURFACES: readonly SurfaceDescriptor[] = SURFACES.filter(
 /** Find a surface by URL path. Returns undefined for unknown routes. */
 export function findSurfaceByPath(path: string): SurfaceDescriptor | undefined {
   return SURFACES.find((s) => s.path === path);
+}
+
+/**
+ * True when this viewer may see the surface. `ownerOnly` surfaces are visible
+ * only to the Owner. The rail, the digit-nav and Spotlight all funnel through
+ * this so an owner-only chip can never leak into a non-owner's UI.
+ */
+export function isSurfaceVisible(s: SurfaceDescriptor, isOwner: boolean): boolean {
+  return !s.ownerOnly || isOwner;
+}
+
+/** Filter a surface list to what this viewer may see (preserves order). */
+export function visibleSurfaces(
+  surfaces: readonly SurfaceDescriptor[],
+  isOwner: boolean,
+): SurfaceDescriptor[] {
+  return surfaces.filter((s) => isSurfaceVisible(s, isOwner));
 }
 
 /** The route that opens by default after login. */

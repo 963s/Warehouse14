@@ -239,6 +239,10 @@ export function ProfileMenuView({
               background: 'var(--w14-parchment-2)',
               border: '1px solid var(--w14-rule)',
               boxShadow: '0 18px 44px rgba(20,16,8,0.28), 0 2px 8px rgba(20,16,8,0.14)',
+              // Soft entrance from the medallion; reuses the shared dialog keyframe
+              // and stills itself under prefers-reduced-motion via the global rule.
+              transformOrigin: 'top left',
+              animation: 'w14-dialog-in var(--w14-dur-fast) var(--w14-ease-curator)',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 13 }}>
