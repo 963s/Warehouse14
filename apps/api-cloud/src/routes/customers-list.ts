@@ -47,6 +47,8 @@ const ErrorResponse = Type.Object({
 
 const EMAIL_HINT = /@/;
 const PHONE_HINT = /^[+\d\s().\-]{5,}$/;
+/** A receipt/order number the operator typed (e.g. `RCP-2026-000042`, `rcp 42`). */
+const RECEIPT_HINT = /^rcp[-\s]?/i;
 
 const customersListRoute: FastifyPluginAsync = async (app) => {
   app.get<{ Querystring: TCustomerListQuery }>(
@@ -84,6 +86,15 @@ const customersListRoute: FastifyPluginAsync = async (app) => {
         // a typed `%`/`_` is a literal, not a wildcard.
         const numberLike = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
         const customerNumberClause = sql`customer_number ILIKE ${numberLike} ESCAPE '\\'`;
+        // Find the customer who placed an order (transaction) whose receipt
+        // locator matches — this is the "search by order number" the Kunden
+        // surface offers. Only customer-linked orders resolve (a walk-in order
+        // has no customer to show). `receipt_locator` is uniquely indexed; a
+        // full locator hits it, a partial seq-scans (fine at V1 scale).
+        const receiptClause = sql`id IN (
+          SELECT customer_id FROM transactions
+          WHERE customer_id IS NOT NULL AND receipt_locator ILIKE ${numberLike} ESCAPE '\\'
+        )`;
 
         // Build the strategy SQL. The single query covers all cases via a CTE so
         // the count + page come from the same plan.
@@ -93,13 +104,16 @@ const customersListRoute: FastifyPluginAsync = async (app) => {
             : EMAIL_HINT.test(q)
               ? // An `@` can never be a Kundennummer → email blind index only.
                 sql`email_blind_index = blind_index(${q})`
-              : PHONE_HINT.test(q)
-                ? // A purely-numeric query is BOTH a possible phone AND a typed-out
-                  // Kundennummer (e.g. `000006`); try both so it never dead-ends.
-                  sql`(phone_blind_index = blind_index(${q}) OR ${customerNumberClause})`
-                : // Name fallback, OR the Kundennummer itself (`CUST-2026-000006`,
-                  // `CUST`, `2026`) — honouring the UI's "Name oder Nummer".
-                  sql`(decrypt_pii(full_name_encrypted) ILIKE ${'%' + q + '%'} OR ${customerNumberClause})`;
+              : RECEIPT_HINT.test(q)
+                ? // Typed an order number (`RCP-…`) → the customer who placed it.
+                  receiptClause
+                : PHONE_HINT.test(q)
+                  ? // A purely-numeric query is a possible phone, a typed-out
+                    // Kundennummer (`000006`), AND an order number — try all three.
+                    sql`(phone_blind_index = blind_index(${q}) OR ${customerNumberClause} OR ${receiptClause})`
+                  : // Name fallback, OR the Kundennummer itself (`CUST-2026-000006`,
+                    // `CUST`, `2026`) — honouring the UI's "Name oder Nummer".
+                    sql`(decrypt_pii(full_name_encrypted) ILIKE ${'%' + q + '%'} OR ${customerNumberClause})`;
 
         const kycClause = kycVerifiedOnly ? sql`AND kyc_verified_at IS NOT NULL` : sql``;
         const blockedClause = excludeBlocked

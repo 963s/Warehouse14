@@ -136,6 +136,21 @@ export const CustomerDetailResponse = Type.Object({
   }),
   retentionUntil: Type.String({ format: 'date' }),
   createdAt: Type.String({ format: 'date-time' }),
+  /**
+   * How this customer came to exist — derived from the linked storefront
+   * `shoppers` row (if any): GOOGLE (Google sign-in), EMAIL (online e-mail
+   * sign-up), or IN_STORE (created at the counter, no online account).
+   * `online` is true whenever a shopper row exists (a self-service webshop
+   * account), regardless of method.
+   */
+  registration: Type.Object({
+    method: Type.Union([
+      Type.Literal('GOOGLE'),
+      Type.Literal('EMAIL'),
+      Type.Literal('IN_STORE'),
+    ]),
+    online: Type.Boolean(),
+  }),
 });
 export type CustomerDetailResponse = Static<typeof CustomerDetailResponse>;
 
@@ -170,6 +185,13 @@ export const CustomerTransactionRow = Type.Object({
   totalEur: DecimalString,
   taxTreatmentCode: Type.String(),
   receiptLocator: Type.String(),
+  /** Where the order came from — Kasse (POS), Onlineshop (WEB), eBay, Telefon. */
+  salesChannel: Type.Union([
+    Type.Literal('POS'),
+    Type.Literal('WEB'),
+    Type.Literal('EBAY'),
+    Type.Literal('PHONE'),
+  ]),
   finalizedAt: Type.String({ format: 'date-time' }),
   stornoOfTransactionId: Type.Union([Type.String({ format: 'uuid' }), Type.Null()]),
 });

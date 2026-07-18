@@ -197,6 +197,16 @@ function CustomerCard({ detail }: { detail: CustomerDetail }): JSX.Element {
               {detail.customerNumber}
               {' · seit '}
               {new Date(detail.createdAt).toLocaleDateString('de-DE')}
+              {' · '}
+              <span
+                style={{ color: detail.registration.online ? 'var(--w14-gilt)' : 'var(--w14-ink-faded)' }}
+              >
+                {detail.registration.method === 'GOOGLE'
+                  ? 'Mit Google registriert'
+                  : detail.registration.method === 'EMAIL'
+                    ? 'Online registriert'
+                    : 'Im Geschäft angelegt'}
+              </span>
             </p>
           </div>
           <div

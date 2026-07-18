@@ -172,7 +172,7 @@ export function CustomerListPanel({ selectedId, onSelect }: CustomerListPanelPro
           type="text"
           value={searchInput}
           onChange={(ev) => setSearchInput(ev.target.value)}
-          placeholder="Name · E-Mail · Telefon"
+          placeholder="Name · Kundennr. · Bestellnr. · E-Mail · Telefon"
           spellCheck={false}
           autoFocus
           style={{

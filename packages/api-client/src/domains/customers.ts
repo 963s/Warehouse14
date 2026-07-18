@@ -162,6 +162,16 @@ export interface CustomerDetail {
   };
   retentionUntil: string;
   createdAt: string;
+  /**
+   * How the customer came to exist, derived from the linked storefront account:
+   * GOOGLE (Google sign-in), EMAIL (online e-mail sign-up), or IN_STORE (created
+   * at the counter). `online` is true whenever a self-service webshop account
+   * exists — this is how a Google/online customer is recognised in the file.
+   */
+  registration: {
+    method: 'GOOGLE' | 'EMAIL' | 'IN_STORE';
+    online: boolean;
+  };
 }
 
 // ────────────────────────────────────────────────────────────────────────

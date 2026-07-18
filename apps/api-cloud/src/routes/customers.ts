@@ -268,6 +268,26 @@ const customersRoutes: FastifyPluginAsync = async (app) => {
            AND finalized_at >= now() - (${thresholds.windowDays} || ' days')::interval`);
       const priorAnkaufEur = aggRows[0]?.prior ?? '0.00';
 
+      // Registration method — derived from the linked storefront `shoppers` row
+      // (1:1 with customers). A Google sign-in stamps `google_sub`; an e-mail
+      // sign-up stamps `password_hash`; no shopper row at all means the customer
+      // was created at the counter. This is how a Google/online customer is
+      // recognised in the cashier's customer file.
+      const shopperRows = await app.db.execute<{
+        google_sub: string | null;
+        has_password: boolean;
+      }>(sql`
+        SELECT google_sub, (password_hash IS NOT NULL) AS has_password
+          FROM shoppers
+         WHERE customer_id = ${id}::uuid AND soft_deleted_at IS NULL
+         LIMIT 1`);
+      const shopper = shopperRows[0] ?? null;
+      const registrationMethod: 'GOOGLE' | 'EMAIL' | 'IN_STORE' = shopper
+        ? shopper.google_sub
+          ? 'GOOGLE'
+          : 'EMAIL'
+        : 'IN_STORE';
+
       return reply.status(200).send({
         id: row.id,
         customerNumber: row.customer_number,
@@ -298,6 +318,7 @@ const customersRoutes: FastifyPluginAsync = async (app) => {
         gwgRollingAnkauf: { windowDays: thresholds.windowDays, priorAnkaufEur },
         retentionUntil: row.retention_until,
         createdAt: new Date(row.created_at).toISOString(),
+        registration: { method: registrationMethod, online: shopper !== null },
       });
     },
   );
@@ -376,6 +397,7 @@ const customersRoutes: FastifyPluginAsync = async (app) => {
           totalEur: transactions.totalEur,
           taxTreatmentCode: transactions.taxTreatmentCode,
           receiptLocator: transactions.receiptLocator,
+          salesChannel: transactions.salesChannel,
           finalizedAt: transactions.finalizedAt,
           stornoOfTransactionId: transactions.stornoOfTransactionId,
         })
@@ -391,6 +413,7 @@ const customersRoutes: FastifyPluginAsync = async (app) => {
           totalEur: r.totalEur,
           taxTreatmentCode: r.taxTreatmentCode,
           receiptLocator: r.receiptLocator,
+          salesChannel: r.salesChannel,
           finalizedAt: r.finalizedAt.toISOString(),
           stornoOfTransactionId: r.stornoOfTransactionId,
         })),
