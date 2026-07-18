@@ -187,7 +187,13 @@ function LocalLock({ onUnlock }: { onUnlock: () => void }): ReactNode {
             disabled={busy || mode === "loading"}
           />
 
-          <Pressable onPress={() => void onSignOut()} hitSlop={12} className="pt-2">
+          <Pressable
+            onPress={() => void onSignOut()}
+            accessibilityRole="button"
+            hitSlop={8}
+            className="mt-1 px-4 py-2"
+            style={({ pressed }) => (pressed ? { opacity: 0.6 } : null)}
+          >
             <Text className="text-muted-foreground text-center text-sm underline">Abmelden</Text>
           </Pressable>
         </View>

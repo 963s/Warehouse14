@@ -294,7 +294,11 @@ export default function LoginScreen(): ReactNode {
         >
           {mode === "google" ? (
             <>
-              <View
+              {/* Calm hint / themed error, in a fixed-height slot so the button
+                  never jumps. Re-keys on the message so it settles in. */}
+              <Animated.View
+                key={googleError ?? "google-hint"}
+                entering={itemEnter(0, reduceMotion)}
                 style={{ minHeight: 22, paddingHorizontal: t.space.x2 }}
                 className="items-center justify-center"
               >
@@ -304,26 +308,46 @@ export default function LoginScreen(): ReactNode {
                 >
                   {googleError ?? "Mit dem Warehouse14-Google-Konto anmelden"}
                 </Text>
-              </View>
+              </Animated.View>
 
-              <Pressable
-                onPress={() => void handleGoogle()}
-                disabled={busyGoogle}
-                accessibilityRole="button"
-                className="bg-card border-border w-full flex-row items-center justify-center rounded-2xl border"
-                style={{ maxWidth: 420, height: 54, gap: 10, opacity: busyGoogle ? 0.6 : 1 }}
-              >
-                <GoogleG size={20} />
-                <Text className="text-foreground text-base font-semibold">
-                  {busyGoogle ? "Wird angemeldet …" : "Mit Google anmelden"}
-                </Text>
-              </Pressable>
+              {/* Primary door — the recognizable white Google button, seated on a
+                  hairline (depth from the edge, never a glow), with a calm press
+                  settle. */}
+              <Animated.View entering={itemEnter(1, reduceMotion)} className="w-full items-center">
+                <Pressable
+                  onPress={() => void handleGoogle()}
+                  disabled={busyGoogle}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: busyGoogle, busy: busyGoogle }}
+                  className="bg-card border-border w-full flex-row items-center justify-center rounded-2xl border"
+                  style={({ pressed }) => [
+                    { maxWidth: 420, height: 56, gap: 10, opacity: busyGoogle ? 0.55 : 1 },
+                    pressed && !busyGoogle ? { transform: [{ scale: 0.985 }], opacity: 0.9 } : null,
+                  ]}
+                >
+                  <GoogleG size={20} />
+                  <Text
+                    className="text-foreground text-base font-semibold"
+                    style={{ letterSpacing: 0.2 }}
+                  >
+                    {busyGoogle ? "Wird angemeldet …" : "Mit Google anmelden"}
+                  </Text>
+                </Pressable>
+              </Animated.View>
 
-              <Pressable onPress={() => setMode("pin")} hitSlop={12} className="pt-1">
-                <Text className="text-muted-foreground text-center text-sm underline">
-                  Stattdessen mit PIN anmelden
-                </Text>
-              </Pressable>
+              <Animated.View entering={itemEnter(2, reduceMotion)}>
+                <Pressable
+                  onPress={() => setMode("pin")}
+                  accessibilityRole="button"
+                  hitSlop={8}
+                  className="px-4 py-2"
+                  style={({ pressed }) => (pressed ? { opacity: 0.6 } : null)}
+                >
+                  <Text className="text-muted-foreground text-center text-sm underline">
+                    Stattdessen mit PIN anmelden
+                  </Text>
+                </Pressable>
+              </Animated.View>
             </>
           ) : (
             <>
@@ -353,7 +377,13 @@ export default function LoginScreen(): ReactNode {
                 disabled={busy}
               />
 
-              <Pressable onPress={() => setMode("google")} hitSlop={12} className="pt-1">
+              <Pressable
+                onPress={() => setMode("google")}
+                accessibilityRole="button"
+                hitSlop={8}
+                className="px-4 py-2"
+                style={({ pressed }) => (pressed ? { opacity: 0.6 } : null)}
+              >
                 <Text className="text-muted-foreground text-center text-sm underline">
                   Mit Google anmelden
                 </Text>
