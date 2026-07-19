@@ -97,7 +97,8 @@
         "cameraPermissionText": "$(PRODUCT_NAME) braucht Kamerazugriff, um Artikel und Belege zu scannen."
       }
     ],
-    "./plugins/withGradleWrapperVersion"
+    "./plugins/withGradleWrapperVersion",
+    "./plugins/withRecordAudio"
   ],
   "experiments": {
     "tsconfigPaths": true,
