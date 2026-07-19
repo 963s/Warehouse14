@@ -2,7 +2,7 @@
   "name": "W-14",
   "slug": "warehouse14-mobile",
   "scheme": "warehouse14",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "orientation": "portrait",
   "userInterfaceStyle": "automatic",
   "icon": "./assets/images/app-icon-all.png",
@@ -11,18 +11,24 @@
   },
   "newArchEnabled": true,
   "jsEngine": "hermes",
-  "assetBundlePatterns": ["**/*"],
+  "assetBundlePatterns": [
+    "**/*"
+  ],
   "android": {
     "icon": "./assets/images/app-icon-android-legacy.png",
     "package": "de.warehouse14.mobile",
-    "versionCode": 7,
+    "versionCode": 8,
     "adaptiveIcon": {
       "foregroundImage": "./assets/images/app-icon-android-adaptive-foreground.png",
       "backgroundImage": "./assets/images/app-icon-android-adaptive-background.png"
     },
     "allowBackup": false,
     "edgeToEdgeEnabled": true,
-    "permissions": ["android.permission.CAMERA"],
+    "permissions": [
+      "android.permission.CAMERA",
+      "android.permission.RECORD_AUDIO",
+      "android.permission.MODIFY_AUDIO_SETTINGS"
+    ],
     "blockedPermissions": [
       "android.permission.RECORD_AUDIO",
       "android.permission.READ_EXTERNAL_STORAGE",
@@ -37,13 +43,23 @@
     "icon": "./assets/images/app-icon-ios.png",
     "supportsTablet": true,
     "bundleIdentifier": "de.warehouse14.mobile",
-    "buildNumber": "6"
+    "buildNumber": "6",
+    "infoPlist": {
+      "NSMicrophoneUsageDescription": "Warehouse 14 nutzt das Mikrofon für den Sprachassistenten Vierzehn."
+    }
   },
   "web": {
     "favicon": "./assets/images/app-icon-web-favicon.png",
     "bundler": "metro"
   },
   "plugins": [
+    [
+      "@config-plugins/react-native-webrtc",
+      {
+        "cameraPermission": "Warehouse 14 nutzt die Kamera für Artikelfotos.",
+        "microphonePermission": "Warehouse 14 nutzt das Mikrofon für den Sprachassistenten Vierzehn."
+      }
+    ],
     "expo-localization",
     "expo-font",
     [
