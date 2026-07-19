@@ -376,14 +376,23 @@ const storefrontGoogleAuthRoutes: FastifyPluginAsync<{ env: Env }> = async (app,
           expiresAt: session.expiresAt.toISOString(),
           createdAt: Date.now(),
         });
+        // Bounce straight back into the app: the client opens this leg inside
+        // a system auth session (ASWebAuthenticationSession / Custom Tabs)
+        // whose completion URL is the app scheme below — the redirect closes
+        // the sheet automatically and the app claims the parked session
+        // immediately. The calm text stays as the fallback for shoppers whose
+        // browser blocks custom-scheme redirects (they return by hand and the
+        // app's claim poll still lands).
         return reply
           .type('text/html; charset=utf-8')
           .send(
             '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">' +
+              '<meta http-equiv="refresh" content="0;url=warehouse14shop://google-fertig">' +
               '<body style="font-family:-apple-system,system-ui;display:grid;place-items:center;height:90vh;margin:0">' +
               '<p style="max-width:26rem;text-align:center;font-size:1.05rem;line-height:1.5">' +
               'Anmeldung erfolgreich. Du kannst dieses Fenster schließen und zur ' +
-              'Warehouse 14 App zurückkehren.</p></body>',
+              'Warehouse 14 App zurückkehren.</p>' +
+              '<script>location.replace("warehouse14shop://google-fertig")</script></body>',
           );
       }
 
