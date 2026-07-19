@@ -122,6 +122,11 @@ export interface CustomerBaseData {
   totalAnkaufEur?: string;
 }
 
+export interface PhotoInboxData {
+  count: number;
+  photos: Array<{ id: string; thumbPath: string; createdAt: string }>;
+}
+
 export type JarvisWidget =
   | { kind: 'revenue'; data: SalesData }
   | { kind: 'daySummary'; data: DaySummaryData }
@@ -134,7 +139,8 @@ export type JarvisWidget =
   | { kind: 'salesBreakdown'; data: SalesBreakdownData }
   | { kind: 'channels'; data: ChannelsData }
   | { kind: 'topCustomers'; data: TopCustomersData }
-  | { kind: 'customerBase'; data: CustomerBaseData };
+  | { kind: 'customerBase'; data: CustomerBaseData }
+  | { kind: 'photoInbox'; data: PhotoInboxData };
 
 // ── The store ──────────────────────────────────────────────────────────────
 
@@ -223,6 +229,14 @@ export function widgetForTool(name: string, data: unknown): JarvisWidget | null 
     }
     case 'customer_overview':
       return { kind: 'customerBase', data: d as CustomerBaseData };
+    case 'list_inbox_photos': {
+      // The photo bridge tray: show the thumbnails the phone sent. An empty
+      // inbox is carried by the spoken line; nothing to paint.
+      const photos = d.photos;
+      return Array.isArray(photos) && photos.length > 0
+        ? { kind: 'photoInbox', data: d as unknown as PhotoInboxData }
+        : null;
+    }
     default:
       return null;
   }

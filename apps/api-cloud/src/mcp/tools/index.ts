@@ -10,15 +10,18 @@
 
 import type { ToolRegistration } from '../types.js';
 import { agendaTool } from './agenda.js';
+import { attachPhotosTool } from './attach-photos.js';
 import { appraiseEstateItemTool } from './appraise-estate-item.js';
 import { channelsOverviewTool } from './channels-overview.js';
 import { createProductTool } from './create-product.js';
 import { customerOverviewTool } from './customer-overview.js';
+import { deleteProductTool } from './delete-product.js';
 import { financeOverviewTool } from './finance-overview.js';
 import { findCustomerTool } from './find-customer.js';
 import { findProductTool } from './find-product.js';
 import { generateSeoDescriptionTool } from './generate-seo-description.js';
 import { inventoryOverviewTool } from './inventory-overview.js';
+import { listInboxPhotosTool } from './list-inbox-photos.js';
 import { listProductsTool } from './list-products.js';
 import { openDevTicketTool } from './open-dev-ticket.js';
 import { productDetailsTool } from './product-details.js';
@@ -26,6 +29,7 @@ import { salesBreakdownTool } from './sales-breakdown.js';
 import { salesReportTool } from './sales-report.js';
 import { situationReportTool } from './situation-report.js';
 import { topCustomersTool } from './top-customers.js';
+import { updateProductTool } from './update-product.js';
 
 export const MCP_TOOLS: ReadonlyArray<ToolRegistration> = [
   generateSeoDescriptionTool,
@@ -50,6 +54,14 @@ export const MCP_TOOLS: ReadonlyArray<ToolRegistration> = [
   // records an internal task. Both are guarded + audited.
   createProductTool,
   openDevTicketTool,
+  // ── Jarvis executive belt (the agent, still safe by construction) ──
+  // update: safe presentation fields on DRAFT/AVAILABLE only, full diff audit.
+  // delete: DRAFT only, photos return to the inbox. attach/list: the photo
+  // bridge from the phone's Fotoeingang. Every write mandates spoken confirm.
+  updateProductTool,
+  deleteProductTool,
+  listInboxPhotosTool,
+  attachPhotosTool,
 ];
 
 /** Build a name → registration lookup. Called once per process. */

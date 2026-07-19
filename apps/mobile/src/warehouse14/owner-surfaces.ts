@@ -19,6 +19,7 @@
  */
 import {
   Activity,
+  Camera,
   Banknote,
   BarChart3,
   Bell,
@@ -220,6 +221,15 @@ export const OWNER_SURFACES: readonly OwnerSurface[] = [
     label: "Erfolge",
     description: "Rang, Serien und Siegel die ganze Geschichte aus echten Tagesabschlüssen.",
     icon: Trophy,
+    group: "betrieb",
+    available: true,
+  },
+  {
+    id: "fotoeingang",
+    route: "/fotoeingang",
+    label: "Fotoeingang",
+    description: "Ware fotografieren und an Vierzehn senden, der Assistent legt die Artikel an.",
+    icon: Camera,
     group: "betrieb",
     available: true,
   },

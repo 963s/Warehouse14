@@ -40,7 +40,7 @@ export type PhotoMime = "image/jpeg" | "image/png" | "image/webp"
  * ID stays legible (the server re-compresses + AES-encrypts regardless). ALWAYS
  * returns JPEG bytes — callers MUST send contentType "image/jpeg".
  */
-async function compressToJpegBase64(uri: string, kind: "product" | "kyc"): Promise<string> {
+export async function compressToJpegBase64(uri: string, kind: "product" | "kyc"): Promise<string> {
   const maxWidth = kind === "kyc" ? 2000 : 1600
   const compress = kind === "kyc" ? 0.85 : 0.7
   const out = await manipulateAsync(toFileUri(uri), [{ resize: { width: maxWidth } }], {

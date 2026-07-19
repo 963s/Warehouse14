@@ -161,6 +161,7 @@ export default function RootLayout() {
           <Stack.Screen name="team" options={{ title: "Team", ...stackPush() }} />
           <Stack.Screen name="tagebuch" options={{ title: "Tagebuch", ...stackPush() }} />
           <Stack.Screen name="leitstand" options={{ title: "Leitstand", ...stackPush() }} />
+          <Stack.Screen name="fotoeingang" options={{ title: "Fotoeingang", ...stackPush() }} />
           <Stack.Screen name="suche" options={{ title: "Suche", ...stackPush() }} />
           <Stack.Screen name="erfolge" options={{ title: "Erfolge", ...stackPush() }} />
           <Stack.Screen name="zielkarte" options={{ headerShown: false, ...stackPush() }} />

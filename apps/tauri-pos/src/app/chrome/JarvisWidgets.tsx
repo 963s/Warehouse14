@@ -10,6 +10,7 @@
  * count-up only animates the parsed magnitude, then settles on the exact string.
  */
 
+import { useApiClient } from '../../lib/api-context.js';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 
 import {
@@ -17,6 +18,7 @@ import {
   dismissWidget,
   getWidgetSnapshot,
   subscribeWidget,
+  type PhotoInboxData,
 } from './jarvis-widget-store.js';
 
 const AUTO_DISMISS_MS = 9500;
@@ -680,6 +682,8 @@ function WidgetBody({ widget, pal }: { widget: JarvisWidget; pal: Palette }): JS
       return <TopCustomersCard data={widget.data as Record<string, unknown>} pal={pal} />;
     case 'customerBase':
       return <CustomerBaseCard data={widget.data as Record<string, unknown>} pal={pal} />;
+    case 'photoInbox':
+      return <PhotoInboxCard data={widget.data} pal={pal} />;
   }
 }
 
@@ -757,6 +761,39 @@ export function JarvisWidgetLayer({ primary, secondary }: Palette): JSX.Element 
           ×
         </button>
       </div>
+    </div>
+  );
+}
+
+
+/** Fotoeingang tray — the thumbnails the phone sent, awaiting a product. */
+function PhotoInboxCard({ data, pal }: { data: PhotoInboxData; pal: Palette }): JSX.Element {
+  const client = useApiClient();
+  const base = client.baseUrl.replace(/\/+$/, '');
+  return (
+    <div>
+      <p style={{ margin: 0, marginBottom: 10, fontSize: 13, color: pal.secondary }}>
+        Fotoeingang · {data.count} {data.count === 1 ? 'Foto wartet' : 'Fotos warten'} auf einen Artikel
+      </p>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {data.photos.slice(0, 12).map((ph) => (
+          <img
+            key={ph.id}
+            src={`${base}${ph.thumbPath}`}
+            alt=""
+            style={{
+              width: 92,
+              height: 92,
+              objectFit: 'cover',
+              borderRadius: 10,
+              border: `1px solid ${pal.secondary}44`,
+            }}
+          />
+        ))}
+      </div>
+      <p style={{ margin: 0, marginTop: 10, fontSize: 12, color: pal.secondary }}>
+        „Leg ein Produkt an und häng die letzten Fotos dran."
+      </p>
     </div>
   );
 }

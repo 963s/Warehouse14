@@ -28,6 +28,7 @@ import { auditLog, products } from '@warehouse14/db/schema';
 
 import { ItemType, Metal, ProductCondition } from '../../schemas/product.js';
 import type { ToolHandler, ToolInvocationContext, ToolResult } from '../types.js';
+import { assignInboxPhotos } from './_product-lookup.js';
 
 /** Decimal-EUR string, e.g. "480" or "480.00" — matches the products surface (NOT cents). */
 const MoneyString = Type.String({
@@ -78,6 +79,15 @@ export const CreateProductArgs = Type.Object({
   ),
   descriptionDe: Type.Optional(
     Type.String({ maxLength: 2000, description: 'Kurze Beschreibung des Artikels, optional.' }),
+  ),
+  attachInboxPhotos: Type.Optional(
+    Type.Integer({
+      minimum: 1,
+      maximum: 12,
+      description:
+        'Die N neuesten Fotos aus dem Fotoeingang (vom Telefon gesendet) direkt an den neuen ' +
+        'Entwurf anhängen. Das erste wird das Hauptfoto.',
+    }),
   ),
 });
 
@@ -176,6 +186,38 @@ const handler: ToolHandler<ArgsShape> = async (
     return row;
   });
 
+  // Photo bridge: bind the newest inbox photos in a follow-up TX (the draft
+  // exists either way; a failed bind must not undo the dictated product).
+  let photosBound = 0;
+  if (args.attachInboxPhotos && args.attachInboxPhotos > 0) {
+    try {
+      const bound = await ctx.db.transaction(async (tx) => {
+        const r = await assignInboxPhotos(tx, inserted.id, { latest: args.attachInboxPhotos });
+        if (r.assigned > 0) {
+          await tx.insert(auditLog).values({
+            eventType: 'photo.assigned',
+            actorUserId: ctx.actor.id,
+            deviceId: null,
+            ipAddress: null,
+            userAgent: null,
+            payload: {
+              productId: inserted.id,
+              sku: inserted.sku,
+              photoIds: r.photoIds,
+              primarySet: r.primarySet,
+              source: 'assistant',
+              via: 'jarvis',
+            },
+          });
+        }
+        return r.assigned;
+      });
+      photosBound = bound;
+    } catch (err) {
+      ctx.logger.warn({ err, productId: inserted.id }, 'mcp.create_product: photo bind failed (draft kept)');
+    }
+  }
+
   ctx.logger.info(
     { productId: inserted.id, sku: inserted.sku, name },
     'mcp.create_product: draft created by assistant',
@@ -186,9 +228,10 @@ const handler: ToolHandler<ArgsShape> = async (
       {
         type: 'text',
         text:
-          `Entwurf angelegt: „${name}" zu ${listPriceEur} € (${inserted.sku}). Er liegt jetzt als ` +
-          `Entwurf im Lager. Bitte dort Einkaufspreis und Steuersatz prüfen und den Artikel ` +
-          `veröffentlichen, bevor er verkauft wird.`,
+          `Entwurf angelegt: „${name}" zu ${listPriceEur} € (${inserted.sku}).` +
+          (photosBound > 0 ? ` ${photosBound} Foto${photosBound === 1 ? '' : 's'} aus dem Eingang angehängt.` : '') +
+          ` Er liegt jetzt als Entwurf im Lager. Bitte dort Einkaufspreis und Steuersatz prüfen ` +
+          `und den Artikel veröffentlichen, bevor er verkauft wird.`,
       },
     ],
     data: {
@@ -198,6 +241,7 @@ const handler: ToolHandler<ArgsShape> = async (
       listPriceEur,
       status: 'DRAFT',
       created: true,
+      photosAttached: photosBound,
     },
     affectedEntity: { table: 'products', id: inserted.id },
   };

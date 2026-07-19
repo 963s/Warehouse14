@@ -581,6 +581,32 @@ export async function systemHealthSafe(): Promise<SystemHealth | null> {
   }
 }
 
+// ── Fotoeingang (photo bridge to Vierzehn at the register) ──────────────────
+/** One unassigned photo waiting in the inbox (server truth). */
+export interface InboxPhoto {
+  id: string
+  thumbUrl?: string
+  publicUrl: string
+  createdAt: string
+  sizeBytes: number | null
+}
+
+/** The photo inbox: shelf photos not yet attached to any product. */
+export function listInboxPhotos(): Promise<{ items: InboxPhoto[]; total: number }> {
+  return apiClient.request<{ items: InboxPhoto[]; total: number }>(
+    "GET",
+    "/api/photos/unassigned?limit=24",
+  )
+}
+
+/** Send one compressed JPEG (base64) into the inbox — no product yet. */
+export function sendInboxPhoto(dataBase64: string): Promise<{ id: string }> {
+  return photosApi.uploadDirect(apiClient, {
+    dataBase64,
+    contentType: "image/jpeg",
+  }) as Promise<{ id: string }>
+}
+
 export function bridgeSummary(): Promise<BridgeSummary> {
   return bridgeApi.summary(apiClient)
 }
