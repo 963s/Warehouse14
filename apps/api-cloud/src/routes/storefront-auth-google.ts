@@ -422,6 +422,15 @@ const storefrontGoogleAuthRoutes: FastifyPluginAsync<{ env: Env }> = async (app,
       const h = shopperHandoffs.get(nonce);
       if (!h) return { ok: false as const, pending: true };
       shopperHandoffs.delete(nonce); // single-use
+      // Set the session cookie ON THIS RESPONSE. The claim is the one request
+      // the native app itself makes in the handoff, and iOS XHR refuses a
+      // manually written Cookie header — the app can only authenticate via
+      // its NATIVE cookie jar (withCredentials). Without Set-Cookie here the
+      // jar keeps whatever session it had before (typically the guest one),
+      // so the shopper "signs in with Google" yet keeps browsing as the
+      // guest — the exact 2026-07-20 bug. With it, the jar replaces the
+      // guest cookie atomically and the Google session survives restarts.
+      setShopperCookie(reply, h.token, new Date(h.expiresAt));
       return { ok: true as const, token: h.token, expiresAt: h.expiresAt };
     },
   );
