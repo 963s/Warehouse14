@@ -45,11 +45,41 @@ const OAUTH_STATE_PATH = '/api/storefront/auth/google';
 const STATE_TTL_MS = 10 * 60 * 1000; // 10 minutes to complete the consent.
 
 interface StatePayload {
+  /** Native-app handoff nonce (mobile shop app). Empty for the web flow. */
+  appNonce?: string;
   state: string;
   codeVerifier: string;
   nonce: string;
   returnTo: string;
   exp: number;
+}
+
+const HANDOFF_TTL_MS = 5 * 60 * 1000;
+
+interface ShopperHandoff {
+  token: string;
+  expiresAt: string;
+  createdAt: number;
+}
+
+/**
+ * In-memory native-handoff store (mirrors the admin flow): the phone app
+ * begins login with ?nonce=…, the browser leg completes here, and the app
+ * claims the minted shopper session exactly once. Single-use + 5min TTL;
+ * the unguessable nonce IS the capability.
+ */
+const shopperHandoffs = new Map<string, ShopperHandoff>();
+
+function sanitizeAppNonce(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  const t = v.trim();
+  return /^[A-Za-z0-9_-]{16,128}$/.test(t) ? t : null;
+}
+
+function sweepShopperHandoffs(now: number): void {
+  for (const [k, h] of shopperHandoffs) {
+    if (now - h.createdAt > HANDOFF_TTL_MS) shopperHandoffs.delete(k);
+  }
 }
 
 /** Random URL-safe token. */
@@ -134,7 +164,10 @@ const storefrontGoogleAuthRoutes: FastifyPluginAsync<{ env: Env }> = async (app,
         hide: true,
       },
     },
-    async (req: FastifyRequest<{ Querystring: { returnTo?: string } }>, reply: FastifyReply) => {
+    async (
+      req: FastifyRequest<{ Querystring: { returnTo?: string; nonce?: string } }>,
+      reply: FastifyReply,
+    ) => {
       if (!configured()) {
         return reply.status(503).send({
           error: { code: 'NOT_CONFIGURED', message: 'Google-Anmeldung ist nicht eingerichtet.' },
@@ -142,12 +175,14 @@ const storefrontGoogleAuthRoutes: FastifyPluginAsync<{ env: Env }> = async (app,
       }
       const codeVerifier = randomToken();
       const codeChallenge = createHash('sha256').update(codeVerifier).digest('base64url');
+      const appNonce = sanitizeAppNonce(req.query.nonce);
       const payload: StatePayload = {
         state: randomToken(),
         codeVerifier,
         nonce: randomToken(),
         returnTo: sanitizeReturnTo(req.query.returnTo),
         exp: Date.now() + STATE_TTL_MS,
+        ...(appNonce ? { appNonce } : {}),
       };
       reply.setCookie(OAUTH_STATE_COOKIE, signState(payload, env.AUTH_SECRET), {
         path: OAUTH_STATE_PATH,
@@ -331,7 +366,54 @@ const storefrontGoogleAuthRoutes: FastifyPluginAsync<{ env: Env }> = async (app,
       }
 
       setShopperCookie(reply, session.token, session.expiresAt);
+
+      // Native shop app: park the session for the single-use claim and land the
+      // browser on a calm "return to the app" note instead of the web shop.
+      if (st.appNonce) {
+        sweepShopperHandoffs(Date.now());
+        shopperHandoffs.set(st.appNonce, {
+          token: session.token,
+          expiresAt: session.expiresAt.toISOString(),
+          createdAt: Date.now(),
+        });
+        return reply
+          .type('text/html; charset=utf-8')
+          .send(
+            '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">' +
+              '<body style="font-family:-apple-system,system-ui;display:grid;place-items:center;height:90vh;margin:0">' +
+              '<p style="max-width:26rem;text-align:center;font-size:1.05rem;line-height:1.5">' +
+              'Anmeldung erfolgreich. Du kannst dieses Fenster schließen und zur ' +
+              'Warehouse 14 App zurückkehren.</p></body>',
+          );
+      }
+
       return reply.redirect(`${base}${st.returnTo || '/konto'}`);
+    },
+  );
+
+  // ── POST /api/storefront/auth/google/claim ───────────────────────────
+  // The native shop app polls here with its nonce until the browser leg lands.
+  app.post(
+    '/api/storefront/auth/google/claim',
+    {
+      schema: {
+        tags: ['storefront'],
+        summary: 'Claim a completed native Google login (shop app).',
+        hide: true,
+      },
+    },
+    async (req: FastifyRequest<{ Body: { nonce?: string } }>, reply: FastifyReply) => {
+      const nonce = sanitizeAppNonce((req.body ?? {}).nonce);
+      if (!nonce) {
+        return reply
+          .status(400)
+          .send({ error: { code: 'BAD_REQUEST', message: 'nonce fehlt oder ist ungültig.' } });
+      }
+      sweepShopperHandoffs(Date.now());
+      const h = shopperHandoffs.get(nonce);
+      if (!h) return { ok: false as const, pending: true };
+      shopperHandoffs.delete(nonce); // single-use
+      return { ok: true as const, token: h.token, expiresAt: h.expiresAt };
     },
   );
 };

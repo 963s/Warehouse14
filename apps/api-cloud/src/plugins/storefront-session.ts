@@ -48,8 +48,20 @@ const storefrontSessionPlugin: FastifyPluginAsync = async (app) => {
     // req.actor from the staff auth plugin instead.
     if (!req.url.startsWith('/api/storefront/')) return;
 
-    // Read cookie (cookie plugin runs earlier in the registration order).
-    const token = (req.cookies as Record<string, string | undefined>)?.[STOREFRONT_COOKIE_NAME];
+    // Read the cookie (web shop) or, for the NATIVE shop app which has no
+    // cookie jar, a Bearer header. Same table, same TTL, same isolation —
+    // a shopper token never resolves on a staff route (this hook only runs
+    // under /api/storefront/) and the staff plugin never reads this header
+    // shape for shoppers.
+    const cookieToken = (req.cookies as Record<string, string | undefined>)?.[
+      STOREFRONT_COOKIE_NAME
+    ];
+    const authHeader = req.headers.authorization;
+    const bearerToken =
+      !cookieToken && typeof authHeader === 'string' && authHeader.startsWith('Bearer ')
+        ? authHeader.slice('Bearer '.length).trim()
+        : null;
+    const token = cookieToken ?? bearerToken;
     if (!token) {
       // Public storefront route → no requirement; protected route → requireShopper() will 401.
       return;
