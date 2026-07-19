@@ -31,6 +31,7 @@ import {
   ScanLine,
   Search,
   Settings,
+  ShieldCheck,
   Store,
   Trophy,
   UserPlus,
@@ -220,6 +221,15 @@ export const OWNER_SURFACES: readonly OwnerSurface[] = [
     description: "Rang, Serien und Siegel die ganze Geschichte aus echten Tagesabschlüssen.",
     icon: Trophy,
     group: "betrieb",
+    available: true,
+  },
+  {
+    id: "leitstand",
+    route: "/leitstand",
+    label: "Leitstand",
+    description: "Systemzustand, Risiko-Warnsignale und der Schutz am Rand in einem Blick.",
+    icon: ShieldCheck,
+    group: "system",
     available: true,
   },
 ] as const

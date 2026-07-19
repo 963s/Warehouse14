@@ -495,8 +495,22 @@ export default function CustomerDetailScreen() {
 
   // Honest „Verlauf": only the real audit milestones the endpoint carries (no
   // fabricated transaction log — the app has no per-customer history endpoint).
+  // Registration provenance — only when the (newer) server sends it; an older
+  // API simply omits the field and the row stays out, never guessed.
+  const registrationLabel =
+    customer.registration?.method === "GOOGLE"
+      ? "Mit Google registriert"
+      : customer.registration?.method === "EMAIL"
+        ? "Online registriert"
+        : customer.registration != null
+          ? "Im Geschäft angelegt"
+          : null
+
   const timeline: { label: string; value: string; active: boolean }[] = [
     { label: "Angelegt", value: isoToDe(customer.createdAt), active: true },
+    ...(registrationLabel != null
+      ? [{ label: "Registrierung", value: registrationLabel, active: true }]
+      : []),
     {
       label: "KYC erfasst",
       value: isoToDe(customer.kycCompletedAt),

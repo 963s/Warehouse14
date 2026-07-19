@@ -15,6 +15,7 @@
  * free functions taking the client first.
  */
 import {
+  ApiError,
   appraisalsApi,
   authPin,
   belegtextApi,
@@ -494,6 +495,92 @@ export function setCustomerTrust(
 // bridge/summary is the richest cents-based snapshot; dashboard/summary adds
 // pendingAppraisals + metal prices; closings give finalized daily revenue for
 // the "beat yesterday" quest + streak. No new backend — all already exist.
+// ── Leitstand (Risiko + Edge-Schutz + Systemzustand) ────────────────────────
+/** Alert rollup + customer watchlist (GET /api/risk/overview, ADMIN). */
+export interface RiskOverview {
+  windowDays: number
+  totalAlerts: number
+  alertCounts: Record<string, number>
+  recentAlerts: Array<{ id: string; eventType: string; createdAt: string }>
+  watchlist: { suspicious: number; banned: number; sanctions: number; pep: number }
+}
+
+/** Cloudflare edge rollup (GET /api/risk/edge) — env-gated, honest states. */
+export type RiskEdge =
+  | { configured: false }
+  | { configured: true; available: false }
+  | {
+      configured: true
+      available: true
+      windowDays: number
+      since: string
+      totalThreats: number
+      totalRequests: number
+      daily: Array<{ date: string; threats: number; requests: number }>
+      byCountry: Array<{ country: string; threats: number }>
+    }
+
+/** Owner system-health snapshot (GET /api/system/health) — mirrors the desktop
+ *  Leitstand wire contract. */
+export interface SystemHealth {
+  status: "ok" | "watch" | "alert"
+  computedAt: string
+  components: {
+    api: { status: "ok" | "watch" | "alert" }
+    database: {
+      status: "ok" | "watch" | "alert"
+      migrationsApplied: number | null
+      latestMigration: string | null
+    }
+    worker: {
+      status: "ok" | "watch" | "alert"
+      deadLetter: number
+      oldestDeadLetterAt: string | null
+      running: number
+      chainLastVerifiedAt: string | null
+    }
+    fiscal: {
+      status: "ok" | "watch" | "alert"
+      tseCertDaysRemaining: number | null
+      tseCertValidUntil: string | null
+    }
+    alerts: { status: "ok" | "watch" | "alert"; last24h: number; last7d: number }
+    edge: { status: "ok" | "unconfigured"; configured: boolean }
+  }
+  problems: Array<{
+    id: string
+    severity: "watch" | "alert"
+    title: string
+    detail: string
+    surface: string | null
+  }>
+}
+
+export function riskOverview(): Promise<RiskOverview> {
+  return apiClient.request<RiskOverview>("GET", "/api/risk/overview")
+}
+
+export function riskEdge(): Promise<RiskEdge> {
+  return apiClient.request<RiskEdge>("GET", "/api/risk/edge")
+}
+
+/**
+ * System health, tolerant of an OLDER server: the endpoint ships with the next
+ * server update, so a 404 (or a 403 from a not-yet-owner session) resolves to
+ * `null` and the Leitstand shows an honest "kommt mit dem Server-Update" line
+ * instead of a red error. Every other failure still throws (real error state).
+ */
+export async function systemHealthSafe(): Promise<SystemHealth | null> {
+  try {
+    return await apiClient.request<SystemHealth>("GET", "/api/system/health")
+  } catch (e) {
+    if (e instanceof ApiError && (e.code === "NOT_FOUND" || e.code === "FORBIDDEN")) {
+      return null
+    }
+    throw e
+  }
+}
+
 export function bridgeSummary(): Promise<BridgeSummary> {
   return bridgeApi.summary(apiClient)
 }
