@@ -59,6 +59,7 @@ const OrderDetail = Type.Intersect([
   Type.Object({
     items: Type.Array(
       Type.Object({
+        productId: Type.String(),
         name: Type.String(),
         unitPriceEur: Type.String(),
         quantity: Type.Integer(),
@@ -200,11 +201,12 @@ const storefrontOrdersRoutes: FastifyPluginAsync = async (app) => {
       if (!cart) throw new OrderNotFoundError('Order not found.');
 
       const lines = await app.db.execute<{
+        product_id: string;
         name: string;
         unit_price_eur: string;
         quantity: number;
       }>(drizzleSql`
-        SELECT p.name AS name, ci.unit_price_eur::text AS unit_price_eur, ci.quantity AS quantity
+        SELECT ci.product_id AS product_id, p.name AS name, ci.unit_price_eur::text AS unit_price_eur, ci.quantity AS quantity
           FROM cart_items ci
           JOIN products p ON p.id = ci.product_id
          WHERE ci.cart_id = ${id}
@@ -246,6 +248,7 @@ const storefrontOrdersRoutes: FastifyPluginAsync = async (app) => {
         shippingStatus: shippingStatusOf(cart.status),
         itemCount: lines.length,
         items: lines.map((l) => ({
+          productId: l.product_id,
           name: l.name,
           unitPriceEur: l.unit_price_eur,
           quantity: l.quantity,
