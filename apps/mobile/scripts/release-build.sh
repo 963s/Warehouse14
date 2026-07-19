@@ -337,7 +337,8 @@ build_update() {
   local badging
   badging=$("$bt/aapt" dump badging "$out_apk" 2>/dev/null | head -1)
   echo "  $badging"
-  echo "$badging" | grep -q "versionCode='7'" || { echo "❌ versionCode is not 7"; exit 1; }
+  expected_vc=$(python3 -c "import json; print(json.load(open('$MOBILE_DIR/app.json'))['android']['versionCode'])")
+  echo "$badging" | grep -q "versionCode='$expected_vc'" || { echo "❌ versionCode is not $expected_vc"; exit 1; }
   echo "$badging" | grep -q "versionName='1.0.6'" || { echo "❌ versionName is not 1.0.6"; exit 1; }
   # 3. Prod bake of both bundles.
   verify_bundle "Android APK" <(unzip -p "$out_apk" assets/index.android.bundle 2>/dev/null)
