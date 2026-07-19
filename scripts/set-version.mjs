@@ -33,6 +33,9 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
 
 const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/
 
+// The desktop apps under apps/<name>/ (control-desktop was removed 2026-07-19).
+const APPS = ["tauri-pos"]
+
 function paths(app) {
   const base = join(ROOT, "apps", app)
   return {
