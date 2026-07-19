@@ -18,6 +18,7 @@ import { type CSSProperties, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 
+import { ApiError } from '@warehouse14/api-client';
 import { DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
@@ -507,7 +508,11 @@ export function Leitstand(): JSX.Element {
   });
 
   const d = q.data;
-  const isForbidden = q.error instanceof Error && /403|forbidden|owner/i.test(q.error.message);
+  // Typed refusal checks — never sniff raw wire text (honesty gate).
+  const isForbidden = q.error instanceof ApiError && q.error.code === 'FORBIDDEN';
+  // An OLDER server (endpoint ships with the next deploy) answers 404 — say
+  // exactly that, calmly, instead of a generic failure.
+  const isMissing = q.error instanceof ApiError && q.error.code === 'NOT_FOUND';
 
   return (
     <div style={{ padding: 20, maxWidth: 1000 }}>
@@ -526,6 +531,16 @@ export function Leitstand(): JSX.Element {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <Dot tone="watch" />
             <p style={captionStyle}>Der Leitstand ist dem Inhaber vorbehalten.</p>
+          </div>
+        </ParchmentCard>
+      ) : isMissing ? (
+        <ParchmentCard tone="parchment" padding="lg" style={{ maxWidth: 1000 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Dot tone="watch" />
+            <p style={captionStyle}>
+              Der Systemzustand erscheint mit dem nächsten Server-Update. Risikoanalyse und
+              Schaufenster unten sind bereits erreichbar.
+            </p>
           </div>
         </ParchmentCard>
       ) : !d ? (

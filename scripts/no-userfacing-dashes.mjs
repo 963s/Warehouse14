@@ -20,7 +20,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const ROOTS = ['apps/tauri-pos/src', 'apps/control-desktop/src'];
+const ROOTS = ['apps/tauri-pos/src'];
 const EM = '—';
 const EN = '–';
 

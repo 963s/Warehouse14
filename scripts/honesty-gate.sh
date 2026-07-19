@@ -3,7 +3,7 @@
 # honesty-gate.sh — the desktop doctrine (a)/(b) leak counter.
 #
 # Greps the OPERATOR-FACING desktop source (apps/tauri-pos/src +
-# apps/control-desktop/src) for the frozen set of patterns that let a raw
+# for the frozen set of patterns that let a raw
 # machine string reach a human, or bake a dev URL into a shipped build:
 #
 #   err.message / error.message / j.error.message   — raw wire text to the UI
@@ -42,7 +42,6 @@ PATTERNS=(
 # a leak in a *.test.ts never reaches a human.
 SEARCH_DIRS=(
   "apps/tauri-pos/src"
-  "apps/control-desktop/src"
 )
 
 alt="$(IFS='|'; echo "${PATTERNS[*]}")"
@@ -67,7 +66,7 @@ if [ "$count" -gt 0 ]; then
 fi
 echo "  Total leaks: ${count}"
 echo "  Patterns:    err.message · error.message · j.error.message · ?? err · humanizeEnum · localhost:3001"
-echo "  Scope:       apps/tauri-pos/src + apps/control-desktop/src (excl. tests, .d.ts)"
+echo "  Scope:       apps/tauri-pos/src (excl. tests, .d.ts)"
 
 # Phase 2.1 complete — the sweep drove this to ZERO, so the gate is now STRICT by
 # DEFAULT: any reintroduced raw-error / token / dev-URL leak fails. Downgrade to

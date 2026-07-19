@@ -40,7 +40,7 @@ See [`docs/memory.md`](./docs/memory.md) for full project memory and [`docs/arch
 - **Node.js** >= 20.18.0 (see `.nvmrc`)
 - **pnpm** >= 9.15.0 (`npm install -g pnpm@9.15.0`)
 - **Docker** + Docker Compose (for local PostgreSQL & Redis, and production deploys to Oracle Cloud)
-- **Rust toolchain** — only required when working on `apps/pos-desktop` or `apps/control-desktop`
+- **Rust toolchain** — only required when working on `apps/tauri-pos`
 
 ---
 
@@ -76,7 +76,6 @@ warehouse14/
 │   ├── pos-desktop/         # Tauri 2 + React POS, in-shop (Chunk 0.4)
 │   ├── api-cloud/           # Fastify backend API (Chunk 0.3)
 │   ├── admin-web/           # Next.js admin dashboard (Phase 1+)
-│   ├── control-desktop/     # Tauri 2 wrapper for live owner control (Chunk 0.5)
 │   └── storefront/          # Next.js public storefront — warehouse14.de (Phase 2+)
 │
 ├── packages/                # Shared libraries

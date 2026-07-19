@@ -33,7 +33,6 @@ Stack: a pnpm + Turborepo monorepo, TypeScript strict throughout.
 | `apps/tauri-pos` | The desktop cashier (Tauri + React + Vite) for macOS/Windows — the main till. |
 | `apps/api-cloud` | The Fastify server — the brain. Deployed at `https://api.warehouse14.de`. |
 | `apps/worker` | Background jobs. |
-| `apps/control-desktop` | Operator/control surface. |
 | `packages/api-client` | The typed client over `api-cloud`, **shared** by mobile + cashier. The connection layer. |
 | `packages/domain` | Shared domain types/logic. |
 | `packages/db` | Drizzle schema + migrations. Build it first (`pnpm --filter @warehouse14/db build`) before a repo typecheck. |

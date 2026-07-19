@@ -120,7 +120,7 @@ function metric(
     title,
     kind,
     zielText,
-    valueText: axis.available ? valueText : '—',
+    valueText: axis.available ? valueText : '-',
     pctText: axis.available ? formatPct(ratio) : null,
     ratio,
     available: axis.available,

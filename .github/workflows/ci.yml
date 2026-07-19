@@ -64,7 +64,6 @@ jobs:
           filters: |
             desktop:
               - 'apps/tauri-pos/**'
-              - 'apps/control-desktop/**'
               - 'packages/**'
               - '.github/workflows/ci.yml'
 
@@ -80,7 +79,6 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             apps/tauri-pos/src-tauri/target
-            apps/control-desktop/src-tauri/target
           key: desktop-cargo-${{ hashFiles('apps/*/src-tauri/Cargo.lock') }}
           restore-keys: desktop-cargo-
 
@@ -118,14 +116,10 @@ jobs:
           pnpm --filter @warehouse14/ui-kit build
           pnpm --filter @warehouse14/api-client build
 
-      - name: cargo check (both apps)
+      - name: cargo check (tauri-pos)
         if: steps.changes.outputs.desktop == 'true'
-        run: |
-          cargo check --manifest-path apps/tauri-pos/src-tauri/Cargo.toml
-          cargo check --manifest-path apps/control-desktop/src-tauri/Cargo.toml
+        run: cargo check --manifest-path apps/tauri-pos/src-tauri/Cargo.toml
 
-      - name: tauri build --no-bundle (both apps)
+      - name: tauri build --no-bundle (tauri-pos)
         if: steps.changes.outputs.desktop == 'true'
-        run: |
-          pnpm --filter @warehouse14/tauri-pos exec tauri build --no-bundle
-          pnpm --filter @warehouse14/control-desktop exec tauri build --no-bundle
+        run: pnpm --filter @warehouse14/tauri-pos exec tauri build --no-bundle

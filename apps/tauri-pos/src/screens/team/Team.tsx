@@ -229,7 +229,7 @@ export function Team(): JSX.Element {
                   </td>
                   <td style={{ ...tdStyle, textAlign: 'right' }}>
                     {s.isOwner ? (
-                      <span style={captionStyle}>—</span>
+                      <span style={captionStyle}>-</span>
                     ) : (
                       <Button variant="ghost" size="sm" disabled={busy === s.id} onClick={() => void deactivate(s)}>
                         {busy === s.id ? '…' : 'Deaktivieren'}

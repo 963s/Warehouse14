@@ -936,7 +936,7 @@ export function GoalsScroll({ bars }: { bars: MonthlyBar[] }): JSX.Element {
                 )}
               </div>
               <span style={{ color: '#3b2f18', fontSize: 12.5, fontWeight: 800, width: 42, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontFamily: 'Georgia, serif' }}>
-                {b.available ? `${pct}%` : '—'}
+                {b.available ? `${pct}%` : '-'}
               </span>
             </div>
           );
@@ -1082,7 +1082,7 @@ export function TreasureMapPanel({ overall, available }: { overall: number; avai
           <rect x={-66} y={-22} width={132} height={42} rx={8} fill="#efe3c0" opacity={0.55} stroke="#9c7f42" strokeWidth={1} />
           <rect x={-61} y={-18} width={122} height={34} rx={6} fill="none" stroke="#b79a5e" strokeWidth={0.6} opacity={0.7} />
           <text x={0} y={4} fontSize={26} fontWeight={800} fill={available ? tone : '#8a7350'} textAnchor="middle" fontFamily="Georgia, serif">
-            {available ? `${pct}%` : '—'}
+            {available ? `${pct}%` : '-'}
           </text>
           <text x={0} y={16} fontSize={9} fontWeight={600} letterSpacing="0.12em" fill="#5a4626" textAnchor="middle">
             ZIELERREICHUNG

@@ -400,6 +400,7 @@ export const SURFACES: readonly SurfaceDescriptor[] = [
     description: 'Lebendige Instrumententafel der Hausziele: Umsatz, Bestand, Metalle, Gewinn.',
     tier: 'secondary',
     component: Zielkarte,
+    ownerOnly: true,
     searchAliases: ['ziel', 'ziele', 'zielkarte', 'instrumente', 'kennzahlen', 'gauges', 'dashboard'],
   },
   {
@@ -408,6 +409,7 @@ export const SURFACES: readonly SurfaceDescriptor[] = [
     description: 'Warnungen und Kunden-Beobachtungsliste aus den Geldwäsche-Meldern.',
     tier: 'secondary',
     component: Risikoanalyse,
+    ownerOnly: true,
     searchAliases: ['risiko', 'aml', 'gwg', 'sanktionen', 'pep', 'warnung', 'watchlist', 'compliance'],
   },
   {
@@ -416,6 +418,7 @@ export const SURFACES: readonly SurfaceDescriptor[] = [
     description: 'Wer vor dem Fenster steht: Besucher, Herkunft und Gesundheit des Ladens.',
     tier: 'secondary',
     component: Schaufenster,
+    ownerOnly: true,
     searchAliases: ['schaufenster', 'besucher', 'reichweite', 'webshop', 'laden', 'traffic', 'zugriffe', 'cloudflare'],
   },
   {
@@ -424,6 +427,7 @@ export const SURFACES: readonly SurfaceDescriptor[] = [
     description: 'Mitarbeiter freischalten, Rolle setzen, Zugang entziehen (Inhaber).',
     tier: 'secondary',
     component: Team,
+    ownerOnly: true,
     searchAliases: ['team', 'mitarbeiter', 'rollen', 'personal', 'staff', 'benutzer', 'zugang'],
   },
   // ── Tier 1 (#8) — the Owner Leitstand: system health, open problems, and the

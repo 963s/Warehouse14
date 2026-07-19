@@ -99,7 +99,7 @@ const inputStyle: CSSProperties = {
 };
 
 function formatDateTime(iso: string | null): string {
-  if (!iso) return '—';
+  if (!iso) return '-';
   return new Intl.DateTimeFormat('de-DE', {
     day: '2-digit',
     month: '2-digit',
@@ -307,7 +307,7 @@ export function ApiKeysSection(): JSX.Element {
                           {revoking === k.id ? '…' : 'Widerrufen'}
                         </Button>
                       ) : (
-                        <span style={captionStyle}>—</span>
+                        <span style={captionStyle}>-</span>
                       )}
                     </td>
                   </tr>
