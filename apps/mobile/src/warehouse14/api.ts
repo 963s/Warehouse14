@@ -295,6 +295,14 @@ export async function completeGoogleLogin(token: string, expiresAt: string): Pro
     if (!probe.ok || !probe.actor) throw new Error("SESSION_PROBE_FAILED")
     setSession({ token, actor: probe.actor, expiresAt: probe.expiresAt ?? expiresAt })
   } catch (e) {
+    // Best-effort: revoke the freshly minted server session before dropping the
+    // token, so a failed handoff never strands a live 30-day session nobody
+    // holds. The Bearer still resolves via the pending token at this point.
+    try {
+      await authPin.signOut(apiClient)
+    } catch {
+      // offline or already dead — the local wipe below is what matters.
+    }
     clearSession()
     throw e
   }

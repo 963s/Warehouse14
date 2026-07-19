@@ -29,12 +29,20 @@ function sha256Hex(s: string): Promise<string> {
   return Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, s)
 }
 
-/** Has a local code been set on this device? */
-export async function hasLocalPin(): Promise<boolean> {
+export type LocalPinState = "set" | "unset" | "error"
+
+/**
+ * Tri-state read of the device code. "unset" means the keystore ANSWERED with
+ * no value (first run — creating a code is legitimate); "error" means the read
+ * itself failed (transient Android keystore failures are real). The gate must
+ * FAIL CLOSED on "error": treating it as "unset" would let any holder of the
+ * phone set a fresh code over the owner's and walk in.
+ */
+export async function readLocalPinState(): Promise<LocalPinState> {
   try {
-    return (await SecureStore.getItemAsync(KEY)) !== null
+    return (await SecureStore.getItemAsync(KEY)) !== null ? "set" : "unset"
   } catch {
-    return false
+    return "error"
   }
 }
 

@@ -4,19 +4,21 @@
  *
  * Wraps the authenticated app. A valid Google session is NOT enough to open the
  * shell: the device is locked on every cold start and whenever the app returns
- * from the background, and the owner must enter the per-device code (or set one
- * on first use). The code never leaves the phone (see `local-lock.ts`); it only
- * gates re-entry so a grabbed unlocked phone cannot walk straight in.
+ * from the background. Unlocking asks for the phone's BIOMETRICS first
+ * (fingerprint / face, owner directive) with the per-device code as the honest
+ * fallback — set on first use, never sent to the server (see `local-lock.ts`).
+ * On a phone without enrolled biometrics the code alone gates re-entry.
  *
  * When there is no session the gate is transparent (the root redirect shows the
  * login screen). "Abmelden" here runs the full sign-out cascade.
  */
+import * as LocalAuthentication from "expo-local-authentication"
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { AppState, Pressable, ScrollView, View } from "react-native"
 
 import { Text } from "@/components/ui/text"
 import { signOut } from "@/warehouse14/api"
-import { clearLocalPin, hasLocalPin, setLocalPin, verifyLocalPin } from "@/warehouse14/local-lock"
+import { clearLocalPin, readLocalPinState, setLocalPin, verifyLocalPin } from "@/warehouse14/local-lock"
 import { clearSession, useSession } from "@/warehouse14/session"
 import { useW14Theme } from "@/warehouse14/theme"
 import { haptics, PaperGrain, useScreenInsets } from "@/warehouse14/ui"
@@ -38,16 +40,91 @@ function LocalLock({ onUnlock }: { onUnlock: () => void }): ReactNode {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [errorNonce, setErrorNonce] = useState(0)
+  /** The secure store did not ANSWER (read failed) — fail closed in verify. */
+  const [storeUnreadable, setStoreUnreadable] = useState(false)
 
   useEffect(() => {
     let alive = true
-    void hasLocalPin().then((has) => {
-      if (alive) setMode(has ? "verify" : "create")
+    void readLocalPinState().then((state) => {
+      if (!alive) return
+      // FAIL CLOSED: only a keystore that genuinely answered "no value" may
+      // offer to create a code. A read ERROR stays in verify — biometrics (which
+      // never touch the stored hash) still unlock; a fresh create would let any
+      // holder of the phone set their own code over the owner's.
+      if (state === "unset") {
+        setMode("create")
+      } else {
+        setMode("verify")
+        if (state === "error") setStoreUnreadable(true)
+      }
     })
     return () => {
       alive = false
     }
   }, [])
+
+  // Biometrics (owner directive): once a code exists, the lock ASKS for the
+  // phone's fingerprint / face first — the code pad stays as the fallback.
+  // `disableDeviceFallback` keeps the OS from substituting the phone PIN; our
+  // own device code is the only fallback. On failure or cancel the pad is
+  // simply there, plus a retry button. Never fabricated: the button renders
+  // only when hardware + an enrolled biometric genuinely exist.
+  const [bioReady, setBioReady] = useState(false)
+  const bioPrompted = useRef(false)
+  const promptBiometric = useCallback(async () => {
+    try {
+      const res = await LocalAuthentication.authenticateAsync({
+        promptMessage: "Warehouse 14 entsperren",
+        cancelLabel: "Code verwenden",
+        disableDeviceFallback: true,
+      })
+      if (res.success) {
+        haptics.success()
+        onUnlock()
+      }
+    } catch {
+      // hardware hiccup → the code pad is already on screen; nothing to fake.
+    }
+  }, [onUnlock])
+
+  useEffect(() => {
+    if (mode !== "verify") return
+    let alive = true
+    // The relock fires on the "background" event, so this component usually
+    // MOUNTS while the app is invisible. A biometric sheet cannot show from the
+    // background — prompting there would silently consume the one auto-ask and
+    // the owner would return to a dead pad. So: auto-prompt immediately only
+    // when already active, otherwise arm a listener and ask the moment the app
+    // is back in the foreground.
+    let detected = false
+    const tryAutoPrompt = (): void => {
+      if (!alive || !detected || bioPrompted.current) return
+      if (AppState.currentState !== "active") return
+      bioPrompted.current = true
+      void promptBiometric()
+    }
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") tryAutoPrompt()
+    })
+    void (async () => {
+      try {
+        const [hw, enrolled] = await Promise.all([
+          LocalAuthentication.hasHardwareAsync(),
+          LocalAuthentication.isEnrolledAsync(),
+        ])
+        if (!alive || !hw || !enrolled) return
+        detected = true
+        setBioReady(true)
+        tryAutoPrompt()
+      } catch {
+        // detection failed → code-only, honestly.
+      }
+    })()
+    return () => {
+      alive = false
+      sub.remove()
+    }
+  }, [mode, promptBiometric])
 
   const fail = useCallback((message: string) => {
     haptics.error()
@@ -85,6 +162,10 @@ function LocalLock({ onUnlock }: { onUnlock: () => void }): ReactNode {
           setFirstCode(null)
           fail("Die Codes stimmen nicht überein. Bitte neu vergeben.")
         }
+      } catch {
+        // A keystore write (create) or digest (verify) failure must never be a
+        // silent dead end: clear the row, say what happened, stay locked.
+        fail("Der sichere Speicher hat nicht geantwortet. Bitte erneut versuchen.")
       } finally {
         setBusy(false)
       }
@@ -138,7 +219,11 @@ function LocalLock({ onUnlock }: { onUnlock: () => void }): ReactNode {
       ? firstCode === null
         ? "Vergib einen Code für dieses Gerät."
         : "Zur Bestätigung erneut eingeben."
-      : "Zum Entsperren den Gerätecode eingeben.")
+      : storeUnreadable
+        ? "Der sichere Speicher ist gerade nicht lesbar. Biometrisch entsperren oder abmelden."
+        : bioReady
+          ? "Mit Fingerabdruck oder Gesicht entsperren, oder den Gerätecode eingeben."
+          : "Zum Entsperren den Gerätecode eingeben.")
 
   return (
     <View className="bg-background flex-1">
@@ -187,6 +272,20 @@ function LocalLock({ onUnlock }: { onUnlock: () => void }): ReactNode {
             disabled={busy || mode === "loading"}
           />
 
+          {mode === "verify" && bioReady && (
+            <Pressable
+              onPress={() => void promptBiometric()}
+              accessibilityRole="button"
+              hitSlop={8}
+              className="px-4 py-2"
+              style={({ pressed }) => (pressed ? { opacity: 0.6 } : null)}
+            >
+              <Text className="text-foreground text-center text-sm font-semibold">
+                Biometrisch entsperren
+              </Text>
+            </Pressable>
+          )}
+
           <Pressable
             onPress={() => void onSignOut()}
             accessibilityRole="button"
@@ -207,11 +306,14 @@ export function LocalLockGate({ children }: { children: ReactNode }): ReactNode 
   // Locked on every cold start; the gate is only consulted while authenticated.
   const [unlocked, setUnlocked] = useState(false)
 
-  // Re-lock whenever the app returns from the background — the mobile equivalent
-  // of the desktop's idle re-lock, and stricter: leaving the app re-arms the code.
+  // Re-lock whenever the app genuinely leaves the foreground — the mobile
+  // equivalent of the desktop's idle re-lock, and stricter: leaving the app
+  // re-arms the lock. Deliberately "background" only: iOS fires "inactive" for
+  // transient overlays (control centre, the Face-ID sheet itself), which would
+  // thrash the lock without any real departure. Android has no "inactive".
   useEffect(() => {
     const sub = AppState.addEventListener("change", (state) => {
-      if (state === "background" || state === "inactive") setUnlocked(false)
+      if (state === "background") setUnlocked(false)
     })
     return () => sub.remove()
   }, [])

@@ -54,6 +54,16 @@ module.exports = ({ config }: ConfigContext): Partial<ExpoConfig> => {
       // device-lock hash in the Keychain / Keystore.
       "expo-web-browser",
       "expo-secure-store",
+      // Device biometric unlock (owner directive: opening the system asks for
+      // biometrics on top of the Google identity). Injects USE-BIOMETRIC on
+      // Android and the Face-ID usage string on iOS.
+      [
+        "expo-local-authentication",
+        {
+          faceIDPermission:
+            "Warehouse 14 nutzt Face ID, um die App nur für dich zu entsperren.",
+        },
+      ],
     ],
   }
 }

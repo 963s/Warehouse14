@@ -14,6 +14,13 @@ import type { SessionActor } from "@warehouse14/api-client"
 let token: string | null = null
 let actor: SessionActor | null = null
 let expiresAt: string | null = null
+/**
+ * A token held ONLY for the in-flight login probe (Bearer plumbing), invisible
+ * to `hasSession`. Keeping it out of `token` means no component that happens to
+ * re-render mid-handoff can see a half-authenticated state and flip the auth
+ * gate before the probe has delivered the actor.
+ */
+let pendingToken: string | null = null
 const listeners = new Set<() => void>()
 
 /** Keychain / Keystore key for the persisted session (survives cold start). */
@@ -35,19 +42,20 @@ function persist(): void {
   }
 }
 
-/** Plain getter for the api-client getAuthToken callback (non-React). */
+/** Plain getter for the api-client getAuthToken callback (non-React). The
+ *  pending login-probe token rides here too, so the probe carries its Bearer. */
 export function getSessionToken(): string | null {
-  return token
+  return token ?? pendingToken
 }
 
 /**
- * Store ONLY the bearer token, without notifying subscribers — so an in-flight
- * `GET /api/auth/session` probe is authorized WITHOUT flipping the auth gate
- * mid-handoff. Used by the Google login: token arrives first, the actor is
- * probed next, then `setSession` emits. Rolls back via `clearSession` on failure.
+ * Hold the bearer token for the in-flight login probe ONLY. It feeds
+ * `getSessionToken` (so `GET /api/auth/session` is authorized) but never
+ * `hasSession` — the auth gate cannot flip until `setSession` delivers the
+ * actor. Rolled back via `clearSession` on failure.
  */
 export function setAuthTokenSilently(t: string): void {
-  token = t
+  pendingToken = t
 }
 
 /**
@@ -85,6 +93,7 @@ export function setSession(next: { token: string; actor: SessionActor; expiresAt
   if (token === next.token && actor?.id === next.actor.id && expiresAt === next.expiresAt) {
     return
   }
+  pendingToken = null
   token = next.token
   actor = next.actor
   expiresAt = next.expiresAt
@@ -93,6 +102,7 @@ export function setSession(next: { token: string; actor: SessionActor; expiresAt
 }
 
 export function clearSession(): void {
+  pendingToken = null
   if (token === null && actor === null && expiresAt === null) return
   token = null
   actor = null

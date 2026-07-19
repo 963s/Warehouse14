@@ -261,12 +261,98 @@ build_aab() {
   cd "$MOBILE_DIR"
 }
 
+# ── Android: UPDATE artifacts (.apk + .aab, upload-key-signed) ────────────────
+# For shipping an IN-PLACE UPDATE of the installed owner app: Android only
+# installs over an existing app when the signature matches and versionCode is
+# higher. The stock assembleRelease signs with the DEBUG cert (build.gradle
+# signingConfigs.debug), which can never update the released app — so this
+# target signs the APK with the UPLOAD key via Gradle's injected-signing
+# properties, produces the Play .aab from the SAME prebuild, and hard-verifies
+# cert digest, versionCode, the biometric permission, the deep-link scheme and
+# the prod bake before declaring success.
+build_update() {
+  echo "=== Android UPDATE build (.apk + .aab, upload-key-signed, prod-baked) ==="
+  export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
+  export JAVA_HOME="${JAVA_HOME:-/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home}"
+  local SIGN_ENV="${W14_SIGNING_ENV:-$HOME/Desktop/onlineApps/keystores/warehouse14-play-signing.env}"
+  [ -f "$SIGN_ENV" ] || { echo "❌ signing env not found: $SIGN_ENV"; exit 1; }
+  set -a; . "$SIGN_ENV"; set +a
+  [ -f "$W14_UPLOAD_STORE_FILE" ] || { echo "❌ keystore not found: $W14_UPLOAD_STORE_FILE"; exit 1; }
+
+  rm -rf android
+  npx expo prebuild --platform android --clean
+
+  # Manifest sanity BEFORE the long gradle run: the OAuth deep-link scheme and
+  # the biometric permission must have been injected by the config plugins.
+  local manifest=android/app/src/main/AndroidManifest.xml
+  grep -q 'android:scheme="warehouse14"' "$manifest" \
+    || { echo "❌ warehouse14 scheme missing from the manifest"; exit 1; }
+  grep -q 'USE_BIOMETRIC' "$manifest" \
+    || { echo "❌ USE_BIOMETRIC missing (expo-local-authentication plugin did not run)"; exit 1; }
+  echo "✓ manifest: warehouse14 scheme + USE_BIOMETRIC present"
+
+  cd android
+  ./gradlew :app:assembleRelease :app:bundleRelease --no-daemon \
+    -Pandroid.injected.signing.store.file="$W14_UPLOAD_STORE_FILE" \
+    -Pandroid.injected.signing.store.password="$W14_UPLOAD_STORE_PASSWORD" \
+    -Pandroid.injected.signing.key.alias="$W14_UPLOAD_KEY_ALIAS" \
+    -Pandroid.injected.signing.key.password="$W14_UPLOAD_KEY_PASSWORD" \
+    2>&1 | tail -4
+  local apk aab
+  apk=$(find . -name "*.apk" -path "*release*" 2>/dev/null | head -1)
+  aab=$(find . -name "*.aab" -path "*release*" 2>/dev/null | head -1)
+  { [ -n "$apk" ] && [ -n "$aab" ]; } || { echo "❌ missing artifact (apk='$apk' aab='$aab')"; exit 1; }
+  local out_apk="$DESKTOP_OUT/Warehouse14-Admin-update.apk"
+  local out_aab="$DESKTOP_OUT/Warehouse14-Admin.aab"
+  cp "$apk" "$out_apk"
+  cp "$aab" "$out_aab"
+
+  # Injected signing covers APK assembly only — sign the .aab explicitly with
+  # the same upload key (identical to the aab target).
+  "$JAVA_HOME/bin/jarsigner" -keystore "$W14_UPLOAD_STORE_FILE" \
+    -storepass "$W14_UPLOAD_STORE_PASSWORD" -keypass "$W14_UPLOAD_KEY_PASSWORD" \
+    -sigalg SHA256withRSA -digestalg SHA-256 "$out_aab" "$W14_UPLOAD_KEY_ALIAS" >/dev/null 2>&1
+  "$JAVA_HOME/bin/jarsigner" -verify "$out_aab" 2>&1 | grep -q 'jar verified' \
+    || { echo "❌ .aab failed signature verification"; exit 1; }
+  echo "  → $out_aab (jar verified, upload key)"
+
+  # ── Hard verification of the UPDATE .apk ───────────────────────────────────
+  local bt
+  bt=$(ls -d "$ANDROID_HOME/build-tools/"* 2>/dev/null | sort -V | tail -1)
+  [ -n "$bt" ] || { echo "❌ no Android build-tools found"; exit 1; }
+  # 1. The APK's signer must be the SAME cert as the upload keystore — derive
+  #    the expected digest from the keystore itself, never hardcoded.
+  local expected got
+  expected=$("$JAVA_HOME/bin/keytool" -exportcert -keystore "$W14_UPLOAD_STORE_FILE" \
+    -alias "$W14_UPLOAD_KEY_ALIAS" -storepass "$W14_UPLOAD_STORE_PASSWORD" 2>/dev/null \
+    | shasum -a 256 | cut -d' ' -f1)
+  got=$("$bt/apksigner" verify --print-certs "$out_apk" 2>/dev/null \
+    | grep -i 'SHA-256' | head -1 | sed 's/.*: //' | tr -d ' ' | tr 'A-F' 'a-f')
+  if [ -z "$expected" ] || [ "$expected" != "$got" ]; then
+    echo "❌ APK signer mismatch (expected $expected, got $got) — this would NOT install as an update" >&2
+    exit 1
+  fi
+  echo "  ✓ APK signed with the upload key ($got)"
+  # 2. versionCode / versionName from the artifact itself.
+  local badging
+  badging=$("$bt/aapt" dump badging "$out_apk" 2>/dev/null | head -1)
+  echo "  $badging"
+  echo "$badging" | grep -q "versionCode='7'" || { echo "❌ versionCode is not 7"; exit 1; }
+  echo "$badging" | grep -q "versionName='1.0.6'" || { echo "❌ versionName is not 1.0.6"; exit 1; }
+  # 3. Prod bake of both bundles.
+  verify_bundle "Android APK" <(unzip -p "$out_apk" assets/index.android.bundle 2>/dev/null)
+  verify_bundle "Android AAB" <(unzip -p "$out_aab" base/assets/index.android.bundle 2>/dev/null)
+  echo "  → $out_apk"
+  cd "$MOBILE_DIR"
+}
+
 case "${1:-all}" in
   ios) build_ios ;;
   android) build_android ;;
   aab|playstore) build_aab ;;
+  update) build_update ;;
   all) build_ios; build_android ;;
-  *) echo "usage: $0 {ios|android|aab|all}"; exit 1 ;;
+  *) echo "usage: $0 {ios|android|aab|update|all}"; exit 1 ;;
 esac
 
 echo ""
