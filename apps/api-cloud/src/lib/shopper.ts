@@ -31,6 +31,8 @@ export interface Shopper {
   preferredLanguage: 'de' | 'en' | 'ar';
   /** True when locked_until is in the future. */
   locked: boolean;
+  /** Guest shopper (0085) — synthetic identity minted on the first cart action. */
+  isGuest: boolean;
 }
 
 export interface ShopperSessionRow {
@@ -92,6 +94,7 @@ export async function loadShopperBySession(
       emailVerifiedAt: shoppers.emailVerifiedAt,
       preferredLanguage: shoppers.preferredLanguage,
       lockedUntil: shoppers.lockedUntil,
+      isGuest: shoppers.isGuest,
     })
     .from(shopperSessions)
     .innerJoin(shoppers, eq(shoppers.id, shopperSessions.shopperId))
@@ -115,6 +118,7 @@ export async function loadShopperBySession(
       emailVerified: row.emailVerifiedAt !== null,
       preferredLanguage: (row.preferredLanguage as 'de' | 'en' | 'ar') ?? 'de',
       locked,
+      isGuest: row.isGuest,
     },
     session: {
       id: row.sessionId,

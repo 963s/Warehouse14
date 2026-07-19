@@ -22,7 +22,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { Type } from '@sinclair/typebox';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql as drizzleSql } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 
 import { cartItems, carts } from '@warehouse14/db/schema';
@@ -68,8 +68,26 @@ const ReserveResponse = Type.Object({
   itemCount: Type.Integer(),
 });
 
+/**
+ * Pickup contact. REQUIRED for guest shoppers (their customer row is the
+ * synthetic "Gast" — without this, staff would see an anonymous reservation
+ * and could not hold or hand over the goods). Optional for registered
+ * shoppers, whose account identity already covers it; when a registered
+ * shopper sends it anyway we still refresh their customer contact.
+ */
+const ReserveBody = Type.Object({
+  contact: Type.Optional(
+    Type.Object({
+      fullName: Type.String({ minLength: 2, maxLength: 200 }),
+      email: Type.Optional(Type.String({ format: 'email', maxLength: 320 })),
+      phone: Type.Optional(Type.String({ minLength: 5, maxLength: 40 })),
+    }),
+  ),
+});
+type TReserveBody = { contact?: { fullName: string; email?: string; phone?: string } };
+
 const storefrontReserveRoutes: FastifyPluginAsync = async (app) => {
-  app.post(
+  app.post<{ Body: TReserveBody }>(
     '/api/storefront/cart/reserve',
     {
       schema: {
@@ -79,7 +97,9 @@ const storefrontReserveRoutes: FastifyPluginAsync = async (app) => {
           'Holds every item (inventory-lock channel=WEB_RESERVATION, 3-day TTL) and ' +
           'flips the cart ACTIVE → RESERVED. Emits a web_order.reserved ledger event so ' +
           'staff see it live. No payment and no fiscal transaction — the sale is completed ' +
-          'in the shop via the POS.',
+          'in the shop via the POS. Guests MUST send the pickup contact; it is written ' +
+          'onto their customers row so staff see a real name.',
+        body: ReserveBody,
         response: {
           200: ReserveResponse,
           400: ErrorResponse,
@@ -91,6 +111,21 @@ const storefrontReserveRoutes: FastifyPluginAsync = async (app) => {
     },
     async (req, reply) => {
       requireShopper(req);
+
+      // Guests reserve with a REAL pickup contact or not at all.
+      const contact = req.body?.contact;
+      if (req.shopper.isGuest && !contact) {
+        throw new ReserveValidationError(
+          'Guest reservations require a pickup contact (fullName, email or phone).',
+          { missing: 'contact' },
+        );
+      }
+      if (req.shopper.isGuest && contact && !contact.email && !contact.phone) {
+        throw new ReserveValidationError(
+          'Guest reservations need at least one way to reach you (email or phone).',
+          { missing: 'contact.email|contact.phone' },
+        );
+      }
 
       const [cart] = await app.db
         .select({ id: carts.id })
@@ -142,6 +177,24 @@ const storefrontReserveRoutes: FastifyPluginAsync = async (app) => {
           ),
         );
         throw err;
+      }
+
+      // Write the pickup contact onto the linked customers row BEFORE flipping
+      // the cart, so the staff ledger event already points at a real name.
+      // For guests this replaces the synthetic "Gast"; for registered shoppers
+      // it refreshes their contact. customers.email has no uniqueness
+      // constraint, so this can never collide with an existing account.
+      if (contact) {
+        await app.withPii(async (tx) => {
+          await tx.execute(drizzleSql`
+          UPDATE customers
+             SET full_name_encrypted = encrypt_pii(${contact.fullName}),
+                 email_encrypted     = ${contact.email ? drizzleSql`encrypt_pii(${contact.email})` : drizzleSql`email_encrypted`},
+                 phone_encrypted     = ${contact.phone ? drizzleSql`encrypt_pii(${contact.phone})` : drizzleSql`phone_encrypted`},
+                 updated_at          = now()
+           WHERE id = ${req.shopper.customerId}
+        `);
+        });
       }
 
       // Flip the cart to RESERVED — the 0068 trigger emits the live staff event.

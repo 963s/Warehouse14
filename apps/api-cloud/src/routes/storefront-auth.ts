@@ -134,6 +134,10 @@ const storefrontAuthRoutes: FastifyPluginAsync = async (app) => {
 
       // 3. Insert customer + shopper in ONE transaction inside withPii.
       //    The encrypted email + blind index require warehouse14.pii_key.
+      //    GUEST UPGRADE (0085): when the request carries a live GUEST session,
+      //    upgrade that shopper row IN PLACE instead of inserting a new one —
+      //    the guest's cart keys on shoppers.id, so it survives registration.
+      const guestShopperId = req.shopper?.isGuest ? req.shopper.id : null;
       const result = await app.withPii(async (tx) => {
         // 3a. Reject if an active shopper already uses this email.
         const existing = await tx.execute<{ id: string }>(drizzleSql`
@@ -144,6 +148,50 @@ const storefrontAuthRoutes: FastifyPluginAsync = async (app) => {
       `);
         if (existing[0]) {
           throw new ShopperConflictError('Email already registered.');
+        }
+
+        if (guestShopperId) {
+          // In-place upgrade: real identity onto the guest row, keep the id.
+          const phoneEncU = body.phone ? drizzleSql`encrypt_pii(${body.phone})` : drizzleSql`NULL`;
+          const phoneBlindU = body.phone ? drizzleSql`blind_index(${body.phone})` : drizzleSql`NULL`;
+          const upgraded = await tx.execute<{ id: string; customer_id: string }>(drizzleSql`
+          UPDATE shoppers
+             SET email_encrypted    = encrypt_pii(${body.email}),
+                 email_blind_index  = blind_index(${body.email}),
+                 password_hash      = ${passwordHash},
+                 is_guest           = FALSE,
+                 phone_encrypted    = ${phoneEncU},
+                 phone_blind_index  = ${phoneBlindU},
+                 preferred_language = ${body.preferredLanguage ?? 'de'},
+                 marketing_consent  = ${body.marketingConsent ?? false},
+                 marketing_consent_at = ${body.marketingConsent ? drizzleSql`now()` : drizzleSql`NULL`},
+                 updated_at         = now()
+           WHERE id = ${guestShopperId} AND is_guest
+           RETURNING id, customer_id
+        `);
+          const up = upgraded[0];
+          if (up) {
+            await tx.execute(drizzleSql`
+            UPDATE customers
+               SET full_name_encrypted = encrypt_pii(${body.fullName}),
+                   email_encrypted     = encrypt_pii(${body.email}),
+                   updated_at          = now()
+             WHERE id = ${up.customer_id}
+          `);
+            // Fresh session for the fresh identity (the guest session stays
+            // valid until expiry but now resolves to a registered shopper).
+            const token = newSessionToken();
+            const expiresAt = new Date(Date.now() + SHOPPER_SESSION_TTL_MS);
+            await tx.insert(shopperSessions).values({
+              shopperId: up.id,
+              token,
+              expiresAt,
+              ipAddress: (req.ip ?? null) as never,
+              userAgent: req.headers['user-agent'] ?? null,
+            });
+            return { shopperId: up.id, customerId: up.customer_id, token, expiresAt };
+          }
+          // Guest row vanished mid-flight — fall through to a normal insert.
         }
 
         // 3b. Create the customer (KYC-track).

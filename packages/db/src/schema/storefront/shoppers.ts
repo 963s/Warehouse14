@@ -45,6 +45,12 @@ export const shoppers = pgTable(
     passwordHash: text('password_hash'),
     /** Google's stable subject id (`sub`); NULL for password-only accounts. */
     googleSub: text('google_sub'),
+    /**
+     * Guest shopper (0085): minted lazily on the first cart action, synthetic
+     * email, NO credential. Upgraded in place on email sign-up (cart
+     * survives); real contact lands on the customers row at reservation.
+     */
+    isGuest: boolean('is_guest').notNull().default(false),
 
     emailVerifiedAt: timestamp('email_verified_at', { withTimezone: true }),
     emailVerificationToken: text('email_verification_token'),
@@ -117,8 +123,11 @@ export const shoppers = pgTable(
     ),
     hasCredential: check(
       'shoppers_has_credential',
-      sql`${table.passwordHash} IS NOT NULL OR ${table.googleSub} IS NOT NULL`,
+      sql`${table.passwordHash} IS NOT NULL OR ${table.googleSub} IS NOT NULL OR ${table.isGuest}`,
     ),
+    guestCreatedIdx: index('shoppers_guest_created_idx')
+      .on(table.createdAt)
+      .where(sql`${table.isGuest}`),
   }),
 );
 

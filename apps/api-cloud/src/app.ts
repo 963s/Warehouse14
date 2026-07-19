@@ -114,6 +114,7 @@ import storefrontAuthRoutes from './routes/storefront-auth.js';
 import storefrontCartRoutes from './routes/storefront-cart.js';
 // Phase 2.A — Storefront catalog (public read-only) + MCP server
 import storefrontCatalogRoutes from './routes/storefront-catalog.js';
+import storefrontGuestRoutes from './routes/storefront-guest.js';
 import storefrontOrdersRoutes from './routes/storefront-orders.js';
 import storefrontReserveRoutes from './routes/storefront-reserve.js';
 import storefrontWebhookRoutes from './routes/storefront-webhook.js';
@@ -274,6 +275,7 @@ export async function buildApp(opts: BuildAppOpts): Promise<FastifyInstance> {
   await app.register(sseLedger);
   // ── Day 19: storefront commerce ────────────────────────────────────
   await app.register(storefrontAuthRoutes);
+  await app.register(storefrontGuestRoutes);
   await app.register(storefrontGoogleAuthRoutes, { env: opts.env });
   await app.register(storefrontCartRoutes, { env: opts.env });
   await app.register(storefrontReserveRoutes);

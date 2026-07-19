@@ -29,6 +29,7 @@ const STOREFRONT_PUBLIC_PREFIXES = [
   '/api/storefront/auth/sign-in',
   '/api/storefront/auth/google', // OAuth start + callback — no shopper cookie yet.
   '/api/storefront/catalog',
+  '/api/storefront/session/guest', // guest mint — creates the session itself.
 ] as const;
 
 /**
