@@ -5,7 +5,6 @@
 // tauri.conf.json is CANONICAL: the auto-updater compares the Tauri version, so
 // that is the number that decides whether an installed copy sees an update. This
 // script keeps package.json and Cargo.toml in lock-step with it, for BOTH
-// desktop apps (tauri-pos + control-desktop).
 //
 // Modes:
 //   node scripts/set-version.mjs 1.0.0     Set all three files (package.json,
@@ -31,7 +30,6 @@ import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
-const APPS = ["tauri-pos", "control-desktop"]
 
 const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/
 

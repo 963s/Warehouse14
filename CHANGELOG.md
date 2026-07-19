@@ -6,6 +6,8 @@ and the project adheres to [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-07-19
+
 - Vierzehn wird ausführend: Der Assistent kann Artikel jetzt nicht nur anlegen, sondern auch ändern („ändere den Preis der Taschenuhr auf 450") und Entwürfe löschen, immer mit lautem Zurücklesen und erst nach einem gesprochenen Ja, mit vollem Vorher/Nachher im Tagebuch. Seine Grenzen bleiben hart: nur Ware, niemals Einkaufspreis, Steuer, Status-Schalter, Geldpfade oder System.
 - Die Foto-Brücke: Auf dem Telefon gibt es den neuen „Fotoeingang", der Ware direkt vom Regal an Vierzehn sendet. An der Kasse zeigt der Assistent die angekommenen Bilder als Vorschau und hängt sie auf Zuruf an den diktierten Artikel („leg ein Produkt an, mit den drei neuen Fotos"), das erste wird automatisch das Hauptfoto. Ein gelöschter Entwurf gibt seine Fotos in den Eingang zurück, nichts geht verloren.
 
