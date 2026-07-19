@@ -339,7 +339,8 @@ build_update() {
   echo "  $badging"
   expected_vc=$(python3 -c "import json; print(json.load(open('$MOBILE_DIR/app.json'))['android']['versionCode'])")
   echo "$badging" | grep -q "versionCode='$expected_vc'" || { echo "❌ versionCode is not $expected_vc"; exit 1; }
-  echo "$badging" | grep -q "versionName='1.0.6'" || { echo "❌ versionName is not 1.0.6"; exit 1; }
+  expected_vn=$(python3 -c "import json; print(json.load(open('$MOBILE_DIR/app.json'))['version'])")
+  echo "$badging" | grep -q "versionName='$expected_vn'" || { echo "❌ versionName is not $expected_vn"; exit 1; }
   # 3. Prod bake of both bundles.
   verify_bundle "Android APK" <(unzip -p "$out_apk" assets/index.android.bundle 2>/dev/null)
   verify_bundle "Android AAB" <(unzip -p "$out_aab" base/assets/index.android.bundle 2>/dev/null)
