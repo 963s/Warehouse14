@@ -237,9 +237,10 @@ export const products = pgTable(
     reservationTtlPerChannel: check(
       'products_reservation_ttl_per_channel',
       sql`${table.status} <> 'RESERVED' OR (
-        (${table.reservedByChannel} = 'POS'        AND ${table.reservationExpiresAt} IS NULL) OR
-        (${table.reservedByChannel} = 'STOREFRONT' AND ${table.reservationExpiresAt} IS NOT NULL) OR
-        (${table.reservedByChannel} = 'EBAY'       AND ${table.reservationExpiresAt} IS NOT NULL)
+        (${table.reservedByChannel} = 'POS'             AND ${table.reservationExpiresAt} IS NULL) OR
+        (${table.reservedByChannel} = 'STOREFRONT'      AND ${table.reservationExpiresAt} IS NOT NULL) OR
+        (${table.reservedByChannel} = 'EBAY'            AND ${table.reservationExpiresAt} IS NOT NULL) OR
+        (${table.reservedByChannel} = 'WEB_RESERVATION' AND ${table.reservationExpiresAt} IS NOT NULL)
       )`,
     ),
     soldHasSoldAt: check(
