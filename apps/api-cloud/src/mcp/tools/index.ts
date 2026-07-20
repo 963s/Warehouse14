@@ -10,6 +10,7 @@
 
 import type { ToolRegistration } from '../types.js';
 import { agendaTool } from './agenda.js';
+import { analyzeInboxPhotosTool } from './analyze-inbox-photos.js';
 import { attachPhotosTool } from './attach-photos.js';
 import { appraiseEstateItemTool } from './appraise-estate-item.js';
 import { channelsOverviewTool } from './channels-overview.js';
@@ -50,8 +51,9 @@ export const MCP_TOOLS: ReadonlyArray<ToolRegistration> = [
   channelsOverviewTool,
   agendaTool,
   // ── Jarvis deliberate writes (safe by construction) ──────────────
-  // create_product only ever makes a DRAFT (never fiscal); open_dev_ticket only
-  // records an internal task. Both are guarded + audited.
+  // create_product makes a DRAFT by default; activate/publishToWeb are explicit
+  // opt-ins gated on spoken confirmation (never fiscal either way).
+  // open_dev_ticket only records an internal task. All guarded + audited.
   createProductTool,
   openDevTicketTool,
   // ── Jarvis executive belt (the agent, still safe by construction) ──
@@ -62,6 +64,9 @@ export const MCP_TOOLS: ReadonlyArray<ToolRegistration> = [
   deleteProductTool,
   listInboxPhotosTool,
   attachPhotosTool,
+  // Vision: dealer-grade identification of inbox photos (read-only suggestion
+  // the owner confirms by voice before create_product writes anything).
+  analyzeInboxPhotosTool,
 ];
 
 /** Build a name → registration lookup. Called once per process. */

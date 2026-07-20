@@ -420,6 +420,114 @@ const customersRoutes: FastifyPluginAsync = async (app) => {
       });
     },
   );
+
+  // ══════════════════════════════════════════════════════════════════════
+  // GET /api/customers/:id/orders — the customer's WEB orders (staff view)
+  // ══════════════════════════════════════════════════════════════════════
+  // Owner directive 2026-07-20: the owner/cashier apps must show a customer's
+  // full shop history — reservation number, status, items, totals — not only
+  // POS transactions. Mirrors the shopper-side /api/storefront/orders slice
+  // (carts RESERVED/CONVERTED/CANCELLED via the customer's shoppers), with
+  // line items aggregated in the same query. Read-only; no PII decrypt needed
+  // (names on cart items are product names).
+  app.get<{ Params: { id: string } }>(
+    '/api/customers/:id/orders',
+    {
+      schema: {
+        tags: ['customers'],
+        summary: "The customer's web-shop orders with items (staff view).",
+        params: Type.Object({ id: Type.String({ format: 'uuid' }) }),
+        response: {
+          200: Type.Object({
+            items: Type.Array(
+              Type.Object({
+                id: Type.String(),
+                status: Type.String(),
+                createdAt: Type.String(),
+                expiresAt: Type.Union([Type.String(), Type.Null()]),
+                itemCount: Type.Integer(),
+                totalEur: Type.String(),
+                lines: Type.Array(
+                  Type.Object({
+                    productId: Type.Union([Type.String(), Type.Null()]),
+                    name: Type.String(),
+                    sku: Type.Union([Type.String(), Type.Null()]),
+                    quantity: Type.Integer(),
+                    unitPriceEur: Type.String(),
+                  }),
+                ),
+              }),
+            ),
+          }),
+          401: ErrorResponse,
+          403: ErrorResponse,
+        },
+      },
+    },
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'ADMIN', 'CASHIER');
+
+      const rows = await app.db.execute<{
+        id: string;
+        status: string;
+        created_at: string;
+        expires_at: string | null;
+        item_count: number;
+        total_eur: string;
+        lines: unknown;
+      }>(sql`
+        SELECT c.id,
+               c.status::text AS status,
+               to_char(COALESCE(c.reserved_at, c.created_at) AT TIME ZONE 'UTC',
+                       'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at,
+               (SELECT to_char(MAX(pr.reservation_expires_at) AT TIME ZONE 'UTC',
+                               'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')
+                  FROM products pr
+                 WHERE pr.reserved_by_session_id = c.reservation_session_id) AS expires_at,
+               COUNT(ci.id)::int AS item_count,
+               COALESCE(SUM(ci.unit_price_eur * ci.quantity), 0)::text AS total_eur,
+               COALESCE(
+                 json_agg(
+                   json_build_object(
+                     'productId', ci.product_id,
+                     'name', p.name,
+                     'sku', p.sku,
+                     'quantity', ci.quantity,
+                     'unitPriceEur', ci.unit_price_eur::text
+                   ) ORDER BY ci.added_at
+                 ) FILTER (WHERE ci.id IS NOT NULL),
+                 '[]'::json
+               ) AS lines
+          FROM carts c
+          JOIN shoppers s ON s.id = c.shopper_id
+          LEFT JOIN cart_items ci ON ci.cart_id = c.id
+          LEFT JOIN products p ON p.id = ci.product_id
+         WHERE s.customer_id = ${req.params.id}
+           AND c.status IN ('RESERVED', 'CONVERTED', 'CANCELLED')
+         GROUP BY c.id, c.reserved_at, c.created_at, c.reservation_session_id, c.status
+         ORDER BY COALESCE(c.reserved_at, c.created_at) DESC
+         LIMIT 50`);
+
+      return reply.status(200).send({
+        items: rows.map((r) => ({
+          id: r.id,
+          status: r.status,
+          createdAt: r.created_at,
+          expiresAt: r.expires_at,
+          itemCount: r.item_count,
+          totalEur: r.total_eur,
+          lines: (typeof r.lines === 'string' ? JSON.parse(r.lines) : r.lines) as {
+            productId: string | null;
+            name: string;
+            sku: string | null;
+            quantity: number;
+            unitPriceEur: string;
+          }[],
+        })),
+      });
+    },
+  );
 };
 
 export default customersRoutes;

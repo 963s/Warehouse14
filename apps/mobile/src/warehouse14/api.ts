@@ -69,6 +69,7 @@ import {
   type CustomerCreateBody,
   type CustomerCreateResponse,
   type CustomerDetail,
+  type CustomerWebOrder,
   type CustomerKycDocumentBody,
   type CustomerKycDocumentResponse,
   type DashboardSummary,
@@ -437,6 +438,11 @@ export function listCustomers(query: CustomerListQuery = {}): Promise<CustomerLi
 
 export function getCustomer(id: string): Promise<CustomerDetail> {
   return customersApi.get(apiClient, id)
+}
+
+/** The customer's web-shop orders (reservations, completed, cancelled), newest first. */
+export function getCustomerWebOrders(id: string): Promise<{ items: CustomerWebOrder[] }> {
+  return customersApi.webOrders(apiClient, id)
 }
 
 /** Create a new Kunde (ADMIN). Returns the new id + customerNumber. */

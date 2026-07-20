@@ -325,12 +325,40 @@ export interface CustomerVatLookupResult {
   vatId: string | null;
 }
 
+/**
+ * One WEB-shop order of a customer, staff view (2026-07-20): the reservation
+ * or completed/cancelled cart with its line items. `id` doubles as the order
+ * number the customer sees in the shop app.
+ */
+export interface CustomerWebOrder {
+  id: string;
+  status: string;
+  createdAt: string;
+  expiresAt: string | null;
+  itemCount: number;
+  totalEur: string;
+  lines: {
+    productId: string | null;
+    name: string;
+    sku: string | null;
+    quantity: number;
+    unitPriceEur: string;
+  }[];
+}
+
 export const customersApi = {
   list(client: ApiClient, query: CustomerListQuery = {}): Promise<CustomerListResponse> {
     return client.request<CustomerListResponse>('GET', `/api/customers${buildQuery(query)}`);
   },
   get(client: ApiClient, id: string): Promise<CustomerDetail> {
     return client.request<CustomerDetail>('GET', `/api/customers/${encodeURIComponent(id)}`);
+  },
+  /** The customer's web-shop orders (reservations + completed + cancelled), newest first. */
+  webOrders(client: ApiClient, id: string): Promise<{ items: CustomerWebOrder[] }> {
+    return client.request<{ items: CustomerWebOrder[] }>(
+      'GET',
+      `/api/customers/${encodeURIComponent(id)}/orders`,
+    );
   },
   /**
    * Resolve at most ONE customer by VAT id in a single bounded request (the POS

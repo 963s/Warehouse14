@@ -239,6 +239,7 @@ export {
   type CustomerCreateBody,
   type CustomerCreateResponse,
   type CustomerDetail,
+  type CustomerWebOrder,
   type CustomerKycDocumentBody,
   type CustomerKycDocumentResponse,
   type CustomerKycStampBody,

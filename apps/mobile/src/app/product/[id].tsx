@@ -438,6 +438,36 @@ export default function ProductDetailScreen() {
           </StaggerItem>
         ) : null}
 
+        {/* ── Reserviert von ── Wer den Artikel hält (Inhaber-Direktive
+            2026-07-20): der Kundenname bei einer Web-Reservierung, das
+            Teammitglied bei einer Kassen-Reservierung, mit ehrlichem Ablauf.
+            Nur sichtbar, wenn der Server eine Reservierung meldet. */}
+        {product.reservedBy ? (
+          <StaggerItem index={1} exit>
+            <View className="gap-1 py-1">
+              <Text className="text-sm font-semibold" style={{ color: t.colors.foreground }}>
+                Reserviert
+                {product.reservedBy.name ? ` von ${product.reservedBy.name}` : ""}
+                {product.reservedBy.channel === "POS"
+                  ? " an der Kasse"
+                  : product.reservedBy.channel === "EBAY"
+                    ? " über eBay"
+                    : " über den Online-Shop"}
+              </Text>
+              {product.reservedBy.expiresAt ? (
+                <Text className="text-muted-foreground text-xs">
+                  Abholung bis{" "}
+                  {new Date(product.reservedBy.expiresAt).toLocaleDateString("de-DE", {
+                    day: "numeric",
+                    month: "long",
+                  })}
+                  . Danach wird der Artikel automatisch wieder frei.
+                </Text>
+              ) : null}
+            </View>
+          </StaggerItem>
+        ) : null}
+
         {/* ── Werte ── Der Schmelzwert führt als großer Mono-Count-up, dann die
             Preise, das Gewicht, der Lagerort und der Zustand als nackte Zeilen,
             getrennt nur durch die warme Haarlinie (keine Karte). */}

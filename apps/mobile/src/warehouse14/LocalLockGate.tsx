@@ -217,7 +217,9 @@ function LocalLock({ onUnlock }: { onUnlock: () => void }): ReactNode {
     error ??
     (mode === "create"
       ? firstCode === null
-        ? "Vergib einen Code für dieses Gerät."
+        ? bioReady
+          ? "Einmalig einen Code für dieses Gerät vergeben. Danach entsperrst du bequem mit Fingerabdruck oder Gesicht; der Code bleibt dein Ersatzschlüssel."
+          : "Einmalig einen Code für dieses Gerät vergeben. Er wird bei jedem Öffnen der App abgefragt."
         : "Zur Bestätigung erneut eingeben."
       : storeUnreadable
         ? "Der sichere Speicher ist gerade nicht lesbar. Biometrisch entsperren oder abmelden."

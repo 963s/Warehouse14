@@ -61,6 +61,7 @@ import {
   eraseCustomer,
   formatEur,
   getCustomer,
+  getCustomerWebOrders,
   setCustomerTrust,
   stampCustomerKyc,
 } from "@/warehouse14/api"
@@ -292,6 +293,15 @@ export default function CustomerDetailScreen() {
   })
   const rc = useRefreshControl(customerQ)
   const customer = customerQ.data
+
+  // Web-shop orders (Inhaber-Direktive 2026-07-20): the customer's reservations
+  // and completed orders with number, items and totals — the full shop history
+  // next to the POS balance. Same focus-refetch rhythm as the identity read.
+  const ordersQ = useQuery(() => getCustomerWebOrders(id), {
+    key: `customer-orders:${id}`,
+    enabled: !!id,
+  })
+  const webOrders = ordersQ.data?.items ?? []
 
   useFocusEffect(
     useCallback(() => {
@@ -1027,7 +1037,86 @@ export default function CustomerDetailScreen() {
           </View>
         </StaggerItem>
 
+        {/* ── Bestellungen im Online-Shop — Nummer, Status, Positionen, Summe.
+            Ehrlich: nur echte Server-Daten; ohne Bestellungen eine ruhige
+            Leerzeile statt einer erfundenen Historie. */}
         <StaggerItem index={8}>
+          <View>
+            <GroupKicker label="BESTELLUNGEN IM SHOP" />
+            {webOrders.length === 0 ? (
+              <Text className="text-muted-foreground pt-1 text-sm">
+                {ordersQ.status === "loading"
+                  ? "Bestellungen werden geladen …"
+                  : "Keine Bestellungen im Online-Shop."}
+              </Text>
+            ) : (
+              <View className="pt-1">
+                {webOrders.map((order, i) => (
+                  <View key={order.id}>
+                    {i > 0 ? <Hairline /> : null}
+                    <View className="gap-1 py-2.5">
+                      <View className="flex-row items-center justify-between gap-3">
+                        <Text className="font-mono text-sm font-semibold" numberOfLines={1}>
+                          {order.id.slice(0, 8).toUpperCase()}
+                        </Text>
+                        <Text
+                          className="text-xs font-semibold"
+                          style={{
+                            color:
+                              order.status === "RESERVED"
+                                ? t.colors.gilt
+                                : order.status === "CANCELLED"
+                                  ? t.colors.destructive
+                                  : t.colors.verdigris,
+                          }}
+                        >
+                          {order.status === "RESERVED"
+                            ? "Reserviert"
+                            : order.status === "CANCELLED"
+                              ? "Storniert"
+                              : "Abgeschlossen"}
+                        </Text>
+                      </View>
+                      <View className="flex-row items-center justify-between gap-3">
+                        <Text className="text-muted-foreground text-xs" numberOfLines={1}>
+                          {new Date(order.createdAt).toLocaleDateString("de-DE", {
+                            day: "numeric",
+                            month: "long",
+                            year: "numeric",
+                          })}
+                          {" · "}
+                          {order.itemCount} {order.itemCount === 1 ? "Artikel" : "Artikel"}
+                        </Text>
+                        <Text className="font-mono text-sm" style={{ color: t.colors.inkAged }}>
+                          {order.totalEur} €
+                        </Text>
+                      </View>
+                      {order.lines.map((line) => (
+                        <View
+                          key={`${order.id}-${line.productId ?? line.name}`}
+                          className="flex-row items-center justify-between gap-3 pl-3"
+                        >
+                          <Text
+                            className="text-muted-foreground flex-1 text-xs"
+                            numberOfLines={1}
+                          >
+                            {line.quantity > 1 ? `${line.quantity} × ` : ""}
+                            {line.name}
+                          </Text>
+                          <Text className="text-muted-foreground font-mono text-xs">
+                            {line.unitPriceEur} €
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        </StaggerItem>
+
+        <StaggerItem index={9}>
           <View className="gap-2 pt-2">
             <Text className="text-sm font-medium">Datenschutz</Text>
             <Text className="text-muted-foreground text-2xs">
@@ -1048,7 +1137,7 @@ export default function CustomerDetailScreen() {
           </View>
         </StaggerItem>
 
-        <StaggerItem index={9}>
+        <StaggerItem index={10}>
           <View className="flex-row items-center justify-center gap-2 pt-1">
             <TrustSeal size={16} ink={t.colors.mutedForeground} gilt={t.colors.gilt} />
             <Text className="text-muted-foreground text-2xs">

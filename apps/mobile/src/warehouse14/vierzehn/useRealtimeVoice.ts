@@ -19,6 +19,7 @@
  * kann nichts aufrufen, was der Server nicht ausdrücklich freigibt.
  */
 import { useCallback, useEffect, useRef, useState } from "react"
+import { PermissionsAndroid, Platform } from "react-native"
 import { mediaDevices, MediaStream, RTCPeerConnection } from "react-native-webrtc"
 import InCallManager from "react-native-incall-manager"
 
@@ -275,7 +276,31 @@ export function useRealtimeVoice(): VierzehnVoice {
         InCallManager.start({ media: "audio" })
         InCallManager.setForceSpeakerphoneOn(true)
 
-        const mic = await mediaDevices.getUserMedia({ audio: true })
+        // Android asks for the mic EXPLICITLY before getUserMedia so a denial
+        // is a named, recoverable state (the owner sees exactly what to allow)
+        // instead of an opaque WebRTC failure. iOS prompts inside getUserMedia.
+        if (Platform.OS === "android") {
+          const granted = await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+            {
+              title: "Mikrofon für Vierzehn",
+              message:
+                "Vierzehn braucht das Mikrofon, um mit dir sprechen zu können.",
+              buttonPositive: "Erlauben",
+              buttonNegative: "Ablehnen",
+            },
+          )
+          if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+            throw new Error("MIC_DENIED")
+          }
+        }
+
+        let mic: MediaStream
+        try {
+          mic = await mediaDevices.getUserMedia({ audio: true })
+        } catch {
+          throw new Error("MIC_DENIED")
+        }
         micRef.current = mic
         for (const track of mic.getAudioTracks()) pc.addTrack(track, mic)
 
@@ -369,7 +394,18 @@ export function useRealtimeVoice(): VierzehnVoice {
           return
         }
         setState("fehler")
-        setError(describeError(err))
+        // Named failures speak for themselves; everything else goes through the
+        // shared German describer (auth/role/network already read correctly).
+        const msg = err instanceof Error ? err.message : ""
+        if (msg === "MIC_DENIED") {
+          setError(
+            "Der Mikrofon-Zugriff ist nicht erlaubt. Bitte in den Geräte-Einstellungen unter Apps, Warehouse 14, Berechtigungen das Mikrofon erlauben und erneut verbinden.",
+          )
+        } else if (msg.startsWith("Handshake")) {
+          setError("Die Sprachverbindung kam nicht zustande. Bitte erneut verbinden.")
+        } else {
+          setError(describeError(err))
+        }
       }
     },
     [handleDrop, handleEvent, teardown],

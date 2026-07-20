@@ -473,6 +473,12 @@ const EnvSchema = Type.Object({
     default: 'cedar',
     description: 'Realtime voice name (e.g. cedar or marin (2026), ash, echo).',
   }),
+  OPENAI_VISION_MODEL: Type.String({
+    default: 'gpt-4.1-mini',
+    description:
+      'OpenAI vision model for analyze_inbox_photos (dealer-grade item identification from the ' +
+      'photo inbox). Small + cheap by default; thumbs only, detail low.',
+  }),
   // Reserved for the FUTURE executor (drafts replies, runs approved actions).
   // Not used by the read-only assistant; wired in a later phase.
   DEEPSEEK_API_KEY: Type.String({

@@ -15,7 +15,8 @@
  */
 import { type ComponentProps, type ReactNode } from "react"
 import { Pressable, Text as RNText, View } from "react-native"
-import { Tabs } from "expo-router"
+import { router, Tabs } from "expo-router"
+import { AudioLines } from "lucide-react-native"
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -159,9 +160,73 @@ function TabButton({
 // single warm hairline as its only edge, the home-indicator inset honoured.
 // ────────────────────────────────────────────────────────────────────────────
 
+// ────────────────────────────────────────────────────────────────────────────
+// VierzehnButton — the assistant's own seat in the bar (owner directive
+// 2026-07-20: one tap from anywhere, no hunting through the Mehr hub). A calm
+// ink medallion holding the voice glyph, sized like its neighbours' touch
+// target; it PUSHES the full-screen /vierzehn stack surface instead of
+// switching tabs, so the orb experience keeps the whole screen.
+// ────────────────────────────────────────────────────────────────────────────
+
+function VierzehnButton(): ReactNode {
+  const t = useW14Theme()
+  return (
+    <Pressable
+      onPress={() => {
+        haptics.selection()
+        router.push("/vierzehn")
+      }}
+      accessibilityRole="button"
+      accessibilityLabel="Vierzehn Sprachassistent öffnen"
+      style={{ flex: 1, alignItems: "center", paddingTop: 2 }}
+      hitSlop={6}
+    >
+      {({ pressed }) => (
+        <View style={{ alignItems: "center", gap: 3, opacity: pressed ? 0.82 : 1 }}>
+          <View
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 20,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: t.colors.foreground,
+              transform: [{ translateY: -6 }, ...(pressed ? [{ scale: 0.95 }] : [])],
+              shadowColor: "#000",
+              shadowOpacity: 0.18,
+              shadowRadius: 8,
+              shadowOffset: { width: 0, height: 3 },
+              elevation: 4,
+            }}
+          >
+            <AudioLines size={21} color={t.colors.card} strokeWidth={2.2} />
+          </View>
+          <RNText
+            numberOfLines={1}
+            allowFontScaling={false}
+            style={{
+              fontFamily: t.fonts.medium,
+              fontSize: 11,
+              letterSpacing: 0.1,
+              color: t.colors.mutedForeground,
+              transform: [{ translateY: -6 }],
+            }}
+          >
+            Vierzehn
+          </RNText>
+        </View>
+      )}
+    </Pressable>
+  )
+}
+
 function W14TabBar({ state, descriptors, navigation }: TabBarProps): ReactNode {
   const t = useW14Theme()
   const insets = useScreenInsets()
+
+  // The assistant medallion sits mid-bar (after Lager, before Kunden) like a
+  // centre seal; visible tabs render around it in registry order.
+  const VIERZEHN_AT = 2
 
   return (
     <View style={{ backgroundColor: t.colors.card }}>
@@ -177,10 +242,12 @@ function W14TabBar({ state, descriptors, navigation }: TabBarProps): ReactNode {
           paddingHorizontal: 8,
         }}
       >
-        {state.routes.map((route, index) => {
+        {(() => {
+          let visibleIdx = 0
+          return state.routes.flatMap((route, index) => {
           const { options } = descriptors[route.key]
           // Hidden surfaces (href:null) carry no tab button — keep them off the bar.
-          if (options.tabBarButton != null) return null
+          if (options.tabBarButton != null) return []
 
           const active = state.index === index
           const label =
@@ -208,7 +275,8 @@ function W14TabBar({ state, descriptors, navigation }: TabBarProps): ReactNode {
             }
           }
 
-          return (
+          const pos = visibleIdx++
+          const button = (
             <TabButton
               key={route.key}
               icon={renderIcon}
@@ -217,7 +285,10 @@ function W14TabBar({ state, descriptors, navigation }: TabBarProps): ReactNode {
               onPress={onPress}
             />
           )
-        })}
+          // Seat the assistant medallion mid-bar, before this visible tab.
+          return pos === VIERZEHN_AT ? [<VierzehnButton key="vierzehn" />, button] : [button]
+          })
+        })()}
       </View>
     </View>
   )

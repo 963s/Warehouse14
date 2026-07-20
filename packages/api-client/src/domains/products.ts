@@ -264,6 +264,17 @@ export interface ProductDetail {
   locationPosition: string | null;
   /** Day-13 addition: every taxonomy node this product is filed under. */
   categories: ProductCategoryAssignment[];
+  /**
+   * WHO holds the reservation (2026-07-20). NULL unless status='RESERVED'.
+   * Web reservations carry the customer's name; POS holds the staff member.
+   * `name` may be NULL when the chain cannot be resolved — the channel stays.
+   */
+  reservedBy: {
+    channel: 'POS' | 'STOREFRONT' | 'EBAY' | 'WEB_RESERVATION';
+    name: string | null;
+    reservedAt: string | null;
+    expiresAt: string | null;
+  } | null;
   archivedAt: string | null;
   createdAt: string;
   updatedAt: string;

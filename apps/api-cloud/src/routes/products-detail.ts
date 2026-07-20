@@ -19,13 +19,14 @@
  */
 
 import { Type } from '@sinclair/typebox';
-import { asc, eq } from 'drizzle-orm';
+import { asc, eq, sql } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 
 import {
   categories as categoriesTable,
   productCategories as productCategoriesTable,
   products,
+  users,
 } from '@warehouse14/db/schema';
 
 import { requireAuth, requireRole } from '../lib/auth-policy.js';
@@ -138,6 +139,27 @@ const ProductDetail = Type.Object({
   locationPosition: Type.Union([Type.String(), Type.Null()]),
   // ─── Day-13 categories — primary first, then alphabetical ──────────
   categories: Type.Array(CategoryAssignment),
+  /**
+   * WHO holds the reservation (owner directive 2026-07-20). NULL unless
+   * `status='RESERVED'`. For web reservations the name is the customer the
+   * reserving shopper belongs to (decrypted inside withPii); for POS holds it
+   * is the staff member. `name` stays NULL when the chain cannot be resolved
+   * (e.g. an expired cart) — the channel is still honest.
+   */
+  reservedBy: Type.Union([
+    Type.Object({
+      channel: Type.Union([
+        Type.Literal('POS'),
+        Type.Literal('STOREFRONT'),
+        Type.Literal('EBAY'),
+        Type.Literal('WEB_RESERVATION'),
+      ]),
+      name: Type.Union([Type.String(), Type.Null()]),
+      reservedAt: Type.Union([Type.String({ format: 'date-time' }), Type.Null()]),
+      expiresAt: Type.Union([Type.String({ format: 'date-time' }), Type.Null()]),
+    }),
+    Type.Null(),
+  ]),
   archivedAt: Type.Union([Type.String({ format: 'date-time' }), Type.Null()]),
   createdAt: Type.String({ format: 'date-time' }),
   updatedAt: Type.String({ format: 'date-time' }),
@@ -194,6 +216,53 @@ const productsDetailRoute: FastifyPluginAsync = async (app) => {
 
       const row = productRows[0];
       if (!row) throw new ProductNotFoundError(`Product ${req.params.id} not found`);
+
+      // WHO reserved it (owner directive): resolve the holder identity for a
+      // RESERVED row. POS holds point at a staff user; web/storefront holds
+      // walk reservation session → cart → shopper → customer and decrypt the
+      // customer name inside the PII transaction. Best-effort: a broken chain
+      // yields name NULL, never an error on the read path.
+      let reservedBy: {
+        channel: 'POS' | 'STOREFRONT' | 'EBAY' | 'WEB_RESERVATION';
+        name: string | null;
+        reservedAt: string | null;
+        expiresAt: string | null;
+      } | null = null;
+      if (row.status === 'RESERVED' && row.reservedByChannel) {
+        const channel = row.reservedByChannel as 'POS' | 'STOREFRONT' | 'EBAY' | 'WEB_RESERVATION';
+        let holderName: string | null = null;
+        try {
+          if (channel === 'POS' && row.reservedByUserId) {
+            const staff = await app.db
+              .select({ name: users.name })
+              .from(users)
+              .where(eq(users.id, row.reservedByUserId))
+              .limit(1);
+            holderName = staff[0]?.name ?? null;
+          } else if (row.reservedBySessionId) {
+            const rows = await app.withPii(async (tx) => {
+              const result = await tx.execute(sql`
+                SELECT decrypt_pii(c.full_name_encrypted) AS full_name
+                FROM carts ca
+                JOIN shoppers s ON s.id = ca.shopper_id
+                JOIN customers c ON c.id = s.customer_id
+                WHERE ca.reservation_session_id = ${row.reservedBySessionId}
+                LIMIT 1
+              `);
+              return result as unknown as { full_name: string | null }[];
+            });
+            holderName = rows[0]?.full_name ?? null;
+          }
+        } catch (err) {
+          req.log.warn({ err, productId: row.id }, 'reservedBy resolution failed (kept NULL)');
+        }
+        reservedBy = {
+          channel,
+          name: holderName,
+          reservedAt: row.reservedAt ? row.reservedAt.toISOString() : null,
+          expiresAt: row.reservationExpiresAt ? row.reservationExpiresAt.toISOString() : null,
+        };
+      }
 
       // Primary first, then alphabetical — keeps the breadcrumb hint stable.
       const categories = [...categoryRows].sort((a, b) => {
@@ -255,6 +324,7 @@ const productsDetailRoute: FastifyPluginAsync = async (app) => {
         locationDrawer: row.locationDrawer,
         locationPosition: row.locationPosition,
         categories,
+        reservedBy,
         archivedAt: row.archivedAt ? row.archivedAt.toISOString() : null,
         createdAt: row.createdAt.toISOString(),
         updatedAt: row.updatedAt.toISOString(),
