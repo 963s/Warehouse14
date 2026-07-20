@@ -57,6 +57,8 @@ export interface ReleaseInput {
 export type ReleaseReason =
   | 'storefront_checkout_abandoned'
   | 'storefront_payment_failed'
+  /** Customer cancelled their RESERVED pickup order from the shop app (0087). */
+  | 'storefront_cancelled_by_customer'
   | 'ebay_offer_rejected'
   | 'pos_cart_cleared'
   | 'admin_manual_release';

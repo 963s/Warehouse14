@@ -10,6 +10,8 @@ export const cartStatus = pgEnum('cart_status', [
   'ABANDONED',
   'CONVERTED',
   'RESERVED',
+  /** Customer-initiated cancellation of a RESERVED pickup order (0087). */
+  'CANCELLED',
 ]);
 
 export const paymentProvider = pgEnum('payment_provider', ['STRIPE', 'PAYPAL', 'MOLLIE']);

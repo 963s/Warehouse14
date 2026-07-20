@@ -14,5 +14,6 @@ export * from './enums.js';
 export * from './shoppers.js';
 export * from './shopperSessions.js';
 export * from './carts.js';
+export * from './emailOutbox.js';
 export * from './paymentIntents.js';
 export * from './webhookEvents.js';

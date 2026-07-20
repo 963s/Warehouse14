@@ -31,6 +31,7 @@ import {
   reserve as inventoryReserve,
 } from '@warehouse14/inventory-lock';
 
+import { composeReservationConfirmed, enqueueEmail } from '../lib/email-outbox.js';
 import { requireShopper } from '../lib/shopper.js';
 import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 
@@ -203,6 +204,41 @@ const storefrontReserveRoutes: FastifyPluginAsync = async (app) => {
         .update(carts)
         .set({ status: 'RESERVED', reservedAt, reservationSessionId })
         .where(eq(carts.id, cart.id));
+
+      // Confirmation letter with the reservation number — best-effort, never
+      // blocks the reservation. Recipient: the pickup contact's email when
+      // given, else the account email (guests without an email get none —
+      // they left a phone instead).
+      try {
+        const totals = await app.db.execute<{ total: string | null }>(drizzleSql`
+          SELECT to_char(SUM(unit_price_eur), 'FM999999990.00') AS total
+            FROM cart_items WHERE cart_id = ${cart.id}
+        `);
+        await app.withPii(async (tx) => {
+          const who = await tx.execute<{ email: string | null; full_name: string | null }>(drizzleSql`
+            SELECT CASE WHEN s.is_guest THEN decrypt_pii(c.email_encrypted)
+                        ELSE decrypt_pii(s.email_encrypted) END AS email,
+                   decrypt_pii(c.full_name_encrypted) AS full_name
+              FROM shoppers s JOIN customers c ON c.id = s.customer_id
+             WHERE s.id = ${req.shopper.id}
+          `);
+          const email = contact?.email ?? who[0]?.email ?? null;
+          if (email && !email.endsWith('@gast.invalid')) {
+            await enqueueEmail(
+              tx,
+              email,
+              composeReservationConfirmed(
+                contact?.fullName ?? who[0]?.full_name ?? null,
+                cart.id,
+                items.length,
+                totals[0]?.total ?? null,
+              ),
+            );
+          }
+        });
+      } catch (err) {
+        req.log.warn({ err }, 'reservation email enqueue failed (non-blocking)');
+      }
 
       return reply.status(200).send({
         cartId: cart.id,

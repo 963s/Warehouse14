@@ -24,6 +24,7 @@ import {
 } from '@warehouse14/auth-pin';
 import { customers, shopperSessions, shoppers } from '@warehouse14/db/schema';
 
+import { composeWelcome, enqueueEmail } from '../lib/email-outbox.js';
 import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 import { STOREFRONT_COOKIE_NAME } from '../plugins/storefront-session.js';
 import {
@@ -175,6 +176,9 @@ const storefrontAuthRoutes: FastifyPluginAsync = async (app) => {
             UPDATE customers
                SET full_name_encrypted = encrypt_pii(${body.fullName}),
                    email_encrypted     = encrypt_pii(${body.email}),
+                   email_blind_index   = blind_index(${body.email}),
+                   phone_encrypted     = ${body.phone ? drizzleSql`encrypt_pii(${body.phone})` : drizzleSql`phone_encrypted`},
+                   phone_blind_index   = ${body.phone ? drizzleSql`blind_index(${body.phone})` : drizzleSql`phone_blind_index`},
                    updated_at          = now()
              WHERE id = ${up.customer_id}
           `);
@@ -189,16 +193,31 @@ const storefrontAuthRoutes: FastifyPluginAsync = async (app) => {
               ipAddress: (req.ip ?? null) as never,
               userAgent: req.headers['user-agent'] ?? null,
             });
+            // Welcome letter — best-effort, never blocks the registration.
+            try {
+              await enqueueEmail(tx, body.email, composeWelcome(body.fullName));
+            } catch {
+              /* outbox unavailable — registration still succeeds */
+            }
             return { shopperId: up.id, customerId: up.customer_id, token, expiresAt };
           }
           // Guest row vanished mid-flight — fall through to a normal insert.
         }
 
-        // 3b. Create the customer (KYC-track).
+        // 3b. Create the customer (KYC-track). Email + phone land HERE too —
+        // this is the row the POS and owner apps read; a customer whose
+        // contact lives only on the shopper row is invisible to staff
+        // (the 2026-07-20 gap Basel hit with his Google account).
+        const phoneEncC = body.phone ? drizzleSql`encrypt_pii(${body.phone})` : drizzleSql`NULL`;
+        const phoneBlindC = body.phone ? drizzleSql`blind_index(${body.phone})` : drizzleSql`NULL`;
         const [c] = await tx
           .insert(customers)
           .values({
             fullNameEncrypted: drizzleSql`encrypt_pii(${body.fullName})` as never,
+            emailEncrypted: drizzleSql`encrypt_pii(${body.email})` as never,
+            emailBlindIndex: drizzleSql`blind_index(${body.email})` as never,
+            phoneEncrypted: phoneEncC as never,
+            phoneBlindIndex: phoneBlindC as never,
             retentionUntil: drizzleSql`(now() + interval '5 years')::date` as never,
           })
           .returning({ id: customers.id });
@@ -235,6 +254,13 @@ const storefrontAuthRoutes: FastifyPluginAsync = async (app) => {
           ipAddress: (req.ip ?? null) as never,
           userAgent: req.headers['user-agent'] ?? null,
         });
+
+        // Welcome letter — best-effort, never blocks the registration.
+        try {
+          await enqueueEmail(tx, body.email, composeWelcome(body.fullName));
+        } catch {
+          /* outbox unavailable — registration still succeeds */
+        }
 
         return { shopperId: s.id, customerId: c.id, token, expiresAt };
       });

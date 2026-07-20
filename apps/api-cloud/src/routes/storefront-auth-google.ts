@@ -35,6 +35,7 @@ import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { customers, shopperSessions, shoppers } from '@warehouse14/db/schema';
 
 import type { Env } from '../config/env.js';
+import { composeWelcome, enqueueEmail } from '../lib/email-outbox.js';
 import { SHOPPER_SESSION_TTL_MS, newSessionToken, setShopperCookie } from './storefront-auth.js';
 
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -326,10 +327,15 @@ const storefrontGoogleAuthRoutes: FastifyPluginAsync<{ env: Env }> = async (app,
           }
 
           if (!shopperId) {
+            // Email lands on the CUSTOMERS row too — the record staff read
+            // at the POS and in the owner apps (the 2026-07-20 gap: Google
+            // customers showed name only, no contact).
             const [c] = await tx
               .insert(customers)
               .values({
                 fullNameEncrypted: drizzleSql`encrypt_pii(${displayName})` as never,
+                emailEncrypted: drizzleSql`encrypt_pii(${email})` as never,
+                emailBlindIndex: drizzleSql`blind_index(${email})` as never,
                 retentionUntil: drizzleSql`(now() + interval '5 years')::date` as never,
               })
               .returning({ id: customers.id });
@@ -347,6 +353,25 @@ const storefrontGoogleAuthRoutes: FastifyPluginAsync<{ env: Env }> = async (app,
               .returning({ id: shoppers.id });
             if (!s) throw new Error('shopper insert returned no row');
             shopperId = s.id;
+            // Welcome letter for the brand-new account — best-effort.
+            try {
+              await enqueueEmail(tx, email, composeWelcome(displayName));
+            } catch {
+              /* outbox unavailable — sign-in still succeeds */
+            }
+          } else {
+            // Existing account signing in with Google: make sure the staff
+            // record carries the contact (accounts created before 0088 had
+            // the email only on the shopper row).
+            await tx.execute(drizzleSql`
+              UPDATE customers c
+                 SET email_encrypted   = encrypt_pii(${email}),
+                     email_blind_index = COALESCE(c.email_blind_index, blind_index(${email})),
+                     updated_at        = now()
+                FROM shoppers s
+               WHERE s.id = ${shopperId} AND c.id = s.customer_id
+                 AND c.email_encrypted IS NULL
+            `);
           }
 
           const token = newSessionToken();

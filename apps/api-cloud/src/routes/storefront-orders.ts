@@ -19,12 +19,20 @@ import { Type } from '@sinclair/typebox';
 import { sql as drizzleSql } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 
+import { release as inventoryRelease } from '@warehouse14/inventory-lock';
+
+import { composeReservationCancelled, enqueueEmail } from '../lib/email-outbox.js';
 import { requireShopper } from '../lib/shopper.js';
 import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 
 class OrderNotFoundError extends DomainError {
   public readonly httpStatus = 404;
   public readonly code: ApiErrorCode = 'NOT_FOUND';
+}
+
+class OrderConflictError extends DomainError {
+  public readonly httpStatus = 409;
+  public readonly code: ApiErrorCode = 'CONFLICT';
 }
 
 const ErrorResponse = Type.Object({
@@ -87,12 +95,16 @@ const UpdateAccountBody = Type.Object({
   ),
   marketingConsent: Type.Optional(Type.Boolean()),
   address: Type.Optional(Address),
+  /** Empty string clears the phone. Mirrored onto the customers row. */
+  phone: Type.Optional(Type.String({ maxLength: 40 })),
 });
 type TUpdateAccountBody = (typeof UpdateAccountBody)['static'];
 
 /** Map a cart status to the storefront-facing shipping status. */
 function shippingStatusOf(status: string): string {
-  return status === 'CONVERTED' ? 'COMPLETED' : 'PICKUP';
+  if (status === 'CONVERTED') return 'COMPLETED';
+  if (status === 'CANCELLED') return 'CANCELLED';
+  return 'PICKUP';
 }
 
 /** Mask an email like b****l@gmail.com for display. */
@@ -154,7 +166,7 @@ const storefrontOrdersRoutes: FastifyPluginAsync = async (app) => {
           FROM carts c
           LEFT JOIN cart_items ci ON ci.cart_id = c.id
          WHERE c.shopper_id = ${req.shopper.id}
-           AND c.status IN ('RESERVED', 'CONVERTED')
+           AND c.status IN ('RESERVED', 'CONVERTED', 'CANCELLED')
          GROUP BY c.id, c.reserved_at, c.created_at, c.status
          ORDER BY COALESCE(c.reserved_at, c.created_at) DESC
          LIMIT 100`);
@@ -195,7 +207,7 @@ const storefrontOrdersRoutes: FastifyPluginAsync = async (app) => {
                c.status::text AS status
           FROM carts c
          WHERE c.id = ${id} AND c.shopper_id = ${req.shopper.id}
-           AND c.status IN ('RESERVED', 'CONVERTED')
+           AND c.status IN ('RESERVED', 'CONVERTED', 'CANCELLED')
          LIMIT 1`);
       const cart = head[0];
       if (!cart) throw new OrderNotFoundError('Order not found.');
@@ -351,9 +363,116 @@ const storefrontOrdersRoutes: FastifyPluginAsync = async (app) => {
               shipping_country                  = ${a.country},
               updated_at                        = now()
             WHERE id = ${req.shopper.id}`);
+          // Mirror onto the customers row — the record staff actually read
+          // at the POS and in the owner apps. One human, one address.
+          const line2Part = a.line2 ? `, ${a.line2}` : '';
+          const addressText = `${a.recipientName}, ${a.line1}${line2Part}, ${a.postalCode} ${a.city}, ${a.country}`;
+          await tx.execute(drizzleSql`
+            UPDATE customers SET address_encrypted = encrypt_pii(${addressText}), updated_at = now()
+             WHERE id = ${req.shopper.customerId}`);
+        }
+        if (b.phone !== undefined) {
+          await tx.execute(drizzleSql`
+            UPDATE shoppers SET
+              phone_encrypted   = ${b.phone ? drizzleSql`encrypt_pii(${b.phone})` : drizzleSql`NULL`},
+              phone_blind_index = ${b.phone ? drizzleSql`blind_index(${b.phone})` : drizzleSql`NULL`},
+              updated_at        = now()
+            WHERE id = ${req.shopper.id}`);
+          await tx.execute(drizzleSql`
+            UPDATE customers SET
+              phone_encrypted   = ${b.phone ? drizzleSql`encrypt_pii(${b.phone})` : drizzleSql`NULL`},
+              phone_blind_index = ${b.phone ? drizzleSql`blind_index(${b.phone})` : drizzleSql`NULL`},
+              updated_at        = now()
+             WHERE id = ${req.shopper.customerId}`);
         }
       });
       return reply.status(200).send({ ok: true });
+    },
+  );
+
+  // ── POST /api/storefront/orders/:id/cancel ───────────────────────────
+  // Customer-initiated cancellation of a RESERVED pickup order. Releases
+  // every inventory hold IMMEDIATELY (the pieces go straight back on sale),
+  // flips the cart to CANCELLED (0087) — the 0088 trigger emits
+  // web_order.cancelled so staff see it live — and queues the cancellation
+  // email. Only the owning shopper, only from RESERVED.
+  app.post<{ Params: { id: string } }>(
+    '/api/storefront/orders/:id/cancel',
+    {
+      schema: {
+        tags: ['storefront'],
+        summary: 'Cancel my reserved pickup order (releases the pieces).',
+        params: Type.Object({ id: Type.String({ format: 'uuid' }) }),
+        response: {
+          200: Type.Object({ ok: Type.Boolean(), status: Type.Literal('CANCELLED') }),
+          401: ErrorResponse,
+          404: ErrorResponse,
+          409: ErrorResponse,
+        },
+      },
+    },
+    async (req, reply) => {
+      requireShopper(req);
+
+      const rows = await app.db.execute<{
+        id: string;
+        status: string;
+        reservation_session_id: string | null;
+      }>(drizzleSql`
+        SELECT id, status::text AS status, reservation_session_id
+          FROM carts
+         WHERE id = ${req.params.id} AND shopper_id = ${req.shopper.id}
+         LIMIT 1
+      `);
+      const cart = rows[0];
+      if (!cart) throw new OrderNotFoundError('Order not found.');
+      if (cart.status !== 'RESERVED') {
+        throw new OrderConflictError('Only a reserved order can be cancelled.');
+      }
+
+      // Release every hold. Best-effort per item — a hold the sweeper already
+      // freed must not block the cancellation of the rest.
+      const items = await app.db.execute<{ product_id: string }>(drizzleSql`
+        SELECT product_id FROM cart_items WHERE cart_id = ${cart.id}
+      `);
+      if (cart.reservation_session_id) {
+        for (const it of items) {
+          await inventoryRelease(app.db, {
+            productId: it.product_id,
+            sessionId: cart.reservation_session_id,
+            userId: null,
+            reason: 'storefront_cancelled_by_customer',
+          }).catch(() => {
+            /* hold already released (3-day sweeper) — cancellation proceeds */
+          });
+        }
+      }
+
+      // Flip to CANCELLED — the 0088 trigger emits the live staff event.
+      await app.db.execute(drizzleSql`
+        UPDATE carts SET status = 'CANCELLED', updated_at = now() WHERE id = ${cart.id}
+      `);
+
+      // Cancellation email — best-effort, never blocks the cancellation.
+      try {
+        await app.withPii(async (tx) => {
+          const who = await tx.execute<{ email: string | null; full_name: string | null }>(drizzleSql`
+            SELECT CASE WHEN s.is_guest THEN decrypt_pii(c.email_encrypted)
+                        ELSE decrypt_pii(s.email_encrypted) END AS email,
+                   decrypt_pii(c.full_name_encrypted) AS full_name
+              FROM shoppers s JOIN customers c ON c.id = s.customer_id
+             WHERE s.id = ${req.shopper.id}
+          `);
+          const email = who[0]?.email;
+          if (email && !email.endsWith('@gast.invalid')) {
+            await enqueueEmail(tx, email, composeReservationCancelled(who[0]?.full_name ?? null, cart.id));
+          }
+        });
+      } catch (err) {
+        req.log.warn({ err }, 'cancel email enqueue failed (non-blocking)');
+      }
+
+      return reply.status(200).send({ ok: true, status: 'CANCELLED' as const });
     },
   );
 };

@@ -28,6 +28,7 @@ import {
   chainVerifierJob,
   dsfinvkDailyExportJob,
   ebaySyncJob,
+  emailOutboxSenderJob,
   gdprCleanupJob,
   intakeSweepJob,
   lbmaPricesJob,
@@ -177,6 +178,17 @@ export async function buildWorker(opts: BuildWorkerOpts): Promise<WorkerHandle> 
   );
   // Day 20: B2C cart expiry — releases 15-min STOREFRONT soft locks.
   runner.register(storefrontCartSweeperJob);
+  // 0088: transactional mail delivery (welcome, reservation, cancellation).
+  runner.register(
+    emailOutboxSenderJob({
+      smtpHost: opts.env.SMTP_HOST || undefined,
+      smtpPort: opts.env.SMTP_PORT,
+      smtpUser: opts.env.SMTP_USER || undefined,
+      smtpPass: opts.env.SMTP_PASS || undefined,
+      mailFrom: opts.env.MAIL_FROM || undefined,
+      piiKey: opts.env.WAREHOUSE14_PII_KEY || undefined,
+    }),
+  );
   // Epic D: end eBay listings for items sold at the retail counter.
   runner.register(ebaySyncJob({ token: opts.env.EBAY_API_TOKEN }));
   // Epic F: AI Intake Pipeline — close grouping windows + process sessions.

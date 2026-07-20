@@ -74,6 +74,21 @@ const EnvSchema = Type.Object({
     default: '',
     description: 'eBay Trading API user token used by ebay_sync to call EndItem. Empty → mock.',
   }),
+  // ── Transactional mail — email_outbox_sender (0088) ─────────────────
+  // All empty (default) → letters stay PENDING with one boot log; paste the
+  // SMTP credentials and the backlog drains (eBay/WhatsApp pattern).
+  SMTP_HOST: Type.String({ default: '', description: 'SMTP server, e.g. smtp.gmail.com.' }),
+  SMTP_PORT: Type.Integer({ minimum: 0, maximum: 65535, default: 587 }),
+  SMTP_USER: Type.String({ default: '', description: 'SMTP login, e.g. noreply@warehouse14.de.' }),
+  SMTP_PASS: Type.String({ default: '', description: 'SMTP password or app password.' }),
+  MAIL_FROM: Type.String({
+    default: '',
+    description: 'Sender header, e.g. "Warehouse 14 <noreply@warehouse14.de>".',
+  }),
+  WAREHOUSE14_PII_KEY: Type.String({
+    default: '',
+    description: 'PII passphrase (same value as the API) — decrypts outbox recipients at send time.',
+  }),
   // ── Meta WhatsApp Cloud API — appointment_notifications sweep ───────
   // Empty (default) → whatsapp rows are marked 'queued' with a log; the
   // job stays fully wired but inert until both keys are set (eBay pattern).
