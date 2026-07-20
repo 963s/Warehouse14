@@ -201,6 +201,32 @@ PY
   cd "$MOBILE_DIR"
 }
 
+# ── Android: shared post-prebuild repairs ────────────────────────────────────
+# `expo prebuild --clean` regenerates android/ from scratch, which (a) wipes
+# local.properties (gradle then dies with "SDK location not found") and
+# (b) leaves react-native-webrtc's dynamic `org.jitsi:webrtc:124.+` in the
+# graph. A dynamic version forces gradle to re-list Maven versions once its
+# 24h cache expires — with no network (sandboxed/offline runs) the build fails
+# with "Could not resolve org.jitsi:webrtc:124.+ … Network is unreachable".
+# Pinning to the cache-resident 124.0.0 removes the network dependency and
+# keeps release builds reproducible.
+repair_android_dir() {
+  echo "sdk.dir=$HOME/Library/Android/sdk" > android/local.properties
+  cat >> android/build.gradle <<'GRADLE'
+
+// warehouse14: pin dynamic deps so release builds never need a live Maven
+// version listing (see scripts/release-build.sh repair_android_dir).
+allprojects {
+  configurations.all {
+    resolutionStrategy {
+      force 'org.jitsi:webrtc:124.0.0'
+      cacheDynamicVersionsFor 365, 'days'
+    }
+  }
+}
+GRADLE
+}
+
 # ── Android: release .apk ─────────────────────────────────────────────────────
 build_android() {
   echo "=== Android release build (prod-baked) ==="
@@ -208,6 +234,7 @@ build_android() {
   export JAVA_HOME="${JAVA_HOME:-/Applications/Android Studio.app/Contents/jbr/Contents/Home}"
   rm -rf android
   npx expo prebuild --platform android --clean
+  repair_android_dir
   cd android
   ./gradlew :app:assembleRelease --no-daemon 2>&1 | tail -3
   local apk
@@ -236,6 +263,7 @@ build_aab() {
   [ -f "$W14_UPLOAD_STORE_FILE" ] || { echo "❌ keystore not found: $W14_UPLOAD_STORE_FILE"; exit 1; }
   rm -rf android
   npx expo prebuild --platform android --clean
+  repair_android_dir
   cd android
   ./gradlew :app:bundleRelease --no-daemon 2>&1 | tail -4
   local aab
@@ -281,6 +309,7 @@ build_update() {
 
   rm -rf android
   npx expo prebuild --platform android --clean
+  repair_android_dir
 
   # Manifest sanity BEFORE the long gradle run: the OAuth deep-link scheme and
   # the biometric permission must have been injected by the config plugins.
