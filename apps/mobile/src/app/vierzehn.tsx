@@ -14,8 +14,8 @@
  * Zustände sind echt (verbinde, bereit, hört, denkt, spricht, Fehler mit
  * beschriebenem Grund), die Warteliste unten ist die Server-Wahrheit.
  */
-import { useCallback, useEffect, useState, type ReactNode } from "react"
-import { Image, ScrollView, View } from "react-native"
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
+import { Image, Pressable, ScrollView, View } from "react-native"
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -24,7 +24,8 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated"
 import * as ImagePicker from "expo-image-picker"
-import { Camera, ImagePlus, Mic, MicOff } from "lucide-react-native"
+import { useKeepAwake } from "expo-keep-awake"
+import { Camera, ImagePlus, Mic, MicOff, Volume2 } from "lucide-react-native"
 
 import { Button } from "@/components/ui/button"
 import { Text } from "@/components/ui/text"
@@ -33,7 +34,57 @@ import { compressToJpegBase64 } from "@/warehouse14/photo-pipeline"
 import { useW14Theme } from "@/warehouse14/theme"
 import { Hairline, haptics, PaperGrain, SectionCard, useScreenInsets } from "@/warehouse14/ui"
 import { useMultiQuery } from "@/warehouse14/ui/data/useMultiQuery"
-import { useRealtimeVoice, type VoiceState } from "@/warehouse14/vierzehn/useRealtimeVoice"
+import {
+  useRealtimeVoice,
+  type TranscriptTurn,
+  type VoiceState,
+} from "@/warehouse14/vierzehn/useRealtimeVoice"
+
+/**
+ * The live written record — what Vierzehn heard (right, quiet) and answered
+ * (left, ink). Auto-follows the newest line; capped height so the orb stays
+ * the hero. Only rendered once the first words exist.
+ */
+function TranscriptPanel({ turns }: { turns: TranscriptTurn[] }): ReactNode {
+  const scrollRef = useRef<ScrollView>(null)
+  useEffect(() => {
+    const t = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 60)
+    return () => clearTimeout(t)
+  }, [turns.length])
+  if (turns.length === 0) return null
+  return (
+    <SectionCard title="Das Gespräch">
+      <ScrollView ref={scrollRef} style={{ maxHeight: 220 }} showsVerticalScrollIndicator={false} nestedScrollEnabled>
+        <View className="gap-2 pb-1">
+          {turns.map((turn) => (
+            <View
+              key={turn.id}
+              className={turn.role === "inhaber" ? "items-end" : "items-start"}
+            >
+              <View
+                className={
+                  turn.role === "inhaber"
+                    ? "bg-muted max-w-[85%] rounded-2xl rounded-tr-sm px-3 py-2"
+                    : "bg-card border-border max-w-[85%] rounded-2xl rounded-tl-sm border px-3 py-2"
+                }
+              >
+                <Text
+                  className={
+                    turn.role === "inhaber"
+                      ? "text-muted-foreground text-sm"
+                      : "text-foreground text-sm"
+                  }
+                >
+                  {turn.text}
+                </Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+    </SectionCard>
+  )
+}
 
 const STATE_LABEL: Record<VoiceState, string> = {
   aus: "Bereit, wenn du es bist",
@@ -133,7 +184,7 @@ export default function VierzehnScreen(): ReactNode {
   }, [])
 
   const sendOne = useCallback(
-    async (item: QueueItem) => {
+    async (item: QueueItem): Promise<boolean> => {
       try {
         patchItem(item.key, { state: "verkleinern", error: undefined })
         const dataBase64 = await compressToJpegBase64(item.uri, "product")
@@ -142,9 +193,11 @@ export default function VierzehnScreen(): ReactNode {
         patchItem(item.key, { state: "fertig" })
         haptics.success()
         void q.refetch()
+        return true
       } catch (err) {
         patchItem(item.key, { state: "fehler", error: describeError(err) })
         haptics.error()
+        return false
       }
     },
     [patchItem, q],
@@ -158,9 +211,14 @@ export default function VierzehnScreen(): ReactNode {
         state: "verkleinern",
       }))
       setQueue((prev) => [...items, ...prev].slice(0, 12))
-      for (const it of items) void sendOne(it)
+      // When the batch lands, tell Vierzehn MID-CONVERSATION — it reacts
+      // naturally ("die Fotos sind da") instead of the owner repeating it.
+      void Promise.all(items.map((it) => sendOne(it))).then((results) => {
+        const landed = results.filter(Boolean).length
+        if (landed > 0) voice.announcePhotos(landed)
+      })
     },
-    [sendOne],
+    [sendOne, voice],
   )
 
   const captureWithCamera = useCallback(async () => {
@@ -185,6 +243,10 @@ export default function VierzehnScreen(): ReactNode {
   const sending = queue.filter((it) => it.state === "verkleinern" || it.state === "senden").length
   const connected = voice.state !== "aus" && voice.state !== "fehler"
 
+  // A live voice session keeps the screen awake — the owner's hands hold the
+  // ware, not the phone. Component unmount releases it automatically.
+  useKeepAwake()
+
   return (
     <View className="bg-background flex-1">
       <PaperGrain />
@@ -199,9 +261,22 @@ export default function VierzehnScreen(): ReactNode {
       >
         {/* ── Der Orb + Zustand ─────────────────────────────────────── */}
         <View className="items-center">
-          <Orb state={voice.state} />
+          {/* Orb tap = the natural toggle: start when idle, end when live. */}
+          <Pressable
+            onPress={() => {
+              haptics.selection()
+              if (connected) voice.disconnect()
+              else void voice.connect()
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={connected ? "Gespräch beenden" : "Mit Vierzehn sprechen"}
+          >
+            <Orb state={voice.state} />
+          </Pressable>
           <Text className="text-foreground font-display-semibold text-2xl">Vierzehn</Text>
-          <Text className="text-muted-foreground mt-1 text-sm">{STATE_LABEL[voice.state]}</Text>
+          <Text className="text-muted-foreground mt-1 text-sm">
+            {voice.muted && connected ? "Stumm — Vierzehn wartet" : STATE_LABEL[voice.state]}
+          </Text>
           {voice.error ? (
             <Text className="text-destructive mt-2 px-6 text-center text-xs">{voice.error}</Text>
           ) : null}
@@ -212,18 +287,39 @@ export default function VierzehnScreen(): ReactNode {
           ) : null}
           <View className="mt-5 w-full flex-row gap-3">
             {connected ? (
-              <Button variant="secondary" className="flex-1" onPress={() => voice.disconnect()}>
-                <MicOff size={18} color={t.colors.foreground} />
-                <Text>Beenden</Text>
-              </Button>
+              <>
+                {/* Mute keeps the session alive — a customer walked in. */}
+                <Button
+                  variant={voice.muted ? "default" : "secondary"}
+                  className="flex-1"
+                  onPress={() => {
+                    haptics.selection()
+                    voice.toggleMute()
+                  }}
+                >
+                  {voice.muted ? (
+                    <Volume2 size={18} color={t.colors.primaryForeground} />
+                  ) : (
+                    <MicOff size={18} color={t.colors.foreground} />
+                  )}
+                  <Text>{voice.muted ? "Weiter" : "Stumm"}</Text>
+                </Button>
+                <Button variant="secondary" className="flex-1" onPress={() => voice.disconnect()}>
+                  <Mic size={18} color={t.colors.destructive} />
+                  <Text>Beenden</Text>
+                </Button>
+              </>
             ) : (
               <Button className="flex-1" onPress={() => void voice.connect()}>
                 <Mic size={18} color={t.colors.primaryForeground} />
-                <Text>Mit Vierzehn sprechen</Text>
+                <Text>{voice.state === "fehler" ? "Erneut verbinden" : "Mit Vierzehn sprechen"}</Text>
               </Button>
             )}
           </View>
         </View>
+
+        {/* ── Das Gespräch — live mitgeschrieben ────────────────────── */}
+        <TranscriptPanel turns={voice.transcript} />
 
         {/* ── Fotos in der Unterhaltung ─────────────────────────────── */}
         <SectionCard title="Fotos für den nächsten Artikel">

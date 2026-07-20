@@ -51,11 +51,27 @@ interface SessionResponse {
   tools: Array<{ name: string; description: string; parameters: unknown }>
 }
 
+/** One line of the live conversation record. */
+export interface TranscriptTurn {
+  id: string
+  role: "inhaber" | "vierzehn"
+  text: string
+}
+
+const TRANSCRIPT_CAP = 12
+
 export interface VierzehnVoice {
   state: VoiceState
   error: string | null
   /** Last spoken tool confirmation (shown as a calm line under the orb). */
   lastToolText: string | null
+  /** The live written record of the talk — what Vierzehn heard and answered. */
+  transcript: TranscriptTurn[]
+  /** Mic muted (session stays alive — for when a customer walks in). */
+  muted: boolean
+  toggleMute: () => void
+  /** Tell Vierzehn mid-talk that fresh photos just landed in the inbox. */
+  announcePhotos: (count: number) => void
   connect: () => Promise<void>
   disconnect: () => void
 }
@@ -64,6 +80,21 @@ export function useRealtimeVoice(): VierzehnVoice {
   const [state, setState] = useState<VoiceState>("aus")
   const [error, setError] = useState<string | null>(null)
   const [lastToolText, setLastToolText] = useState<string | null>(null)
+  const [transcript, setTranscript] = useState<TranscriptTurn[]>([])
+  const [muted, setMuted] = useState(false)
+  // The assistant transcript streams as deltas — accumulate per response and
+  // commit on done so the panel shows calm finished lines, not letter soup.
+  const pendingAssistantRef = useRef("")
+
+  const pushTurn = useCallback((role: TranscriptTurn["role"], text: string) => {
+    const line = text.trim()
+    if (!line) return
+    setTranscript((prev) =>
+      [...prev, { id: `${Date.now()}-${Math.floor(Math.random() * 1e6)}`, role, text: line }].slice(
+        -TRANSCRIPT_CAP,
+      ),
+    )
+  }, [])
 
   const pcRef = useRef<RTCPeerConnection | null>(null)
   const dcRef = useRef<RTCDataChannel | null>(null)
@@ -170,6 +201,29 @@ export function useRealtimeVoice(): VierzehnVoice {
         case "response.output_audio.done":
           setState("bereit")
           break
+        // ── Live written record ─────────────────────────────────────
+        // What Vierzehn HEARD (whisper transcription of the owner's turn):
+        case "conversation.item.input_audio_transcription.completed": {
+          const heard = typeof ev.transcript === "string" ? ev.transcript : ""
+          pushTurn("inhaber", heard)
+          break
+        }
+        // What Vierzehn SAYS — streams as deltas, committed on done so the
+        // panel shows whole calm sentences (both event-name generations).
+        case "response.output_audio_transcript.delta":
+        case "response.audio_transcript.delta":
+          if (typeof ev.delta === "string") pendingAssistantRef.current += ev.delta
+          break
+        case "response.output_audio_transcript.done":
+        case "response.audio_transcript.done": {
+          const said =
+            typeof ev.transcript === "string" && ev.transcript.trim()
+              ? ev.transcript
+              : pendingAssistantRef.current
+          pendingAssistantRef.current = ""
+          pushTurn("vierzehn", said)
+          break
+        }
         case "response.function_call_arguments.done": {
           const callId = typeof ev.call_id === "string" ? ev.call_id : null
           const name = typeof ev.name === "string" ? ev.name : null
@@ -256,6 +310,9 @@ export function useRealtimeVoice(): VierzehnVoice {
                       silence_duration_ms: 700,
                     },
                     noise_reduction: { type: "far_field" },
+                    // Written record of the owner's words for the live
+                    // transcript panel — trust in a loud shop.
+                    transcription: { model: "whisper-1" },
                   },
                 },
                 max_output_tokens: 1200,
@@ -322,6 +379,9 @@ export function useRealtimeVoice(): VierzehnVoice {
   const connect = useCallback(async () => {
     reconnectAttemptsRef.current = 0
     everConnectedRef.current = false
+    setTranscript([])
+    setMuted(false)
+    pendingAssistantRef.current = ""
     await connectInternal(false)
   }, [connectInternal])
 
@@ -330,7 +390,47 @@ export function useRealtimeVoice(): VierzehnVoice {
     teardown()
     setState("aus")
     setError(null)
+    setMuted(false)
   }, [teardown])
+
+  /** Mute keeps the SESSION alive and only silences the mic track — for the
+   *  moment a customer walks up to the counter. Unmute resumes instantly. */
+  const toggleMute = useCallback(() => {
+    const mic = micRef.current
+    if (!mic) return
+    setMuted((prev) => {
+      const next = !prev
+      for (const track of mic.getAudioTracks()) track.enabled = !next
+      return next
+    })
+  }, [])
+
+  /** Tell Vierzehn mid-conversation that fresh shelf photos just arrived, so
+   *  it reacts naturally ("die drei Fotos sind da — sollen wir anlegen?")
+   *  instead of the owner having to repeat what happened. */
+  const announcePhotos = useCallback((count: number) => {
+    const dc = dcRef.current
+    if (!dc || count <= 0) return
+    const line =
+      count === 1
+        ? "Hinweis: Soeben ist ein neues Foto im Eingang angekommen."
+        : `Hinweis: Soeben sind ${count} neue Fotos im Eingang angekommen.`
+    try {
+      dc.send(
+        JSON.stringify({
+          type: "conversation.item.create",
+          item: {
+            type: "message",
+            role: "user",
+            content: [{ type: "input_text", text: line }],
+          },
+        }),
+      )
+      dc.send(JSON.stringify({ type: "response.create" }))
+    } catch {
+      /* channel gone — the inbox strip still shows the truth */
+    }
+  }, [])
 
   // Leaving the screen always releases mic + speaker + connection.
   useEffect(() => {
@@ -340,5 +440,5 @@ export function useRealtimeVoice(): VierzehnVoice {
     }
   }, [teardown])
 
-  return { state, error, lastToolText, connect, disconnect }
+  return { state, error, lastToolText, transcript, muted, toggleMute, announcePhotos, connect, disconnect }
 }
