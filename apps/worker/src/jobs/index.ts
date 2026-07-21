@@ -20,6 +20,7 @@ export { anomalyWatchdogJob } from './anomaly-watchdog.js';
 export { lbmaPricesJob } from './lbma-prices.js';
 export { dsfinvkDailyExportJob } from './dsfinvk-daily-export.js';
 export { storefrontCartSweeperJob } from './storefront-cart-sweeper.js';
+export { productTranslatorJob } from './product-translator.js';
 export { intakeSweepJob } from './intake-sweep.js';
 export { appointmentNoShowDetectorJob } from './appointment-no-show-detector.js';
 export { appointmentNotificationsJob } from './appointment-notifications.js';

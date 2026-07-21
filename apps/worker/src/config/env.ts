@@ -62,6 +62,32 @@ const EnvSchema = Type.Object({
   /** API key for `metalpriceapi` / `goldapi`. Empty disables those providers. */
   METAL_PRICE_API_KEY: Type.String({ default: '' }),
 
+  // ── Product translation (job: product_translator) ──────────────────────
+  // Empty key = the translator job stays DORMANT and logs that it is off.
+  // The storefront then simply serves the German original everywhere, which
+  // is the correct, honest fallback rather than a broken half translation.
+  OPENAI_API_KEY: Type.String({
+    default: '',
+    description: 'OpenAI key for translating product texts. Empty disables the translator job.',
+  }),
+  OPENAI_TRANSLATE_MODEL: Type.String({
+    default: 'gpt-4.1-mini',
+    description: 'Chat model used to translate product name and description.',
+  }),
+  // Which storefront languages get a translated catalog. German is the
+  // source and is never listed here.
+  PRODUCT_TRANSLATE_LOCALES: Type.String({
+    default: 'en,ar,tr,fr,es,it,nl,pl,pt,sv,da,uk',
+    description: 'Comma separated locales to translate product texts into.',
+  }),
+  // Products translated per sweep. Bounds cost and keeps one tick short.
+  PRODUCT_TRANSLATE_BATCH: Type.Integer({
+    default: 15,
+    minimum: 1,
+    maximum: 200,
+    description: 'Max product+locale pairs translated per sweep.',
+  }),
+
   /** Used by the `json_url` provider (back-compat with the original stub). */
   LBMA_PRICES_URL: Type.String({
     default: '',

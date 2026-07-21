@@ -37,6 +37,7 @@ import {
   reservationSweeperJob,
   sessionsCleanupJob,
   storefrontCartSweeperJob,
+  productTranslatorJob,
   tseArchiveExporterJob,
   tseCertCheckerJob,
   workerJobRunsRetentionJob,
@@ -178,6 +179,14 @@ export async function buildWorker(opts: BuildWorkerOpts): Promise<WorkerHandle> 
   );
   // Day 20: B2C cart expiry — releases 15-min STOREFRONT soft locks.
   runner.register(storefrontCartSweeperJob);
+  runner.register(
+    productTranslatorJob({
+      apiKey: opts.env.OPENAI_API_KEY,
+      model: opts.env.OPENAI_TRANSLATE_MODEL,
+      locales: opts.env.PRODUCT_TRANSLATE_LOCALES,
+      batchSize: opts.env.PRODUCT_TRANSLATE_BATCH,
+    }),
+  );
   // 0088: transactional mail delivery (welcome, reservation, cancellation).
   runner.register(
     emailOutboxSenderJob({

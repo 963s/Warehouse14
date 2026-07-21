@@ -86,6 +86,10 @@ type ProductRow = {
   slug: string | null;
   name: string;
   description_de: string | null;
+  // Cached translation for the requested ?lang, LEFT JOINed. NULL simply
+  // means "not translated yet"; the German original is then served.
+  t_name: string | null;
+  t_description: string | null;
   description_en: string | null;
   seo_title: string | null;
   seo_title_en: string | null;
@@ -209,8 +213,11 @@ function toStorefrontProduct(row: ProductRow, images: StorefrontProductImage[]):
     id: row.id,
     slug: row.slug,
     sku: row.sku,
-    name: row.name,
-    descriptionDe: row.description_de,
+    // The shop writes German once. If the background translator has already
+    // rendered this product into the requested language, the customer reads
+    // THAT; otherwise the German original, never an empty field.
+    name: row.t_name ?? row.name,
+    descriptionDe: row.t_description ?? row.description_de,
     descriptionEn: row.description_en,
     seoTitle: row.seo_title,
     seoTitleEn: row.seo_title_en,
@@ -246,6 +253,21 @@ function toStorefrontProduct(row: ProductRow, images: StorefrontProductImage[]):
           }
         : null,
   };
+}
+
+
+/**
+ * Normalise the reader's language for the translation join.
+ *
+ * German is the SOURCE, so it never joins (its own row would be redundant).
+ * Anything malformed resolves to null, which makes the LEFT JOIN miss and the
+ * customer simply reads the German original. A bad locale is never an error.
+ */
+function readingLocale(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const code = raw.trim().toLowerCase().slice(0, 2);
+  if (!/^[a-z]{2}$/.test(code) || code === 'de') return null;
+  return code;
 }
 
 /** Compose a parent→child tree from a flat depth-first ordered list. */
@@ -344,6 +366,9 @@ const storefrontCatalog: FastifyPluginAsync<StorefrontCatalogRoutesOpts> = async
           minrVon: Type.Optional(Type.Integer({ minimum: 1, maximum: 1_000_000 })),
           minrBis: Type.Optional(Type.Integer({ minimum: 1, maximum: 1_000_000 })),
           q: Type.Optional(Type.String({ maxLength: 80 })),
+          // Reader's language. Two letters; anything else is ignored and the
+          // German original is served rather than erroring on a bad locale.
+          lang: Type.Optional(Type.String({ maxLength: 5 })),
         }),
         response: {
           200: StorefrontProductsResponse,
@@ -361,7 +386,9 @@ const storefrontCatalog: FastifyPluginAsync<StorefrontCatalogRoutesOpts> = async
         minrVon?: number;
         minrBis?: number;
         q?: string;
+        lang?: string;
       };
+      const lang = readingLocale(q.lang);
       const limit = Math.min(Math.max(q.limit ?? 24, 1), 100);
       const offset = Math.max(q.offset ?? 0, 0);
 
@@ -373,6 +400,8 @@ const storefrontCatalog: FastifyPluginAsync<StorefrontCatalogRoutesOpts> = async
       WITH catalog AS (
         SELECT
           p.id, p.sku, p.slug, p.name,
+          tr.name        AS t_name,
+          tr.description AS t_description,
           p.description_de, p.description_en,
           p.seo_title, p.seo_title_en,
           p.seo_description, p.seo_description_en,
@@ -387,6 +416,8 @@ const storefrontCatalog: FastifyPluginAsync<StorefrontCatalogRoutesOpts> = async
           c.slug                AS primary_category_slug,
           c.name_de             AS primary_category_name_de
         FROM products p
+        LEFT JOIN product_translations tr
+          ON tr.product_id = p.id AND tr.locale = ${lang}
         LEFT JOIN product_categories pc
           ON pc.product_id = p.id AND pc.is_primary = TRUE
         LEFT JOIN categories c
@@ -487,6 +518,9 @@ const storefrontCatalog: FastifyPluginAsync<StorefrontCatalogRoutesOpts> = async
         params: Type.Object({
           slug: Type.String({ minLength: 1, maxLength: 200 }),
         }),
+        querystring: Type.Object({
+          lang: Type.Optional(Type.String({ maxLength: 5 })),
+        }),
         response: {
           200: StorefrontProductSchema,
           404: ErrorResponse,
@@ -495,10 +529,13 @@ const storefrontCatalog: FastifyPluginAsync<StorefrontCatalogRoutesOpts> = async
     },
     async (req, reply) => {
       const { slug } = req.params as { slug: string };
+      const lang = readingLocale((req.query as { lang?: string }).lang);
 
       const rows = await app.db.execute<ProductRow>(sql`
       SELECT
         p.id, p.sku, p.slug, p.name,
+        tr.name        AS t_name,
+        tr.description AS t_description,
         p.description_de, p.description_en,
         p.seo_title, p.seo_title_en,
         p.seo_description, p.seo_description_en,
@@ -513,6 +550,8 @@ const storefrontCatalog: FastifyPluginAsync<StorefrontCatalogRoutesOpts> = async
         c.slug                AS primary_category_slug,
         c.name_de             AS primary_category_name_de
       FROM products p
+      LEFT JOIN product_translations tr
+        ON tr.product_id = p.id AND tr.locale = ${lang}
       LEFT JOIN product_categories pc
         ON pc.product_id = p.id AND pc.is_primary = TRUE
       LEFT JOIN categories c
