@@ -6,6 +6,12 @@ and the project adheres to [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+## [0.5.5] - 2026-07-21
+
+- Der Gerätecode ist jetzt gegen systematisches Raten geschützt. Ab der dritten Fehleingabe sperrt sich das Tastenfeld für 15 Sekunden, ab der fünften für eine Minute, ab der siebten für fünf Minuten und ab der neunten für fünfzehn Minuten, jeweils mit sichtbarer Restzeit. Nach zehn Fehlversuchen wird der gespeicherte Code gelöscht und eine neue Anmeldung mit Google verlangt.
+- Der Zähler der Fehlversuche wird dauerhaft gespeichert. Die App zu schließen und wieder zu öffnen setzt ihn nicht mehr zurück.
+- Der Gerätecode wird deutlich stärker abgelegt: statt eines einzelnen Durchgangs jetzt PBKDF2 mit 100.000 Runden. Ein bereits gesetzter Code wird bei der nächsten richtigen Eingabe automatisch übernommen, Sie müssen nichts tun.
+
 ## [0.5.4] - 2026-07-19
 
 - Vierzehn wird ausführend: Der Assistent kann Artikel jetzt nicht nur anlegen, sondern auch ändern („ändere den Preis der Taschenuhr auf 450") und Entwürfe löschen, immer mit lautem Zurücklesen und erst nach einem gesprochenen Ja, mit vollem Vorher/Nachher im Tagebuch. Seine Grenzen bleiben hart: nur Ware, niemals Einkaufspreis, Steuer, Status-Schalter, Geldpfade oder System.
