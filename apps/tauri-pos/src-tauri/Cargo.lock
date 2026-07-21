@@ -6919,7 +6919,7 @@ dependencies = [
 
 [[package]]
 name = "warehouse14-tauri-pos"
-version = "0.4.33"
+version = "0.5.5"
 dependencies = [
  "aes-gcm",
  "base64 0.22.1",
