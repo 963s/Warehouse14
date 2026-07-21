@@ -318,6 +318,23 @@ export function productTranslatorJob(opts: ProductTranslatorOptions): JobDefinit
       }
     });
 
+    // A STALL IS NOT A SUCCESS. Twice in one day this job reported SUCCESS
+    // every five minutes while translating nothing: once because a NUL byte
+    // made the staleness hash unmatchable, once because an early return
+    // skipped the category sweep entirely. Status told us nothing either
+    // time. So say it out loud when there was work waiting and none of it
+    // moved. Both counts are already in hand, so this costs nothing.
+    if (pending.length > 0 && translated === 0 && failed === 0) {
+      log.warn('product_translator: products pending but none translated, sweep stalled', {
+        pending: pending.length,
+      });
+    }
+    if (pendingCats.length > 0 && catsTranslated === 0 && catsFailed === 0) {
+      log.warn('product_translator: categories pending but none translated, sweep stalled', {
+        pending: pendingCats.length,
+      });
+    }
+
     if (translated > 0 || failed > 0 || catsTranslated > 0 || catsFailed > 0) {
       log.info('product_translator swept', {
         translated,
