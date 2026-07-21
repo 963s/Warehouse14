@@ -1,8 +1,9 @@
 # Runbook 0095 — turn on transactional mail via Google Workspace
 
 **Status: waiting on Basel.** Everything on the software side is built, deployed and
-verified. What is missing is a credential that only a Workspace administrator can
-create, so this runbook is the handover.
+verified. What is missing is ONE setting in the Admin console. No password is
+involved anywhere, and none can be: Google has disabled app passwords for this
+tenant.
 
 ## Why it is off right now
 
@@ -74,9 +75,10 @@ that question has to reach a person.
 - Name: `warehouse14 transactional`
 - Allowed senders: **Only addresses in my domains**
 - Authentication: tick **Only accept mail from the specified IP addresses** and add
-  `79.76.116.239`, and also tick **Require SMTP Authentication**. Belt and braces:
-  the IP allowlist stops anyone else using the relay, the auth stops a spoofed
-  source on the same network.
+  `79.76.116.239`. **Leave "Require SMTP Authentication" UNTICKED.** Ticking it
+  demands exactly the app password Google refuses to issue for this tenant, which
+  would put you straight back where you started. The IP allowlist is the
+  authorisation, and only this server holds that address.
 - Encryption: **Require TLS**
 
 **C. No credential at all.** With IP authorisation there is no password to
@@ -99,11 +101,22 @@ setting. If the script says the relay refused, wait and run it again.
 
 ## Applying it by hand, if you prefer
 
+```bash
+sudo nano /opt/warehouse14/.env
+```
 
+```
+SMTP_HOST=smtp-relay.gmail.com
+SMTP_PORT=587
+SMTP_USER=
+SMTP_PASS=
+MAIL_FROM=Warehouse 14 <bestellung@warehouse14.de>
+MAIL_REPLY_TO=bestellung@warehouse14.de
+```
+
+`SMTP_USER` and `SMTP_PASS` are empty ON PURPOSE. Then:
 
 ```bash
-ssh myserver
-sudo nano /opt/warehouse14/.env          # add the six lines above
 cd /opt/warehouse14
 sudo docker compose -f docker-compose.prod.yml up -d --no-deps --force-recreate worker
 ```
