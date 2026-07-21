@@ -37,6 +37,29 @@ SPF and DKIM aligned with no extra DNS work.
 address in the domain without occupying a paid seat, allows roughly 10,000 messages
 a day, and is not tied to one person's password.
 
+## App passwords are NOT an option here, proven 2026-07-22
+
+Do not try them, and do not let anyone else try them. Three attempts against
+`admin@warehouse14.de` returned `5.7.8 Username and Password not accepted`, and
+the App passwords page itself answers:
+
+> Die gesuchte Einstellung ist für Ihr Konto nicht verfügbar.
+
+That is Google saying the feature is switched off for this account. Google has
+been disabling app passwords by default across Workspace tenants, so this is
+policy and not a misconfiguration you can talk your way around. The relay below
+is the only path.
+
+Note also what the relay told us before it was configured, which is useful:
+
+```
+550 5.7.0 Mail relay denied [79.76.116.239].
+Invalid credentials for relay for one of the domains in: warehouse14.de
+```
+
+Google names `warehouse14.de`, so the Workspace tenant is real and healthy. The
+only missing thing is authorising this server's IP.
+
 ## What Basel does, once
 
 **A. Create the mailbox** (Admin console → Directory → Users), or an alias on an
@@ -56,26 +79,27 @@ that question has to reach a person.
   source on the same network.
 - Encryption: **Require TLS**
 
-**C. Create the credential** for the sending account: enable 2 step verification on
-it, then Google Account → Security → App passwords → generate one. Note it once,
-Google will not show it again.
-
-**D. Hand over four values** (never paste them into chat, put them in the server
-`.env` directly or send them the way you normally handle secrets):
-
-```
-SMTP_HOST=smtp-relay.gmail.com
-SMTP_PORT=587
-SMTP_USER=bestellung@warehouse14.de
-SMTP_PASS=<the app password, no spaces>
-MAIL_FROM=Warehouse 14 <bestellung@warehouse14.de>
-MAIL_REPLY_TO=bestellung@warehouse14.de
-```
-
-Port 587 means STARTTLS; the mailer only switches to implicit TLS at 465, so do not
-change the port without changing that expectation.
+**C. No credential at all.** With IP authorisation there is no password to
+create, store or rotate. `SMTP_USER` and `SMTP_PASS` stay empty on purpose. The
+mailer was changed on 2026-07-22 to make them optional precisely so this path
+works; before that it demanded them and would have refused to send.
 
 ## Applying it
+
+Run the script. It TESTS whether Google accepts this server before it writes
+anything, so a relay that has not propagated yet fails in your terminal rather
+than silently three minutes later:
+
+```bash
+sudo /opt/warehouse14/relay-setup.sh bestellung@warehouse14.de
+```
+
+Google can take from a few minutes up to about an hour to apply the relay
+setting. If the script says the relay refused, wait and run it again.
+
+## Applying it by hand, if you prefer
+
+
 
 ```bash
 ssh myserver
