@@ -130,13 +130,19 @@ const storefrontAccountRightsRoutes: FastifyPluginAsync<
                  ca.status::text        AS status,
                  ca.created_at::text    AS created_at,
                  ca.reserved_at::text   AS reserved_at,
-                 ca.expires_at::text    AS expires_at,
+                 -- The pickup deadline is NOT on carts. It lives on the
+                 -- reserved products, reachable through the reservation
+                 -- session, which is how the staff orders endpoint derives
+                 -- it too. Taking the latest keeps the whole basket honest.
+                 (SELECT MAX(pr.reservation_expires_at)::text
+                    FROM products pr
+                   WHERE pr.reserved_by_session_id = ca.reservation_session_id) AS expires_at,
                  COALESCE(
                    (SELECT json_agg(json_build_object(
                              'name', p.name,
                              'sku', p.sku,
                              'unitPriceEur', ci.unit_price_eur::text)
-                           ORDER BY ci.created_at)
+                           ORDER BY ci.added_at)
                       FROM cart_items ci
                       JOIN products p ON p.id = ci.product_id
                      WHERE ci.cart_id = ca.id),
@@ -238,7 +244,10 @@ const storefrontAccountRightsRoutes: FastifyPluginAsync<
           UPDATE products p
              SET status = 'AVAILABLE'::product_status,
                  reserved_by_session_id = NULL,
-                 reserved_until = NULL,
+                 reserved_by_channel = NULL,
+                 reserved_by_user_id = NULL,
+                 reserved_at = NULL,
+                 reservation_expires_at = NULL,
                  updated_at = now()
             FROM cart_items ci
             JOIN carts ca ON ca.id = ci.cart_id
