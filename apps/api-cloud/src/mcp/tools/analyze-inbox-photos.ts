@@ -68,7 +68,10 @@ const VISION_SYSTEM_PROMPT =
   '"metal" (gold, silver, platinum, palladium oder null), ' +
   '"condition" (NEW, USED_EXCELLENT, USED_GOOD, USED_FAIR, ANTIQUE_RESTORED, ANTIQUE_AS_FOUND), ' +
   '"categoryName" (kurzer Katalogname wie „Uhren", „Münzen", „Schmuck", „Antiquitäten" oder null), ' +
-  '"descriptionDe" (2 bis 3 verkaufsfertige deutsche Sätze, ehrlich, ohne Übertreibung), ' +
+  '"descriptionDe" (2 bis 4 verkaufsfertige deutsche Sätze in Hausqualität: warm, einfach, ' +
+  'konkret und sinnlich, nennt Material, Epoche oder Stil, Zustand und das, was das Stück ' +
+  'besonders macht; ehrlich ohne Übertreibung, keine leeren Superlative, kein Fachjargon, ' +
+  'geschrieben wie das Schaufenster eines vertrauten Fachgeschäfts für schöne alte Dinge), ' +
   '"auffaelligkeiten" (Punzen, Gravuren, Beschädigungen, Besonderheiten, kurz), ' +
   '"unsicher" (was du NICHT sicher erkennen kannst und der Inhaber prüfen sollte, z.B. Gewicht, ' +
   'Feingehalt, Echtheit). ' +
