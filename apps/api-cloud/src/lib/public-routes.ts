@@ -74,6 +74,11 @@ export const PUBLIC_PATH_PATTERNS: readonly RegExp[] = [
 export const AUTHENTICATED_PATHS_UNDER_PUBLIC_PREFIX: ReadonlySet<string> = new Set([
   '/api/auth/session',
   '/api/auth/sign-out',
+  // sign-out-all (security review 2026-07-21) reads req.actor + req.session to
+  // revoke every session of the current user; like sign-out it MUST be pulled
+  // back out of the public prefix so the auth preHandler populates them —
+  // otherwise it fails closed with "No active session".
+  '/api/auth/sign-out-all',
   '/api/auth/step-up',
   // PIN login needs the mTLS preHandler to populate req.deviceId so it can
   // resolve which user is paired with this terminal. The route itself does
