@@ -263,6 +263,23 @@ const authPinRoutes: FastifyPluginAsync<{ env: Env }> = async (app, opts) => {
       const { pin } = req.body as PinBody;
       const ip = req.ip || null;
 
+      // Security review 2026-07-21 — blacklist-on-LOGIN (gated, default OFF).
+      // The weak-PIN blacklist was enforced only when SETTING a PIN, so a legacy
+      // account whose PIN is a weak value (the prod owner seed) could still LOG
+      // IN with it — and because the prod mTLS gate is bypassed, that door is
+      // reachable from the open internet. When ENFORCE_PIN_BLACKLIST_ON_LOGIN is
+      // on, a blacklisted PIN is refused with the SAME 'Invalid PIN' as any
+      // wrong PIN (no oracle beyond the public blacklist), closing that door
+      // WITHOUT touching mTLS or mutating anyone's PIN. Kept OFF by default so
+      // the owner first sets a strong PIN (so his step-up / cashier fallback are
+      // not locked out), THEN flips this — see docs/runbooks/0090-auth-hardening.
+      if (
+        opts.env.ENFORCE_PIN_BLACKLIST_ON_LOGIN === 'true' &&
+        PinPolicy.validate(pin, { enforceBlacklist: true })?.code === 'BLACKLISTED'
+      ) {
+        throw new UnauthorizedError('Invalid PIN.');
+      }
+
       const candidate = await resolveCandidateUser(app, req.deviceId);
       if (!candidate) {
         throw new UnauthorizedError('PIN login requires a paired device');

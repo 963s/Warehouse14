@@ -479,6 +479,15 @@ const EnvSchema = Type.Object({
       'OpenAI vision model for analyze_inbox_photos (dealer-grade item identification from the ' +
       'photo inbox). Small + cheap by default; thumbs only, detail low.',
   }),
+  ENFORCE_PIN_BLACKLIST_ON_LOGIN: Type.String({
+    default: '',
+    description:
+      'Security review 2026-07-21. "true" makes pin-login REFUSE a weak/blacklisted PIN (e.g. the ' +
+      'legacy 0000 owner seed) with a plain "Invalid PIN", closing the anonymous internet exploit ' +
+      'without touching mTLS or mutating any PIN. Keep empty until the owner has set a strong PIN ' +
+      '(so his step-up / cashier fallback are not locked out); then set "true". See ' +
+      'docs/runbooks/0090-auth-hardening.md.',
+  }),
   // Reserved for the FUTURE executor (drafts replies, runs approved actions).
   // Not used by the read-only assistant; wired in a later phase.
   DEEPSEEK_API_KEY: Type.String({
