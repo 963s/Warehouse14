@@ -287,6 +287,13 @@ const storefrontGoogleAuthRoutes: FastifyPluginAsync<{ env: Env }> = async (app,
       // no in-app picker in the loop; the request header is the fallback. The
       // account was previously hardcoded to German, so every Google shopper
       // got German letters no matter what they had chosen in the app.
+      // Everything else Google verified about this person. We used to discard
+      // all of it and then ask the customer at the counter for details Google
+      // had already confirmed. Empty string means "Google did not send it",
+      // which stays NULL rather than becoming an empty name.
+      const givenName = String(claims.given_name ?? '').trim();
+      const familyName = String(claims.family_name ?? '').trim();
+      const pictureUrl = String(claims.picture ?? '').trim();
       const claimLocale = String(claims.locale ?? '').trim();
       const signInLocale = claimLocale
         ? normalizeEmailLocale(claimLocale)
@@ -383,6 +390,28 @@ const storefrontGoogleAuthRoutes: FastifyPluginAsync<{ env: Env }> = async (app,
                  AND c.email_encrypted IS NULL
             `);
           }
+
+          // ── Profile sync, EVERY sign in, not just the first ────────────
+          // Names and pictures change, and a profile frozen at first login
+          // slowly stops describing the person standing at the counter. One
+          // statement covers all three paths above (found by subject, linked
+          // by email, freshly created). COALESCE on the incoming value means
+          // a claim Google stops sending never erases what we already hold.
+          await tx.execute(drizzleSql`
+            UPDATE shoppers
+               SET given_name_encrypted  = COALESCE(${
+                 givenName ? drizzleSql`encrypt_pii(${givenName})` : drizzleSql`NULL`
+               }, given_name_encrypted),
+                   family_name_encrypted = COALESCE(${
+                     familyName ? drizzleSql`encrypt_pii(${familyName})` : drizzleSql`NULL`
+                   }, family_name_encrypted),
+                   picture_url_encrypted = COALESCE(${
+                     pictureUrl ? drizzleSql`encrypt_pii(${pictureUrl})` : drizzleSql`NULL`
+                   }, picture_url_encrypted),
+                   last_seen_at          = now(),
+                   updated_at            = now()
+             WHERE id = ${shopperId}
+          `);
 
           const token = newSessionToken();
           const expiresAt = new Date(Date.now() + SHOPPER_SESSION_TTL_MS);
