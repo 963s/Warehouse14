@@ -118,7 +118,6 @@ import {
   type ListTasksResponse,
   type PhotoRow,
   type AuthSessionResponse,
-  type PinLoginResponse,
   type ProductDetail,
   type ProductListQuery,
   type ProductListResponse,
@@ -258,10 +257,6 @@ export const apiClient: ApiClient = createApiClient({
  * RATE_LIMITED), and silently re-issues once on a transient network/timeout
  * blip. A real answer (401 / PIN_LOCKED / …) is surfaced unchanged.
  */
-export function pinLogin(pin: string): Promise<PinLoginResponse> {
-  return authPin.loginSafe(apiClient, { pin })
-}
-
 /** PIN step-up — refreshes the session's step-up window (used by the Dialog). */
 export function pinStepUp(pin: string): Promise<unknown> {
   return authPin.stepUp(apiClient, { pin })

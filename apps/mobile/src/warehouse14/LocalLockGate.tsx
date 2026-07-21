@@ -87,8 +87,29 @@ function LocalLock({ onUnlock }: { onUnlock: () => void }): ReactNode {
     }
   }, [onUnlock])
 
+  // Capability detection runs UNGATED (create mode needs it too: the first-run
+  // copy names the biometric future only when hardware + enrollment genuinely
+  // exist). Detection is read-only — it never prompts.
   useEffect(() => {
-    if (mode !== "verify") return
+    let alive = true
+    void (async () => {
+      try {
+        const [hw, enrolled] = await Promise.all([
+          LocalAuthentication.hasHardwareAsync(),
+          LocalAuthentication.isEnrolledAsync(),
+        ])
+        if (alive && hw && enrolled) setBioReady(true)
+      } catch {
+        // detection failed → code-only, honestly.
+      }
+    })()
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  useEffect(() => {
+    if (mode !== "verify" || !bioReady) return
     let alive = true
     // The relock fires on the "background" event, so this component usually
     // MOUNTS while the app is invisible. A biometric sheet cannot show from the
@@ -96,9 +117,8 @@ function LocalLock({ onUnlock }: { onUnlock: () => void }): ReactNode {
     // the owner would return to a dead pad. So: auto-prompt immediately only
     // when already active, otherwise arm a listener and ask the moment the app
     // is back in the foreground.
-    let detected = false
     const tryAutoPrompt = (): void => {
-      if (!alive || !detected || bioPrompted.current) return
+      if (!alive || bioPrompted.current) return
       if (AppState.currentState !== "active") return
       bioPrompted.current = true
       void promptBiometric()
@@ -106,25 +126,12 @@ function LocalLock({ onUnlock }: { onUnlock: () => void }): ReactNode {
     const sub = AppState.addEventListener("change", (state) => {
       if (state === "active") tryAutoPrompt()
     })
-    void (async () => {
-      try {
-        const [hw, enrolled] = await Promise.all([
-          LocalAuthentication.hasHardwareAsync(),
-          LocalAuthentication.isEnrolledAsync(),
-        ])
-        if (!alive || !hw || !enrolled) return
-        detected = true
-        setBioReady(true)
-        tryAutoPrompt()
-      } catch {
-        // detection failed → code-only, honestly.
-      }
-    })()
+    tryAutoPrompt()
     return () => {
       alive = false
       sub.remove()
     }
-  }, [mode, promptBiometric])
+  }, [mode, bioReady, promptBiometric])
 
   const fail = useCallback((message: string) => {
     haptics.error()

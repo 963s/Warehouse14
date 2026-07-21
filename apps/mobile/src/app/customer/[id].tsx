@@ -1044,11 +1044,28 @@ export default function CustomerDetailScreen() {
           <View>
             <GroupKicker label="BESTELLUNGEN IM SHOP" />
             {webOrders.length === 0 ? (
-              <Text className="text-muted-foreground pt-1 text-sm">
-                {ordersQ.status === "loading"
-                  ? "Bestellungen werden geladen …"
-                  : "Keine Bestellungen im Online-Shop."}
-              </Text>
+              ordersQ.status === "error" ? (
+                // Honest failure: a dropped read must NEVER assert an empty
+                // history (the customer may hold a live reservation right now).
+                <View className="flex-row items-center gap-3 pt-1">
+                  <Text className="text-muted-foreground flex-1 text-sm">
+                    Die Bestellungen konnten nicht geladen werden.
+                  </Text>
+                  <PressableScale
+                    onPress={() => void ordersQ.refetch()}
+                    accessibilityRole="button"
+                    hitSlop={8}
+                  >
+                    <Text className="text-sm font-semibold underline">Erneut versuchen</Text>
+                  </PressableScale>
+                </View>
+              ) : (
+                <Text className="text-muted-foreground pt-1 text-sm">
+                  {ordersQ.status === "loading"
+                    ? "Bestellungen werden geladen …"
+                    : "Keine Bestellungen im Online-Shop."}
+                </Text>
+              )
             ) : (
               <View className="pt-1">
                 {webOrders.map((order, i) => (
@@ -1088,7 +1105,7 @@ export default function CustomerDetailScreen() {
                           {order.itemCount} {order.itemCount === 1 ? "Artikel" : "Artikel"}
                         </Text>
                         <Text className="font-mono text-sm" style={{ color: t.colors.inkAged }}>
-                          {order.totalEur} €
+                          {formatEur(order.totalEur)}
                         </Text>
                       </View>
                       {order.lines.map((line) => (
@@ -1104,7 +1121,7 @@ export default function CustomerDetailScreen() {
                             {line.name}
                           </Text>
                           <Text className="text-muted-foreground font-mono text-xs">
-                            {line.unitPriceEur} €
+                            {formatEur(line.unitPriceEur)}
                           </Text>
                         </View>
                       ))}

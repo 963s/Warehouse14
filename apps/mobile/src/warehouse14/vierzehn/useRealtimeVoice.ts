@@ -389,6 +389,19 @@ export function useRealtimeVoice(): VierzehnVoice {
         await pc.setRemoteDescription({ type: "answer", sdp: answerSdp })
       } catch (err) {
         teardown()
+        const msg = err instanceof Error ? err.message : ""
+        // A mic denial is TERMINAL even mid-reconnect: retrying re-mints server
+        // sessions and can re-pop the system dialog without any user action —
+        // pure waste. Land on the named recovery message immediately instead.
+        if (msg === "MIC_DENIED") {
+          setState("fehler")
+          setError(
+            Platform.OS === "android"
+              ? "Der Mikrofon-Zugriff ist nicht erlaubt. Bitte in den Geräte-Einstellungen unter Apps, Warehouse 14, Berechtigungen das Mikrofon erlauben und erneut verbinden."
+              : "Der Mikrofon-Zugriff ist nicht erlaubt. Bitte in den Einstellungen unter Warehouse 14 das Mikrofon erlauben und erneut verbinden.",
+          )
+          return
+        }
         if (silent) {
           handleDrop()
           return
@@ -396,12 +409,7 @@ export function useRealtimeVoice(): VierzehnVoice {
         setState("fehler")
         // Named failures speak for themselves; everything else goes through the
         // shared German describer (auth/role/network already read correctly).
-        const msg = err instanceof Error ? err.message : ""
-        if (msg === "MIC_DENIED") {
-          setError(
-            "Der Mikrofon-Zugriff ist nicht erlaubt. Bitte in den Geräte-Einstellungen unter Apps, Warehouse 14, Berechtigungen das Mikrofon erlauben und erneut verbinden.",
-          )
-        } else if (msg.startsWith("Handshake")) {
+        if (msg.startsWith("Handshake")) {
           setError("Die Sprachverbindung kam nicht zustande. Bitte erneut verbinden.")
         } else {
           setError(describeError(err))

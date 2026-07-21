@@ -199,6 +199,16 @@ const handler: ToolHandler<ArgsShape> = async (
   const condition = args.condition ?? 'USED_GOOD';
   const status = activate ? ('AVAILABLE' as const) : ('DRAFT' as const);
 
+  // The DB requires strictly POSITIVE measures (products_weight_positive +
+  // the *_cm_positive checks). A dictated "null Gramm" would otherwise blow
+  // the whole INSERT with a raw constraint message — treat zero as "unknown".
+  const positiveOrNull = (v: string | undefined): string | null =>
+    v != null && Number.parseFloat(v) > 0 ? v : null;
+  const weightGrams = positiveOrNull(args.weightGrams);
+  const lengthCm = positiveOrNull(args.lengthCm);
+  const widthCm = positiveOrNull(args.widthCm);
+  const heightCm = positiveOrNull(args.heightCm);
+
   const inserted = await ctx.db.transaction(async (tx) => {
     const [row] = await tx
       .insert(products)
@@ -208,10 +218,10 @@ const handler: ToolHandler<ArgsShape> = async (
         barcode: sku,
         itemType: args.itemType,
         metal: args.metal ?? null,
-        weightGrams: args.weightGrams ?? null,
-        lengthCm: args.lengthCm ?? null,
-        widthCm: args.widthCm ?? null,
-        heightCm: args.heightCm ?? null,
+        weightGrams,
+        lengthCm,
+        widthCm,
+        heightCm,
         // Provisional + intake-locked: the owner verifies these.
         acquisitionCostEur,
         listPriceEur,
@@ -251,10 +261,10 @@ const handler: ToolHandler<ArgsShape> = async (
         listPriceEur,
         acquisitionCostEur,
         condition,
-        weightGrams: args.weightGrams ?? null,
-        lengthCm: args.lengthCm ?? null,
-        widthCm: args.widthCm ?? null,
-        heightCm: args.heightCm ?? null,
+        weightGrams,
+        lengthCm,
+        widthCm,
+        heightCm,
         categoryId,
         status,
         publishedToWeb: publishToWeb,
@@ -354,8 +364,8 @@ export const createProductTool = {
       'created ACTIVE (immediately sellable); with publishToWeb=true it is additionally visible in ' +
       'the web shop. Repeated calls with the same name return the existing item (idempotent). Use ' +
       'ONLY after reading ALL details back to the owner and receiving an explicit spoken ' +
-      'confirmation — especially before activate/publishToWeb. Buy-in cost and tax treatment are ' +
-      'provisional and intake-locked — tell the owner to verify them.',
+      'confirmation, especially before activate/publishToWeb. Buy-in cost and tax treatment are ' +
+      'provisional and intake-locked, tell the owner to verify them.',
     inputSchema: CreateProductArgs,
     requiredRoles: ['ADMIN'] as const,
     isMutation: true,

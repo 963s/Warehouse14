@@ -69,10 +69,10 @@ const VISION_SYSTEM_PROMPT =
   '"condition" (NEW, USED_EXCELLENT, USED_GOOD, USED_FAIR, ANTIQUE_RESTORED, ANTIQUE_AS_FOUND), ' +
   '"categoryName" (kurzer Katalogname wie „Uhren", „Münzen", „Schmuck", „Antiquitäten" oder null), ' +
   '"descriptionDe" (2 bis 3 verkaufsfertige deutsche Sätze, ehrlich, ohne Übertreibung), ' +
-  '"auffaelligkeiten" (Punzen, Gravuren, Beschädigungen, Besonderheiten — kurz), ' +
+  '"auffaelligkeiten" (Punzen, Gravuren, Beschädigungen, Besonderheiten, kurz), ' +
   '"unsicher" (was du NICHT sicher erkennen kannst und der Inhaber prüfen sollte, z.B. Gewicht, ' +
   'Feingehalt, Echtheit). ' +
-  'Erfinde NIEMALS Gewichte, Feingehalte oder Jahreszahlen, die nicht sichtbar sind — nenne sie ' +
+  'Erfinde NIEMALS Gewichte, Feingehalte oder Jahreszahlen, die nicht sichtbar sind, nenne sie ' +
   'stattdessen unter "unsicher".';
 
 const handler: ToolHandler<ArgsShape> = async (
@@ -201,7 +201,7 @@ const handler: ToolHandler<ArgsShape> = async (
   if (suggestion.auffaelligkeiten) parts.push(`Auffällig: ${suggestion.auffaelligkeiten}`);
   if (suggestion.unsicher) parts.push(`Bitte prüfen: ${suggestion.unsicher}`);
   parts.push(
-    'Wenn das passt, nenne mir noch Preis und fehlende Angaben — dann lege ich den Artikel an.',
+    'Wenn das passt, nenne mir noch Preis und fehlende Angaben, dann lege ich den Artikel an.',
   );
 
   ctx.logger.info(
@@ -235,7 +235,7 @@ export const analyzeInboxPhotosTool = {
       'Looks at the newest photos in the photo inbox (sent from the owner\'s phone) with the ' +
       'vision model and returns a dealer-grade suggestion: sellable German name, item type, metal, ' +
       'condition, catalogue category, a short sales description, notable marks, and what remains ' +
-      'uncertain. Read-only — it changes nothing. Use it when the owner says photos have arrived ' +
+      'uncertain. Read-only, it changes nothing. Use it when the owner says photos have arrived ' +
       'or asks what the item is; read the suggestion back, let the owner correct it, then create ' +
       'the product with create_product (attachInboxPhotos binds the same photos).',
     inputSchema: AnalyzeInboxPhotosArgs,
