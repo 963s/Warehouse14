@@ -46,7 +46,13 @@ jobs:
           - platform: macos-14
             rust-target: aarch64-apple-darwin
             label: macos-arm64
-          - platform: macos-13
+          # Intel bundle is CROSS-COMPILED on the Apple Silicon runner. The
+          # macos-13 (Intel) image has been retired by GitHub, so this job used
+          # to sit unassigned until the 24h timeout killed it — v0.5.4 shipped
+          # with NO darwin-x86_64 entry in latest.json, i.e. Intel Macs silently
+          # never received an update. Building here is safe because the bundle
+          # step already passes `--target ${{ matrix.rust-target }}` explicitly.
+          - platform: macos-14
             rust-target: x86_64-apple-darwin
             label: macos-x64
           - platform: windows-latest
