@@ -27,7 +27,11 @@ import { useToastStore } from '../../state/toast-store.js';
 
 import { CustomerEditDialog } from './CustomerEditDialog.js';
 import { CustomerEraseDialog } from './CustomerEraseDialog.js';
-import { CustomerAnkaufHistory, CustomerSalesHistory } from './CustomerHistoryPanels.js';
+import {
+  CustomerAnkaufHistory,
+  CustomerSalesHistory,
+  CustomerWebOrders,
+} from './CustomerHistoryPanels.js';
 import { CustomerTrustDialog } from './CustomerTrustDialog.js';
 import { KycCaptureModal } from './KycCaptureModal.js';
 import { KycLocalDocs, kycLocalQueryKey } from './KycLocalDocs.js';
@@ -323,6 +327,7 @@ function CustomerCard({ detail }: { detail: CustomerDetail }): JSX.Element {
       </ParchmentCard>
 
       {/* History */}
+      <CustomerWebOrders customerId={detail.id} />
       <CustomerAnkaufHistory customerId={detail.id} />
       <CustomerSalesHistory customerId={detail.id} />
 

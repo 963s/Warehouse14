@@ -243,3 +243,158 @@ function EmptyHint({ text }: { text: string }): JSX.Element {
     </p>
   );
 }
+
+/**
+ * CustomerWebOrders — what this customer reserved or bought ONLINE.
+ *
+ * THE GAP THIS CLOSES: the cashier's customer file showed Ankauf history and
+ * finalised transactions, so a storefront reservation that had not yet become
+ * a sale was invisible at the counter. A customer could stand in front of the
+ * till saying "I reserved this online" and the cashier had no way to see it.
+ * The endpoint existed and the owner app already used it; this app simply
+ * never called it.
+ *
+ * The pickup deadline leads, because it is the one field that decides what
+ * the cashier does next: hand it over, or tell the customer the hold lapsed.
+ */
+interface WebOrderRow {
+  id: string;
+  status: string;
+  createdAt: string;
+  expiresAt: string | null;
+  itemCount: number;
+  totalEur: string;
+  lines: { productId: string | null; name: string; sku: string | null; quantity: number; unitPriceEur: string }[];
+}
+
+const WEB_ORDER_STATUS: Record<string, string> = {
+  RESERVED: 'Reserviert',
+  CANCELLED: 'Storniert',
+  ABANDONED: 'Verfallen',
+  COMPLETED: 'Abgeschlossen',
+  ACTIVE: 'Im Warenkorb',
+};
+
+/** How the hold reads at the counter right now, not just its timestamp. */
+function pickupState(expiresAt: string | null, status: string): { text: string; urgent: boolean } | null {
+  if (status !== 'RESERVED' || !expiresAt) return null;
+  const ms = new Date(expiresAt).getTime() - Date.now();
+  if (Number.isNaN(ms)) return null;
+  if (ms <= 0) return { text: 'Abholfrist abgelaufen', urgent: true };
+  const hours = Math.round(ms / 3_600_000);
+  if (hours <= 24) return { text: `Abholung noch ${hours} Std.`, urgent: true };
+  return { text: `Abholung bis ${new Date(expiresAt).toLocaleDateString('de-DE')}`, urgent: false };
+}
+
+export function CustomerWebOrders({ customerId }: { customerId: string }): JSX.Element {
+  const api = useApiClient();
+  const q = useCachedQuery({
+    queryKey: ['customers', customerId, 'orders'],
+    queryFn: () =>
+      api.request<{ items: WebOrderRow[] }>(
+        'GET',
+        `/api/customers/${encodeURIComponent(customerId)}/orders`,
+      ),
+    cacheKey: `customer:orders:${customerId}`,
+    staleTime: 30_000,
+  });
+
+  const items = q.data?.items ?? [];
+  const held = items.filter((o) => o.status === 'RESERVED').length;
+
+  return (
+    <ParchmentCard padding="md">
+      <DiamondRule
+        label={held > 0 ? `Online-Bestellungen · ${held} reserviert` : 'Online-Bestellungen'}
+      />
+      {q.fromCache && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
+          <StaleBadge cachedAt={q.cachedAt} stale={q.isStale} />
+        </div>
+      )}
+      {q.isLoading ? (
+        <Skeleton />
+      ) : items.length === 0 ? (
+        <EmptyHint text="Dieser Kunde hat noch nichts online bestellt." />
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {items.slice(0, 10).map((order) => {
+            const pickup = pickupState(order.expiresAt, order.status);
+            return (
+              <div
+                key={order.id}
+                style={{ padding: '4px 0', borderBottom: '1px solid var(--w14-rule)' }}
+              >
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'auto 1fr auto',
+                    gap: 10,
+                    alignItems: 'baseline',
+                  }}
+                >
+                  <span
+                    className="w14-tabular"
+                    style={{
+                      fontFamily: 'var(--w14-font-mono)',
+                      fontSize: '0.78rem',
+                      color: 'var(--w14-ink-faded)',
+                    }}
+                  >
+                    {order.id.slice(0, 8).toUpperCase()}
+                  </span>
+                  <span style={{ fontFamily: 'var(--w14-font-display)', fontSize: '0.92rem' }}>
+                    {WEB_ORDER_STATUS[order.status] ?? order.status}
+                    {' · '}
+                    {new Date(order.createdAt).toLocaleDateString('de-DE')}
+                  </span>
+                  <MoneyAmount valueEur={order.totalEur} />
+                </div>
+                {pickup && (
+                  <div
+                    style={{
+                      marginTop: 2,
+                      fontFamily: 'var(--w14-font-display)',
+                      fontSize: '0.82rem',
+                      color: pickup.urgent ? 'var(--w14-wax-red)' : 'var(--w14-gilt)',
+                    }}
+                  >
+                    {pickup.text}
+                  </div>
+                )}
+                {order.lines.map((line, i) => (
+                  <div
+                    key={`${order.id}:${line.productId ?? i}`}
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'auto 1fr auto',
+                      gap: 8,
+                      fontSize: '0.82rem',
+                      color: 'var(--w14-ink-faded)',
+                      marginTop: 2,
+                    }}
+                  >
+                    <span className="w14-tabular" style={{ fontFamily: 'var(--w14-font-mono)' }}>
+                      {line.sku ?? '—'}
+                    </span>
+                    <span
+                      style={{
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {line.quantity > 1 ? `${line.quantity} × ` : ''}
+                      {line.name}
+                    </span>
+                    <MoneyAmount valueEur={line.unitPriceEur} />
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </ParchmentCard>
+  );
+}
