@@ -43,19 +43,25 @@ export const reservationSweeperJob: JobDefinition = {
       // nulls its reserved_by_session_id, so a WEB_RESERVATION cart was left
       // stranded in status='RESERVED' with its stock already freed — a stale
       // "reserved" order in the customer + staff views. Flip any RESERVED cart
-      // whose reservation session holds NO more RESERVED product to EXPIRED.
+      // whose reservation session holds NO more RESERVED product to ABANDONED —
+      // the terminal "timed out" state the checkout sweeper also lands on.
+      // (cart_status has NO 'EXPIRED' member; ABANDONED is the correct terminal
+      // and is already handled everywhere the checkout sweeper's carts surface.)
       // Runs every tick (not gated on this tick's releases) so a cart stranded
       // by an earlier sweep is still reconciled. The on_cart_reserved trigger
-      // only emits for RESERVED/CANCELLED, so we emit web_order.expired here.
+      // fires web_order.reserved only on ENTRY to RESERVED, so we emit
+      // web_order.expired here for the staff/customer live feed. Enum labels are
+      // cast explicitly (::cart_status / ::product_status) so an invalid label
+      // fails loudly at review, never silently every tick at runtime.
       const expiredCarts = (await tx.execute(sql`
         UPDATE carts
-           SET status = 'EXPIRED', updated_at = now()
-         WHERE status = 'RESERVED'
+           SET status = 'ABANDONED'::cart_status, updated_at = now()
+         WHERE status = 'RESERVED'::cart_status
            AND reservation_session_id IS NOT NULL
            AND NOT EXISTS (
              SELECT 1 FROM products p
               WHERE p.reserved_by_session_id = carts.reservation_session_id
-                AND p.status = 'RESERVED'
+                AND p.status = 'RESERVED'::product_status
            )
         RETURNING id
       `)) as unknown as { id: string }[];
