@@ -62,7 +62,14 @@ export async function loadActorBySession(
     })
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
-    .where(and(eq(sessions.id, sessionId), isNull(users.softDeletedAt)))
+    // Live session (0089: not explicitly revoked) belonging to a live user.
+    .where(
+      and(
+        eq(sessions.id, sessionId),
+        isNull(sessions.revokedAt),
+        isNull(users.softDeletedAt),
+      ),
+    )
     .limit(1);
 
   const r = rows[0];

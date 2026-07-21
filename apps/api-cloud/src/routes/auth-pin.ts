@@ -38,6 +38,7 @@ import { auditLog, devices, sessions, users } from '@warehouse14/db/schema';
 
 import type { Env } from '../config/env.js';
 import { PinLockedError, UnauthorizedError, requireAuth } from '../lib/auth-policy.js';
+import { sessionTtlMs } from '../lib/session-ttl.js';
 import { type PinMatch, classifyPinAttempt } from '../lib/duress.js';
 
 // ────────────────────────────────────────────────────────────────────────
@@ -339,10 +340,9 @@ const authPinRoutes: FastifyPluginAsync<{ env: Env }> = async (app, opts) => {
         throw new UnauthorizedError('Invalid PIN.');
       }
 
-      // Success — create a session. TTL depends on is_owner per ADR-0022 §2.
-      const ttlMs = state.isOwner
-        ? 30 * 24 * 60 * 60_000 // 30 days for Owner
-        : 8 * 60 * 60_000; // 8 hours for staff
+      // Success — create a session. TTL depends on is_owner (ADR-0022 §2),
+      // centralized in session-ttl.ts (owner shortened 30d→7d, review 2026-07-21).
+      const ttlMs = sessionTtlMs(state.isOwner);
       const sessionId = randomUUID();
       const token = randomUUID().replace(/-/g, '') + randomUUID().replace(/-/g, '');
       const expiresAt = new Date(Date.now() + ttlMs);

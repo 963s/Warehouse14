@@ -11,7 +11,7 @@
  */
 
 import { Type } from '@sinclair/typebox';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 
 import { auditLog, sessions } from '@warehouse14/db/schema';
@@ -137,6 +137,65 @@ const authSessionRoutes: FastifyPluginAsync = async (app) => {
       }
 
       return { ok: true as const };
+    },
+  );
+
+  // ────────────────────────────────────────────────────────────────────
+  // POST /api/auth/sign-out-all
+  //
+  // The lost-device kill switch (security review 2026-07-21). Revokes EVERY
+  // live session of the current user, on every device, by stamping
+  // `sessions.revoked_at` — the per-request auth loader rejects a revoked
+  // session on its very next call, so a phone that was lost while unlocked
+  // stops working the instant the owner runs this from any other device.
+  // The current session is included; the cookie is cleared too.
+  // ────────────────────────────────────────────────────────────────────
+  app.post(
+    '/api/auth/sign-out-all',
+    {
+      schema: {
+        tags: ['auth'],
+        summary: 'Revoke ALL of the current user\'s sessions (all devices).',
+        response: {
+          200: Type.Object({ ok: Type.Literal(true), revoked: Type.Integer() }),
+          401: ErrorResponse,
+        },
+      },
+    },
+    async (req, reply) => {
+      if (!req.session || !req.actor) {
+        throw new UnauthorizedError('No active session.');
+      }
+      const actorId = req.actor.id;
+
+      const revoked = await app.db.transaction(async (tx) => {
+        const rows = await tx
+          .update(sessions)
+          .set({ revokedAt: new Date() })
+          .where(and(eq(sessions.userId, actorId), isNull(sessions.revokedAt)))
+          .returning({ id: sessions.id });
+        await tx.insert(auditLog).values({
+          eventType: 'auth.sign_out_all',
+          actorUserId: actorId,
+          deviceId: req.deviceId ?? null,
+          ipAddress: req.ip ?? null,
+          userAgent: (req.headers['user-agent'] as string | undefined) ?? null,
+          payload: { revokedCount: rows.length },
+        });
+        return rows.length;
+      });
+
+      {
+        const crossSite = process.env.NODE_ENV === 'production';
+        reply.clearCookie('warehouse14.session', {
+          path: '/',
+          httpOnly: true,
+          secure: crossSite ? true : req.protocol === 'https',
+          sameSite: crossSite ? 'none' : 'lax',
+        });
+      }
+
+      return { ok: true as const, revoked };
     },
   );
 };

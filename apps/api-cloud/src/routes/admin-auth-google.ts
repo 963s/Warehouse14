@@ -42,6 +42,7 @@ import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { auditLog, sessions } from '@warehouse14/db/schema';
 
 import type { Env } from '../config/env.js';
+import { sessionTtlMs } from '../lib/session-ttl.js';
 
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -51,8 +52,8 @@ const OAUTH_STATE_PATH = '/api/admin/auth/google';
 const STATE_TTL_MS = 10 * 60 * 1000; // 10 minutes to complete the consent.
 
 /** Session lifetimes — identical to routes/auth-pin.ts (ADR-0022 §2). */
-const OWNER_TTL_MS = 30 * 24 * 60 * 60_000; // 30 days
-const STAFF_TTL_MS = 8 * 60 * 60_000; // 8 hours
+// Session TTLs are centralized in session-ttl.ts (owner shortened 30d→7d,
+// security review 2026-07-21).
 /** Device-handoff window: how long a completed login waits to be claimed. */
 const HANDOFF_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -385,7 +386,7 @@ const adminGoogleAuthRoutes: FastifyPluginAsync<{ env: Env }> = async (app, opts
       // Mint the session — identical shape to routes/auth-pin.ts. Google login is
       // a full fresh authentication, so stamp a fresh step-up. No device binding:
       // the Google path does not carry mTLS device identity (device_id stays null).
-      const ttlMs = staff.isOwner ? OWNER_TTL_MS : STAFF_TTL_MS;
+      const ttlMs = sessionTtlMs(staff.isOwner);
       const sessionId = randomUUID();
       const token = randomUUID().replace(/-/g, '') + randomUUID().replace(/-/g, '');
       const expiresAt = new Date(Date.now() + ttlMs);

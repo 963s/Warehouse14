@@ -54,12 +54,21 @@ export const sessions = pgTable(
     // Compared against the 10-minute window in `requireStepUp()` (ADR-0022 §4c).
     lastPinStepUpAt: timestamp('last_pin_step_up_at', { withTimezone: true }),
 
+    // Migration 0089: explicit revocation kill switch. NULL = live. The
+    // per-request auth loader requires `revoked_at IS NULL`, so stamping this
+    // ends the session on the very next request (a lost device, a forced
+    // sign-out) without waiting for expiry or erasing the user.
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+
     ...timestamps(),
   },
   (table) => ({
     tokenUq: uniqueIndex('sessions_token_uq').on(table.token),
     userIdIdx: index('sessions_user_id_idx').on(table.userId),
     expiresAtIdx: index('sessions_expires_at_idx').on(table.expiresAt),
+    userLiveIdx: index('sessions_user_live_idx')
+      .on(table.userId)
+      .where(sql`${table.revokedAt} IS NULL`),
     deviceIdIdx: index('sessions_device_id_idx')
       .on(table.deviceId)
       .where(sql`${table.deviceId} IS NOT NULL`),
