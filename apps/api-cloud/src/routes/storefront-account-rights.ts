@@ -261,10 +261,14 @@ const storefrontAccountRightsRoutes: FastifyPluginAsync<
           drizzleSql`SELECT erase_customer(${customerId}::uuid, NULL) AS keys`,
         );
 
-        // Every session dies with the account, including this one.
+        // Every session dies with the account, including the one making this
+        // request. shopper_sessions has no revoked_at (that belongs to the
+        // staff sessions table), and a shopper session is a bearer token with
+        // an expiry and nothing else, so the rows go entirely. erase_customer
+        // does this too; doing it here as well is harmless and keeps the
+        // route's own guarantee true even if the function is changed.
         await tx.execute(drizzleSql`
-          UPDATE shopper_sessions SET revoked_at = now()
-           WHERE shopper_id = ${shopperId} AND revoked_at IS NULL`);
+          DELETE FROM shopper_sessions WHERE shopper_id = ${shopperId}`);
 
         return {
           released: Array.from(released).length,
