@@ -9,7 +9,15 @@ import { useEffect, useState } from 'react';
 
 import { DiamondRule, ParchmentCard, PinPad, Seal } from '@warehouse14/ui-kit';
 
-import { hasLocalPin, setLocalPin, verifyLocalPin } from '../lib/local-lock.js';
+import {
+  clearAttempts,
+  hasLocalPin,
+  readAttempts,
+  recordFailedAttempt,
+  setLocalPin,
+  verifyLocalPin,
+  WIPE_AFTER,
+} from '../lib/local-lock.js';
 
 export function LocalLock({
   onUnlocked,
@@ -24,6 +32,13 @@ export function LocalLock({
   const [step, setStep] = useState<'enter' | 'new' | 'confirm'>(isSet ? 'enter' : 'new');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Brute-force lockout (security review 2026-07-21): epoch-ms locked until, and
+  // the live countdown seconds shown to the operator.
+  const [lockedUntil, setLockedUntil] = useState(() => {
+    const a = readAttempts();
+    return a.lockedUntil > Date.now() ? a.lockedUntil : 0;
+  });
+  const [lockSecs, setLockSecs] = useState(0);
 
   useEffect(() => {
     if (pin.length !== 4 || busy) return;
@@ -31,17 +46,50 @@ export function LocalLock({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pin]);
 
+  // Live countdown while locked; clears itself when the window elapses.
+  useEffect(() => {
+    if (lockedUntil <= Date.now()) {
+      setLockSecs(0);
+      return;
+    }
+    const tick = (): void => {
+      const secs = Math.max(0, Math.ceil((lockedUntil - Date.now()) / 1000));
+      setLockSecs(secs);
+      if (secs === 0) setLockedUntil(0);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [lockedUntil]);
+
   async function handleComplete(): Promise<void> {
+    if (step === 'enter' && lockedUntil > Date.now()) {
+      setPin('');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
       if (step === 'enter') {
         const ok = await verifyLocalPin(pin);
         if (ok) {
+          clearAttempts();
+          setLockedUntil(0);
           onUnlocked();
         } else {
-          setError('Falscher Code.');
+          const r = recordFailedAttempt();
           setPin('');
+          if (r.wiped) {
+            onSignOut();
+            return;
+          }
+          if (r.lockedUntil > Date.now()) setLockedUntil(r.lockedUntil);
+          const remaining = WIPE_AFTER - r.fails;
+          setError(
+            r.lockedUntil > Date.now()
+              ? `Falscher Code. Kurz gesperrt. Noch ${remaining} Versuch${remaining === 1 ? '' : 'e'}.`
+              : `Falscher Code. Noch ${remaining} Versuch${remaining === 1 ? '' : 'e'}, dann ist eine neue Google-Anmeldung nötig.`,
+          );
         }
       } else if (step === 'new') {
         setConfirmPin(pin);
@@ -111,14 +159,20 @@ export function LocalLock({
           value={pin}
           onChange={setPin}
           onSubmit={() => void handleComplete()}
-          disabled={busy}
+          disabled={busy || (step === 'enter' && lockedUntil > Date.now())}
           bindKeyboard
         />
 
-        {error && (
+        {step === 'enter' && lockedUntil > Date.now() ? (
           <p role="alert" style={{ color: 'var(--w14-wax-red)', margin: '14px 0 0', fontSize: '0.92rem' }}>
-            {error}
+            {`Zu viele Fehlversuche. In ${lockSecs} Sekunden wieder versuchen.`}
           </p>
+        ) : (
+          error && (
+            <p role="alert" style={{ color: 'var(--w14-wax-red)', margin: '14px 0 0', fontSize: '0.92rem' }}>
+              {error}
+            </p>
+          )
         )}
 
         <DiamondRule />
