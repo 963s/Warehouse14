@@ -116,6 +116,7 @@ type ProductRow = {
   primary_category_id: string | null;
   primary_category_slug: string | null;
   primary_category_name_de: string | null;
+  primary_category_t_name: string | null;
 } & Record<string, unknown>;
 
 /**
@@ -139,6 +140,10 @@ type CategoryRow = {
   slug: string;
   name_de: string;
   name_en: string | null;
+  // Cached translation for the requested ?lang, LEFT JOINed. NULL means the
+  // worker has not reached this category yet; the German original is served.
+  t_name: string | null;
+  t_description: string | null;
   description_de: string | null;
   description_en: string | null;
   schema_org_type: string | null;
@@ -249,7 +254,7 @@ function toStorefrontProduct(row: ProductRow, images: StorefrontProductImage[]):
         ? {
             id: row.primary_category_id,
             slug: row.primary_category_slug,
-            nameDe: row.primary_category_name_de,
+            nameDe: row.primary_category_t_name ?? row.primary_category_name_de,
           }
         : null,
   };
@@ -278,9 +283,12 @@ function composeCategoryTree(rows: readonly CategoryRow[]): StorefrontCategoryNo
     byId.set(r.id, {
       id: r.id,
       slug: r.slug,
-      nameDe: r.name_de,
+      // The owner names a category once, in German. A reader in another
+      // language gets the cached translation, or the German original while
+      // the worker catches up. Never an empty section title.
+      nameDe: r.t_name ?? r.name_de,
       nameEn: r.name_en,
-      descriptionDe: r.description_de,
+      descriptionDe: r.t_description ?? r.description_de,
       descriptionEn: r.description_en,
       schemaOrgType: r.schema_org_type,
       children: [],
@@ -414,7 +422,8 @@ const storefrontCatalog: FastifyPluginAsync<StorefrontCatalogRoutesOpts> = async
           p.published_at,
           pc.category_id        AS primary_category_id,
           c.slug                AS primary_category_slug,
-          c.name_de             AS primary_category_name_de
+          c.name_de             AS primary_category_name_de,
+          ct.name               AS primary_category_t_name
         FROM products p
         LEFT JOIN product_translations tr
           ON tr.product_id = p.id AND tr.locale = ${lang}
@@ -422,6 +431,8 @@ const storefrontCatalog: FastifyPluginAsync<StorefrontCatalogRoutesOpts> = async
           ON pc.product_id = p.id AND pc.is_primary = TRUE
         LEFT JOIN categories c
           ON c.id = pc.category_id AND c.hidden_from_storefront = FALSE
+        LEFT JOIN category_translations ct
+          ON ct.category_id = c.id AND ct.locale = ${lang}
         WHERE p.is_published_to_web = TRUE
           AND p.status = 'AVAILABLE'
           AND (${q.metal ?? null}::text IS NULL OR p.metal = ${q.metal ?? null})
@@ -556,6 +567,8 @@ const storefrontCatalog: FastifyPluginAsync<StorefrontCatalogRoutesOpts> = async
         ON pc.product_id = p.id AND pc.is_primary = TRUE
       LEFT JOIN categories c
         ON c.id = pc.category_id AND c.hidden_from_storefront = FALSE
+      LEFT JOIN category_translations ct
+        ON ct.category_id = c.id AND ct.locale = ${lang}
       WHERE p.slug = ${slug}
         AND p.is_published_to_web = TRUE
         AND p.status = 'AVAILABLE'
@@ -598,19 +611,27 @@ const storefrontCatalog: FastifyPluginAsync<StorefrontCatalogRoutesOpts> = async
       schema: {
         tags: ['storefront'],
         summary: 'Public category tree (hidden_from_storefront rows excluded).',
+        querystring: Type.Object({
+          lang: Type.Optional(Type.String({ maxLength: 5 })),
+        }),
         response: { 200: StorefrontCategoriesResponse },
       },
     },
-    async (_req, reply) => {
+    async (req, reply) => {
+      const lang = readingLocale((req.query as { lang?: string }).lang);
       const rows = await app.db.execute<CategoryRow>(sql`
       SELECT
-        id, parent_id, slug,
-        name_de, name_en,
-        description_de, description_en,
-        schema_org_type, display_order
-      FROM categories
-      WHERE hidden_from_storefront = FALSE
-      ORDER BY parent_id NULLS FIRST, display_order, name_de
+        c.id, c.parent_id, c.slug,
+        c.name_de, c.name_en,
+        c.description_de, c.description_en,
+        c.schema_org_type, c.display_order,
+        ct.name        AS t_name,
+        ct.description AS t_description
+      FROM categories c
+      LEFT JOIN category_translations ct
+        ON ct.category_id = c.id AND ct.locale = ${lang}
+      WHERE c.hidden_from_storefront = FALSE
+      ORDER BY c.parent_id NULLS FIRST, c.display_order, c.name_de
     `);
       const roots = composeCategoryTree(Array.from(rows));
       reply.header('Cache-Control', 'public, max-age=300, stale-while-revalidate=3600');
