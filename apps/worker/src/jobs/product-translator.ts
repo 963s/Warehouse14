@@ -212,8 +212,12 @@ export function productTranslatorJob(opts: ProductTranslatorOptions): JobDefinit
        LIMIT ${opts.batchSize}
     `)) as unknown as PendingRow[];
 
-    if (pending.length === 0) return { translated: 0, failed: 0, locales: locales.length };
-
+    // NO EARLY RETURN HERE. There used to be one, and it was a real outage in
+    // miniature: the moment the product catalog was fully translated, the job
+    // returned before ever reaching the category sweep, so categories froze at
+    // 200 of 984 pairs and every tick reported success while doing nothing.
+    // An empty product batch is simply a no op for the pool below; categories
+    // are a SEPARATE backlog and must always get their turn.
     let translated = 0;
     let failed = 0;
 
