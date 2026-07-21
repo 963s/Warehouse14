@@ -46,15 +46,20 @@ interface PendingLetter {
 export function emailOutboxSenderJob(
   opts: { [K in keyof EmailOutboxSenderOpts]?: EmailOutboxSenderOpts[K] | undefined },
 ): JobDefinition {
-  const configured = Boolean(
-    opts.smtpHost && opts.smtpPort && opts.smtpUser && opts.smtpPass && opts.mailFrom && opts.piiKey,
-  );
+  // Credentials are OPTIONAL on purpose. The Google Workspace SMTP relay can
+  // authorise this server by IP allowlist alone, and that is the better end
+  // state: no password is stored on the box at all, nothing to leak, nothing
+  // tied to one person's account that breaks when they leave. Google also
+  // disables app passwords by default for most Workspace tenants now, so
+  // requiring a password here would have made the supported path unusable.
+  const configured = Boolean(opts.smtpHost && opts.smtpPort && opts.mailFrom && opts.piiKey);
+  const hasCredentials = Boolean(opts.smtpUser && opts.smtpPass);
   const transporter = configured
     ? nodemailer.createTransport({
         host: opts.smtpHost,
         port: opts.smtpPort,
         secure: opts.smtpPort === 465,
-        auth: { user: opts.smtpUser, pass: opts.smtpPass },
+        ...(hasCredentials ? { auth: { user: opts.smtpUser, pass: opts.smtpPass } } : {}),
       })
     : null;
   let warnedUnconfigured = false;
@@ -65,7 +70,7 @@ export function emailOutboxSenderJob(
     run: async (ctx: JobContext) => {
       if (!configured || !transporter) {
         if (!warnedUnconfigured) {
-          ctx.log.warn('email outbox: SMTP not configured (SMTP_HOST/PORT/USER/PASS + MAIL_FROM + WAREHOUSE14_PII_KEY) — letters stay PENDING');
+          ctx.log.warn('email outbox: SMTP not configured (need SMTP_HOST, SMTP_PORT, MAIL_FROM, WAREHOUSE14_PII_KEY; USER and PASS only when the relay is not IP authorised) — letters stay PENDING');
           warnedUnconfigured = true;
         }
         return { skipped: 'smtp_unconfigured' };
