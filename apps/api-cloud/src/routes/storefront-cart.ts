@@ -21,6 +21,7 @@ import { reserve as inventoryReserve } from '@warehouse14/inventory-lock';
 
 import type { Env } from '../config/env.js';
 import { requireShopper } from '../lib/shopper.js';
+import { MAX_ITEMS_PER_CART } from '../lib/storefront-reservation-policy.js';
 import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 import {
   AddCartItemBody,
@@ -213,6 +214,19 @@ const storefrontCartRoutes: FastifyPluginAsync<StorefrontCartOpts> = async (app,
       ) {
         throw new ProductNotReservableError(
           `Product ${req.body.productId} is not available for online purchase.`,
+        );
+      }
+
+      // Cart-size ceiling (security review 2026-07-21): a cart may not grow past
+      // the reservation cap, so the shopper meets an honest "cart full" here
+      // instead of a surprise rejection at reserve time. Count BEFORE inserting.
+      const [{ itemCount = 0 } = {}] = await app.db
+        .select({ itemCount: drizzleSql<number>`count(*)::int` })
+        .from(cartItems)
+        .where(eq(cartItems.cartId, cartId));
+      if (itemCount >= MAX_ITEMS_PER_CART) {
+        throw new CartConflictError(
+          `A cart may hold at most ${MAX_ITEMS_PER_CART} items.`,
         );
       }
 

@@ -82,6 +82,17 @@ const PREFIX_LIMITS: readonly PrefixLimit[] = [
   // backstop. This HTTP cap is generous enough that an owner re-typing his PIN
   // is never 429'd before the lockout logic even runs, yet still bounds abuse.
   { prefix: '/api/auth/', max: 20 },
+  // Reserve-and-pickup (security review 2026-07-21) — 12/min/IP. Reserving is a
+  // deliberate commit that locks real stock for 3 days; a genuine customer does
+  // it a handful of times, never in a tight loop. Tighter than the 300 default.
+  { prefix: '/api/storefront/cart/reserve', max: 12 },
+  // Guest minting — 20/min/IP. Each call creates a brand-new shopper identity;
+  // this is the main amplifier for a reservation-hoarding script, so throttle it
+  // hard while leaving normal first-visit browsing (one mint per visitor) free.
+  // NOTE: storefront routes key on req.ip (no req.actor), so this bounds ONE IP;
+  // rotating IPs multiplies it. The per-shopper reservation caps in
+  // storefront-reservation-policy.ts are the identity-independent backstop.
+  { prefix: '/api/storefront/session/guest', max: 20 },
 ];
 
 /** The strictest limit that applies to this path, or `null` for the default. */

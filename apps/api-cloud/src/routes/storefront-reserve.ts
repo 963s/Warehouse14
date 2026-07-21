@@ -33,6 +33,10 @@ import {
 
 import { composeReservationConfirmed, enqueueEmail } from '../lib/email-outbox.js';
 import { requireShopper } from '../lib/shopper.js';
+import {
+  MAX_ACTIVE_RESERVED_PER_SHOPPER,
+  MAX_ITEMS_PER_RESERVATION,
+} from '../lib/storefront-reservation-policy.js';
 import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 
 class CartNotFoundError extends DomainError {
@@ -51,6 +55,20 @@ class ReserveValidationError extends DomainError {
 class ProductNotReservableError extends DomainError {
   public readonly httpStatus = 409;
   public readonly code: ApiErrorCode = 'CONFLICT';
+}
+/**
+ * A reservation cap was hit (security review 2026-07-21). 409 with a machine
+ * `details.limit` so the storefront can render the exact honest German line
+ * ("hold a smaller number of pieces" vs "you already hold the maximum").
+ */
+class ReservationLimitError extends DomainError {
+  public readonly httpStatus = 409;
+  public readonly code: ApiErrorCode = 'CONFLICT';
+  public readonly details: unknown;
+  public constructor(message: string, details: unknown) {
+    super(message);
+    this.details = details;
+  }
 }
 
 const ErrorResponse = Type.Object({
@@ -143,6 +161,40 @@ const storefrontReserveRoutes: FastifyPluginAsync = async (app) => {
         .where(eq(cartItems.cartId, cart.id));
       if (items.length === 0) {
         throw new ReserveValidationError('Cart is empty.', { itemsCount: 0 });
+      }
+
+      // ── Abuse ceilings (security review 2026-07-21) ────────────────────────
+      // Rule 1: one reservation may hold at most MAX_ITEMS_PER_RESERVATION
+      // distinct pieces. A pickup of more is hoarding, not a customer.
+      if (items.length > MAX_ITEMS_PER_RESERVATION) {
+        throw new ReservationLimitError(
+          `A reservation may hold at most ${MAX_ITEMS_PER_RESERVATION} items.`,
+          { limit: 'perReservation', max: MAX_ITEMS_PER_RESERVATION, requested: items.length },
+        );
+      }
+      // Rule 2: bound the RUNNING total this shopper holds across ALL their live
+      // reservations (reserve → new cart → reserve again would otherwise be
+      // unbounded). Count products still held under this shopper's reservation
+      // sessions, not yet expired.
+      const [{ heldCount = 0 } = {}] = await app.db.execute<{ heldCount: number }>(drizzleSql`
+        SELECT COUNT(*)::int AS "heldCount"
+          FROM products p
+          JOIN carts c ON c.reservation_session_id = p.reserved_by_session_id
+         WHERE c.shopper_id = ${req.shopper.id}
+           AND p.status = 'RESERVED'
+           AND p.reserved_by_channel = 'WEB_RESERVATION'
+           AND (p.reservation_expires_at IS NULL OR p.reservation_expires_at > now())
+      `);
+      if (heldCount + items.length > MAX_ACTIVE_RESERVED_PER_SHOPPER) {
+        throw new ReservationLimitError(
+          `You may hold at most ${MAX_ACTIVE_RESERVED_PER_SHOPPER} reserved items at once.`,
+          {
+            limit: 'perShopper',
+            max: MAX_ACTIVE_RESERVED_PER_SHOPPER,
+            alreadyHeld: heldCount,
+            requested: items.length,
+          },
+        );
       }
 
       // Hold every item under one reservation session. Track successes so a later
