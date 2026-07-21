@@ -2,7 +2,7 @@
   "name": "W-14",
   "slug": "warehouse14-mobile",
   "scheme": "warehouse14",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "orientation": "portrait",
   "userInterfaceStyle": "automatic",
   "icon": "./assets/images/app-icon-all.png",
@@ -17,7 +17,7 @@
   "android": {
     "icon": "./assets/images/app-icon-android-legacy.png",
     "package": "de.warehouse14.mobile",
-    "versionCode": 11,
+    "versionCode": 12,
     "adaptiveIcon": {
       "foregroundImage": "./assets/images/app-icon-android-adaptive-foreground.png",
       "backgroundImage": "./assets/images/app-icon-android-adaptive-background.png"

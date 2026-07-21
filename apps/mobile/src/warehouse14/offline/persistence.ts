@@ -52,6 +52,13 @@ const SENSITIVE_KEY_PREFIXES = [
   "ausweis",
   "whatsapp", // customer conversations
   "suche", // global search can surface customer rows
+  // Ankauf caches customer PII under its OWN namespace (adversarial review
+  // 2026-07-21), so the bare prefixes above miss it. These two carry a full
+  // CustomerDetail (name/DOB/address/sanctions) and a name search — keep them
+  // memory-only. NOT a bare "ankauf" prefix: that would wrongly drop the
+  // non-PII "ankauf:rates" metal-price cache.
+  "ankauf:customer",
+  "ankauf:picker",
 ] as const
 
 function isSensitiveKey(key: string): boolean {
