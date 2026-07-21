@@ -80,9 +80,12 @@ const EnvSchema = Type.Object({
     default: 'en,ar,tr,fr,es,it,nl,pl,pt,sv,da,uk',
     description: 'Comma separated locales to translate product texts into.',
   }),
-  // Products translated per sweep. Bounds cost and keeps one tick short.
+  // Pairs translated per sweep, PER SWEEP TYPE (products, then categories).
+  // Bounds cost and keeps one tick short. Raised from 15 once the sweep ran
+  // its calls concurrently: the old value needed most of a day to translate
+  // a full catalog into twelve languages.
   PRODUCT_TRANSLATE_BATCH: Type.Integer({
-    default: 15,
+    default: 40,
     minimum: 1,
     maximum: 200,
     description: 'Max product+locale pairs translated per sweep.',

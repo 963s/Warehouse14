@@ -22,6 +22,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { release as inventoryRelease } from '@warehouse14/inventory-lock';
 
 import { composeReservationCancelled, enqueueEmail } from '../lib/email-outbox.js';
+import { localeFromAcceptLanguage } from '../lib/email-copy.js';
 import { requireShopper } from '../lib/shopper.js';
 import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 
@@ -456,16 +457,31 @@ const storefrontOrdersRoutes: FastifyPluginAsync = async (app) => {
       // Cancellation email — best-effort, never blocks the cancellation.
       try {
         await app.withPii(async (tx) => {
-          const who = await tx.execute<{ email: string | null; full_name: string | null }>(drizzleSql`
+          const who = await tx.execute<{
+            email: string | null;
+            full_name: string | null;
+            preferred_language: string | null;
+            is_guest: boolean;
+          }>(drizzleSql`
             SELECT CASE WHEN s.is_guest THEN decrypt_pii(c.email_encrypted)
                         ELSE decrypt_pii(s.email_encrypted) END AS email,
-                   decrypt_pii(c.full_name_encrypted) AS full_name
+                   decrypt_pii(c.full_name_encrypted) AS full_name,
+                   s.preferred_language,
+                   s.is_guest
               FROM shoppers s JOIN customers c ON c.id = s.customer_id
              WHERE s.id = ${req.shopper.id}
           `);
+          const locale =
+            who[0] && !who[0].is_guest
+              ? who[0].preferred_language
+              : localeFromAcceptLanguage(req.headers['accept-language']);
           const email = who[0]?.email;
           if (email && !email.endsWith('@gast.invalid')) {
-            await enqueueEmail(tx, email, composeReservationCancelled(who[0]?.full_name ?? null, cart.id));
+            await enqueueEmail(
+              tx,
+              email,
+              composeReservationCancelled(who[0]?.full_name ?? null, cart.id, locale),
+            );
           }
         });
       } catch (err) {

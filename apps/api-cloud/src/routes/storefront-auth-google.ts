@@ -36,6 +36,7 @@ import { customers, shopperSessions, shoppers } from '@warehouse14/db/schema';
 
 import type { Env } from '../config/env.js';
 import { composeWelcome, enqueueEmail } from '../lib/email-outbox.js';
+import { localeFromAcceptLanguage, normalizeEmailLocale } from '../lib/email-copy.js';
 import { SHOPPER_SESSION_TTL_MS, newSessionToken, setShopperCookie } from './storefront-auth.js';
 
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -281,6 +282,15 @@ const storefrontGoogleAuthRoutes: FastifyPluginAsync<{ env: Env }> = async (app,
         .toLowerCase();
       const emailVerified = claims.email_verified === true || claims.email_verified === 'true';
       const displayName = String(claims.name ?? '').trim() || email;
+      // Which language this person reads. Google's own locale claim is the
+      // best signal here, since the handoff happens in a browser and there is
+      // no in-app picker in the loop; the request header is the fallback. The
+      // account was previously hardcoded to German, so every Google shopper
+      // got German letters no matter what they had chosen in the app.
+      const claimLocale = String(claims.locale ?? '').trim();
+      const signInLocale = claimLocale
+        ? normalizeEmailLocale(claimLocale)
+        : localeFromAcceptLanguage(req.headers['accept-language']);
       // Require a verified Google email — an unverified address is not trustworthy
       // as an account anchor (and is certainly not a GwG identity).
       if (!sub || !email || !emailVerified) return fail();
@@ -348,14 +358,14 @@ const storefrontGoogleAuthRoutes: FastifyPluginAsync<{ env: Env }> = async (app,
                 emailBlindIndex: drizzleSql`blind_index(${email})` as never,
                 googleSub: sub,
                 emailVerifiedAt: drizzleSql`now()` as never,
-                preferredLanguage: 'de',
+                preferredLanguage: signInLocale,
               })
               .returning({ id: shoppers.id });
             if (!s) throw new Error('shopper insert returned no row');
             shopperId = s.id;
             // Welcome letter for the brand-new account — best-effort.
             try {
-              await enqueueEmail(tx, email, composeWelcome(displayName));
+              await enqueueEmail(tx, email, composeWelcome(displayName, signInLocale));
             } catch {
               /* outbox unavailable — sign-in still succeeds */
             }

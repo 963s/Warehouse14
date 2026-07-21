@@ -6,13 +6,20 @@
  * configured (SMTP_HOST/PORT/USER/PASS + MAIL_FROM). Until then they wait
  * honestly as PENDING — visible, verifiable, nothing silently dropped.
  *
- * Copy rules match the product spine: German, warm and precise, no
- * underscores and no dash separators in visible text. Templates are
- * deliberately text-first with a minimal parchment-toned HTML wrapper —
- * an antique dealer writes letters, not marketing banners.
+ * Copy is warm and precise, no underscores and no dash separators in visible
+ * text. Templates are deliberately text first with a minimal parchment toned
+ * HTML wrapper: an antique dealer writes letters, not marketing banners.
+ *
+ * EVERY LETTER IS WRITTEN IN THE READER'S LANGUAGE. The phrases live in
+ * email-copy.ts, one exhaustive table per locale, so this file only decides
+ * SHAPE (paragraphs, the reference card, the footer) and never wording. A
+ * caller that knows nothing about the reader passes nothing and gets German,
+ * which is the honest floor rather than a blank.
  */
 
 import { sql as drizzleSql } from 'drizzle-orm';
+
+import { emailCopy, normalizeEmailLocale, EMAIL_CONTACT_LINE, type EmailCopy } from './email-copy.js';
 
 /** Minimal executor shape — works with app.db and with a withPii tx alike. */
 type SqlExecutor = { execute: (q: ReturnType<typeof drizzleSql>) => Promise<unknown> };
@@ -22,22 +29,34 @@ export interface ComposedEmail {
   subject: string;
   text: string;
   html: string;
+  /** ISO 639 1 code this letter is written in. Stored with the row. */
+  locale: string;
 }
 
-const BRAND = 'Warehouse 14';
-const SHOP_LINE = 'Warehouse 14, Antiquitäten, Briefmarken und Münzen, Schorndorf';
+/**
+ * Footer of every letter: who operates the shop, how to reach them, and on a
+ * translated letter one plain line saying German governs the contract. The
+ * same courtesy clause the translated legal documents carry, for the same
+ * reason: a translation must never be readable as altering the agreement.
+ */
+function footerLines(c: EmailCopy): string[] {
+  return [c.operatorLine, EMAIL_CONTACT_LINE, ...(c.courtesyNote ? [c.courtesyNote] : [])];
+}
 
-function htmlWrap(bodyHtml: string): string {
+function htmlWrap(c: EmailCopy, bodyHtml: string): string {
+  const align = c.dir === 'rtl' ? 'right' : 'left';
   return (
     '<!doctype html><meta charset="utf-8">' +
-    '<body style="margin:0;padding:0;background:#efece3;">' +
-    '<div style="max-width:560px;margin:0 auto;padding:32px 24px;font-family:Georgia,serif;color:#1c1c1c;">' +
+    `<body style="margin:0;padding:0;background:#efece3;" dir="${c.dir}">` +
+    `<div style="max-width:560px;margin:0 auto;padding:32px 24px;font-family:Georgia,serif;color:#1c1c1c;text-align:${align};">` +
     '<div style="font-size:22px;letter-spacing:1px;margin-bottom:4px;">WAREHOUSE 14</div>' +
-    '<div style="font-size:12px;color:#6e6b64;margin-bottom:24px;">Edelmetalle und Sammlerstücke</div>' +
+    `<div style="font-size:12px;color:#6e6b64;margin-bottom:24px;">${c.tagline}</div>` +
     '<div style="height:1px;background:#a3823b;margin-bottom:24px;"></div>' +
     bodyHtml +
     '<div style="height:1px;background:#d8d3c4;margin:28px 0 12px;"></div>' +
-    `<div style="font-size:11px;color:#6e6b64;line-height:1.5;">${SHOP_LINE}</div>` +
+    footerLines(c)
+      .map((l) => `<div style="font-size:11px;color:#6e6b64;line-height:1.5;">${l}</div>`)
+      .join('') +
     '</div></body>'
   );
 }
@@ -46,32 +65,36 @@ function para(text: string): string {
   return `<p style="font-size:15px;line-height:1.6;margin:0 0 14px;">${text}</p>`;
 }
 
-function greet(name: string | null): string {
+/** Plain text footer, so the text part carries the same duties as the HTML. */
+function textFooter(c: EmailCopy): string {
+  return footerLines(c).join('\n');
+}
+
+/**
+ * "Gast" is the placeholder a guest checkout writes, not a name anyone chose,
+ * so it gets the nameless greeting rather than "Hello Guest".
+ */
+function greet(c: EmailCopy, name: string | null): string {
   const n = (name ?? '').trim();
-  return n && n !== 'Gast' ? `Guten Tag ${n},` : 'Guten Tag,';
+  return n && n !== 'Gast' ? c.greetNamed(n) : c.greetPlain;
 }
 
 /** Welcome — sent once when an account is created (email or Google). */
-export function composeWelcome(name: string | null): ComposedEmail {
-  const g = greet(name);
-  const text =
-    `${g}\n\n` +
-    `herzlich willkommen bei ${BRAND}. Ihr Konto ist eingerichtet.\n\n` +
-    `Sie können ab sofort unsere Stücke durchstöbern, Favoriten merken und ` +
-    `Reservierungen zur Abholung im Geschäft aufgeben. Jedes Stück ist ein ` +
-    `Einzelstück, geprüft und kuratiert.\n\n` +
-    `Wir freuen uns auf Ihren Besuch.\n\n${SHOP_LINE}`;
+export function composeWelcome(name: string | null, locale?: string | null): ComposedEmail {
+  const c = emailCopy(locale);
+  const g = greet(c, name);
+  const text = `${g}\n\n${c.welcomeLead}\n\n${c.welcomeBody}\n\n${c.welcomeClose}\n\n${textFooter(c)}`;
   const html = htmlWrap(
-    para(g) +
-      para(`herzlich willkommen bei ${BRAND}. Ihr Konto ist eingerichtet.`) +
-      para(
-        'Sie können ab sofort unsere Stücke durchstöbern, Favoriten merken und ' +
-          'Reservierungen zur Abholung im Geschäft aufgeben. Jedes Stück ist ein ' +
-          'Einzelstück, geprüft und kuratiert.',
-      ) +
-      para('Wir freuen uns auf Ihren Besuch.'),
+    c,
+    para(g) + para(c.welcomeLead) + para(c.welcomeBody) + para(c.welcomeClose),
   );
-  return { template: 'welcome', subject: `Willkommen bei ${BRAND}`, text, html };
+  return {
+    template: 'welcome',
+    subject: c.welcomeSubject,
+    text,
+    html,
+    locale: normalizeEmailLocale(locale),
+  };
 }
 
 /** Reservation confirmation — the order number is the pickup reference. */
@@ -80,55 +103,58 @@ export function composeReservationConfirmed(
   orderId: string,
   itemCount: number,
   totalEur: string | null,
+  locale?: string | null,
 ): ComposedEmail {
-  const g = greet(name);
-  const stueck = itemCount === 1 ? 'ein Stück' : `${itemCount} Stücke`;
-  const totalLine = totalEur ? `Gesamtwert: ${totalEur} Euro.\n` : '';
+  const c = emailCopy(locale);
+  const g = greet(c, name);
+  const lead = c.reservationLead(c.pieces(itemCount));
+  const totalLine = totalEur ? `${c.totalLabel}: ${totalEur} ${c.euro}\n` : '';
   const text =
-    `${g}\n\n` +
-    `Ihre Reservierung ist eingegangen. Wir legen ${stueck} drei Tage für Sie zurück.\n\n` +
-    `Reservierungsnummer: ${orderId}\n` +
+    `${g}\n\n${lead}\n\n` +
+    `${c.refLabel}: ${orderId}\n` +
     totalLine +
-    `\nBitte nennen Sie die Reservierungsnummer bei der Abholung im Geschäft. ` +
-    `Die Bezahlung erfolgt bequem vor Ort.\n\n${SHOP_LINE}`;
+    `\n${c.reservationClose}\n\n${textFooter(c)}`;
+  // The reference sits in its own card, in a monospaced face, because it is
+  // the one thing the reader has to repeat out loud at the counter.
   const html = htmlWrap(
+    c,
     para(g) +
-      para(`Ihre Reservierung ist eingegangen. Wir legen ${stueck} drei Tage für Sie zurück.`) +
-      `<div style="background:#ffffff;border:1px solid #d8d3c4;border-radius:8px;padding:14px 18px;margin:0 0 14px;">` +
-      `<div style="font-size:12px;color:#6e6b64;">Reservierungsnummer</div>` +
-      `<div style="font-size:17px;font-family:monospace;">${orderId}</div>` +
-      (totalEur ? `<div style="font-size:13px;color:#4c4a45;margin-top:6px;">Gesamtwert: ${totalEur} Euro</div>` : '') +
-      `</div>` +
-      para(
-        'Bitte nennen Sie die Reservierungsnummer bei der Abholung im Geschäft. ' +
-          'Die Bezahlung erfolgt bequem vor Ort.',
-      ),
+      para(lead) +
+      '<div style="background:#ffffff;border:1px solid #d8d3c4;border-radius:8px;padding:14px 18px;margin:0 0 14px;">' +
+      `<div style="font-size:12px;color:#6e6b64;">${c.refLabel}</div>` +
+      `<div style="font-size:17px;font-family:monospace;" dir="ltr">${orderId}</div>` +
+      (totalEur
+        ? `<div style="font-size:13px;color:#4c4a45;margin-top:6px;">${c.totalLabel}: ${totalEur} ${c.euro}</div>`
+        : '') +
+      '</div>' +
+      para(c.reservationClose),
   );
   return {
     template: 'reservation_confirmed',
-    subject: `Ihre Reservierung ${orderId.slice(0, 8).toUpperCase()} bei ${BRAND}`,
+    subject: c.reservationSubject(orderId.slice(0, 8).toUpperCase()),
     text,
     html,
+    locale: normalizeEmailLocale(locale),
   };
 }
 
 /** Cancellation notice — confirms the release, keeps the door open. */
-export function composeReservationCancelled(name: string | null, orderId: string): ComposedEmail {
-  const g = greet(name);
-  const text =
-    `${g}\n\n` +
-    `Ihre Reservierung ${orderId} wurde storniert. Die Stücke sind wieder frei verfügbar.\n\n` +
-    `Sie können jederzeit erneut reservieren. Wir sind gern für Sie da.\n\n${SHOP_LINE}`;
-  const html = htmlWrap(
-    para(g) +
-      para(`Ihre Reservierung ${orderId} wurde storniert. Die Stücke sind wieder frei verfügbar.`) +
-      para('Sie können jederzeit erneut reservieren. Wir sind gern für Sie da.'),
-  );
+export function composeReservationCancelled(
+  name: string | null,
+  orderId: string,
+  locale?: string | null,
+): ComposedEmail {
+  const c = emailCopy(locale);
+  const g = greet(c, name);
+  const lead = c.cancelledLead(orderId);
+  const text = `${g}\n\n${lead}\n\n${c.cancelledClose}\n\n${textFooter(c)}`;
+  const html = htmlWrap(c, para(g) + para(lead) + para(c.cancelledClose));
   return {
     template: 'reservation_cancelled',
-    subject: `Reservierung storniert, ${BRAND}`,
+    subject: c.cancelledSubject,
     text,
     html,
+    locale: normalizeEmailLocale(locale),
   };
 }
 
@@ -144,7 +170,8 @@ export async function enqueueEmail(
   mail: ComposedEmail,
 ): Promise<void> {
   await tx.execute(drizzleSql`
-    INSERT INTO email_outbox (recipient_encrypted, template, subject, body_text, body_html)
-    VALUES (encrypt_pii(${recipient}), ${mail.template}, ${mail.subject}, ${mail.text}, ${mail.html})
+    INSERT INTO email_outbox (recipient_encrypted, template, subject, body_text, body_html, locale)
+    VALUES (encrypt_pii(${recipient}), ${mail.template}, ${mail.subject}, ${mail.text},
+            ${mail.html}, ${mail.locale})
   `);
 }

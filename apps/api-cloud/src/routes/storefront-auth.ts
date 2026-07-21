@@ -25,6 +25,7 @@ import {
 import { customers, shopperSessions, shoppers } from '@warehouse14/db/schema';
 
 import { composeWelcome, enqueueEmail } from '../lib/email-outbox.js';
+import { localeFromAcceptLanguage } from '../lib/email-copy.js';
 import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 import { STOREFRONT_COOKIE_NAME } from '../plugins/storefront-session.js';
 import {
@@ -133,6 +134,13 @@ const storefrontAuthRoutes: FastifyPluginAsync = async (app) => {
       // 2. Hash the password (argon2id, ~100ms).
       const passwordHash = await hashPassword(body.password);
 
+      // The language this person is registering IN. What the client explicitly
+      // sends wins; otherwise the request's own Accept Language, which the
+      // storefront sets from the picked locale. It decides both the stored
+      // preference and the language of the welcome letter, so a Turkish
+      // shopper is never greeted in German.
+      const signupLocale = body.preferredLanguage ?? localeFromAcceptLanguage(req.headers['accept-language']);
+
       // 3. Insert customer + shopper in ONE transaction inside withPii.
       //    The encrypted email + blind index require warehouse14.pii_key.
       //    GUEST UPGRADE (0085): when the request carries a live GUEST session,
@@ -163,7 +171,7 @@ const storefrontAuthRoutes: FastifyPluginAsync = async (app) => {
                  is_guest           = FALSE,
                  phone_encrypted    = ${phoneEncU},
                  phone_blind_index  = ${phoneBlindU},
-                 preferred_language = ${body.preferredLanguage ?? 'de'},
+                 preferred_language = ${signupLocale},
                  marketing_consent  = ${body.marketingConsent ?? false},
                  marketing_consent_at = ${body.marketingConsent ? drizzleSql`now()` : drizzleSql`NULL`},
                  updated_at         = now()
@@ -195,7 +203,7 @@ const storefrontAuthRoutes: FastifyPluginAsync = async (app) => {
             });
             // Welcome letter — best-effort, never blocks the registration.
             try {
-              await enqueueEmail(tx, body.email, composeWelcome(body.fullName));
+              await enqueueEmail(tx, body.email, composeWelcome(body.fullName, signupLocale));
             } catch {
               /* outbox unavailable — registration still succeeds */
             }
@@ -237,7 +245,7 @@ const storefrontAuthRoutes: FastifyPluginAsync = async (app) => {
             passwordHash,
             phoneEncrypted: phoneEnc as never,
             phoneBlindIndex: phoneBlind as never,
-            preferredLanguage: body.preferredLanguage ?? 'de',
+            preferredLanguage: signupLocale,
             marketingConsent: body.marketingConsent ?? false,
             marketingConsentAt: consentAt as never,
           })
@@ -257,7 +265,7 @@ const storefrontAuthRoutes: FastifyPluginAsync = async (app) => {
 
         // Welcome letter — best-effort, never blocks the registration.
         try {
-          await enqueueEmail(tx, body.email, composeWelcome(body.fullName));
+          await enqueueEmail(tx, body.email, composeWelcome(body.fullName, signupLocale));
         } catch {
           /* outbox unavailable — registration still succeeds */
         }

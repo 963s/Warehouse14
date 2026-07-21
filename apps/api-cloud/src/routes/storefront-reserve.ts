@@ -32,6 +32,7 @@ import {
 } from '@warehouse14/inventory-lock';
 
 import { composeReservationConfirmed, enqueueEmail } from '../lib/email-outbox.js';
+import { localeFromAcceptLanguage } from '../lib/email-copy.js';
 import { requireShopper } from '../lib/shopper.js';
 import {
   MAX_ACTIVE_RESERVED_PER_SHOPPER,
@@ -267,13 +268,27 @@ const storefrontReserveRoutes: FastifyPluginAsync = async (app) => {
             FROM cart_items WHERE cart_id = ${cart.id}
         `);
         await app.withPii(async (tx) => {
-          const who = await tx.execute<{ email: string | null; full_name: string | null }>(drizzleSql`
+          const who = await tx.execute<{
+            email: string | null;
+            full_name: string | null;
+            preferred_language: string | null;
+            is_guest: boolean;
+          }>(drizzleSql`
             SELECT CASE WHEN s.is_guest THEN decrypt_pii(c.email_encrypted)
                         ELSE decrypt_pii(s.email_encrypted) END AS email,
-                   decrypt_pii(c.full_name_encrypted) AS full_name
+                   decrypt_pii(c.full_name_encrypted) AS full_name,
+                   s.preferred_language,
+                   s.is_guest
               FROM shoppers s JOIN customers c ON c.id = s.customer_id
              WHERE s.id = ${req.shopper.id}
           `);
+          // A registered shopper CHOSE their language, so the stored value
+          // wins. A guest never chose one, so the request header is the only
+          // honest signal about what they can read.
+          const locale =
+            who[0] && !who[0].is_guest
+              ? who[0].preferred_language
+              : localeFromAcceptLanguage(req.headers['accept-language']);
           const email = contact?.email ?? who[0]?.email ?? null;
           if (email && !email.endsWith('@gast.invalid')) {
             await enqueueEmail(
@@ -284,6 +299,7 @@ const storefrontReserveRoutes: FastifyPluginAsync = async (app) => {
                 cart.id,
                 items.length,
                 totals[0]?.total ?? null,
+                locale,
               ),
             );
           }

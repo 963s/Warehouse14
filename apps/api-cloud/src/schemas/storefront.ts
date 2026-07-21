@@ -17,7 +17,17 @@ const Iso2Country = Type.String({
   description: 'ISO 3166-1 alpha-2 country code, uppercase.',
 });
 
-const Language = Type.Union([Type.Literal('de'), Type.Literal('en'), Type.Literal('ar')]);
+/**
+ * The language a SHOPPER reads. Deliberately a pattern and not a union of the
+ * three we once shipped: the storefront now offers thirteen, and a schema
+ * that rejects "tr" would silently store German for a Turkish customer, which
+ * is exactly the bug this replaced. Anything the app does not translate falls
+ * back to German at read time, so an unknown but well formed tag is harmless.
+ */
+const Language = Type.String({
+  pattern: '^[a-z]{2}$',
+  description: 'ISO 639 1 language code, lowercase.',
+});
 
 // ────────────────────────────────────────────────────────────────────────
 // Address sub-objects
