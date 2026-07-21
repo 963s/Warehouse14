@@ -486,7 +486,16 @@ const EnvSchema = Type.Object({
       'legacy 0000 owner seed) with a plain "Invalid PIN", closing the anonymous internet exploit ' +
       'without touching mTLS or mutating any PIN. Keep empty until the owner has set a strong PIN ' +
       '(so his step-up / cashier fallback are not locked out); then set "true". See ' +
-      'docs/runbooks/0090-auth-hardening.md.',
+      'docs/runbooks/0090-auth-hardening.md. SUPERSEDED by DISABLE_PIN_AUTH when that is "true".',
+  }),
+  DISABLE_PIN_AUTH: Type.String({
+    default: '',
+    description:
+      "Basel's decision 2026-07-21: the 4-digit PIN is retired. Identity is Google-only. " +
+      '"true" makes EVERY PIN endpoint (pin-login, step-up, pin/set, duress-pin/set) refuse with ' +
+      '403 PIN_AUTH_DISABLED. The whole PIN mechanism (tables, hashes, argon2, lockout) stays in ' +
+      'the code untouched so it can be re-enabled, but no PIN can start or elevate a session while ' +
+      'this is on. This is the hard close of the anonymous 0000 internet exploit. LIVE on prod.',
   }),
   // Reserved for the FUTURE executor (drafts replies, runs approved actions).
   // Not used by the read-only assistant; wired in a later phase.

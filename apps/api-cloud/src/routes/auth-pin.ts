@@ -37,7 +37,7 @@ import {
 import { auditLog, devices, sessions, users } from '@warehouse14/db/schema';
 
 import type { Env } from '../config/env.js';
-import { PinLockedError, UnauthorizedError, requireAuth } from '../lib/auth-policy.js';
+import { ForbiddenError, PinLockedError, UnauthorizedError, requireAuth } from '../lib/auth-policy.js';
 import { sessionTtlMs } from '../lib/session-ttl.js';
 import { type PinMatch, classifyPinAttempt } from '../lib/duress.js';
 
@@ -246,6 +246,19 @@ function triggerSilentAlarm(
 const authPinRoutes: FastifyPluginAsync<{ env: Env }> = async (app, opts) => {
   const duressWebhookUrl = opts.env.DURESS_ALARM_WEBHOOK_URL;
 
+  // Basel's decision 2026-07-21: the 4-digit PIN is retired, identity is
+  // Google-only. When DISABLE_PIN_AUTH is on, EVERY endpoint in this router
+  // refuses before doing any work. The routes, argon2, lockout and tables all
+  // stay in place so the mechanism can be switched back on; this flag simply
+  // makes none of them reachable. This is the hard close of the anonymous 0000
+  // exploit: no PIN can start or elevate a session at all.
+  const pinAuthDisabled = opts.env.DISABLE_PIN_AUTH === 'true';
+  const assertPinAuthEnabled = (): void => {
+    if (pinAuthDisabled) {
+      throw new ForbiddenError('PIN login is disabled. Please sign in with Google.');
+    }
+  };
+
   // ────────────────────────────────────────────────────────────────────
   // POST /api/auth/pin-login
   // ────────────────────────────────────────────────────────────────────
@@ -261,6 +274,7 @@ const authPinRoutes: FastifyPluginAsync<{ env: Env }> = async (app, opts) => {
     },
     async (req, reply) => {
       const { pin } = req.body as PinBody;
+      assertPinAuthEnabled();
       const ip = req.ip || null;
 
       // Security review 2026-07-21 — blacklist-on-LOGIN (gated, default OFF).
@@ -432,6 +446,13 @@ const authPinRoutes: FastifyPluginAsync<{ env: Env }> = async (app, opts) => {
     },
     async (req) => {
       requireAuth(req);
+      // NOTE: step-up is deliberately NOT gated by DISABLE_PIN_AUTH. It is
+      // session-gated (requireAuth), so it was never part of the anonymous
+      // 0000 exploit — only pin-login was. It stays alive so the currently
+      // deployed cashier's fiscal step-up keeps working until the next update
+      // migrates sensitive-action re-confirmation to the LOCAL device lock /
+      // biometric (Basel's direction 2026-07-21). The login door and PIN
+      // management below ARE disabled.
       const { pin } = req.body as PinBody;
       const ip = req.ip || null;
 
@@ -533,6 +554,7 @@ const authPinRoutes: FastifyPluginAsync<{ env: Env }> = async (app, opts) => {
     },
     async (req) => {
       requireAuth(req);
+      assertPinAuthEnabled();
       const { newPin } = req.body as Static<typeof PinSetBody>;
       const ip = req.ip || null;
 
@@ -595,6 +617,7 @@ const authPinRoutes: FastifyPluginAsync<{ env: Env }> = async (app, opts) => {
     },
     async (req) => {
       requireAuth(req);
+      assertPinAuthEnabled();
       const { newPin } = req.body as Static<typeof PinSetBody>;
       const ip = req.ip || null;
 
