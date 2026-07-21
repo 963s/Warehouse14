@@ -195,6 +195,7 @@ export async function buildWorker(opts: BuildWorkerOpts): Promise<WorkerHandle> 
       smtpUser: opts.env.SMTP_USER || undefined,
       smtpPass: opts.env.SMTP_PASS || undefined,
       mailFrom: opts.env.MAIL_FROM || undefined,
+      mailReplyTo: opts.env.MAIL_REPLY_TO || undefined,
       piiKey: opts.env.WAREHOUSE14_PII_KEY || undefined,
     }),
   );

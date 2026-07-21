@@ -40,7 +40,12 @@ export interface ComposedEmail {
  * reason: a translation must never be readable as altering the agreement.
  */
 function footerLines(c: EmailCopy): string[] {
-  return [c.operatorLine, EMAIL_CONTACT_LINE, ...(c.courtesyNote ? [c.courtesyNote] : [])];
+  return [
+    c.operatorLine,
+    EMAIL_CONTACT_LINE,
+    `${c.openingHoursLabel}: ${c.openingHours}`,
+    ...(c.courtesyNote ? [c.courtesyNote] : []),
+  ];
 }
 
 function htmlWrap(c: EmailCopy, bodyHtml: string): string {

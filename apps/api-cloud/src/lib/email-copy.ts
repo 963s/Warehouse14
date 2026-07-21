@@ -67,6 +67,15 @@ export interface EmailCopy {
   operatorLine: string;
   /** Non German letters say plainly that German governs the contract. */
   courtesyNote: string | null;
+  /**
+   * When the shop is actually open. This is not decoration: the reservation
+   * letter says we hold the piece for three days, and three days that fall
+   * across a weekend are worthless if the reader does not know the shop is
+   * shut. Telling someone to collect without telling them when they can is
+   * how a held piece quietly becomes a lapsed one.
+   */
+  openingHoursLabel: string;
+  openingHours: string;
 
   greetNamed: (name: string) => string;
   greetPlain: string;
@@ -94,9 +103,13 @@ const BRAND = 'Warehouse 14';
 const ADDRESS = 'Rosenstraße 40, 73614 Schorndorf';
 const OPERATOR = 'Briefmarken To-Go (stampscoins)';
 
-/** Contact block, identical in every language: it is data, not prose. */
+/**
+ * Contact block, identical in every language: it is data, not prose.
+ * The address here MUST match the sender the customer sees, otherwise the
+ * letter invites a reply to one place and signs off with another.
+ */
 export const EMAIL_CONTACT_LINE =
-  'Telefon +49 7181 9647511, briefmarken-to-go@gmx.de, USt IdNr DE343451090';
+  'Telefon +49 7181 9647511, bestellung@warehouse14.de, USt IdNr DE343451090';
 
 const COPY: Record<EmailLocale, EmailCopy> = {
   de: {
@@ -104,6 +117,8 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     tagline: 'Edelmetalle und Sammlerstücke',
     operatorLine: `${BRAND}, ein Angebot von ${OPERATOR}, ${ADDRESS}`,
     courtesyNote: null,
+    openingHoursLabel: 'Öffnungszeiten',
+    openingHours: 'Mo bis Do 15:00 bis 18:30, Fr 15:00 bis 19:00',
     greetNamed: (n) => `Guten Tag ${n},`,
     greetPlain: 'Guten Tag,',
     welcomeSubject: `Willkommen bei ${BRAND}`,
@@ -133,6 +148,8 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     tagline: 'Precious metals and collectibles',
     operatorLine: `${BRAND}, operated by ${OPERATOR}, ${ADDRESS}, Germany`,
     courtesyNote: 'This message is a courtesy translation. The contract language is German.',
+    openingHoursLabel: 'Opening hours',
+    openingHours: 'Mon to Thu 15:00 to 18:30, Fri 15:00 to 19:00',
     greetNamed: (n) => `Hello ${n},`,
     greetPlain: 'Hello,',
     welcomeSubject: `Welcome to ${BRAND}`,
@@ -162,6 +179,8 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     tagline: 'معادن ثمينة وقطع للمقتنين',
     operatorLine: `${BRAND}، يديره ${OPERATOR}، ${ADDRESS}، ألمانيا`,
     courtesyNote: 'هذه الرسالة ترجمة للتيسير. لغة التعاقد هي الألمانية.',
+    openingHoursLabel: 'ساعات العمل',
+    openingHours: 'الاثنين إلى الخميس 15:00 حتى 18:30، الجمعة 15:00 حتى 19:00',
     greetNamed: (n) => `مرحباً ${n}،`,
     greetPlain: 'مرحباً،',
     welcomeSubject: `أهلاً بك في ${BRAND}`,
@@ -193,6 +212,8 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     tagline: 'Kıymetli madenler ve koleksiyon parçaları',
     operatorLine: `${BRAND}, ${OPERATOR} tarafından işletilmektedir, ${ADDRESS}, Almanya`,
     courtesyNote: 'Bu mesaj kolaylık olsun diye çevrilmiştir. Sözleşme dili Almancadır.',
+    openingHoursLabel: 'Açılış saatleri',
+    openingHours: 'Pzt ile Per 15:00 ile 18:30, Cum 15:00 ile 19:00',
     greetNamed: (n) => `Merhaba ${n},`,
     greetPlain: 'Merhaba,',
     welcomeSubject: `${BRAND} ailesine hoş geldiniz`,
@@ -222,6 +243,8 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     tagline: 'Métaux précieux et pièces de collection',
     operatorLine: `${BRAND}, exploité par ${OPERATOR}, ${ADDRESS}, Allemagne`,
     courtesyNote: "Ce message est une traduction de courtoisie. La langue du contrat est l'allemand.",
+    openingHoursLabel: 'Horaires',
+    openingHours: 'Lun à jeu 15:00 à 18:30, ven 15:00 à 19:00',
     greetNamed: (n) => `Bonjour ${n},`,
     greetPlain: 'Bonjour,',
     welcomeSubject: `Bienvenue chez ${BRAND}`,
@@ -253,6 +276,8 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     operatorLine: `${BRAND}, gestionado por ${OPERATOR}, ${ADDRESS}, Alemania`,
     courtesyNote:
       'Este mensaje es una traducción de cortesía. El idioma del contrato es el alemán.',
+    openingHoursLabel: 'Horario',
+    openingHours: 'Lun a jue 15:00 a 18:30, vie 15:00 a 19:00',
     greetNamed: (n) => `Hola ${n},`,
     greetPlain: 'Hola,',
     welcomeSubject: `Bienvenido a ${BRAND}`,
@@ -282,6 +307,8 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     operatorLine: `${BRAND}, gestito da ${OPERATOR}, ${ADDRESS}, Germania`,
     courtesyNote:
       'Questo messaggio è una traduzione di cortesia. La lingua del contratto è il tedesco.',
+    openingHoursLabel: 'Orari di apertura',
+    openingHours: 'Lun a gio 15:00 a 18:30, ven 15:00 a 19:00',
     greetNamed: (n) => `Buongiorno ${n},`,
     greetPlain: 'Buongiorno,',
     welcomeSubject: `Benvenuto da ${BRAND}`,
@@ -310,6 +337,8 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     tagline: 'Edelmetalen en verzamelstukken',
     operatorLine: `${BRAND}, geëxploiteerd door ${OPERATOR}, ${ADDRESS}, Duitsland`,
     courtesyNote: 'Dit bericht is een vertaling ter informatie. De contracttaal is Duits.',
+    openingHoursLabel: 'Openingstijden',
+    openingHours: 'Ma tot do 15:00 tot 18:30, vr 15:00 tot 19:00',
     greetNamed: (n) => `Hallo ${n},`,
     greetPlain: 'Hallo,',
     welcomeSubject: `Welkom bij ${BRAND}`,
@@ -338,6 +367,8 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     tagline: 'Metale szlachetne i przedmioty kolekcjonerskie',
     operatorLine: `${BRAND}, prowadzone przez ${OPERATOR}, ${ADDRESS}, Niemcy`,
     courtesyNote: 'Ta wiadomość jest tłumaczeniem informacyjnym. Językiem umowy jest niemiecki.',
+    openingHoursLabel: 'Godziny otwarcia',
+    openingHours: 'Pon do czw 15:00 do 18:30, pt 15:00 do 19:00',
     greetNamed: (n) => `Dzień dobry ${n},`,
     greetPlain: 'Dzień dobry,',
     welcomeSubject: `Witamy w ${BRAND}`,
@@ -373,6 +404,8 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     operatorLine: `${BRAND}, explorado por ${OPERATOR}, ${ADDRESS}, Alemanha`,
     courtesyNote:
       'Esta mensagem é uma tradução de cortesia. A língua do contrato é o alemão.',
+    openingHoursLabel: 'Horário',
+    openingHours: 'Seg a qui 15:00 a 18:30, sex 15:00 a 19:00',
     greetNamed: (n) => `Olá ${n},`,
     greetPlain: 'Olá,',
     welcomeSubject: `Bem vindo à ${BRAND}`,
@@ -402,6 +435,8 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     tagline: 'Ædelmetaller og samlerobjekter',
     operatorLine: `${BRAND}, drives af ${OPERATOR}, ${ADDRESS}, Tyskland`,
     courtesyNote: 'Denne besked er en oversættelse til orientering. Aftalesproget er tysk.',
+    openingHoursLabel: 'Åbningstider',
+    openingHours: 'Man til tor 15:00 til 18:30, fre 15:00 til 19:00',
     greetNamed: (n) => `Hej ${n},`,
     greetPlain: 'Hej,',
     welcomeSubject: `Velkommen til ${BRAND}`,
@@ -429,6 +464,8 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     tagline: 'Ädelmetaller och samlarobjekt',
     operatorLine: `${BRAND}, drivs av ${OPERATOR}, ${ADDRESS}, Tyskland`,
     courtesyNote: 'Detta meddelande är en översättning för information. Avtalsspråket är tyska.',
+    openingHoursLabel: 'Öppettider',
+    openingHours: 'Mån till tors 15:00 till 18:30, fre 15:00 till 19:00',
     greetNamed: (n) => `Hej ${n},`,
     greetPlain: 'Hej,',
     welcomeSubject: `Välkommen till ${BRAND}`,
@@ -456,6 +493,8 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     tagline: 'Дорогоцінні метали та колекційні речі',
     operatorLine: `${BRAND}, керує ${OPERATOR}, ${ADDRESS}, Німеччина`,
     courtesyNote: 'Це повідомлення є перекладом для зручності. Мовою договору є німецька.',
+    openingHoursLabel: 'Години роботи',
+    openingHours: 'Пн до чт 15:00 до 18:30, пт 15:00 до 19:00',
     greetNamed: (n) => `Доброго дня, ${n},`,
     greetPlain: 'Доброго дня,',
     welcomeSubject: `Вітаємо у ${BRAND}`,

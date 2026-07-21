@@ -24,6 +24,8 @@ const BATCH_SIZE = 10;
 const MAX_ATTEMPTS = 5;
 
 export interface EmailOutboxSenderOpts {
+  /** Reply-To header. Empty falls back to the From address. */
+  mailReplyTo?: string;
   smtpHost: string;
   smtpPort: number;
   smtpUser: string;
@@ -91,6 +93,10 @@ export function emailOutboxSenderJob(
           if (!letter.recipient) throw new Error('recipient decryption returned null');
           await transporter.sendMail({
             from: opts.mailFrom,
+            // A reply must reach a person. Without this the customer's answer
+            // goes to whatever address the relay authenticated with, which is
+            // not necessarily one anybody reads.
+            replyTo: opts.mailReplyTo || opts.mailFrom,
             to: letter.recipient,
             subject: letter.subject,
             text: letter.body_text,

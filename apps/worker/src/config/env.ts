@@ -106,10 +106,23 @@ const EnvSchema = Type.Object({
   // ── Transactional mail — email_outbox_sender (0088) ─────────────────
   // All empty (default) → letters stay PENDING with one boot log; paste the
   // SMTP credentials and the backlog drains (eBay/WhatsApp pattern).
-  SMTP_HOST: Type.String({ default: '', description: 'SMTP server, e.g. smtp.gmail.com.' }),
+  // Google Workspace SMTP relay. smtp-relay.gmail.com is the endpoint meant
+  // for an application sending on behalf of a domain: it can send as any
+  // address in warehouse14.de without occupying a paid seat, and because the
+  // mail leaves Google's infrastructure the existing SPF (include:_spf.google.com)
+  // and the published DKIM key both pass. Sending straight from this server
+  // would FAIL SPF and land in spam, which is the whole reason for the relay.
+  SMTP_HOST: Type.String({ default: '', description: 'SMTP server, e.g. smtp-relay.gmail.com.' }),
   SMTP_PORT: Type.Integer({ minimum: 0, maximum: 65535, default: 587 }),
-  SMTP_USER: Type.String({ default: '', description: 'SMTP login, e.g. noreply@warehouse14.de.' }),
+  SMTP_USER: Type.String({ default: '', description: 'SMTP login, e.g. bestellung@warehouse14.de.' }),
   SMTP_PASS: Type.String({ default: '', description: 'SMTP password or app password.' }),
+  // Where a customer's reply goes. Transactional mail that cannot be answered
+  // costs sales: someone who reserved a piece for three days will ask whether
+  // they can collect on Saturday, and that question must reach a human.
+  MAIL_REPLY_TO: Type.String({
+    default: '',
+    description: 'Reply-To header, e.g. bestellung@warehouse14.de. Empty falls back to MAIL_FROM.',
+  }),
   MAIL_FROM: Type.String({
     default: '',
     description: 'Sender header, e.g. "Warehouse 14 <noreply@warehouse14.de>".',
