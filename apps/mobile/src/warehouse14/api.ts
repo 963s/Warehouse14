@@ -270,6 +270,12 @@ export function signOut(): Promise<unknown> {
   return authPin.signOut(apiClient)
 }
 
+/** Revoke ALL of this owner's sessions on every device (lost-device kill switch,
+ *  security review 2026-07-21). Returns the count revoked. */
+export function signOutAllDevices(): Promise<{ ok: true; revoked: number }> {
+  return authPin.signOutAll(apiClient)
+}
+
 /** Fetch the current session actor + profile (GET /api/auth/session). Used after
  *  the Google token handoff to resolve the actor the token-only redirect did not
  *  carry (the same second step the desktop window flow makes). */

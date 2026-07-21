@@ -36,6 +36,30 @@ const CACHE_DIR_NAME = "w14-read-cache"
 const FILE_SUFFIX = ".json"
 
 /**
+ * PII-bearing cache namespaces that must NEVER touch disk (security review
+ * 2026-07-21). The on-disk blobs are plaintext JSON, readable off a rooted /
+ * imaged phone WITHOUT the device code (which only gates the React UI, not the
+ * files). Catalog + prices are low-sensitivity and stay persisted for a fast
+ * cold start; anything that can carry a customer's name / address / documents /
+ * messages is kept MEMORY-ONLY — it still works within a session, it simply is
+ * not written to disk. The most sensitive data (KYC ID images) never reaches
+ * the phone at all; it lives server-side, encrypted.
+ */
+const SENSITIVE_KEY_PREFIXES = [
+  "customer", // customer:<id>, customer-orders:<id>, customers list
+  "kunde",
+  "kyc",
+  "ausweis",
+  "whatsapp", // customer conversations
+  "suche", // global search can surface customer rows
+] as const
+
+function isSensitiveKey(key: string): boolean {
+  const k = key.toLowerCase()
+  return SENSITIVE_KEY_PREFIXES.some((p) => k.startsWith(p))
+}
+
+/**
  * Encode an arbitrary cache key (which may contain `:`, `/`, spaces, unicode —
  * e.g. `lager:ALL:`) into a filesystem-safe, reversible file name. We percent-
  * encode everything outside a conservative safe set, so two distinct keys can
@@ -77,6 +101,9 @@ function ensureDir(dir: Directory): void {
 export function createFileReadCachePersistence(): ReadCachePersistence {
   return {
     async getItem(key: string): Promise<string | null> {
+      // Sensitive namespaces were never persisted (see below) — a disk hit here
+      // would be a stale foreign file; treat as a miss.
+      if (isSensitiveKey(key)) return null
       try {
         const file = new File(cacheDir(), encodeKey(key) + FILE_SUFFIX)
         if (!file.exists) return null
@@ -88,6 +115,8 @@ export function createFileReadCachePersistence(): ReadCachePersistence {
     },
 
     async setItem(key: string, value: string): Promise<void> {
+      // PII-bearing reads stay MEMORY-ONLY — never written to disk plaintext.
+      if (isSensitiveKey(key)) return
       try {
         const dir = cacheDir()
         ensureDir(dir)

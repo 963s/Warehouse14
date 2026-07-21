@@ -81,6 +81,7 @@ import {
   apiClient,
   DEV_DEVICE_FINGERPRINT,
   signOut,
+  signOutAllDevices,
   updateMetalMargin,
 } from "@/warehouse14/api"
 import { ACTOR_ROLE_LABEL } from "@/warehouse14/german-text"
@@ -711,6 +712,17 @@ function LogoutSection() {
   const t = useW14Theme()
   const [confirming, setConfirming] = useState(false)
 
+  const wipeLocal = useCallback(() => {
+    // Wipe the last-good read cache FIRST (memory + persisted snapshots), so the
+    // next actor to sign in never briefly sees the previous actor's cached
+    // finance figures — the honesty rule across sign-ins. Reads only ever; no
+    // fiscal/money record lives in this cache.
+    clearCachedRead()
+    // Clearing the in-memory session flips useSession().isAuthenticated → the
+    // root auth gate (useAuthRedirect) replaces the stack with /login.
+    clearSession()
+  }, [])
+
   const logout = useCallback(async () => {
     haptics.success()
     // Revoke the session on the SERVER first so a lost or stolen phone can never
@@ -721,15 +733,22 @@ function LogoutSection() {
     } catch {
       // Local wipe proceeds regardless; the token lapses at its natural expiry.
     }
-    // Wipe the last-good read cache FIRST (memory + persisted snapshots), so the
-    // next actor to sign in never briefly sees the previous actor's cached
-    // finance figures — the honesty rule across sign-ins. Reads only ever; no
-    // fiscal/money record lives in this cache.
-    clearCachedRead()
-    // Clearing the in-memory session flips useSession().isAuthenticated → the
-    // root auth gate (useAuthRedirect) replaces the stack with /login.
-    clearSession()
-  }, [])
+    wipeLocal()
+  }, [wipeLocal])
+
+  // Lost-device kill switch (security review 2026-07-21): revoke EVERY session
+  // this owner has, on every device, then sign out here too. If a phone was lost
+  // while unlocked, running this from any other device stops it on its next
+  // request. Best-effort server call; the local wipe always proceeds.
+  const logoutAll = useCallback(async () => {
+    haptics.success()
+    try {
+      await signOutAllDevices()
+    } catch {
+      // Even if the call fails, wipe locally; the owner can retry from elsewhere.
+    }
+    wipeLocal()
+  }, [wipeLocal])
 
   if (!confirming) {
     return (
@@ -754,7 +773,7 @@ function LogoutSection() {
         Wirklich abmelden?
       </Text>
       <Text className="text-muted-foreground text-sm">
-        Du musst dich danach erneut mit deiner PIN anmelden.
+        Du musst dich danach erneut mit Google anmelden.
       </Text>
       <View className="flex-row gap-2">
         <Button
@@ -777,6 +796,19 @@ function LogoutSection() {
           <Text>Abmelden</Text>
         </Button>
       </View>
+      {/* Lost-device kill switch — revoke the session on ALL devices at once. */}
+      <Button
+        variant="outline"
+        onPress={logoutAll}
+        accessibilityLabel="Von allen Geräten abmelden"
+        style={{ borderColor: t.colors.destructive }}
+      >
+        <LogOut size={t.icon.sm} color={t.colors.destructive} />
+        <Text style={{ color: t.colors.destructive }}>Von allen Geräten abmelden</Text>
+      </Button>
+      <Text className="text-muted-foreground text-2xs">
+        Nutze das, wenn ein Gerät verloren ging: es beendet die Sitzung auf allen Geräten sofort.
+      </Text>
     </Card>
   )
 }

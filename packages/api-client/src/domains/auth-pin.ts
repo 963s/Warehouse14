@@ -158,4 +158,11 @@ export const authPin = {
   signOut(client: ApiClient): Promise<SignOutResponse> {
     return client.request<SignOutResponse>('POST', '/api/auth/sign-out');
   },
+  /**
+   * Revoke ALL of the current user's sessions on every device (the lost-device
+   * kill switch, security review 2026-07-21). Returns how many were revoked.
+   */
+  signOutAll(client: ApiClient): Promise<{ ok: true; revoked: number }> {
+    return client.request<{ ok: true; revoked: number }>('POST', '/api/auth/sign-out-all');
+  },
 };

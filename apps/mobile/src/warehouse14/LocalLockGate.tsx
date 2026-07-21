@@ -18,7 +18,16 @@ import { AppState, Pressable, ScrollView, View } from "react-native"
 
 import { Text } from "@/components/ui/text"
 import { signOut } from "@/warehouse14/api"
-import { clearLocalPin, readLocalPinState, setLocalPin, verifyLocalPin } from "@/warehouse14/local-lock"
+import {
+  clearLocalPin,
+  clearAttempts,
+  readAttempts,
+  readLocalPinState,
+  recordFailedAttempt,
+  setLocalPin,
+  verifyLocalPin,
+  WIPE_AFTER,
+} from "@/warehouse14/local-lock"
 import { clearSession, useSession } from "@/warehouse14/session"
 import { useW14Theme } from "@/warehouse14/theme"
 import { haptics, PaperGrain, useScreenInsets } from "@/warehouse14/ui"
@@ -70,6 +79,10 @@ function LocalLock({ onUnlock }: { onUnlock: () => void }): ReactNode {
   // simply there, plus a retry button. Never fabricated: the button renders
   // only when hardware + an enrolled biometric genuinely exist.
   const [bioReady, setBioReady] = useState(false)
+  // Brute-force lockout (security review 2026-07-21): epoch-ms the pad is locked
+  // until (0 = open), and the live countdown seconds shown to the owner.
+  const [lockedUntil, setLockedUntil] = useState(0)
+  const [lockSecs, setLockSecs] = useState(0)
   const bioPrompted = useRef(false)
   const promptBiometric = useCallback(async () => {
     try {
@@ -140,18 +153,66 @@ function LocalLock({ onUnlock }: { onUnlock: () => void }): ReactNode {
     setErrorNonce((n) => n + 1)
   }, [])
 
+  // Hydrate any persisted lockout on mount — a relaunch must NOT reset it.
+  useEffect(() => {
+    let alive = true
+    void readAttempts().then((a) => {
+      if (alive && a.lockedUntil > Date.now()) setLockedUntil(a.lockedUntil)
+    })
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  // Live countdown while locked; clears itself the moment the window elapses.
+  useEffect(() => {
+    if (lockedUntil <= Date.now()) {
+      setLockSecs(0)
+      return
+    }
+    const tick = () => {
+      const secs = Math.max(0, Math.ceil((lockedUntil - Date.now()) / 1000))
+      setLockSecs(secs)
+      if (secs === 0) setLockedUntil(0)
+    }
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [lockedUntil])
+
   const complete = useCallback(
     async (value: string) => {
+      // Hard stop while locked out — never even hash a guess during a lockout.
+      if (mode === "verify" && lockedUntil > Date.now()) {
+        setPin("")
+        return
+      }
       setBusy(true)
       setError(null)
       try {
         if (mode === "verify") {
           const ok = await verifyLocalPin(value)
           if (ok) {
+            await clearAttempts()
+            setLockedUntil(0)
             haptics.success()
             onUnlock()
           } else {
-            fail("Falscher Code. Bitte erneut versuchen.")
+            // Record the miss; escalate the lock, and WIPE + force Google
+            // re-login once the ceiling is crossed.
+            const r = await recordFailedAttempt()
+            if (r.wiped) {
+              haptics.error()
+              clearSession()
+              return
+            }
+            if (r.lockedUntil > Date.now()) setLockedUntil(r.lockedUntil)
+            const remaining = WIPE_AFTER - r.fails
+            fail(
+              r.lockedUntil > Date.now()
+                ? `Falscher Code. Kurz gesperrt. Noch ${remaining} Versuch${remaining === 1 ? "" : "e"}.`
+                : `Falscher Code. Noch ${remaining} Versuch${remaining === 1 ? "" : "e"}, dann ist eine neue Google-Anmeldung nötig.`,
+            )
           }
           return
         }
@@ -177,7 +238,7 @@ function LocalLock({ onUnlock }: { onUnlock: () => void }): ReactNode {
         setBusy(false)
       }
     },
-    [mode, firstCode, onUnlock, fail],
+    [mode, firstCode, onUnlock, fail, lockedUntil],
   )
 
   // Auto-submit once the row fills (mirrors the login screen).
@@ -220,8 +281,11 @@ function LocalLock({ onUnlock }: { onUnlock: () => void }): ReactNode {
         : "Code wiederholen"
       : "Gerätecode eingeben"
 
+  const locked = lockedUntil > Date.now()
   const status =
-    error ??
+    locked
+      ? `Zu viele Fehlversuche. In ${lockSecs} Sekunden wieder versuchen.`
+      : error ??
     (mode === "create"
       ? firstCode === null
         ? bioReady
@@ -278,7 +342,7 @@ function LocalLock({ onUnlock }: { onUnlock: () => void }): ReactNode {
             onDigit={onDigit}
             onBackspace={onBackspace}
             errorNonce={errorNonce}
-            disabled={busy || mode === "loading"}
+            disabled={busy || mode === "loading" || locked}
           />
 
           {mode === "verify" && bioReady && (
