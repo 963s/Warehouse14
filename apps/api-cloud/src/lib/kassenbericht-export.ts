@@ -134,6 +134,91 @@ const STATE_LABEL: Record<KassenberichtInput['state'], string> = {
   COUNTING: 'in Zählung',
 };
 
+export interface KassenberichtRow {
+  label: string;
+  value: string;
+  /** A sum line: the printed page rules it off, the CSV does not care. */
+  emphasis?: boolean;
+}
+
+export interface KassenberichtSection {
+  title: string;
+  rows: KassenberichtRow[];
+}
+
+/**
+ * The report as STRUCTURE, before it is a file.
+ *
+ * Both renderings read this: the CSV a Steuerberater imports and the A4 page a
+ * Prüfer is handed at the counter. One source, so the printed sheet and the
+ * imported file can never disagree about a figure or a label.
+ */
+export function buildKassenberichtRows(c: KassenberichtInput): KassenberichtSection[] {
+  return [
+    {
+      title: 'Belege',
+      rows: [
+        { label: 'Verkäufe', value: String(c.verkaufCount) },
+        { label: 'Ankäufe', value: String(c.ankaufCount) },
+        { label: 'Stornos', value: String(c.stornoCount) },
+      ],
+    },
+    {
+      title: 'Umsatz',
+      rows: [
+        { label: 'Verkauf brutto', value: eur(c.grossVerkaufEur) },
+        { label: 'Verkauf netto', value: eur(c.netVerkaufEur) },
+        { label: 'Ankauf brutto', value: eur(c.grossAnkaufEur) },
+        { label: 'Ankauf netto', value: eur(c.netAnkaufEur) },
+      ],
+    },
+    {
+      title: 'Umsatzsteuer',
+      rows: [
+        ...Object.entries(c.vatByTreatment).map(([code, amt]) => ({
+          label: label(TREATMENT_LABEL, code),
+          value: eur(amt),
+        })),
+        // The check total: a reader adds the rows above and must land here.
+        { label: 'Summe', value: eur(sumEur(c.vatByTreatment)), emphasis: true },
+      ],
+    },
+    {
+      title: 'Zahlungsart',
+      rows: [
+        ...Object.entries(c.paymentsByMethod).map(([method, amt]) => ({
+          label: label(PAYMENT_LABEL, method),
+          value: eur(amt),
+        })),
+        { label: 'Summe', value: eur(sumEur(c.paymentsByMethod)), emphasis: true },
+      ],
+    },
+    {
+      title: 'Kasse',
+      rows: [
+        { label: 'Erwartet bar', value: eur(c.cashExpectedEur) },
+        { label: 'Gezählt bar', value: eur(c.cashCountedEur) },
+        { label: 'Differenz', value: eur(c.cashVarianceEur) },
+      ],
+    },
+    {
+      title: 'TSE',
+      rows: [
+        { label: 'Signiert', value: String(c.tseFinishedCount) },
+        { label: 'Ausstehend', value: String(c.tsePendingCount) },
+        { label: 'Fehlgeschlagen', value: String(c.tseFailedCount) },
+      ],
+    },
+    {
+      title: 'Abschluss',
+      rows: [
+        { label: 'Status', value: STATE_LABEL[c.state] },
+        { label: 'Finalisiert am', value: berlinStamp(c.finalizedAt) },
+      ],
+    },
+  ];
+}
+
 /**
  * Build the Kassenbericht CSV. Line 1 is the title + business day; the rest are
  * `Abschnitt;Feld;Wert` rows. Unquoted unless a value needs it (csv-stringify
@@ -143,41 +228,11 @@ export function buildKassenberichtCsv(c: KassenberichtInput): string {
   const rows: string[][] = [
     ['Kassenbericht', germanDay(c.businessDay)],
     ['Status', STATE_LABEL[c.state]],
-    [],
-    ['Belege', 'Verkäufe', String(c.verkaufCount)],
-    ['Belege', 'Ankäufe', String(c.ankaufCount)],
-    ['Belege', 'Stornos', String(c.stornoCount)],
-    [],
-    ['Umsatz', 'Verkauf brutto', eur(c.grossVerkaufEur)],
-    ['Umsatz', 'Verkauf netto', eur(c.netVerkaufEur)],
-    ['Umsatz', 'Ankauf brutto', eur(c.grossAnkaufEur)],
-    ['Umsatz', 'Ankauf netto', eur(c.netAnkaufEur)],
-    [],
-    ...Object.entries(c.vatByTreatment).map(([code, amt]) => [
-      'Umsatzsteuer',
-      label(TREATMENT_LABEL, code),
-      eur(amt),
-    ]),
-    // The check total: a reader adds the rows above and must land here.
-    ['Umsatzsteuer', 'Summe', eur(sumEur(c.vatByTreatment))],
-    [],
-    ...Object.entries(c.paymentsByMethod).map(([method, amt]) => [
-      'Zahlungsart',
-      label(PAYMENT_LABEL, method),
-      eur(amt),
-    ]),
-    ['Zahlungsart', 'Summe', eur(sumEur(c.paymentsByMethod))],
-    [],
-    ['Kasse', 'Erwartet bar', eur(c.cashExpectedEur)],
-    ['Kasse', 'Gezählt bar', eur(c.cashCountedEur)],
-    ['Kasse', 'Differenz', eur(c.cashVarianceEur)],
-    [],
-    ['TSE', 'Signiert', String(c.tseFinishedCount)],
-    ['TSE', 'Ausstehend', String(c.tsePendingCount)],
-    ['TSE', 'Fehlgeschlagen', String(c.tseFailedCount)],
-    [],
-    ['Abschluss', 'Finalisiert am', berlinStamp(c.finalizedAt)],
   ];
+  for (const section of buildKassenberichtRows(c)) {
+    rows.push([]);
+    for (const r of section.rows) rows.push([section.title, r.label, r.value]);
+  }
 
   return stringify(rows, { delimiter: ';', record_delimiter: '\r\n' });
 }

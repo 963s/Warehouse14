@@ -27,6 +27,7 @@ import {
   zipDsfinvkBundle,
 } from '../lib/dsfinvk-export.js';
 import { type KassenberichtInput, buildKassenberichtCsv } from '../lib/kassenbericht-export.js';
+import { renderKassenberichtHtml } from '../lib/kassenbericht-print.js';
 import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 
 class ClosingNotFoundError extends DomainError {
@@ -532,18 +533,25 @@ const closingExportRoute: FastifyPluginAsync = async (app) => {
   // ── GET /api/closings/:id/export/kassenbericht — daily cash report CSV ────
   //    The real `daily_closings` row re-expressed as a German Kassenbericht.
   //    NO recompute / NO fabrication; READ-ONLY. ADMIN + READONLY + step-up.
-  app.get<{ Params: { id: string } }>(
+  app.get<{ Params: { id: string }; Querystring: { format?: string } }>(
     '/api/closings/:id/export/kassenbericht',
     {
       schema: {
         tags: ['closings'],
         summary:
-          'Download a daily closing as a German Kassenbericht CSV (ADMIN/READONLY + step-up).',
+          'Download a daily closing as a German Kassenbericht, CSV or printable A4 (ADMIN/READONLY + step-up).',
         description:
           'Returns text/plain CSV — the KassenSichV daily cash report built verbatim from ' +
           'the stored daily_closing (counts, net totals, VAT + payment breakdown, cash ' +
-          'count/variance, TSE health). No fiscal figure is recomputed.',
+          'count/variance, TSE health). No fiscal figure is recomputed. ' +
+          '`?format=html` returns the SAME report as a self-contained A4 page with the ' +
+          'shop letterhead, for a §146b Kassen-Nachschau where the Prüfer wants paper ' +
+          'rather than a spreadsheet. Both renderings read one row builder, so the ' +
+          'printed sheet and the imported file cannot disagree.',
         params: Type.Object({ id: Type.String({ format: 'uuid' }) }),
+        querystring: Type.Object({
+          format: Type.Optional(Type.Union([Type.Literal('csv'), Type.Literal('html')])),
+        }),
         response: {
           401: ErrorResponse,
           403: ErrorResponse,
@@ -606,6 +614,25 @@ const closingExportRoute: FastifyPluginAsync = async (app) => {
         tseFailedCount: Number(r.tse_failed_count),
         finalizedAt: r.finalized_at ? new Date(r.finalized_at).toISOString() : null,
       };
+
+      // Paper for a Kassen-Nachschau. The letterhead is the SAME shop identity
+      // the receipt prints (system_settings), so a Prüfer holding a receipt and
+      // this report sees one business rather than two.
+      if (req.query.format === 'html') {
+        const shopRows = (await app.db.execute<{ key: string; value: string | null }>(sql`
+          SELECT key, value #>> '{}' AS value FROM system_settings WHERE key LIKE 'shop.%'
+        `)) as unknown as { key: string; value: string | null }[];
+        const s = new Map(shopRows.map((x) => [x.key, x.value ?? '']));
+        const html = renderKassenberichtHtml(input, {
+          name: s.get('shop.name') ?? 'WAREHOUSE 14',
+          addressLine1: s.get('shop.address_line1') ?? '',
+          addressLine2: s.get('shop.address_line2') ?? '',
+          vatId: s.get('shop.vat_id') ?? '',
+          phone: s.get('shop.phone') ?? '',
+        });
+        reply.type('text/html; charset=utf-8');
+        return reply.status(200).send(html);
+      }
 
       const csv = buildKassenberichtCsv(input);
       const filename = `Kassenbericht_${r.business_day}.csv`;
