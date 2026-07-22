@@ -400,7 +400,7 @@ export function CustomerWebOrders({ customerId }: { customerId: string }): JSX.E
                     }}
                   >
                     <span className="w14-tabular" style={{ fontFamily: 'var(--w14-font-mono)' }}>
-                      {line.sku ?? '—'}
+                      {line.sku ?? 'ohne Nummer'}
                     </span>
                     <span
                       style={{

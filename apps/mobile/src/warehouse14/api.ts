@@ -35,6 +35,7 @@ import {
   photosApi,
   productsApi,
   shifts,
+  supportApi,
   tasksApi,
   transactionsApi,
   whatsappApi,
@@ -135,7 +136,10 @@ import {
   type AnkaufResponse,
   type OpenShiftRequest,
   type ShiftView,
+  type SupportTicketDetail,
+  type SupportTicketSummary,
   type TaskRow,
+  type TicketStatus,
   type TransitionTaskBody,
   type UpdateMarginBody,
   type UpdateMarginResponse,
@@ -927,6 +931,44 @@ export function setWhatsappAiStatus(
   aiActive: boolean,
 ): Promise<WhatsAppAiStatusResponse> {
   return whatsappApi.updateAiStatus(apiClient, phone, aiActive)
+}
+
+// ── Anfragen (customer support tickets — the e-mail side of the counter) ─────
+// The shop's mail was outbound only until 0097: a customer who replied to a
+// reservation letter was writing into a mailbox nobody opened. The worker's
+// inbox poller files those replies as tickets; these four wrappers are the
+// staff side. `reply` is the one MUTATION and rides the same transparent
+// step-up middleware as every other Owner write.
+//
+// Nothing here sends mail inline. A reply is QUEUED into the same outbox the
+// reservation letters use, so the honest word for a completed call is
+// "übernommen" and never "gesendet".
+
+/** GET /api/support/tickets — open tickets, or one status bucket. */
+export function listSupportTickets(status?: TicketStatus): Promise<SupportTicketSummary[]> {
+  return supportApi.list(apiClient, status)
+}
+
+/** GET /api/support/tickets/:id — one conversation with its full message log. */
+export function getSupportTicket(id: string): Promise<SupportTicketDetail> {
+  return supportApi.get(apiClient, id)
+}
+
+/**
+ * POST /api/support/tickets/:id/reply — answer. The letter leaves from the
+ * address the customer wrote TO, and the ticket moves to WARTET rather than
+ * GESCHLOSSEN: we have replied, they have not yet said whether that settled it.
+ */
+export function replySupportTicket(id: string, body: string): Promise<{ ok: boolean; ticketNumber: string }> {
+  return supportApi.reply(apiClient, id, body)
+}
+
+/** POST /api/support/tickets/:id/status — close a settled thread, or reopen it. */
+export function setSupportTicketStatus(
+  id: string,
+  status: TicketStatus,
+): Promise<{ ok: boolean; status: string }> {
+  return supportApi.setStatus(apiClient, id, status)
 }
 
 // ── Ledger (the GoBD audit feed — read-only history) ─────────────────────────

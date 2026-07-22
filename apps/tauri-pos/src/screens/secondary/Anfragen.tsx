@@ -15,6 +15,7 @@
 import { useCallback, useMemo, useState } from 'react';
 
 import { DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
+import { describeError } from '@warehouse14/i18n-de';
 import { supportApi } from '@warehouse14/api-client';
 import type { SupportTicketDetail, TicketStatus } from '@warehouse14/api-client';
 
@@ -79,7 +80,10 @@ export function Anfragen() {
       // The reply is queued, not sent inline, so the only honest thing to
       // report is whether it was ACCEPTED. Claiming "sent" here would be a
       // guess about a worker tick that has not happened yet.
-      setErr(e instanceof Error ? e.message : 'Die Antwort konnte nicht übernommen werden.');
+      //
+      // describeError, never `e.message`: a raw server string is English and
+      // written for a log, and the counter reads German.
+      setErr(describeError(e));
     } finally {
       setBusy(false);
     }

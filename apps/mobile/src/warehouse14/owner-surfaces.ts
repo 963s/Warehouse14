@@ -26,6 +26,7 @@ import {
   FileText,
   ListChecks,
   type LucideIcon,
+  Mail,
   MessageCircle,
   Printer,
   Receipt,
@@ -250,6 +251,15 @@ export const OWNER_SURFACES: readonly OwnerSurface[] = [
     description: "Systemzustand, Risiko-Warnsignale und der Schutz am Rand in einem Blick.",
     icon: ShieldCheck,
     group: "system",
+    available: true,
+  },
+  {
+    id: "anfragen",
+    route: "/anfragen",
+    label: "Anfragen",
+    description: "Antworten der Kundschaft auf unsere Briefe: lesen, beantworten, schließen.",
+    icon: Mail,
+    group: "kanale",
     available: true,
   },
 ] as const
