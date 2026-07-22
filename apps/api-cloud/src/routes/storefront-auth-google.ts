@@ -372,7 +372,7 @@ const storefrontGoogleAuthRoutes: FastifyPluginAsync<{ env: Env }> = async (app,
             shopperId = s.id;
             // Welcome letter for the brand-new account — best-effort.
             try {
-              await enqueueEmail(tx, email, composeWelcome(displayName, signInLocale));
+              await enqueueEmail(tx, email, composeWelcome(displayName, signInLocale), c.id);
             } catch {
               /* outbox unavailable — sign-in still succeeds */
             }

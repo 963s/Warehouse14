@@ -203,7 +203,12 @@ const storefrontAuthRoutes: FastifyPluginAsync = async (app) => {
             });
             // Welcome letter — best-effort, never blocks the registration.
             try {
-              await enqueueEmail(tx, body.email, composeWelcome(body.fullName, signupLocale));
+              await enqueueEmail(
+                tx,
+                body.email,
+                composeWelcome(body.fullName, signupLocale),
+                (up.customer_id as string | undefined) ?? null,
+              );
             } catch {
               /* outbox unavailable — registration still succeeds */
             }
@@ -265,7 +270,7 @@ const storefrontAuthRoutes: FastifyPluginAsync = async (app) => {
 
         // Welcome letter — best-effort, never blocks the registration.
         try {
-          await enqueueEmail(tx, body.email, composeWelcome(body.fullName, signupLocale));
+          await enqueueEmail(tx, body.email, composeWelcome(body.fullName, signupLocale), c.id);
         } catch {
           /* outbox unavailable — registration still succeeds */
         }

@@ -462,12 +462,14 @@ const storefrontOrdersRoutes: FastifyPluginAsync = async (app) => {
             full_name: string | null;
             preferred_language: string | null;
             is_guest: boolean;
+            customer_id: string;
           }>(drizzleSql`
             SELECT CASE WHEN s.is_guest THEN decrypt_pii(c.email_encrypted)
                         ELSE decrypt_pii(s.email_encrypted) END AS email,
                    decrypt_pii(c.full_name_encrypted) AS full_name,
                    s.preferred_language,
-                   s.is_guest
+                   s.is_guest,
+                   c.id AS customer_id
               FROM shoppers s JOIN customers c ON c.id = s.customer_id
              WHERE s.id = ${req.shopper.id}
           `);
@@ -481,6 +483,7 @@ const storefrontOrdersRoutes: FastifyPluginAsync = async (app) => {
               tx,
               email,
               composeReservationCancelled(who[0]?.full_name ?? null, cart.id, locale),
+              who[0]?.customer_id ?? null,
             );
           }
         });

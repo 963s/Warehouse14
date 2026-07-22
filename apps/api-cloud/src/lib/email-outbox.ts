@@ -168,15 +168,23 @@ export function composeReservationCancelled(
  * session key) — pass the pii tx. Never throws into the caller's business
  * flow: a mail that cannot be queued must not break a sign-up or an order,
  * so callers wrap this in a best-effort try/catch.
+ *
+ * `customerId` is what lets erasure find this letter later. Passing null is
+ * allowed but should be rare and deliberate: a letter with no subject cannot
+ * be withdrawn when that person invokes Art. 17, and before migration 0096
+ * the column did not exist at all — which is precisely how an erased
+ * customer came to be sent mail on 2026-07-22.
  */
 export async function enqueueEmail(
   tx: SqlExecutor,
   recipient: string,
   mail: ComposedEmail,
+  customerId: string | null,
 ): Promise<void> {
   await tx.execute(drizzleSql`
-    INSERT INTO email_outbox (recipient_encrypted, template, subject, body_text, body_html, locale)
+    INSERT INTO email_outbox (recipient_encrypted, template, subject, body_text, body_html, locale,
+                              customer_id)
     VALUES (encrypt_pii(${recipient}), ${mail.template}, ${mail.subject}, ${mail.text},
-            ${mail.html}, ${mail.locale})
+            ${mail.html}, ${mail.locale}, ${customerId})
   `);
 }

@@ -9,8 +9,9 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { check, index, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { char, check, index, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
+import { customers } from '../customers/customers.js';
 import { bytea } from './shoppers.js';
 
 export const emailOutbox = pgTable(
@@ -27,11 +28,22 @@ export const emailOutbox = pgTable(
     lastError: text('last_error'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().default(sql`now()`),
     sentAt: timestamp('sent_at', { withTimezone: true }),
+    /** Which of the thirteen languages this letter was rendered in (0092). */
+    locale: char('locale', { length: 2 }).notNull().default('de'),
+    /**
+     * Who the letter is about (0096). Nullable, and null means erasure can
+     * never withdraw it — every row written before 0096 is in exactly that
+     * state, which is how an erased customer got mail on 2026-07-22.
+     */
+    customerId: uuid('customer_id').references(() => customers.id, { onDelete: 'set null' }),
   },
   (table) => ({
     pendingIdx: index('email_outbox_pending_idx')
       .on(table.createdAt)
       .where(sql`${table.status} = 'PENDING'`),
+    customerIdx: index('email_outbox_customer_idx')
+      .on(table.customerId)
+      .where(sql`${table.customerId} IS NOT NULL`),
     statusDomain: check(
       'email_outbox_status_domain',
       sql`${table.status} IN ('PENDING', 'SENT', 'FAILED')`,
