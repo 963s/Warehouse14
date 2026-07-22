@@ -434,3 +434,12 @@ export {
   type SupportTicketDetail,
   type SupportMessage,
 } from './domains/support.js';
+
+export {
+  inventorySessionsApi,
+  type InventorySessionStatus,
+  type InventorySessionView,
+  type InventoryProgress,
+  type InventoryMatchStatus,
+  type InventoryScanResult,
+} from './domains/inventory-sessions.js';

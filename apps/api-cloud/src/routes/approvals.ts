@@ -163,7 +163,7 @@ const approvalsRoutes: FastifyPluginAsync = async (app) => {
           id: row.transaction_id,
           eventId: row.event_id,
           requestedAt: new Date(row.created_at).toISOString(),
-          posTerminal: pstr(p, 'posTerminal', '—'),
+          posTerminal: pstr(p, 'posTerminal', 'Unbekannt'),
           cashierName: pstr(p, 'cashierName', 'Unbekannt'),
           amountEur: pamount(p),
           customerName: pstr(p, 'customerName', 'Anonym'),

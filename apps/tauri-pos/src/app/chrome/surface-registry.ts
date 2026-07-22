@@ -74,6 +74,7 @@ import { Ankauf } from '../../screens/ankauf/Ankauf.js';
 import { Kasse } from '../../screens/kasse/Kasse.js';
 import { Kunden } from '../../screens/kunden/Kunden.js';
 import { Anfragen } from '../../screens/secondary/Anfragen.js';
+import { Inventur } from '../../screens/secondary/Inventur.js';
 import { Lager } from '../../screens/lager/Lager.js';
 import { Schreiben } from '../../screens/secondary/Schreiben.js';
 import { Verkauf } from '../../screens/verkauf/Verkauf.js';
@@ -224,6 +225,14 @@ export const SURFACES: readonly SurfaceDescriptor[] = [
     tier: 'secondary',
     component: Anfragen,
     searchAliases: ['support', 'tickets', 'anfrage', 'mail', 'email', 'antworten'],
+  },
+  {
+    path: '/inventur',
+    label: 'Inventur',
+    description: 'Stichtagsinventur: jedes Stück scannen, Schwund feststellen.',
+    tier: 'secondary',
+    component: Inventur,
+    searchAliases: ['inventur', 'bestandsaufnahme', 'zaehlen', 'schwund', 'stichtag'],
   },
   {
     path: '/aufgaben',
