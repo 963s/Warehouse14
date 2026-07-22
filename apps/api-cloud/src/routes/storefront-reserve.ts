@@ -35,8 +35,9 @@ import { composeReservationConfirmed, enqueueEmail } from '../lib/email-outbox.j
 import { localeFromAcceptLanguage } from '../lib/email-copy.js';
 import { requireShopper } from '../lib/shopper.js';
 import {
-  MAX_ACTIVE_RESERVED_PER_SHOPPER,
   MAX_ITEMS_PER_RESERVATION,
+  deriveReservationAllowance,
+  valueCeilingApplies,
 } from '../lib/storefront-reservation-policy.js';
 import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 
@@ -173,27 +174,108 @@ const storefrontReserveRoutes: FastifyPluginAsync = async (app) => {
           { limit: 'perReservation', max: MAX_ITEMS_PER_RESERVATION, requested: items.length },
         );
       }
-      // Rule 2: bound the RUNNING total this shopper holds across ALL their live
-      // reservations (reserve → new cart → reserve again would otherwise be
-      // unbounded). Count products still held under this shopper's reservation
-      // sessions, not yet expired.
-      const [{ heldCount = 0 } = {}] = await app.db.execute<{ heldCount: number }>(drizzleSql`
-        SELECT COUNT(*)::int AS "heldCount"
-          FROM products p
-          JOIN carts c ON c.reservation_session_id = p.reserved_by_session_id
-         WHERE c.shopper_id = ${req.shopper.id}
-           AND p.status = 'RESERVED'
-           AND p.reserved_by_channel = 'WEB_RESERVATION'
-           AND (p.reservation_expires_at IS NULL OR p.reservation_expires_at > now())
+      // Rule 2: the EARNED allowance. What this shopper may hold at once is
+      // computed from what they have actually done — collected pickups raise
+      // it, failures to collect lower it — rather than from one flat number
+      // that treats a ninety-second-old account like a regular.
+      //
+      // Every fact comes from `carts`; the reservation sweeper already flips
+      // an expired hold to ABANDONED, so "reserved and never collected" is
+      // recorded without any new table.
+      const [facts] = await app.db.execute<{
+        collected: number;
+        no_shows: number;
+        last_no_show_at: string | null;
+        trust_level: string | null;
+        email_verified: boolean;
+        held_count: number;
+        held_value: string | null;
+      }>(drizzleSql`
+        SELECT
+          (SELECT COUNT(*)::int FROM carts c
+            WHERE c.shopper_id = ${req.shopper.id} AND c.status = 'CONVERTED') AS collected,
+          (SELECT COUNT(*)::int FROM carts c
+            WHERE c.shopper_id = ${req.shopper.id}
+              AND c.status = 'ABANDONED' AND c.reserved_at IS NOT NULL) AS no_shows,
+          (SELECT MAX(c.updated_at) FROM carts c
+            WHERE c.shopper_id = ${req.shopper.id}
+              AND c.status = 'ABANDONED' AND c.reserved_at IS NOT NULL) AS last_no_show_at,
+          cu.trust_level::text AS trust_level,
+          (s.email_verified_at IS NOT NULL) AS email_verified,
+          -- What is live right now, in count AND in money.
+          (SELECT COUNT(*)::int FROM products p
+             JOIN carts c ON c.reservation_session_id = p.reserved_by_session_id
+            WHERE c.shopper_id = ${req.shopper.id}
+              AND p.status = 'RESERVED'
+              AND p.reserved_by_channel = 'WEB_RESERVATION'
+              AND (p.reservation_expires_at IS NULL OR p.reservation_expires_at > now())
+          ) AS held_count,
+          (SELECT COALESCE(SUM(p.price_eur), 0)::text FROM products p
+             JOIN carts c ON c.reservation_session_id = p.reserved_by_session_id
+            WHERE c.shopper_id = ${req.shopper.id}
+              AND p.status = 'RESERVED'
+              AND p.reserved_by_channel = 'WEB_RESERVATION'
+              AND (p.reservation_expires_at IS NULL OR p.reservation_expires_at > now())
+          ) AS held_value
+        FROM shoppers s
+        JOIN customers cu ON cu.id = s.customer_id
+       WHERE s.id = ${req.shopper.id}
       `);
-      if (heldCount + items.length > MAX_ACTIVE_RESERVED_PER_SHOPPER) {
+
+      const allowance = deriveReservationAllowance(
+        {
+          collected: facts?.collected ?? 0,
+          noShows: facts?.no_shows ?? 0,
+          lastNoShowAt: facts?.last_no_show_at ? new Date(facts.last_no_show_at) : null,
+          trustLevel: facts?.trust_level ?? null,
+          emailVerified: Boolean(facts?.email_verified),
+          isGuest: req.shopper.isGuest,
+        },
+        new Date(),
+      );
+
+      if (allowance.blockedReason) {
+        throw new ReservationLimitError('Reservations are not available on this account.', {
+          limit: 'blocked',
+          reason: allowance.blockedReason,
+          ...(allowance.cooldownUntil ? { until: allowance.cooldownUntil.toISOString() } : {}),
+        });
+      }
+
+      const heldCount = facts?.held_count ?? 0;
+      if (heldCount + items.length > allowance.maxItems) {
         throw new ReservationLimitError(
-          `You may hold at most ${MAX_ACTIVE_RESERVED_PER_SHOPPER} reserved items at once.`,
+          `You may hold at most ${allowance.maxItems} reserved items at once.`,
           {
             limit: 'perShopper',
-            max: MAX_ACTIVE_RESERVED_PER_SHOPPER,
+            tier: allowance.tier,
+            max: allowance.maxItems,
             alreadyHeld: heldCount,
             requested: items.length,
+          },
+        );
+      }
+
+      // The value ceiling, which is what actually protects the window: three
+      // pieces at forty Euro is a browsing customer, three at four thousand is
+      // a fifth of the stock locked for three days.
+      const heldValue = Number(facts?.held_value ?? 0);
+      const [{ incoming = '0' } = {}] = await app.db.execute<{ incoming: string }>(drizzleSql`
+        SELECT COALESCE(SUM(price_eur), 0)::text AS incoming
+          FROM products WHERE id = ANY(${items.map((i) => i.productId)}::uuid[])
+      `);
+      const totalValue = heldValue + Number(incoming);
+      if (
+        valueCeilingApplies(heldCount + items.length) &&
+        totalValue > allowance.maxValueEur
+      ) {
+        throw new ReservationLimitError(
+          `You may hold at most ${allowance.maxValueEur} Euro of reserved stock at once.`,
+          {
+            limit: 'perShopperValue',
+            tier: allowance.tier,
+            maxValueEur: allowance.maxValueEur,
+            currentValueEur: Math.round(totalValue),
           },
         );
       }
