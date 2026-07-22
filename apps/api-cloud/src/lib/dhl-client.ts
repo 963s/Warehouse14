@@ -45,6 +45,12 @@ export type DhlFetch = (
 export interface DhlClientOptions {
   baseUrl?: string;
   fetchImpl?: DhlFetch;
+  /**
+   * NUR für Tests und zum Üben. Ohne dieses Flag lehnt ein nicht
+   * konfiguriertes DHL ab, statt ein Etikett zu erfinden. Keine Route setzt
+   * es; wer es setzt, bekommt eine Nummer mit dem Wort SIMULATION darin.
+   */
+  allowSimulatedLabel?: boolean;
 }
 
 const DEFAULT_BASE_URL = 'https://api-sandbox.dhl.com/parcel/de/shipping/v2';
@@ -52,6 +58,30 @@ const defaultFetch: DhlFetch = (input, init) => fetch(input, init as RequestInit
 
 export function isDhlConfigured(config: DhlConfig): boolean {
   return config.user.length > 0 && config.signature.length > 0 && config.ekp.length > 0;
+}
+
+/**
+ * Wird geworfen, wenn kein DHL-Zugang hinterlegt ist.
+ *
+ * Sie existiert, weil hier vorher ein Etikett ERFUNDEN wurde: ohne Zugang gab
+ * der Client eine Sendungsnummer im echten DHL-Format zurück (`00340434…`,
+ * zwanzig Ziffern), dazu ein PDF, und die Route schrieb den Beleg daraufhin
+ * auf SHIPPED. Auf der Produktion ist KEINE einzige DHL-Variable gesetzt, also
+ * hätte jeder Druck am Tresen eine Sendungsnummer erzeugt, die nirgendwohin
+ * führt, und die Kundschaft hätte sie bekommen.
+ *
+ * Ein Etikett kostet Geld und trägt eine Nummer. Beides darf nicht entstehen,
+ * wenn niemand einen Auftrag angenommen hat.
+ */
+export class DhlNotConfiguredError extends Error {
+  public readonly code = 'DHL_NOT_CONFIGURED';
+  constructor() {
+    super(
+      'Für DHL ist kein Zugang hinterlegt. Es wurde kein Etikett gekauft, keine ' +
+        'Sendungsnummer vergeben und der Beleg NICHT auf versandt gesetzt.',
+    );
+    this.name = 'DhlNotConfiguredError';
+  }
 }
 
 /** Minimal but valid single-page PDF, used as the mock label body. */
@@ -69,9 +99,18 @@ function mockLabelPdf(trackingNumber: string): string {
 }
 
 /** Deterministic synthetic tracking number from the reference (mock mode). */
-function mockTrackingNumber(reference: string): string {
-  const digits = reference.replace(/\D/g, '').padEnd(12, '0').slice(0, 12);
-  return `00340434${digits}`; // DHL tracking numbers are 20 digits
+/**
+ * Die Übungsnummer. Sie trägt das Wort SIMULATION im Klartext und ist damit
+ * für keinen Menschen und keine Sendungsverfolgung eine DHL-Nummer.
+ *
+ * Vorher stand hier `00340434` plus zwölf Ziffern, also exakt das echte
+ * Format. Eine Übungsnummer, die aussieht wie eine echte, endet damit, dass
+ * jemand ein Paket zur Post trägt und der Kundschaft eine Nummer nennt, die
+ * ins Leere zeigt.
+ */
+function simulatedTrackingNumber(reference: string): string {
+  const digits = reference.replace(/\D/g, '').padEnd(6, '0').slice(0, 6);
+  return `SIMULATION-${digits}`;
 }
 
 function basicAuth(config: DhlConfig): string {
@@ -88,7 +127,11 @@ export async function createDhlLabel(
   opts: DhlClientOptions = {},
 ): Promise<DhlLabelResult> {
   if (!isDhlConfigured(config)) {
-    const trackingNumber = mockTrackingNumber(req.reference);
+    // Ohne Zugang wird abgelehnt, nicht erfunden. Wer den Weg üben will,
+    // setzt `allowSimulatedLabel` ausdrücklich; dann trägt die Nummer sichtbar
+    // das Wort SIMULATION und kann mit keiner echten verwechselt werden.
+    if (opts.allowSimulatedLabel !== true) throw new DhlNotConfiguredError();
+    const trackingNumber = simulatedTrackingNumber(req.reference);
     return { trackingNumber, labelBase64: mockLabelPdf(trackingNumber), mock: true };
   }
 

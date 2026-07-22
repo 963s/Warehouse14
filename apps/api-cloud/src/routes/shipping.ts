@@ -18,7 +18,7 @@ import { transactions } from '@warehouse14/db/schema';
 
 import type { Env } from '../config/env.js';
 import { requireAuth, requireRole } from '../lib/auth-policy.js';
-import { createDhlLabel } from '../lib/dhl-client.js';
+import { DhlNotConfiguredError, createDhlLabel } from '../lib/dhl-client.js';
 import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 
 class TransactionNotFoundError extends DomainError {
@@ -26,6 +26,14 @@ class TransactionNotFoundError extends DomainError {
   public readonly code: ApiErrorCode = 'NOT_FOUND';
 }
 class NotShippableError extends DomainError {
+  public readonly httpStatus = 409;
+  public readonly code: ApiErrorCode = 'CONFLICT';
+}
+/**
+ * Kein DHL-Vertrag hinterlegt. Bewusst KEIN 502: nichts ist ausgefallen, es
+ * ist schlicht noch nichts eingerichtet, und der Beleg bleibt unversandt.
+ */
+class DhlNotSetUpError extends DomainError {
   public readonly httpStatus = 409;
   public readonly code: ApiErrorCode = 'CONFLICT';
 }
@@ -131,8 +139,17 @@ const shippingRoutes: FastifyPluginAsync<ShippingRouteOpts> = async (app, opts) 
           },
           { reference: transactionId, recipientAddress: row.address },
         );
-      } catch {
-        // Never surface the underlying message — it may echo the address.
+      } catch (err) {
+        // „Kein Zugang hinterlegt" ist etwas anderes als „DHL hat abgelehnt",
+        // und der Tresen muss die beiden unterscheiden können: das eine löst
+        // der Inhaber mit einem Vertrag, das andere mit einer korrigierten
+        // Sendung. Diese eine Meldung ist unbedenklich, weil sie keine Adresse
+        // enthält, sondern nur unseren eigenen Konfigurationsstand.
+        if (err instanceof DhlNotConfiguredError) {
+          throw new DhlNotSetUpError(err.message);
+        }
+        // Sonst niemals die zugrunde liegende Meldung zeigen: sie kann die
+        // Anschrift enthalten.
         throw new DhlError('DHL label generation failed');
       }
 

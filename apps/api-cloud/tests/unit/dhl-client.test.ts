@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   type DhlConfig,
   type DhlFetch,
+  DhlNotConfiguredError,
   createDhlLabel,
   isDhlConfigured,
 } from '../../src/lib/dhl-client.js';
@@ -45,25 +46,67 @@ describe('isDhlConfigured', () => {
   });
 });
 
-describe('createDhlLabel — mock mode (no credentials)', () => {
-  it('returns a deterministic tracking number + a valid base64 PDF, no HTTP call', async () => {
+describe('createDhlLabel without credentials', () => {
+  const NO_CREDS = { user: '', signature: '', ekp: '' };
+
+  it('REFUSES, and buys no label', async () => {
+    // Diese Datei forderte vorher das Gegenteil: `toMatch(/^\d{20}$/)`, also
+    // ausdrücklich eine Nummer im echten DHL-Format. Damit war die Gefahr als
+    // Anforderung festgeschrieben. Auf der Produktion ist keine einzige
+    // DHL-Variable gesetzt, und die Route setzte den Beleg daraufhin auf
+    // SHIPPED: die Kundschaft hätte eine Sendungsnummer bekommen, die
+    // nirgendwohin führt.
+    await expect(
+      createDhlLabel(NO_CREDS, { reference: 'abc-123-def', recipientAddress: 'Musterstr. 1' }),
+    ).rejects.toThrow(DhlNotConfiguredError);
+  });
+
+  it('says in the refusal that nothing was bought and nothing was marked', async () => {
+    // Der Bediener muss wissen, ob DHL bereits belastet hat.
+    await expect(
+      createDhlLabel(NO_CREDS, { reference: 'r', recipientAddress: 'a' }),
+    ).rejects.toThrow(/kein Etikett gekauft/);
+  });
+
+  it('makes no HTTP call at all', async () => {
+    const calls: string[] = [];
+    const spy = (async () => {
+      calls.push('called');
+      return new Response('{}');
+    }) as never;
+    await createDhlLabel(NO_CREDS, { reference: 'r', recipientAddress: 'a' }, { fetchImpl: spy })
+      .catch(() => undefined);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('only simulates when a caller asks for it EXPLICITLY, and marks it visibly', async () => {
     const result = await createDhlLabel(
-      { user: '', signature: '', ekp: '' },
-      { reference: 'abc-123-def', recipientAddress: 'Musterstr. 1, 73614 Schorndorf' },
+      NO_CREDS,
+      { reference: 'abc-123-def', recipientAddress: 'Musterstr. 1' },
+      { allowSimulatedLabel: true },
     );
     expect(result.mock).toBe(true);
-    expect(result.trackingNumber).toMatch(/^\d{20}$/);
-    // Same reference → same tracking number (deterministic).
-    const again = await createDhlLabel(
-      { user: '', signature: '', ekp: '' },
-      {
-        reference: 'abc-123-def',
-        recipientAddress: 'x',
-      },
-    );
-    expect(again.trackingNumber).toBe(result.trackingNumber);
-    // Label decodes to a PDF.
+    // Der eigentliche Schutz: niemals das echte Format.
+    expect(result.trackingNumber).toContain('SIMULATION');
+    expect(result.trackingNumber).not.toMatch(/^\d{20}$/);
     expect(Buffer.from(result.labelBase64, 'base64').toString('utf8')).toContain('%PDF');
+  });
+
+  it('stays deterministic in simulation, so a test run twice matches', async () => {
+    const once = await createDhlLabel(NO_CREDS, { reference: 'abc-123-def', recipientAddress: 'x' }, { allowSimulatedLabel: true });
+    const again = await createDhlLabel(NO_CREDS, { reference: 'abc-123-def', recipientAddress: 'y' }, { allowSimulatedLabel: true });
+    expect(again.trackingNumber).toBe(once.trackingNumber);
+  });
+
+  it('NO route enables the simulation', async () => {
+    // Wenn jemand später `allowSimulatedLabel` in einer Route setzt, soll
+    // dieser Test brechen und die Frage stellen, ob das wirklich gewollt ist.
+    const { readFileSync, readdirSync } = await import('node:fs');
+    const dir = new URL('../../src/routes/', import.meta.url);
+    const offenders = readdirSync(dir)
+      .filter((f) => f.endsWith('.ts'))
+      .filter((f) => readFileSync(new URL(f, dir), 'utf8').includes('allowSimulatedLabel'));
+    expect(offenders).toEqual([]);
   });
 });
 
