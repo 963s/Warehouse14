@@ -73,7 +73,7 @@ describe('buildAppointmentMessage', () => {
     expect(msg).toContain('Besichtigung');
     expect(msg).toContain('12.06.2026');
     expect(msg).toContain('14:00');
-    expect(msg).toContain('Schornbacher Weg 66, 73614 Schorndorf');
+    expect(msg).toContain('Rosenstraße 40, 73614 Schorndorf');
   });
 });
 

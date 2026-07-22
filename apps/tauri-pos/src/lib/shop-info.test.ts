@@ -11,7 +11,7 @@ import {
 const api = (over: Partial<ShopInfoApi> = {}): ShopInfoApi => ({
   name: 'W14',
   tagline: 'Antiquitäten',
-  addressLine1: 'Schornbacher Weg 66',
+  addressLine1: 'Rosenstraße 40',
   addressLine2: '73614 Schorndorf',
   vatId: 'DE811234567',
   phone: '+49 7181 123',
@@ -42,7 +42,7 @@ describe('resolveShopInfo — no placeholder VAT id ever prints (Phase 7.2 / GoB
   it('address is a safe-to-default field: server lines win, else the bundled address', () => {
     // Server carries both lines → server wins.
     expect(resolveShopInfo(api()).address).toEqual([
-      'Schornbacher Weg 66',
+      'Rosenstraße 40',
       '73614 Schorndorf',
     ]);
     // Server carries neither line → fall back to the bundled address (never blank).

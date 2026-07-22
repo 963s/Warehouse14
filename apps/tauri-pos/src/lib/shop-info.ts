@@ -29,7 +29,7 @@ export interface ShopInfo {
 export const SHOP_INFO: ShopInfo = {
   name: 'WAREHOUSE 14',
   tagline: 'Antiquitäten · Briefmarken · Münzen',
-  address: ['Schornbacher Weg 66', '73614 Schorndorf'],
+  address: ['Rosenstraße 40', '73614 Schorndorf'],
   // NO placeholder VAT id / phone — an unconfigured USt-IdNr. must LOCK the
   // receipt, never print a fake one (GoBD). The real values live in the server
   // shop-info settings and flow in via `resolveShopInfo`.

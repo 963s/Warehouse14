@@ -46,7 +46,7 @@ describe('buildAppointmentMessage — German template', () => {
     expect(msg).toContain('Ankauf-Bewertung');
     expect(msg).toContain('12.06.2026');
     expect(msg).toContain('14:00');
-    expect(msg).toContain('Schornbacher Weg 66');
+    expect(msg).toContain('Rosenstraße 40');
     expect(msg).toContain('73614 Schorndorf');
     expect(msg).toContain('bestätigt');
   });

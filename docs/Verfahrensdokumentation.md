@@ -7,7 +7,7 @@
 | | |
 |---|---|
 | **Unternehmen** | WAREHOUSE 14 — An- und Verkauf von Edelmetallen, Münzen, Schmuck, Uhren und Antiquitäten |
-| **Anschrift** | Schornbacher Weg 66, 73614 Schorndorf |
+| **Anschrift** | Rosenstraße 40, 73614 Schorndorf |
 | **System** | warehouse14 — eigenentwickeltes Kassen-/Warenwirtschaftssystem (POS + Owner-Desktop + zentraler Server) |
 | **Dokumentversion** | 1.0 |
 | **Stand** | 08.06.2026 |
@@ -41,7 +41,7 @@
 
 ### 1.1 Unternehmen und Geschäftstätigkeit
 
-WAREHOUSE 14 betreibt in Schorndorf (PLZ 73614, Schornbacher Weg 66) ein Ladengeschäft für den **An- und
+WAREHOUSE 14 betreibt in Schorndorf (PLZ 73614, Rosenstraße 40) ein Ladengeschäft für den **An- und
 Verkauf von Edelmetallen, Anlage- und Sammlermünzen, Schmuck, Uhren und Antiquitäten** sowie ergänzend
 einen geplanten Online-Verkauf. Das Geschäft ist bargeldintensiv und unterliegt damit den besonderen
 Aufzeichnungs- und Einzelaufzeichnungspflichten des Bargeschäfts (§ 146 AO) sowie — wegen des Handels mit

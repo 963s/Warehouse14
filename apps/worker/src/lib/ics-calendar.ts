@@ -41,7 +41,7 @@ export function buildAppointmentIcs(input: IcsAppointmentInput): string {
     startOutputType: 'utc',
     duration: { minutes: durationMinutes },
     title: `Warehouse14 - ${input.appointmentType} appointment`,
-    location: 'warehouse14, Schornbacher Weg 66, 73614 Schorndorf',
+    location: 'warehouse14, Rosenstraße 40, 73614 Schorndorf',
     description: input.description ?? 'Ihr Termin bei Warehouse14. Wir freuen uns auf Sie.',
     productId: 'warehouse14/ics',
     status: 'CONFIRMED',

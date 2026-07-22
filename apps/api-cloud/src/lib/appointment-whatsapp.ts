@@ -74,7 +74,7 @@ export interface AppointmentMessageData {
 /** Shop address on every appointment message (Schorndorf — system_settings 0044 seed). */
 export const SHOP_ADDRESS_LINES = [
   'Warehouse 14',
-  'Schornbacher Weg 66',
+  'Rosenstraße 40',
   '73614 Schorndorf',
 ] as const;
 

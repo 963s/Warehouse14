@@ -16,7 +16,7 @@
 | ☐ | Apply **migration 0044** to the production DB | `pnpm --filter @warehouse14/db migrate` (or your migrate runner) | Creates the `shop.*` identity keys the receipt + Owner Desktop read. |
 | ☐ | Enter the **real USt-IdNr.** (VAT id) | Owner Desktop → Einstellungen → **Geschäftsdaten** | The receipt currently prints the DUMMY `DE123456789`. A wrong VAT id on a Kassenbon is a **GoBD breach**. |
 | ☐ | Enter the **real shop phone** | same screen | Printed on the receipt. |
-| ☐ | Confirm name/address/tagline | same screen | Pre-filled: WAREHOUSE 14 · Antiquitäten · Briefmarken · Münzen · Schornbacher Weg 66 · 73614 Schorndorf. |
+| ☐ | Confirm name/address/tagline | same screen | Pre-filled: WAREHOUSE 14 · Antiquitäten · Briefmarken · Münzen · Rosenstraße 40 · 73614 Schorndorf. |
 | ☐ | **Hardware day** — pair mTLS devices + configure TSE/printer/terminal + run the hardware checklist | on-site | The single go-live gate (TSE signing + card terminal + printers must be proven on real devices). |
 
 > The shop logo, receipt layout, tax footers (§25a/§12), TSE block + QR are
