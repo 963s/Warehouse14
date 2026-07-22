@@ -59,6 +59,7 @@ import bridgeRoutes from './routes/bridge.js';
 import calendarRoute from './routes/calendar.js';
 import categoriesRoutes from './routes/categories.js';
 import closingExportRoute from './routes/closing-export.js';
+import shippingSettingsRoutes from './routes/shipping-settings.js';
 import closingsFinalizeRoute from './routes/closings-finalize.js';
 import complianceRoute from './routes/compliance.js';
 import customerErasureRoute from './routes/customer-erasure.js';
@@ -330,6 +331,7 @@ export async function buildApp(opts: BuildAppOpts): Promise<FastifyInstance> {
   await app.register(ledgerRoutes);
   // ── Epic K: DSFinV-K / DATEV fiscal exports ──────────────────────
   await app.register(closingExportRoute);
+  await app.register(shippingSettingsRoutes);
   await app.register(closingsFinalizeRoute);
   await app.register(registersRoute);
   // ── Phase 2.A: storefront catalog + MCP (memory.md §20) ──────────
