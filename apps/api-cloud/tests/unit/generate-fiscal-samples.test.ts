@@ -113,7 +113,7 @@ describe('fiscal export samples (regenerated for the Steuerberater)', () => {
 
   it('writes a real Kassenbericht CSV sample', () => {
     const csv = buildKassenberichtCsv(SAMPLE_CLOSING);
-    expect(csv.split('\r\n')[0]).toBe('Kassenbericht;2026-06-06');
+    expect(csv.split('\r\n')[0]).toBe('Kassenbericht;06.06.2026');
     expect(csv).toContain('Umsatz;Verkauf netto;4240,00 EUR');
     expect(csv).toContain('Kasse;Differenz;-2,00 EUR');
     mkdirSync(SAMPLES_DIR, { recursive: true });

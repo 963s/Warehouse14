@@ -150,12 +150,36 @@ const closingsFinalizeRoute: FastifyPluginAsync = async (app) => {
          WHERE berlin_business_day(finalized_at) = ${day}::date`);
 
         // 5. VAT per treatment (VERKAUF output VAT) + payments per method (VERKAUF tender).
+        //
+        // Grouped at ITEM level, not receipt level. A receipt whose lines span
+        // several treatments carries the transaction-level code 'MIXED', and
+        // grouping by that produced a bucket literally named MIXED holding VAT
+        // that belongs to no tax rate. On 2026-06-08 that was 27,78 EUR sitting
+        // outside every rate: unusable for a Umsatzsteuervoranmeldung, where
+        // each amount has to land in a specific rate box, and irreconcilable
+        // with the DATEV export, which already splits mixed receipts per
+        // treatment (see toDatevRows in closing-export.ts). Same day, same
+        // money, two different answers.
+        //
+        // The item rows carry `applied_tax_treatment_code` and `line_vat_eur`,
+        // and they sum EXACTLY to the receipt VAT (verified on the live mixed
+        // receipt: 16,76 + 11,02 = 27,78, difference 0,00). So this only
+        // re-attributes; the day's total output VAT is unchanged to the cent.
+        //
+        // The LEFT JOIN plus COALESCE keeps a receipt that has no item rows at
+        // all: it falls back to its own transaction-level code and vat_eur,
+        // exactly like the DATEV builder does, so no VAT can silently vanish.
         const [vatRow] = await tx.execute<{ vat: Record<string, string> }>(sql`
           SELECT COALESCE(jsonb_object_agg(code, amt), '{}'::jsonb) AS vat FROM (
-            SELECT tax_treatment_code AS code, SUM(vat_eur)::text AS amt
-              FROM transactions
-             WHERE berlin_business_day(finalized_at) = ${day}::date AND direction = 'VERKAUF'
-             GROUP BY tax_treatment_code
+            SELECT code, SUM(vat)::text AS amt FROM (
+              SELECT COALESCE(i.applied_tax_treatment_code::text, t.tax_treatment_code::text) AS code,
+                     COALESCE(i.line_vat_eur, t.vat_eur) AS vat
+                FROM transactions t
+                LEFT JOIN transaction_items i ON i.transaction_id = t.id
+               WHERE berlin_business_day(t.finalized_at) = ${day}::date
+                 AND t.direction = 'VERKAUF'
+            ) lines
+             GROUP BY code
           ) q`);
         const [payRow] = await tx.execute<{ pay: Record<string, string> }>(sql`
           SELECT COALESCE(jsonb_object_agg(method, amt), '{}'::jsonb) AS pay FROM (
