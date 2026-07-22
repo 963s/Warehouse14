@@ -12,6 +12,7 @@ import {
   integer,
   numeric,
   pgTable,
+  text,
   timestamp,
   uniqueIndex,
   uuid,
@@ -35,6 +36,13 @@ export const carts = pgTable(
     checkoutExpiresAt: timestamp('checkout_expires_at', { withTimezone: true }),
     /** When a reserve-and-pickup request was submitted (cart status RESERVED). */
     reservedAt: timestamp('reserved_at', { withTimezone: true }),
+    /**
+     * The number a human can say out loud: `BST-2026-000001` (0097). NULL
+     * while the row is still a shopping basket — a trigger mints it the moment
+     * `reserved_at` is set, so numbers are never burned on baskets that are
+     * abandoned. Never write this from application code.
+     */
+    orderNumber: text('order_number'),
     convertedToTransactionId: uuid('converted_to_transaction_id')
       .unique()
       .references(() => transactions.id),
