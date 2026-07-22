@@ -17,7 +17,14 @@ describe('buildAppointmentIcs (ics package)', () => {
     expect(ics.trimEnd().endsWith('END:VCALENDAR')).toBe(true);
     expect(ics).toContain('UID:appt-abc-123@warehouse14.de');
     expect(ics).toContain('SUMMARY:Warehouse14 - VIEWING appointment');
-    expect(ics).toContain('Weil am Rhein');
+    // Same stale assertion as packages/appointments: the shop is in
+    // Schorndorf and has been for as long as the source says so, but this line
+    // still named a town that appears nowhere else in the repository, so it
+    // had been red on main. Assert that a LOCATION is present and carries the
+    // town the invite actually sends people to; the address itself belongs in
+    // the source, not duplicated into an assertion that nobody updates.
+    expect(ics).toContain('LOCATION:');
+    expect(ics).toContain('Schorndorf');
   });
 
   it('encodes the start as a UTC instant (DTSTART …Z)', () => {

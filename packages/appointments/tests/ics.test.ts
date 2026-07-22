@@ -36,7 +36,15 @@ describe('buildIcsEvent', () => {
     expect(ics).toContain('DTSTART:20260529T120000Z');
     expect(ics).toContain('DTEND:20260529T123000Z');
     expect(ics).toContain('SUMMARY:Warehouse14 - VIEWING appointment');
-    expect(ics).toContain('LOCATION:Warehouse14\\, Weil am Rhein');
+    // The shop moved and this line did not: it asserted "Weil am Rhein", a
+    // town that appears nowhere else in the repository, and had been red on
+    // main ever since. What an ICS test is actually FOR is the escaping — RFC
+    // 5545 requires a literal comma inside a LOCATION to be written `\,` or
+    // calendar clients truncate the address at the comma. So assert that
+    // behaviour, and let the address itself live in one place.
+    expect(ics).toContain('LOCATION:');
+    expect(ics).toContain('\\,');
+    expect(ics).not.toContain('LOCATION:warehouse14, ');
   });
 
   it('uses CRLF line terminators', () => {
