@@ -172,9 +172,21 @@ const DECIMAL_RE = /^\d{1,16}(\.\d{1,2})?$/
 /** Feinheit 0..1 with up to 4 fractional digits (mirrors the server FinenessString). */
 const FINENESS_RE = /^(0(\.\d{1,4})?|1(\.0{1,4})?)$/
 
-/** A decimal-string amount strictly greater than zero. */
+/**
+ * Normalise a user-typed decimal to the wire shape: trim and turn the German
+ * decimal comma into a period. A `decimal-pad` on a German device types „199,90",
+ * but the products API (and these guards) speak the period form „199.90" — so a
+ * comma must be translated before it is validated OR put on the wire, exactly the
+ * way every other money path in this app does (`cart-math.ts`, `ankauf-flow.ts`,
+ * `einstellungen.tsx`). Idempotent for values that already use a period.
+ */
+export function normalizeDecimal(value: string): string {
+  return value.trim().replace(",", ".")
+}
+
+/** A decimal-string amount strictly greater than zero (comma-tolerant). */
 function isPositivePrice(value: string): boolean {
-  const v = value.trim()
+  const v = normalizeDecimal(value)
   return DECIMAL_RE.test(v) && Number(v) > 0
 }
 
@@ -253,19 +265,19 @@ export function validateProductIntake(s: ProductIntakeForm): ProductIntakeErrors
   if (!s.taxCode) errors.taxCode = "Steuerbehandlung auswählen."
 
   if (!isPositivePrice(s.acquisition))
-    errors.acquisition = "Einkaufspreis als Betrag angeben (z. B. 199.90)."
+    errors.acquisition = "Einkaufspreis als Betrag angeben (z. B. 199,90)."
   if (!isPositivePrice(s.listPrice))
-    errors.listPrice = "Listenpreis als Betrag angeben (z. B. 349.00)."
+    errors.listPrice = "Listenpreis als Betrag angeben (z. B. 349,00)."
 
-  if (s.weightGrams.trim() && !DECIMAL_RE.test(s.weightGrams.trim()))
+  if (s.weightGrams.trim() && !DECIMAL_RE.test(normalizeDecimal(s.weightGrams)))
     errors.weightGrams = "Gewicht als Zahl in Gramm angeben."
-  if (s.fineness.trim() && !FINENESS_RE.test(s.fineness.trim()))
-    errors.fineness = "Feinheit als Dezimalzahl 0–1 angeben (z. B. 0.585)."
+  if (s.fineness.trim() && !FINENESS_RE.test(normalizeDecimal(s.fineness)))
+    errors.fineness = "Feinheit als Dezimalzahl zwischen 0 und 1 angeben (z. B. 0,585)."
 
-  const dimMsg = "Maß als Zahl in cm angeben (z. B. 12.5)."
-  if (s.lengthCm.trim() && !DECIMAL_RE.test(s.lengthCm.trim())) errors.lengthCm = dimMsg
-  if (s.widthCm.trim() && !DECIMAL_RE.test(s.widthCm.trim())) errors.widthCm = dimMsg
-  if (s.heightCm.trim() && !DECIMAL_RE.test(s.heightCm.trim())) errors.heightCm = dimMsg
+  const dimMsg = "Maß als Zahl in cm angeben (z. B. 12,5)."
+  if (s.lengthCm.trim() && !DECIMAL_RE.test(normalizeDecimal(s.lengthCm))) errors.lengthCm = dimMsg
+  if (s.widthCm.trim() && !DECIMAL_RE.test(normalizeDecimal(s.widthCm))) errors.widthCm = dimMsg
+  if (s.heightCm.trim() && !DECIMAL_RE.test(normalizeDecimal(s.heightCm))) errors.heightCm = dimMsg
 
   return errors
 }
@@ -278,7 +290,7 @@ export function validateProductIntake(s: ProductIntakeForm): ProductIntakeErrors
  */
 export function intakeSizeClass(s: ProductIntakeForm): SizeClass | null {
   const num = (v: string): number | null => {
-    const t = v.trim()
+    const t = normalizeDecimal(v)
     if (!t) return null
     const n = Number(t)
     return Number.isFinite(n) ? n : null
@@ -329,12 +341,12 @@ export function validateProductEdit(
   if (!name.trim()) errors.name = "Name ist erforderlich."
   else if (name.trim().length < 2) errors.name = "Name ist zu kurz."
   if (!isPositivePrice(listPrice))
-    errors.listPrice = "Listenpreis als Betrag angeben (z. B. 349.00)."
+    errors.listPrice = "Listenpreis als Betrag angeben (z. B. 349,00)."
   if (dims) {
-    const dimMsg = "Maß als Zahl in cm angeben (z. B. 12.5)."
-    if (dims.lengthCm.trim() && !DECIMAL_RE.test(dims.lengthCm.trim())) errors.lengthCm = dimMsg
-    if (dims.widthCm.trim() && !DECIMAL_RE.test(dims.widthCm.trim())) errors.widthCm = dimMsg
-    if (dims.heightCm.trim() && !DECIMAL_RE.test(dims.heightCm.trim())) errors.heightCm = dimMsg
+    const dimMsg = "Maß als Zahl in cm angeben (z. B. 12,5)."
+    if (dims.lengthCm.trim() && !DECIMAL_RE.test(normalizeDecimal(dims.lengthCm))) errors.lengthCm = dimMsg
+    if (dims.widthCm.trim() && !DECIMAL_RE.test(normalizeDecimal(dims.widthCm))) errors.widthCm = dimMsg
+    if (dims.heightCm.trim() && !DECIMAL_RE.test(normalizeDecimal(dims.heightCm))) errors.heightCm = dimMsg
   }
   return errors
 }

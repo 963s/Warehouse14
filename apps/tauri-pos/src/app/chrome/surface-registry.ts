@@ -95,6 +95,9 @@ const Bewertung = lazy(() =>
 const Belegtexte = lazy(() =>
   import('../../screens/secondary/Belegtexte.js').then((m) => ({ default: m.Belegtexte })),
 );
+const Bestellungen = lazy(() =>
+  import('../../screens/secondary/Bestellungen.js').then((m) => ({ default: m.Bestellungen })),
+);
 const Dokumente = lazy(() =>
   import('../../screens/secondary/Dokumente.js').then((m) => ({ default: m.Dokumente })),
 );
@@ -225,6 +228,24 @@ export const SURFACES: readonly SurfaceDescriptor[] = [
     tier: 'secondary',
     component: Anfragen,
     searchAliases: ['support', 'tickets', 'anfrage', 'mail', 'email', 'antworten'],
+  },
+  {
+    path: '/bestellungen',
+    label: 'Bestellungen',
+    description: 'Online-Reservierungen zur Abholung annehmen, vorbereiten und übergeben.',
+    tier: 'secondary',
+    component: Bestellungen,
+    searchAliases: [
+      'bestellung',
+      'bestellungen',
+      'abholung',
+      'reservierung',
+      'online',
+      'webshop',
+      'pickup',
+      'orders',
+      'reserve',
+    ],
   },
   {
     path: '/inventur',

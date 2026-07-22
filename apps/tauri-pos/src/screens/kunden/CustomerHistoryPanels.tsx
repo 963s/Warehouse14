@@ -13,7 +13,7 @@
 
 import { StaleBadge, useCachedQuery } from '../../offline/index.js';
 
-import { DiamondRule, MoneyAmount, ParchmentCard } from '@warehouse14/ui-kit';
+import { Button, DiamondRule, MoneyAmount, ParchmentCard } from '@warehouse14/ui-kit';
 
 import type { CustomerWebOrder } from '@warehouse14/api-client';
 
@@ -268,13 +268,26 @@ function EmptyHint({ text }: { text: string }): JSX.Element {
  */
 type WebOrderRow = CustomerWebOrder;
 
+/**
+ * Die echten `carts.status`-Werte, die die API liefert. RESERVED, CONVERTED
+ * (der Warenkorb wurde an der Kasse abgeholt und in einen Beleg überführt) und
+ * CANCELLED sind der Kern; ACTIVE (noch im Korb) und ABANDONED (vom Sweeper
+ * verfallen) kommen für ältere/offene Körbe vor. Es gab hier ein Phantom
+ * „COMPLETED", das die API nie sendet, und es fehlte CONVERTED, also stand am
+ * Tresen der rohe Token „CONVERTED" statt eines deutschen Wortes.
+ */
 const WEB_ORDER_STATUS: Record<string, string> = {
   RESERVED: 'Reserviert',
+  CONVERTED: 'Abgeholt',
   CANCELLED: 'Storniert',
-  ABANDONED: 'Verfallen',
-  COMPLETED: 'Abgeschlossen',
   ACTIVE: 'Im Warenkorb',
+  ABANDONED: 'Verfallen',
 };
+
+/** Nie ein rohes Enum am Tresen: ein unbekannter Stand wird ein deutsches Wort. */
+function webOrderStatusLabel(status: string): string {
+  return WEB_ORDER_STATUS[status] ?? 'Unbekannter Stand';
+}
 
 /** How the hold reads at the counter right now, not just its timestamp. */
 function pickupState(expiresAt: string | null, status: string): { text: string; urgent: boolean } | null {
@@ -302,6 +315,11 @@ export function CustomerWebOrders({ customerId }: { customerId: string }): JSX.E
 
   const items = q.data?.items ?? [];
   const held = items.filter((o) => o.status === 'RESERVED').length;
+  // Ein Read, der nie geantwortet hat, ist NICHT „nichts bestellt". Die beiden
+  // müssen sich unterscheiden, sonst liest sich ein kaputter Abruf am Tresen als
+  // ein Kunde ohne Online-Bestellung, und jemand schickt eine wartende
+  // Abholung nach Hause.
+  const failed = q.isError && q.data === undefined;
 
   return (
     <ParchmentCard padding="md">
@@ -313,7 +331,19 @@ export function CustomerWebOrders({ customerId }: { customerId: string }): JSX.E
           <StaleBadge cachedAt={q.cachedAt} stale={q.isStale} />
         </div>
       )}
-      {q.isLoading ? (
+      {failed ? (
+        <div style={{ display: 'grid', gap: '0.5rem', marginTop: 6 }}>
+          <p style={{ color: 'var(--w14-wax-red)', fontSize: '0.85rem', margin: 0 }}>
+            Die Online-Bestellungen konnten nicht geladen werden. Ob dieser Kunde etwas reserviert
+            hat, ist gerade nicht bekannt.
+          </p>
+          <div>
+            <Button variant="ghost" size="sm" onClick={() => q.refetch()}>
+              Erneut versuchen
+            </Button>
+          </div>
+        </div>
+      ) : q.isLoading ? (
         <Skeleton />
       ) : items.length === 0 ? (
         <EmptyHint text="Dieser Kunde hat noch nichts online bestellt." />
@@ -345,7 +375,7 @@ export function CustomerWebOrders({ customerId }: { customerId: string }): JSX.E
                     {order.orderNumber ?? order.id.slice(0, 8).toUpperCase()}
                   </span>
                   <span style={{ fontFamily: 'var(--w14-font-display)', fontSize: '0.92rem' }}>
-                    {WEB_ORDER_STATUS[order.status] ?? order.status}
+                    {webOrderStatusLabel(order.status)}
                     {' · '}
                     {new Date(order.createdAt).toLocaleDateString('de-DE')}
                   </span>

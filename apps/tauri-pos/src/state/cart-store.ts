@@ -96,6 +96,26 @@ interface CartState {
   lines: CartLine[];
 
   /**
+   * Abholung einer Web-Reservierung (0099): die Bestellnummer, wenn die Karte
+   * NICHT ein frischer Kassenverkauf ist, sondern eine geladene Online-
+   * Bestellung, die übergeben wird. `null` im Normalfall.
+   *
+   * Warum im Store und nicht als Prop: der Kassen-Finalize-Pfad liegt tief in
+   * `BezahlenDialog`, und der Beleg muss `webOrderNumber` im Body tragen, sonst
+   * bleibt die Bestellung RESERVED und wird nie als abgeholt verbucht. Der Store
+   * ist die eine Stelle, die alle Beteiligten (Verkauf-Koordinator, CartPanel,
+   * BezahlenDialog) ohnehin lesen — so kann keiner es „vergessen".
+   *
+   * WICHTIG: Ist das gesetzt, gehören die Reservierungen dem Storefront (server-
+   * seitig `reserved_by_user_id IS NULL`), NICHT der Kasse. Der Verkauf-
+   * Koordinator gibt sie darum beim Leeren/Schließen NICHT über die POS-Freigabe
+   * frei (die würde ohnehin mit 409 abprallen und die Kundschaft-Reservierung
+   * fälschlich anfassen). Eine abgebrochene Übergabe lässt die Online-
+   * Reservierung unberührt; sie hat ihre eigene Frist.
+   */
+  webOrderNumber: string | null;
+
+  /**
    * Push a fresh line. Returns null on success, or an error tag the
    * caller surfaces as a brand-themed toast. The caller MUST have
    * completed the reservation API call before invoking this.
@@ -125,6 +145,17 @@ interface CartState {
 
   /** Wipe without snapshot — used internally by snapshotAndClear + tests. */
   clearCart: () => void;
+
+  /**
+   * Eine geladene Web-Bestellung als Karte übernehmen (0099). Ersetzt die
+   * Karte vollständig durch die übergebenen Positionen (jede trägt die EINE
+   * Reservierungs-Sitzung der Bestellung) und merkt sich die Bestellnummer, die
+   * der Finalize-Body dann als `webOrderNumber` trägt. Der Aufrufer hat die
+   * Positionen bereits aus der Bestellung + den Artikeldetails gebaut (Preis =
+   * der reservierte Preis, Steuerklasse aus dem Artikel) — der Store reserviert
+   * NICHT (die Stücke sind schon web-gehalten) und ruft keine API.
+   */
+  loadWebOrder: (webOrderNumber: string, lines: CartLine[]) => void;
 
   /** O(N) lookup; fine for V1 carts capped at ~20 lines. */
   findLine: (productId: string) => CartLine | undefined;
@@ -176,6 +207,7 @@ export const useCartStore = create<CartState>()(
   persist(
     (set, get) => ({
       lines: [],
+      webOrderNumber: null,
 
       addLine: (incoming) => {
         const state = get();
@@ -225,26 +257,47 @@ export const useCartStore = create<CartState>()(
 
       snapshotAndClear: () => {
         const snapshot = get().lines.slice();
-        set({ lines: [] });
+        // Auch die Web-Bestell-Markierung fällt weg: eine geleerte Karte ist
+        // keine Übergabe mehr, und der nächste Beleg darf keine fremde
+        // `webOrderNumber` erben.
+        set({ lines: [], webOrderNumber: null });
         return snapshot;
       },
 
-      clearCart: () => set({ lines: [] }),
+      clearCart: () => set({ lines: [], webOrderNumber: null }),
+
+      loadWebOrder: (webOrderNumber, lines) => set({ lines: lines.slice(), webOrderNumber }),
 
       findLine: (productId) => get().lines.find((l) => l.productId === productId),
     }),
     {
       name: STORAGE_KEY,
       storage: createJSONStorage(() => localStorage),
-      // Only persist `lines` — the action closures are recreated every
-      // boot anyway, and persisting functions would explode JSON.
-      partialize: (state) => ({ lines: state.lines }),
+      // Only persist `lines` + the Web-Bestell-Markierung — the action closures
+      // are recreated every boot anyway, and persisting functions would explode
+      // JSON. `webOrderNumber` muss mit, sonst verlöre ein Absturz mitten in der
+      // Übergabe die Bindung, und der wiederhergestellte Beleg buchte den
+      // Verkauf ohne die Bestellung als abgeholt zu verbuchen.
+      partialize: (state) => ({ lines: state.lines, webOrderNumber: state.webOrderNumber }),
       // Validate every persisted line on rehydration; a corrupt one is dropped
       // rather than crashing computeLineMath on first render (Phase 1.9).
-      merge: (persisted, current) => ({
-        ...current,
-        lines: sanitizeCartLines((persisted as { lines?: unknown } | undefined)?.lines),
-      }),
+      merge: (persisted, current) => {
+        const p = persisted as { lines?: unknown; webOrderNumber?: unknown } | undefined;
+        const lines = sanitizeCartLines(p?.lines);
+        const won =
+          typeof p?.webOrderNumber === 'string' && p.webOrderNumber.length > 0
+            ? p.webOrderNumber
+            : null;
+        return {
+          ...current,
+          lines,
+          // Eine Web-Übergabe nur wiederherstellen, wenn auch Positionen
+          // überlebt haben — sonst hinge eine Bestellnummer über einer leeren
+          // Karte und der nächste Finalize versuchte, eine Bestellung ohne
+          // passende Positionen abzuhaken.
+          webOrderNumber: lines.length > 0 ? won : null,
+        };
+      },
       // Phase 1.5 hook: bump this when CartLine shape changes.
       version: 1,
     },
@@ -258,6 +311,8 @@ export const useCartStore = create<CartState>()(
 
 export const selectCartLines = (s: CartState): CartLine[] => s.lines;
 export const selectCartCount = (s: CartState): number => s.lines.length;
+/** Die Bestellnummer, wenn die Karte eine geladene Web-Abholung ist, sonst null. */
+export const selectWebOrderNumber = (s: CartState): string | null => s.webOrderNumber;
 export const selectCartTaxTreatment = (s: CartState): TaxTreatmentCode | null => {
   if (s.lines.length === 0) return null;
   const first = s.lines[0]!.taxTreatmentCode;

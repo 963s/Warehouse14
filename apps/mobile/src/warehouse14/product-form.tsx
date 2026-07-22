@@ -836,7 +836,7 @@ export function MoneyField({
   label,
   value,
   onChangeText,
-  placeholder = "0.00",
+  placeholder = "0,00",
   hint,
   error,
   required,
@@ -941,7 +941,7 @@ export function MetalWeightField({
             label="Gewicht (g)"
             value={weight}
             onChangeText={onWeightChange}
-            placeholder="4.20"
+            placeholder="4,20"
             error={weightError}
             inputRef={weightRef}
             // A gram weight is not money — show „g", never „€".
@@ -956,7 +956,7 @@ export function MetalWeightField({
             label="Feinheit"
             value={fineness}
             onChangeText={onFinenessChange}
-            placeholder="0.585"
+            placeholder="0,585"
             error={finenessError}
             inputRef={finenessRef}
             // A 0–1 ratio carries no unit — overlay nothing (no „€", no „g").

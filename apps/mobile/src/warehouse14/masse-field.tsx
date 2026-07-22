@@ -26,6 +26,7 @@ import Animated, {
 import { Input } from "@/components/ui/input"
 import { Text } from "@/components/ui/text"
 import { Field } from "@/warehouse14/product-form"
+import { normalizeDecimal } from "@/warehouse14/product-ui"
 import { useW14Theme } from "@/warehouse14/theme"
 import { duration, timingStandard, useReduceMotion } from "@/warehouse14/ui"
 
@@ -213,7 +214,9 @@ export function MasseField({
   errors?: MasseFieldErrors
 }): ReactNode {
   const t = useW14Theme()
-  const num = (v: string) => (v.trim() ? Number(v) : null)
+  // Tolerate the German decimal comma from the `decimal-pad` („12,5") so the live
+  // size gauge reads the same value the validation + wire do.
+  const num = (v: string) => (v.trim() ? Number(normalizeDecimal(v)) : null)
   const active = deriveSizeClass({
     lengthCm: num(lengthCm),
     widthCm: num(widthCm),

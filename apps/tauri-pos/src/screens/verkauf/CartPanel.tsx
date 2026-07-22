@@ -65,6 +65,14 @@ import { BezahlenDialog } from './BezahlenDialog.js';
 
 export interface CartPanelProps {
   lines: readonly CartLine[];
+  /**
+   * Abholung einer Web-Reservierung (0099): die Bestellnummer, wenn diese Karte
+   * eine geladene Online-Bestellung zur Übergabe ist (sonst null). Im Abhol-
+   * Modus zeigt der Kopf einen ruhigen Hinweis, das Papierkorb-Icon je Position
+   * entfällt (der Server übergibt die ganze Bestellung, nicht einzelne Stücke),
+   * und „Karte leeren" heißt „Übergabe abbrechen".
+   */
+  webOrderNumber?: string | null;
   /** Triggered by per-row × button. Parent handles release. */
   onRemoveLine: (productId: string) => void;
   /**
@@ -94,6 +102,7 @@ const UNDO_WINDOW_MS = 8_000;
 
 export function CartPanel({
   lines,
+  webOrderNumber = null,
   onRemoveLine,
   onUndoRemove,
   releasingProductIds,
@@ -103,6 +112,7 @@ export function CartPanel({
   onBezahlenOpenChange,
 }: CartPanelProps): JSX.Element {
   const [bezahlenOpen, setBezahlenOpen] = useState<boolean>(false);
+  const isPickup = webOrderNumber != null;
 
   // Undo snackbar state — the single most-recently-removed line. A new removal
   // supersedes any pending snackbar (the operator only ever cares about the
@@ -256,6 +266,59 @@ export function CartPanel({
         )}
       </header>
 
+      {/* Abhol-Hinweis — nur wenn die Karte eine geladene Web-Bestellung ist.
+          Gold als KANTE (Siegelband links), kein Gold-Fill. Er sagt ruhig, was
+          hier passiert: eine Übergabe, die das Bezahlen abschließt. */}
+      {isPickup && (
+        <div
+          style={{
+            flexShrink: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 2,
+            padding: '10px 12px',
+            // Gold als KANTE (Siegelband links), kein Gold-Fill: der Rahmen ist
+            // die ruhige Regel-Linie, nur die linke Kante trägt das Gilt.
+            border: '1px solid var(--w14-rule)',
+            borderLeftWidth: 3,
+            borderLeftColor: 'var(--w14-gilt)',
+            borderRadius: 'var(--w14-radius-card)',
+            background: 'var(--w14-parchment-2)',
+          }}
+        >
+          <span
+            className="w14-smallcaps"
+            style={{
+              fontSize: '0.72rem',
+              letterSpacing: '0.1em',
+              color: 'var(--w14-ink-faded)',
+            }}
+          >
+            Abholung
+          </span>
+          <span
+            className="w14-tabular"
+            style={{
+              fontFamily: 'var(--w14-font-mono)',
+              fontSize: '0.92rem',
+              color: 'var(--w14-ink)',
+            }}
+          >
+            {webOrderNumber}
+          </span>
+          <span
+            style={{
+              fontFamily: 'var(--w14-font-display)',
+              fontStyle: 'italic',
+              fontSize: '0.8rem',
+              color: 'var(--w14-ink-faded)',
+            }}
+          >
+            Übergabe an der Kasse. Bezahlen schließt die Bestellung ab.
+          </span>
+        </div>
+      )}
+
       {/* Line list */}
       <div
         style={{
@@ -276,6 +339,7 @@ export function CartPanel({
               index={idx + 1}
               line={line}
               math={math}
+              locked={isPickup}
               releasing={releasingProductIds.has(line.productId)}
               onRemove={() => handleRemove(line)}
             />
@@ -323,7 +387,8 @@ export function CartPanel({
           </tbody>
         </table>
 
-        <InvoiceDiscount lines={lines} />
+        {/* Kein Rechnungsrabatt bei einer Abholung — der reservierte Preis gilt. */}
+        {!isPickup && <InvoiceDiscount lines={lines} />}
 
         {/* ONE obvious primary action. Bezahlen owns the full-width, ~80px,
             bottom-anchored slot (Fitts: edge-anchored, the read-from-80cm tile).
@@ -366,7 +431,15 @@ export function CartPanel({
               textUnderlineOffset: 3,
             }}
           >
-            {clearingCart ? 'Räumt…' : 'Karte leeren'}
+            {/* Im Abhol-Modus verwirft der Knopf die Übergabe (lokal), er leert
+                keine frische Kassenkarte — darum ein eigener, ehrlicher Text. */}
+            {isPickup
+              ? clearingCart
+                ? 'Bricht ab…'
+                : 'Übergabe abbrechen'
+              : clearingCart
+                ? 'Räumt…'
+                : 'Karte leeren'}
           </button>
         </div>
       </ParchmentCard>
@@ -487,12 +560,15 @@ function CartRow({
   index,
   line,
   math,
+  locked = false,
   releasing,
   onRemove,
 }: {
   index: number;
   line: CartLine;
   math: LineMath;
+  /** Abhol-Modus: keine Einzelentnahme (die ganze Bestellung wird übergeben). */
+  locked?: boolean;
   releasing: boolean;
   onRemove: () => void;
 }): JSX.Element {
@@ -603,18 +679,24 @@ function CartRow({
         ) : (
           <MoneyAmount valueEur={line.listPriceEur} emphasis />
         )}
-        <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}>
-          <DiscountEditor line={line} disabled={releasing} />
-          {/* UX icons: universal delete action → icon-only IconButton (aria-label). */}
-          <IconButton
-            icon={Trash2}
-            label={releasing ? 'Wird freigegeben…' : `Position ${index} entfernen`}
-            tone="danger"
-            iconSize={18}
-            onClick={onRemove}
-            disabled={releasing}
-          />
-        </div>
+        {/* Abhol-Modus: die Zeile ist reine Anzeige. Keine Einzelentnahme (der
+            Server übergibt die ganze Bestellung) und kein Positions-Rabatt — die
+            Kundschaft zahlt den reservierten Preis. Verworfen wird die Übergabe
+            nur als Ganzes über „Übergabe abbrechen". */}
+        {!locked && (
+          <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}>
+            <DiscountEditor line={line} disabled={releasing} />
+            {/* UX icons: universal delete action → icon-only IconButton (aria-label). */}
+            <IconButton
+              icon={Trash2}
+              label={releasing ? 'Wird freigegeben…' : `Position ${index} entfernen`}
+              tone="danger"
+              iconSize={18}
+              onClick={onRemove}
+              disabled={releasing}
+            />
+          </div>
+        )}
       </div>
     </ParchmentCard>
   );

@@ -69,7 +69,7 @@ export { QueryBoundary, type QueryBoundaryProps, type QueryBoundaryEmpty } from 
 export { ConnectionBanner, ConnectionBannerHost } from "./ConnectionBanner"
 
 export { FormField, type FormFieldProps } from "./FormField"
-export { FormScreen, type FormScreenProps } from "./FormScreen"
+export { FormScreen, UserFacingError, type FormScreenProps } from "./FormScreen"
 
 // Reports / insights — the SVG-free chart kit (trend bars · sparkline · top-N ·
 // period switcher), built on the spine + honest empty/locked states.

@@ -255,6 +255,12 @@ export function classify(e: LedgerEvent): Notification | null {
   )
   const amount = amountEur != null ? formatEurString(amountEur) : null
 
+  // The web-order number, when the payload carries it (the staff stage-move
+  // audit rows do; the reserve/cancel/expire triggers do not). Never fabricated —
+  // `webOrderLabel` degrades to a neutral „Eine Bestellung" when it is absent.
+  const webOrderNo = pstr(p, "orderNumber", "order_number")
+  const webOrderLabel = webOrderNo != null ? `Bestellung ${webOrderNo}` : "Eine Bestellung"
+
   switch (eventType) {
     // ── Approvals (the high-value sale gate) ────────────────────────────────
     // The POS pauses a sale above threshold and the owner must APPROVE/REJECT.
@@ -453,6 +459,60 @@ export function classify(e: LedgerEvent): Notification | null {
         "Ein Artikel wurde möglicherweise doppelt verkauft (eBay).",
       )
 
+    // ── Channels (Online-Shop: Reservierung zur Abholung) ────────────────────
+    // The reserve-and-collect flow (migration 0099). `web_order.reserved`,
+    // `.cancelled` and `.expired` reach the ledger feed directly (the carts
+    // trigger + the reservation sweeper); `.approved` / `.prepared` / `.ready`
+    // are the three staff stage moves — surfaced here too so a stage change is
+    // an honest live nudge on whichever device advanced it. The reserved/
+    // cancelled/expired payloads carry only ids + timestamps (NO order number,
+    // name or amount), so the copy degrades to neutral phrasing rather than
+    // fabricating one; a stage-move payload does carry `orderNumber`, so we read
+    // it defensively and name the order only when it is really there.
+    case "web_order.reserved":
+      return make(
+        "channels",
+        "action",
+        "Neue Reservierung",
+        webOrderNo != null
+          ? `Bestellung ${webOrderNo} wurde reserviert und wartet auf Bearbeitung.`
+          : "Eine neue Reservierung zur Abholung wartet auf Bearbeitung.",
+      )
+    case "web_order.approved":
+      return make("channels", "info", "Bestellung angenommen", `${webOrderLabel} wurde angenommen.`)
+    case "web_order.prepared":
+      return make(
+        "channels",
+        "info",
+        "Bestellung in Vorbereitung",
+        `${webOrderLabel} wird jetzt vorbereitet.`,
+      )
+    case "web_order.ready":
+      return make(
+        "channels",
+        "info",
+        "Bestellung abholbereit",
+        `${webOrderLabel} liegt zur Abholung bereit.`,
+      )
+    case "web_order.cancelled":
+      return make(
+        "channels",
+        "info",
+        "Reservierung storniert",
+        webOrderNo != null
+          ? `Bestellung ${webOrderNo} wurde storniert die Stücke sind wieder verfügbar.`
+          : "Eine Reservierung wurde storniert die Stücke sind wieder verfügbar.",
+      )
+    case "web_order.expired":
+      return make(
+        "channels",
+        "info",
+        "Abholfrist abgelaufen",
+        webOrderNo != null
+          ? `Bestellung ${webOrderNo} ist abgelaufen die Stücke sind wieder verfügbar.`
+          : "Eine Reservierung ist abgelaufen die Stücke sind wieder verfügbar.",
+      )
+
     default:
       // Everything else (routine inventory/KYC/metal churn) is dropped — the
       // Center is for what the owner must notice, not the full audit log.
@@ -490,6 +550,12 @@ export const NOTIFIED_EVENT_TYPES: readonly string[] = [
   "alert.customer_banned",
   "alert.ebay_sale_conflict",
   "alert.ebay_double_sale_attempt",
+  "web_order.reserved",
+  "web_order.approved",
+  "web_order.prepared",
+  "web_order.ready",
+  "web_order.cancelled",
+  "web_order.expired",
 ] as const
 
 // ── Relative-time (German) ────────────────────────────────────────────────────

@@ -181,6 +181,10 @@ export function BezahlenDialog({
   // so the cart-store reservations are obsolete. We clear without
   // calling release (server-side those holds no longer exist).
   const clearCart = useCartStore((s) => s.clearCart);
+  // Abholung einer Web-Reservierung (0099): ist die Karte eine geladene
+  // Bestellung, muss diese Nummer in den Finalize-Body, sonst bleibt die
+  // Bestellung RESERVED und wird nie als abgeholt verbucht.
+  const webOrderNumber = useCartStore((s) => s.webOrderNumber);
   const addToast = useToastStore((s) => s.addToast);
   const hardwareCfg = useHardwareStore((s) => s.config);
   const sessionActor = useSessionStore((s) => s.actor);
@@ -561,6 +565,12 @@ export function BezahlenDialog({
         items,
         payments,
         idempotencyKey: idempotencyKeyRef.current,
+        // Abholung: der Server finalisiert damit die web-gehaltenen Stücke und
+        // knüpft den Warenkorb (CONVERTED + ABGEHOLT) im selben BEGIN an diesen
+        // Beleg. Fehlt es, ist es ein normaler Kassenverkauf. Der Wert wird mit
+        // dem gesiegelten Intent + Idempotency-Key mitgeschrieben, also trägt
+        // auch ein offline nachgespielter Beleg die Bindung.
+        ...(webOrderNumber ? { webOrderNumber } : {}),
       };
       // Phase 1.4: crystallize the intent to disk BEFORE the network call, so a
       // crash between here and the server leaves a recoverable pos_intents row —
@@ -699,7 +709,16 @@ export function BezahlenDialog({
       }
       return result;
     },
-    [addToast, api, hardwareCfg.tse, lines, adjustedTotals, b2bActive, adjustedPerLineMath],
+    [
+      addToast,
+      api,
+      hardwareCfg.tse,
+      lines,
+      adjustedTotals,
+      b2bActive,
+      adjustedPerLineMath,
+      webOrderNumber,
+    ],
   );
 
   /**

@@ -26,6 +26,24 @@ import { describeError } from "@/warehouse14/api"
 import { useW14Theme } from "@/warehouse14/theme"
 import { error as hapticError, selection, success as hapticSuccess } from "@/warehouse14/ui/native/haptics"
 
+/**
+ * A failure whose message is ALREADY a finished German sentence meant for the
+ * owner — a client-side validation problem („Listenpreis als Betrag angeben …"),
+ * a „Keine Änderungen."-guard, etc. `describeError` is for RAW thrown values
+ * (ApiError codes, transport errors, stray JS Errors): its catch-all branch
+ * deliberately DISCARDS an unknown `Error.message` and returns the generic „Es
+ * ist ein Fehler aufgetreten." — correct for a developer string, but it would
+ * swallow copy we wrote for the owner. Throw this instead and FormScreen surfaces
+ * the message verbatim, so the banner tells the truth while the red field still
+ * marks the offending input.
+ */
+export class UserFacingError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = "UserFacingError"
+  }
+}
+
 export interface FormScreenProps {
   title: string
   subtitle?: string
@@ -98,7 +116,9 @@ export function FormScreen({
         hapticSuccess()
       }
     } catch (e) {
-      setError(describeError(e))
+      // A UserFacingError already carries owner-ready German copy — show it
+      // verbatim; anything else is a raw value only describeError can translate.
+      setError(e instanceof UserFacingError ? e.message : describeError(e))
       // Bring the freshly-shown banner into view (error just went null → set).
       scrollRef.current?.scrollTo({ y: 0, animated: true })
       hapticError()

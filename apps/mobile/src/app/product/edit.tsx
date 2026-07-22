@@ -73,6 +73,7 @@ import {
   firstProductEditError,
   formatGrams,
   isProductEditValid,
+  normalizeDecimal,
   type ProductEditErrors,
   type ProductEditFieldKey,
   statusLabel,
@@ -87,14 +88,17 @@ import {
   Skeleton,
   useScreenInsets,
 } from "@/warehouse14/ui"
-import { FormScreen } from "@/warehouse14/ui/FormScreen"
+import { FormScreen, UserFacingError } from "@/warehouse14/ui/FormScreen"
 
 // Maße kommen aus numeric(7,1) als „12.0" zurück, auch wenn „12" eingegeben
 // wurde. Auf eine kanonische Dezimalform bringen, damit die Vorbelegung sauber
 // „12" zeigt UND ein unverändertes Maß nicht als Änderung gilt (kein leerer
 // Schreibvorgang, kein überflüssiger Step-up-PIN).
 function canonDim(v: string | null | undefined): string {
-  const s = (v ?? "").trim()
+  // Tolerate the German decimal comma from the `decimal-pad` („12,5") the same
+  // way the wire does — normalise it before the numeric round-trip, so a
+  // comma-typed measure canonicalises (and later compares/sends) as „12.5".
+  const s = normalizeDecimal(v ?? "")
   if (s === "") return ""
   const n = Number(s)
   return Number.isFinite(n) ? String(n) : s
@@ -195,13 +199,15 @@ export default function ArtikelBearbeitenScreen() {
   }
 
   async function submit() {
-    if (!id || !product) throw new Error("Artikel nicht geladen.")
+    if (!id || !product) throw new UserFacingError("Artikel nicht geladen.")
 
     const problems = validateProductEdit(name, listPrice, { lengthCm, widthCm, heightCm })
     setErrors(problems)
     if (!isProductEditValid(problems)) {
+      // The banner shows the first problem verbatim (UserFacingError), while the
+      // offending field still carries the red underline.
       haptics.error()
-      throw new Error(firstProductEditError(problems) ?? "Bitte Eingaben prüfen.")
+      throw new UserFacingError(firstProductEditError(problems) ?? "Bitte Eingaben prüfen.")
     }
 
     // Only send what actually changed — the backend echoes changedFields. The
@@ -209,7 +215,11 @@ export default function ArtikelBearbeitenScreen() {
     // applied via the dedicated /categories REPLACE-ALL route below.
     const body: ProductUpdateBody = {}
     if (name.trim() !== product.name) body.name = name.trim()
-    if (listPrice.trim() !== product.listPriceEur) body.listPriceEur = listPrice.trim()
+    // Listenpreis rides a `decimal-pad` — normalise „349,90" → „349.90" before
+    // comparing to the server value and before sending, so a comma neither reads
+    // as a change-that-isn't nor reaches the wire.
+    const listPriceNext = normalizeDecimal(listPrice)
+    if (listPriceNext !== product.listPriceEur) body.listPriceEur = listPriceNext
     if (condition && condition !== product.condition) body.condition = condition
     const newDesc = descriptionDe.trim()
     if (newDesc !== (product.descriptionDe ?? "")) body.descriptionDe = newDesc
@@ -226,7 +236,7 @@ export default function ArtikelBearbeitenScreen() {
 
     if (Object.keys(body).length === 0 && !categoryChanged) {
       haptics.warning()
-      throw new Error("Keine Änderungen.")
+      throw new UserFacingError("Keine Änderungen.")
     }
 
     // 403 STEP_UP_REQUIRED → PIN-Dialog + retry (auto via stepUpMiddleware).
@@ -345,7 +355,7 @@ export default function ArtikelBearbeitenScreen() {
             setListPrice(v)
             clearError("listPrice")
           }}
-          placeholder="349.00"
+          placeholder="349,00"
           error={errors.listPrice}
           inputRef={listPriceRef}
           returnKeyType="done"

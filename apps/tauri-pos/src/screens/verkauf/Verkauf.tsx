@@ -73,7 +73,12 @@ import { beaconReleaseCart, releaseCart } from '../../lib/release-cart.js';
 import { classifyScanMatch, normalizeScan } from '../../lib/scan-resolve.js';
 import { getSessionToken } from '../../lib/session-token.js';
 import { TAX_TREATMENT_LABEL } from '../../lib/tax-treatment-label.js';
-import { type CartLine, selectCartLines, useCartStore } from '../../state/cart-store.js';
+import {
+  type CartLine,
+  selectCartLines,
+  selectWebOrderNumber,
+  useCartStore,
+} from '../../state/cart-store.js';
 import { useToastStore } from '../../state/toast-store.js';
 
 import { ShiftGuard } from '../_shared/ShiftGuard.js';
@@ -127,7 +132,13 @@ function VerkaufFloor(): JSX.Element {
   const addLine = useCartStore((s) => s.addLine);
   const removeLine = useCartStore((s) => s.removeLine);
   const snapshotAndClear = useCartStore((s) => s.snapshotAndClear);
+  const clearCart = useCartStore((s) => s.clearCart);
   const findLine = useCartStore((s) => s.findLine);
+  // Abholung einer Web-Reservierung (0099): ist das gesetzt, ist die Karte eine
+  // geladene Bestellung zur Übergabe, keine frische Kassenkarte. Die Stücke
+  // gehören dem Storefront (server-seitig `reserved_by_user_id IS NULL`), darum
+  // werden sie hier NICHT über die POS-Freigabe angefasst.
+  const webOrderNumber = useCartStore(selectWebOrderNumber);
   const addToast = useToastStore((s) => s.addToast);
 
   // In-flight reservation tracking. Set (not single ID) so the rapid
@@ -162,6 +173,19 @@ function VerkaufFloor(): JSX.Element {
 
   const onSelectProduct = useCallback(
     async (product: ProductListRow): Promise<void> => {
+      // Abholung läuft: die Karte ist eine geladene Web-Bestellung. Ein Stück
+      // dazu-zu-reservieren würde eine POS-Reservierung (uns gehörend) mit den
+      // web-gehaltenen Stücken mischen — der Finalize mit `webOrderNumber` würde
+      // dann an genau dieser Position scheitern. Erst übergeben oder abbrechen.
+      if (webOrderNumber) {
+        addToast({
+          tone: 'info',
+          title: 'Abholung läuft',
+          body: 'Erst die Bestellung übergeben oder abbrechen, dann neu verkaufen.',
+        });
+        return;
+      }
+
       // Belt-and-braces — CatalogGrid also disables tiles that are in cart
       // or already reserving themselves.
       if (findLine(product.id)) return;
@@ -271,7 +295,7 @@ function VerkaufFloor(): JSX.Element {
         });
       }
     },
-    [addLine, addToast, api, findLine, qc],
+    [addLine, addToast, api, findLine, qc, webOrderNumber],
   );
 
   // ────────────────────────────────────────────────────────────────────
@@ -391,6 +415,14 @@ function VerkaufFloor(): JSX.Element {
       const target = findLine(productId);
       if (!target) return;
 
+      // Web-Abholung: die Stücke gehören dem Storefront (`reserved_by_user_id`
+      // ist NULL) und die POS-Freigabe würde mit 409 abprallen, der Server
+      // übergibt ohnehin nur die GANZE Bestellung. Einzelpositionen lassen sich
+      // im Abhol-Modus nicht herausnehmen (das Papierkorb-Icon ist dort
+      // ausgeblendet); verworfen wird nur als Ganzes über „Übergabe abbrechen".
+      // Defensive Absicherung, falls doch jemand hier landet.
+      if (webOrderNumber) return;
+
       setReleasingProductIds((prev) => {
         if (prev.has(productId)) return prev;
         const next = new Set(prev);
@@ -435,11 +467,20 @@ function VerkaufFloor(): JSX.Element {
         await qc.invalidateQueries({ queryKey: ['products', 'list'] });
       }
     },
-    [addToast, addLine, api, findLine, qc, removeLine],
+    [addToast, addLine, api, findLine, qc, removeLine, webOrderNumber],
   );
 
   const onClearCart = useCallback(async (): Promise<void> => {
     if (lines.length === 0 || clearingCart) return;
+    // Web-Abholung abbrechen: NUR lokal leeren. Die Reservierung gehört dem
+    // Storefront und hat ihre eigene Frist — ein abgebrochener Übergabe-Versuch
+    // darf sie nicht freigeben. Die POS-Freigabe würde hier ohnehin mit 409
+    // abprallen (fremder Eigentümer), also gar nicht erst versuchen.
+    if (webOrderNumber) {
+      clearCart();
+      await qc.invalidateQueries({ queryKey: ['products', 'list'] });
+      return;
+    }
     setClearingCart(true);
     // snapshotAndClear is ONE atomic Zustand mutation — the operator can't
     // race a new addLine into the gap between snapshot and release fire.
@@ -450,7 +491,7 @@ function VerkaufFloor(): JSX.Element {
       setClearingCart(false);
       await qc.invalidateQueries({ queryKey: ['products', 'list'] });
     }
-  }, [api, clearingCart, lines.length, qc, snapshotAndClear]);
+  }, [api, clearingCart, lines.length, qc, snapshotAndClear, webOrderNumber, clearCart]);
 
   // ────────────────────────────────────────────────────────────────────
   // Graceful window-close release (P1.4)
@@ -469,7 +510,12 @@ function VerkaufFloor(): JSX.Element {
 
   useEffect(() => {
     const onBeforeUnload = (): void => {
-      const snapshot = useCartStore.getState().lines;
+      const state = useCartStore.getState();
+      // Web-Abholung: nichts freigeben. Der Hold gehört dem Storefront (fremder
+      // Eigentümer) und hat eine eigene Frist — ein Fensterschluss mitten in
+      // einer Übergabe darf die Kundschaft-Reservierung nicht wegräumen.
+      if (state.webOrderNumber) return;
+      const snapshot = state.lines;
       if (snapshot.length === 0) return;
       beaconReleaseCart({
         baseUrl: api.baseUrl,
@@ -505,6 +551,7 @@ function VerkaufFloor(): JSX.Element {
       />
       <CartPanel
         lines={lines}
+        webOrderNumber={webOrderNumber}
         onRemoveLine={(id) => void onRemoveLine(id)}
         onUndoRemove={onUndoRemove}
         releasingProductIds={releasingProductIds}

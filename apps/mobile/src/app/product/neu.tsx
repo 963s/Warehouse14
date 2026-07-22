@@ -58,6 +58,7 @@ import {
   ITEM_TYPE_OPTIONS,
   isProductIntakeValid,
   METAL_OPTIONS,
+  normalizeDecimal,
   type ProductIntakeErrors,
   type ProductIntakeFieldKey,
   type ProductIntakeForm,
@@ -74,7 +75,7 @@ import {
   StaggerItem,
   useScreenInsets,
 } from "@/warehouse14/ui"
-import { FormScreen } from "@/warehouse14/ui/FormScreen"
+import { FormScreen, UserFacingError } from "@/warehouse14/ui/FormScreen"
 
 // ── TagSeal — ein bespoke Etiketten-Siegel (react-native-svg) ────────────────
 // Ein Anhänger/Schmuck-Etikett mit einer Loch-Öse: die ruhige Marke des Intake.
@@ -185,27 +186,31 @@ export default function NeuerArtikelScreen() {
     const problems = validateProductIntake(form)
     setErrors(problems)
     if (!isProductIntakeValid(problems)) {
-      // Pair the red inputs with the Error haptic; the banner shows the first.
+      // Pair the red inputs with the Error haptic; the banner shows the first
+      // problem verbatim (UserFacingError → FormScreen surfaces it as written).
       haptics.error()
-      throw new Error(firstProductIntakeError(problems) ?? "Bitte Eingaben prüfen.")
+      throw new UserFacingError(firstProductIntakeError(problems) ?? "Bitte Eingaben prüfen.")
     }
 
+    // Money/weight/measure fields ride a `decimal-pad` (a comma on a German
+    // keyboard) — normalise „199,90" → „199.90" for the wire, as every other
+    // money path in this app does. Validation above already accepts the comma.
     const finalSku = form.sku.trim() || generateSku()
     const body: CreateProductBody = {
       sku: finalSku,
       itemType: form.itemType!,
       condition: form.condition!,
       taxTreatmentCode: form.taxCode!,
-      acquisitionCostEur: form.acquisition.trim(),
-      listPriceEur: form.listPrice.trim(),
+      acquisitionCostEur: normalizeDecimal(form.acquisition),
+      listPriceEur: normalizeDecimal(form.listPrice),
       name: form.name.trim(),
       ...(form.description.trim() ? { descriptionDe: form.description.trim() } : {}),
       ...(form.metal ? { metal: form.metal } : {}),
-      ...(form.weightGrams.trim() ? { weightGrams: form.weightGrams.trim() } : {}),
-      ...(form.fineness.trim() ? { finenessDecimal: form.fineness.trim() } : {}),
-      ...(form.lengthCm.trim() ? { lengthCm: form.lengthCm.trim() } : {}),
-      ...(form.widthCm.trim() ? { widthCm: form.widthCm.trim() } : {}),
-      ...(form.heightCm.trim() ? { heightCm: form.heightCm.trim() } : {}),
+      ...(form.weightGrams.trim() ? { weightGrams: normalizeDecimal(form.weightGrams) } : {}),
+      ...(form.fineness.trim() ? { finenessDecimal: normalizeDecimal(form.fineness) } : {}),
+      ...(form.lengthCm.trim() ? { lengthCm: normalizeDecimal(form.lengthCm) } : {}),
+      ...(form.widthCm.trim() ? { widthCm: normalizeDecimal(form.widthCm) } : {}),
+      ...(form.heightCm.trim() ? { heightCm: normalizeDecimal(form.heightCm) } : {}),
       ...(form.categoryId ? { primaryCategoryId: form.categoryId } : {}),
       ...(form.unit.trim() ? { locationStorageUnit: form.unit.trim() } : {}),
       ...(form.drawer.trim() ? { locationDrawer: form.drawer.trim() } : {}),
@@ -444,7 +449,7 @@ export default function NeuerArtikelScreen() {
               required
               value={form.acquisition}
               onChangeText={(v) => patch("acquisition", v)}
-              placeholder="199.90"
+              placeholder="199,90"
               error={errors.acquisition}
               inputRef={acquisitionRef}
               returnKeyType="next"
@@ -458,7 +463,7 @@ export default function NeuerArtikelScreen() {
               required
               value={form.listPrice}
               onChangeText={(v) => patch("listPrice", v)}
-              placeholder="349.00"
+              placeholder="349,00"
               error={errors.listPrice}
               inputRef={listPriceRef}
               returnKeyType="done"

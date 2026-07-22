@@ -75,6 +75,17 @@ export interface FinalizeBody {
   idempotencyKey: string;
   stornoOfTransactionId?: string;
   notesInternal?: string;
+  /**
+   * Abholung einer Web-Reservierung (0099). Ist das gesetzt, finalisiert der
+   * Server die web-gehaltenen Stücke (deren `reserved_by_user_id` NULL ist,
+   * geschützt nur über den `reservationSessionId` je Position) und knüpft den
+   * Warenkorb im selben BEGIN an diesen Beleg: `carts.status = CONVERTED`,
+   * `pickup_stage = ABGEHOLT`, `collected_at = now()`. Steht die Bestellung
+   * nicht mehr auf RESERVED, bricht der Server mit 409 ab, statt einen Beleg
+   * auf eine tote Bestellung zu buchen. Fehlt das Feld, ist es ein ganz
+   * normaler Kassenverkauf. Maximal 32 Zeichen (Server-Schema).
+   */
+  webOrderNumber?: string;
 }
 
 export interface FinalizeResponse {

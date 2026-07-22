@@ -155,6 +155,7 @@ export default function RootLayout() {
           <Stack.Screen name="ebay" options={{ title: "eBay-Kanal", ...stackPush() }} />
           <Stack.Screen name="whatsapp" options={{ title: "WhatsApp", ...stackPush() }} />
           <Stack.Screen name="anfragen" options={{ title: "Anfragen", ...stackPush() }} />
+          <Stack.Screen name="bestellungen" options={{ title: "Bestellungen", ...stackPush() }} />
           <Stack.Screen name="belege" options={{ title: "Belege & Dokumente", ...stackPush() }} />
           <Stack.Screen name="ausgaben" options={{ title: "Ausgaben", ...stackPush() }} />
           <Stack.Screen name="finanzen" options={{ title: "Finanzen", ...stackPush() }} />

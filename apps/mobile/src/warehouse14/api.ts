@@ -32,6 +32,7 @@ import {
   fixedCostsApi,
   ledgerQueryApi,
   metalPricesApi,
+  ordersApi,
   photosApi,
   productsApi,
   shifts,
@@ -119,6 +120,8 @@ import {
   type ListTasksResponse,
   type PhotoRow,
   type AuthSessionResponse,
+  type OrderView,
+  type PickupStage,
   type ProductDetail,
   type ProductListQuery,
   type ProductListResponse,
@@ -969,6 +972,44 @@ export function setSupportTicketStatus(
   status: TicketStatus,
 ): Promise<{ ok: boolean; status: string }> {
   return supportApi.setStatus(apiClient, id, status)
+}
+
+// ── Bestellungen (reserve-and-collect web orders — 0099) ─────────────────────
+// The staff view on RESERVED pickup orders from the online shop: who reserved
+// what, the preparation stage, and the three pure stage moves. The pickup +
+// payment itself does NOT happen here — it runs through the normal Kassen-Verkauf
+// with the order number, so the Kassenbon and the §146a triggers stay identical.
+// These are thin pass-throughs to the already-typed `ordersApi`; each transition
+// answers 409 CONFLICT (themed German) when the order is no longer in the stage
+// the move expects, handled by the surface via `describeError` then a refresh.
+
+/** GET /api/orders — the RESERVED pickup queue, optionally one stage. ADMIN. */
+export function listOrders(stage?: PickupStage): Promise<{ items: OrderView[] }> {
+  return ordersApi.list(apiClient, stage)
+}
+
+/** GET /api/orders/:orderNumber — one order with its lines + contact. ADMIN. */
+export function getOrder(orderNumber: string): Promise<OrderView> {
+  return ordersApi.get(apiClient, orderNumber)
+}
+
+/** POST /api/orders/:orderNumber/approve — OFFEN → ANGENOMMEN. 409 off-stage. */
+export function approveOrder(orderNumber: string): Promise<{ ok: boolean }> {
+  return ordersApi.approve(apiClient, orderNumber)
+}
+
+/** POST /api/orders/:orderNumber/prepare — ANGENOMMEN → IN_VORBEREITUNG. */
+export function prepareOrder(orderNumber: string): Promise<{ ok: boolean }> {
+  return ordersApi.prepare(apiClient, orderNumber)
+}
+
+/**
+ * POST /api/orders/:orderNumber/ready — IN_VORBEREITUNG → ABHOLBEREIT. Queues the
+ * „Ihr Stück liegt bereit"-letter; `mailed` says HONESTLY whether it was really
+ * enqueued, so the surface can tell the owner plainly when the notice did NOT go.
+ */
+export function readyOrder(orderNumber: string): Promise<{ ok: boolean; mailed?: boolean }> {
+  return ordersApi.ready(apiClient, orderNumber)
 }
 
 // ── Ledger (the GoBD audit feed — read-only history) ─────────────────────────

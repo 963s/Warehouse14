@@ -160,6 +160,9 @@ const DOMAIN_CATEGORY: Readonly<Record<string, EventCategory>> = {
   ankauf: "sales",
   appraisal: "sales",
   payment_intent: "sales",
+  // Web-Reservierungen zur Abholung (0099): reservieren, annehmen, vorbereiten,
+  // abholbereit, abholen. Das ist der Storefront-Handel und landet unter „Handel".
+  web_order: "sales",
   product: "inventory",
   inventory: "inventory",
   photo: "system",
@@ -220,6 +223,14 @@ const EVENT_LABELS: Readonly<Record<string, string>> = {
   "payment_intent.succeeded": "Zahlung bestätigt",
   "payment_intent.canceled": "Zahlung abgebrochen",
   "cart.abandoned_by_sweeper": "Warenkorb verfallen",
+  // Web-Reservierungen zur Abholung (0099)
+  "web_order.reserved": "Online reserviert",
+  "web_order.approved": "Bestellung angenommen",
+  "web_order.prepared": "Bestellung in Vorbereitung",
+  "web_order.ready": "Bestellung abholbereit",
+  "web_order.collected": "Bestellung abgeholt",
+  "web_order.expired": "Reservierung verfallen",
+  "web_order.cancelled": "Bestellung storniert",
   // Lager
   "product.created": "Artikel angelegt",
   "product.listed": "Artikel veröffentlicht",
