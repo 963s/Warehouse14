@@ -5,7 +5,10 @@
  * Each tick:
  *   1. closes expired grouping windows (RECEIVED + grouping_closes_at < now()
  *      → GROUPED);
- *   2. processes a bounded batch of GROUPED sessions via processIntakeSession.
+ *   2. processes a bounded batch of GROUPED sessions via processIntakeSession,
+ *      ABER nur, wenn eine echte Bilderkennung hinterlegt ist. Ohne sie bleiben
+ *      die Sitzungen GROUPED und warten, statt aus einer Testhilfe heraus
+ *      geschätzt zu werden. Siehe `IntakeSweepDeps.vision`.
  *
  * The runner's per-job advisory lock gives at-most-once execution across worker
  * instances, so two daemons never process the same session concurrently.
@@ -13,7 +16,7 @@
 
 import { sql as drizzleSql } from 'drizzle-orm';
 
-import { type VisionClient, createMockVisionClient } from '@warehouse14/ai-gateway';
+import type { VisionClient } from '@warehouse14/ai-gateway';
 
 import { processIntakeSession } from '../lib/intake-processor.js';
 import type { JobDefinition } from '../lib/job-runner.js';
@@ -22,14 +25,23 @@ const MAX_SESSIONS_PER_TICK = 10;
 
 export interface IntakeSweepDeps {
   /**
-   * Vision transport. Defaults to the deterministic mock — production injects
-   * the real OpenAI/Photoroom-backed client once credentials are wired.
+   * Die Bilderkennung. OHNE sie wird NICHT verarbeitet.
+   *
+   * Vorher stand hier als Voreinstellung der Doppelgänger aus dem ai-gateway,
+   * und der antwortet auf JEDES Foto mit denselben Angaben: 585er Gold,
+   * 3,2 Gramm fein, Zustand gut. Diese Angaben laufen weiter in
+   * `estimateDraftPrices` und werden dort mit dem echten Goldpreis zu einem
+   * vorgeschlagenen ANKAUFSPREIS. Am Tresen liest sich das wie eine Messung
+   * an genau diesem Stück, ist aber eine feste Zahl aus einer Testhilfe.
+   *
+   * Auf der Produktion ist kein `ANTHROPIC_API_KEY` gesetzt. Ausgelöst hat es
+   * nichts, weil noch keine einzige Sitzung angelegt wurde; scharf war es.
    */
   vision?: VisionClient;
 }
 
 export function intakeSweepJob(deps: IntakeSweepDeps = {}): JobDefinition {
-  const vision = deps.vision ?? createMockVisionClient();
+  const vision = deps.vision;
   return {
     name: 'intake_sweep',
     schedule: '* * * * *', // every minute
@@ -56,7 +68,32 @@ export function intakeSweepJob(deps: IntakeSweepDeps = {}): JobDefinition {
         RETURNING id::text AS id
       `)) as unknown as Array<{ id: string }>;
 
-      // 2. Process a bounded batch of GROUPED sessions.
+      // 2. Ohne Bilderkennung wird hier Schluss gemacht. Die beiden Schritte
+      //    oben sind reine Zeitarbeit an eigenen Zeilen und bleiben richtig;
+      //    das Beurteilen eines fremden Schmuckstücks ist es nicht. Die
+      //    Sitzungen bleiben GROUPED und werden nachgeholt, sobald ein
+      //    Zugang hinterlegt ist. Nichts geht verloren.
+      if (!vision) {
+        const wartend = (await ctx.db.execute<{ n: string }>(drizzleSql`
+          SELECT count(*)::text AS n FROM intake_sessions WHERE status = 'GROUPED'
+        `)) as unknown as Array<{ n: string }>;
+        const n = Number(wartend[0]?.n ?? 0);
+        if (n > 0) {
+          ctx.log.warn(
+            'intake_sweep: keine Bilderkennung hinterlegt — es wird nichts geschätzt und ' +
+              'kein Ankaufspreis vorgeschlagen; diese Sitzungen warten',
+            { wartend: n },
+          );
+        }
+        return {
+          stuckReclaimed: reclaimed.length,
+          windowsClosed: closed.length,
+          sessionsProcessed: 0,
+          wartendOhneBilderkennung: n,
+        };
+      }
+
+      // 3. Process a bounded batch of GROUPED sessions.
       const grouped = (await ctx.db.execute<{ id: string }>(drizzleSql`
         SELECT id::text AS id FROM intake_sessions
         WHERE status = 'GROUPED'

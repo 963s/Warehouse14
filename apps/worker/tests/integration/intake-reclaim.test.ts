@@ -106,13 +106,20 @@ describe('intake_sweep — stuck-PROCESSING reclaim (Phase-0 B)', () => {
 
   it('reclaims a session stuck in PROCESSING past the 10-minute floor', async () => {
     const id = await seedProcessing(20);
-    const res = (await intakeSweepJob().run(ctx())) as { stuckReclaimed: number };
+    const res = (await intakeSweepJob().run(ctx())) as {
+      stuckReclaimed: number;
+      sessionsProcessed: number;
+    };
     expect(res.stuckReclaimed).toBe(1);
-    // Reclaimed to GROUPED then driven to a TERMINAL state this tick — never
-    // left stranded in PROCESSING.
+    // Hier ohne Bilderkennung: die Sitzung wird zurückgeholt und bleibt dann
+    // GROUPED, statt aus einer Testhilfe heraus geschätzt zu werden. Vorher
+    // stand hier `not.toBe('PROCESSING')` mit der Bemerkung „bis zu einem
+    // Endzustand getrieben" — das wäre jetzt weiter grün, aber aus dem
+    // falschen Grund, denn GROUPED ist kein Endzustand.
     const [row] = await sql<{ status: string }[]>`
       SELECT status::text AS status FROM intake_sessions WHERE id = ${id}::uuid`;
-    expect(must(row).status).not.toBe('PROCESSING');
+    expect(must(row).status).toBe('GROUPED');
+    expect(res).toMatchObject({ sessionsProcessed: 0 });
   });
 
   it('does NOT reclaim a recently-started PROCESSING session', async () => {
