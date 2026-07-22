@@ -73,6 +73,7 @@ export interface SurfaceDescriptor {
 import { Ankauf } from '../../screens/ankauf/Ankauf.js';
 import { Kasse } from '../../screens/kasse/Kasse.js';
 import { Kunden } from '../../screens/kunden/Kunden.js';
+import { Anfragen } from '../../screens/secondary/Anfragen.js';
 import { Lager } from '../../screens/lager/Lager.js';
 import { Schreiben } from '../../screens/secondary/Schreiben.js';
 import { Verkauf } from '../../screens/verkauf/Verkauf.js';
@@ -216,6 +217,14 @@ export const SURFACES: readonly SurfaceDescriptor[] = [
     searchAliases: ['home', 'dashboard', 'übersicht', 'startseite'],
   },
   // ── Tier 2 — Spotlight-only (demoted from the frontline rail) ─────────
+  {
+    path: '/anfragen',
+    label: 'Anfragen',
+    description: 'Kundenanfragen per E-Mail, lesen und beantworten.',
+    tier: 'secondary',
+    component: Anfragen,
+    searchAliases: ['support', 'tickets', 'anfrage', 'mail', 'email', 'antworten'],
+  },
   {
     path: '/aufgaben',
     label: 'Aufgaben',

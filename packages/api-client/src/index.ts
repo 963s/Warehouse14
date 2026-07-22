@@ -426,3 +426,11 @@ export {
   type CreateFixedCostBody,
   type UpdateFixedCostBody,
 } from './domains/finance.js';
+
+export {
+  supportApi,
+  type TicketStatus,
+  type SupportTicketSummary,
+  type SupportTicketDetail,
+  type SupportMessage,
+} from './domains/support.js';
