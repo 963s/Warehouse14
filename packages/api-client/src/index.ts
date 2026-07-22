@@ -443,3 +443,10 @@ export {
   type InventoryMatchStatus,
   type InventoryScanResult,
 } from './domains/inventory-sessions.js';
+
+export {
+  ordersApi,
+  type PickupStage,
+  type OrderLine,
+  type OrderView,
+} from './domains/orders.js';
