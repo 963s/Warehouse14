@@ -126,6 +126,10 @@ const EnvSchema = Type.Object({
     default: '',
     description: 'Real Workspace mailbox the support poller reads, e.g. admin@warehouse14.de.',
   }),
+  SUPPORT_PUBLIC_ADDRESSES: Type.String({
+    default: '',
+    description: 'Comma separated addresses CUSTOMERS write to. Empty means the poller files nothing, which is the safe default: the polled mailbox is a real person and most of its mail is not support.',
+  }),
   SUPPORT_OWN_ADDRESSES: Type.String({
     default: '',
     description: 'Comma separated addresses that are ours, so our own mail is never filed as a customer message.',

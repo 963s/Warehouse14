@@ -209,6 +209,9 @@ export async function buildWorker(opts: BuildWorkerOpts): Promise<WorkerHandle> 
       ownAddresses: opts.env.SUPPORT_OWN_ADDRESSES.split(',')
         .map((a) => a.trim())
         .filter(Boolean),
+      publicAddresses: opts.env.SUPPORT_PUBLIC_ADDRESSES.split(',')
+        .map((a) => a.trim())
+        .filter(Boolean),
     }),
   );
   // Epic D: end eBay listings for items sold at the retail counter.

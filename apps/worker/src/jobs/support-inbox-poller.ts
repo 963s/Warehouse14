@@ -29,6 +29,20 @@ export interface SupportInboxOptions {
   piiKey?: string | undefined;
   /** Our own addresses, so a letter we sent is never filed as a customer one. */
   ownAddresses: string[];
+  /**
+   * The addresses CUSTOMERS write to: bestellung@, info@, support@.
+   *
+   * This is the whole difference between a support inbox and somebody's
+   * personal mail. The polled mailbox belongs to a real person and receives
+   * their Google notifications, their Play receipts and their marketing; only
+   * mail ADDRESSED to a public shop address is a customer talking to the shop.
+   *
+   * The first version of this job had no such filter and, on its first run,
+   * turned fourteen Google notices into support tickets. Empty means the job
+   * does nothing, deliberately: filing nothing is recoverable, filing a
+   * person's private mail into a shared queue is not.
+   */
+  publicAddresses: string[];
 }
 
 const BATCH = 25;
@@ -36,11 +50,17 @@ const BATCH = 25;
 const TICKET_RE = /\bTIC-\d{4}-\d{6}\b/i;
 
 export function supportInboxPollerJob(opts: SupportInboxOptions): JobDefinition {
-  const configured = Boolean(opts.serviceAccountB64 && opts.mailbox && opts.piiKey);
+  const publicSet = new Set(opts.publicAddresses.map((a) => a.trim().toLowerCase()).filter(Boolean));
+  const configured = Boolean(
+    opts.serviceAccountB64 && opts.mailbox && opts.piiKey && publicSet.size > 0,
+  );
   const client = configured
     ? new GmailClient(opts.serviceAccountB64 as string, opts.mailbox as string)
     : null;
   const own = new Set(opts.ownAddresses.map((a) => a.toLowerCase()));
+  // Gmail's brace syntax is OR. Narrowing server side keeps a busy personal
+  // mailbox from being fetched message by message just to be discarded.
+  const query = `is:unread -in:chats {${[...publicSet].map((a) => `to:${a}`).join(' ')}}`;
   let warnedUnconfigured = false;
 
   return {
@@ -50,7 +70,7 @@ export function supportInboxPollerJob(opts: SupportInboxOptions): JobDefinition 
       if (!configured || !client) {
         if (!warnedUnconfigured) {
           ctx.log.warn(
-            'support inbox: not configured (need GOOGLE_SERVICE_ACCOUNT_B64, SUPPORT_MAILBOX, WAREHOUSE14_PII_KEY) — customer replies are NOT being collected',
+            'support inbox: not configured (need GOOGLE_SERVICE_ACCOUNT_B64, SUPPORT_MAILBOX, SUPPORT_PUBLIC_ADDRESSES, WAREHOUSE14_PII_KEY) — customer replies are NOT being collected',
           );
           warnedUnconfigured = true;
         }
@@ -58,7 +78,7 @@ export function supportInboxPollerJob(opts: SupportInboxOptions): JobDefinition 
       }
 
       const now = Date.now();
-      const ids = await client.listIds('is:unread -in:chats', BATCH, now);
+      const ids = await client.listIds(query, BATCH, now);
       if (ids.length === 0) return { filed: 0 };
 
       let filed = 0;
@@ -71,6 +91,24 @@ export function supportInboxPollerJob(opts: SupportInboxOptions): JobDefinition 
           const msg = await client.get(id, now);
           const from = addressOf(msg.header('from'));
 
+          // Which of OUR public addresses was this sent to? Checked against
+          // the real headers rather than trusting the search query, because
+          // Gmail's `to:` is fuzzier than the header and the cost of being
+          // wrong is somebody's private mail in a shared queue.
+          const recipients = [msg.header('to'), msg.header('cc'), msg.header('delivered-to')]
+            .flatMap((h) => (h ?? '').split(','))
+            .map((part) => addressOf(part))
+            .filter((a): a is string => a !== null);
+          const publicMatch = recipients.find((a) => publicSet.has(a)) ?? null;
+
+          // Skipped WITHOUT marking read: this message was never ours to
+          // touch, and leaving it unread keeps the mailbox owner's view of
+          // their own inbox honest.
+          if (!publicMatch) {
+            skipped += 1;
+            continue;
+          }
+
           // Our own outbound mail can land here (a bounce, a copy, a loop).
           // Filing it would answer the customer with their own words.
           if (!from || own.has(from)) {
@@ -80,7 +118,7 @@ export function supportInboxPollerJob(opts: SupportInboxOptions): JobDefinition 
           }
 
           const subject = (msg.header('subject') ?? '(ohne Betreff)').slice(0, 500);
-          const toAddress = addressOf(msg.header('to')) ?? opts.mailbox!;
+          const toAddress = publicMatch;
           const ticketRef = subject.match(TICKET_RE)?.[0]?.toUpperCase() ?? null;
           const senderName = displayNameOf(msg.header('from'));
 
