@@ -180,6 +180,61 @@ export function composeReservationConfirmed(
   };
 }
 
+/**
+ * Escape text that a human typed before it enters an HTML letter.
+ *
+ * Staff replies are free text. Without this, a colleague writing "Preis < 100"
+ * silently truncates the letter at the angle bracket, and anything paste-like
+ * from a browser could carry markup into a customer's inbox under our name.
+ */
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * A member of staff answering a support ticket.
+ *
+ * The subject deliberately keeps the customer's own wording and appends the
+ * ticket number in brackets: `Re: Frage zur Abholung [TIC-2026-000001]`. That
+ * one bracket does two jobs. The customer recognises their own words, and if
+ * they later reply from a client that mangles threading headers, the poller
+ * still finds the ticket from the subject alone.
+ *
+ * The body is whatever the colleague wrote, escaped and split on blank lines.
+ * No template, no marketing: this is one person answering another.
+ */
+export function composeSupportReply(
+  name: string | null,
+  ticketNumber: string,
+  customerSubject: string,
+  bodyText: string,
+  locale?: string | null,
+): ComposedEmail {
+  const c = emailCopy(locale);
+  const g = greet(c, name);
+  const clean = bodyText.replace(/\r\n/g, '\n').trim();
+
+  const base = customerSubject.replace(/\s*\[TIC-\d{4}-\d{6}\]\s*$/i, '').trim();
+  const subject = `${/^(re|aw|antw)\s*:/i.test(base) ? base : `Re: ${base}`} [${ticketNumber}]`;
+
+  const text = `${g}\n\n${clean}\n\n${textFooter(c)}`;
+  const html = htmlWrap(
+    c,
+    para(g) +
+      clean
+        .split(/\n{2,}/)
+        .map((p) => para(escapeHtml(p).replace(/\n/g, '<br>')))
+        .join('') +
+      `<div style="font-size:11px;color:#6e6b64;margin-top:18px;" dir="ltr">${ticketNumber}</div>`,
+  );
+
+  return { template: 'support_reply', subject, text, html, locale: normalizeEmailLocale(locale) };
+}
+
 /** Cancellation notice — confirms the release, keeps the door open. */
 export function composeReservationCancelled(
   name: string | null,

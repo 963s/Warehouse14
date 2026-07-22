@@ -13,6 +13,7 @@ export { reservationSweeperJob } from './reservation-sweeper.js';
 export { posReservationSweeperJob } from './pos-reservation-sweeper.js';
 export { ebaySyncJob } from './ebay-sync.js';
 export { emailOutboxSenderJob } from './email-outbox-sender.js';
+export { supportInboxPollerJob } from './support-inbox-poller.js';
 export { chainVerifierJob } from './chain-verifier.js';
 export { sessionsCleanupJob } from './sessions-cleanup.js';
 export { workerJobRunsRetentionJob } from './worker-job-runs-retention.js';

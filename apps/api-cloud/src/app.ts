@@ -116,6 +116,7 @@ import storefrontCartRoutes from './routes/storefront-cart.js';
 import storefrontCatalogRoutes from './routes/storefront-catalog.js';
 import storefrontGuestRoutes from './routes/storefront-guest.js';
 import storefrontAccountRightsRoutes from './routes/storefront-account-rights.js';
+import supportTicketRoutes from './routes/support-tickets.js';
 import storefrontOrdersRoutes from './routes/storefront-orders.js';
 import storefrontReserveRoutes from './routes/storefront-reserve.js';
 import storefrontWebhookRoutes from './routes/storefront-webhook.js';
@@ -282,6 +283,8 @@ export async function buildApp(opts: BuildAppOpts): Promise<FastifyInstance> {
   await app.register(storefrontReserveRoutes);
   await app.register(storefrontOrdersRoutes);
   await app.register(storefrontAccountRightsRoutes, { env: opts.env });
+  // 0097: the staff side of the customer conversation.
+  await app.register(supportTicketRoutes);
   await app.register(storefrontWebhookRoutes, { env: opts.env });
   // ── Day 21: retail core ───────────────────────────────────────────
   await app.register(shiftsRoutes);

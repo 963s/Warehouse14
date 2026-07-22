@@ -29,6 +29,7 @@ import {
   dsfinvkDailyExportJob,
   ebaySyncJob,
   emailOutboxSenderJob,
+  supportInboxPollerJob,
   gdprCleanupJob,
   intakeSweepJob,
   lbmaPricesJob,
@@ -197,6 +198,17 @@ export async function buildWorker(opts: BuildWorkerOpts): Promise<WorkerHandle> 
       mailFrom: opts.env.MAIL_FROM || undefined,
       mailReplyTo: opts.env.MAIL_REPLY_TO || undefined,
       piiKey: opts.env.WAREHOUSE14_PII_KEY || undefined,
+    }),
+  );
+  // 0097: collect customer replies into support tickets.
+  runner.register(
+    supportInboxPollerJob({
+      serviceAccountB64: opts.env.GOOGLE_SERVICE_ACCOUNT_B64 || undefined,
+      mailbox: opts.env.SUPPORT_MAILBOX || undefined,
+      piiKey: opts.env.WAREHOUSE14_PII_KEY || undefined,
+      ownAddresses: opts.env.SUPPORT_OWN_ADDRESSES.split(',')
+        .map((a) => a.trim())
+        .filter(Boolean),
     }),
   );
   // Epic D: end eBay listings for items sold at the retail counter.

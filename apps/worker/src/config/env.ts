@@ -113,6 +113,23 @@ const EnvSchema = Type.Object({
   // and the published DKIM key both pass. Sending straight from this server
   // would FAIL SPF and land in spam, which is the whole reason for the relay.
   SMTP_HOST: Type.String({ default: '', description: 'SMTP server, e.g. smtp-relay.gmail.com.' }),
+  // 0097: reading the shop mailbox. SUPPORT_MAILBOX must be a REAL user, not
+  // an alias — Google refuses to impersonate an alias, and the failure reads
+  // "Invalid email or User ID" rather than anything about aliases.
+  // Present in the container since the Calendar work but never declared here,
+  // so the worker could not reach a credential it already had.
+  GOOGLE_SERVICE_ACCOUNT_B64: Type.String({
+    default: '',
+    description: 'Base64 service account JSON with domain-wide delegation (calendar + gmail.modify).',
+  }),
+  SUPPORT_MAILBOX: Type.String({
+    default: '',
+    description: 'Real Workspace mailbox the support poller reads, e.g. admin@warehouse14.de.',
+  }),
+  SUPPORT_OWN_ADDRESSES: Type.String({
+    default: '',
+    description: 'Comma separated addresses that are ours, so our own mail is never filed as a customer message.',
+  }),
   SMTP_PORT: Type.Integer({ minimum: 0, maximum: 65535, default: 587 }),
   SMTP_USER: Type.String({ default: '', description: 'SMTP login, e.g. bestellung@warehouse14.de.' }),
   SMTP_PASS: Type.String({ default: '', description: 'SMTP password or app password.' }),
