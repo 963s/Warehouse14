@@ -35,6 +35,29 @@ export const EMAIL_LOCALES = [
 export type EmailLocale = (typeof EMAIL_LOCALES)[number];
 
 /**
+ * The languages LETTERS are written in — German and English only.
+ *
+ * The storefront still ships all thirteen: a customer browses and reserves in
+ * their own language and nothing about that changes. But a letter is a
+ * business document that may be read aloud at the counter, forwarded to the
+ * Steuerberater, or quoted back in a dispute, and every extra language is
+ * another copy that can quietly drift out of step with the German original
+ * without anyone noticing.
+ *
+ * German is the house language and the binding one; English is the
+ * international fallback. The other eleven tables below are deliberately KEPT
+ * rather than deleted, so widening again later is one line here and not a
+ * translation project.
+ */
+export const MAIL_LOCALES = ['de', 'en'] as const;
+export type MailLocale = (typeof MAIL_LOCALES)[number];
+
+/** German for German speakers and for silence, English for everyone else. */
+function narrowToMailLocale(code: string): MailLocale {
+  return code === 'de' ? 'de' : 'en';
+}
+
+/**
  * Best language guess from the browser or app's Accept Language header. Used
  * ONLY for readers who have not stored a preference, above all guests, who
  * reserve without ever creating an account. A stored preference is a choice
@@ -42,20 +65,28 @@ export type EmailLocale = (typeof EMAIL_LOCALES)[number];
  */
 export function localeFromAcceptLanguage(header: string | string[] | undefined): EmailLocale {
   const raw = Array.isArray(header) ? header[0] : header;
+  // Absent tells us nothing, so it reads as the shop's own language rather
+  // than as "foreign".
   if (!raw) return 'de';
   // "tr-TR,tr;q=0.9,en;q=0.8" — take tags in order, first one we ship wins.
   for (const part of raw.split(',')) {
     const tag = part.split(';')[0]?.trim() ?? '';
     const code = tag.slice(0, 2).toLowerCase();
-    if ((EMAIL_LOCALES as readonly string[]).includes(code)) return code as EmailLocale;
+    if ((EMAIL_LOCALES as readonly string[]).includes(code)) return narrowToMailLocale(code);
   }
   return 'de';
 }
 
-/** Anything unknown, malformed or absent reads as German. */
+/**
+ * Anything unknown, malformed or absent reads as German; anything else the
+ * shop recognises reads as English. This is the single gate: a stored
+ * preference of `ar` or `tr` reaches here and leaves as `en`, so no caller
+ * has to remember the rule.
+ */
 export function normalizeEmailLocale(raw: string | null | undefined): EmailLocale {
   const code = (raw ?? '').trim().slice(0, 2).toLowerCase();
-  return (EMAIL_LOCALES as readonly string[]).includes(code) ? (code as EmailLocale) : 'de';
+  if (!code) return 'de';
+  return (EMAIL_LOCALES as readonly string[]).includes(code) ? narrowToMailLocale(code) : 'de';
 }
 
 export interface EmailCopy {
@@ -104,9 +135,32 @@ const ADDRESS = 'Rosenstraße 40, 73614 Schorndorf';
 const OPERATOR = 'Briefmarken To-Go (stampscoins)';
 
 /**
- * Contact block, identical in every language: it is data, not prose.
- * The address here MUST match the sender the customer sees, otherwise the
- * letter invites a reply to one place and signs off with another.
+ * The signature, as DATA rather than as a sentence.
+ *
+ * Split into parts so the letter can make each one do its job on a phone: the
+ * number dials, the address opens a map, the mailbox composes a reply. A
+ * signature the reader has to copy by hand is a signature that gets a phone
+ * call to the wrong shop.
+ *
+ * `email` MUST match the address the letter is sent from, or it invites a
+ * reply to one place and signs off with another.
+ */
+export const SHOP = {
+  brand: BRAND,
+  operator: OPERATOR,
+  street: 'Rosenstraße 40',
+  city: '73614 Schorndorf',
+  /** E.164 for the dial link; humans see the spaced form below. */
+  phoneDial: '+4971819647511',
+  phoneHuman: '+49 7181 9647511',
+  email: 'bestellung@warehouse14.de',
+  vatId: 'DE343451090',
+  mapUrl: 'https://maps.google.com/?q=Rosenstra%C3%9Fe+40,+73614+Schorndorf',
+} as const;
+
+/**
+ * Legacy single-line contact block. Still the plain-text signature, where
+ * nothing is tappable and one honest line beats three.
  */
 export const EMAIL_CONTACT_LINE =
   'Telefon +49 7181 9647511, bestellung@warehouse14.de, USt IdNr DE343451090';

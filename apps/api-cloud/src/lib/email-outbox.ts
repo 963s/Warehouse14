@@ -19,7 +19,13 @@
 
 import { sql as drizzleSql } from 'drizzle-orm';
 
-import { emailCopy, normalizeEmailLocale, EMAIL_CONTACT_LINE, type EmailCopy } from './email-copy.js';
+import {
+  emailCopy,
+  normalizeEmailLocale,
+  EMAIL_CONTACT_LINE,
+  SHOP,
+  type EmailCopy,
+} from './email-copy.js';
 
 /** Minimal executor shape — works with app.db and with a withPii tx alike. */
 type SqlExecutor = { execute: (q: ReturnType<typeof drizzleSql>) => Promise<unknown> };
@@ -55,48 +61,129 @@ function footerLines(c: EmailCopy): string[] {
  */
 export const EMAIL_LOGO_CID = 'w14logo';
 
+/** One palette, named once, so light and dark cannot drift apart. */
+const INK = '#1c1c1c';
+const MUTED = '#6e6b64';
+const GOLD = '#a3823b';
+const PAPER = '#efece3';
+const CARD = '#ffffff';
+const RULE = '#ded8c9';
+
 /**
  * The letterhead.
  *
- * The mark is pure black line art on transparency, which is exactly the shape
- * that vanishes in a dark mode client, so it sits in an explicitly WHITE cell
- * rather than on the parchment. The alt text carries the wordmark for the
- * readers who block images, which on a transactional letter is a large
- * minority and not an edge case.
+ * The mark is pure black line art, so it sits on an explicitly WHITE card in
+ * BOTH schemes rather than on the page. That is not an oversight about dark
+ * mode: a letterhead is ink printed on paper, and a white card reads as paper
+ * on a dark screen exactly as it does on a light one. Inverting it would be
+ * the thing that looks broken.
  *
- * `width` is set as an attribute as well as in CSS because Outlook ignores the
+ * `width` is an attribute as well as a style because Outlook ignores the
  * style and would otherwise render the image at its full 360 pixels.
  */
 function letterhead(c: EmailCopy): string {
   return (
-    '<div style="background:#ffffff;border:1px solid #e2ddd0;border-radius:10px;' +
-    'padding:20px 24px 16px;margin-bottom:24px;text-align:center;">' +
-    `<img src="cid:${EMAIL_LOGO_CID}" width="180" alt="Warehouse 14" ` +
-    'style="width:180px;max-width:100%;height:auto;display:block;margin:0 auto;border:0;">' +
-    `<div style="font-size:11px;color:#6e6b64;margin-top:10px;letter-spacing:0.4px;">${c.tagline}</div>` +
+    `<td style="background:${CARD};border-radius:14px;padding:26px 24px 20px;text-align:center;">` +
+    `<img src="cid:${EMAIL_LOGO_CID}" width="176" alt="${SHOP.brand}" ` +
+    'style="width:176px;max-width:100%;height:auto;display:block;margin:0 auto;border:0;">' +
+    `<div style="font-family:Georgia,'Times New Roman',serif;font-size:11px;color:${MUTED};` +
+    `margin-top:12px;letter-spacing:1.6px;text-transform:uppercase;">${c.tagline}</div>` +
+    '</td>'
+  );
+}
+
+/**
+ * The signature, built so a thumb can use it.
+ *
+ * Every line that can act, acts: the number dials, the address opens a map,
+ * the mailbox composes a reply. Most of these letters are read on a phone
+ * while the reader is deciding whether to come in, and a signature they have
+ * to retype by hand is one they do not use.
+ */
+function signature(c: EmailCopy): string {
+  const link = (href: string, text: string) =>
+    `<a href="${href}" style="color:${MUTED};text-decoration:none;border-bottom:1px solid ${RULE};">${text}</a>`;
+
+  // EVERY element carrying an inline colour also carries the class that
+  // overrides it in dark mode. Inline styles beat a class rule and do not
+  // inherit past a child that sets its own colour, so a wrapper class is not
+  // enough: the first version of this signature put the shop name in ink with
+  // no class and it rendered black on near-black, invisible to any reader in
+  // dark mode. The screenshot caught it; nothing else could have.
+  return (
+    `<div class="w14-ink" style="font-family:Georgia,'Times New Roman',serif;font-size:13px;` +
+    `color:${INK};line-height:1.7;margin-bottom:10px;">` +
+    `<strong style="font-weight:normal;letter-spacing:0.6px;">${SHOP.brand}</strong>` +
+    `<div class="w14-muted" style="font-size:12px;color:${MUTED};">${SHOP.operator}</div>` +
+    '</div>' +
+    `<div class="w14-muted" style="font-size:12px;color:${MUTED};line-height:1.9;">` +
+    `<div>${link(SHOP.mapUrl, `${SHOP.street}, ${SHOP.city}`)}</div>` +
+    `<div>${link(`tel:${SHOP.phoneDial}`, SHOP.phoneHuman)}` +
+    `&nbsp;&middot;&nbsp;${link(`mailto:${SHOP.email}`, SHOP.email)}</div>` +
+    `<div>${c.openingHoursLabel}: ${c.openingHours}</div>` +
+    '</div>' +
+    `<div class="w14-muted" style="font-size:11px;color:${MUTED};line-height:1.6;margin-top:14px;">` +
+    `USt IdNr ${SHOP.vatId}` +
+    (c.courtesyNote ? `<br>${c.courtesyNote}` : '') +
     '</div>'
   );
 }
 
-function htmlWrap(c: EmailCopy, bodyHtml: string): string {
+/**
+ * `preheader` is the grey line the inbox shows next to the subject before the
+ * letter is opened. Left unset, clients scrape whatever text comes first,
+ * which here is the alt text of the logo, so every letter previews as
+ * "Warehouse 14 Warehouse 14". Setting it deliberately is one of the cheapest
+ * things a transactional letter can do and one of the most often skipped.
+ */
+function htmlWrap(c: EmailCopy, bodyHtml: string, preheader: string): string {
   const align = c.dir === 'rtl' ? 'right' : 'left';
   return (
-    '<!doctype html><meta charset="utf-8">' +
+    '<!doctype html><html><head><meta charset="utf-8">' +
     '<meta name="viewport" content="width=device-width,initial-scale=1">' +
-    `<body style="margin:0;padding:0;background:#efece3;" dir="${c.dir}">` +
-    `<div style="max-width:560px;margin:0 auto;padding:32px 24px;font-family:Georgia,serif;color:#1c1c1c;text-align:${align};">` +
+    // Tells the client the letter has its own dark palette, so it renders
+    // ours instead of force-inverting the colours itself.
+    '<meta name="color-scheme" content="light dark">' +
+    '<meta name="supported-color-schemes" content="light dark">' +
+    '<style>' +
+    'a{color:inherit}' +
+    '@media (prefers-color-scheme:dark){' +
+    '.w14-page{background:#14130f!important}' +
+    '.w14-sheet{background:#1e1c17!important}' +
+    '.w14-ink{color:#eae6da!important}' +
+    '.w14-muted{color:#a6a091!important}' +
+    '.w14-ref{background:#26231c!important;border-color:#3a3529!important}' +
+    '.w14-rule{background:#3a3529!important}' +
+    '.w14-gold{background:#c9a55c!important}' +
+    '}' +
+    '@media (max-width:600px){.w14-pad{padding:20px 18px!important}}' +
+    '</style></head>' +
+    `<body class="w14-page" style="margin:0;padding:0;background:${PAPER};` +
+    '-webkit-text-size-adjust:100%;" dir="' +
+    c.dir +
+    '">' +
+    // Hidden preview line. The zero-width joiners stop clients padding the
+    // preview with the body text that follows.
+    `<div style="display:none;max-height:0;overflow:hidden;opacity:0;">${preheader}` +
+    '&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;</div>' +
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" ' +
+    `style="background:${PAPER};" class="w14-page"><tr><td align="center" style="padding:28px 12px;">` +
+    '<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" ' +
+    'style="width:100%;max-width:600px;"><tr>' +
     letterhead(c) +
-    bodyHtml +
-    '<div style="height:1px;background:#a3823b;margin:28px 0 12px;"></div>' +
-    footerLines(c)
-      .map((l) => `<div style="font-size:11px;color:#6e6b64;line-height:1.6;">${l}</div>`)
-      .join('') +
-    '</div></body>'
+    '</tr><tr><td style="height:20px;line-height:20px;font-size:0;">&nbsp;</td></tr><tr>' +
+    `<td class="w14-sheet w14-pad" style="background:${CARD};border-radius:14px;padding:32px 30px;` +
+    `font-family:Georgia,'Times New Roman',serif;color:${INK};text-align:${align};">` +
+    `<div class="w14-ink" style="color:${INK};">${bodyHtml}</div>` +
+    `<div class="w14-gold" style="height:2px;width:44px;background:${GOLD};margin:26px 0 20px;` +
+    'font-size:0;line-height:0;">&nbsp;</div>' +
+    `<div class="w14-muted">${signature(c)}</div>` +
+    '</td></tr></table></td></tr></table></body></html>'
   );
 }
 
 function para(text: string): string {
-  return `<p style="font-size:15px;line-height:1.6;margin:0 0 14px;">${text}</p>`;
+  return `<p style="font-size:15.5px;line-height:1.65;margin:0 0 15px;color:inherit;">${text}</p>`;
 }
 
 /** Plain text footer, so the text part carries the same duties as the HTML. */
@@ -121,6 +208,7 @@ export function composeWelcome(name: string | null, locale?: string | null): Com
   const html = htmlWrap(
     c,
     para(g) + para(c.welcomeLead) + para(c.welcomeBody) + para(c.welcomeClose),
+    c.welcomeLead,
   );
   return {
     template: 'welcome',
@@ -162,14 +250,27 @@ export function composeReservationConfirmed(
     c,
     para(g) +
       para(lead) +
-      '<div style="background:#ffffff;border:1px solid #d8d3c4;border-radius:8px;padding:14px 18px;margin:0 0 14px;">' +
-      `<div style="font-size:12px;color:#6e6b64;">${c.refLabel}</div>` +
-      `<div style="font-size:19px;font-family:monospace;letter-spacing:0.5px;" dir="ltr">${orderNumber}</div>` +
+      // The stub. Its own surface, a monospaced number and a gold edge, so
+      // the one thing the reader must repeat at the counter is the one thing
+      // the eye lands on first.
+      '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" ' +
+      'style="margin:4px 0 18px;"><tr>' +
+      `<td class="w14-gold" width="3" style="background:${GOLD};border-radius:3px 0 0 3px;` +
+      'font-size:0;line-height:0;">&nbsp;</td>' +
+      `<td class="w14-ref" style="background:#faf8f2;border:1px solid ${RULE};border-left:0;` +
+      'border-radius:0 10px 10px 0;padding:16px 20px;">' +
+      `<div class="w14-muted" style="font-size:11px;color:${MUTED};letter-spacing:1.2px;` +
+      `text-transform:uppercase;">${c.refLabel}</div>` +
+      `<div class="w14-ink" style="font-size:22px;color:${INK};margin-top:4px;` +
+      `font-family:'SF Mono',Menlo,Consolas,monospace;letter-spacing:1px;" dir="ltr">` +
+      `${orderNumber}</div>` +
       (totalEur
-        ? `<div style="font-size:13px;color:#4c4a45;margin-top:6px;">${c.totalLabel}: ${totalEur} ${c.euro}</div>`
+        ? `<div class="w14-muted" style="font-size:13px;color:${MUTED};margin-top:8px;">` +
+          `${c.totalLabel}: ${totalEur} ${c.euro}</div>`
         : '') +
-      '</div>' +
+      '</td></tr></table>' +
       para(c.reservationClose),
+    `${c.refLabel}: ${orderNumber}`,
   );
   return {
     template: 'reservation_confirmed',
@@ -230,6 +331,7 @@ export function composeSupportReply(
         .map((p) => para(escapeHtml(p).replace(/\n/g, '<br>')))
         .join('') +
       `<div style="font-size:11px;color:#6e6b64;margin-top:18px;" dir="ltr">${ticketNumber}</div>`,
+    clean.split('\n')[0]?.slice(0, 120) ?? ticketNumber,
   );
 
   return { template: 'support_reply', subject, text, html, locale: normalizeEmailLocale(locale) };
@@ -245,7 +347,7 @@ export function composeReservationCancelled(
   const g = greet(c, name);
   const lead = c.cancelledLead(orderId);
   const text = `${g}\n\n${lead}\n\n${c.cancelledClose}\n\n${textFooter(c)}`;
-  const html = htmlWrap(c, para(g) + para(lead) + para(c.cancelledClose));
+  const html = htmlWrap(c, para(g) + para(lead) + para(c.cancelledClose), lead);
   return {
     template: 'reservation_cancelled',
     subject: c.cancelledSubject,
