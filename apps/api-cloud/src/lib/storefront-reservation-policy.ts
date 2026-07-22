@@ -82,6 +82,30 @@ export const TIER_LIMITS: Record<ReservationTier, TierLimits> = {
   },
 };
 
+/**
+ * Ob eine Abholung überhaupt gebucht werden KANN.
+ *
+ * Solange dies false ist, darf keine verfallene Reservierung als
+ * Nichtabholung gegen den Kunden zählen, denn er hätte sie gar nicht abholen
+ * können. Der Grund: eine Web-Reservierung nimmt den Halt mit
+ * `reserved_by_user_id = NULL` (`routes/storefront-reserve.ts`), und sowohl
+ * `finalize()` als auch `release()` verlangen, dass dieses Feld dem Kassierer
+ * entspricht. NULL gegen eine UUID trifft nie zu, also 409, also kann das
+ * Stück am Tresen weder verkauft noch freigegeben werden. `CONVERTED` ist
+ * damit unerreichbar, `collected` ist für JEDEN Kunden dauerhaft 0, und jede
+ * Reservierung landet zwangsläufig auf `ABANDONED`.
+ *
+ * Das Ergebnis war eine Leiter, die niemand hinaufsteigen konnte und jeder
+ * hinunterfiel: eine Sperre von sieben Tagen nach dem ersten Verfall, eine
+ * dauerhafte nach dem dritten. Das Haus hat seine eigenen Kunden für eine
+ * Funktion bestraft, die nie gebaut wurde.
+ *
+ * Diese Konstante wird in Phase 2 auf true gesetzt, wenn die Übergabe am
+ * Tresen wirklich buchbar ist, und danach ersatzlos entfernt. Ein Test hält
+ * beides fest.
+ */
+export const HANDOVER_IS_BOOKABLE = false;
+
 /** No-shows that cost a tier, and the count that stops reservations entirely. */
 export const NO_SHOWS_BEFORE_DEMOTION = envInt('STOREFRONT_NO_SHOWS_DEMOTE', 2);
 export const NO_SHOWS_BEFORE_BLOCK = envInt('STOREFRONT_NO_SHOWS_BLOCK', 3);
@@ -141,11 +165,16 @@ export function deriveReservationAllowance(
   });
 
   if (f.trustLevel === 'BANNED' || f.trustLevel === 'SUSPICIOUS') return blocked('BANNED');
-  if (f.noShows >= NO_SHOWS_BEFORE_BLOCK) return blocked('TOO_MANY_NO_SHOWS');
 
-  if (f.lastNoShowAt) {
-    const until = new Date(f.lastNoShowAt.getTime() + NO_SHOW_COOLDOWN_DAYS * 86_400_000);
-    if (until > now) return blocked('COOLDOWN', until);
+  // Ein Urteil eines Menschen gilt immer. Gerechnete Nichtabholungen gelten
+  // nur, wenn eine Abholung überhaupt möglich war — siehe HANDOVER_IS_BOOKABLE.
+  if (HANDOVER_IS_BOOKABLE) {
+    if (f.noShows >= NO_SHOWS_BEFORE_BLOCK) return blocked('TOO_MANY_NO_SHOWS');
+
+    if (f.lastNoShowAt) {
+      const until = new Date(f.lastNoShowAt.getTime() + NO_SHOW_COOLDOWN_DAYS * 86_400_000);
+      if (until > now) return blocked('COOLDOWN', until);
+    }
   }
 
   // A guest is its own rung, not a punished customer. They identified
@@ -174,7 +203,10 @@ export function deriveReservationAllowance(
   //
   // One failure to collect is a bad week. Two is a pattern, and costs a rung
   // even for someone with history — but only a rung.
-  if (f.noShows >= NO_SHOWS_BEFORE_DEMOTION) {
+  //
+  // Auch diese Stufe gilt nur, wenn eine Abholung buchbar war. Sonst bliebe
+  // die halbe Strafe stehen, während der Kunde für nichts bestraft würde.
+  if (HANDOVER_IS_BOOKABLE && f.noShows >= NO_SHOWS_BEFORE_DEMOTION) {
     tier = tier === 'STAMM' ? 'BEKANNT' : 'NEU';
   }
 
