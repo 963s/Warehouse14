@@ -1,8 +1,9 @@
 /**
  * eBay Trading API client (Epic D) — just the `EndItem` call the reconciler
- * needs. When no token is configured (dev / test / CI) it returns a mock
- * success so the reconciler flow runs without eBay credentials; the real HTTP
- * call is the only mocked part.
+ * needs.
+ *
+ * Ohne Zugang wird ABGELEHNT, nicht gemeldet, das Inserat sei beendet. Siehe
+ * `EbayNotConfiguredError`.
  */
 
 export type EbayFetch = (
@@ -17,10 +18,37 @@ export type EbayFetch = (
 
 export interface EndItemResult {
   ended: boolean;
-  /** True when no token was configured and the call was mocked. */
+  /** Immer false. Ein beendetes Inserat kann nicht simuliert werden. */
   mock: boolean;
-  /** Trimmed provider response (or mock reason) — safe for the event payload. */
+  /** Trimmed provider response — safe for the event payload. */
   detail: string;
+}
+
+/**
+ * Wird geworfen, wenn kein eBay-Zugang hinterlegt ist.
+ *
+ * Vorher meldete diese Stelle ohne Zugang `ended: true`, OHNE eBay überhaupt
+ * zu fragen. Der Abgleich schrieb daraufhin `ebay_state` von ONLINE auf
+ * BEENDET und vermerkte „sold at retail counter; eBay listing ended".
+ *
+ * Das Inserat war aber weiter online. Und weil hier jedes Stück ein Einzelstück
+ * ist, heißt das: das Haus hält es für vom Markt genommen, während es auf eBay
+ * weiter gekauft werden kann. Ein zweiter Käufer bezahlt dann eine Sache, die
+ * über den Tresen bereits gegangen ist.
+ *
+ * Auf der Produktion ist `EBAY_API_TOKEN` nicht gesetzt und der Abgleich läuft
+ * alle fünf Minuten. Ausgelöst hat es bisher nichts, weil noch kein Stück
+ * überhaupt einen eBay-Zustand trägt. Es hätte beim ersten Inserat gegriffen.
+ */
+export class EbayNotConfiguredError extends Error {
+  public readonly code = 'EBAY_NOT_CONFIGURED';
+  constructor() {
+    super(
+      'Für eBay ist kein Zugang hinterlegt. Das Inserat wurde NICHT beendet und ' +
+        'steht weiterhin online; der Artikel bleibt zum Abgleich vorgemerkt.',
+    );
+    this.name = 'EbayNotConfiguredError';
+  }
 }
 
 export interface EbayClientOptions {
@@ -39,6 +67,8 @@ function endItemXml(itemRef: string): string {
 /**
  * End an eBay listing. Resolves `{ ended: true }` on success; throws on a
  * configured-but-failing call so the reconciler can leave the row for retry.
+ * Ohne Zugang wird ebenfalls geworfen: der Abgleich behält die Zeile, und der
+ * Zustand bleibt ONLINE, weil das Inserat online IST.
  */
 export async function endEbayListing(
   token: string,
@@ -46,7 +76,7 @@ export async function endEbayListing(
   opts: EbayClientOptions = {},
 ): Promise<EndItemResult> {
   if (token.length === 0) {
-    return { ended: true, mock: true, detail: 'mock: EBAY_API_TOKEN not configured' };
+    throw new EbayNotConfiguredError();
   }
 
   const baseUrl = (opts.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, '');

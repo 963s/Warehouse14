@@ -1,10 +1,15 @@
 /**
  * ebay_sync reconciler — integration test (Epic D).
  *
- * Seeds a product sold at the counter (status=SOLD) whose eBay listing is
- * still ONLINE, runs the job once (mock EndItem — no EBAY_API_TOKEN), and
- * asserts the listing was ended: products.ebay_state → BEENDET + a WORKER
- * audit row.
+ * Ein Stück, das am Tresen verkauft wurde (status=SOLD) und dessen Inserat
+ * noch ONLINE steht, durchläuft drei Durchgänge:
+ *
+ *   1. ohne eBay-Zugang  → bleibt ONLINE, keine Historie. Vorher stand hier
+ *      das Gegenteil, und das war die Gefahr: der Abgleich meldete „beendet",
+ *      ohne eBay je gefragt zu haben.
+ *   2. mit Zugang        → BEENDET + eine WORKER-Zeile, über einen
+ *      eBay-Doppelgänger statt über einen erfundenen Erfolg.
+ *   3. noch einmal       → nichts kommt hinzu (der geschützte UPDATE).
  *
  * Requires Docker (Postgres testcontainer) + extension privileges — runs in
  * CI; skipped where the sandbox keyring/extension setup is unavailable.
@@ -22,6 +27,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import type { WorkerDb } from '@warehouse14/db/client';
 import * as schema from '@warehouse14/db/schema';
+
+import { ebaySyncJob } from '../../src/jobs/ebay-sync.js';
 
 import { type WorkerHandle, buildWorker } from '../../src/app.js';
 import type { Env } from '../../src/config/env.js';
@@ -128,28 +135,82 @@ describe('ebay_sync reconciler', () => {
     return id;
   }
 
-  it('ends the eBay listing for a product sold at the counter', async () => {
-    const productId = await seedSoldOnlineProduct();
+  /** Ein Stück, drei Durchgänge: ohne Zugang, mit Zugang, noch einmal. */
+  let ringId = '';
 
+  it('leaves the listing ONLINE when no eBay access is configured', async () => {
+    // Diese Datei forderte vorher das Gegenteil: mit leerem Token erwartete sie
+    // BEENDET. Der Abgleich meldete das Inserat also als vom Markt genommen,
+    // ohne eBay je gefragt zu haben. Weil hier jedes Stück ein Einzelstück ist,
+    // hätte es weiterverkauft werden können, während es im Haus schon
+    // verkauft war. Auf der Produktion ist kein Token gesetzt.
+    ringId = await seedSoldOnlineProduct();
+
+    // Der Lauf ist ausdrücklich ein Erfolg: nichts ist ausgefallen, es fehlt
+    // nur der Zugang, und die Zeile wartet auf den nächsten Durchgang.
     const outcome = await handle.runner.runOnce('ebay_sync');
     expect(outcome.status).toBe('SUCCESS');
 
     const [product] = await migratorSql<{ ebay_state: string }[]>`
-      SELECT ebay_state::text AS ebay_state FROM products WHERE id = ${productId}`;
+      SELECT ebay_state::text AS ebay_state FROM products WHERE id = ${ringId}`;
+    expect(product?.ebay_state).toBe('ONLINE');
+
+    const events = await migratorSql<{ to_state: string }[]>`
+      SELECT to_state::text AS to_state FROM product_ebay_listing_events
+       WHERE product_id = ${ringId}`;
+    expect(events).toHaveLength(0);
+  });
+
+  it('ends the listing for real once eBay answers', async () => {
+    // Dasselbe Stück wie eben, das absichtlich ONLINE stehen geblieben ist:
+    // der Inhaber trägt den Zugang nach, der nächste Durchgang beendet es.
+    // Der Erfolgsweg läuft über einen eBay-Doppelgänger, nicht über „ohne
+    // Zugang gilt als beendet" — genau diese Bequemlichkeit war der Fehler.
+    const calls: string[] = [];
+    handle.runner.register(
+      ebaySyncJob({
+        token: 'tok-test',
+        fetchImpl: (_url, init) => {
+          calls.push(String(init?.body ?? ''));
+          return Promise.resolve(
+            new Response('<EndItemResponse><Ack>Success</Ack></EndItemResponse>', {
+              status: 200,
+              headers: { 'content-type': 'text/xml' },
+            }),
+          );
+        },
+      }),
+    );
+
+    const outcome = await handle.runner.runOnce('ebay_sync');
+    expect(outcome.status).toBe('SUCCESS');
+    // eBay wurde wirklich gefragt.
+    expect(calls).toHaveLength(1);
+
+    const [product] = await migratorSql<{ ebay_state: string }[]>`
+      SELECT ebay_state::text AS ebay_state FROM products WHERE id = ${ringId}`;
     expect(product?.ebay_state).toBe('BEENDET');
 
     const events = await migratorSql<{ to_state: string; changed_by_source: string }[]>`
       SELECT to_state::text AS to_state, changed_by_source
         FROM product_ebay_listing_events
-       WHERE product_id = ${productId}`;
+       WHERE product_id = ${ringId}`;
     expect(events).toHaveLength(1);
     expect(events[0]?.to_state).toBe('BEENDET');
     expect(events[0]?.changed_by_source).toBe('WORKER');
   });
 
-  it('is a no-op when no SOLD+ONLINE products exist (idempotent re-run)', async () => {
-    // The first test already ended the only seeded product; a second run finds nothing new.
+  it('writes no second event when it runs again over an already ended listing', async () => {
+    // Der geschützte UPDATE (`WHERE ebay_state = 'ONLINE'`) darf beim
+    // zweiten Durchgang kein zweites Ereignis in die Historie schreiben.
+    const before = await migratorSql<{ n: string }[]>`
+      SELECT count(*)::text AS n FROM product_ebay_listing_events`;
+
     const outcome = await handle.runner.runOnce('ebay_sync');
     expect(outcome.status).toBe('SUCCESS');
+
+    const after = await migratorSql<{ n: string }[]>`
+      SELECT count(*)::text AS n FROM product_ebay_listing_events`;
+    expect(Number(after[0]?.n)).toBe(Number(before[0]?.n));
   });
 });

@@ -15,7 +15,7 @@
  * EndItem reference. Wiring the real ItemID is a follow-up.
  */
 
-import { endEbayListing } from '../lib/ebay-client.js';
+import { EbayNotConfiguredError, type EbayFetch, endEbayListing } from '../lib/ebay-client.js';
 import type { JobDefinition } from '../lib/job-runner.js';
 
 interface SoldOnlineRow {
@@ -24,8 +24,13 @@ interface SoldOnlineRow {
 }
 
 export interface EbaySyncJobOptions {
-  /** eBay Trading API token; empty → mock EndItem (dev/test). */
+  /** eBay Trading API token. Leer → der Abgleich lehnt ab und wartet. */
   token: string;
+  /**
+   * Nur für Tests: ein eBay-Doppelgänger. Damit lässt sich der Erfolgsweg
+   * prüfen, ohne dafür „ohne Zugang gilt als beendet" erlauben zu müssen.
+   */
+  fetchImpl?: EbayFetch;
 }
 
 export function ebaySyncJob(opts: EbaySyncJobOptions): JobDefinition {
@@ -44,9 +49,14 @@ export function ebaySyncJob(opts: EbaySyncJobOptions): JobDefinition {
 
       let ended = 0;
       let failed = 0;
+      let notConfigured = 0;
       for (const product of rows) {
         try {
-          const result = await endEbayListing(opts.token, product.sku);
+          const result = await endEbayListing(
+            opts.token,
+            product.sku,
+            opts.fetchImpl ? { fetchImpl: opts.fetchImpl } : {},
+          );
           await sql.begin(async (tx) => {
             // Guarded: only flip if still ONLINE (don't clobber a concurrent flip).
             const updated = await tx`
@@ -65,16 +75,40 @@ export function ebaySyncJob(opts: EbaySyncJobOptions): JobDefinition {
           });
           ended++;
         } catch (err) {
-          failed++;
-          log.warn('ebay_sync: EndItem failed, leaving row for retry', {
-            productId: product.id,
-            err: err instanceof Error ? err.message : String(err),
-          });
+          // „Kein Zugang hinterlegt" ist kein Ausfall und darf auch nicht als
+          // einer GEZÄHLT werden: es wartet auf den Inhaber, nicht auf eBay.
+          // Beide Fälle lassen die Zeile stehen, denn das Inserat ist in
+          // beiden noch online.
+          if (err instanceof EbayNotConfiguredError) {
+            notConfigured++;
+          } else {
+            failed++;
+            log.warn('ebay_sync: EndItem failed, leaving row for retry', {
+              productId: product.id,
+              err: err instanceof Error ? err.message : String(err),
+            });
+          }
         }
       }
 
-      log.info('ebay_sync reconcile complete', { scanned: rows.length, ended, failed });
-      return { scanned: rows.length, ended, failed };
+      // Einmal pro Lauf statt einmal pro Artikel: sonst wiederholt derselbe
+      // fehlende Zugang dieselbe Zeile alle fünf Minuten so oft, wie Stücke
+      // warten, und das eigentliche Signal geht darin unter.
+      if (notConfigured > 0) {
+        log.warn(
+          'ebay_sync: kein eBay-Zugang hinterlegt — diese Inserate stehen weiterhin online, ' +
+            'obwohl die Stücke am Tresen verkauft sind',
+          { wartend: notConfigured },
+        );
+      }
+
+      log.info('ebay_sync reconcile complete', {
+        scanned: rows.length,
+        ended,
+        failed,
+        notConfigured,
+      });
+      return { scanned: rows.length, ended, failed, notConfigured };
     },
   };
 }

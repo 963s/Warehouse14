@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { type EbayFetch, endEbayListing } from '../../src/lib/ebay-client.js';
+import { EbayNotConfiguredError, type EbayFetch, endEbayListing } from '../../src/lib/ebay-client.js';
 
 function xmlFetch(
   body: string,
@@ -26,9 +26,33 @@ function xmlFetch(
 }
 
 describe('endEbayListing', () => {
-  it('returns a mock success when no token is configured (no HTTP call)', async () => {
-    const result = await endEbayListing('', 'SKU-1');
-    expect(result).toEqual({ ended: true, mock: true, detail: expect.stringContaining('mock') });
+  it('REFUSES without a token, and never claims the listing was ended', async () => {
+    // Diese Datei forderte vorher `{ ended: true, mock: true }`, also die
+    // Meldung „beendet", ohne eBay je gefragt zu haben. Der Abgleich schrieb
+    // daraufhin ONLINE → BEENDET. Das Inserat blieb online, das Stück galt im
+    // Haus als vom Markt, und weil jedes Stück ein Einzelstück ist, konnte es
+    // ein zweites Mal verkauft werden.
+    await expect(endEbayListing('', 'SKU-1')).rejects.toThrow(EbayNotConfiguredError);
+  });
+
+  it('says in the refusal that the listing is still online', async () => {
+    await expect(endEbayListing('', 'SKU-1')).rejects.toThrow(/weiterhin online/);
+  });
+
+  it('makes no HTTP call without a token', async () => {
+    const { fetchImpl, calls } = xmlFetch('<EndItemResponse><Ack>Success</Ack></EndItemResponse>');
+    await endEbayListing('', 'SKU-1', { fetchImpl }).catch(() => undefined);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('offers no way to simulate an ended listing', async () => {
+    // Anders als beim Versandetikett gibt es hier bewusst KEIN Übungs-Flag.
+    // Ein Etikett kann man drucken und wegwerfen; ein Inserat ist entweder vom
+    // Markt oder nicht, und eine Simulation davon wäre schlicht eine Lüge über
+    // den Zustand einer fremden Plattform.
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(new URL('../../src/lib/ebay-client.ts', import.meta.url), 'utf8');
+    expect(src).not.toMatch(/allowSimulated|mock:\s*true/);
   });
 
   it('calls EndItem with the token + item ref and parses a Success Ack', async () => {
