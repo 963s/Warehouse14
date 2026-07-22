@@ -252,11 +252,16 @@ const storefrontReserveRoutes: FastifyPluginAsync = async (app) => {
       }
 
       // Flip the cart to RESERVED — the 0068 trigger emits the live staff event.
+      // The 0097 trigger mints the order number in the same statement, so it
+      // has to be read back rather than computed: BST-2026-000009 exists only
+      // after this UPDATE, and the letter below is the first thing that shows
+      // it to the customer.
       const reservedAt = new Date();
-      await app.db
+      const [reservedCart] = await app.db
         .update(carts)
         .set({ status: 'RESERVED', reservedAt, reservationSessionId })
-        .where(eq(carts.id, cart.id));
+        .where(eq(carts.id, cart.id))
+        .returning({ orderNumber: carts.orderNumber });
 
       // Confirmation letter with the reservation number — best-effort, never
       // blocks the reservation. Recipient: the pickup contact's email when
@@ -298,7 +303,10 @@ const storefrontReserveRoutes: FastifyPluginAsync = async (app) => {
               email,
               composeReservationConfirmed(
                 contact?.fullName ?? who[0]?.full_name ?? null,
-                cart.id,
+                // Falling back to the raw id would put a UUID in front of the
+                // customer again, which is the whole thing 0097 removed. The
+                // trigger cannot fail to fire here, so this is belt only.
+                reservedCart?.orderNumber ?? cart.id,
                 items.length,
                 totals[0]?.total ?? null,
                 locale,

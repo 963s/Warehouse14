@@ -48,19 +48,48 @@ function footerLines(c: EmailCopy): string[] {
   ];
 }
 
+/**
+ * Content id of the letterhead image. The worker attaches the logo under this
+ * name whenever the HTML references it, so composition here stays a pure
+ * string function and the image bytes never travel through the database.
+ */
+export const EMAIL_LOGO_CID = 'w14logo';
+
+/**
+ * The letterhead.
+ *
+ * The mark is pure black line art on transparency, which is exactly the shape
+ * that vanishes in a dark mode client, so it sits in an explicitly WHITE cell
+ * rather than on the parchment. The alt text carries the wordmark for the
+ * readers who block images, which on a transactional letter is a large
+ * minority and not an edge case.
+ *
+ * `width` is set as an attribute as well as in CSS because Outlook ignores the
+ * style and would otherwise render the image at its full 360 pixels.
+ */
+function letterhead(c: EmailCopy): string {
+  return (
+    '<div style="background:#ffffff;border:1px solid #e2ddd0;border-radius:10px;' +
+    'padding:20px 24px 16px;margin-bottom:24px;text-align:center;">' +
+    `<img src="cid:${EMAIL_LOGO_CID}" width="180" alt="Warehouse 14" ` +
+    'style="width:180px;max-width:100%;height:auto;display:block;margin:0 auto;border:0;">' +
+    `<div style="font-size:11px;color:#6e6b64;margin-top:10px;letter-spacing:0.4px;">${c.tagline}</div>` +
+    '</div>'
+  );
+}
+
 function htmlWrap(c: EmailCopy, bodyHtml: string): string {
   const align = c.dir === 'rtl' ? 'right' : 'left';
   return (
     '<!doctype html><meta charset="utf-8">' +
+    '<meta name="viewport" content="width=device-width,initial-scale=1">' +
     `<body style="margin:0;padding:0;background:#efece3;" dir="${c.dir}">` +
     `<div style="max-width:560px;margin:0 auto;padding:32px 24px;font-family:Georgia,serif;color:#1c1c1c;text-align:${align};">` +
-    '<div style="font-size:22px;letter-spacing:1px;margin-bottom:4px;">WAREHOUSE 14</div>' +
-    `<div style="font-size:12px;color:#6e6b64;margin-bottom:24px;">${c.tagline}</div>` +
-    '<div style="height:1px;background:#a3823b;margin-bottom:24px;"></div>' +
+    letterhead(c) +
     bodyHtml +
-    '<div style="height:1px;background:#d8d3c4;margin:28px 0 12px;"></div>' +
+    '<div style="height:1px;background:#a3823b;margin:28px 0 12px;"></div>' +
     footerLines(c)
-      .map((l) => `<div style="font-size:11px;color:#6e6b64;line-height:1.5;">${l}</div>`)
+      .map((l) => `<div style="font-size:11px;color:#6e6b64;line-height:1.6;">${l}</div>`)
       .join('') +
     '</div></body>'
   );
@@ -102,10 +131,18 @@ export function composeWelcome(name: string | null, locale?: string | null): Com
   };
 }
 
-/** Reservation confirmation — the order number is the pickup reference. */
+/**
+ * Reservation confirmation — the order number is the pickup reference.
+ *
+ * `orderNumber` is `BST-2026-000009` (0097), NOT the cart UUID. Before that
+ * migration this took the raw id and the letter contradicted itself: the
+ * body printed all thirty six characters while the subject printed the first
+ * eight in capitals, so the reader was handed two different references for one
+ * reservation and neither could be read down a telephone.
+ */
 export function composeReservationConfirmed(
   name: string | null,
-  orderId: string,
+  orderNumber: string,
   itemCount: number,
   totalEur: string | null,
   locale?: string | null,
@@ -116,7 +153,7 @@ export function composeReservationConfirmed(
   const totalLine = totalEur ? `${c.totalLabel}: ${totalEur} ${c.euro}\n` : '';
   const text =
     `${g}\n\n${lead}\n\n` +
-    `${c.refLabel}: ${orderId}\n` +
+    `${c.refLabel}: ${orderNumber}\n` +
     totalLine +
     `\n${c.reservationClose}\n\n${textFooter(c)}`;
   // The reference sits in its own card, in a monospaced face, because it is
@@ -127,7 +164,7 @@ export function composeReservationConfirmed(
       para(lead) +
       '<div style="background:#ffffff;border:1px solid #d8d3c4;border-radius:8px;padding:14px 18px;margin:0 0 14px;">' +
       `<div style="font-size:12px;color:#6e6b64;">${c.refLabel}</div>` +
-      `<div style="font-size:17px;font-family:monospace;" dir="ltr">${orderId}</div>` +
+      `<div style="font-size:19px;font-family:monospace;letter-spacing:0.5px;" dir="ltr">${orderNumber}</div>` +
       (totalEur
         ? `<div style="font-size:13px;color:#4c4a45;margin-top:6px;">${c.totalLabel}: ${totalEur} ${c.euro}</div>`
         : '') +
@@ -136,7 +173,7 @@ export function composeReservationConfirmed(
   );
   return {
     template: 'reservation_confirmed',
-    subject: c.reservationSubject(orderId.slice(0, 8).toUpperCase()),
+    subject: c.reservationSubject(orderNumber),
     text,
     html,
     locale: normalizeEmailLocale(locale),

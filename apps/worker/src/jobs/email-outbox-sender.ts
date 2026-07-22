@@ -19,6 +19,7 @@
 import nodemailer from 'nodemailer';
 
 import type { JobContext, JobDefinition } from '../lib/job-runner.js';
+import { EMAIL_LOGO_ATTACHMENT, EMAIL_LOGO_CID } from './email-logo.js';
 
 const BATCH_SIZE = 10;
 const MAX_ATTEMPTS = 5;
@@ -106,6 +107,13 @@ export function emailOutboxSenderJob(
             subject: letter.subject,
             text: letter.body_text,
             ...(letter.body_html ? { html: letter.body_html } : {}),
+            // Attach the letterhead only when the letter actually references
+            // it. An unreferenced inline attachment is what turns a clean
+            // message into one that shows a paperclip and, in some clients,
+            // an orphaned image dangling under the signature.
+            ...(letter.body_html?.includes(`cid:${EMAIL_LOGO_CID}`)
+              ? { attachments: [EMAIL_LOGO_ATTACHMENT] }
+              : {}),
           });
           await ctx.sql`
             UPDATE email_outbox

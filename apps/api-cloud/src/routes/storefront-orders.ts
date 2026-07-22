@@ -419,8 +419,9 @@ const storefrontOrdersRoutes: FastifyPluginAsync = async (app) => {
         id: string;
         status: string;
         reservation_session_id: string | null;
+        order_number: string | null;
       }>(drizzleSql`
-        SELECT id, status::text AS status, reservation_session_id
+        SELECT id, status::text AS status, reservation_session_id, order_number
           FROM carts
          WHERE id = ${req.params.id} AND shopper_id = ${req.shopper.id}
          LIMIT 1
@@ -482,7 +483,13 @@ const storefrontOrdersRoutes: FastifyPluginAsync = async (app) => {
             await enqueueEmail(
               tx,
               email,
-              composeReservationCancelled(who[0]?.full_name ?? null, cart.id, locale),
+              // The customer knows this reservation as BST-2026-000009, so the
+              // cancellation must name the same thing the confirmation did.
+              composeReservationCancelled(
+                who[0]?.full_name ?? null,
+                cart.order_number ?? cart.id,
+                locale,
+              ),
               who[0]?.customer_id ?? null,
             );
           }
