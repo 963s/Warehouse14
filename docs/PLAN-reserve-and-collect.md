@@ -97,3 +97,18 @@ Datenexport, der weggeworfene Export, die lokalen Zwischenspeicher.
 Ein echter Durchlauf auf der Produktion: reservieren, annehmen, vorbereiten,
 abholbereit melden, übergeben, und am Ende steht das Stück auf SOLD, der Beleg
 existiert, und der Kunde hat zwei Briefe bekommen. Erst danach wird gebaut.
+
+## Offener Nachtrag (bewusst NICHT jetzt gebaut)
+
+**Erinnerung vor Fristablauf.** Der Kunde wird nicht gewarnt, bevor seine
+Reservierung nach drei Tagen verfällt. Der saubere Bau scheitert an der
+Architektur: der E-Mail-Verfasser lebt in api-cloud, der Versender im worker,
+und der worker kann api-cloud NICHT importieren (er ist eine eigene
+Deploy-Einheit). Es gibt zwei ehrliche Wege, und beide sind eine
+Entwurfsentscheidung, kein schneller Zusatz:
+  1. ein gemeinsames E-Mail-Paket, aus dem beide Seiten verfassen, oder
+  2. ein Verfasser im worker (wie appointment-whatsapp seine Nachricht
+     dupliziert), nur de/en, da Briefe ohnehin auf de/en verengt werden.
+Migration 0100 (`carts.expiry_reminder_sent_at` + Teilindex) war der einzige
+DB-Teil und ist zurückgenommen, bis der Weg entschieden ist. Ein halb
+gekoppelter Zusatz wäre Flickwerk gewesen.
