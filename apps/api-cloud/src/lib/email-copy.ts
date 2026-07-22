@@ -128,6 +128,16 @@ export interface EmailCopy {
   cancelledSubject: string;
   cancelledLead: (ref: string) => string;
   cancelledClose: string;
+
+  /**
+   * „Ihr Stück liegt bereit." Der wichtigste Brief des Abholmodells: er ist das
+   * Einzige, das der Kundschaft sagt, dass sie kommen kann. Ohne ihn wartet ein
+   * Mensch zu Hause auf ein Zeichen, das nie kommt, während sein Stück am Tresen
+   * liegt.
+   */
+  readySubject: (ref: string) => string;
+  readyLead: string;
+  readyClose: string;
 }
 
 const BRAND = 'Warehouse 14';
@@ -195,6 +205,9 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     cancelledLead: (ref) =>
       `Ihre Reservierung ${ref} wurde storniert. Die Stücke sind wieder frei verfügbar.`,
     cancelledClose: 'Sie können jederzeit erneut reservieren. Wir sind gern für Sie da.',
+    readySubject: (ref) => `Ihre Bestellung ${ref} liegt zur Abholung bereit`,
+    readyLead: 'Ihre Stücke sind vorbereitet und liegen jetzt im Geschäft für Sie bereit. Kommen Sie zu unseren Öffnungszeiten vorbei; bezahlt wird bequem vor Ort.',
+    readyClose: 'Bitte nennen Sie die Reservierungsnummer bei der Abholung. Wir freuen uns auf Ihren Besuch.',
   },
 
   en: {
@@ -226,6 +239,9 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     cancelledLead: (ref) =>
       `Your reservation ${ref} has been cancelled. The pieces are available again.`,
     cancelledClose: 'You can reserve again at any time. We are glad to help.',
+    readySubject: (ref) => `Your order ${ref} is ready for collection`,
+    readyLead: 'Your pieces are prepared and now waiting for you in the shop. Come by during our opening hours; you pay comfortably on site.',
+    readyClose: 'Please mention the reservation number when you collect. We look forward to your visit.',
   },
 
   ar: {
@@ -259,6 +275,9 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     cancelledSubject: `تم إلغاء الحجز، ${BRAND}`,
     cancelledLead: (ref) => `تم إلغاء حجزك ${ref}. القطع متاحة من جديد.`,
     cancelledClose: 'يمكنك الحجز مجدداً في أي وقت. نحن هنا من أجلك.',
+    readySubject: (ref) => `طلبك ${ref} جاهز للاستلام`,
+    readyLead: 'قطعك جاهزة وبانتظارك الآن في المحل. تفضل بالمرور خلال ساعات العمل، والدفع يتم بسهولة في المحل.',
+    readyClose: 'يرجى ذكر رقم الحجز عند الاستلام. يسعدنا زيارتك.',
   },
 
   tr: {
@@ -290,6 +309,9 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     cancelledLead: (ref) =>
       `${ref} numaralı rezervasyonunuz iptal edildi. Parçalar yeniden satışa açık.`,
     cancelledClose: 'Dilediğiniz zaman yeniden rezerve edebilirsiniz. Her zaman buradayız.',
+    readySubject: (ref) => `${ref} numaralı siparişiniz teslim almaya hazır`,
+    readyLead: 'Parçalarınız hazırlandı ve şimdi mağazada sizi bekliyor. Çalışma saatlerimizde uğrayın; ödeme yerinde rahatça yapılır.',
+    readyClose: 'Lütfen teslim alırken rezervasyon numarasını belirtin. Ziyaretinizi bekliyoruz.',
   },
 
   fr: {
@@ -322,6 +344,9 @@ const COPY: Record<EmailLocale, EmailCopy> = {
       `Votre réservation ${ref} a été annulée. Les pièces sont de nouveau disponibles.`,
     cancelledClose:
       'Vous pouvez réserver à nouveau quand vous le souhaitez. Nous restons à votre disposition.',
+    readySubject: (ref) => `Votre commande ${ref} est prête à être retirée`,
+    readyLead: 'Vos pièces sont préparées et vous attendent désormais en boutique. Passez pendant nos horaires d’ouverture ; le paiement se fait sur place.',
+    readyClose: 'Merci d’indiquer le numéro de réservation lors du retrait. Au plaisir de vous accueillir.',
   },
 
   es: {
@@ -353,6 +378,9 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     cancelledLead: (ref) =>
       `Tu reserva ${ref} ha sido cancelada. Las piezas vuelven a estar disponibles.`,
     cancelledClose: 'Puedes reservar de nuevo cuando quieras. Estamos a tu disposición.',
+    readySubject: (ref) => `Su pedido ${ref} está listo para recoger`,
+    readyLead: 'Sus piezas están preparadas y le esperan ahora en la tienda. Pásese durante nuestro horario; el pago se realiza cómodamente en el sitio.',
+    readyClose: 'Indique el número de reserva al recoger. Esperamos su visita.',
   },
 
   it: {
@@ -384,6 +412,9 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     cancelledLead: (ref) =>
       `La tua prenotazione ${ref} è stata annullata. I pezzi sono di nuovo disponibili.`,
     cancelledClose: 'Puoi prenotare di nuovo quando vuoi. Siamo sempre a disposizione.',
+    readySubject: (ref) => `Il tuo ordine ${ref} è pronto per il ritiro`,
+    readyLead: 'I tuoi pezzi sono pronti e ti aspettano ora in negozio. Passa durante i nostri orari; il pagamento avviene comodamente sul posto.',
+    readyClose: 'Indica il numero di prenotazione al ritiro. Ti aspettiamo.',
   },
 
   nl: {
@@ -414,6 +445,9 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     cancelledLead: (ref) =>
       `Je reservering ${ref} is geannuleerd. De stukken zijn weer beschikbaar.`,
     cancelledClose: 'Je kunt altijd opnieuw reserveren. We staan voor je klaar.',
+    readySubject: (ref) => `Je bestelling ${ref} ligt klaar om op te halen`,
+    readyLead: 'Je stukken zijn voorbereid en liggen nu voor je klaar in de winkel. Kom langs tijdens onze openingstijden; betalen doe je gemakkelijk ter plaatse.',
+    readyClose: 'Noem het reserveringsnummer bij het ophalen. We verheugen ons op je bezoek.',
   },
 
   pl: {
@@ -450,6 +484,9 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     cancelledLead: (ref) =>
       `Twoja rezerwacja ${ref} została anulowana. Przedmioty są znowu dostępne.`,
     cancelledClose: 'Możesz zarezerwować ponownie w dowolnej chwili. Chętnie pomożemy.',
+    readySubject: (ref) => `Twoje zamówienie ${ref} jest gotowe do odbioru`,
+    readyLead: 'Twoje przedmioty są przygotowane i czekają teraz na Ciebie w sklepie. Wpadnij w godzinach otwarcia; płatność wygodnie na miejscu.',
+    readyClose: 'Przy odbiorze podaj numer rezerwacji. Czekamy na Twoją wizytę.',
   },
 
   pt: {
@@ -482,6 +519,9 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     cancelledLead: (ref) =>
       `A sua reserva ${ref} foi cancelada. As peças estão novamente disponíveis.`,
     cancelledClose: 'Pode reservar de novo quando quiser. Estamos ao seu dispor.',
+    readySubject: (ref) => `A sua encomenda ${ref} está pronta para levantamento`,
+    readyLead: 'As suas peças estão preparadas e aguardam-no agora na loja. Passe durante o nosso horário; o pagamento é feito comodamente no local.',
+    readyClose: 'Indique o número de reserva no levantamento. Esperamos a sua visita.',
   },
 
   da: {
@@ -511,6 +551,9 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     cancelledSubject: `Reservation annulleret, ${BRAND}`,
     cancelledLead: (ref) => `Din reservation ${ref} er annulleret. Varerne er ledige igen.`,
     cancelledClose: 'Du kan reservere igen når som helst. Vi er her for dig.',
+    readySubject: (ref) => `Din bestilling ${ref} er klar til afhentning`,
+    readyLead: 'Dine stykker er forberedt og venter nu på dig i butikken. Kig forbi i vores åbningstid; betaling sker bekvemt på stedet.',
+    readyClose: 'Nævn venligst reservationsnummeret ved afhentning. Vi ser frem til dit besøg.',
   },
 
   sv: {
@@ -540,6 +583,9 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     cancelledSubject: `Reservation avbokad, ${BRAND}`,
     cancelledLead: (ref) => `Din reservation ${ref} är avbokad. Föremålen är tillgängliga igen.`,
     cancelledClose: 'Du kan reservera igen när du vill. Vi finns här för dig.',
+    readySubject: (ref) => `Din beställning ${ref} är redo att hämtas`,
+    readyLead: 'Dina stycken är förberedda och väntar nu på dig i butiken. Kom förbi under våra öppettider; betalning sker bekvämt på plats.',
+    readyClose: 'Ange reservationsnumret vid hämtning. Vi ser fram emot ditt besök.',
   },
 
   uk: {
@@ -575,6 +621,9 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     cancelledSubject: `Бронювання скасовано, ${BRAND}`,
     cancelledLead: (ref) => `Ваше бронювання ${ref} скасовано. Речі знову доступні.`,
     cancelledClose: 'Ви можете забронювати знову будь коли. Ми завжди раді допомогти.',
+    readySubject: (ref) => `Ваше замовлення ${ref} готове до отримання`,
+    readyLead: 'Ваші вироби підготовлені й тепер чекають на вас у магазині. Завітайте в години роботи; оплата зручно на місці.',
+    readyClose: 'Будь ласка, назвіть номер бронювання при отриманні. Будемо раді вашому візиту.',
   },
 };
 

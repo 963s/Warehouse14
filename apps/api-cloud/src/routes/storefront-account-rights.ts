@@ -261,6 +261,19 @@ const storefrontAccountRightsRoutes: FastifyPluginAsync<
           drizzleSql`SELECT erase_customer(${customerId}::uuid, NULL) AS keys`,
         );
 
+        // Eine Tagebuchzeile, auch beim kunden-eigenen Löschen. Bisher schrieb
+        // NUR die Personal-Route eine, und erase_customer selbst keine, also
+        // hinterließ eine kunden-initiierte Löschung überhaupt keine Spur: auf
+        // der Produktion standen zwei gelöschte Konten null „customer.erased"-
+        // Zeilen gegenüber. DSGVO Art. 5 Abs. 2 verlangt aber, dass der
+        // Verantwortliche eine Löschung NACHWEISEN kann. actor_user_id bleibt
+        // NULL, weil der Handelnde kein Personal ist; die Kundennummer im
+        // Rumpf macht die Zeile auffindbar, ohne die gelöschten Daten zu nennen.
+        await tx.execute(drizzleSql`
+          INSERT INTO audit_log (event_type, actor_user_id, ip_address, user_agent, payload)
+          VALUES ('customer.erased', NULL, ${req.ip ?? null}, ${req.headers['user-agent'] ?? null},
+                  ${JSON.stringify({ customerId, initiatedBy: 'customer' })}::jsonb)`);
+
         // Every session dies with the account, including the one making this
         // request. shopper_sessions has no revoked_at (that belongs to the
         // staff sessions table), and a shopper session is a bearer token with

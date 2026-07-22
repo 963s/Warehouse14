@@ -77,6 +77,13 @@ class ProductNotReservableError extends DomainError {
   public readonly code: ApiErrorCode = 'PRODUCT_NOT_RESERVABLE';
 }
 
+/** Eine Web-Bestellung ist nicht (mehr) zur Abholung offen: schon übergeben,
+ *  storniert oder verfallen. 409, damit der Tresen neu laden kann. */
+class NotCollectableError extends DomainError {
+  public readonly httpStatus = 409;
+  public readonly code: ApiErrorCode = 'CONFLICT';
+}
+
 class ValidationError extends DomainError {
   public readonly httpStatus = 400;
   public readonly code: ApiErrorCode = 'VALIDATION_ERROR';
@@ -291,12 +298,20 @@ const transactionsFinalize: FastifyPluginAsync<TransactionsFinalizeOpts> = async
           // Cashier A cannot be finalized by Cashier B even if B has the
           // same sessionId in their localStorage.
           const actorUserId = req.actor.id; // requireAuth narrowed actor → non-null
+
+          // Abholung einer Web-Reservierung: die Stücke gehören keinem
+          // Kassierer (reserved_by_user_id ist NULL), also finalisieren wir sie
+          // mit userId NULL. Der Eigentumsschutz bleibt: der reserved_by_session_id
+          // muss weiterhin stimmen, und den kennt nur, wer die Bestellung über
+          // die rollen-geschützte Abfrage nachgeschlagen hat. Ein POS-Verkauf
+          // (kein webOrderNumber) finalisiert unverändert mit der Kassierer-Id.
+          const finalizeUserId = body.webOrderNumber ? null : actorUserId;
           for (const item of body.items) {
             try {
               await finalizeReservation(tx, {
                 productId: item.productId,
                 sessionId: item.reservationSessionId,
-                userId: actorUserId,
+                userId: finalizeUserId,
               });
             } catch (err) {
               if (err instanceof ReservationOwnershipError) {
@@ -384,6 +399,31 @@ const transactionsFinalize: FastifyPluginAsync<TransactionsFinalizeOpts> = async
               molliePaymentId: p.molliePaymentId ?? null,
             })),
           );
+
+          // 3d-bis. Abholung binden: den Warenkorb an DIESE Transaktion knüpfen,
+          // im selben BEGIN wie der Beleg, damit Reservierung und Kassenbon EIN
+          // Vorgang sind und nicht zwei unverbundene Zeilen. Der geschützte
+          // UPDATE (WHERE status='RESERVED') stellt sicher, dass nur eine noch
+          // laufende Reservierung übergeben werden kann; hat sie ein anderer
+          // Vorgang bereits übergeben oder storniert, trifft er null Zeilen und
+          // wir brechen ab, statt einen Beleg auf eine tote Bestellung zu buchen.
+          if (body.webOrderNumber) {
+            const linked = (await tx.execute<{ id: string }>(drizzleSql`
+              UPDATE carts
+                 SET status                   = 'CONVERTED',
+                     converted_to_transaction_id = ${txRow.id}::uuid,
+                     pickup_stage             = 'ABGEHOLT',
+                     collected_at             = now(),
+                     collected_by_user_id     = ${actorUserId}::uuid
+               WHERE order_number = ${body.webOrderNumber}
+                 AND status       = 'RESERVED'
+               RETURNING id::text AS id`)) as unknown as Array<{ id: string }>;
+            if (linked.length === 0) {
+              throw new NotCollectableError(
+                `Bestellung ${body.webOrderNumber} ist nicht (mehr) zur Abholung offen.`,
+              );
+            }
+          }
 
           // 3e. Look up the ledger_events row that the AFTER-INSERT trigger
           // emitted — the SSE consumers reference this id. The trigger always

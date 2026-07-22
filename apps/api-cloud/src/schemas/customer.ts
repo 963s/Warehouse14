@@ -151,6 +151,15 @@ export const CustomerDetailResponse = Type.Object({
     ]),
     online: Type.Boolean(),
   }),
+  /**
+   * Gesetzt, wenn dieser Datensatz ein Grabstein ist: das Konto wurde gelöscht
+   * (DSGVO Art. 17), die personenbezogenen Daten sind fort, die Kundennummer
+   * und der Fiskalbezug bleiben nach § 147 AO erhalten. Nur sichtbar, wenn das
+   * Personal ausdrücklich `includeDeleted` anfragt; sonst ist die Zeile wie
+   * bisher nicht auffindbar. So sieht der Laden „dieses Konto wurde gelöscht",
+   * statt dass die Zeile spurlos verschwindet.
+   */
+  deletedAt: Type.Union([Type.String({ format: 'date-time' }), Type.Null()]),
 });
 export type CustomerDetailResponse = Static<typeof CustomerDetailResponse>;
 

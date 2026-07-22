@@ -344,12 +344,19 @@ const storefrontReserveRoutes: FastifyPluginAsync = async (app) => {
       // has to be read back rather than computed: BST-2026-000009 exists only
       // after this UPDATE, and the letter below is the first thing that shows
       // it to the customer.
+      // pickup_stage OFFEN setzt den Abhol-Arbeitsablauf auf Anfang (0099): der
+      // Beleg wartet nun sichtbar auf die Annahme durch das Personal, statt in
+      // einem Zustand ohne Ablauf zu verschwinden. Über rohes SQL gesetzt, weil
+      // die Spalte (wie die 0098-Felder) nicht im Drizzle-Objekt liegt.
       const reservedAt = new Date();
       const [reservedCart] = await app.db
         .update(carts)
         .set({ status: 'RESERVED', reservedAt, reservationSessionId })
         .where(eq(carts.id, cart.id))
         .returning({ orderNumber: carts.orderNumber });
+      await app.db.execute(drizzleSql`
+        UPDATE carts SET pickup_stage = 'OFFEN'
+         WHERE id = ${cart.id} AND fulfilment_method = 'PICKUP' AND pickup_stage IS NULL`);
 
       // Confirmation letter with the reservation number — best-effort, never
       // blocks the reservation. Recipient: the pickup contact's email when

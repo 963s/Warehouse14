@@ -172,6 +172,19 @@ export const FinalizeBody = Type.Object({
   stornoOfTransactionId: Type.Optional(Type.String({ format: 'uuid' })),
 
   notesInternal: Type.Optional(Type.String({ maxLength: 1024 })),
+
+  /**
+   * Abholung einer Web-Reservierung am Tresen (0099).
+   *
+   * Gesetzt, wenn dieser Verkauf die Ware einer Online-Reservierung übergibt,
+   * die der Kunde abholt und hier bezahlt. Dann gilt zweierlei: die reservierten
+   * Stücke gehören keinem Kassierer (`reserved_by_user_id` ist NULL), also wird
+   * mit `userId: null` finalisiert; und nach dem Beleg wird der Warenkorb an
+   * DIESE Transaktion gebunden (CONVERTED, pickup_stage ABGEHOLT, abgeholt am
+   * und durch), damit die Reservierung und der Kassenbon EIN Vorgang sind und
+   * nicht zwei unverbundene Zeilen.
+   */
+  webOrderNumber: Type.Optional(Type.String({ maxLength: 32 })),
 });
 export type FinalizeBody = Static<typeof FinalizeBody>;
 

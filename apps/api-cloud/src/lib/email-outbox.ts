@@ -282,6 +282,53 @@ export function composeReservationConfirmed(
 }
 
 /**
+ * „Ihr Stück liegt bereit." Der Brief, der die Kundschaft an den Tresen holt.
+ *
+ * Spiegelt composeReservationConfirmed: dieselbe Nummernkarte, weil die
+ * Reservierungsnummer wieder das Einzige ist, das der Mensch am Tresen laut
+ * sagen muss. Kein Betrag hier, das war der Bestätigungsbrief; hier zählt nur
+ * die Aufforderung zu kommen, samt Öffnungszeiten aus dem Fuß.
+ */
+export function composeOrderReady(
+  name: string | null,
+  orderNumber: string,
+  locale?: string | null,
+): ComposedEmail {
+  const c = emailCopy(locale);
+  const g = greet(c, name);
+  const text =
+    `${g}\n\n${c.readyLead}\n\n` +
+    `${c.refLabel}: ${orderNumber}\n` +
+    `\n${c.readyClose}\n\n${textFooter(c)}`;
+  const html = htmlWrap(
+    c,
+    para(g) +
+      para(c.readyLead) +
+      '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" ' +
+      'style="margin:4px 0 18px;"><tr>' +
+      `<td class="w14-gold" width="3" style="background:${GOLD};border-radius:3px 0 0 3px;` +
+      'font-size:0;line-height:0;">&nbsp;</td>' +
+      `<td class="w14-ref" style="background:#faf8f2;border:1px solid ${RULE};border-left:0;` +
+      'border-radius:0 10px 10px 0;padding:16px 20px;">' +
+      `<div class="w14-muted" style="font-size:11px;color:${MUTED};letter-spacing:1.2px;` +
+      `text-transform:uppercase;">${c.refLabel}</div>` +
+      `<div class="w14-ink" style="font-size:22px;color:${INK};margin-top:4px;` +
+      `font-family:'SF Mono',Menlo,Consolas,monospace;letter-spacing:1px;" dir="ltr">` +
+      `${orderNumber}</div>` +
+      '</td></tr></table>' +
+      para(c.readyClose),
+    `${c.refLabel}: ${orderNumber}`,
+  );
+  return {
+    template: 'order_ready',
+    subject: c.readySubject(orderNumber),
+    text,
+    html,
+    locale: normalizeEmailLocale(locale),
+  };
+}
+
+/**
  * Escape text that a human typed before it enters an HTML letter.
  *
  * Staff replies are free text. Without this, a colleague writing "Preis < 100"

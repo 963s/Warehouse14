@@ -174,13 +174,14 @@ const customersRoutes: FastifyPluginAsync = async (app) => {
   // ══════════════════════════════════════════════════════════════════════
   // GET /api/customers/:id
   // ══════════════════════════════════════════════════════════════════════
-  app.get<{ Params: { id: string } }>(
+  app.get<{ Params: { id: string }; Querystring: { includeDeleted?: boolean } }>(
     '/api/customers/:id',
     {
       schema: {
         tags: ['customers'],
         summary: 'Customer detail with decrypted PII (ADMIN-only).',
         params: Type.Object({ id: Type.String({ format: 'uuid' }) }),
+        querystring: Type.Object({ includeDeleted: Type.Optional(Type.Boolean()) }),
         response: {
           200: CustomerDetailResponse,
           401: ErrorResponse,
@@ -194,6 +195,9 @@ const customersRoutes: FastifyPluginAsync = async (app) => {
       requireRole(req, 'ADMIN');
 
       const { id } = req.params;
+      // Ein Grabstein wird nur auf ausdrückliche Anfrage gezeigt. Sonst bleibt
+      // eine gelöschte Zeile unauffindbar, wie bisher.
+      const includeDeleted = req.query.includeDeleted === true;
 
       const row = await app.withPii(async (tx) => {
         const rows = await tx.execute<{
@@ -219,6 +223,7 @@ const customersRoutes: FastifyPluginAsync = async (app) => {
           cumulative_debt_eur: string;
           retention_until: string;
           created_at: Date;
+          soft_deleted_at: Date | null;
         }>(sql`
         SELECT
           id,
@@ -242,10 +247,11 @@ const customersRoutes: FastifyPluginAsync = async (app) => {
           cumulative_ankauf_eur,
           cumulative_debt_eur,
           retention_until::text                       AS retention_until,
-          created_at
+          created_at,
+          soft_deleted_at
         FROM customers
         WHERE id = ${id}
-          AND soft_deleted_at IS NULL
+          ${includeDeleted ? sql`` : sql`AND soft_deleted_at IS NULL`}
         LIMIT 1
       `);
         return rows[0] ?? null;
@@ -319,6 +325,7 @@ const customersRoutes: FastifyPluginAsync = async (app) => {
         retentionUntil: row.retention_until,
         createdAt: new Date(row.created_at).toISOString(),
         registration: { method: registrationMethod, online: shopper !== null },
+        deletedAt: row.soft_deleted_at ? new Date(row.soft_deleted_at).toISOString() : null,
       });
     },
   );
