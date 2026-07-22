@@ -10,11 +10,31 @@
  * customer is still waiting outranks a newer one that has already had a
  * reply, because an unanswered question is the only thing here that is
  * actively costing goodwill.
+ *
+ * WHAT AN AUDIT CAUGHT IN THE FIRST DRAFT, and why each one mattered:
+ *
+ *   • ONE draft for the whole screen. Type two sentences to Frau A, get
+ *     interrupted, open Herr B's ticket, and A's half-written text was sitting
+ *     in B's box ready to be mailed to him. Drafts are now per ticket.
+ *   • The status buttons had no catch. On a 403 or a dropped line the button
+ *     simply un-greyed and the operator walked away believing the ticket was
+ *     closed. It was not.
+ *   • A failed request rendered the cheerful empty state, so a broken inbox
+ *     looked like a quiet one. Worse on the detail: an empty thread plus a
+ *     live reply box, inviting an answer to a question never shown.
+ *   • The headline counted only the FILTERED rows but spoke for the whole
+ *     shop, so opening "Geschlossen" announced that nobody was waiting while
+ *     four people were.
+ *   • `?? t.status` printed a raw enum if the server ever grew a fourth one.
+ *
+ * Buttons come from the shared kit. The first draft hand-rolled them and
+ * filled them with gilt, which the design system forbids outright: gold is a
+ * thread, an edge, a seal, never a fill.
  */
 
 import { useCallback, useMemo, useState } from 'react';
 
-import { DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
+import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 import { describeError } from '@warehouse14/i18n-de';
 import { supportApi } from '@warehouse14/api-client';
 import type { SupportTicketDetail, TicketStatus } from '@warehouse14/api-client';
@@ -27,6 +47,18 @@ const STATUS_LABEL: Record<string, string> = {
   WARTET: 'Wartet auf Kundin oder Kunde',
   GESCHLOSSEN: 'Geschlossen',
 };
+
+/** Never a raw enum on screen: an unknown status degrades to a German word. */
+function statusLabel(status: string): string {
+  return STATUS_LABEL[status] ?? 'Unbekannter Stand';
+}
+
+const BUCKETS = ['ALLE', 'OFFEN', 'WARTET', 'GESCHLOSSEN'] as const;
+type Bucket = (typeof BUCKETS)[number];
+
+function bucketLabel(b: Bucket): string {
+  return b === 'ALLE' ? 'Alle offenen' : statusLabel(b);
+}
 
 /** German for a moment in time, said the way somebody at a counter says it. */
 function whenLabel(iso: string | null): string {
@@ -42,11 +74,13 @@ function whenLabel(iso: string | null): string {
 export function Anfragen() {
   const api = useApiClient();
   const [openId, setOpenId] = useState<string | null>(null);
-  const [draft, setDraft] = useState('');
+  // ONE draft PER TICKET. A single shared draft mailed one customer's
+  // half-written answer to the next customer the operator clicked on.
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
-  const [bucket, setBucket] = useState<TicketStatus | 'ALLE'>('ALLE');
+  const [bucket, setBucket] = useState<Bucket>('ALLE');
 
   const listQ = useCachedQuery({
     queryKey: ['support', 'tickets', bucket],
@@ -65,6 +99,19 @@ export function Anfragen() {
   const tickets = useMemo(() => listQ.data ?? [], [listQ.data]);
   const waiting = tickets.filter((t) => t.awaitingReply).length;
   const detail = openId ? detailQ.data : null;
+  const draft = openId ? (drafts[openId] ?? '') : '';
+
+  // A read that never answered is not an empty inbox. Distinguish the two.
+  const listFailed = listQ.isError && listQ.data === undefined;
+  const detailFailed = openId != null && detailQ.isError && detailQ.data == null;
+
+  const setDraft = useCallback(
+    (value: string) => {
+      if (!openId) return;
+      setDrafts((prev) => ({ ...prev, [openId]: value }));
+    },
+    [openId],
+  );
 
   const send = useCallback(async () => {
     if (!openId || !draft.trim() || busy) return;
@@ -72,7 +119,11 @@ export function Anfragen() {
     setErr(null);
     try {
       const res = await supportApi.reply(api, openId, draft.trim());
-      setDraft('');
+      setDrafts((prev) => {
+        const next = { ...prev };
+        delete next[openId];
+        return next;
+      });
       setNote(`Antwort zu ${res.ticketNumber} ist in der Warteschlange.`);
       listQ.refetch();
       detailQ.refetch();
@@ -93,10 +144,16 @@ export function Anfragen() {
     async (status: TicketStatus) => {
       if (!openId || busy) return;
       setBusy(true);
+      setErr(null);
+      setNote(null);
       try {
         await supportApi.setStatus(api, openId, status);
         listQ.refetch();
         detailQ.refetch();
+      } catch (e) {
+        // Without this the button just un-greyed and the operator walked away
+        // believing a ticket was closed that is still open.
+        setErr(describeError(e));
       } finally {
         setBusy(false);
       }
@@ -113,35 +170,58 @@ export function Anfragen() {
           </h1>
           <StaleBadge cachedAt={listQ.cachedAt} stale={listQ.isStale} />
         </div>
+        {/* The count belongs to the OPEN bucket the reader is looking at. Said
+            plainly, because a shop-wide all-clear read off a filtered list is
+            how somebody closes the app with four people still waiting. */}
         <p style={{ color: 'var(--w14-ink-faded)', fontSize: '0.9rem', marginTop: 4 }}>
-          {waiting > 0
-            ? `${waiting} ${waiting === 1 ? 'Anfrage wartet' : 'Anfragen warten'} auf eine Antwort.`
-            : 'Keine Anfrage wartet auf eine Antwort.'}
+          {listFailed
+            ? 'Der Stand ist gerade unbekannt.'
+            : bucket === 'ALLE'
+              ? waiting > 0
+                ? `${waiting} ${waiting === 1 ? 'Anfrage wartet' : 'Anfragen warten'} auf eine Antwort.`
+                : 'Keine Anfrage wartet auf eine Antwort.'
+              : `${tickets.length} im Fach ${bucketLabel(bucket)}${
+                  waiting > 0 ? `, davon ${waiting} wartend` : ''
+                }.`}
         </p>
         <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
-          {(['ALLE', 'OFFEN', 'WARTET', 'GESCHLOSSEN'] as const).map((b) => (
+          {BUCKETS.map((b) => (
             <button
               key={b}
               type="button"
               onClick={() => setBucket(b)}
               style={{
-                padding: '0.35rem 0.8rem',
+                padding: '0.4rem 0.9rem',
+                minHeight: 40,
                 borderRadius: 999,
-                border: '1px solid var(--w14-rule)',
-                background: bucket === b ? 'var(--w14-gilt)' : 'transparent',
-                color: bucket === b ? 'var(--w14-parchment)' : 'var(--w14-ink-faded)',
+                // Gold is the EDGE of the chosen chip, never its fill.
+                border: bucket === b ? '1px solid var(--w14-gilt)' : '1px solid var(--w14-rule)',
+                background: bucket === b ? 'var(--w14-parchment-deep)' : 'transparent',
+                color: bucket === b ? 'var(--w14-ink)' : 'var(--w14-ink-faded)',
                 cursor: 'pointer',
-                fontSize: '0.82rem',
+                fontSize: '0.85rem',
+                fontWeight: bucket === b ? 600 : 400,
               }}
             >
-              {b === 'ALLE' ? 'Alle offenen' : STATUS_LABEL[b]}
+              {bucketLabel(b)}
             </button>
           ))}
         </div>
       </ParchmentCard>
 
       <ParchmentCard>
-        {listQ.isLoading && tickets.length === 0 ? (
+        {listFailed ? (
+          <div style={{ display: 'grid', gap: '0.6rem' }}>
+            <p style={{ color: 'var(--w14-wax-red)', fontSize: '0.9rem', margin: 0 }}>
+              Die Anfragen konnten nicht geladen werden. Ob welche warten, ist gerade nicht bekannt.
+            </p>
+            <div>
+              <Button variant="ghost" size="sm" onClick={() => listQ.refetch()}>
+                Erneut versuchen
+              </Button>
+            </div>
+          </div>
+        ) : listQ.isLoading && tickets.length === 0 ? (
           <p style={{ color: 'var(--w14-ink-faded)' }}>Anfragen werden geladen …</p>
         ) : tickets.length === 0 ? (
           <p style={{ color: 'var(--w14-ink-faded)' }}>
@@ -187,14 +267,28 @@ export function Anfragen() {
                   {t.customerName ?? 'Unbekannt'}
                   {t.customerNumber ? ` · ${t.customerNumber}` : ''}
                   {' · '}
-                  {STATUS_LABEL[t.status] ?? t.status}
+                  {statusLabel(t.status)}
                   {t.lastInboundAt ? ` · ${whenLabel(t.lastInboundAt)}` : ''}
                 </div>
               </button>
 
               {openId === t.id && (
                 <div style={{ paddingBottom: '0.75rem' }}>
-                  {detailQ.isLoading && !detail ? (
+                  {detailFailed ? (
+                    // No reply box here on purpose. Offering one under an
+                    // unloaded thread invites an answer to a question the
+                    // operator was never shown.
+                    <div style={{ display: 'grid', gap: '0.6rem', padding: '0.4rem 0' }}>
+                      <p style={{ color: 'var(--w14-wax-red)', fontSize: '0.85rem', margin: 0 }}>
+                        Der Verlauf konnte nicht geladen werden. Es wäre eine Antwort ins Blaue.
+                      </p>
+                      <div>
+                        <Button variant="ghost" size="sm" onClick={() => detailQ.refetch()}>
+                          Erneut versuchen
+                        </Button>
+                      </div>
+                    </div>
+                  ) : detailQ.isLoading && !detail ? (
                     <p style={{ color: 'var(--w14-ink-faded)', fontSize: '0.85rem' }}>Wird geladen …</p>
                   ) : (
                     <>
@@ -246,59 +340,27 @@ export function Anfragen() {
                         </p>
                       )}
                       {note && (
-                        <p style={{ color: 'var(--w14-gilt)', fontSize: '0.82rem', margin: '0.4rem 0 0' }}>
+                        <p style={{ color: 'var(--w14-verdigris)', fontSize: '0.82rem', margin: '0.4rem 0 0' }}>
                           {note}
                         </p>
                       )}
-                      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
-                        <button
-                          type="button"
-                          onClick={send}
+                      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.6rem', flexWrap: 'wrap' }}>
+                        <Button
+                          variant="primary"
+                          size="md"
+                          onClick={() => void send()}
                           disabled={busy || draft.trim().length === 0}
-                          style={{
-                            padding: '0.45rem 1.1rem',
-                            borderRadius: 8,
-                            border: 0,
-                            background: draft.trim() ? 'var(--w14-gilt)' : 'var(--w14-rule)',
-                            color: 'var(--w14-parchment)',
-                            cursor: draft.trim() && !busy ? 'pointer' : 'default',
-                          }}
                         >
                           {busy ? 'Wird übernommen …' : 'Antwort senden'}
-                        </button>
-                        {t.status !== 'GESCHLOSSEN' ? (
-                          <button
-                            type="button"
-                            onClick={() => setStatus('GESCHLOSSEN')}
-                            disabled={busy}
-                            style={{
-                              padding: '0.45rem 1.1rem',
-                              borderRadius: 8,
-                              border: '1px solid var(--w14-rule)',
-                              background: 'transparent',
-                              color: 'var(--w14-ink-faded)',
-                              cursor: 'pointer',
-                            }}
-                          >
-                            Schließen
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => setStatus('OFFEN')}
-                            disabled={busy}
-                            style={{
-                              padding: '0.45rem 1.1rem',
-                              borderRadius: 8,
-                              border: '1px solid var(--w14-rule)',
-                              background: 'transparent',
-                              color: 'var(--w14-ink-faded)',
-                              cursor: 'pointer',
-                            }}
-                          >
-                            Wieder öffnen
-                          </button>
-                        )}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="md"
+                          onClick={() => void setStatus(t.status === 'GESCHLOSSEN' ? 'OFFEN' : 'GESCHLOSSEN')}
+                          disabled={busy}
+                        >
+                          {t.status === 'GESCHLOSSEN' ? 'Wieder öffnen' : 'Schließen'}
+                        </Button>
                       </div>
                     </>
                   )}

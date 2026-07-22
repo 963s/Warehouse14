@@ -3,6 +3,8 @@
  *
  * Three states driven by `useCurrentShift`:
  *   • loading              → Splash
+ *   • shift === undefined  → <ShiftReadError/> (the read gave no answer; saying
+ *                            "no open shift" here blocked a sale mid-customer)
  *   • shift === null       → <ShiftGuard/>   (no sale allowed; "Zur Kasse" CTA)
  *   • shift.status==='OPEN'→ <VerkaufFloor/> (CatalogGrid + CartPanel)
  *
@@ -75,16 +77,32 @@ import { type CartLine, selectCartLines, useCartStore } from '../../state/cart-s
 import { useToastStore } from '../../state/toast-store.js';
 
 import { ShiftGuard } from '../_shared/ShiftGuard.js';
+import { ShiftReadError } from '../_shared/ShiftReadError.js';
 
 import { CartPanel } from './CartPanel.js';
 import { CatalogGrid } from './CatalogGrid.js';
 import { describeError } from '@warehouse14/i18n-de';
 
 export function Verkauf(): JSX.Element {
-  const { data: shift, isLoading } = useCurrentShift();
+  const { data: shift, isLoading, isError, error, isFetching, refetch } = useCurrentShift();
 
   if (isLoading && shift === undefined) return <VerkaufSplash />;
-  if (shift === null || shift === undefined) {
+
+  // `undefined` heißt: die Abfrage hat NICHT geantwortet. Das ist keine
+  // geschlossene Schicht, und es darf nicht so behauptet werden: die Kassiererin
+  // stand sonst mit einem Kunden davor und wurde zur Kasse geschickt, obwohl die
+  // Schicht offen war. Nur `null` ist die echte Aussage „keine offene Schicht".
+  if (shift === undefined) {
+    return (
+      <ShiftReadError
+        digitLabel="2"
+        detail={isError && error instanceof ApiError ? describeError(error) : null}
+        busy={isFetching}
+        onRetry={() => void refetch()}
+      />
+    );
+  }
+  if (shift === null) {
     return (
       <ShiftGuard
         digitLabel="2"

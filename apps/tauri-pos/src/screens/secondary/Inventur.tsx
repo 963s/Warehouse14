@@ -3,31 +3,42 @@
  *
  * Der Server konnte die körperliche Bestandsaufnahme seit Tag 21: Sitzung
  * öffnen, jede Position scannen, schließen und den Schwund rechnen. Nur konnte
- * sie niemand bedienen — vier Endpunkte ohne eine einzige Fläche. Das hier ist
- * die Fläche.
+ * sie niemand bedienen — vier Endpunkte ohne eine einzige Fläche.
  *
  * DER FUND, DER DIESE FLÄCHE ERST BRAUCHBAR MACHT. Vor diesem Stand hätte eine
  * Inventur gelogen: die Suche lief nur über `barcode`, und auf der Live-Datenbank
  * trugen 12 von 38 zählbaren Stücken einen Barcode, aber alle 38 eine eigene SKU.
- * 26 echte, im Regal liegende Stücke wären als „unbekannt" durchgefallen und am
- * Ende als Schwund gezählt worden. Ein Schwundbericht, der zu zwei Dritteln
- * erfunden ist, ist schlimmer als gar keiner — und er ist ein Papier, das eine
- * Betriebsprüfung liest. Der Server sucht jetzt Barcode zuerst, SKU danach.
+ * 26 echte Stücke wären als „unbekannt" durchgefallen und am Ende als Schwund
+ * gezählt worden. Der Server sucht jetzt Barcode zuerst, SKU danach.
  *
- * EHRLICHKEITSREGEL DIESER FLÄCHE: „offen" ist nicht „Schwund". Solange gezählt
- * wird, ist eine nicht gefundene Position schlicht noch nicht gefunden — sie
- * liegt vielleicht in der zweiten Vitrine. Erst das Schließen macht daraus ein
- * Urteil, und genau deshalb verlangt das Schließen die Zweitbestätigung.
+ * WAS EINE PRÜFUNG AM ERSTEN ENTWURF FAND, und warum es zählte:
  *
- * Die Zahlen kommen vom Server, nicht aus einem Zähler im Fenster: ein
- * clientseitiger Zähler vergisst beim Neuladen alles und weiß nichts davon, was
- * die Kollegin an der zweiten Kasse gerade gescannt hat.
+ *   • EIN globales `busy` sperrte das Erfassen, solange ein Scan unterwegs war,
+ *     UND solange danach der Fortschritt neu geladen wurde. Wer mit dem
+ *     Handscanner eine Vitrine abgeht, ist schneller als zwei Netzwege. Der
+ *     verschluckte Scan hinterließ keine Zeile, keinen Fehler, keinen Ton, und
+ *     das Stück landete am Ende als Schwund auf einem Papier, das eine
+ *     Betriebsprüfung liest. Jetzt läuft je Code eine eigene Anfrage; nur
+ *     derselbe Code doppelt wird abgewiesen.
+ *   • Die Tastenanschläge des Scanners liefen ins fokussierte Feld und wurden
+ *     nie gelöscht, also stand dort bald `SKU-A00123SKU-A00124…` und der
+ *     nächste Druck schickte diesen Klumpen ab.
+ *   • Unbekannte Fortschrittszahlen wurden als `0` gezeichnet: „0 Gefunden" in
+ *     Grün, während dreißig Stücke erfasst waren.
+ *   • Die zweite Kasse erfuhr nie, dass eine Inventur begann oder endete,
+ *     obwohl der Text auf dieser Seite genau das verspricht.
+ *   • Nach dem Abschluss war die Fläche tot: kein Weg, den nächsten Zählgang zu
+ *     eröffnen, außer wegnavigieren und zurückkommen.
+ *
+ * EHRLICHKEITSREGEL: „offen" ist nicht „Schwund". Solange gezählt wird, ist eine
+ * nicht gefundene Position schlicht noch nicht gefunden. Erst das Schließen
+ * macht daraus ein Urteil, und deshalb verlangt das Schließen die Zweitbestätigung.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
+import { Button, DiamondRule, ParchmentCard } from '@warehouse14/ui-kit';
 import { describeError } from '@warehouse14/i18n-de';
 import { inventorySessionsApi } from '@warehouse14/api-client';
 import type { InventoryScanResult, InventorySessionView } from '@warehouse14/api-client';
@@ -77,7 +88,10 @@ const numeral: React.CSSProperties = {
   fontVariantNumeric: 'tabular-nums',
 };
 
-/** Eine boxlose Kennzahl: die Ziffer groß, das Wort klein darunter. */
+/**
+ * Eine boxlose Kennzahl. `value` ist bewusst `number | string`: eine noch
+ * unbekannte Zahl kommt als „…" herein und wird NICHT als 0 gezeichnet.
+ */
 function Figure({
   value,
   label,
@@ -97,6 +111,11 @@ function Figure({
   );
 }
 
+/** Eine Zahl, die der Server noch nicht bestätigt hat, sagt das. */
+function figureOrUnknown(n: number | null | undefined): number | string {
+  return typeof n === 'number' ? n : '…';
+}
+
 export function Inventur() {
   const api = useApiClient();
   const qc = useQueryClient();
@@ -104,7 +123,10 @@ export function Inventur() {
 
   const [lines, setLines] = useState<ScanLine[]>([]);
   const [manual, setManual] = useState('');
-  const [busy, setBusy] = useState(false);
+  // Je Code eine eigene laufende Anfrage. Ein globales Sperrflag verschluckte
+  // jeden Scan, der während des vorigen eintraf.
+  const [inFlight, setInFlight] = useState<ReadonlySet<string>>(() => new Set());
+  const [working, setWorking] = useState(false); // nur für Eröffnen/Schließen
   const [err, setErr] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
   const [notes, setNotes] = useState('');
@@ -115,6 +137,9 @@ export function Inventur() {
     queryKey: ['inventur', 'current'],
     queryFn: () => inventorySessionsApi.current(api),
     staleTime: 10_000,
+    // Damit die zweite Kasse mitbekommt, dass ein Zählgang beginnt oder endet.
+    // Ohne das behauptete diese Fläche dort minutenlang das Gegenteil.
+    refetchInterval: 30_000,
   });
   const session = sessionQ.data ?? null;
 
@@ -122,37 +147,47 @@ export function Inventur() {
     queryKey: ['inventur', 'progress', session?.id ?? 'none'],
     queryFn: () => inventorySessionsApi.progress(api, session!.id),
     enabled: session != null,
-    // Die zweite Kasse zählt vielleicht mit — die Zahlen dürfen nicht
-    // einfrieren, nur weil an DIESEM Gerät gerade nichts gescannt wird.
     refetchInterval: session != null ? 15_000 : false,
     staleTime: 5_000,
   });
   const progress = progressQ.data ?? null;
+  const progressUnknown = progressQ.isError && progress == null;
 
   const record = useCallback(
     async (raw: string) => {
       const code = raw.trim();
-      if (!session || code.length === 0 || busy) return;
-      setBusy(true);
+      // Nur DERSELBE Code doppelt wird abgewiesen. Verschiedene Codes laufen
+      // parallel, so schnell wie der Handscanner sie liefert.
+      if (!session || code.length === 0 || inFlight.has(code)) return;
+      setInFlight((prev) => new Set(prev).add(code));
       setErr(null);
       try {
         const res = await inventorySessionsApi.scan(api, session.id, code);
         setLines((prev) => [{ ...res, raw: code, at: Date.now() }, ...prev].slice(0, 200));
-        await progressQ.refetch();
+        // NICHT awaiten: der nächste Scan darf nicht auf diesen Netzweg warten.
+        void progressQ.refetch();
       } catch (e) {
         setErr(describeError(e));
       } finally {
-        setBusy(false);
+        setInFlight((prev) => {
+          const next = new Set(prev);
+          next.delete(code);
+          return next;
+        });
       }
     },
-    [api, session, busy, progressQ],
+    [api, session, inFlight, progressQ],
   );
 
-  // Der Handscanner tippt wie eine Tastatur. Solange die Sitzung läuft und der
-  // Schließen-Dialog NICHT offen ist, landet jeder Scan direkt in der Zählung.
+  // Der Handscanner tippt wie eine Tastatur. Seine Anschläge landen im
+  // fokussierten Feld, deshalb wird es nach jedem Scan geleert; sonst wächst
+  // dort ein Klumpen aus aneinandergehängten Nummern.
   useBarcodeScanner({
     enabled: session != null && !closing,
-    onScan: (code) => void record(code),
+    onScan: (code) => {
+      setManual('');
+      void record(code);
+    },
   });
 
   useEffect(() => {
@@ -160,7 +195,7 @@ export function Inventur() {
   }, [session, closing]);
 
   const openSession = useCallback(async () => {
-    setBusy(true);
+    setWorking(true);
     setErr(null);
     try {
       await inventorySessionsApi.open(api);
@@ -170,13 +205,13 @@ export function Inventur() {
     } catch (e) {
       setErr(describeError(e));
     } finally {
-      setBusy(false);
+      setWorking(false);
     }
   }, [api, qc]);
 
   const closeSession = useCallback(async () => {
     if (!session) return;
-    setBusy(true);
+    setWorking(true);
     setErr(null);
     try {
       const result = await inventorySessionsApi.close(api, session.id, notes.trim());
@@ -187,9 +222,11 @@ export function Inventur() {
     } catch (e) {
       setErr(describeError(e));
     } finally {
-      setBusy(false);
+      setWorking(false);
     }
   }, [api, session, notes, qc]);
+
+  const scanning = inFlight.size > 0;
 
   return (
     <div style={{ display: 'grid', gap: '1rem', padding: '1rem', maxWidth: 1100, margin: '0 auto' }}>
@@ -215,6 +252,17 @@ export function Inventur() {
         <ParchmentCard>
           {sessionQ.isLoading ? (
             <p style={{ color: 'var(--w14-ink-faded)' }}>Wird geprüft …</p>
+          ) : sessionQ.isError ? (
+            <div style={{ display: 'grid', gap: '0.6rem' }}>
+              <p style={{ color: 'var(--w14-wax-red)', fontSize: '0.9rem', margin: 0 }}>
+                Ob gerade eine Inventur läuft, konnte nicht geklärt werden.
+              </p>
+              <div>
+                <Button variant="ghost" size="sm" onClick={() => void sessionQ.refetch()}>
+                  Erneut versuchen
+                </Button>
+              </div>
+            </div>
           ) : (
             <>
               <p style={{ margin: 0, fontSize: '0.95rem' }}>Zurzeit läuft keine Inventur.</p>
@@ -224,23 +272,11 @@ export function Inventur() {
                   : 'Eine Inventur eröffnet die Inhaberin oder der Inhaber. Sobald sie läuft, kann hier jede und jeder mitzählen.'}
               </p>
               {isOwner && (
-                <button
-                  type="button"
-                  onClick={() => void openSession()}
-                  disabled={busy}
-                  style={{
-                    marginTop: '0.9rem',
-                    padding: '0.5rem 1.2rem',
-                    borderRadius: 8,
-                    border: 0,
-                    background: 'var(--w14-gilt)',
-                    color: 'var(--w14-parchment)',
-                    cursor: busy ? 'default' : 'pointer',
-                    fontSize: '0.9rem',
-                  }}
-                >
-                  {busy ? 'Wird geöffnet …' : 'Inventur eröffnen'}
-                </button>
+                <div style={{ marginTop: '0.9rem' }}>
+                  <Button variant="primary" size="md" onClick={() => void openSession()} disabled={working}>
+                    {working ? 'Wird geöffnet …' : 'Inventur eröffnen'}
+                  </Button>
+                </div>
               )}
             </>
           )}
@@ -259,18 +295,30 @@ export function Inventur() {
           <DiamondRule />
           <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', paddingTop: '0.5rem' }}>
             <Figure value={closed.expectedCount} label="Erwartet" />
-            <Figure value={closed.matchedCount ?? 0} label="Gefunden" color="var(--w14-verdigris)" />
             <Figure
-              value={closed.missingCount ?? 0}
+              value={figureOrUnknown(closed.matchedCount)}
+              label="Gefunden"
+              color="var(--w14-verdigris)"
+            />
+            <Figure
+              value={figureOrUnknown(closed.missingCount)}
               label="Schwund"
               color={(closed.missingCount ?? 0) > 0 ? 'var(--w14-wax-red)' : undefined}
             />
-            <Figure value={closed.unexpectedCount ?? 0} label="Auffällige Scans" />
+            <Figure value={figureOrUnknown(closed.unexpectedCount)} label="Auffällige Scans" />
           </div>
           <p style={{ color: 'var(--w14-ink-faded)', fontSize: '0.82rem', marginTop: '0.9rem', lineHeight: 1.6 }}>
             Diese Zahlen stehen fest und liegen im Tagebuch. Der Schwund sind Stücke, die der
             Bestand führt und die niemand gescannt hat.
           </p>
+          {/* Ohne das war die Fläche nach dem Abschluss tot. */}
+          {isOwner && (
+            <div style={{ marginTop: '0.9rem' }}>
+              <Button variant="ghost" size="md" onClick={() => setClosed(null)}>
+                Zurück zur Übersicht
+              </Button>
+            </div>
+          )}
         </ParchmentCard>
       )}
 
@@ -288,22 +336,9 @@ export function Inventur() {
                 </p>
               </div>
               {isOwner && !closing && (
-                <button
-                  type="button"
-                  onClick={() => setClosing(true)}
-                  disabled={busy}
-                  style={{
-                    padding: '0.45rem 1.1rem',
-                    borderRadius: 8,
-                    border: '1px solid var(--w14-rule)',
-                    background: 'transparent',
-                    color: 'var(--w14-ink-faded)',
-                    cursor: 'pointer',
-                    fontSize: '0.86rem',
-                  }}
-                >
+                <Button variant="ghost" size="md" onClick={() => setClosing(true)} disabled={working}>
                   Inventur abschließen
-                </button>
+                </Button>
               )}
             </div>
 
@@ -312,20 +347,21 @@ export function Inventur() {
             <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', paddingTop: '0.5rem' }}>
               <Figure value={progress?.expectedCount ?? session.expectedCount} label="Erwartet" />
               <Figure
-                value={progress?.matchedCount ?? 0}
+                value={figureOrUnknown(progress?.matchedCount)}
                 label="Gefunden"
                 color="var(--w14-verdigris)"
               />
               <Figure
-                value={progress?.openCount ?? '…'}
+                value={figureOrUnknown(progress?.openCount)}
                 label="Noch offen"
                 color={(progress?.openCount ?? 0) > 0 ? 'var(--w14-gilt)' : 'var(--w14-verdigris)'}
               />
-              <Figure value={progress?.scanCount ?? 0} label="Scans gesamt" />
+              <Figure value={figureOrUnknown(progress?.scanCount)} label="Scans gesamt" />
             </div>
             <p style={{ color: 'var(--w14-ink-faded)', fontSize: '0.8rem', marginTop: '0.8rem', lineHeight: 1.6 }}>
-              Die Zahlen kommen vom Server und zählen auch mit, was an einer zweiten Kasse
-              gescannt wird. „Noch offen" ist noch kein Schwund.
+              {progressUnknown
+                ? 'Der Zählstand ist gerade nicht erreichbar. Weiterscannen ist trotzdem in Ordnung, der Server nimmt jeden Scan an.'
+                : 'Die Zahlen kommen vom Server und zählen auch mit, was an einer zweiten Kasse gescannt wird. „Noch offen" ist noch kein Schwund.'}
             </p>
           </ParchmentCard>
 
@@ -336,9 +372,11 @@ export function Inventur() {
                 Inventur wirklich abschließen?
               </h2>
               <p style={{ color: 'var(--w14-ink-faded)', fontSize: '0.86rem', marginTop: 6, lineHeight: 1.6 }}>
-                {progress != null && progress.openCount > 0
-                  ? `${progress.openCount} ${progress.openCount === 1 ? 'Stück ist' : 'Stücke sind'} noch nicht gefunden. Mit dem Abschluss ${progress.openCount === 1 ? 'wird daraus Schwund' : 'werden sie zu Schwund'}. Wer noch eine Vitrine offen hat, zählt besser zuerst zu Ende.`
-                  : 'Alle erwarteten Stücke sind gefunden. Der Abschluss hält das fest.'}
+                {progressUnknown
+                  ? 'Wie viele Stücke noch fehlen, ist gerade nicht abrufbar. Mit dem Abschluss wird daraus trotzdem ein festes Ergebnis.'
+                  : progress != null && progress.openCount > 0
+                    ? `${progress.openCount} ${progress.openCount === 1 ? 'Stück ist' : 'Stücke sind'} noch nicht gefunden. Mit dem Abschluss ${progress.openCount === 1 ? 'wird daraus Schwund' : 'werden sie zu Schwund'}. Wer noch eine Vitrine offen hat, zählt besser zuerst zu Ende.`
+                    : 'Alle erwarteten Stücke sind gefunden. Der Abschluss hält das fest.'}
               </p>
               <textarea
                 value={notes}
@@ -359,36 +397,12 @@ export function Inventur() {
                 }}
               />
               <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.7rem', flexWrap: 'wrap' }}>
-                <button
-                  type="button"
-                  onClick={() => void closeSession()}
-                  disabled={busy}
-                  style={{
-                    padding: '0.45rem 1.1rem',
-                    borderRadius: 8,
-                    border: 0,
-                    background: 'var(--w14-gilt)',
-                    color: 'var(--w14-parchment)',
-                    cursor: busy ? 'default' : 'pointer',
-                  }}
-                >
-                  {busy ? 'Wird abgeschlossen …' : 'Abschließen'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setClosing(false)}
-                  disabled={busy}
-                  style={{
-                    padding: '0.45rem 1.1rem',
-                    borderRadius: 8,
-                    border: '1px solid var(--w14-rule)',
-                    background: 'transparent',
-                    color: 'var(--w14-ink-faded)',
-                    cursor: 'pointer',
-                  }}
-                >
+                <Button variant="primary" size="md" onClick={() => void closeSession()} disabled={working}>
+                  {working ? 'Wird abgeschlossen …' : 'Abschließen'}
+                </Button>
+                <Button variant="ghost" size="md" onClick={() => setClosing(false)} disabled={working}>
                   Weiterzählen
-                </button>
+                </Button>
               </div>
             </ParchmentCard>
           )}
@@ -422,24 +436,14 @@ export function Inventur() {
                   fontSize: '0.95rem',
                 }}
               />
-              <button
-                type="submit"
-                disabled={busy || manual.trim().length === 0}
-                style={{
-                  padding: '0.5rem 1.2rem',
-                  borderRadius: 8,
-                  border: 0,
-                  background: manual.trim() ? 'var(--w14-gilt)' : 'var(--w14-rule)',
-                  color: 'var(--w14-parchment)',
-                  cursor: manual.trim() && !busy ? 'pointer' : 'default',
-                }}
-              >
+              <Button variant="primary" size="md" type="submit" disabled={manual.trim().length === 0}>
                 Erfassen
-              </button>
+              </Button>
             </form>
 
             <p style={{ color: 'var(--w14-ink-faded)', fontSize: '0.78rem', marginTop: '0.6rem' }}>
               Der Handscanner wird erkannt, ohne dass jemand ins Feld klicken muss.
+              {scanning ? ` ${inFlight.size} Scan${inFlight.size === 1 ? '' : 's'} unterwegs.` : ''}
             </p>
 
             {lines.length > 0 && (

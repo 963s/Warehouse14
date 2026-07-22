@@ -28,16 +28,31 @@ import {
 } from '../../state/ankauf-cart-store.js';
 
 import { ShiftGuard } from '../_shared/ShiftGuard.js';
+import { ShiftReadError } from '../_shared/ShiftReadError.js';
+import { describeError } from '@warehouse14/i18n-de';
+import { ApiError } from '@warehouse14/api-client';
 
 import { AnkaufBezahlenDialog } from './AnkaufBezahlenDialog.js';
 import { CustomerPanel } from './CustomerPanel.js';
 import { IntakeList } from './IntakeList.js';
 
 export function Ankauf(): JSX.Element {
-  const { data: shift, isLoading } = useCurrentShift();
+  const { data: shift, isLoading, isError, error, isFetching, refetch } = useCurrentShift();
 
   if (isLoading && shift === undefined) return <AnkaufSplash />;
-  if (shift === null || shift === undefined) {
+
+  // Siehe Verkauf: eine unbeantwortete Abfrage ist keine geschlossene Schicht.
+  if (shift === undefined) {
+    return (
+      <ShiftReadError
+        digitLabel="3"
+        detail={isError && error instanceof ApiError ? describeError(error) : null}
+        busy={isFetching}
+        onRetry={() => void refetch()}
+      />
+    );
+  }
+  if (shift === null) {
     return (
       <ShiftGuard
         digitLabel="3"
