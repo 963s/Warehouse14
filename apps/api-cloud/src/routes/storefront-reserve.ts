@@ -84,6 +84,12 @@ const ErrorResponse = Type.Object({
 
 const ReserveResponse = Type.Object({
   cartId: Type.String({ format: 'uuid' }),
+  /**
+   * BST-2026-000001. The confirmation screen is the FIRST place the customer
+   * meets this number, before the letter reaches them, so it has to come back
+   * from the reserve call itself and not only from a later read.
+   */
+  orderNumber: Type.Union([Type.String(), Type.Null()]),
   status: Type.Literal('RESERVED'),
   reservedAt: Type.String({ format: 'date-time' }),
   itemCount: Type.Integer(),
@@ -403,6 +409,7 @@ const storefrontReserveRoutes: FastifyPluginAsync = async (app) => {
 
       return reply.status(200).send({
         cartId: cart.id,
+        orderNumber: reservedCart?.orderNumber ?? null,
         status: 'RESERVED' as const,
         reservedAt: reservedAt.toISOString(),
         itemCount: items.length,

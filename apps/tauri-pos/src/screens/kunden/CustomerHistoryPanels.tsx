@@ -15,6 +15,8 @@ import { StaleBadge, useCachedQuery } from '../../offline/index.js';
 
 import { DiamondRule, MoneyAmount, ParchmentCard } from '@warehouse14/ui-kit';
 
+import type { CustomerWebOrder } from '@warehouse14/api-client';
+
 import { useApiClient } from '../../lib/api-context.js';
 
 interface CustomerProductRow {
@@ -257,15 +259,14 @@ function EmptyHint({ text }: { text: string }): JSX.Element {
  * The pickup deadline leads, because it is the one field that decides what
  * the cashier does next: hand it over, or tell the customer the hold lapsed.
  */
-interface WebOrderRow {
-  id: string;
-  status: string;
-  createdAt: string;
-  expiresAt: string | null;
-  itemCount: number;
-  totalEur: string;
-  lines: { productId: string | null; name: string; sku: string | null; quantity: number; unitPriceEur: string }[];
-}
+/**
+ * The order shape comes from @warehouse14/api-client, NOT from a copy kept
+ * here. A local duplicate is how the counter ends up rendering a field the
+ * server stopped sending, or missing one it started sending: this file had
+ * its own WebOrderRow and silently lacked the order number and the customer's
+ * telephone for as long as both existed on the wire.
+ */
+type WebOrderRow = CustomerWebOrder;
 
 const WEB_ORDER_STATUS: Record<string, string> = {
   RESERVED: 'Reserviert',
@@ -341,7 +342,7 @@ export function CustomerWebOrders({ customerId }: { customerId: string }): JSX.E
                       color: 'var(--w14-ink-faded)',
                     }}
                   >
-                    {order.id.slice(0, 8).toUpperCase()}
+                    {order.orderNumber ?? order.id.slice(0, 8).toUpperCase()}
                   </span>
                   <span style={{ fontFamily: 'var(--w14-font-display)', fontSize: '0.92rem' }}>
                     {WEB_ORDER_STATUS[order.status] ?? order.status}
@@ -360,6 +361,30 @@ export function CustomerWebOrders({ customerId }: { customerId: string }): JSX.E
                     }}
                   >
                     {pickup.text}
+                  </div>
+                )}
+                {(order.contactPhone || order.contactEmail) && (
+                  <div
+                    style={{
+                      marginTop: 2,
+                      display: 'flex',
+                      gap: '0.75rem',
+                      flexWrap: 'wrap',
+                      fontSize: '0.8rem',
+                      color: 'var(--w14-ink-faded)',
+                    }}
+                  >
+                    {order.contactPhone && (
+                      <a href={`tel:${order.contactPhone.replace(/[^+\d]/g, '')}`}
+                         style={{ color: 'inherit' }}>
+                        {order.contactPhone}
+                      </a>
+                    )}
+                    {order.contactEmail && (
+                      <a href={`mailto:${order.contactEmail}`} style={{ color: 'inherit' }}>
+                        {order.contactEmail}
+                      </a>
+                    )}
                   </div>
                 )}
                 {order.lines.map((line, i) => (

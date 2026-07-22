@@ -1074,7 +1074,7 @@ export default function CustomerDetailScreen() {
                     <View className="gap-1 py-2.5">
                       <View className="flex-row items-center justify-between gap-3">
                         <Text className="font-mono text-sm font-semibold" numberOfLines={1}>
-                          {order.id.slice(0, 8).toUpperCase()}
+                          {order.orderNumber ?? order.id.slice(0, 8).toUpperCase()}
                         </Text>
                         <Text
                           className="text-xs font-semibold"
@@ -1108,6 +1108,24 @@ export default function CustomerDetailScreen() {
                           {formatEur(order.totalEur)}
                         </Text>
                       </View>
+                      {order.status === "RESERVED" && order.expiresAt ? (
+                        <Text
+                          className="text-xs"
+                          style={{
+                            color:
+                              new Date(order.expiresAt) < new Date()
+                                ? t.colors.destructive
+                                : t.colors.gilt,
+                          }}
+                        >
+                          {new Date(order.expiresAt) < new Date()
+                            ? "Abholfrist abgelaufen"
+                            : `Abholung bis ${new Date(order.expiresAt).toLocaleDateString("de-DE", {
+                                day: "numeric",
+                                month: "long",
+                              })}`}
+                        </Text>
+                      ) : null}
                       {order.lines.map((line) => (
                         <View
                           key={`${order.id}-${line.productId ?? line.name}`}

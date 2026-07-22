@@ -332,9 +332,21 @@ export interface CustomerVatLookupResult {
  */
 export interface CustomerWebOrder {
   id: string;
+  /**
+   * `BST-2026-000001` — the reference the customer reads off their letter and
+   * says at the counter. Null only for rows that predate migration 0097.
+   */
+  orderNumber: string | null;
   status: string;
   createdAt: string;
   expiresAt: string | null;
+  /**
+   * Contact for the person holding this reservation. The counter could see a
+   * deadline running out and had no way to reach anybody about it.
+   */
+  contactName: string | null;
+  contactPhone: string | null;
+  contactEmail: string | null;
   itemCount: number;
   totalEur: string;
   lines: {

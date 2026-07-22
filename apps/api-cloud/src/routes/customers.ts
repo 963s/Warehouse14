@@ -442,9 +442,19 @@ const customersRoutes: FastifyPluginAsync = async (app) => {
             items: Type.Array(
               Type.Object({
                 id: Type.String(),
+                /** BST-2026-000001 — what the customer reads off their letter. */
+                orderNumber: Type.Union([Type.String(), Type.Null()]),
                 status: Type.String(),
                 createdAt: Type.String(),
                 expiresAt: Type.Union([Type.String(), Type.Null()]),
+                /**
+                 * Contact, so the cashier can actually reach the person whose
+                 * pickup deadline is running out. Without it the counter can
+                 * see a lapsing reservation and do nothing about it.
+                 */
+                contactName: Type.Union([Type.String(), Type.Null()]),
+                contactPhone: Type.Union([Type.String(), Type.Null()]),
+                contactEmail: Type.Union([Type.String(), Type.Null()]),
                 itemCount: Type.Integer(),
                 totalEur: Type.String(),
                 lines: Type.Array(
@@ -468,16 +478,21 @@ const customersRoutes: FastifyPluginAsync = async (app) => {
       requireAuth(req);
       requireRole(req, 'ADMIN', 'CASHIER');
 
-      const rows = await app.db.execute<{
+      const rows = await app.withPii(async (tx) => tx.execute<{
         id: string;
+        order_number: string | null;
         status: string;
         created_at: string;
         expires_at: string | null;
+        contact_name: string | null;
+        contact_phone: string | null;
+        contact_email: string | null;
         item_count: number;
         total_eur: string;
         lines: unknown;
       }>(sql`
         SELECT c.id,
+               c.order_number,
                c.status::text AS status,
                to_char(COALESCE(c.reserved_at, c.created_at) AT TIME ZONE 'UTC',
                        'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at,
@@ -485,6 +500,9 @@ const customersRoutes: FastifyPluginAsync = async (app) => {
                                'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')
                   FROM products pr
                  WHERE pr.reserved_by_session_id = c.reservation_session_id) AS expires_at,
+               decrypt_pii(cu.full_name_encrypted) AS contact_name,
+               decrypt_pii(cu.phone_encrypted)     AS contact_phone,
+               decrypt_pii(cu.email_encrypted)     AS contact_email,
                COUNT(ci.id)::int AS item_count,
                COALESCE(SUM(ci.unit_price_eur * ci.quantity), 0)::text AS total_eur,
                COALESCE(
@@ -501,20 +519,27 @@ const customersRoutes: FastifyPluginAsync = async (app) => {
                ) AS lines
           FROM carts c
           JOIN shoppers s ON s.id = c.shopper_id
+          JOIN customers cu ON cu.id = s.customer_id
           LEFT JOIN cart_items ci ON ci.cart_id = c.id
           LEFT JOIN products p ON p.id = ci.product_id
          WHERE s.customer_id = ${req.params.id}
            AND c.status IN ('RESERVED', 'CONVERTED', 'CANCELLED')
-         GROUP BY c.id, c.reserved_at, c.created_at, c.reservation_session_id, c.status
+         GROUP BY c.id, c.order_number, c.reserved_at, c.created_at,
+                  c.reservation_session_id, c.status,
+                  cu.full_name_encrypted, cu.phone_encrypted, cu.email_encrypted
          ORDER BY COALESCE(c.reserved_at, c.created_at) DESC
-         LIMIT 50`);
+         LIMIT 50`));
 
       return reply.status(200).send({
         items: rows.map((r) => ({
           id: r.id,
+          orderNumber: r.order_number,
           status: r.status,
           createdAt: r.created_at,
           expiresAt: r.expires_at,
+          contactName: r.contact_name,
+          contactPhone: r.contact_phone,
+          contactEmail: r.contact_email,
           itemCount: r.item_count,
           totalEur: r.total_eur,
           lines: (typeof r.lines === 'string' ? JSON.parse(r.lines) : r.lines) as {

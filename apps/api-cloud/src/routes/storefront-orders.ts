@@ -56,6 +56,8 @@ const Address = Type.Object({
 
 const OrderSummary = Type.Object({
   id: Type.String(),
+  /** BST-2026-000001, the same reference the confirmation letter carried. */
+  orderNumber: Type.Union([Type.String(), Type.Null()]),
   createdAt: Type.String(),
   totalEur: Type.String(),
   status: Type.String(),
@@ -153,12 +155,14 @@ const storefrontOrdersRoutes: FastifyPluginAsync = async (app) => {
       requireShopper(req);
       const rows = await app.db.execute<{
         id: string;
+        order_number: string | null;
         created_at: string;
         status: string;
         item_count: number;
         total_eur: string;
       }>(drizzleSql`
         SELECT c.id,
+               c.order_number,
                to_char(COALESCE(c.reserved_at, c.created_at) AT TIME ZONE 'UTC',
                        'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at,
                c.status::text                            AS status,
@@ -168,11 +172,12 @@ const storefrontOrdersRoutes: FastifyPluginAsync = async (app) => {
           LEFT JOIN cart_items ci ON ci.cart_id = c.id
          WHERE c.shopper_id = ${req.shopper.id}
            AND c.status IN ('RESERVED', 'CONVERTED', 'CANCELLED')
-         GROUP BY c.id, c.reserved_at, c.created_at, c.status
+         GROUP BY c.id, c.order_number, c.reserved_at, c.created_at, c.status
          ORDER BY COALESCE(c.reserved_at, c.created_at) DESC
          LIMIT 100`);
       return rows.map((r) => ({
         id: r.id,
+        orderNumber: r.order_number,
         createdAt: r.created_at,
         totalEur: r.total_eur,
         status: r.status,
@@ -199,10 +204,12 @@ const storefrontOrdersRoutes: FastifyPluginAsync = async (app) => {
 
       const head = await app.db.execute<{
         id: string;
+        order_number: string | null;
         created_at: string;
         status: string;
       }>(drizzleSql`
         SELECT c.id,
+               c.order_number,
                to_char(COALESCE(c.reserved_at, c.created_at) AT TIME ZONE 'UTC',
                        'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at,
                c.status::text AS status
@@ -255,6 +262,7 @@ const storefrontOrdersRoutes: FastifyPluginAsync = async (app) => {
 
       return {
         id: cart.id,
+        orderNumber: cart.order_number,
         createdAt: cart.created_at,
         totalEur,
         status: cart.status,
