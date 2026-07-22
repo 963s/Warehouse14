@@ -1,22 +1,23 @@
-# Runbook 0095 — turn on transactional mail via Google Workspace
+# Runbook 0095 — transactional mail via Google Workspace
 
-**Status: waiting on Basel.** Everything on the software side is built, deployed and
-verified. What is missing is ONE setting in the Admin console. No password is
-involved anywhere, and none can be: Google has disabled app passwords for this
-tenant.
+**Status: LIVE since 2026-07-22, 23:50.** The relay is configured, the worker is
+sending, and the ten letters that had been stuck since 2026-07-20 went out in a
+single tick: `{"sent":10,"failed":0}`. No password is stored anywhere, and none
+can be: Google has disabled app passwords for this tenant, so the authorisation
+is this server's IP address.
 
-## Why it is off right now
+Keep the rest of this document. It is the record of how the relay was set up and
+the first place to look if mail ever stops.
 
-`SMTP_HOST` is unset on the worker, so `email-outbox-sender` logs its unconfigured
-state and leaves every letter `PENDING`. Check the damage at any time:
+## Checking it is still healthy
 
 ```sql
 SELECT status, count(*), min(created_at) AS oldest FROM email_outbox GROUP BY status;
 ```
 
-As of 2026-07-22 that is **10 rows, all PENDING, zero SENT**, the oldest from
-2026-07-20. Welcome letters and reservation confirmations, including the whole
-thirteen language system, are queued and unread.
+`PENDING` should be empty or near it. A `PENDING` row older than a couple of
+minutes means the worker is not sending, and the reason is almost always that
+`SMTP_HOST` is missing from its environment — see "If it stops" at the end.
 
 ## Why the relay, and not sending straight from the server
 
@@ -61,15 +62,15 @@ Invalid credentials for relay for one of the domains in: warehouse14.de
 Google names `warehouse14.de`, so the Workspace tenant is real and healthy. The
 only missing thing is authorising this server's IP.
 
-## What Basel does, once
+## The settings that were applied (done, 2026-07-22)
 
-**A. Create the mailbox** (Admin console → Directory → Users), or an alias on an
+**A. The mailbox** (Admin console → Directory → Users), or an alias on an
 existing user: `bestellung@warehouse14.de`. It must be able to RECEIVE, because
 customers will reply to it. That was a deliberate decision over `noreply@`: someone
 holding a three day reservation will ask whether they can collect on Saturday, and
 that question has to reach a person.
 
-**B. Enable the relay** (Admin console → Apps → Google Workspace → Gmail → Routing
+**B. The relay** (Admin console → Apps → Google Workspace → Gmail → Routing
 → **SMTP relay service** → Configure):
 
 - Name: `warehouse14 transactional`
@@ -121,29 +122,44 @@ cd /opt/warehouse14
 sudo docker compose -f docker-compose.prod.yml up -d --no-deps --force-recreate worker
 ```
 
-## Verifying it actually sends
+## If it stops
 
-The queue is the test. Within one worker tick the ten stuck letters should move:
+The queue is the test, always:
 
 ```bash
 ssh myserver "sudo docker exec -i warehouse14-postgres psql -U warehouse14 -d warehouse14 \
   -c \"SELECT status, count(*) FROM email_outbox GROUP BY status;\""
-ssh myserver "sudo docker logs warehouse14-worker --since 5m 2>&1 | grep -i 'email outbox'"
+ssh myserver "sudo docker logs warehouse14-worker --since 5m 2>&1 | grep -i outbox"
 ```
 
-`SENT` climbing and `PENDING` falling is the proof. If a letter goes `FAILED`, the
-reason is in `email_outbox.last_error`, which is the first place to look:
+A healthy tick logs `{"sent":0}`. If letters are stacking up in `PENDING`, work
+down this list:
 
-```sql
-SELECT template, attempts, last_error FROM email_outbox WHERE status = 'FAILED';
-```
+1. **Is `SMTP_HOST` actually in the worker's environment?**
+   `ssh myserver "sudo docker exec warehouse14-worker printenv SMTP_HOST"`.
+   Empty means the container is running without the config even though
+   `/opt/warehouse14/.env` has it — that is a restart that did not happen, not a
+   mail problem. **A restart MUST pass the running image tag**, because compose
+   otherwise falls back to `:latest`, which exists in no registry, and dies with
+   `manifest unknown` while the old container keeps running:
+   ```bash
+   ssh myserver "cd /opt/warehouse14 && sudo IMAGE_TAG=\$(sudo docker ps --format '{{.Image}}' | grep warehouse14-worker | sed 's/.*://') docker compose -f docker-compose.prod.yml up -d --no-deps --force-recreate worker"
+   ```
+   This exact trap cost an hour on 2026-07-22 and is now handled inside
+   `relay-setup.sh`.
+2. **Did Google refuse?** `email_outbox.last_error` carries its answer verbatim:
+   ```sql
+   SELECT template, attempts, last_error FROM email_outbox WHERE status = 'FAILED';
+   ```
+   `Mail relay denied` means the server's IP is no longer on the allowlist — check
+   whether the Oracle host's address changed and update the relay setting.
 
-Then send one real reservation from the shop app to a private address and read the
-letter as a customer would: correct language, correct pickup date, the opening hours
-in the signature, and a reply that lands in the Workspace inbox.
+## Still open
 
-## After it works
-
-Move DMARC from `p=none` to `p=quarantine` once the reports at
-`admin@warehouse14.de` show clean alignment for a week or two. Do not skip the
-observation window: enforcing early can silently bin legitimate mail.
+- **Read one real letter.** Send a reservation from the shop app to a private
+  address and check it as a customer would: right language, right pickup date,
+  opening hours in the signature, and a reply that lands in the Workspace inbox.
+  Nothing verifies rendering except a human reading it.
+- **Tighten DMARC.** Move from `p=none` to `p=quarantine` once the reports at
+  `admin@warehouse14.de` show clean alignment for a week or two. Do not skip the
+  observation window: enforcing early can silently bin legitimate mail.
