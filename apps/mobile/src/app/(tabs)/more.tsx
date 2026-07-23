@@ -38,6 +38,7 @@ import {
   type OwnerSurface,
   type OwnerSurfaceGroup,
 } from "@/warehouse14/owner-surfaces"
+import { SURFACES } from "@/warehouse14/surfaces"
 import { useW14Theme } from "@/warehouse14/theme"
 import {
   Hairline,
@@ -170,9 +171,26 @@ export default function MehrScreen() {
   const insets = useScreenInsets()
 
   // Bucket surfaces by group once, preserving registry (append) order.
+  //
+  // WAS HIER HERAUSFAELLT, UND WARUM
+  // Alles, was schon unten in der Leiste steht. Am 23.07.2026 wanderte
+  // „Bestellungen" aus diesem Hub in die Leiste — der Eintrag hier blieb aber
+  // stehen, und derselbe Schirm war fortan an ZWEI Stellen zu finden. Wer eine
+  // Anwendung zum ersten Mal benutzt, liest so etwas nicht als Bequemlichkeit,
+  // sondern als Unordnung: „gibt es zwei Bestellungen? welche ist die echte?"
+  //
+  // Der Filter kommt aus derselben Quelle wie die Leiste selbst. Wird morgen
+  // eine weitere Fläche befördert, verschwindet sie hier VON ALLEIN. Es zu
+  // Fuss zu pflegen hiesse, denselben Fehler noch einmal einzuladen.
+  const tabRouten = useMemo(
+    () => new Set(SURFACES.filter((s) => !s.hidden).map((s) => `/${s.name}`)),
+    [],
+  )
+
   const sections = useMemo(() => {
     const byGroup = new Map<OwnerSurfaceGroup, OwnerSurface[]>()
     for (const s of OWNER_SURFACES) {
+      if (tabRouten.has(s.route)) continue
       const list = byGroup.get(s.group) ?? []
       list.push(s)
       byGroup.set(s.group, list)
@@ -181,7 +199,7 @@ export default function MehrScreen() {
       ...section,
       items: byGroup.get(section.group) ?? [],
     })).filter((section) => section.items.length > 0)
-  }, [])
+  }, [tabRouten])
 
   // A single running index across all sections drives one continuous cascade so
   // the hub settles in top-to-bottom as one motion, not section-by-section.
