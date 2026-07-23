@@ -160,6 +160,20 @@ export const CustomerDetailResponse = Type.Object({
    * statt dass die Zeile spurlos verschwindet.
    */
   deletedAt: Type.Union([Type.String({ format: 'date-time' }), Type.Null()]),
+  /**
+   * WER die Löschung veranlasst hat (0103). CUSTOMER heisst: der Mensch hat
+   * sein Konto SELBST gelöscht, das war seine Entscheidung. STAFF heisst: wir
+   * haben es getan, und das ist unsere Handlung, die nachweisbar sein muss
+   * (DSGVO Art. 5 Abs. 2). NULL solange nichts gelöscht wurde.
+   *
+   * Ohne dieses Feld sähen beide Fälle in der Akte gleich aus, und die Fläche
+   * müsste raten oder schweigen.
+   */
+  erasureInitiatedBy: Type.Union([
+    Type.Literal('CUSTOMER'),
+    Type.Literal('STAFF'),
+    Type.Null(),
+  ]),
 });
 export type CustomerDetailResponse = Static<typeof CustomerDetailResponse>;
 

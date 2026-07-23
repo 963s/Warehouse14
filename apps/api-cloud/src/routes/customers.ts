@@ -224,6 +224,7 @@ const customersRoutes: FastifyPluginAsync = async (app) => {
           retention_until: string;
           created_at: Date;
           soft_deleted_at: Date | null;
+          erasure_initiated_by: string | null;
         }>(sql`
         SELECT
           id,
@@ -248,7 +249,8 @@ const customersRoutes: FastifyPluginAsync = async (app) => {
           cumulative_debt_eur,
           retention_until::text                       AS retention_until,
           created_at,
-          soft_deleted_at
+          soft_deleted_at,
+          erasure_initiated_by
         FROM customers
         WHERE id = ${id}
           ${includeDeleted ? sql`` : sql`AND soft_deleted_at IS NULL`}
@@ -326,6 +328,14 @@ const customersRoutes: FastifyPluginAsync = async (app) => {
         createdAt: new Date(row.created_at).toISOString(),
         registration: { method: registrationMethod, online: shopper !== null },
         deletedAt: row.soft_deleted_at ? new Date(row.soft_deleted_at).toISOString() : null,
+        // Roh durchgereicht, aber nur die beiden bekannten Werte: ein
+        // unbekannter Wert wird zu null statt als Kürzel in die Oberfläche zu
+        // lecken. Die CHECK-Bedingung aus 0103 lässt nichts anderes zu; diese
+        // Zeile ist der Gürtel zum Hosenträger.
+        erasureInitiatedBy:
+          row.erasure_initiated_by === 'CUSTOMER' || row.erasure_initiated_by === 'STAFF'
+            ? row.erasure_initiated_by
+            : null,
       });
     },
   );
