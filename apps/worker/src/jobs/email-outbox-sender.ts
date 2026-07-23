@@ -20,9 +20,21 @@ import nodemailer from 'nodemailer';
 
 import type { JobContext, JobDefinition } from '../lib/job-runner.js';
 import { EMAIL_LOGO_ATTACHMENT, EMAIL_LOGO_CID } from './email-logo.js';
+import { shouldParkAsFailed } from './mail-error-class.js';
 
 const BATCH_SIZE = 10;
-const MAX_ATTEMPTS = 5;
+/**
+ * Endgueltige Fehler (550 „Postfach unbekannt", defekter Datensatz) heilen
+ * nicht durch Warten — nach EINEM Versuch geparkt.
+ */
+const PERMANENT_AFTER = 1;
+/**
+ * Voruebergehende Fehler (421 „gleich nochmal", Verbindungsabbruch, Zeitlimit)
+ * bekommen viele Versuche ueber die worker-Takte verteilt. 20 mal ein
+ * Minutentakt ist eine gute Stunde Geduld, bevor ein Ratenlimit als endgueltig
+ * gilt — genug fuer jedes reale Staufenster von Google.
+ */
+const TRANSIENT_AFTER = 20;
 
 export interface EmailOutboxSenderOpts {
   /** Reply-To header. Empty falls back to the From address. */
@@ -122,7 +134,14 @@ export function emailOutboxSenderJob(
           sent += 1;
         } catch (err) {
           const message = err instanceof Error ? err.message.slice(0, 500) : 'unknown send failure';
-          const isFinal = letter.attempts + 1 >= MAX_ATTEMPTS;
+          // Ein 421 „gleich nochmal" ist NICHT dasselbe wie ein 550 „gibt es
+          // nicht". Der eine verdient Geduld, der andere nicht. Vorher wurden
+          // beide nach fuenf Versuchen begraben, und ein Ratenlimit von Google
+          // hat genau so einen echten Brief gekostet.
+          const isFinal = shouldParkAsFailed(message, letter.attempts, {
+            permanentAfter: PERMANENT_AFTER,
+            transientAfter: TRANSIENT_AFTER,
+          });
           await ctx.sql`
             UPDATE email_outbox
                SET status = ${isFinal ? 'FAILED' : 'PENDING'},

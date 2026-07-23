@@ -233,7 +233,14 @@ export const SURFACES: readonly SurfaceDescriptor[] = [
     path: '/bestellungen',
     label: 'Bestellungen',
     description: 'Online-Reservierungen zur Abholung annehmen, vorbereiten und übergeben.',
-    tier: 'secondary',
+    digit: 8,
+    // PRIMAER, nicht mehr im Suchmenue vergraben. Basels Befund am 23.07.2026:
+    // „لسا مافي قسم طلبات اقدر اجهز طلب استلم اوفق اسلم" — es gab keinen
+    // sichtbaren Ort, um eine Bestellung anzunehmen, vorzubereiten, zu
+    // uebergeben. Der Schirm war vollstaendig gebaut und trotzdem nur ueber die
+    // Suche erreichbar. Was jeden Tag Arbeit macht, gehoert an die Oberflaeche,
+    // nicht hinter ein Suchfeld. Genau wie in der Inhaber-App am selben Tag.
+    tier: 'primary',
     component: Bestellungen,
     searchAliases: [
       'bestellung',
@@ -469,15 +476,17 @@ export const SURFACES: readonly SurfaceDescriptor[] = [
     ownerOnly: true,
     searchAliases: ['team', 'mitarbeiter', 'rollen', 'personal', 'staff', 'benutzer', 'zugang'],
   },
-  // ── Tier 1 (#8) — the Owner Leitstand: system health, open problems, and the
-  //    doors to Risiko + Edge-Schutz + Schaufenster in one control room. Owner
-  //    only (hidden from the rail/digit-nav/Spotlight for every other role). ──
+  // ── Der Owner-Leitstand: Systemzustand, offene Probleme, Zugang zu Risiko +
+  //    Edge-Schutz. Am 23.07.2026 von Tier 1 (#8) auf secondary gesenkt, damit
+  //    „Bestellungen" die Ziffer 8 an der Kartei-Schiene bekommt. Grund: der
+  //    Leitstand ist eine Blick-Fläche, keine Transaktions-Fläche, und der
+  //    Inhaber trägt denselben Leitstand ohnehin in der Telefon-App. Er bleibt
+  //    hier über Suche und Spotlight jederzeit erreichbar. ──
   {
     path: '/leitstand',
     label: 'Leitstand',
     description: 'Systemzustand, offene Probleme und der Zugang zu Risiko und Edge-Schutz.',
-    digit: 8,
-    tier: 'primary',
+    tier: 'secondary',
     component: Leitstand,
     ownerOnly: true,
     searchAliases: [
