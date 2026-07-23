@@ -261,6 +261,15 @@ const storefrontAccountRightsRoutes: FastifyPluginAsync<
           drizzleSql`SELECT erase_customer(${customerId}::uuid, NULL) AS keys`,
         );
 
+        // WER es veranlasst hat (0103): hier war es der Mensch selbst. Die
+        // Akte trägt das ab jetzt sichtbar, damit die Kundenliste „hat sein
+        // Konto selbst gelöscht" von „wurde von uns gelöscht" unterscheiden
+        // kann, statt beides gleich aussehen zu lassen. Kundennummer und alle
+        // Vorgänge bleiben in beiden Fällen unberührt.
+        await tx.execute(
+          drizzleSql`UPDATE customers SET erasure_initiated_by = 'CUSTOMER' WHERE id = ${customerId}::uuid`,
+        );
+
         // Eine Tagebuchzeile, auch beim kunden-eigenen Löschen. Bisher schrieb
         // NUR die Personal-Route eine, und erase_customer selbst keine, also
         // hinterließ eine kunden-initiierte Löschung überhaupt keine Spur: auf

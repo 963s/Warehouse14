@@ -75,6 +75,16 @@ const customerErasureRoute: FastifyPluginAsync<ErasureOpts> = async (app, opts) 
           keys: { kyc_storage_keys: string[]; r2_keys: string[] };
         }>;
         const k = rows[0]?.keys ?? { kyc_storage_keys: [], r2_keys: [] };
+
+        // WER die Löschung veranlasst hat, im selben Vorgang festhalten (0103).
+        // Für die Akte ist der Unterschied wesentlich: ein Kunde, der sein
+        // Konto selbst gelöscht hat, hat eine Entscheidung getroffen; eine von
+        // UNS gelöschte Akte ist unsere Handlung und muss als solche
+        // nachweisbar sein (DSGVO Art. 5(2)). Ohne diese Zeile stünde auf der
+        // Zeile nur DASS gelöscht wurde, und die Oberfläche müsste raten.
+        await tx.execute(
+          sql`UPDATE customers SET erasure_initiated_by = 'STAFF' WHERE id = ${id}::uuid`,
+        );
         await tx.insert(auditLog).values({
           eventType: 'customer.erased',
           actorUserId: actorId,
