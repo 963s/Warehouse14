@@ -179,7 +179,7 @@ export const SURFACES: readonly SurfaceDescriptor[] = [
     path: '/kasse',
     label: 'Tageskasse',
     description: 'Die Bargeld-Schublade des Tages: öffnen, Bargeld im Blick, Z-Bon.',
-    digit: 3,
+    digit: 4,
     tier: 'primary',
     component: Kasse,
     // Keep the old term searchable so muscle memory still lands here.
@@ -197,7 +197,7 @@ export const SURFACES: readonly SurfaceDescriptor[] = [
     path: '/lager',
     label: 'Lager',
     description: 'Bestand mit Lagerort und Schmelzwert.',
-    digit: 4,
+    digit: 5,
     tier: 'primary',
     component: Lager,
     searchAliases: ['inventar', 'bestand', 'tresor', 'fach', 'inventory'],
@@ -206,7 +206,7 @@ export const SURFACES: readonly SurfaceDescriptor[] = [
     path: '/kunden',
     label: 'Kunden',
     description: 'Kundenakte, KYC-Stempel, Vertrauen.',
-    digit: 5,
+    digit: 6,
     tier: 'primary',
     component: Kunden,
     searchAliases: ['customer', 'kunde', 'kundenakte', 'crm'],
@@ -215,7 +215,7 @@ export const SURFACES: readonly SurfaceDescriptor[] = [
     path: '/werkstatt',
     label: 'Werkstatt',
     description: 'Übersicht, Tagebuch und Edelmetallkurs.',
-    digit: 6,
+    digit: 7,
     tier: 'primary',
     component: Werkstatt,
     searchAliases: ['home', 'dashboard', 'übersicht', 'startseite'],
@@ -233,7 +233,7 @@ export const SURFACES: readonly SurfaceDescriptor[] = [
     path: '/bestellungen',
     label: 'Bestellungen',
     description: 'Online-Reservierungen zur Abholung annehmen, vorbereiten und übergeben.',
-    digit: 8,
+    digit: 3,
     // PRIMAER, nicht mehr im Suchmenue vergraben. Basels Befund am 23.07.2026:
     // „لسا مافي قسم طلبات اقدر اجهز طلب استلم اوفق اسلم" — es gab keinen
     // sichtbaren Ort, um eine Bestellung anzunehmen, vorzubereiten, zu
@@ -317,7 +317,7 @@ export const SURFACES: readonly SurfaceDescriptor[] = [
     path: '/schreiben',
     label: 'Schreiben',
     description: 'Verträge, Rechnungen und Briefe auf A4 erstellen, mit KI-Assistent.',
-    digit: 7,
+    digit: 8,
     tier: 'primary',
     component: Schreiben,
     searchAliases: [
