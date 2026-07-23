@@ -169,6 +169,27 @@ export interface EmailCopy {
 
   /** Warum eine Bestellung abgelehnt wurde, wenn ein Grund genannt wurde. */
   declinedReasonLabel: string;
+
+  /**
+   * „Ein Stück ist aus Ihrer Reservierung herausgenommen worden."
+   *
+   * Muss geschrieben werden, sobald jemand eine Position entfernt: was die
+   * Kundschaft abholt und was sie zahlt, ändert sich dadurch. Es stillschweigend
+   * zu tun hiesse, sie am Tresen überraschen zu lassen.
+   */
+  itemRemovedSubject: (ref: string) => string;
+  itemRemovedLead: (stueck: string) => string;
+  itemRemovedRemaining: (anzahl: number) => string;
+  itemRemovedClose: string;
+
+  /**
+   * „Ihre Abholfrist ist verlängert worden." Die gute Nachricht: wer anruft und
+   * sagt, er kommt erst Samstag, bekommt schriftlich das neue Datum statt eines
+   * Versprechens am Telefon, an das sich niemand erinnert.
+   */
+  deadlineExtendedSubject: (ref: string) => string;
+  deadlineExtendedLead: (deadline: string) => string;
+  deadlineExtendedClose: string;
 }
 
 const BRAND = 'Warehouse 14';
@@ -246,6 +267,18 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     acceptedLead: 'Wir haben Ihre Reservierung geprüft und angenommen. Die Stücke sind für Sie zurückgelegt; wir bereiten sie vor und melden uns, sobald sie abholbereit sind.',
     acceptedClose: 'Sie müssen nichts weiter tun. Wir schreiben Ihnen wieder, wenn alles bereit liegt.',
     declinedReasonLabel: 'Grund',
+    itemRemovedSubject: (ref) => `Ihre Reservierung ${ref} wurde geändert`,
+    itemRemovedLead: (stueck) =>
+      `wir mussten ein Stück aus Ihrer Reservierung nehmen: ${stueck}.`,
+    itemRemovedRemaining: (anzahl) =>
+      anzahl === 1
+        ? 'Ein Stück bleibt für Sie reserviert.'
+        : `${anzahl} Stücke bleiben für Sie reserviert.`,
+    itemRemovedClose: 'Der Betrag beim Abholen ändert sich entsprechend.',
+    deadlineExtendedSubject: (ref) => `Mehr Zeit für Ihre Reservierung ${ref}`,
+    deadlineExtendedLead: (deadline) =>
+      `wir haben Ihre Abholfrist verlängert. Neuer Termin: ${deadline}.`,
+    deadlineExtendedClose: 'Ihre Stücke bleiben bis dahin für Sie zurückgelegt.',
   },
 
   en: {
@@ -287,6 +320,18 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     acceptedLead: 'We have reviewed your reservation and accepted it. The pieces are set aside for you; we are preparing them and will write again as soon as they are ready for collection.',
     acceptedClose: 'There is nothing further for you to do. We will write again once everything is ready.',
     declinedReasonLabel: 'Reason',
+    itemRemovedSubject: (ref) => `Your reservation ${ref} has changed`,
+    itemRemovedLead: (stueck) =>
+      `we had to take one piece out of your reservation: ${stueck}.`,
+    itemRemovedRemaining: (anzahl) =>
+      anzahl === 1
+        ? 'One piece stays reserved for you.'
+        : `${anzahl} pieces stay reserved for you.`,
+    itemRemovedClose: 'The amount due at pickup changes accordingly.',
+    deadlineExtendedSubject: (ref) => `More time for your reservation ${ref}`,
+    deadlineExtendedLead: (deadline) =>
+      `we have extended your pickup deadline. New date: ${deadline}.`,
+    deadlineExtendedClose: 'Your pieces stay set aside for you until then.',
   },
 
   ar: {
@@ -330,6 +375,14 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     acceptedLead: 'راجعنا حجزك وقبلناه. القطع محجوزة لك، ونحن نُجهّزها وسنكتب إليك حالما تصبح جاهزة للاستلام.',
     acceptedClose: 'لا يلزمك فعل شيء الآن. سنكتب إليك مرة أخرى عندما يصبح كل شيء جاهزاً.',
     declinedReasonLabel: 'السبب',
+    itemRemovedSubject: (ref) => `تغيّر حجزك ${ref}`,
+    itemRemovedLead: (stueck) => `اضطررنا لإخراج قطعة من حجزك: ${stueck}.`,
+    itemRemovedRemaining: (anzahl) =>
+      anzahl === 1 ? 'تبقى لك قطعة واحدة محجوزة.' : `تبقى لك ${anzahl} قطع محجوزة.`,
+    itemRemovedClose: 'يتغيّر المبلغ عند الاستلام تبعاً لذلك.',
+    deadlineExtendedSubject: (ref) => `وقت إضافي لحجزك ${ref}`,
+    deadlineExtendedLead: (deadline) => `مدّدنا مهلة الاستلام. الموعد الجديد: ${deadline}.`,
+    deadlineExtendedClose: 'تبقى قطعك محفوظة لك حتى ذلك الحين.',
   },
 
   tr: {
@@ -371,6 +424,14 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     acceptedLead: 'Rezervasyonunuzu inceledik ve kabul ettik. Parçalar sizin için ayrıldı; hazırlıyoruz ve teslim almaya hazır olur olmaz size tekrar yazacağız.',
     acceptedClose: 'Şimdilik yapmanız gereken bir şey yok. Her şey hazır olduğunda tekrar yazacağız.',
     declinedReasonLabel: 'Gerekçe',
+    itemRemovedSubject: (ref) => `${ref} numaralı rezervasyonunuz değişti`,
+    itemRemovedLead: (stueck) => `rezervasyonunuzdan bir parça çıkarmak zorunda kaldık: ${stueck}.`,
+    itemRemovedRemaining: (anzahl) =>
+      anzahl === 1 ? 'Bir parça sizin için ayrılmış kalıyor.' : `${anzahl} parça sizin için ayrılmış kalıyor.`,
+    itemRemovedClose: 'Teslim alırken ödenecek tutar buna göre değişir.',
+    deadlineExtendedSubject: (ref) => `${ref} rezervasyonunuz için ek süre`,
+    deadlineExtendedLead: (deadline) => `teslim alma sürenizi uzattık. Yeni tarih: ${deadline}.`,
+    deadlineExtendedClose: 'Parçalarınız o tarihe kadar sizin için ayrılmış kalır.',
   },
 
   fr: {
@@ -413,6 +474,14 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     acceptedLead: 'Nous avons examiné votre réservation et l’avons acceptée. Les pièces sont mises de côté pour vous; nous les préparons et vous écrirons dès qu’elles seront prêtes à être retirées.',
     acceptedClose: 'Vous n’avez rien d’autre à faire. Nous vous écrirons de nouveau lorsque tout sera prêt.',
     declinedReasonLabel: 'Motif',
+    itemRemovedSubject: (ref) => `Votre réservation ${ref} a changé`,
+    itemRemovedLead: (stueck) => `nous avons dû retirer une pièce de votre réservation : ${stueck}.`,
+    itemRemovedRemaining: (anzahl) =>
+      anzahl === 1 ? 'Une pièce reste réservée pour vous.' : `${anzahl} pièces restent réservées pour vous.`,
+    itemRemovedClose: 'Le montant à régler au retrait change en conséquence.',
+    deadlineExtendedSubject: (ref) => `Plus de temps pour votre réservation ${ref}`,
+    deadlineExtendedLead: (deadline) => `nous avons prolongé votre délai de retrait. Nouvelle date : ${deadline}.`,
+    deadlineExtendedClose: 'Vos pièces restent mises de côté pour vous jusque-là.',
   },
 
   es: {
@@ -454,6 +523,14 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     acceptedLead: 'Hemos revisado su reserva y la hemos aceptado. Las piezas están apartadas para usted; las estamos preparando y le escribiremos en cuanto estén listas para recoger.',
     acceptedClose: 'No tiene que hacer nada más. Le escribiremos de nuevo cuando todo esté listo.',
     declinedReasonLabel: 'Motivo',
+    itemRemovedSubject: (ref) => `Su reserva ${ref} ha cambiado`,
+    itemRemovedLead: (stueck) => `hemos tenido que retirar una pieza de su reserva: ${stueck}.`,
+    itemRemovedRemaining: (anzahl) =>
+      anzahl === 1 ? 'Una pieza sigue reservada para usted.' : `${anzahl} piezas siguen reservadas para usted.`,
+    itemRemovedClose: 'El importe a pagar en la recogida cambia en consecuencia.',
+    deadlineExtendedSubject: (ref) => `Más tiempo para su reserva ${ref}`,
+    deadlineExtendedLead: (deadline) => `hemos ampliado su plazo de recogida. Nueva fecha: ${deadline}.`,
+    deadlineExtendedClose: 'Sus piezas quedan apartadas para usted hasta entonces.',
   },
 
   it: {
@@ -495,6 +572,14 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     acceptedLead: 'Abbiamo esaminato la tua prenotazione e l’abbiamo accettata. I pezzi sono messi da parte per te; li stiamo preparando e ti scriveremo appena saranno pronti per il ritiro.',
     acceptedClose: 'Non devi fare altro. Ti scriveremo di nuovo quando tutto sarà pronto.',
     declinedReasonLabel: 'Motivo',
+    itemRemovedSubject: (ref) => `La sua prenotazione ${ref} è cambiata`,
+    itemRemovedLead: (stueck) => `abbiamo dovuto togliere un pezzo dalla sua prenotazione: ${stueck}.`,
+    itemRemovedRemaining: (anzahl) =>
+      anzahl === 1 ? 'Un pezzo resta prenotato per lei.' : `${anzahl} pezzi restano prenotati per lei.`,
+    itemRemovedClose: 'L\'importo al ritiro cambia di conseguenza.',
+    deadlineExtendedSubject: (ref) => `Più tempo per la sua prenotazione ${ref}`,
+    deadlineExtendedLead: (deadline) => `abbiamo prolungato il termine di ritiro. Nuova data: ${deadline}.`,
+    deadlineExtendedClose: 'I suoi pezzi restano da parte per lei fino ad allora.',
   },
 
   nl: {
@@ -535,6 +620,14 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     acceptedLead: 'We hebben je reservering bekeken en aangenomen. De stukken liggen voor je apart; we maken ze klaar en schrijven je zodra ze opgehaald kunnen worden.',
     acceptedClose: 'Je hoeft verder niets te doen. We schrijven je weer als alles klaarligt.',
     declinedReasonLabel: 'Reden',
+    itemRemovedSubject: (ref) => `Uw reservering ${ref} is gewijzigd`,
+    itemRemovedLead: (stueck) => `we moesten een stuk uit uw reservering halen: ${stueck}.`,
+    itemRemovedRemaining: (anzahl) =>
+      anzahl === 1 ? 'Eén stuk blijft voor u gereserveerd.' : `${anzahl} stukken blijven voor u gereserveerd.`,
+    itemRemovedClose: 'Het bedrag bij het ophalen verandert navenant.',
+    deadlineExtendedSubject: (ref) => `Meer tijd voor uw reservering ${ref}`,
+    deadlineExtendedLead: (deadline) => `we hebben uw ophaaltermijn verlengd. Nieuwe datum: ${deadline}.`,
+    deadlineExtendedClose: 'Uw stukken blijven tot dan voor u apart liggen.',
   },
 
   pl: {
@@ -581,6 +674,14 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     acceptedLead: 'Sprawdziliśmy Twoją rezerwację i ją przyjęliśmy. Przedmioty są odłożone dla Ciebie; przygotowujemy je i napiszemy, gdy tylko będą gotowe do odbioru.',
     acceptedClose: 'Nie musisz nic więcej robić. Napiszemy ponownie, gdy wszystko będzie gotowe.',
     declinedReasonLabel: 'Powód',
+    itemRemovedSubject: (ref) => `Twoja rezerwacja ${ref} została zmieniona`,
+    itemRemovedLead: (stueck) => `musieliśmy usunąć jeden przedmiot z Twojej rezerwacji: ${stueck}.`,
+    itemRemovedRemaining: (anzahl) =>
+      anzahl === 1 ? 'Jeden przedmiot pozostaje dla Ciebie zarezerwowany.' : `${anzahl} przedmioty pozostają dla Ciebie zarezerwowane.`,
+    itemRemovedClose: 'Kwota przy odbiorze zmienia się odpowiednio.',
+    deadlineExtendedSubject: (ref) => `Więcej czasu na odbiór rezerwacji ${ref}`,
+    deadlineExtendedLead: (deadline) => `przedłużyliśmy termin odbioru. Nowa data: ${deadline}.`,
+    deadlineExtendedClose: 'Twoje przedmioty czekają na Ciebie do tego czasu.',
   },
 
   pt: {
@@ -623,6 +724,14 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     acceptedLead: 'Analisámos a sua reserva e aceitámo-la. As peças estão reservadas para si; estamos a prepará-las e escreveremos assim que estiverem prontas para levantamento.',
     acceptedClose: 'Não precisa de fazer mais nada. Escreveremos novamente quando estiver tudo pronto.',
     declinedReasonLabel: 'Motivo',
+    itemRemovedSubject: (ref) => `A sua reserva ${ref} foi alterada`,
+    itemRemovedLead: (stueck) => `tivemos de retirar uma peça da sua reserva: ${stueck}.`,
+    itemRemovedRemaining: (anzahl) =>
+      anzahl === 1 ? 'Uma peça continua reservada para si.' : `${anzahl} peças continuam reservadas para si.`,
+    itemRemovedClose: 'O valor a pagar no levantamento muda em conformidade.',
+    deadlineExtendedSubject: (ref) => `Mais tempo para a sua reserva ${ref}`,
+    deadlineExtendedLead: (deadline) => `prolongámos o prazo de levantamento. Nova data: ${deadline}.`,
+    deadlineExtendedClose: 'As suas peças ficam guardadas para si até lá.',
   },
 
   da: {
@@ -662,6 +771,14 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     acceptedLead: 'Vi har gennemgået din reservation og accepteret den. Stykkerne er lagt til side til dig; vi gør dem klar og skriver, så snart de kan afhentes.',
     acceptedClose: 'Du skal ikke gøre mere. Vi skriver igen, når alt er klar.',
     declinedReasonLabel: 'Årsag',
+    itemRemovedSubject: (ref) => `Din reservation ${ref} er ændret`,
+    itemRemovedLead: (stueck) => `vi måtte tage en genstand ud af din reservation: ${stueck}.`,
+    itemRemovedRemaining: (anzahl) =>
+      anzahl === 1 ? 'Én genstand er stadig reserveret til dig.' : `${anzahl} genstande er stadig reserveret til dig.`,
+    itemRemovedClose: 'Beløbet ved afhentning ændrer sig tilsvarende.',
+    deadlineExtendedSubject: (ref) => `Mere tid til din reservation ${ref}`,
+    deadlineExtendedLead: (deadline) => `vi har forlænget din afhentningsfrist. Ny dato: ${deadline}.`,
+    deadlineExtendedClose: 'Dine genstande er lagt til side til dig indtil da.',
   },
 
   sv: {
@@ -701,6 +818,14 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     acceptedLead: 'Vi har gått igenom din reservation och godkänt den. Föremålen är undanlagda åt dig; vi gör i ordning dem och skriver så snart de kan hämtas.',
     acceptedClose: 'Du behöver inte göra något mer. Vi skriver igen när allt är klart.',
     declinedReasonLabel: 'Orsak',
+    itemRemovedSubject: (ref) => `Din reservation ${ref} har ändrats`,
+    itemRemovedLead: (stueck) => `vi behövde ta ut ett föremål ur din reservation: ${stueck}.`,
+    itemRemovedRemaining: (anzahl) =>
+      anzahl === 1 ? 'Ett föremål är fortfarande reserverat åt dig.' : `${anzahl} föremål är fortfarande reserverade åt dig.`,
+    itemRemovedClose: 'Beloppet vid hämtning ändras i motsvarande grad.',
+    deadlineExtendedSubject: (ref) => `Mer tid för din reservation ${ref}`,
+    deadlineExtendedLead: (deadline) => `vi har förlängt din hämtningsfrist. Nytt datum: ${deadline}.`,
+    deadlineExtendedClose: 'Dina föremål ligger kvar åt dig till dess.',
   },
 
   uk: {
@@ -746,6 +871,14 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     acceptedLead: 'Ми переглянули ваше бронювання і прийняли його. Речі відкладені для вас; ми готуємо їх і напишемо, щойно вони будуть готові до отримання.',
     acceptedClose: 'Більше нічого робити не потрібно. Ми напишемо знову, коли все буде готове.',
     declinedReasonLabel: 'Причина',
+    itemRemovedSubject: (ref) => `Ваше бронювання ${ref} змінено`,
+    itemRemovedLead: (stueck) => `нам довелося вилучити один предмет із вашого бронювання: ${stueck}.`,
+    itemRemovedRemaining: (anzahl) =>
+      anzahl === 1 ? 'Один предмет залишається заброньованим для вас.' : `${anzahl} предмети залишаються заброньованими для вас.`,
+    itemRemovedClose: 'Сума до сплати при отриманні змінюється відповідно.',
+    deadlineExtendedSubject: (ref) => `Більше часу для бронювання ${ref}`,
+    deadlineExtendedLead: (deadline) => `ми продовжили термін отримання. Нова дата: ${deadline}.`,
+    deadlineExtendedClose: 'Ваші предмети чекають на вас до цього часу.',
   },
 };
 

@@ -1041,6 +1041,36 @@ export function rejectOrder(
   return ordersApi.reject(apiClient, orderNumber, reason)
 }
 
+/**
+ * EINE Position aus der Bestellung nehmen und das Stück freigeben.
+ *
+ * Für den Fall, der vorher die ganze Bestellung kostete: eines von drei
+ * Stücken ist beim Vorbereiten beschädigt, die anderen liegen tadellos im
+ * Regal. Die LETZTE Position lässt sich so NICHT entfernen — das wäre eine
+ * Absage, und die gehört über `rejectOrder`, damit die Kundschaft den Grund
+ * erfährt; der Server antwortet dann mit genau diesem Hinweis.
+ */
+export function removeOrderItem(
+  orderNumber: string,
+  productId: string,
+): Promise<{ ok: boolean; remaining: number; mailed: boolean }> {
+  return ordersApi.removeItem(apiClient, orderNumber, productId)
+}
+
+/**
+ * Die Abholfrist verlängern, wenn jemand anruft und später kommen will.
+ *
+ * Ohne sie verfiel die Reservierung stur nach drei Tagen und die
+ * Vertrauensstufe zählte es als Nichtabholung: ein Mensch wurde dafür
+ * bestraft, dass er sich gemeldet hat.
+ */
+export function extendOrderDeadline(
+  orderNumber: string,
+  days: number,
+): Promise<{ ok: boolean; newDeadline: string; items: number; mailed: boolean }> {
+  return ordersApi.extend(apiClient, orderNumber, days)
+}
+
 // ── Ledger (the GoBD audit feed — read-only history) ─────────────────────────
 export function listLedger(query: LedgerListQuery = {}): Promise<LedgerListResponse> {
   return ledgerQueryApi.list(apiClient, query)

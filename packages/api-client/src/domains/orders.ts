@@ -62,6 +62,47 @@ export const ordersApi = {
     return client.request<OrderView>('GET', `/api/orders/${encodeURIComponent(orderNumber)}`);
   },
 
+  /**
+   * EINE Position aus der Bestellung nehmen und das Stück freigeben.
+   *
+   * Für den Fall, der vorher die ganze Bestellung kostete: eines von drei
+   * Stücken ist beim Vorbereiten beschädigt. Die LETZTE Position lässt sich
+   * nicht so entfernen — das wäre eine Absage, und die gehört über `reject`,
+   * damit die Kundschaft den Grund erfährt. Der Server antwortet dann 409 mit
+   * genau diesem Hinweis.
+   */
+  removeItem(
+    client: ApiClient,
+    orderNumber: string,
+    productId: string,
+  ): Promise<{ ok: boolean; remaining: number; mailed: boolean }> {
+    return client.request<{ ok: boolean; remaining: number; mailed: boolean }>(
+      'DELETE',
+      `/api/orders/${encodeURIComponent(orderNumber)}/items/${encodeURIComponent(productId)}`,
+    );
+  },
+
+  /**
+   * Die Abholfrist verlängern, wenn jemand anruft und später kommen will.
+   *
+   * Ohne sie verfiel die Reservierung stur nach drei Tagen und die
+   * Vertrauensstufe zählte es als Nichtabholung — ein Mensch wurde also dafür
+   * bestraft, dass er sich gemeldet hat. Die neue Frist läuft ab JETZT, nicht
+   * ab der alten: eine abgelaufene Frist um drei Tage zu verlängern ergäbe
+   * sonst eine Frist in der Vergangenheit.
+   */
+  extend(
+    client: ApiClient,
+    orderNumber: string,
+    days: number,
+  ): Promise<{ ok: boolean; newDeadline: string; items: number; mailed: boolean }> {
+    return client.request<{ ok: boolean; newDeadline: string; items: number; mailed: boolean }>(
+      'POST',
+      `/api/orders/${encodeURIComponent(orderNumber)}/extend`,
+      { days },
+    );
+  },
+
   /** OFFEN → ANGENOMMEN. 409, wenn die Bestellung nicht mehr auf OFFEN steht. */
   approve(client: ApiClient, orderNumber: string): Promise<{ ok: boolean; mailed?: boolean }> {
     return client.request<{ ok: boolean; mailed?: boolean }>(

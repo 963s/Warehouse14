@@ -35,7 +35,7 @@ import { type ReactNode, useCallback, useMemo, useState } from "react"
 import { Linking, Pressable, RefreshControl, ScrollView, View } from "react-native"
 import Svg, { Path, Rect } from "react-native-svg"
 import type { OrderView, PickupStage } from "@warehouse14/api-client"
-import { Check, Clock, Mail, PackageCheck, Phone, ShoppingBag, XCircle } from "lucide-react-native"
+import { Check, Clock, Mail, PackageCheck, Phone, ShoppingBag, X, XCircle } from "lucide-react-native"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -46,7 +46,9 @@ import {
   formatEur,
   listOrders,
   prepareOrder,
+  extendOrderDeadline,
   rejectOrder,
+  removeOrderItem,
   readyOrder,
 } from "@/warehouse14/api"
 import { useW14Theme } from "@/warehouse14/theme"
@@ -361,6 +363,46 @@ function OrderCard({
     },
   )
 
+  /**
+   * Eine EINZELNE Position herausnehmen. Der Fall, der vorher die ganze
+   * Bestellung kostete: ein Stück ist beschädigt, die anderen sind tadellos.
+   * Zweistufig, weil das Stück sofort zurück in den Verkauf geht und die
+   * Kundschaft einen Brief bekommt.
+   */
+  const [removing, setRemoving] = useState<{ id: string; name: string } | null>(null)
+  const removeItem = useMutation(
+    () => removeOrderItem(orderNumber ?? "", removing?.id ?? ""),
+    {
+      onSuccess: (data) => {
+        haptics.success()
+        if (data && data.mailed === false && orderNumber != null) onMailNotSent(orderNumber)
+        setRemoving(null)
+        onChanged()
+      },
+      onError: () => {
+        haptics.error()
+        setRemoving(null)
+        onChanged()
+      },
+    },
+  )
+
+  /** Mehr Zeit geben, wenn jemand anruft und später kommen will. */
+  const [extendDays, setExtendDays] = useState<number | null>(null)
+  const extend = useMutation(() => extendOrderDeadline(orderNumber ?? "", extendDays ?? 3), {
+    onSuccess: (data) => {
+      haptics.success()
+      if (data && data.mailed === false && orderNumber != null) onMailNotSent(orderNumber)
+      setExtendDays(null)
+      onChanged()
+    },
+    onError: () => {
+      haptics.error()
+      setExtendDays(null)
+      onChanged()
+    },
+  })
+
   const stageTone =
     order.pickupStage === "OFFEN"
       ? t.colors.gilt
@@ -452,6 +494,22 @@ function OrderCard({
               <Text className="font-mono text-sm" style={{ color: t.colors.inkAged }}>
                 {formatEur(line.unitPriceEur)}
               </Text>
+              {/* Herausnehmen. Bei nur EINER Position bleibt der Griff weg:
+                  das wäre eine Absage, und die gehört zum Ablehnen mit Grund. */}
+              {order.lines.length > 1 && line.productId && order.pickupStage !== "ABGEHOLT" ? (
+                <Pressable
+                  onPress={() => {
+                    haptics.impactLight()
+                    setRemoving({ id: line.productId as string, name: line.name })
+                  }}
+                  hitSlop={10}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${line.name} herausnehmen`}
+                  disabled={removeItem.isPending}
+                >
+                  <X size={16} color={t.colors.mutedForeground} />
+                </Pressable>
+              ) : null}
             </View>
           ))
         ) : (
@@ -504,6 +562,68 @@ function OrderCard({
           zweiten Schaltfläche, damit er neben dem eigentlichen Schritt nicht
           um Aufmerksamkeit ringt, und erst der zweite Tipper lehnt wirklich
           ab. Eine Ablehnung gibt Ware frei und schreibt der Kundschaft. */}
+      {/* Die Rückfrage zum Herausnehmen: das Stück geht sofort zurück in den
+          Verkauf und die Kundschaft bekommt einen Brief, das ist kein
+          Fehlgriff-Tipper. */}
+      {removing != null ? (
+        <View className="mt-2 gap-2">
+          <Text className="text-sm leading-5">
+            „{removing.name}" aus der Bestellung nehmen? Das Stück geht sofort zurück in den
+            Verkauf, und die Kundschaft bekommt eine E-Mail über die Änderung.
+          </Text>
+          <View className="flex-row gap-2">
+            <Button
+              variant="destructive"
+              onPress={() => void removeItem.mutate(undefined)}
+              disabled={removeItem.isPending}
+            >
+              <Text>{removeItem.isPending ? "Wird entfernt …" : "Herausnehmen"}</Text>
+            </Button>
+            <Button
+              variant="ghost"
+              onPress={() => setRemoving(null)}
+              disabled={removeItem.isPending}
+            >
+              <Text>Behalten</Text>
+            </Button>
+          </View>
+          {removeItem.error != null ? (
+            <InlineError message={removeItem.error} onDismiss={removeItem.reset} />
+          ) : null}
+        </View>
+      ) : null}
+
+      {/* Mehr Zeit geben. Ruft jemand an und sagt, er kommt erst Samstag, war
+          bisher NICHTS zu machen: die Reservierung verfiel, die Stücke gingen
+          zurück in den Verkauf, und die Vertrauensstufe zählte es als
+          Nichtabholung — der Mensch wurde bestraft, weil er angerufen hat. */}
+      {orderNumber != null && order.pickupStage !== "ABGEHOLT" ? (
+        <View className="mt-1 flex-row items-center gap-2">
+          <Text className="text-muted-foreground text-xs">Mehr Zeit geben:</Text>
+          {[3, 7, 14].map((tage) => (
+            <Pressable
+              key={tage}
+              onPress={() => {
+                haptics.impactLight()
+                setExtendDays(tage)
+                void extend.mutate(undefined)
+              }}
+              disabled={extend.isPending}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={`Frist um ${tage} Tage verlängern`}
+              className="rounded-full px-2.5 py-1"
+              style={{ borderWidth: 1, borderColor: t.colors.border }}
+            >
+              <Text className="text-xs">{tage} Tage</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+      {extend.error != null ? (
+        <InlineError message={extend.error} onDismiss={extend.reset} />
+      ) : null}
+
       {orderNumber != null ? (
         rejecting ? (
           <View className="mt-3 gap-2">

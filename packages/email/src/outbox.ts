@@ -377,6 +377,91 @@ export function composeOrderAccepted(
 }
 
 /**
+ * „Ein Stück ist aus Ihrer Reservierung herausgenommen worden."
+ *
+ * WARUM DIESER BRIEF PFLICHT IST
+ * Bis zum 23.07.2026 konnte das Personal eine Bestellung nur ganz ablehnen. War
+ * eines von drei Stücken beim Vorbereiten beschädigt, musste die ganze
+ * Bestellung sterben — für die Kundschaft eine unnötige Absage. Jetzt lässt
+ * sich EINE Position herausnehmen; dann ändert sich aber, was sie abholt und
+ * was sie zahlt, und das darf sie nicht am Tresen erfahren.
+ *
+ * Der Brief nennt das Stück beim Namen und sagt, wie viele bleiben. Beides
+ * kommt aus echten Daten; steht keine Zahl fest, wird auch keine behauptet.
+ */
+export function composeItemRemoved(
+  name: string | null,
+  orderNumber: string,
+  stueckName: string,
+  verbleibend: number,
+  locale?: string | null,
+): ComposedEmail {
+  const c = emailCopy(locale);
+  const g = greet(c, name);
+  const lead = c.itemRemovedLead(stueckName);
+  const rest = c.itemRemovedRemaining(verbleibend);
+  const text =
+    `${g}\n\n${lead}\n\n` +
+    `${c.refLabel}: ${orderNumber}\n` +
+    `\n${rest}\n${c.itemRemovedClose}\n\n${textFooter(c)}`;
+  const html = htmlWrap(
+    c,
+    para(g) + para(lead) + para(`${c.refLabel}: ${orderNumber}`) + para(rest) + para(c.itemRemovedClose),
+    `${c.refLabel}: ${orderNumber}`,
+  );
+  return {
+    template: 'order_item_removed',
+    subject: c.itemRemovedSubject(orderNumber),
+    text,
+    html,
+    locale: normalizeEmailLocale(locale),
+  };
+}
+
+/**
+ * „Ihre Abholfrist ist verlängert worden."
+ *
+ * Die gute Nachricht des Paares. Wer anruft und sagt, er schaffe es erst
+ * Samstag, bekommt das neue Datum SCHRIFTLICH statt eines Versprechens am
+ * Telefon, an das sich am Samstag niemand erinnert.
+ *
+ * Das Datum wird in der Sprache des Lesers formatiert, damit der 25.07. nicht
+ * als 07/25 ankommt.
+ */
+export function composeDeadlineExtended(
+  name: string | null,
+  orderNumber: string,
+  deadline: Date,
+  locale?: string | null,
+): ComposedEmail {
+  const c = emailCopy(locale);
+  const g = greet(c, name);
+  const loc = normalizeEmailLocale(locale);
+  const datum = deadline.toLocaleDateString(loc, {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+  const lead = c.deadlineExtendedLead(datum);
+  const text =
+    `${g}\n\n${lead}\n\n` +
+    `${c.refLabel}: ${orderNumber}\n` +
+    `\n${c.deadlineExtendedClose}\n\n${textFooter(c)}`;
+  const html = htmlWrap(
+    c,
+    para(g) + para(lead) + para(`${c.refLabel}: ${orderNumber}`) + para(c.deadlineExtendedClose),
+    `${c.refLabel}: ${orderNumber}`,
+  );
+  return {
+    template: 'order_deadline_extended',
+    subject: c.deadlineExtendedSubject(orderNumber),
+    text,
+    html,
+    locale: loc,
+  };
+}
+
+/**
  * „Ihre Reservierung läuft bald ab."
  *
  * Der Brief, der bis zum 23.07.2026 fehlte. Eine Reservierung verfiel nach drei

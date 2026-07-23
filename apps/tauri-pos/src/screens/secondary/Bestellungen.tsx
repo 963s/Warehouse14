@@ -255,6 +255,83 @@ export function Bestellungen(): JSX.Element {
     [api, busy, listQ, setBusyFor],
   );
 
+  /**
+   * Eine EINZELNE Position herausnehmen. Der Fall, der vorher die ganze
+   * Bestellung kostete: eines von drei Stücken ist beim Vorbereiten beschädigt,
+   * die anderen zwei liegen tadellos im Regal.
+   *
+   * Bewusst mit Rückfrage: das Stück geht sofort zurück in den Verkauf und die
+   * Kundschaft bekommt einen Brief. Das ist kein Fehlgriff-Klick.
+   */
+  const runRemoveItem = useCallback(
+    async (order: OrderView, productId: string, name: string): Promise<void> => {
+      const on = order.orderNumber;
+      if (!on || busy[on]) return;
+      if (
+        !window.confirm(
+          `„${name}" aus der Bestellung nehmen?\n\n` +
+            'Das Stück geht sofort zurück in den Verkauf, und die Kundschaft ' +
+            'bekommt eine E-Mail über die Änderung.',
+        )
+      ) {
+        return;
+      }
+      setBusyFor(on, true);
+      setErr((e) => ({ ...e, [on]: null }));
+      setNote((n) => ({ ...n, [on]: null }));
+      try {
+        const res = await ordersApi.removeItem(api, on, productId);
+        const rest =
+          res.remaining === 1 ? 'Ein Stück bleibt' : `${res.remaining} Stücke bleiben`;
+        setNote((n) => ({
+          ...n,
+          [on]: res.mailed
+            ? `„${name}" herausgenommen und wieder im Bestand. ${rest} reserviert. Die Kundschaft wurde benachrichtigt.`
+            : `„${name}" herausgenommen und wieder im Bestand. ${rest} reserviert. Die E-Mail wurde NICHT gesendet, bitte selbst verständigen.`,
+        }));
+        listQ.refetch();
+      } catch (e) {
+        setErr((er) => ({ ...er, [on]: describeError(e) }));
+        listQ.refetch();
+      } finally {
+        setBusyFor(on, false);
+      }
+    },
+    [api, busy, listQ, setBusyFor],
+  );
+
+  /** Die Abholfrist verlängern, wenn jemand anruft und später kommen will. */
+  const runExtend = useCallback(
+    async (order: OrderView, days: number): Promise<void> => {
+      const on = order.orderNumber;
+      if (!on || busy[on]) return;
+      setBusyFor(on, true);
+      setErr((e) => ({ ...e, [on]: null }));
+      setNote((n) => ({ ...n, [on]: null }));
+      try {
+        const res = await ordersApi.extend(api, on, days);
+        const datum = new Date(res.newDeadline).toLocaleDateString('de-DE', {
+          weekday: 'long',
+          day: '2-digit',
+          month: '2-digit',
+        });
+        setNote((n) => ({
+          ...n,
+          [on]: res.mailed
+            ? `Frist verlängert bis ${datum}. Die Kundschaft hat das neue Datum per E-Mail.`
+            : `Frist verlängert bis ${datum}. Die E-Mail wurde NICHT gesendet, bitte selbst verständigen.`,
+        }));
+        listQ.refetch();
+      } catch (e) {
+        setErr((er) => ({ ...er, [on]: describeError(e) }));
+        listQ.refetch();
+      } finally {
+        setBusyFor(on, false);
+      }
+    },
+    [api, busy, listQ, setBusyFor],
+  );
+
   // ── Die Übergabe: die Bestellung in die Verkaufs-Karte laden ────────────────
   const runHandover = useCallback(
     async (order: OrderView): Promise<void> => {
@@ -460,6 +537,8 @@ export function Bestellungen(): JSX.Element {
                 onTransition={runTransition}
                 onHandover={runHandover}
                 onReject={runReject}
+                onRemoveItem={runRemoveItem}
+                onExtend={runExtend}
               />
             </div>
           ))
@@ -479,6 +558,8 @@ function OrderRow({
   onTransition,
   onHandover,
   onReject,
+  onRemoveItem,
+  onExtend,
 }: {
   order: OrderView;
   busy: boolean;
@@ -487,6 +568,8 @@ function OrderRow({
   onTransition: (order: OrderView, kind: StageKind) => void;
   onHandover: (order: OrderView) => void;
   onReject: (order: OrderView, reason: string) => void;
+  onRemoveItem?: (order: OrderView, productId: string, name: string) => void;
+  onExtend?: (order: OrderView, days: number) => void;
 }): JSX.Element {
   const deadline = deadlineLabel(order.expiresAt);
   // Zweistufig und nie aus Versehen: der erste Klick klappt das Feld für den
@@ -574,7 +657,7 @@ function OrderRow({
             key={`${order.id}:${line.productId ?? idx}`}
             style={{
               display: 'grid',
-              gridTemplateColumns: 'auto 1fr auto',
+              gridTemplateColumns: 'auto 1fr auto auto',
               gap: 10,
               alignItems: 'baseline',
               fontSize: '0.86rem',
@@ -596,6 +679,33 @@ function OrderRow({
               {line.name}
             </span>
             <MoneyAmount valueEur={line.unitPriceEur} />
+            {/* Eine EINZELNE Position herausnehmen. Der Fall, der vorher die
+                ganze Bestellung kostete: ein Stück ist beschädigt, die anderen
+                sind tadellos. Bei nur einer Position bleibt der Knopf weg —
+                das wäre eine Absage, und die gehört zum Grund-Feld unten. */}
+            {order.lines.length > 1 && line.productId && onRemoveItem ? (
+              <button
+                type="button"
+                title="Diese Position herausnehmen und das Stück freigeben"
+                aria-label={`${line.name} herausnehmen`}
+                onClick={() => onRemoveItem(order, line.productId as string, line.name)}
+                disabled={busy}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: '0 2px',
+                  cursor: busy ? 'default' : 'pointer',
+                  color: 'var(--w14-ink-faded)',
+                  fontSize: '1rem',
+                  lineHeight: 1,
+                  opacity: busy ? 0.4 : 1,
+                }}
+              >
+                ×
+              </button>
+            ) : (
+              <span />
+            )}
           </div>
         ))}
       </div>
@@ -633,6 +743,37 @@ function OrderRow({
           {note}
         </p>
       )}
+
+      {/* Mehr Zeit geben. Ruft jemand an und sagt, er kommt erst Samstag, war
+          bisher NICHTS zu machen: die Reservierung verfiel, die Stücke gingen
+          zurück in den Verkauf, und die Vertrauensstufe zählte es als
+          Nichtabholung — der Mensch wurde also bestraft, weil er angerufen hat. */}
+      {order.orderNumber && onExtend && order.pickupStage !== 'ABGEHOLT' ? (
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginTop: '0.3rem' }}>
+          <span style={{ fontSize: '0.82rem', color: 'var(--w14-ink-faded)' }}>Mehr Zeit geben:</span>
+          {[3, 7, 14].map((tage) => (
+            <button
+              key={tage}
+              type="button"
+              onClick={() => onExtend(order, tage)}
+              disabled={busy}
+              style={{
+                background: 'none',
+                border: '1px solid var(--w14-rule)',
+                borderRadius: 999,
+                padding: '1px 9px',
+                font: 'inherit',
+                fontSize: '0.8rem',
+                color: 'var(--w14-ink-aged)',
+                cursor: busy ? 'default' : 'pointer',
+                opacity: busy ? 0.5 : 1,
+              }}
+            >
+              {tage} Tage
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       {/* Die Marke. Bei einem Versand ist sie das Adressetikett fürs Paket, bei
           einer Abholung der Zettel fürs Regal — dieselbe Bestellnummer, derselbe

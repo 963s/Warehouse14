@@ -35,6 +35,8 @@ import { requireAuth, requireRole } from '../lib/auth-policy.js';
 import {
   composeOrderAccepted,
   composeOrderReady,
+  composeDeadlineExtended,
+  composeItemRemoved,
   composeReservationCancelled,
   enqueueEmail,
 } from '@warehouse14/email';
@@ -652,6 +654,272 @@ const ordersRoutes: FastifyPluginAsync = async (app) => {
       }
 
       return reply.status(200).send({ ok: true, released: result.released, mailed });
+    },
+  );
+
+  // ── Eine EINZELNE Position herausnehmen ────────────────────────────────────
+  //
+  // Basels Wunsch, 23.07.2026: „يختار يلغي يغير يعدل يبدل من الطلبات".
+  //
+  // Bis hierher konnte das Personal eine Bestellung nur GANZ ablehnen. War
+  // eines von drei Stücken beim Vorbereiten beschädigt, musste die ganze
+  // Bestellung sterben — die Kundschaft bekam eine Absage für zwei Stücke, die
+  // tadellos im Regal lagen. Das ist kein fehlendes Feature, das ist ein
+  // verlorener Verkauf und ein unnötig enttäuschter Mensch.
+  //
+  // Das Stück geht in DERSELBEN Transaktion zurück in den Verkauf. Bräche die
+  // Freigabe nach dem Löschen der Position, läge es für immer auf RESERVED für
+  // eine Bestellung, die es nicht mehr enthält.
+  //
+  // DIE LETZTE POSITION IST KEINE ENTFERNUNG, SONDERN EINE ABSAGE. Sie wird
+  // deshalb abgelehnt, mit dem Hinweis auf den richtigen Weg: eine leere
+  // Bestellung, die weiter auf RESERVED steht, wäre ein Gespenst in der
+  // Warteschlange, das niemand mehr abholen kann.
+  app.delete<{ Params: { orderNumber: string; productId: string } }>(
+    '/api/orders/:orderNumber/items/:productId',
+    {
+      schema: {
+        tags: ['orders'],
+        summary: 'Eine Position aus der Bestellung nehmen und das Stück freigeben.',
+        params: Type.Object({
+          orderNumber: Type.String({ maxLength: 32 }),
+          productId: Type.String({ format: 'uuid' }),
+        }),
+        response: {
+          200: Type.Object({
+            ok: Type.Boolean(),
+            remaining: Type.Integer(),
+            mailed: Type.Boolean(),
+          }),
+          401: ErrorResponse,
+          403: ErrorResponse,
+          404: ErrorResponse,
+          409: ErrorResponse,
+        },
+      },
+    },
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'ADMIN', 'CASHIER');
+      const { orderNumber, productId } = req.params;
+      const actorId = req.actor?.id ?? null;
+
+      const result = await app.db.transaction(async (tx) => {
+        const carts = (await tx.execute<{ id: string; session: string | null; anzahl: number }>(
+          drizzleSql`
+          SELECT c.id::text AS id, c.reservation_session_id::text AS session,
+                 (SELECT COUNT(*)::int FROM cart_items WHERE cart_id = c.id) AS anzahl
+            FROM carts c
+           WHERE c.order_number = ${orderNumber} AND c.status = 'RESERVED'
+           LIMIT 1`,
+        )) as unknown as Array<{ id: string; session: string | null; anzahl: number }>;
+
+        const cart = carts[0];
+        if (!cart) {
+          throw new OrderNotFoundError(
+            `Bestellung ${orderNumber} ist nicht offen. Nur eine laufende Reservierung lässt sich ändern.`,
+          );
+        }
+        if (cart.anzahl <= 1) {
+          throw new WrongStageError(
+            'Das ist die letzte Position. Eine Bestellung ohne Stücke gibt es nicht — ' +
+              'bitte die Bestellung ablehnen, dann erfährt die Kundschaft auch den Grund.',
+          );
+        }
+
+        const removed = (await tx.execute<{ name: string | null }>(drizzleSql`
+          DELETE FROM cart_items ci
+           USING products p
+           WHERE ci.cart_id = ${cart.id}::uuid
+             AND ci.product_id = ${productId}::uuid
+             AND p.id = ci.product_id
+          RETURNING p.name AS name`)) as unknown as Array<{ name: string | null }>;
+
+        if (removed.length === 0) {
+          throw new OrderNotFoundError('Diese Position gehört nicht zu dieser Bestellung.');
+        }
+
+        // Zurück in den Verkauf, in DERSELBEN Transaktion.
+        await tx.execute(drizzleSql`
+          UPDATE products
+             SET status = 'AVAILABLE', reserved_by_session_id = NULL,
+                 reservation_expires_at = NULL, updated_at = now()
+           WHERE id = ${productId}::uuid
+             AND reserved_by_session_id = ${cart.session}::uuid`);
+
+        await tx.insert(auditLog).values({
+          eventType: 'web_order.item_removed',
+          actorUserId: actorId,
+          deviceId: req.deviceId ?? null,
+          ipAddress: req.ip ?? null,
+          userAgent: req.headers['user-agent'] ?? null,
+          payload: {
+            orderNumber,
+            cartId: cart.id,
+            productId,
+            productName: removed[0]?.name ?? null,
+            remaining: cart.anzahl - 1,
+          },
+        });
+
+        return { remaining: cart.anzahl - 1, name: removed[0]?.name ?? null };
+      });
+
+      // Der Brief. Was die Kundschaft abholt und zahlt, hat sich geändert —
+      // das darf sie nicht erst am Tresen erfahren.
+      let mailed = false;
+      try {
+        await app.withPii(async (tx) => {
+          const r = await orderRecipient(tx, orderNumber);
+          if (r?.email) {
+            await enqueueEmail(
+              tx,
+              r.email,
+              composeItemRemoved(
+                r.name,
+                r.orderNumber ?? orderNumber,
+                result.name ?? 'ein Stück',
+                result.remaining,
+                r.locale,
+              ),
+              r.customerId,
+            );
+            mailed = true;
+          }
+        });
+      } catch (err) {
+        req.log.error({ err }, 'Brief zur entfernten Position konnte nicht eingereiht werden');
+      }
+
+      return reply.status(200).send({ ok: true, remaining: result.remaining, mailed });
+    },
+  );
+
+  // ── Die Abholfrist verlängern ──────────────────────────────────────────────
+  //
+  // Der zweite Teil derselben Freiheit. Ruft jemand an und sagt, er schaffe es
+  // erst Samstag, konnte das Personal bisher NICHTS tun: die Reservierung
+  // verfiel nach drei Tagen, die Stücke gingen zurück in den Verkauf, und die
+  // Vertrauensstufe zählte es als Nichtabholung. Ein Mensch wurde also dafür
+  // bestraft, dass er angerufen hat.
+  //
+  // Die Frist hängt an den STÜCKEN (`products.reservation_expires_at`), nicht
+  // am Warenkorb — sie werden deshalb alle zusammen verlängert, sonst ginge
+  // eines früher zurück in den Verkauf als das andere.
+  //
+  // Der Erinnerungs-Merker wird zurückgesetzt: die neue Frist verdient ihre
+  // eigene Erinnerung, sonst bekäme die Kundschaft für die verlängerte Frist
+  // gar keine mehr.
+  app.post<{ Params: { orderNumber: string }; Body: { days?: number } }>(
+    '/api/orders/:orderNumber/extend',
+    {
+      schema: {
+        tags: ['orders'],
+        summary: 'Die Abholfrist einer laufenden Reservierung verlängern.',
+        params: Type.Object({ orderNumber: Type.String({ maxLength: 32 }) }),
+        body: Type.Object({
+          // Eine Obergrenze, weil eine Reservierung ein Versprechen an ANDERE
+          // Interessenten ist: das Stück ist so lange aus dem Verkauf.
+          days: Type.Optional(Type.Integer({ minimum: 1, maximum: 30, default: 3 })),
+        }),
+        response: {
+          200: Type.Object({
+            ok: Type.Boolean(),
+            newDeadline: Type.String({ format: 'date-time' }),
+            items: Type.Integer(),
+            mailed: Type.Boolean(),
+          }),
+          401: ErrorResponse,
+          403: ErrorResponse,
+          404: ErrorResponse,
+          409: ErrorResponse,
+        },
+      },
+    },
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'ADMIN', 'CASHIER');
+      const orderNumber = req.params.orderNumber;
+      const days = req.body?.days ?? 3;
+      const actorId = req.actor?.id ?? null;
+
+      const result = await app.db.transaction(async (tx) => {
+        const carts = (await tx.execute<{ id: string; session: string | null }>(drizzleSql`
+          SELECT id::text AS id, reservation_session_id::text AS session
+            FROM carts
+           WHERE order_number = ${orderNumber} AND status = 'RESERVED'
+           LIMIT 1`)) as unknown as Array<{ id: string; session: string | null }>;
+
+        const cart = carts[0];
+        if (!cart) {
+          throw new OrderNotFoundError(
+            `Bestellung ${orderNumber} ist nicht offen. Nur eine laufende Reservierung lässt sich verlängern.`,
+          );
+        }
+
+        // Ab JETZT, nicht ab der alten Frist: ist sie schon abgelaufen, wäre
+        // eine Verlängerung „um drei Tage" sonst eine Frist in der
+        // Vergangenheit — also gar keine.
+        const rows = (await tx.execute<{ neu: string }>(drizzleSql`
+          UPDATE products
+             SET reservation_expires_at = now() + (${days} || ' days')::interval,
+                 updated_at = now()
+           WHERE reserved_by_session_id = ${cart.session}::uuid
+             AND status = 'RESERVED'
+          RETURNING to_char(reservation_expires_at AT TIME ZONE 'UTC',
+                            'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS neu`)) as unknown as Array<{
+          neu: string;
+        }>;
+
+        if (rows.length === 0) {
+          throw new WrongStageError(
+            'Zu dieser Bestellung liegt kein reserviertes Stück mehr. Die Frist lässt sich nicht verlängern.',
+          );
+        }
+
+        // Die neue Frist verdient eine neue Erinnerung.
+        await tx.execute(drizzleSql`
+          UPDATE carts SET expiry_reminder_sent_at = NULL, updated_at = now()
+           WHERE id = ${cart.id}::uuid`);
+
+        await tx.insert(auditLog).values({
+          eventType: 'web_order.deadline_extended',
+          actorUserId: actorId,
+          deviceId: req.deviceId ?? null,
+          ipAddress: req.ip ?? null,
+          userAgent: req.headers['user-agent'] ?? null,
+          payload: { orderNumber, cartId: cart.id, days, items: rows.length },
+        });
+
+        return { newDeadline: rows[0]!.neu, items: rows.length };
+      });
+
+      let mailed = false;
+      try {
+        await app.withPii(async (tx) => {
+          const r = await orderRecipient(tx, orderNumber);
+          if (r?.email) {
+            await enqueueEmail(
+              tx,
+              r.email,
+              composeDeadlineExtended(
+                r.name,
+                r.orderNumber ?? orderNumber,
+                new Date(result.newDeadline),
+                r.locale,
+              ),
+              r.customerId,
+            );
+            mailed = true;
+          }
+        });
+      } catch (err) {
+        req.log.error({ err }, 'Brief zur verlaengerten Frist konnte nicht eingereiht werden');
+      }
+
+      return reply
+        .status(200)
+        .send({ ok: true, newDeadline: result.newDeadline, items: result.items, mailed });
     },
   );
 };
