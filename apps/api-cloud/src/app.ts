@@ -72,6 +72,7 @@ import customersListRoute from './routes/customers-list.js';
 import customersVatLookupRoute from './routes/customers-vat-lookup.js';
 import { customersVerifyVatRoute } from './routes/customers-verify-vat.js';
 import customersRoutes from './routes/customers.js';
+import devicesRoutes from './routes/devices.js';
 import ordersRoutes from './routes/orders.js';
 import dashboardRoutes from './routes/dashboard.js';
 import documentsRoutes from './routes/documents.js';
@@ -263,6 +264,7 @@ export async function buildApp(opts: BuildAppOpts): Promise<FastifyInstance> {
   await app.register(productCategoriesRoute);
   await app.register(customersRoutes);
   await app.register(ordersRoutes);
+  await app.register(devicesRoutes);
   await app.register(customersListRoute);
   await app.register(customersVatLookupRoute);
   await app.register(customerUpdateRoute);

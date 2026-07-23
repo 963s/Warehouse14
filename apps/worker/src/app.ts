@@ -29,6 +29,7 @@ import {
   dsfinvkDailyExportJob,
   ebaySyncJob,
   emailOutboxSenderJob,
+  pushOutboxSenderJob,
   reservationExpiryReminderJob,
   supportInboxPollerJob,
   gdprCleanupJob,
@@ -189,6 +190,9 @@ export async function buildWorker(opts: BuildWorkerOpts): Promise<WorkerHandle> 
       batchSize: opts.env.PRODUCT_TRANSLATE_BATCH,
     }),
   );
+  // 0103: Benachrichtigungen auf das Geraet. Bis dahin erfuhr niemand,
+  // dass eine Bestellung eingetroffen ist.
+  runner.register(pushOutboxSenderJob());
   // 0102: der Brief, BEVOR eine Reservierung verfaellt. Bis dahin verfiel sie
   // stillschweigend und der Mensch erfuhr es erst am leeren Regal.
   runner.register(

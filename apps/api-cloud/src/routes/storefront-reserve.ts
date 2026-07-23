@@ -33,6 +33,7 @@ import {
 
 import { composeReservationConfirmed, enqueueEmail } from '@warehouse14/email';
 import { localeFromAcceptLanguage } from '@warehouse14/email';
+import { enqueuePush, pushNewOrder, staffDeviceTokens } from '../lib/push-outbox.js';
 import { requireShopper } from '../lib/shopper.js';
 import {
   MAX_ITEMS_PER_RESERVATION,
@@ -419,6 +420,42 @@ const storefrontReserveRoutes: FastifyPluginAsync = async (app) => {
         });
       } catch (err) {
         req.log.warn({ err }, 'reservation email enqueue failed (non-blocking)');
+      }
+
+      // ── Das Personal erfährt davon, ohne nachsehen zu müssen ──────────────
+      // Basels Befund am 23.07.2026: der Abholablauf war vollständig gebaut
+      // und trotzdem unsichtbar. Eine Bestellung traf ein und niemand wusste
+      // es, solange nicht zufällig jemand die Warteschlange öffnete.
+      //
+      // Wie der Brief: best-effort, denn eine gescheiterte Benachrichtigung
+      // darf keine Reservierung verhindern. Aber NICHT still: gibt es kein
+      // angemeldetes Gerät, steht das als Zahl im Protokoll, damit „niemand
+      // wurde benachrichtigt" von „es gibt niemanden zu benachrichtigen"
+      // unterscheidbar bleibt.
+      try {
+        const empfaenger = await staffDeviceTokens(app.db);
+        if (empfaenger.length === 0) {
+          req.log.info(
+            { orderNumber: reservedCart?.orderNumber ?? null },
+            'neue Bestellung: kein Gerät ist für Benachrichtigungen angemeldet',
+          );
+        } else {
+          const queued = await enqueuePush(
+            app.db,
+            empfaenger,
+            pushNewOrder(
+              reservedCart?.orderNumber ?? 'ohne Nummer',
+              contact?.fullName ?? null,
+              items.length,
+            ),
+          );
+          req.log.info(
+            { orderNumber: reservedCart?.orderNumber ?? null, queued },
+            'neue Bestellung: Benachrichtigung eingereiht',
+          );
+        }
+      } catch (err) {
+        req.log.warn({ err }, 'Benachrichtigung über die neue Bestellung fehlgeschlagen');
       }
 
       return reply.status(200).send({
