@@ -312,6 +312,23 @@ const ordersRoutes: FastifyPluginAsync = async (app) => {
     },
   };
 
+  /**
+   * `/ready` braucht ein EIGENES Antwortschema.
+   *
+   * Fastify serialisiert streng nach dem erklärten Schema und wirft jedes
+   * Feld weg, das dort nicht steht. Mit dem gemeinsamen `transitionSchema`
+   * schickte die Route zwar `{ ok, mailed }`, beim Tresen kam aber nur
+   * `{ ok: true }` an — die eine Auskunft, für die der ganze try/catch
+   * gebaut wurde, verschwand lautlos. Live gemessen am 23.07.2026.
+   */
+  const readySchema = {
+    ...transitionSchema,
+    response: {
+      ...transitionSchema.response,
+      200: Type.Object({ ok: Type.Boolean(), mailed: Type.Boolean() }),
+    },
+  };
+
   // OFFEN → ANGENOMMEN
   app.post<{ Params: { orderNumber: string } }>(
     '/api/orders/:orderNumber/approve',
@@ -355,7 +372,7 @@ const ordersRoutes: FastifyPluginAsync = async (app) => {
   // IN_VORBEREITUNG → ABHOLBEREIT (+ der Brief „Ihr Stück liegt bereit")
   app.post<{ Params: { orderNumber: string } }>(
     '/api/orders/:orderNumber/ready',
-    { schema: { ...transitionSchema, summary: 'Als abholbereit melden (ADMIN + CASHIER).' } },
+    { schema: { ...readySchema, summary: 'Als abholbereit melden (ADMIN + CASHIER).' } },
     async (req, reply) => {
       requireAuth(req);
       requireRole(req, 'ADMIN', 'CASHIER');
