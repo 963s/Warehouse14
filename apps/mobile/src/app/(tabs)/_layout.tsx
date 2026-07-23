@@ -24,6 +24,7 @@ import Animated, {
 } from "react-native-reanimated"
 
 import { SURFACES } from "@/warehouse14/surfaces"
+import { useWaitingOrders } from "@/warehouse14/orders/use-waiting-orders"
 import { useW14Theme } from "@/warehouse14/theme"
 import {
   duration,
@@ -100,11 +101,14 @@ function TabButton({
   label,
   active,
   onPress,
+  badge,
 }: {
   icon: (props: { color: string; size: number }) => ReactNode
   label: string
   active: boolean
   onPress: () => void
+  /** Wartende Vorgänge. `null` heisst „unbekannt" und zeigt NICHTS, nicht 0. */
+  badge?: number | null
 }): ReactNode {
   const t = useW14Theme()
   const reduce = useReduceMotion()
@@ -135,7 +139,39 @@ function TabButton({
         <View style={{ height: SEAM_HEIGHT, justifyContent: "center" }}>
           <TabSeam active={active} gilt={t.colors.gilt} />
         </View>
-        <Animated.View style={iconStyle}>
+        <Animated.View style={[iconStyle, { position: "relative" }]}>
+          {badge != null && badge > 0 ? (
+            <View
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+              style={{
+                position: "absolute",
+                top: -5,
+                right: -11,
+                minWidth: 17,
+                height: 17,
+                paddingHorizontal: 4,
+                borderRadius: 9,
+                backgroundColor: t.colors.card,
+                borderWidth: 1,
+                borderColor: t.colors.gilt,
+                alignItems: "center",
+                justifyContent: "center",
+                zIndex: 1,
+              }}
+            >
+              <RNText
+                style={{
+                  fontFamily: t.fonts.semibold,
+                  fontSize: 10,
+                  lineHeight: 13,
+                  color: t.colors.foreground,
+                }}
+              >
+                {badge > 99 ? "99+" : String(badge)}
+              </RNText>
+            </View>
+          ) : null}
           <Icon color={color} size={t.icon.lg} />
         </Animated.View>
         <RNText
@@ -223,6 +259,11 @@ function VierzehnButton(): ReactNode {
 function W14TabBar({ state, descriptors, navigation }: TabBarProps): ReactNode {
   const t = useW14Theme()
   const insets = useScreenInsets()
+  // Die Zahl am Bestellungen-Tab. Hier oben geholt, weil der Balken auf JEDEM
+  // Schirm liegt: so läuft genau EINE Abfrage für die ganze App, nicht eine je
+  // Fläche. `null` bei einem Fehlschlag zeigt gar keine Zahl statt einer
+  // erfundenen Null.
+  const waiting = useWaitingOrders()
 
   // The assistant medallion sits mid-bar (after Lager, before Kunden) like a
   // centre seal; visible tabs render around it in registry order.
@@ -283,6 +324,9 @@ function W14TabBar({ state, descriptors, navigation }: TabBarProps): ReactNode {
               label={label}
               active={active}
               onPress={onPress}
+              // Nur die Bestellungen tragen eine Zahl. Sie ist die einzige
+              // Fläche, auf der etwas AUF UNS wartet und eine Frist läuft.
+              badge={route.name === "bestellungen" ? waiting.count : undefined}
             />
           )
           // Seat the assistant medallion mid-bar, before this visible tab.
