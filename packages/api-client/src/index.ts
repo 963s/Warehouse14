@@ -20,6 +20,7 @@
  */
 
 export * from './client.js';
+export { devicesApi, type PushApp, type PushPlatform } from './domains/devices.js';
 export * from './errors.js';
 export * from './types.js';
 export * from './validation.js';

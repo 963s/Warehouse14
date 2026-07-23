@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "941782872272",
+    "project_id": "w-14-5133c",
+    "storage_bucket": "w-14-5133c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:941782872272:android:5eb1d7be83176ffdd62ed5",
+        "android_client_info": {
+          "package_name": "de.warehouse14.mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAM3nhzjtBcVmzPTr-VEWZMeW7pYY5VquQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:941782872272:android:530c09a099dee957d62ed5",
+        "android_client_info": {
+          "package_name": "de.warehouse14.shop"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAM3nhzjtBcVmzPTr-VEWZMeW7pYY5VquQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

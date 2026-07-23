@@ -37,7 +37,8 @@
       "android.permission.READ_MEDIA_VIDEO",
       "android.permission.ACCESS_FINE_LOCATION",
       "android.permission.ACCESS_COARSE_LOCATION"
-    ]
+    ],
+    "googleServicesFile": "./google-services.json"
   },
   "ios": {
     "icon": "./assets/images/app-icon-ios.png",
@@ -107,6 +108,11 @@
   "extra": {
     "ignite": {
       "version": "11.5.0"
+    },
+    "router": {},
+    "eas": {
+      "projectId": "feec82b2-ed63-479b-9561-0889296606b5"
     }
-  }
+  },
+  "owner": "963s"
 }

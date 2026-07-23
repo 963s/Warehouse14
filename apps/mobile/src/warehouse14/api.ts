@@ -18,6 +18,7 @@ import {
   ApiError,
   appraisalsApi,
   authPin,
+  devicesApi,
   belegtextApi,
   bridgeApi,
   categoriesApi,
@@ -275,6 +276,22 @@ export const apiClient: ApiClient = createApiClient({
  */
 export function deviceStepUp(): Promise<unknown> {
   return authPin.stepUpDevice(apiClient)
+}
+
+/**
+ * Die Gerätemarke beim Server anmelden, damit eine neue Bestellung dieses
+ * Telefon erreicht. `app: 'owner'` — diese Anwendung ist die des Inhabers.
+ */
+export function registerPushToken(
+  token: string,
+  platform: "ios" | "android",
+): Promise<{ ok: boolean }> {
+  return devicesApi.registerPushToken(apiClient, { token, platform, app: "owner" })
+}
+
+/** Die Marke widerrufen, damit ein abgemeldetes Gerät nichts mehr bekommt. */
+export function revokePushToken(token: string): Promise<{ ok: boolean; revoked: number }> {
+  return devicesApi.revokePushToken(apiClient, token)
 }
 
 /** Revoke the current session on the SERVER (POST /api/auth/sign-out) before the

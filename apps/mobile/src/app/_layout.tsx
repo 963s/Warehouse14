@@ -2,7 +2,7 @@
 // component (NOT in index.js — that breaks Fast Refresh).
 import "../../global.css"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { StatusBar } from "react-native"
 import { useFonts } from "expo-font"
 import { Stack, useRouter, useSegments } from "expo-router"
@@ -17,6 +17,7 @@ import { installOnboardingPersistence } from "@/warehouse14/onboarding"
 import { installPreferencesPersistence } from "@/warehouse14/preferences"
 import { createFileReadCachePersistence, installReadCachePersistence } from "@/warehouse14/offline"
 import { LocalLockGate } from "@/warehouse14/LocalLockGate"
+import { setUpPushNotifications } from "@/warehouse14/push-notifications"
 import { hydrateSession, useSession } from "@/warehouse14/session"
 import { StepUpDialogHost } from "@/warehouse14/StepUpDialog"
 import { lightPalette } from "@/warehouse14/theme"
@@ -57,6 +58,38 @@ const appStatePersistence = createAppStatePersistence()
 void installOnboardingPersistence(appStatePersistence)
 void installPreferencesPersistence(appStatePersistence)
 void installThemePreferencePersistence(appStatePersistence)
+
+/**
+ * Nach der Anmeldung einmal um die Erlaubnis für Benachrichtigungen bitten.
+ *
+ * BASELS BEFUND, 23.07.2026: „المفروض افتح يطلب مني صلاحيات او اذونات ارسال
+ * اشعارات مثل اي تطبيق اخر" — die App fragte nie. Sie tat es nicht, weil
+ * `expo-notifications` gar nicht eingebunden war.
+ *
+ * WARUM NACH DER ANMELDUNG UND NICHT BEIM START
+ * Eine Systemabfrage vor dem ersten Blick auf die App wird reflexhaft
+ * weggetippt, und eine Gerätemarke ohne bekannten Menschen kann der Server
+ * niemandem zuordnen. Erst wenn feststeht, WER das Gerät hält, ist die Frage
+ * sinnvoll.
+ *
+ * Der Wächter sorgt dafür, dass pro Sitzung genau einmal gefragt wird: das
+ * Layout rendert bei jeder Navigation neu, und eine Abfrage bei jedem Wechsel
+ * wäre eine Zumutung. Der Aufruf ist bewusst nicht abgewartet — er darf den
+ * Aufbau der Oberfläche unter keinen Umständen aufhalten, und sein Ergebnis
+ * ändert an dieser Stelle nichts Sichtbares.
+ */
+function usePushSetup(): void {
+  const { isAuthenticated } = useSession()
+  const gefragt = useRef(false)
+  useEffect(() => {
+    if (!isAuthenticated || gefragt.current) return
+    gefragt.current = true
+    void setUpPushNotifications().catch(() => {
+      // Eine fehlgeschlagene Einrichtung darf die App nie stören. Der Zustand
+      // ist in den Einstellungen ehrlich ablesbar.
+    })
+  }, [isAuthenticated])
+}
 
 /** Redirect to /login when there is no session, and away from it once there is. */
 function useAuthRedirect(): void {
@@ -108,6 +141,7 @@ export default function RootLayout() {
   }, [ready])
 
   useAuthRedirect()
+  usePushSetup()
 
   if (!ready) return null
 
