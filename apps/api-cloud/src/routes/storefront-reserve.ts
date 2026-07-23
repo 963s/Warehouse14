@@ -216,7 +216,7 @@ const storefrontReserveRoutes: FastifyPluginAsync = async (app) => {
               AND p.reserved_by_channel = 'WEB_RESERVATION'
               AND (p.reservation_expires_at IS NULL OR p.reservation_expires_at > now())
           ) AS held_count,
-          (SELECT COALESCE(SUM(p.price_eur), 0)::text FROM products p
+          (SELECT COALESCE(SUM(p.list_price_eur), 0)::text FROM products p
              JOIN carts c ON c.reservation_session_id = p.reserved_by_session_id
             WHERE c.shopper_id = ${req.shopper.id}
               AND p.status = 'RESERVED'
@@ -267,7 +267,7 @@ const storefrontReserveRoutes: FastifyPluginAsync = async (app) => {
       // a fifth of the stock locked for three days.
       const heldValue = Number(facts?.held_value ?? 0);
       const [{ incoming = '0' } = {}] = await app.db.execute<{ incoming: string }>(drizzleSql`
-        SELECT COALESCE(SUM(price_eur), 0)::text AS incoming
+        SELECT COALESCE(SUM(list_price_eur), 0)::text AS incoming
           FROM products WHERE id = ANY(${items.map((i) => i.productId)}::uuid[])
       `);
       const totalValue = heldValue + Number(incoming);
