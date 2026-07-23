@@ -35,6 +35,20 @@ jobs:
       - name: Lint (Biome)
         run: pnpm lint
 
+      # Rohes SQL ist für den Typprüfer nur Text. Diese Wache hält jede
+      # `alias.spalte`-Referenz gegen eine Momentaufnahme des echten Schemas.
+      # Sie existierte schon, lief aber in KEINEM Arbeitsablauf — und genau
+      # deshalb ging `products.price_eur` (die Spalte heisst `list_price_eur`)
+      # am 22.07.2026 live und legte die Reservierung im Kundenshop lahm.
+      # Braucht keine Datenbank: die Momentaufnahme liegt im Baum.
+      - name: SQL-Spalten gegen das Schema prüfen
+        run: pnpm check:sql
+
+      # Ein Steuerzeichen in einem Template-Literal hat schon einmal einen
+      # Produktions-Hash zerstört und war in `grep` unsichtbar.
+      - name: Keine Steuerzeichen in Quelltexten
+        run: node scripts/check-no-control-bytes.mjs
+
       - name: Typecheck
         run: pnpm typecheck
 

@@ -44,15 +44,84 @@ const NOT_AN_ALIAS = new Set([
   'select', 'from', 'and', 'or', 'union', 'having', 'window', 'for', 'lateral',
 ]);
 
-/** Pull every raw SQL string out of a TypeScript source file. */
+/**
+ * Pull every raw SQL string out of a TypeScript source file.
+ *
+ * The first version of this used one regex, `/(?:sql|drizzleSql|tx|s)\s*`
+ * ([\s\S]*?)`/g`, and it silently missed statements. Two faults, both fatal:
+ *
+ *  1. The alternative `s` matches the last letter of ANY identifier that ends
+ *     in "s" before a backtick, so a plain JS template literal opened a bogus
+ *     "SQL" literal.
+ *  2. The lazy `[\s\S]*?` stops at the FIRST backtick, but a SQL template
+ *     regularly nests one inside an interpolation
+ *     (`${cond ? drizzleSql`AND …` : drizzleSql``}`). The scan then ended
+ *     early, resumed in the middle of the statement, and the REAL statement
+ *     was never seen as a whole.
+ *
+ * The consequence was measured on 2026-07-23: `products.price_eur` (the column
+ * is `list_price_eur`) sat in `storefront-reserve.ts` and this gate reported
+ * everything valid, while production answered 42703 and the shop could not
+ * take a single reservation. The gate was not wrong about the schema; it never
+ * read the statement.
+ *
+ * So: find the tag with a word boundary, then walk the characters and track
+ * `${…}` depth and nested backticks, ending only at the matching backtick.
+ */
+const SQL_TAGS = /\b(?:drizzleSql|sql|tx)\s*`/g;
+
 function sqlLiterals(source) {
   const out = [];
-  // Tagged template literals: sql`...`, drizzleSql`...`, tx`...`
-  const re = /(?:sql|drizzleSql|tx|s)\s*`([\s\S]*?)`/g;
+  SQL_TAGS.lastIndex = 0;
   let m;
-  while ((m = re.exec(source)) !== null) {
-    const before = source.slice(0, m.index);
-    out.push({ text: m[1], line: before.split('\n').length });
+  while ((m = SQL_TAGS.exec(source)) !== null) {
+    const open = SQL_TAGS.lastIndex - 1; // Position des öffnenden Backticks
+    let i = open + 1;
+    let depth = 0; // Verschachtelungstiefe von ${ … }
+    let end = -1;
+    while (i < source.length) {
+      const ch = source[i];
+      if (ch === '\\') {
+        i += 2;
+        continue;
+      }
+      if (ch === '$' && source[i + 1] === '{') {
+        depth += 1;
+        i += 2;
+        continue;
+      }
+      if (ch === '}' && depth > 0) {
+        depth -= 1;
+        i += 1;
+        continue;
+      }
+      if (ch === '`') {
+        if (depth === 0) {
+          end = i;
+          break;
+        }
+        // Ein Backtick INNERHALB einer Interpolation gehört zu einem
+        // verschachtelten Template. Überspringe es bis zu seinem Partner.
+        let j = i + 1;
+        let innerDepth = 0;
+        while (j < source.length) {
+          if (source[j] === '\\') { j += 2; continue; }
+          if (source[j] === '$' && source[j + 1] === '{') { innerDepth += 1; j += 2; continue; }
+          if (source[j] === '}' && innerDepth > 0) { innerDepth -= 1; j += 1; continue; }
+          if (source[j] === '`' && innerDepth === 0) break;
+          j += 1;
+        }
+        i = j + 1;
+        continue;
+      }
+      i += 1;
+    }
+    if (end === -1) continue; // unausgeglichen: lieber überspringen als raten
+    out.push({
+      text: source.slice(open + 1, end),
+      line: source.slice(0, open).split('\n').length,
+    });
+    SQL_TAGS.lastIndex = end + 1;
   }
   return out;
 }
