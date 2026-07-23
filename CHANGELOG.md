@@ -6,6 +6,16 @@ and the project adheres to [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-07-23
+
+- **Die Bestätigung verlangt jetzt Ihren Gerätecode, nicht mehr die abgeschaffte Kassen-PIN.** Jeder Steuerexport, jedes Storno, jeder Z-Bon, jede Löschung fragte weiter nach der vierstelligen Zahl, die am 21.07. abgeschafft wurde. Sie geben jetzt denselben Code ein wie beim Entsperren der Kasse. Geprüft wird er auf diesem Gerät, mit derselben Sperre nach mehreren Fehlversuchen; er wird nicht über das Netz geschickt. Wichtig für Sie als Inhaber: ein neu angelegter Mitarbeiter hatte gar keine alte PIN und hätte den Steuerexport NIE ausführen können.
+- **Sie können jetzt eine einzelne Position aus einer Bestellung nehmen.** Ist eines von drei Stücken beim Vorbereiten beschädigt, mussten Sie bisher die ganze Bestellung ablehnen — der Kunde bekam eine Absage für zwei einwandfreie Stücke. Jetzt nehmen Sie das eine heraus, es geht sofort zurück in den Verkauf, und der Kunde erfährt die Änderung per Brief. Die letzte Position lässt sich so nicht entfernen; dafür gibt es das Ablehnen mit Grund.
+- **Sie können die Abholfrist verlängern.** Ruft jemand an und schafft es erst Samstag, geben Sie ihm drei, sieben oder vierzehn Tage mehr. Bisher war nichts zu machen: die Reservierung verfiel, die Stücke gingen zurück in den Verkauf, und die Vertrauensstufe zählte es als Nichtabholung — der Kunde wurde also bestraft, weil er angerufen hat. Der Kunde bekommt das neue Datum schriftlich.
+- **Bestellungen ablehnen, mit Grund.** Der Grund steht im Absagebrief, im Beleg und im Tagebuch.
+- **Ein Aufkleber zum Ausdrucken**, mit Anschrift, Bestellnummer und Strichcode. Bei einer Abholung ist es der Regalzettel: derselbe Strichcode, damit ein Handscanner das Paket am Tresen sofort findet. Eine Sendungsnummer steht bewusst NICHT darauf, solange kein Zusteller angebunden ist.
+- **Ein gelöschtes Kundenkonto verschwindet nicht mehr aus der Liste.** Es steht durchgestrichen da, mit dem Hinweis, ob der Kunde es selbst gelöscht hat oder wir. Kundennummer und Umsätze bleiben erhalten. In der Kundenauswahl beim Verkauf wird ein gelöschtes Konto weiterhin nicht angeboten.
+- Eine Versandbestellung liest sich jetzt als „Versand" statt als Abholung mit unbekanntem Stand.
+
 ## [0.6.0] - 2026-07-23
 
 - Neu: die Bestellungen. Was ein Kunde im Onlineshop reserviert, steht jetzt als eigene Warteschlange an der Kasse, mit Name, Kontakt, Positionen, Bestellnummer und Frist. Vier Knöpfe führen den Vorgang von Anfang bis Ende: annehmen, vorbereiten, abholbereit melden, übergeben. Bis heute gab es dafür keine einzige Schaltfläche, und eine Web-Reservierung liess sich überhaupt nicht abschliessen.
