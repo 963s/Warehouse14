@@ -507,7 +507,7 @@ export function composeReservationCancelled(
   const html = htmlWrap(c, para(g) + para(lead) + para(c.cancelledClose), lead);
   return {
     template: 'reservation_cancelled',
-    subject: c.cancelledSubject,
+    subject: c.cancelledSubject(orderId),
     text,
     html,
     locale: normalizeEmailLocale(locale),

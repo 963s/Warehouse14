@@ -125,7 +125,14 @@ export interface EmailCopy {
   euro: string;
   reservationClose: string;
 
-  cancelledSubject: string;
+  /**
+   * Die Nummer gehört IN die Betreffzeile. Ohne sie las sich die Absage als
+   * „Reservierung storniert" ohne jeden Anhalt: wer zwei Reservierungen
+   * hatte, konnte im Postfach nicht sehen, welche gemeint war, und musste
+   * den Brief öffnen, um eine Frage zu beantworten, die die Betreffzeile
+   * hätte beantworten können.
+   */
+  cancelledSubject: (ref: string) => string;
   cancelledLead: (ref: string) => string;
   cancelledClose: string;
 
@@ -225,7 +232,7 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     reservationClose:
       'Bitte nennen Sie die Reservierungsnummer bei der Abholung im Geschäft. ' +
       'Bezahlt wird bequem vor Ort.',
-    cancelledSubject: `Reservierung storniert, ${BRAND}`,
+    cancelledSubject: (ref) => `Reservierung storniert, ${BRAND}, ${ref}`,
     cancelledLead: (ref) =>
       `Ihre Reservierung ${ref} wurde storniert. Die Stücke sind wieder frei verfügbar.`,
     cancelledClose: 'Sie können jederzeit erneut reservieren. Wir sind gern für Sie da.',
@@ -266,7 +273,7 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     reservationClose:
       'Please give the reservation number when you pick up in the shop. ' +
       'You simply pay on the spot.',
-    cancelledSubject: `Reservation cancelled, ${BRAND}`,
+    cancelledSubject: (ref) => `Reservation cancelled, ${BRAND}, ${ref}`,
     cancelledLead: (ref) =>
       `Your reservation ${ref} has been cancelled. The pieces are available again.`,
     cancelledClose: 'You can reserve again at any time. We are glad to help.',
@@ -310,7 +317,7 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     euro: 'يورو',
     reservationClose:
       'يرجى ذكر رقم الحجز عند الاستلام من المتجر. الدفع يتم بكل راحة عند الاستلام.',
-    cancelledSubject: `تم إلغاء الحجز، ${BRAND}`,
+    cancelledSubject: (ref) => `تم إلغاء الحجز، ${BRAND}, ${ref}`,
     cancelledLead: (ref) => `تم إلغاء حجزك ${ref}. القطع متاحة من جديد.`,
     cancelledClose: 'يمكنك الحجز مجدداً في أي وقت. نحن هنا من أجلك.',
     readySubject: (ref) => `طلبك ${ref} جاهز للاستلام`,
@@ -350,7 +357,7 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     reservationClose:
       'Mağazadan teslim alırken rezervasyon numarasını söylemeniz yeterli. ' +
       'Ödemeyi orada rahatça yaparsınız.',
-    cancelledSubject: `Rezervasyon iptal edildi, ${BRAND}`,
+    cancelledSubject: (ref) => `Rezervasyon iptal edildi, ${BRAND}, ${ref}`,
     cancelledLead: (ref) =>
       `${ref} numaralı rezervasyonunuz iptal edildi. Parçalar yeniden satışa açık.`,
     cancelledClose: 'Dilediğiniz zaman yeniden rezerve edebilirsiniz. Her zaman buradayız.',
@@ -391,7 +398,7 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     reservationClose:
       "Merci d'indiquer le numéro de réservation lors du retrait en boutique. " +
       'Le paiement se fait tranquillement sur place.',
-    cancelledSubject: `Réservation annulée, ${BRAND}`,
+    cancelledSubject: (ref) => `Réservation annulée, ${BRAND}, ${ref}`,
     cancelledLead: (ref) =>
       `Votre réservation ${ref} a été annulée. Les pièces sont de nouveau disponibles.`,
     cancelledClose:
@@ -433,7 +440,7 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     euro: 'euros',
     reservationClose:
       'Indica el número de reserva al recoger en la tienda. Pagas cómodamente allí mismo.',
-    cancelledSubject: `Reserva cancelada, ${BRAND}`,
+    cancelledSubject: (ref) => `Reserva cancelada, ${BRAND}, ${ref}`,
     cancelledLead: (ref) =>
       `Tu reserva ${ref} ha sido cancelada. Las piezas vuelven a estar disponibles.`,
     cancelledClose: 'Puedes reservar de nuevo cuando quieras. Estamos a tu disposición.',
@@ -474,7 +481,7 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     euro: 'euro',
     reservationClose:
       'Basta indicare il numero di prenotazione al ritiro in negozio. Paghi con calma sul posto.',
-    cancelledSubject: `Prenotazione annullata, ${BRAND}`,
+    cancelledSubject: (ref) => `Prenotazione annullata, ${BRAND}, ${ref}`,
     cancelledLead: (ref) =>
       `La tua prenotazione ${ref} è stata annullata. I pezzi sono di nuovo disponibili.`,
     cancelledClose: 'Puoi prenotare di nuovo quando vuoi. Siamo sempre a disposizione.',
@@ -514,7 +521,7 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     euro: 'euro',
     reservationClose:
       'Noem het reserveringsnummer bij het afhalen in de winkel. Je betaalt gewoon ter plekke.',
-    cancelledSubject: `Reservering geannuleerd, ${BRAND}`,
+    cancelledSubject: (ref) => `Reservering geannuleerd, ${BRAND}, ${ref}`,
     cancelledLead: (ref) =>
       `Je reservering ${ref} is geannuleerd. De stukken zijn weer beschikbaar.`,
     cancelledClose: 'Je kunt altijd opnieuw reserveren. We staan voor je klaar.',
@@ -560,7 +567,7 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     euro: 'euro',
     reservationClose:
       'Prosimy podać numer rezerwacji przy odbiorze w sklepie. Zapłacisz wygodnie na miejscu.',
-    cancelledSubject: `Rezerwacja anulowana, ${BRAND}`,
+    cancelledSubject: (ref) => `Rezerwacja anulowana, ${BRAND}, ${ref}`,
     cancelledLead: (ref) =>
       `Twoja rezerwacja ${ref} została anulowana. Przedmioty są znowu dostępne.`,
     cancelledClose: 'Możesz zarezerwować ponownie w dowolnej chwili. Chętnie pomożemy.',
@@ -602,7 +609,7 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     reservationClose:
       'Basta indicar o número da reserva no levantamento na loja. ' +
       'O pagamento é feito com toda a calma no local.',
-    cancelledSubject: `Reserva cancelada, ${BRAND}`,
+    cancelledSubject: (ref) => `Reserva cancelada, ${BRAND}, ${ref}`,
     cancelledLead: (ref) =>
       `A sua reserva ${ref} foi cancelada. As peças estão novamente disponíveis.`,
     cancelledClose: 'Pode reservar de novo quando quiser. Estamos ao seu dispor.',
@@ -642,7 +649,7 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     euro: 'euro',
     reservationClose:
       'Nævn blot reservationsnummeret ved afhentning i butikken. Du betaler nemt på stedet.',
-    cancelledSubject: `Reservation annulleret, ${BRAND}`,
+    cancelledSubject: (ref) => `Reservation annulleret, ${BRAND}, ${ref}`,
     cancelledLead: (ref) => `Din reservation ${ref} er annulleret. Varerne er ledige igen.`,
     cancelledClose: 'Du kan reservere igen når som helst. Vi er her for dig.',
     readySubject: (ref) => `Din bestilling ${ref} er klar til afhentning`,
@@ -681,7 +688,7 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     euro: 'euro',
     reservationClose:
       'Nämn reservationsnumret vid upphämtningen i butiken. Du betalar bekvämt på plats.',
-    cancelledSubject: `Reservation avbokad, ${BRAND}`,
+    cancelledSubject: (ref) => `Reservation avbokad, ${BRAND}, ${ref}`,
     cancelledLead: (ref) => `Din reservation ${ref} är avbokad. Föremålen är tillgängliga igen.`,
     cancelledClose: 'Du kan reservera igen när du vill. Vi finns här för dig.',
     readySubject: (ref) => `Din beställning ${ref} är redo att hämtas`,
@@ -726,7 +733,7 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     euro: 'євро',
     reservationClose:
       'Будь ласка, назвіть номер бронювання під час отримання в магазині. Оплата зручно на місці.',
-    cancelledSubject: `Бронювання скасовано, ${BRAND}`,
+    cancelledSubject: (ref) => `Бронювання скасовано, ${BRAND}, ${ref}`,
     cancelledLead: (ref) => `Ваше бронювання ${ref} скасовано. Речі знову доступні.`,
     cancelledClose: 'Ви можете забронювати знову будь коли. Ми завжди раді допомогти.',
     readySubject: (ref) => `Ваше замовлення ${ref} готове до отримання`,
