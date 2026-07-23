@@ -6,6 +6,10 @@ and the project adheres to [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-07-23
+
+- **Bestellungen sind jetzt ein sichtbarer Bereich, kein Suchtreffer.** Der Schirm war seit v0.7.0 vollständig gebaut, aber nur über die Suche erreichbar — es gab keinen Knopf an der Oberfläche, um eine Online-Reservierung anzunehmen, vorzubereiten oder zu übergeben. Bestellungen steht jetzt als eigener Bereich mit der Kartei-Ziffer 8 in der Hauptleiste. Der Leitstand, eine reine Blick-Fläche, ist dafür in die Suche gewandert (der Inhaber trägt ihn ohnehin in der Telefon-App).
+
 ## [0.7.0] - 2026-07-23
 
 - **Die Bestätigung verlangt jetzt Ihren Gerätecode, nicht mehr die abgeschaffte Kassen-PIN.** Jeder Steuerexport, jedes Storno, jeder Z-Bon, jede Löschung fragte weiter nach der vierstelligen Zahl, die am 21.07. abgeschafft wurde. Sie geben jetzt denselben Code ein wie beim Entsperren der Kasse. Geprüft wird er auf diesem Gerät, mit derselben Sperre nach mehreren Fehlversuchen; er wird nicht über das Netz geschickt. Wichtig für Sie als Inhaber: ein neu angelegter Mitarbeiter hatte gar keine alte PIN und hätte den Steuerexport NIE ausführen können.
