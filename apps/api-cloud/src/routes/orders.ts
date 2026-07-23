@@ -46,6 +46,19 @@ class WrongStageError extends DomainError {
   public readonly code: ApiErrorCode = 'CONFLICT';
 }
 
+/**
+ * Warum eine Bestellung nicht mehr bearbeitbar ist, in der Sprache des Hauses.
+ * Nur die Zustände, die eine Bestellung mit Nummer überhaupt annehmen kann;
+ * ein unbekannter Wert wird roh genannt statt geraten.
+ */
+const CART_STATUS_DE: Record<string, string> = {
+  ABANDONED: 'verfallen',
+  CANCELLED: 'storniert',
+  CONVERTED: 'bereits übergeben und abgerechnet',
+  ACTIVE: 'nicht mehr reserviert',
+  CHECKOUT: 'nicht mehr reserviert',
+};
+
 const ErrorResponse = Type.Object({
   error: Type.Object({
     code: Type.String(),
@@ -251,18 +264,29 @@ const ordersRoutes: FastifyPluginAsync = async (app) => {
       RETURNING id::text AS id`)) as unknown as Array<{ id: string }>;
 
     if (updated.length === 0) {
-      // Existiert die Bestellung überhaupt? Dann ist es der falsche Stand,
-      // sonst gibt es sie nicht (mehr).
-      const exists = (await app.db.execute<{ pickup_stage: string | null }>(drizzleSql`
-        SELECT pickup_stage::text AS pickup_stage FROM carts
+      // Der geschützte UPDATE kann aus drei verschiedenen Gründen null Zeilen
+      // treffen, und der Mensch am Tresen muss erfahren, welcher es war. Die
+      // Diagnose liest deshalb BEIDE Bedingungen zurück, nicht nur den Stand:
+      // eine verfallene Reservierung stand am 23.07.2026 live auf „OFFEN" und
+      // die Meldung sagte trotzdem „steht nicht mehr auf OFFEN (jetzt: OFFEN)".
+      // Ein Satz, der sich selbst widerspricht, ist schlimmer als keiner.
+      const exists = (await app.db.execute<{ status: string; pickup_stage: string | null }>(drizzleSql`
+        SELECT status::text AS status, pickup_stage::text AS pickup_stage FROM carts
          WHERE order_number = ${orderNumber} AND fulfilment_method = 'PICKUP' LIMIT 1`)) as unknown as Array<{
+        status: string;
         pickup_stage: string | null;
       }>;
-      if (exists.length === 0) {
+      const found = exists[0];
+      if (!found) {
         throw new OrderNotFoundError(`Bestellung ${orderNumber} nicht gefunden`);
       }
+      if (found.status !== 'RESERVED') {
+        throw new WrongStageError(
+          `Bestellung ${orderNumber} ist ${CART_STATUS_DE[found.status] ?? `im Zustand ${found.status}`} und kann nicht mehr bearbeitet werden.`,
+        );
+      }
       throw new WrongStageError(
-        `Bestellung ${orderNumber} steht nicht mehr auf „${from}“ (jetzt: ${exists[0]?.pickup_stage ?? 'unbekannt'}).`,
+        `Bestellung ${orderNumber} steht nicht mehr auf „${from}“ (jetzt: ${found.pickup_stage ?? 'unbekannt'}).`,
       );
     }
 
