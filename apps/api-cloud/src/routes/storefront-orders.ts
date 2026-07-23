@@ -61,6 +61,17 @@ const OrderSummary = Type.Object({
   createdAt: Type.String(),
   totalEur: Type.String(),
   status: Type.String(),
+  /**
+   * Der Abholstand (0099): OFFEN, ANGENOMMEN, IN_VORBEREITUNG, ABHOLBEREIT.
+   *
+   * Der Kundenshop zeichnet daraus den Fortschrittsweg. Bis zum 23.07.2026
+   * bekam die Kundschaft ihn NICHT: der Schirm las `pickupStage`, fand
+   * `undefined` und fiel auf „reserviert" zurück. Ein Mensch, dessen Stück
+   * längst am Tresen lag, sah trotzdem die erste Station.
+   */
+  pickupStage: Type.Union([Type.String(), Type.Null()]),
+  /** Warum abgesagt wurde, wenn ein Grund genannt wurde (0103). */
+  cancellationReason: Type.Union([Type.String(), Type.Null()]),
   shippingStatus: Type.String(),
   itemCount: Type.Integer(),
 });
@@ -158,6 +169,8 @@ const storefrontOrdersRoutes: FastifyPluginAsync = async (app) => {
         order_number: string | null;
         created_at: string;
         status: string;
+        pickup_stage: string | null;
+        cancellation_reason: string | null;
         item_count: number;
         total_eur: string;
       }>(drizzleSql`
@@ -166,13 +179,16 @@ const storefrontOrdersRoutes: FastifyPluginAsync = async (app) => {
                to_char(COALESCE(c.reserved_at, c.created_at) AT TIME ZONE 'UTC',
                        'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at,
                c.status::text                            AS status,
+               c.pickup_stage::text                       AS pickup_stage,
+               c.cancellation_reason                      AS cancellation_reason,
                COUNT(ci.id)::int                          AS item_count,
                COALESCE(SUM(ci.unit_price_eur * ci.quantity), 0)::text AS total_eur
           FROM carts c
           LEFT JOIN cart_items ci ON ci.cart_id = c.id
          WHERE c.shopper_id = ${req.shopper.id}
            AND c.status IN ('RESERVED', 'CONVERTED', 'CANCELLED')
-         GROUP BY c.id, c.order_number, c.reserved_at, c.created_at, c.status
+         GROUP BY c.id, c.order_number, c.reserved_at, c.created_at, c.status,
+                  c.pickup_stage, c.cancellation_reason
          ORDER BY COALESCE(c.reserved_at, c.created_at) DESC
          LIMIT 100`);
       return rows.map((r) => ({
@@ -181,6 +197,8 @@ const storefrontOrdersRoutes: FastifyPluginAsync = async (app) => {
         createdAt: r.created_at,
         totalEur: r.total_eur,
         status: r.status,
+        pickupStage: r.pickup_stage,
+        cancellationReason: r.cancellation_reason,
         shippingStatus: shippingStatusOf(r.status),
         itemCount: r.item_count,
       }));
@@ -207,12 +225,16 @@ const storefrontOrdersRoutes: FastifyPluginAsync = async (app) => {
         order_number: string | null;
         created_at: string;
         status: string;
+        pickup_stage: string | null;
+        cancellation_reason: string | null;
       }>(drizzleSql`
         SELECT c.id,
                c.order_number,
                to_char(COALESCE(c.reserved_at, c.created_at) AT TIME ZONE 'UTC',
                        'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at,
-               c.status::text AS status
+               c.status::text AS status,
+               c.pickup_stage::text AS pickup_stage,
+               c.cancellation_reason AS cancellation_reason
           FROM carts c
          WHERE c.id = ${id} AND c.shopper_id = ${req.shopper.id}
            AND c.status IN ('RESERVED', 'CONVERTED', 'CANCELLED')
@@ -266,6 +288,8 @@ const storefrontOrdersRoutes: FastifyPluginAsync = async (app) => {
         createdAt: cart.created_at,
         totalEur,
         status: cart.status,
+        pickupStage: cart.pickup_stage,
+        cancellationReason: cart.cancellation_reason,
         shippingStatus: shippingStatusOf(cart.status),
         itemCount: lines.length,
         items: lines.map((l) => ({
