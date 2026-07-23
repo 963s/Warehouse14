@@ -124,12 +124,28 @@ const KundenRow = memo(function KundenRow({
   // The gilt ring is a SEAL with meaning: it appears only on a verified customer
   // (DESIGN-SYSTEM.md §1 — gilt as an edge/seal, never decoration).
   const sealed = row.kycStatus === "VERIFIED"
+  // Ein gelöschtes Konto verschwindet NICHT. Die Zeile bleibt, durchgestrichen,
+  // weil Kundennummer und Umsätze bestehen bleiben müssen (§147 AO) und weil
+  // ein spurloses Verschwinden im Laden wie ein Fehler aussieht. Basel wollte
+  // dabei sehen, WER gelöscht hat: hat der Mensch selbst gekündigt, ist das
+  // seine Entscheidung, kein Vorgang bei uns.
+  const erased = row.deletedAt != null
+  const erasedNote =
+    row.erasureInitiatedBy === "CUSTOMER"
+      ? "Vom Kunden selbst gelöscht"
+      : row.erasureInitiatedBy === "STAFF"
+        ? "Von uns gelöscht"
+        : "Gelöscht"
 
   return (
     <PressableScale
       onPress={() => onOpen(row.id)}
       accessibilityRole="button"
-      accessibilityLabel={`${row.fullName}, Kundennummer ${row.customerNumber}`}
+      accessibilityLabel={
+        erased
+          ? `${erasedNote}, Kundennummer ${row.customerNumber}`
+          : `${row.fullName}, Kundennummer ${row.customerNumber}`
+      }
     >
       {/* Box-free row on the parchment canvas — no Card border, separated from
           the next row by a single warm hairline below. */}
@@ -141,21 +157,36 @@ const KundenRow = memo(function KundenRow({
           className="h-11 w-11 items-center justify-center rounded-full"
           style={{
             backgroundColor: t.colors.card,
-            borderWidth: sealed ? 1.5 : 1,
-            borderColor: sealed ? t.colors.gilt : t.colors.border,
+            borderWidth: sealed && !erased ? 1.5 : 1,
+            borderColor: sealed && !erased ? t.colors.gilt : t.colors.border,
+            opacity: erased ? 0.55 : 1,
           }}
         >
           <Text
             className="text-sm font-semibold"
-            style={{ color: sealed ? t.colors.giltDeep : t.colors.foreground }}
+            style={{ color: sealed && !erased ? t.colors.giltDeep : t.colors.foreground }}
           >
-            {initialsOf(row.fullName)}
+            {erased ? "—" : initialsOf(row.fullName)}
           </Text>
         </View>
 
         <View className="flex-1 gap-1">
-          <Text className="text-base font-semibold" numberOfLines={1}>
-            {row.fullName}
+          <Text
+            className="text-base font-semibold"
+            numberOfLines={1}
+            style={
+              erased
+                ? {
+                    textDecorationLine: "line-through",
+                    color: t.colors.mutedForeground,
+                  }
+                : undefined
+            }
+          >
+            {/* Der Server setzt beim Löschen einen verschlüsselten Platzhalter
+                als Namen. Den zeigen wir NICHT roh an — die Zeile sagt lieber
+                in Worten, was passiert ist. */}
+            {erased ? erasedNote : row.fullName}
           </Text>
           <View className="flex-row items-center gap-2">
             <Text className="text-muted-foreground font-mono text-xs" numberOfLines={1}>
@@ -174,10 +205,16 @@ const KundenRow = memo(function KundenRow({
         </View>
 
         <View className="items-end gap-1.5">
-          <Badge variant={KYC_STATUS_VARIANT[row.kycStatus]} dot>
-            <Text>{KYC_STATUS_LABEL[row.kycStatus]}</Text>
-          </Badge>
-          {row.sanctionsMatch || showTrust ? (
+          {erased ? (
+            <Badge variant="secondary">
+              <Text>Konto gelöscht</Text>
+            </Badge>
+          ) : (
+            <Badge variant={KYC_STATUS_VARIANT[row.kycStatus]} dot>
+              <Text>{KYC_STATUS_LABEL[row.kycStatus]}</Text>
+            </Badge>
+          )}
+          {!erased && (row.sanctionsMatch || showTrust) ? (
             <View className="flex-row items-center gap-1.5">
               {row.sanctionsMatch ? (
                 <Badge variant="destructive">
@@ -257,6 +294,10 @@ export default function KundenScreen() {
       listCustomers({
         q: debouncedQ || undefined,
         kycVerifiedOnly: kycOnly || undefined,
+        // Gelöschte Konten gehören in die Kundenliste — durchgestrichen, statt
+        // spurlos zu fehlen. Die Kundenauswahl beim Verkauf setzt die Flagge
+        // NICHT und bekommt sie deshalb weiterhin nicht angeboten.
+        includeErased: true,
         limit: 50,
       }),
     // Search-as-you-type: keep the previous result's rows on screen while the

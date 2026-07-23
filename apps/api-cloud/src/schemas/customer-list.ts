@@ -34,6 +34,19 @@ export const CustomerListQuery = Type.Object({
   /** Only customers NOT marked as sanctions or banned. */
   excludeBlocked: Type.Optional(Type.Boolean()),
 
+  /**
+   * Gelöschte Konten MITZEIGEN, durchgestrichen statt verschwunden.
+   *
+   * Standard ist `false`, und zwar bewusst: die Kundenauswahl beim Verkauf und
+   * beim Ankauf ruft dieselbe Liste, und dort darf ein gelöschtes Konto NICHT
+   * wählbar sein. Nur die Kundenliste selbst setzt die Flagge, weil dort die
+   * Frage „was ist mit diesem Menschen passiert" berechtigt ist.
+   *
+   * Die Zeile bleibt sowieso erhalten (Anonymisierung, keine Löschung), es
+   * ging bisher nur niemandem mehr etwas an. Kundennummer und Umsätze bleiben
+   * unangetastet — §147 AO verlangt sie, und ohne sie stimmt keine Auswertung.
+   */
+  includeErased: Type.Optional(Type.Boolean()),
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50, default: 20 })),
   offset: Type.Optional(Type.Integer({ minimum: 0, default: 0 })),
 });
@@ -73,6 +86,18 @@ export const CustomerListRow = Type.Object({
   cumulativeAnkaufEur: Type.String(),
   cumulativeSpendEur: Type.String(),
   createdAt: Type.String({ format: 'date-time' }),
+  /** Wann gelöscht wurde, sonst NULL. Trägt den Durchstrich in der Liste. */
+  deletedAt: Type.Union([Type.String({ format: 'date-time' }), Type.Null()]),
+  /**
+   * WER gelöscht hat: CUSTOMER heisst, der Mensch hat es selbst getan.
+   * Genau das wollte Basel sehen können, statt dass beide Fälle gleich
+   * aussehen. NULL solange nichts gelöscht wurde.
+   */
+  erasureInitiatedBy: Type.Union([
+    Type.Literal('CUSTOMER'),
+    Type.Literal('STAFF'),
+    Type.Null(),
+  ]),
 });
 export type CustomerListRow = Static<typeof CustomerListRow>;
 

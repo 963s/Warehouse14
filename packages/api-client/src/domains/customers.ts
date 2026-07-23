@@ -68,6 +68,13 @@ export interface CustomerListQuery {
   q?: string;
   kycVerifiedOnly?: boolean;
   excludeBlocked?: boolean;
+  /**
+   * Gelöschte Konten mitliefern, damit die Kundenliste sie DURCHGESTRICHEN
+   * zeigen kann statt sie verschwinden zu lassen. Standard `false`, damit die
+   * Kundenauswahl beim Verkauf und Ankauf keinen anonymisierten Menschen
+   * anbietet.
+   */
+  includeErased?: boolean;
   limit?: number;
   offset?: number;
 }
@@ -91,6 +98,18 @@ export interface CustomerListRow {
   createdAt: string;
   /** Last fiscal activity (any direction), or null if the customer never transacted. */
   lastOrderAt: string | null;
+  /**
+   * Wann das Konto gelöscht wurde, sonst null. Die Zeile bleibt bestehen: die
+   * Löschung ist eine Anonymisierung, damit Kundennummer und Umsätze für §147
+   * AO erhalten bleiben. Die Fläche streicht die Zeile durch.
+   */
+  deletedAt: string | null;
+  /**
+   * WER gelöscht hat. CUSTOMER heisst: der Mensch hat es selbst getan, und
+   * genau das gehört sichtbar dazu, damit niemand im Laden rätselt, ob wir
+   * dieses Konto entfernt haben.
+   */
+  erasureInitiatedBy: 'CUSTOMER' | 'STAFF' | null;
 }
 
 export interface CustomerListResponse {

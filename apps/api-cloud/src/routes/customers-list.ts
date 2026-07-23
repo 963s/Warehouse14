@@ -79,6 +79,7 @@ const customersListRoute: FastifyPluginAsync = async (app) => {
       const offset = req.query.offset ?? 0;
       const kycVerifiedOnly = req.query.kycVerifiedOnly === true;
       const excludeBlocked = req.query.excludeBlocked === true;
+      const includeErased = req.query.includeErased === true;
 
       const result = await app.withPii(async (tx) => {
         // Partial, case-insensitive match on the plaintext Kundennummer — the
@@ -115,6 +116,11 @@ const customersListRoute: FastifyPluginAsync = async (app) => {
                     // `CUST`, `2026`) — honouring the UI's "Name oder Nummer".
                     sql`(decrypt_pii(full_name_encrypted) ILIKE ${'%' + q + '%'} OR ${customerNumberClause})`;
 
+        // Gelöschte Konten: standardmässig draussen, damit die Kundenauswahl
+        // beim Verkauf niemandem ein anonymisiertes Konto anbietet. Nur die
+        // Kundenliste selbst bittet ausdrücklich darum, sie zu sehen.
+        const erasedClause = includeErased ? sql`TRUE` : sql`soft_deleted_at IS NULL`;
+
         const kycClause = kycVerifiedOnly ? sql`AND kyc_verified_at IS NOT NULL` : sql``;
         const blockedClause = excludeBlocked
           ? sql`AND sanctions_match = FALSE AND trust_level <> 'BANNED'`
@@ -132,6 +138,8 @@ const customersListRoute: FastifyPluginAsync = async (app) => {
           cumulative_ankauf_eur: string;
           cumulative_spend_eur: string;
           created_at: Date;
+          soft_deleted_at: Date | null;
+          erasure_initiated_by: string | null;
           last_order_at: Date | null;
           total_count: number;
         }>(sql`
@@ -148,13 +156,15 @@ const customersListRoute: FastifyPluginAsync = async (app) => {
             cumulative_ankauf_eur,
             cumulative_spend_eur,
             created_at,
+            soft_deleted_at,
+            erasure_initiated_by,
             -- Last fiscal activity (any direction) — index-backed by
             -- transactions_customer_idx (customer_id, finalized_at DESC).
             (SELECT MAX(t.finalized_at) FROM transactions t WHERE t.customer_id = customers.id)
                                              AS last_order_at,
             COUNT(*) OVER ()                 AS total_count
           FROM customers
-          WHERE soft_deleted_at IS NULL
+          WHERE ${erasedClause}
             AND ${matchClause}
             ${kycClause}
             ${blockedClause}
@@ -191,6 +201,13 @@ const customersListRoute: FastifyPluginAsync = async (app) => {
           cumulativeAnkaufEur: r.cumulative_ankauf_eur,
           cumulativeSpendEur: r.cumulative_spend_eur,
           createdAt: new Date(r.created_at).toISOString(),
+          deletedAt: r.soft_deleted_at ? new Date(r.soft_deleted_at).toISOString() : null,
+          // Ein unbekannter Wert wird zu null: die Fläche soll lieber gar
+          // nichts über die Herkunft der Löschung sagen als etwas Falsches.
+          erasureInitiatedBy:
+            r.erasure_initiated_by === 'CUSTOMER' || r.erasure_initiated_by === 'STAFF'
+              ? r.erasure_initiated_by
+              : null,
           lastOrderAt: r.last_order_at ? new Date(r.last_order_at).toISOString() : null,
         })),
         total: result.total,

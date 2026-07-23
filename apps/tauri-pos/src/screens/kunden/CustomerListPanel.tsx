@@ -71,7 +71,10 @@ export function CustomerListPanel({ selectedId, onSelect }: CustomerListPanelPro
   }, [searchInput]);
 
   const queryArgs = useMemo(() => {
-    const args: CustomerListQuery = { limit: 30 };
+    // Gelöschte Konten gehören in die Kundenliste — durchgestrichen, statt
+    // spurlos zu fehlen. Der Käuferpicker im Verkauf setzt die Flagge NICHT
+    // und bekommt sie deshalb weiterhin nicht zur Auswahl angeboten.
+    const args: CustomerListQuery = { limit: 30, includeErased: true };
     if (debouncedQ.length > 0) args.q = debouncedQ;
     if (filter === 'KYC_VERIFIED') args.kycVerifiedOnly = true;
     if (filter === 'BLOCKED' || filter === 'WATCHLIST') {
@@ -259,6 +262,17 @@ const CustomerRow = memo(
   function CustomerRow({ row, selected, onClick }: CustomerRowProps): JSX.Element {
     const blocked = row.sanctionsMatch || row.trustLevel === 'BANNED';
     const verified = row.kycVerifiedAt !== null;
+    // Ein gelöschtes Konto bleibt in der Liste stehen, durchgestrichen. Die
+    // Löschung ist eine Anonymisierung: Kundennummer und Umsätze müssen
+    // erhalten bleiben (§147 AO). Wer gelöscht hat, gehört sichtbar dazu —
+    // hat der Mensch selbst gekündigt, war das seine Entscheidung.
+    const erased = row.deletedAt !== null;
+    const erasedNote =
+      row.erasureInitiatedBy === 'CUSTOMER'
+        ? 'Vom Kunden selbst gelöscht'
+        : row.erasureInitiatedBy === 'STAFF'
+          ? 'Von uns gelöscht'
+          : 'Gelöscht';
 
     const cardStyle: CSSProperties = {
       cursor: 'pointer',
@@ -268,7 +282,7 @@ const CustomerRow = memo(
           ? '1px solid var(--w14-wax-red)'
           : '1px solid transparent',
       background: selected ? 'var(--w14-parchment-3)' : 'var(--w14-parchment-2)',
-      opacity: blocked ? 0.7 : 1,
+      opacity: erased ? 0.6 : blocked ? 0.7 : 1,
       transition:
         'background-color var(--w14-dur-short) var(--w14-ease-curator), border-color var(--w14-dur-short) var(--w14-ease-curator)',
     };
@@ -292,9 +306,18 @@ const CustomerRow = memo(
                 whiteSpace: 'nowrap',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
+                ...(erased
+                  ? {
+                      textDecoration: 'line-through',
+                      color: 'var(--w14-ink-faded)',
+                    }
+                  : null),
               }}
             >
-              {row.fullName}
+              {/* Beim Löschen setzt der Server einen verschlüsselten Platzhalter
+                  als Namen. Der wird NICHT roh gezeigt — die Zeile sagt in
+                  Worten, was geschehen ist. */}
+              {erased ? erasedNote : row.fullName}
             </div>
             <div
               className="w14-tabular"
@@ -315,12 +338,27 @@ const CustomerRow = memo(
               gap: 'var(--space-1)',
             }}
           >
-            <TrustChip
-              kycVerified={verified}
-              trust={row.trustLevel}
-              sanctions={row.sanctionsMatch}
-              pep={row.pepMatch}
-            />
+            {erased ? (
+              <span
+                style={{
+                  fontFamily: 'var(--w14-font-sans)',
+                  fontSize: '0.72rem',
+                  color: 'var(--w14-ink-faded)',
+                  border: '1px solid var(--w14-rule)',
+                  borderRadius: 'var(--radius-sm)',
+                  padding: '1px 6px',
+                }}
+              >
+                Konto gelöscht
+              </span>
+            ) : (
+              <TrustChip
+                kycVerified={verified}
+                trust={row.trustLevel}
+                sanctions={row.sanctionsMatch}
+                pep={row.pepMatch}
+              />
+            )}
             <span
               className="w14-tabular"
               style={{
