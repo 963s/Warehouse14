@@ -266,9 +266,16 @@ const storefrontReserveRoutes: FastifyPluginAsync = async (app) => {
       // pieces at forty Euro is a browsing customer, three at four thousand is
       // a fifth of the stock locked for three days.
       const heldValue = Number(facts?.held_value ?? 0);
+      // Ein JS-Array bindet NICHT als Postgres-Array: der Treiber spreizt es zu
+      // kommagetrennten Einzelwerten, `ANY(…::uuid[])` liest daraus einen
+      // Verbund und wirft 22P02 „malformed array literal". Deshalb, wie in
+      // storefront-catalog und closing-export, die Array-Literale von Hand
+      // bauen und als EINEN Parameter binden. Die Kennungen stammen aus
+      // cart_items, also aus der Datenbank, nie vom Aufrufer.
+      const incomingIdArray = `{${items.map((i) => i.productId).join(',')}}`;
       const [{ incoming = '0' } = {}] = await app.db.execute<{ incoming: string }>(drizzleSql`
         SELECT COALESCE(SUM(list_price_eur), 0)::text AS incoming
-          FROM products WHERE id = ANY(${items.map((i) => i.productId)}::uuid[])
+          FROM products WHERE id = ANY(${incomingIdArray}::uuid[])
       `);
       const totalValue = heldValue + Number(incoming);
       if (
