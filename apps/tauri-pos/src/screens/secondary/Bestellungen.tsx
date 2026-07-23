@@ -169,6 +169,43 @@ export function Bestellungen(): JSX.Element {
     [api, busy, listQ, setBusyFor],
   );
 
+  // ── Ablehnen: Storno mit Grund, die Stücke gehen zurück ins Regal ──────────
+  //
+  // Aus JEDEM laufenden Stand erlaubt, auch aus „abholbereit": fällt ein Stück
+  // beim Vorbereiten als beschädigt auf, muss man absagen dürfen, statt einen
+  // Menschen für nichts kommen zu lassen.
+  //
+  // `released` und `mailed` kommen vom SERVER. Die Kasse zählt nichts selbst
+  // und behauptet nichts über einen Brief, den sie nicht geschrieben hat.
+  const runReject = useCallback(
+    async (order: OrderView, reason: string): Promise<void> => {
+      const on = order.orderNumber;
+      if (!on || busy[on]) return;
+      setBusyFor(on, true);
+      setErr((e) => ({ ...e, [on]: null }));
+      setNote((n) => ({ ...n, [on]: null }));
+      try {
+        const res = await ordersApi.reject(api, on, reason.trim() || undefined);
+        const stueck =
+          res.released === 1 ? 'Ein Stück ist' : `${res.released} Stücke sind`;
+        setNote((n) => ({
+          ...n,
+          [on]:
+            res.mailed === false
+              ? `Abgelehnt. ${stueck} wieder im Bestand. Die Absage per E-Mail wurde NICHT gesendet, bitte die Kundschaft selbst verständigen.`
+              : `Abgelehnt. ${stueck} wieder im Bestand. Die Kundschaft wurde per E-Mail benachrichtigt.`,
+        }));
+        listQ.refetch();
+      } catch (e) {
+        setErr((er) => ({ ...er, [on]: describeError(e) }));
+        listQ.refetch();
+      } finally {
+        setBusyFor(on, false);
+      }
+    },
+    [api, busy, listQ, setBusyFor],
+  );
+
   // ── Die Übergabe: die Bestellung in die Verkaufs-Karte laden ────────────────
   const runHandover = useCallback(
     async (order: OrderView): Promise<void> => {
@@ -373,6 +410,7 @@ export function Bestellungen(): JSX.Element {
                 note={order.orderNumber ? (note[order.orderNumber] ?? null) : null}
                 onTransition={runTransition}
                 onHandover={runHandover}
+                onReject={runReject}
               />
             </div>
           ))
@@ -391,6 +429,7 @@ function OrderRow({
   note,
   onTransition,
   onHandover,
+  onReject,
 }: {
   order: OrderView;
   busy: boolean;
@@ -398,8 +437,14 @@ function OrderRow({
   note: string | null;
   onTransition: (order: OrderView, kind: StageKind) => void;
   onHandover: (order: OrderView) => void;
+  onReject: (order: OrderView, reason: string) => void;
 }): JSX.Element {
   const deadline = deadlineLabel(order.expiresAt);
+  // Zweistufig und nie aus Versehen: der erste Klick klappt das Feld für den
+  // Grund auf, erst der zweite lehnt wirklich ab. Eine Ablehnung gibt Ware
+  // frei und schreibt der Kundschaft, das darf kein Fehlgriff sein.
+  const [rejecting, setRejecting] = useState(false);
+  const [reason, setReason] = useState('');
   const telHref = order.contactPhone ? `tel:${order.contactPhone.replace(/[^+\d]/g, '')}` : null;
 
   return (
@@ -535,6 +580,79 @@ function OrderRow({
         <p style={{ color: 'var(--w14-verdigris)', fontSize: '0.82rem', margin: '0.2rem 0 0' }}>
           {note}
         </p>
+      )}
+
+      {/* Ablehnen: bewusst leise, ein Textknopf statt einer zweiten Schaltfläche,
+          damit er neben dem eigentlichen Schritt nicht um Aufmerksamkeit ringt.
+          Nach der Übergabe (ABGEHOLT) und nach einem Storno gibt es nichts mehr
+          abzulehnen; solange ein Stand läuft, muss es gehen. */}
+      {order.orderNumber && order.pickupStage !== 'ABGEHOLT' && (
+        rejecting ? (
+          <div style={{ display: 'grid', gap: '0.4rem', marginTop: '0.3rem' }}>
+            <label
+              htmlFor={`grund-${order.id}`}
+              style={{ fontSize: '0.78rem', color: 'var(--w14-ink-faded)' }}
+            >
+              Grund, freiwillig. Er steht später im Beleg und im Tagebuch.
+            </label>
+            <input
+              id={`grund-${order.id}`}
+              value={reason}
+              onChange={(ev) => setReason(ev.target.value)}
+              maxLength={500}
+              placeholder="Zum Beispiel: Stück beim Vorbereiten beschädigt"
+              style={{
+                font: 'inherit',
+                fontSize: '0.9rem',
+                padding: '0.45rem 0.6rem',
+                borderRadius: 8,
+                border: '1px solid var(--w14-rule)',
+                background: 'var(--w14-paper-2)',
+                color: 'var(--w14-ink)',
+              }}
+            />
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <Button
+                variant="destructive"
+                size="md"
+                onClick={() => onReject(order, reason)}
+                disabled={busy}
+              >
+                {busy ? 'Wird abgelehnt …' : 'Wirklich ablehnen'}
+              </Button>
+              <Button
+                variant="ghost"
+                size="md"
+                onClick={() => {
+                  setRejecting(false);
+                  setReason('');
+                }}
+                disabled={busy}
+              >
+                Zurück
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setRejecting(true)}
+            style={{
+              justifySelf: 'start',
+              background: 'none',
+              border: 'none',
+              padding: '0.2rem 0',
+              cursor: 'pointer',
+              font: 'inherit',
+              fontSize: '0.8rem',
+              color: 'var(--w14-ink-faded)',
+              textDecoration: 'underline',
+              textUnderlineOffset: '3px',
+            }}
+          >
+            Ablehnen und Stücke freigeben
+          </button>
+        )
       )}
     </div>
   );
