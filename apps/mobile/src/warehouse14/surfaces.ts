@@ -3,12 +3,17 @@
  * shell, mirroring apps/tauri-pos/src/app/chrome/surface-registry.ts. Adding a
  * PRIMARY tab is one append here + one route file under src/app/(tabs)/.
  *
- * The Owner OS keeps exactly FOUR primary tabs:
- *   1. Schatzkammer — the owner dashboard (Tagesquest, Live-Kennzahlen).
- *   2. Lager        — der Bestand mit Lagerort und Schmelzwert.
- *   3. Kunden       — Kundensuche mit KYC und Sanktionsprüfung.
- *   4. Mehr         — der Hub auf alle weiteren Owner-Flächen (Termine,
- *                     Aufgaben, Kasse, Finanzen, Einstellungen, Scannen, …).
+ * Der Owner OS hat FÜNF Haupt-Tabs:
+ *   1. Schatzkammer  — the owner dashboard (Tagesquest, Live-Kennzahlen).
+ *   2. Lager         — der Bestand mit Lagerort und Schmelzwert.
+ *   3. Kunden        — Kundensuche mit KYC und Sanktionsprüfung.
+ *   4. Bestellungen  — was aus dem Onlineshop hereinkommt, mit Zähler.
+ *   5. Mehr          — der Hub auf alle weiteren Owner-Flächen (Termine,
+ *                      Aufgaben, Kasse, Finanzen, Einstellungen, Scannen, …).
+ *
+ * Bestellungen ist am 23.07.2026 aus dem Mehr-Hub hierher gewandert, weil das
+ * der Befund war: der Abholablauf existierte vollständig und war trotzdem
+ * unsichtbar. Was täglich Arbeit macht, gehört nicht hinter drei Tipper.
  * Everything else lives behind "Mehr" and is registered in owner-surfaces.ts,
  * so a new secondary surface NEVER touches the tab bar.
  *
@@ -16,7 +21,15 @@
  * order is the visible tab order. `hidden` keeps a (tabs) route mounted (so it
  * stays deep-linkable, e.g. /scan from the hub) without a tab-bar button.
  */
-import { Boxes, MoreHorizontal, ScanLine, Users, Vault, type LucideIcon } from "lucide-react-native"
+import {
+  Boxes,
+  ClipboardList,
+  MoreHorizontal,
+  ScanLine,
+  Users,
+  Vault,
+  type LucideIcon,
+} from "lucide-react-native"
 
 export interface MobileSurface {
   /** expo-router route name under (tabs). */
@@ -48,6 +61,12 @@ export const SURFACES: readonly MobileSurface[] = [
     label: "Kunden",
     description: "Kundensuche mit KYC-Status und Sanktionsprüfung.",
     icon: Users,
+  },
+  {
+    name: "bestellungen",
+    label: "Bestellungen",
+    description: "Was aus dem Onlineshop hereinkommt, annehmen und vorbereiten.",
+    icon: ClipboardList,
   },
   {
     name: "more",

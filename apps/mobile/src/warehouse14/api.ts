@@ -993,8 +993,14 @@ export function getOrder(orderNumber: string): Promise<OrderView> {
   return ordersApi.get(apiClient, orderNumber)
 }
 
-/** POST /api/orders/:orderNumber/approve — OFFEN → ANGENOMMEN. 409 off-stage. */
-export function approveOrder(orderNumber: string): Promise<{ ok: boolean }> {
+/**
+ * POST /api/orders/:orderNumber/approve — OFFEN → ANGENOMMEN. 409 off-stage.
+ *
+ * Reiht seit dem 23.07.2026 den Brief „Ihre Reservierung ist angenommen" ein.
+ * `mailed` sagt ehrlich, ob er wirklich hinausging, damit die Fläche es sagen
+ * kann statt es anzunehmen.
+ */
+export function approveOrder(orderNumber: string): Promise<{ ok: boolean; mailed?: boolean }> {
   return ordersApi.approve(apiClient, orderNumber)
 }
 
@@ -1010,6 +1016,21 @@ export function prepareOrder(orderNumber: string): Promise<{ ok: boolean }> {
  */
 export function readyOrder(orderNumber: string): Promise<{ ok: boolean; mailed?: boolean }> {
   return ordersApi.ready(apiClient, orderNumber)
+}
+
+/**
+ * POST /api/orders/:orderNumber/reject — ablehnen und die Stücke freigeben.
+ *
+ * Aus JEDEM laufenden Stand erlaubt, auch aus „abholbereit": fällt ein Stück
+ * beim Vorbereiten als beschädigt auf, muss man absagen dürfen, statt einen
+ * Menschen für nichts kommen zu lassen. `released` und `mailed` kommen vom
+ * Server; die Fläche zählt nichts selbst.
+ */
+export function rejectOrder(
+  orderNumber: string,
+  reason?: string,
+): Promise<{ ok: boolean; released: number; mailed: boolean }> {
+  return ordersApi.reject(apiClient, orderNumber, reason)
 }
 
 // ── Ledger (the GoBD audit feed — read-only history) ─────────────────────────

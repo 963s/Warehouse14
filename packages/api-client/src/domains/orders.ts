@@ -53,8 +53,8 @@ export const ordersApi = {
   },
 
   /** OFFEN → ANGENOMMEN. 409, wenn die Bestellung nicht mehr auf OFFEN steht. */
-  approve(client: ApiClient, orderNumber: string): Promise<{ ok: boolean }> {
-    return client.request<{ ok: boolean }>(
+  approve(client: ApiClient, orderNumber: string): Promise<{ ok: boolean; mailed?: boolean }> {
+    return client.request<{ ok: boolean; mailed?: boolean }>(
       'POST',
       `/api/orders/${encodeURIComponent(orderNumber)}/approve`,
     );

@@ -35,9 +35,10 @@ import { type ReactNode, useCallback, useMemo, useState } from "react"
 import { Linking, Pressable, RefreshControl, ScrollView, View } from "react-native"
 import Svg, { Path, Rect } from "react-native-svg"
 import type { OrderView, PickupStage } from "@warehouse14/api-client"
-import { Check, Clock, Mail, PackageCheck, Phone, ShoppingBag } from "lucide-react-native"
+import { Check, Clock, Mail, PackageCheck, Phone, ShoppingBag, XCircle } from "lucide-react-native"
 
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Text } from "@/components/ui/text"
 import {
   approveOrder,
@@ -45,6 +46,7 @@ import {
   formatEur,
   listOrders,
   prepareOrder,
+  rejectOrder,
   readyOrder,
 } from "@/warehouse14/api"
 import { useW14Theme } from "@/warehouse14/theme"
@@ -332,6 +334,33 @@ function OrderCard({
     },
   )
 
+  // ── Ablehnen ────────────────────────────────────────────────────────────
+  // Zweistufig und nie aus Versehen: der erste Tipper klappt das Feld für den
+  // Grund auf, erst der zweite lehnt wirklich ab. Eine Ablehnung gibt Ware
+  // frei und schreibt der Kundschaft, das darf kein Fehlgriff sein.
+  //
+  // Der Grund ist freiwillig. Er wandert in den Beleg und ins Tagebuch, damit
+  // in vier Wochen noch nachvollziehbar ist, warum abgesagt wurde.
+  const [rejecting, setRejecting] = useState(false)
+  const [reason, setReason] = useState("")
+
+  const reject = useMutation(
+    () => rejectOrder(orderNumber ?? "", reason.trim() || undefined),
+    {
+      onSuccess: (data) => {
+        haptics.success()
+        if (data && data.mailed === false && orderNumber != null) onMailNotSent(orderNumber)
+        setRejecting(false)
+        setReason("")
+        onChanged()
+      },
+      onError: () => {
+        haptics.error()
+        onChanged()
+      },
+    },
+  )
+
   const stageTone =
     order.pickupStage === "OFFEN"
       ? t.colors.gilt
@@ -460,6 +489,72 @@ function OrderCard({
         <Text className="text-muted-foreground text-xs leading-5">
           Ohne Bestellnummer lässt sich der nächste Schritt hier nicht auslösen.
         </Text>
+      ) : null}
+
+      {/* ── Ablehnen ───────────────────────────────────────────────────────
+          Aus JEDEM laufenden Stand erreichbar, auch aus „abholbereit": fällt
+          ein Stück beim Vorbereiten als beschädigt auf, muss man absagen
+          dürfen, statt einen Menschen für nichts kommen zu lassen.
+
+          Bewusst leise gehalten und zweistufig: ein Textknopf statt einer
+          zweiten Schaltfläche, damit er neben dem eigentlichen Schritt nicht
+          um Aufmerksamkeit ringt, und erst der zweite Tipper lehnt wirklich
+          ab. Eine Ablehnung gibt Ware frei und schreibt der Kundschaft. */}
+      {orderNumber != null ? (
+        rejecting ? (
+          <View className="mt-3 gap-2">
+            <Text className="text-xs leading-5" style={{ color: t.colors.mutedForeground }}>
+              Grund, freiwillig. Er steht später im Beleg und im Tagebuch.
+            </Text>
+            <Input
+              value={reason}
+              onChangeText={setReason}
+              placeholder="Zum Beispiel: Stück beim Vorbereiten beschädigt"
+              maxLength={500}
+              multiline
+            />
+            <View className="flex-row gap-2">
+              <Button
+                variant="destructive"
+                className="flex-1"
+                onPress={() => void reject.mutate(undefined)}
+                onPressIn={() => haptics.selection()}
+                disabled={reject.isPending}
+                accessibilityLabel={`Ablehnen bestätigen, Bestellung ${displayNumber}`}
+              >
+                <XCircle size={t.icon.sm} color={t.colors.primaryForeground} />
+                <Text>{reject.isPending ? "Wird abgelehnt…" : "Wirklich ablehnen"}</Text>
+              </Button>
+              <Button
+                variant="outline"
+                onPress={() => {
+                  haptics.selection()
+                  setRejecting(false)
+                  setReason("")
+                }}
+                disabled={reject.isPending}
+                accessibilityLabel="Ablehnen abbrechen"
+              >
+                <Text>Zurück</Text>
+              </Button>
+            </View>
+          </View>
+        ) : (
+          <Pressable
+            onPress={() => {
+              haptics.selection()
+              setRejecting(true)
+            }}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={`Bestellung ${displayNumber} ablehnen`}
+            className="mt-3 self-start"
+          >
+            <Text className="text-xs leading-5" style={{ color: t.colors.mutedForeground }}>
+              Ablehnen und Stücke freigeben
+            </Text>
+          </Pressable>
+        )
       ) : null}
     </View>
   )
