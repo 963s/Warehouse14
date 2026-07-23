@@ -6,6 +6,15 @@ and the project adheres to [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-23
+
+- Neu: die Bestellungen. Was ein Kunde im Onlineshop reserviert, steht jetzt als eigene Warteschlange an der Kasse, mit Name, Kontakt, Positionen, Bestellnummer und Frist. Vier Knöpfe führen den Vorgang von Anfang bis Ende: annehmen, vorbereiten, abholbereit melden, übergeben. Bis heute gab es dafür keine einzige Schaltfläche, und eine Web-Reservierung liess sich überhaupt nicht abschliessen.
+- Die Übergabe läuft über den ganz normalen Verkauf. Sie laden die Bestellung an die Kasse, kassieren, und der Beleg entsteht auf demselben Weg wie jeder andere. Das Stück geht auf verkauft, die Bestellung wird mit dem Beleg verknüpft, und im Tagebuch steht, wer übergeben hat.
+- „Abholbereit" schickt dem Kunden den Brief, dass sein Stück bereit liegt. Geht der Versand schief, sagt die Kasse es Ihnen sofort, statt so zu tun, als sei der Brief unterwegs.
+- Zwei falsche Anzeigen in der Kundenakte sind behoben. Ein roher Zustandsname erscheint nicht mehr im Klartext, und ein fehlgeschlagener Lesevorgang wird nicht länger als „nichts bestellt" dargestellt. Ein Fehler beim Lesen sagt jetzt, dass gelesen werden wollte und nicht ging.
+- Die Meldung bei einem Widerspruch ist ehrlich geworden. Sie sagt jetzt, ob die Bestellung verfallen, storniert oder bereits übergeben ist, statt zu behaupten, sie stehe nicht mehr auf einem Stand, auf dem sie sichtbar steht.
+- Das Tagebuch kennt die neuen Vorgänge auf Deutsch. Statt eines rohen Kürzels steht dort, dass eine Bestellung angenommen, vorbereitet oder als abholbereit gemeldet wurde.
+
 ## [0.5.5] - 2026-07-21
 
 - Der Gerätecode ist jetzt gegen systematisches Raten geschützt. Ab der dritten Fehleingabe sperrt sich das Tastenfeld für 15 Sekunden, ab der fünften für eine Minute, ab der siebten für fünf Minuten und ab der neunten für fünfzehn Minuten, jeweils mit sichtbarer Restzeit. Nach zehn Fehlversuchen wird der gespeicherte Code gelöscht und eine neue Anmeldung mit Google verlangt.
