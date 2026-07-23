@@ -85,18 +85,9 @@ services:
       # publicly and carry their own legal retention. The worker mounts the SAME
       # volume so the GDPR-cleanup job can prune expired shards.
       KYC_PHOTOS_DIR: /data/kyc
-      # Zustellung von Benachrichtigungen: der Dienstkonto-Schluessel des
-      # Firebase-Projekts. NUR der worker bekommt ihn, denn nur er stellt zu.
-      # Fehlt die Datei, meldet der Ausgang das offen und laesst die
-      # Warteschlange stehen, statt Erfolg zu behaupten (fcm-transport.ts).
-      FCM_SERVICE_ACCOUNT_FILE: /run/secrets/fcm-service-account.json
     volumes:
       - photosdata:/data/photos
       - kycdata:/data/kyc
-      # Schreibgeschuetzt eingehaengt, nicht in die .env geschrieben: ein
-      # privater Schluessel gehoert nicht in eine Datei, die jeder Dienst
-      # dieses Verbunds per env_file mitliest.
-      - ./secrets/fcm-service-account.json:/run/secrets/fcm-service-account.json:ro
     # Reached only by cloudflared on the internal network (no host port).
 
   worker:
@@ -122,9 +113,17 @@ services:
       # SAME encrypted KYC store as the api — the GDPR-cleanup job prunes
       # expired identity-document shards here.
       KYC_PHOTOS_DIR: /data/kyc
+      # Zustellung von Benachrichtigungen (fcm-transport.ts). Fehlt die
+      # Datei, meldet der Ausgang das offen und laesst die Warteschlange
+      # stehen, statt Erfolg zu behaupten.
+      FCM_SERVICE_ACCOUNT_FILE: /run/secrets/fcm-service-account.json
     volumes:
       - photosdata:/data/photos
       - kycdata:/data/kyc
+      # Schreibgeschuetzt eingehaengt, NICHT in die .env geschrieben: ein
+      # privater Schluessel gehoert nicht in eine Datei, die jeder Dienst
+      # dieses Verbunds per env_file mitliest. Nur der worker stellt zu.
+      - ./secrets/fcm-service-account.json:/run/secrets/fcm-service-account.json:ro
 
   # Cloudflare Tunnel — public TLS + mTLS for api.warehouse14.de → api:3001.
   # Configure the route (api.warehouse14.de → http://api:3001) in the Cloudflare
