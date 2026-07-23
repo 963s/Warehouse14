@@ -35,8 +35,8 @@ import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { customers, shopperSessions, shoppers } from '@warehouse14/db/schema';
 
 import type { Env } from '../config/env.js';
-import { composeWelcome, enqueueEmail } from '../lib/email-outbox.js';
-import { localeFromAcceptLanguage, normalizeEmailLocale } from '../lib/email-copy.js';
+import { composeWelcome, enqueueEmail } from '@warehouse14/email';
+import { localeFromAcceptLanguage, normalizeEmailLocale } from '@warehouse14/email';
 import { SHOPPER_SESSION_TTL_MS, newSessionToken, setShopperCookie } from './storefront-auth.js';
 
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';

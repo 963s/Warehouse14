@@ -79,6 +79,9 @@ importers:
       '@warehouse14/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@warehouse14/email':
+        specifier: workspace:*
+        version: link:../../packages/email
       '@warehouse14/intake-pipeline':
         specifier: workspace:*
         version: link:../../packages/intake-pipeline
@@ -155,64 +158,6 @@ importers:
       vitest:
         specifier: 2.1.8
         version: 2.1.8(@types/node@20.17.10)(jsdom@29.1.1(@noble/hashes@2.2.0))(lightningcss@1.30.1)(terser@5.48.0)
-
-  apps/control-desktop:
-    dependencies:
-      '@sinclair/typebox':
-        specifier: 0.32.35
-        version: 0.32.35
-      '@tanstack/react-query':
-        specifier: 5.59.20
-        version: 5.59.20(react@18.3.1)
-      '@tauri-apps/api':
-        specifier: 2.1.1
-        version: 2.1.1
-      '@tauri-apps/plugin-process':
-        specifier: 2.2.0
-        version: 2.2.0
-      '@tauri-apps/plugin-updater':
-        specifier: 2.5.1
-        version: 2.5.1
-      '@warehouse14/api-client':
-        specifier: workspace:*
-        version: link:../../packages/api-client
-      '@warehouse14/i18n-de':
-        specifier: workspace:*
-        version: link:../../packages/i18n-de
-      '@warehouse14/ui-kit':
-        specifier: workspace:*
-        version: link:../../packages/ui-kit
-      react:
-        specifier: 18.3.1
-        version: 18.3.1
-      react-dom:
-        specifier: 18.3.1
-        version: 18.3.1(react@18.3.1)
-      zustand:
-        specifier: 5.0.1
-        version: 5.0.1(@types/react@18.3.12)(react@18.3.1)(use-sync-external-store@1.6.0(react@18.3.1))
-    devDependencies:
-      '@tauri-apps/cli':
-        specifier: 2.1.0
-        version: 2.1.0
-      '@types/react':
-        specifier: 18.3.12
-        version: 18.3.12
-      '@types/react-dom':
-        specifier: 18.3.1
-        version: 18.3.1
-      '@vitejs/plugin-react':
-        specifier: 4.3.3
-        version: 4.3.3(vite@5.4.11(@types/node@26.0.0)(lightningcss@1.30.1)(terser@5.48.0))
-      '@warehouse14/config':
-        specifier: workspace:*
-        version: link:../../packages/config
-      typescript:
-        specifier: 5.7.2
-        version: 5.7.2
-      vite:
-        specifier: 5.4.11
-        version: 5.4.11(@types/node@26.0.0)(lightningcss@1.30.1)(terser@5.48.0)
 
   apps/mobile:
     dependencies:
@@ -590,6 +535,9 @@ importers:
       '@warehouse14/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@warehouse14/email':
+        specifier: workspace:*
+        version: link:../../packages/email
       '@warehouse14/intake-pipeline':
         specifier: workspace:*
         version: link:../../packages/intake-pipeline
@@ -793,6 +741,19 @@ importers:
       vitest:
         specifier: 2.1.8
         version: 2.1.8(@types/node@26.0.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(lightningcss@1.30.1)(terser@5.48.0)
+
+  packages/email:
+    dependencies:
+      drizzle-orm:
+        specifier: 0.36.4
+        version: 0.36.4(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(@types/react@19.2.17)(kysely@0.28.17)(pg@8.22.0)(postgres@3.4.9)(react@19.2.7)
+    devDependencies:
+      '@warehouse14/config':
+        specifier: workspace:*
+        version: link:../config
+      typescript:
+        specifier: 5.7.2
+        version: 5.7.2
 
   packages/i18n-de:
     dependencies:
@@ -4753,9 +4714,6 @@ packages:
 
   '@tauri-apps/plugin-updater@2.10.1':
     resolution: {integrity: sha512-NFYMg+tWOZPJdzE/PpFj2qfqwAWwNS3kXrb1tm1gnBJ9mYzZ4WDRrwy8udzWoAnfGCHLuePNLY1WVCNHnh3eRA==}
-
-  '@tauri-apps/plugin-updater@2.5.1':
-    resolution: {integrity: sha512-7fNJraKRbKkxguMY5lG2W20pBvAUkLu+cqnbu0UcK7DqeZgrAnNECcGBIDG6fJ6C+0fAp2V2dMIgznhffOBCcg==}
 
   '@testcontainers/postgresql@10.13.2':
     resolution: {integrity: sha512-xd3u/rL8FrOBHFMu1aU+2d4sqPz9ffEb19ITtopT/tyBZWW9qCsgR6wSg0r2BJUd+2hT4UR5nR5cymi+ROkehw==}
@@ -15066,10 +15024,6 @@ snapshots:
   '@tauri-apps/plugin-updater@2.10.1':
     dependencies:
       '@tauri-apps/api': 2.11.1
-
-  '@tauri-apps/plugin-updater@2.5.1':
-    dependencies:
-      '@tauri-apps/api': 2.1.1
 
   '@testcontainers/postgresql@10.13.2':
     dependencies:

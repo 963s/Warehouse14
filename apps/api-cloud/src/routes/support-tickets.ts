@@ -19,7 +19,7 @@ import { sql as drizzleSql } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 
 import { requireAuth } from '../lib/auth-policy.js';
-import { composeSupportReply, enqueueEmail } from '../lib/email-outbox.js';
+import { composeSupportReply, enqueueEmail } from '@warehouse14/email';
 import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 
 class TicketNotFoundError extends DomainError {

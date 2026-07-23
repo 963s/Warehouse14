@@ -24,8 +24,8 @@ import {
 } from '@warehouse14/auth-pin';
 import { customers, shopperSessions, shoppers } from '@warehouse14/db/schema';
 
-import { composeWelcome, enqueueEmail } from '../lib/email-outbox.js';
-import { localeFromAcceptLanguage } from '../lib/email-copy.js';
+import { composeWelcome, enqueueEmail } from '@warehouse14/email';
+import { localeFromAcceptLanguage } from '@warehouse14/email';
 import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 import { STOREFRONT_COOKIE_NAME } from '../plugins/storefront-session.js';
 import {

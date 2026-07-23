@@ -36,6 +36,7 @@
     "@warehouse14/auth-pin": "workspace:*",
     "@warehouse14/db": "workspace:*",
     "@warehouse14/domain": "workspace:*",
+    "@warehouse14/email": "workspace:*",
     "@warehouse14/intake-pipeline": "workspace:*",
     "@warehouse14/inventory-lock": "workspace:*",
     "better-auth": "1.3.34",

@@ -24,6 +24,7 @@
     "@warehouse14/appointments": "workspace:*",
     "@warehouse14/audit": "workspace:*",
     "@warehouse14/db": "workspace:*",
+    "@warehouse14/email": "workspace:*",
     "@warehouse14/intake-pipeline": "workspace:*",
     "@warehouse14/inventory-lock": "workspace:*",
     "close-with-grace": "1.3.0",

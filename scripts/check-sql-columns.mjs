@@ -228,7 +228,20 @@ function walk(dir, acc = []) {
   return acc;
 }
 
-const targets = [join(ROOT, 'apps/api-cloud/src'), join(ROOT, 'apps/worker/src')];
+// Die Server-Seiten UND die geteilten Pakete, die rohes SQL tragen. Am
+// 23.07.2026 wanderte `email-outbox.ts` mit seinem INSERT in
+// packages/email, und die Wache verlor die Anweisung lautlos aus dem Blick:
+// die geprüfte Dateizahl fiel von 253 auf 252. Ein Umzug darf keine Deckung
+// kosten, also stehen die Wurzeln hier vollständig.
+const targets = [
+  join(ROOT, 'apps/api-cloud/src'),
+  join(ROOT, 'apps/worker/src'),
+  join(ROOT, 'packages/email/src'),
+  join(ROOT, 'packages/inventory-lock/src'),
+  join(ROOT, 'packages/audit/src'),
+  join(ROOT, 'packages/appointments/src'),
+  join(ROOT, 'packages/intake-pipeline/src'),
+];
 const files = targets.flatMap((t) => {
   try {
     return walk(t);

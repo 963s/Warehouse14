@@ -31,8 +31,8 @@ import {
   reserve as inventoryReserve,
 } from '@warehouse14/inventory-lock';
 
-import { composeReservationConfirmed, enqueueEmail } from '../lib/email-outbox.js';
-import { localeFromAcceptLanguage } from '../lib/email-copy.js';
+import { composeReservationConfirmed, enqueueEmail } from '@warehouse14/email';
+import { localeFromAcceptLanguage } from '@warehouse14/email';
 import { requireShopper } from '../lib/shopper.js';
 import {
   MAX_ITEMS_PER_RESERVATION,

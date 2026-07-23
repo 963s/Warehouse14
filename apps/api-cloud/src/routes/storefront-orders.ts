@@ -21,8 +21,8 @@ import type { FastifyPluginAsync } from 'fastify';
 
 import { release as inventoryRelease } from '@warehouse14/inventory-lock';
 
-import { composeReservationCancelled, enqueueEmail } from '../lib/email-outbox.js';
-import { localeFromAcceptLanguage } from '../lib/email-copy.js';
+import { composeReservationCancelled, enqueueEmail } from '@warehouse14/email';
+import { localeFromAcceptLanguage } from '@warehouse14/email';
 import { requireShopper } from '../lib/shopper.js';
 import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 

@@ -138,6 +138,16 @@ export interface EmailCopy {
   readySubject: (ref: string) => string;
   readyLead: string;
   readyClose: string;
+
+  /**
+   * Die Erinnerung vor Fristablauf. Ohne sie verfällt eine Reservierung
+   * stillschweigend: der Mensch denkt, er habe noch Zeit, und findet sein
+   * Stück beim nächsten Besuch im Regal eines anderen. Ein Brief, drei Zeilen,
+   * und die Frist steht als Datum darin, nicht als „bald".
+   */
+  expiryReminderSubject: (ref: string) => string;
+  expiryReminderLead: (deadline: string) => string;
+  expiryReminderClose: string;
 }
 
 const BRAND = 'Warehouse 14';
@@ -208,6 +218,9 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     readySubject: (ref) => `Ihre Bestellung ${ref} liegt zur Abholung bereit`,
     readyLead: 'Ihre Stücke sind vorbereitet und liegen jetzt im Geschäft für Sie bereit. Kommen Sie zu unseren Öffnungszeiten vorbei; bezahlt wird bequem vor Ort.',
     readyClose: 'Bitte nennen Sie die Reservierungsnummer bei der Abholung. Wir freuen uns auf Ihren Besuch.',
+    expiryReminderSubject: (ref) => `Ihre Reservierung ${ref} läuft bald ab`,
+    expiryReminderLead: (deadline) => `Ihre Reservierung wartet noch im Geschäft. Wir halten die Stücke bis ${deadline} für Sie zurück; danach gehen sie zurück in den Verkauf.`,
+    expiryReminderClose: 'Wenn Sie es zeitlich nicht schaffen, schreiben Sie uns kurz. Wir finden eine Lösung.',
   },
 
   en: {
@@ -242,6 +255,9 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     readySubject: (ref) => `Your order ${ref} is ready for collection`,
     readyLead: 'Your pieces are prepared and now waiting for you in the shop. Come by during our opening hours; you pay comfortably on site.',
     readyClose: 'Please mention the reservation number when you collect. We look forward to your visit.',
+    expiryReminderSubject: (ref) => `Your reservation ${ref} expires soon`,
+    expiryReminderLead: (deadline) => `Your reservation is still waiting at the shop. We are holding the pieces for you until ${deadline}; after that they return to the shelf.`,
+    expiryReminderClose: 'If you cannot make it in time, just write to us. We will find a way.',
   },
 
   ar: {
@@ -278,6 +294,9 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     readySubject: (ref) => `طلبك ${ref} جاهز للاستلام`,
     readyLead: 'قطعك جاهزة وبانتظارك الآن في المحل. تفضل بالمرور خلال ساعات العمل، والدفع يتم بسهولة في المحل.',
     readyClose: 'يرجى ذكر رقم الحجز عند الاستلام. يسعدنا زيارتك.',
+    expiryReminderSubject: (ref) => `حجزك ${ref} على وشك الانتهاء`,
+    expiryReminderLead: (deadline) => `حجزك ما زال بانتظارك في المحل. نحتفظ بالقطع لك حتى ${deadline}، وبعدها تعود إلى العرض.`,
+    expiryReminderClose: 'إن تعذّر عليك الحضور في الوقت المحدد، راسلنا وسنجد حلاً.',
   },
 
   tr: {
@@ -312,6 +331,9 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     readySubject: (ref) => `${ref} numaralı siparişiniz teslim almaya hazır`,
     readyLead: 'Parçalarınız hazırlandı ve şimdi mağazada sizi bekliyor. Çalışma saatlerimizde uğrayın; ödeme yerinde rahatça yapılır.',
     readyClose: 'Lütfen teslim alırken rezervasyon numarasını belirtin. Ziyaretinizi bekliyoruz.',
+    expiryReminderSubject: (ref) => `${ref} numaralı rezervasyonunuzun süresi doluyor`,
+    expiryReminderLead: (deadline) => `Rezervasyonunuz hâlâ dükkânda sizi bekliyor. Parçaları sizin için ${deadline} tarihine kadar ayırıyoruz; sonrasında yeniden satışa çıkıyorlar.`,
+    expiryReminderClose: 'Zamanında gelemezseniz bize kısaca yazın. Bir çözüm buluruz.',
   },
 
   fr: {
@@ -347,6 +369,9 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     readySubject: (ref) => `Votre commande ${ref} est prête à être retirée`,
     readyLead: 'Vos pièces sont préparées et vous attendent désormais en boutique. Passez pendant nos horaires d’ouverture ; le paiement se fait sur place.',
     readyClose: 'Merci d’indiquer le numéro de réservation lors du retrait. Au plaisir de vous accueillir.',
+    expiryReminderSubject: (ref) => `Votre réservation ${ref} expire bientôt`,
+    expiryReminderLead: (deadline) => `Votre réservation vous attend toujours en boutique. Nous gardons les pièces pour vous jusqu'au ${deadline}; ensuite elles retournent à la vente.`,
+    expiryReminderClose: 'Si vous ne pouvez pas venir à temps, écrivez-nous. Nous trouverons une solution.',
   },
 
   es: {
@@ -381,6 +406,9 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     readySubject: (ref) => `Su pedido ${ref} está listo para recoger`,
     readyLead: 'Sus piezas están preparadas y le esperan ahora en la tienda. Pásese durante nuestro horario; el pago se realiza cómodamente en el sitio.',
     readyClose: 'Indique el número de reserva al recoger. Esperamos su visita.',
+    expiryReminderSubject: (ref) => `Su reserva ${ref} caduca pronto`,
+    expiryReminderLead: (deadline) => `Su reserva sigue esperándole en la tienda. Guardamos las piezas para usted hasta el ${deadline}; después vuelven a la venta.`,
+    expiryReminderClose: 'Si no puede venir a tiempo, escríbanos. Encontraremos una solución.',
   },
 
   it: {
@@ -415,6 +443,9 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     readySubject: (ref) => `Il tuo ordine ${ref} è pronto per il ritiro`,
     readyLead: 'I tuoi pezzi sono pronti e ti aspettano ora in negozio. Passa durante i nostri orari; il pagamento avviene comodamente sul posto.',
     readyClose: 'Indica il numero di prenotazione al ritiro. Ti aspettiamo.',
+    expiryReminderSubject: (ref) => `La tua prenotazione ${ref} sta per scadere`,
+    expiryReminderLead: (deadline) => `La tua prenotazione ti aspetta ancora in negozio. Teniamo i pezzi da parte fino al ${deadline}; poi tornano in vendita.`,
+    expiryReminderClose: 'Se non riesci ad arrivare in tempo, scrivici. Troveremo una soluzione.',
   },
 
   nl: {
@@ -448,6 +479,9 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     readySubject: (ref) => `Je bestelling ${ref} ligt klaar om op te halen`,
     readyLead: 'Je stukken zijn voorbereid en liggen nu voor je klaar in de winkel. Kom langs tijdens onze openingstijden; betalen doe je gemakkelijk ter plaatse.',
     readyClose: 'Noem het reserveringsnummer bij het ophalen. We verheugen ons op je bezoek.',
+    expiryReminderSubject: (ref) => `Je reservering ${ref} verloopt binnenkort`,
+    expiryReminderLead: (deadline) => `Je reservering wacht nog in de winkel. We houden de stukken voor je vast tot ${deadline}; daarna gaan ze terug in de verkoop.`,
+    expiryReminderClose: 'Lukt het niet op tijd, laat het ons even weten. We vinden een oplossing.',
   },
 
   pl: {
@@ -487,6 +521,9 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     readySubject: (ref) => `Twoje zamówienie ${ref} jest gotowe do odbioru`,
     readyLead: 'Twoje przedmioty są przygotowane i czekają teraz na Ciebie w sklepie. Wpadnij w godzinach otwarcia; płatność wygodnie na miejscu.',
     readyClose: 'Przy odbiorze podaj numer rezerwacji. Czekamy na Twoją wizytę.',
+    expiryReminderSubject: (ref) => `Twoja rezerwacja ${ref} wkrótce wygasa`,
+    expiryReminderLead: (deadline) => `Twoja rezerwacja wciąż czeka w sklepie. Trzymamy dla Ciebie przedmioty do ${deadline}; potem wracają do sprzedaży.`,
+    expiryReminderClose: 'Jeśli nie zdążysz, napisz do nas. Znajdziemy rozwiązanie.',
   },
 
   pt: {
@@ -522,6 +559,9 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     readySubject: (ref) => `A sua encomenda ${ref} está pronta para levantamento`,
     readyLead: 'As suas peças estão preparadas e aguardam-no agora na loja. Passe durante o nosso horário; o pagamento é feito comodamente no local.',
     readyClose: 'Indique o número de reserva no levantamento. Esperamos a sua visita.',
+    expiryReminderSubject: (ref) => `A sua reserva ${ref} expira em breve`,
+    expiryReminderLead: (deadline) => `A sua reserva continua à sua espera na loja. Guardamos as peças para si até ${deadline}; depois voltam para venda.`,
+    expiryReminderClose: 'Se não conseguir vir a tempo, escreva-nos. Encontramos uma solução.',
   },
 
   da: {
@@ -554,6 +594,9 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     readySubject: (ref) => `Din bestilling ${ref} er klar til afhentning`,
     readyLead: 'Dine stykker er forberedt og venter nu på dig i butikken. Kig forbi i vores åbningstid; betaling sker bekvemt på stedet.',
     readyClose: 'Nævn venligst reservationsnummeret ved afhentning. Vi ser frem til dit besøg.',
+    expiryReminderSubject: (ref) => `Din reservation ${ref} udløber snart`,
+    expiryReminderLead: (deadline) => `Din reservation venter stadig i butikken. Vi holder stykkerne til dig indtil ${deadline}; derefter går de tilbage i salg.`,
+    expiryReminderClose: 'Kan du ikke nå det i tide, så skriv til os. Vi finder en løsning.',
   },
 
   sv: {
@@ -586,6 +629,9 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     readySubject: (ref) => `Din beställning ${ref} är redo att hämtas`,
     readyLead: 'Dina stycken är förberedda och väntar nu på dig i butiken. Kom förbi under våra öppettider; betalning sker bekvämt på plats.',
     readyClose: 'Ange reservationsnumret vid hämtning. Vi ser fram emot ditt besök.',
+    expiryReminderSubject: (ref) => `Din reservation ${ref} går snart ut`,
+    expiryReminderLead: (deadline) => `Din reservation väntar fortfarande i butiken. Vi håller föremålen åt dig till ${deadline}; därefter går de tillbaka till försäljning.`,
+    expiryReminderClose: 'Hinner du inte i tid, skriv till oss. Vi hittar en lösning.',
   },
 
   uk: {
@@ -624,6 +670,9 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     readySubject: (ref) => `Ваше замовлення ${ref} готове до отримання`,
     readyLead: 'Ваші вироби підготовлені й тепер чекають на вас у магазині. Завітайте в години роботи; оплата зручно на місці.',
     readyClose: 'Будь ласка, назвіть номер бронювання при отриманні. Будемо раді вашому візиту.',
+    expiryReminderSubject: (ref) => `Ваше бронювання ${ref} невдовзі спливає`,
+    expiryReminderLead: (deadline) => `Ваше бронювання досі чекає в магазині. Ми тримаємо речі для вас до ${deadline}; після цього вони повертаються у продаж.`,
+    expiryReminderClose: 'Якщо не встигаєте, просто напишіть нам. Ми знайдемо рішення.',
   },
 };
 

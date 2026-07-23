@@ -25,7 +25,7 @@ import {
   EMAIL_CONTACT_LINE,
   SHOP,
   type EmailCopy,
-} from './email-copy.js';
+} from './copy.js';
 
 /** Minimal executor shape — works with app.db and with a withPii tx alike. */
 type SqlExecutor = { execute: (q: ReturnType<typeof drizzleSql>) => Promise<unknown> };
@@ -325,6 +325,68 @@ export function composeOrderReady(
     text,
     html,
     locale: normalizeEmailLocale(locale),
+  };
+}
+
+/**
+ * „Ihre Reservierung läuft bald ab."
+ *
+ * Der Brief, der bis zum 23.07.2026 fehlte. Eine Reservierung verfiel nach drei
+ * Tagen still: niemand wurde gewarnt, das Stück ging zurück in den Verkauf, und
+ * die Vertrauensstufe zählte das Ausbleiben als Nichtabholung. Ein Mensch, der
+ * nichts gehört hat, hat nichts versäumt.
+ *
+ * Die Frist steht als DATUM darin, nicht als „bald": ein Datum kann man sich in
+ * den Kalender schreiben, ein „bald" nicht. Formatiert in der Sprache des
+ * Lesers, damit der 25.07. nicht als 07/25 ankommt.
+ */
+export function composeExpiryReminder(
+  name: string | null,
+  orderNumber: string,
+  deadline: Date,
+  locale?: string | null,
+): ComposedEmail {
+  const c = emailCopy(locale);
+  const loc = normalizeEmailLocale(locale);
+  const when = new Intl.DateTimeFormat(loc, {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Europe/Berlin',
+  }).format(deadline);
+  const g = greet(c, name);
+  const lead = c.expiryReminderLead(when);
+  const text =
+    `${g}\n\n${lead}\n\n` +
+    `${c.refLabel}: ${orderNumber}\n` +
+    `\n${c.expiryReminderClose}\n\n${textFooter(c)}`;
+  const html = htmlWrap(
+    c,
+    para(g) +
+      para(lead) +
+      '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" ' +
+      'style="margin:4px 0 18px;"><tr>' +
+      `<td class="w14-gold" width="3" style="background:${GOLD};border-radius:3px 0 0 3px;` +
+      'font-size:0;line-height:0;">&nbsp;</td>' +
+      `<td class="w14-ref" style="background:#faf8f2;border:1px solid ${RULE};border-left:0;` +
+      'border-radius:0 10px 10px 0;padding:16px 20px;">' +
+      `<div class="w14-muted" style="font-size:11px;color:${MUTED};letter-spacing:1.2px;` +
+      `text-transform:uppercase;">${c.refLabel}</div>` +
+      `<div class="w14-ink" style="font-size:22px;color:${INK};margin-top:4px;` +
+      `font-family:'SF Mono',Menlo,Consolas,monospace;letter-spacing:1px;" dir="ltr">` +
+      `${orderNumber}</div>` +
+      '</td></tr></table>' +
+      para(c.expiryReminderClose),
+    `${c.refLabel}: ${orderNumber}`,
+  );
+  return {
+    template: 'reservation_expiry_reminder',
+    subject: c.expiryReminderSubject(orderNumber),
+    text,
+    html,
+    locale: loc,
   };
 }
 

@@ -32,7 +32,7 @@ import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { auditLog } from '@warehouse14/db/schema';
 
 import { requireAuth, requireRole } from '../lib/auth-policy.js';
-import { composeOrderReady, enqueueEmail } from '../lib/email-outbox.js';
+import { composeOrderReady, enqueueEmail } from '@warehouse14/email';
 import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 
 class OrderNotFoundError extends DomainError {

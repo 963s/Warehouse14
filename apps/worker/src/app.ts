@@ -29,6 +29,7 @@ import {
   dsfinvkDailyExportJob,
   ebaySyncJob,
   emailOutboxSenderJob,
+  reservationExpiryReminderJob,
   supportInboxPollerJob,
   gdprCleanupJob,
   intakeSweepJob,
@@ -187,6 +188,11 @@ export async function buildWorker(opts: BuildWorkerOpts): Promise<WorkerHandle> 
       locales: opts.env.PRODUCT_TRANSLATE_LOCALES,
       batchSize: opts.env.PRODUCT_TRANSLATE_BATCH,
     }),
+  );
+  // 0102: der Brief, BEVOR eine Reservierung verfaellt. Bis dahin verfiel sie
+  // stillschweigend und der Mensch erfuhr es erst am leeren Regal.
+  runner.register(
+    reservationExpiryReminderJob({ piiKey: opts.env.WAREHOUSE14_PII_KEY || '' }),
   );
   // 0088: transactional mail delivery (welcome, reservation, cancellation).
   runner.register(

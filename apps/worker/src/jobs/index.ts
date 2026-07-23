@@ -10,6 +10,7 @@
  */
 
 export { reservationSweeperJob } from './reservation-sweeper.js';
+export { reservationExpiryReminderJob } from './reservation-expiry-reminder.js';
 export { posReservationSweeperJob } from './pos-reservation-sweeper.js';
 export { ebaySyncJob } from './ebay-sync.js';
 export { emailOutboxSenderJob } from './email-outbox-sender.js';
