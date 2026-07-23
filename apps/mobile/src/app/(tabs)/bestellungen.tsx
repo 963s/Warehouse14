@@ -376,7 +376,11 @@ function OrderCard({
           {displayNumber}
         </Text>
         <Text className="text-xs font-semibold" style={{ color: stageTone }} numberOfLines={1}>
-          {stageLabel(order.pickupStage)}
+          {/* Eine Versandbestellung hat gar keinen Abholstand — sie hier als
+              „Unbekannt" zu zeigen läse sich wie eine kaputte Abholung. Sie
+              sagt, was sie ist. Der Versandablauf selbst wird an der Kasse
+              geführt, nicht hier. */}
+          {order.fulfilmentMethod === "SHIPPING" ? "Versand" : stageLabel(order.pickupStage)}
         </Text>
       </View>
 
@@ -407,7 +411,7 @@ function OrderCard({
       </View>
 
       {/* WIE WEIT — der Fortschritts-Faden über die vier Stufen. */}
-      <StageProgress stage={order.pickupStage} />
+      {order.fulfilmentMethod === "SHIPPING" ? null : <StageProgress stage={order.pickupStage} />}
 
       {/* WIE LANGE — der Countdown der Abholfrist, wenn eine Frist bekannt ist. */}
       {countdown != null ? (

@@ -34,6 +34,16 @@ export interface OrderView {
   contactName: string | null;
   contactPhone: string | null;
   contactEmail: string | null;
+  /** ABHOLUNG oder VERSAND: `PICKUP` oder `SHIPPING`. */
+  fulfilmentMethod: string;
+  fulfilmentStatus: string;
+  /**
+   * Die mehrzeilige Lieferanschrift, oder null bei einer Abholung. Sie ist der
+   * Inhalt der Versandmarke; ohne sie darf keine gedruckt werden.
+   */
+  shippingAddress: string | null;
+  /** Zweibuchstabiges Zielland, oder null. */
+  shippingCountry: string | null;
   itemCount: number;
   totalEur: string;
   lines: OrderLine[];

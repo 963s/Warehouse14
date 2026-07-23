@@ -86,6 +86,10 @@ interface OrderRow {
   contact_name: string | null;
   contact_phone: string | null;
   contact_email: string | null;
+  fulfilment_method: string;
+  fulfilment_status: string;
+  shipping_address: string | null;
+  shipping_country: string | null;
   item_count: number;
   total_eur: string;
   lines: unknown;
@@ -101,6 +105,16 @@ interface OrderShape {
   contactName: string | null;
   contactPhone: string | null;
   contactEmail: string | null;
+  /** ABHOLUNG oder VERSAND. Entscheidet, welche Arbeit ansteht. */
+  fulfilmentMethod: string;
+  fulfilmentStatus: string;
+  /**
+   * Die Lieferanschrift als mehrzeiliger Text, oder null bei einer Abholung.
+   * Sie ist der Inhalt der Versandmarke.
+   */
+  shippingAddress: string | null;
+  /** Zweibuchstabiges Land der Lieferung, oder null. */
+  shippingCountry: string | null;
   itemCount: number;
   totalEur: string;
   lines: {
@@ -123,6 +137,10 @@ function shape(r: OrderRow): OrderShape {
     contactName: r.contact_name,
     contactPhone: r.contact_phone,
     contactEmail: r.contact_email,
+    fulfilmentMethod: r.fulfilment_method,
+    fulfilmentStatus: r.fulfilment_status,
+    shippingAddress: r.shipping_address,
+    shippingCountry: r.shipping_country,
     itemCount: r.item_count,
     totalEur: r.total_eur,
     lines: (typeof r.lines === 'string' ? JSON.parse(r.lines) : r.lines) as OrderShape['lines'],
@@ -149,6 +167,13 @@ const ORDER_SELECT = drizzleSql`
          decrypt_pii(cu.full_name_encrypted) AS contact_name,
          decrypt_pii(cu.phone_encrypted)     AS contact_phone,
          decrypt_pii(cu.email_encrypted)     AS contact_email,
+         c.fulfilment_method::text           AS fulfilment_method,
+         c.fulfilment_status::text           AS fulfilment_status,
+         -- Die Lieferanschrift, entschlüsselt INNERHALB von withPii. Sie ist
+         -- der Inhalt der Versandmarke: ohne sie kann niemand ein Paket
+         -- adressieren. Bei einer Abholung ist sie NULL, und das ist richtig.
+         decrypt_pii(c.shipping_address_encrypted) AS shipping_address,
+         c.shipping_country                  AS shipping_country,
          COUNT(ci.id)::int AS item_count,
          COALESCE(SUM(ci.unit_price_eur * ci.quantity), 0)::text AS total_eur,
          COALESCE(
@@ -172,6 +197,8 @@ const ORDER_SELECT = drizzleSql`
 const ORDER_GROUP_BY = drizzleSql`
   GROUP BY c.id, c.order_number, c.pickup_stage, c.reservation_session_id,
            c.reserved_at, c.created_at,
+           c.fulfilment_method, c.fulfilment_status,
+           c.shipping_address_encrypted, c.shipping_country,
            cu.full_name_encrypted, cu.phone_encrypted, cu.email_encrypted`;
 
 const ordersRoutes: FastifyPluginAsync = async (app) => {
@@ -198,7 +225,7 @@ const ordersRoutes: FastifyPluginAsync = async (app) => {
       const rows = (await app.withPii((tx) =>
         tx.execute(drizzleSql`
           ${ORDER_SELECT}
-           WHERE c.status = 'RESERVED' AND c.fulfilment_method = 'PICKUP'
+           WHERE c.status = 'RESERVED'
              ${stage ? drizzleSql`AND c.pickup_stage = ${stage}::pickup_stage` : drizzleSql``}
           ${ORDER_GROUP_BY}
           ORDER BY COALESCE(c.reserved_at, c.created_at) ASC
@@ -228,7 +255,6 @@ const ordersRoutes: FastifyPluginAsync = async (app) => {
         tx.execute(drizzleSql`
           ${ORDER_SELECT}
            WHERE c.order_number = ${req.params.orderNumber}
-             AND c.fulfilment_method = 'PICKUP'
           ${ORDER_GROUP_BY}
           LIMIT 1`),
       )) as unknown as OrderRow[];

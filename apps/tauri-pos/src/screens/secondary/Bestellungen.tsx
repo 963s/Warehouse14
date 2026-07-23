@@ -38,6 +38,8 @@ import { type OrderView, type ProductDetail, ordersApi, productsApi } from '@war
 import { StaleBadge, useCachedQuery } from '../../offline/index.js';
 import { useApiClient } from '../../lib/api-context.js';
 import { classifyCartProductTax } from '../../lib/cart-math.js';
+import { type ShopInfoApi, resolveShopInfo, useShopInfo } from '../../hooks/useShopInfo.js';
+import { fehlendeAngaben, versandmarkeHtml } from '../../lib/versandmarke.js';
 import { type CartLine, useCartStore } from '../../state/cart-store.js';
 import { useLedgerFeed } from '../../state/ledger-feed-store.js';
 
@@ -48,6 +50,53 @@ const STAGE_LABEL: Record<string, string> = {
   IN_VORBEREITUNG: 'In Vorbereitung',
   ABHOLBEREIT: 'Abholbereit',
 };
+
+/**
+ * Die Marke drucken. Öffnet ein eigenes, leeres Fenster mit NUR dem Aufkleber,
+ * damit weder die Kassenfläche noch ihre Bildschirmfarben mit auf das Papier
+ * geraten.
+ *
+ * Gibt eine deutsche Meldung zurück, wenn es nicht ging, sonst null. Ein
+ * blockierter Fensteröffner ist der häufigste Grund, und ein Klick, der
+ * scheinbar nichts tut, ist schlimmer als ein Satz, der sagt warum.
+ */
+function markeDrucken(order: OrderView, shopApi: ShopInfoApi | undefined): string | null {
+  const nummer = order.orderNumber?.trim();
+  if (!nummer) return 'Ohne Bestellnummer lässt sich keine Marke drucken.';
+
+  const versand = order.fulfilmentMethod === 'SHIPPING';
+  const bestellung = {
+    bestellnummer: nummer,
+    versandart: versand ? ('SHIPPING' as const) : ('PICKUP' as const),
+    empfaenger: order.contactName,
+    lieferanschrift: order.shippingAddress,
+    land: order.shippingCountry,
+    stueckzahl: order.itemCount,
+    bestelltAm: new Date(order.createdAt).toLocaleDateString('de-DE'),
+  };
+
+  const fehlt = fehlendeAngaben(bestellung);
+  if (fehlt.length > 0) return fehlt.join(' ');
+
+  // Die ECHTEN Ladendaten, wenn sie geladen sind; sonst der eingebaute
+  // Rückfall. Beides ist eine wahre Anschrift, keine erfundene.
+  const shop = resolveShopInfo(shopApi);
+  const html = versandmarkeHtml({ name: shop.name, anschrift: shop.address }, bestellung);
+
+  const fenster = window.open('', '_blank', 'width=420,height=620');
+  if (!fenster) {
+    return 'Das Druckfenster wurde blockiert. Bitte Fenster für diese App erlauben.';
+  }
+  fenster.document.write(html);
+  fenster.document.close();
+  // Erst drucken, wenn das Fenster fertig ist: sonst druckt Safari eine leere
+  // Seite, und die fällt erst am Drucker auf.
+  fenster.onload = () => {
+    fenster.focus();
+    fenster.print();
+  };
+  return null;
+}
 
 /** Ein unbekannter Stand degradiert zu einem deutschen Wort, nie zum rohen Token. */
 function stageLabel(stage: string | null): string {
@@ -445,6 +494,9 @@ function OrderRow({
   // frei und schreibt der Kundschaft, das darf kein Fehlgriff sein.
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState('');
+  /** Was beim Drucken der Marke schiefging. Null heisst: nichts. */
+  const [markenFehler, setMarkenFehler] = useState<string | null>(null);
+  const { data: shopApi } = useShopInfo();
   const telHref = order.contactPhone ? `tel:${order.contactPhone.replace(/[^+\d]/g, '')}` : null;
 
   return (
@@ -472,7 +524,7 @@ function OrderRow({
             padding: '1px 8px',
           }}
         >
-          {stageLabel(order.pickupStage)}
+          {order.fulfilmentMethod === 'SHIPPING' ? 'Versand' : stageLabel(order.pickupStage)}
         </span>
         <span style={{ flex: 1 }} />
         <span
@@ -580,6 +632,40 @@ function OrderRow({
         <p style={{ color: 'var(--w14-verdigris)', fontSize: '0.82rem', margin: '0.2rem 0 0' }}>
           {note}
         </p>
+      )}
+
+      {/* Die Marke. Bei einem Versand ist sie das Adressetikett fürs Paket, bei
+          einer Abholung der Zettel fürs Regal — dieselbe Bestellnummer, derselbe
+          Strichcode, damit ein Handscanner das Paket am Tresen sofort findet.
+          KEINE Sendungsnummer: solange kein Zusteller angebunden ist, gibt es
+          keine, und eine erfundene wäre der teuerste Fehler dieses Hauses. */}
+      {order.orderNumber && (
+        <div style={{ marginTop: '0.3rem' }}>
+          <button
+            type="button"
+            onClick={() => setMarkenFehler(markeDrucken(order, shopApi))}
+            style={{
+              background: 'none',
+              border: 'none',
+              padding: 0,
+              font: 'inherit',
+              fontSize: '0.82rem',
+              color: 'var(--w14-ink-faded)',
+              textDecoration: 'underline',
+              textUnderlineOffset: '3px',
+              cursor: 'pointer',
+            }}
+          >
+            {order.fulfilmentMethod === 'SHIPPING'
+              ? 'Versandmarke drucken'
+              : 'Regalzettel drucken'}
+          </button>
+          {markenFehler && (
+            <p style={{ color: 'var(--w14-wax-red)', fontSize: '0.8rem', margin: '0.25rem 0 0' }}>
+              {markenFehler}
+            </p>
+          )}
+        </div>
       )}
 
       {/* Ablehnen: bewusst leise, ein Textknopf statt einer zweiten Schaltfläche,
