@@ -148,6 +148,20 @@ export interface EmailCopy {
   expiryReminderSubject: (ref: string) => string;
   expiryReminderLead: (deadline: string) => string;
   expiryReminderClose: string;
+
+  /**
+   * „Wir haben Ihre Reservierung angenommen." Der Brief, den die Kundschaft
+   * zwischen dem Reservieren und dem Bereitliegen als EINZIGEN bekommt: er
+   * sagt, dass ein Mensch den Beleg gesehen und zugesagt hat. Der interne
+   * Schritt „in Vorbereitung" bleibt still, denn für den Leser ändert er
+   * nichts.
+   */
+  acceptedSubject: (ref: string) => string;
+  acceptedLead: string;
+  acceptedClose: string;
+
+  /** Warum eine Bestellung abgelehnt wurde, wenn ein Grund genannt wurde. */
+  declinedReasonLabel: string;
 }
 
 const BRAND = 'Warehouse 14';
@@ -221,6 +235,10 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     expiryReminderSubject: (ref) => `Ihre Reservierung ${ref} läuft bald ab`,
     expiryReminderLead: (deadline) => `Ihre Reservierung wartet noch im Geschäft. Wir halten die Stücke bis ${deadline} für Sie zurück; danach gehen sie zurück in den Verkauf.`,
     expiryReminderClose: 'Wenn Sie es zeitlich nicht schaffen, schreiben Sie uns kurz. Wir finden eine Lösung.',
+    acceptedSubject: (ref) => `Ihre Reservierung ${ref} ist angenommen`,
+    acceptedLead: 'Wir haben Ihre Reservierung geprüft und angenommen. Die Stücke sind für Sie zurückgelegt; wir bereiten sie vor und melden uns, sobald sie abholbereit sind.',
+    acceptedClose: 'Sie müssen nichts weiter tun. Wir schreiben Ihnen wieder, wenn alles bereit liegt.',
+    declinedReasonLabel: 'Grund',
   },
 
   en: {
@@ -258,6 +276,10 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     expiryReminderSubject: (ref) => `Your reservation ${ref} expires soon`,
     expiryReminderLead: (deadline) => `Your reservation is still waiting at the shop. We are holding the pieces for you until ${deadline}; after that they return to the shelf.`,
     expiryReminderClose: 'If you cannot make it in time, just write to us. We will find a way.',
+    acceptedSubject: (ref) => `Your reservation ${ref} is accepted`,
+    acceptedLead: 'We have reviewed your reservation and accepted it. The pieces are set aside for you; we are preparing them and will write again as soon as they are ready for collection.',
+    acceptedClose: 'There is nothing further for you to do. We will write again once everything is ready.',
+    declinedReasonLabel: 'Reason',
   },
 
   ar: {
@@ -297,6 +319,10 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     expiryReminderSubject: (ref) => `حجزك ${ref} على وشك الانتهاء`,
     expiryReminderLead: (deadline) => `حجزك ما زال بانتظارك في المحل. نحتفظ بالقطع لك حتى ${deadline}، وبعدها تعود إلى العرض.`,
     expiryReminderClose: 'إن تعذّر عليك الحضور في الوقت المحدد، راسلنا وسنجد حلاً.',
+    acceptedSubject: (ref) => `تم قبول حجزك ${ref}`,
+    acceptedLead: 'راجعنا حجزك وقبلناه. القطع محجوزة لك، ونحن نُجهّزها وسنكتب إليك حالما تصبح جاهزة للاستلام.',
+    acceptedClose: 'لا يلزمك فعل شيء الآن. سنكتب إليك مرة أخرى عندما يصبح كل شيء جاهزاً.',
+    declinedReasonLabel: 'السبب',
   },
 
   tr: {
@@ -334,6 +360,10 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     expiryReminderSubject: (ref) => `${ref} numaralı rezervasyonunuzun süresi doluyor`,
     expiryReminderLead: (deadline) => `Rezervasyonunuz hâlâ dükkânda sizi bekliyor. Parçaları sizin için ${deadline} tarihine kadar ayırıyoruz; sonrasında yeniden satışa çıkıyorlar.`,
     expiryReminderClose: 'Zamanında gelemezseniz bize kısaca yazın. Bir çözüm buluruz.',
+    acceptedSubject: (ref) => `${ref} numaralı rezervasyonunuz kabul edildi`,
+    acceptedLead: 'Rezervasyonunuzu inceledik ve kabul ettik. Parçalar sizin için ayrıldı; hazırlıyoruz ve teslim almaya hazır olur olmaz size tekrar yazacağız.',
+    acceptedClose: 'Şimdilik yapmanız gereken bir şey yok. Her şey hazır olduğunda tekrar yazacağız.',
+    declinedReasonLabel: 'Gerekçe',
   },
 
   fr: {
@@ -372,6 +402,10 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     expiryReminderSubject: (ref) => `Votre réservation ${ref} expire bientôt`,
     expiryReminderLead: (deadline) => `Votre réservation vous attend toujours en boutique. Nous gardons les pièces pour vous jusqu'au ${deadline}; ensuite elles retournent à la vente.`,
     expiryReminderClose: 'Si vous ne pouvez pas venir à temps, écrivez-nous. Nous trouverons une solution.',
+    acceptedSubject: (ref) => `Votre réservation ${ref} est acceptée`,
+    acceptedLead: 'Nous avons examiné votre réservation et l’avons acceptée. Les pièces sont mises de côté pour vous; nous les préparons et vous écrirons dès qu’elles seront prêtes à être retirées.',
+    acceptedClose: 'Vous n’avez rien d’autre à faire. Nous vous écrirons de nouveau lorsque tout sera prêt.',
+    declinedReasonLabel: 'Motif',
   },
 
   es: {
@@ -409,6 +443,10 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     expiryReminderSubject: (ref) => `Su reserva ${ref} caduca pronto`,
     expiryReminderLead: (deadline) => `Su reserva sigue esperándole en la tienda. Guardamos las piezas para usted hasta el ${deadline}; después vuelven a la venta.`,
     expiryReminderClose: 'Si no puede venir a tiempo, escríbanos. Encontraremos una solución.',
+    acceptedSubject: (ref) => `Su reserva ${ref} está aceptada`,
+    acceptedLead: 'Hemos revisado su reserva y la hemos aceptado. Las piezas están apartadas para usted; las estamos preparando y le escribiremos en cuanto estén listas para recoger.',
+    acceptedClose: 'No tiene que hacer nada más. Le escribiremos de nuevo cuando todo esté listo.',
+    declinedReasonLabel: 'Motivo',
   },
 
   it: {
@@ -446,6 +484,10 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     expiryReminderSubject: (ref) => `La tua prenotazione ${ref} sta per scadere`,
     expiryReminderLead: (deadline) => `La tua prenotazione ti aspetta ancora in negozio. Teniamo i pezzi da parte fino al ${deadline}; poi tornano in vendita.`,
     expiryReminderClose: 'Se non riesci ad arrivare in tempo, scrivici. Troveremo una soluzione.',
+    acceptedSubject: (ref) => `La tua prenotazione ${ref} è accettata`,
+    acceptedLead: 'Abbiamo esaminato la tua prenotazione e l’abbiamo accettata. I pezzi sono messi da parte per te; li stiamo preparando e ti scriveremo appena saranno pronti per il ritiro.',
+    acceptedClose: 'Non devi fare altro. Ti scriveremo di nuovo quando tutto sarà pronto.',
+    declinedReasonLabel: 'Motivo',
   },
 
   nl: {
@@ -482,6 +524,10 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     expiryReminderSubject: (ref) => `Je reservering ${ref} verloopt binnenkort`,
     expiryReminderLead: (deadline) => `Je reservering wacht nog in de winkel. We houden de stukken voor je vast tot ${deadline}; daarna gaan ze terug in de verkoop.`,
     expiryReminderClose: 'Lukt het niet op tijd, laat het ons even weten. We vinden een oplossing.',
+    acceptedSubject: (ref) => `Je reservering ${ref} is aangenomen`,
+    acceptedLead: 'We hebben je reservering bekeken en aangenomen. De stukken liggen voor je apart; we maken ze klaar en schrijven je zodra ze opgehaald kunnen worden.',
+    acceptedClose: 'Je hoeft verder niets te doen. We schrijven je weer als alles klaarligt.',
+    declinedReasonLabel: 'Reden',
   },
 
   pl: {
@@ -524,6 +570,10 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     expiryReminderSubject: (ref) => `Twoja rezerwacja ${ref} wkrótce wygasa`,
     expiryReminderLead: (deadline) => `Twoja rezerwacja wciąż czeka w sklepie. Trzymamy dla Ciebie przedmioty do ${deadline}; potem wracają do sprzedaży.`,
     expiryReminderClose: 'Jeśli nie zdążysz, napisz do nas. Znajdziemy rozwiązanie.',
+    acceptedSubject: (ref) => `Twoja rezerwacja ${ref} została przyjęta`,
+    acceptedLead: 'Sprawdziliśmy Twoją rezerwację i ją przyjęliśmy. Przedmioty są odłożone dla Ciebie; przygotowujemy je i napiszemy, gdy tylko będą gotowe do odbioru.',
+    acceptedClose: 'Nie musisz nic więcej robić. Napiszemy ponownie, gdy wszystko będzie gotowe.',
+    declinedReasonLabel: 'Powód',
   },
 
   pt: {
@@ -562,6 +612,10 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     expiryReminderSubject: (ref) => `A sua reserva ${ref} expira em breve`,
     expiryReminderLead: (deadline) => `A sua reserva continua à sua espera na loja. Guardamos as peças para si até ${deadline}; depois voltam para venda.`,
     expiryReminderClose: 'Se não conseguir vir a tempo, escreva-nos. Encontramos uma solução.',
+    acceptedSubject: (ref) => `A sua reserva ${ref} foi aceite`,
+    acceptedLead: 'Analisámos a sua reserva e aceitámo-la. As peças estão reservadas para si; estamos a prepará-las e escreveremos assim que estiverem prontas para levantamento.',
+    acceptedClose: 'Não precisa de fazer mais nada. Escreveremos novamente quando estiver tudo pronto.',
+    declinedReasonLabel: 'Motivo',
   },
 
   da: {
@@ -597,6 +651,10 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     expiryReminderSubject: (ref) => `Din reservation ${ref} udløber snart`,
     expiryReminderLead: (deadline) => `Din reservation venter stadig i butikken. Vi holder stykkerne til dig indtil ${deadline}; derefter går de tilbage i salg.`,
     expiryReminderClose: 'Kan du ikke nå det i tide, så skriv til os. Vi finder en løsning.',
+    acceptedSubject: (ref) => `Din reservation ${ref} er accepteret`,
+    acceptedLead: 'Vi har gennemgået din reservation og accepteret den. Stykkerne er lagt til side til dig; vi gør dem klar og skriver, så snart de kan afhentes.',
+    acceptedClose: 'Du skal ikke gøre mere. Vi skriver igen, når alt er klar.',
+    declinedReasonLabel: 'Årsag',
   },
 
   sv: {
@@ -632,6 +690,10 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     expiryReminderSubject: (ref) => `Din reservation ${ref} går snart ut`,
     expiryReminderLead: (deadline) => `Din reservation väntar fortfarande i butiken. Vi håller föremålen åt dig till ${deadline}; därefter går de tillbaka till försäljning.`,
     expiryReminderClose: 'Hinner du inte i tid, skriv till oss. Vi hittar en lösning.',
+    acceptedSubject: (ref) => `Din reservation ${ref} är godkänd`,
+    acceptedLead: 'Vi har gått igenom din reservation och godkänt den. Föremålen är undanlagda åt dig; vi gör i ordning dem och skriver så snart de kan hämtas.',
+    acceptedClose: 'Du behöver inte göra något mer. Vi skriver igen när allt är klart.',
+    declinedReasonLabel: 'Orsak',
   },
 
   uk: {
@@ -673,6 +735,10 @@ const COPY: Record<EmailLocale, EmailCopy> = {
     expiryReminderSubject: (ref) => `Ваше бронювання ${ref} невдовзі спливає`,
     expiryReminderLead: (deadline) => `Ваше бронювання досі чекає в магазині. Ми тримаємо речі для вас до ${deadline}; після цього вони повертаються у продаж.`,
     expiryReminderClose: 'Якщо не встигаєте, просто напишіть нам. Ми знайдемо рішення.',
+    acceptedSubject: (ref) => `Ваше бронювання ${ref} прийнято`,
+    acceptedLead: 'Ми переглянули ваше бронювання і прийняли його. Речі відкладені для вас; ми готуємо їх і напишемо, щойно вони будуть готові до отримання.',
+    acceptedClose: 'Більше нічого робити не потрібно. Ми напишемо знову, коли все буде готове.',
+    declinedReasonLabel: 'Причина',
   },
 };
 

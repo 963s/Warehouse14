@@ -329,6 +329,54 @@ export function composeOrderReady(
 }
 
 /**
+ * „Wir haben Ihre Reservierung angenommen."
+ *
+ * Der einzige Brief zwischen dem Reservieren und dem Bereitliegen. Er sagt
+ * das, was ein wartender Mensch wissen will: ein Mensch hat den Beleg gesehen
+ * und zugesagt. Der interne Schritt „in Vorbereitung" bekommt bewusst KEINEN
+ * Brief, weil sich für den Leser nichts ändert und ein Postfach kein
+ * Arbeitsprotokoll ist.
+ */
+export function composeOrderAccepted(
+  name: string | null,
+  orderNumber: string,
+  locale?: string | null,
+): ComposedEmail {
+  const c = emailCopy(locale);
+  const g = greet(c, name);
+  const text =
+    `${g}\n\n${c.acceptedLead}\n\n` +
+    `${c.refLabel}: ${orderNumber}\n` +
+    `\n${c.acceptedClose}\n\n${textFooter(c)}`;
+  const html = htmlWrap(
+    c,
+    para(g) +
+      para(c.acceptedLead) +
+      '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" ' +
+      'style="margin:4px 0 18px;"><tr>' +
+      `<td class="w14-gold" width="3" style="background:${GOLD};border-radius:3px 0 0 3px;` +
+      'font-size:0;line-height:0;">&nbsp;</td>' +
+      `<td class="w14-ref" style="background:#faf8f2;border:1px solid ${RULE};border-left:0;` +
+      'border-radius:0 10px 10px 0;padding:16px 20px;">' +
+      `<div class="w14-muted" style="font-size:11px;color:${MUTED};letter-spacing:1.2px;` +
+      `text-transform:uppercase;">${c.refLabel}</div>` +
+      `<div class="w14-ink" style="font-size:22px;color:${INK};margin-top:4px;` +
+      `font-family:'SF Mono',Menlo,Consolas,monospace;letter-spacing:1px;" dir="ltr">` +
+      `${orderNumber}</div>` +
+      '</td></tr></table>' +
+      para(c.acceptedClose),
+    `${c.refLabel}: ${orderNumber}`,
+  );
+  return {
+    template: 'order_accepted',
+    subject: c.acceptedSubject(orderNumber),
+    text,
+    html,
+    locale: normalizeEmailLocale(locale),
+  };
+}
+
+/**
  * „Ihre Reservierung läuft bald ab."
  *
  * Der Brief, der bis zum 23.07.2026 fehlte. Eine Reservierung verfiel nach drei

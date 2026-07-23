@@ -32,7 +32,12 @@ import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { auditLog } from '@warehouse14/db/schema';
 
 import { requireAuth, requireRole } from '../lib/auth-policy.js';
-import { composeOrderReady, enqueueEmail } from '@warehouse14/email';
+import {
+  composeOrderAccepted,
+  composeOrderReady,
+  composeReservationCancelled,
+  enqueueEmail,
+} from '@warehouse14/email';
 import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 
 class OrderNotFoundError extends DomainError {
@@ -300,6 +305,57 @@ const ordersRoutes: FastifyPluginAsync = async (app) => {
     });
   }
 
+
+  /**
+   * Wer zu einer Bestellung gehört, entschlüsselt gelesen.
+   *
+   * Dieselbe Abfrage brauchen der Annahme-, der Abholbereit- und der
+   * Absage-Brief. Einmal geschrieben statt dreimal, damit eine Korrektur an
+   * einer Stelle nicht zwei stille Abweichungen hinterlässt.
+   *
+   * Eine Gast-Anschrift auf `@gast.invalid` ist KEINE Anschrift: sie ist der
+   * Platzhalter für einen Gast, der nur eine Telefonnummer hinterlassen hat.
+   * An sie wird nicht geschrieben, und der Aufrufer erfährt es an `null`.
+   */
+  async function orderRecipient(
+    tx: { execute: (q: ReturnType<typeof drizzleSql>) => Promise<unknown> },
+    orderNumber: string,
+  ): Promise<{
+    orderNumber: string | null;
+    name: string | null;
+    email: string | null;
+    locale: string;
+    customerId: string | null;
+  } | null> {
+    const rows = (await tx.execute(drizzleSql`
+      SELECT c.order_number,
+             decrypt_pii(cu.full_name_encrypted) AS name,
+             CASE WHEN s.is_guest THEN decrypt_pii(cu.email_encrypted)
+                  ELSE decrypt_pii(s.email_encrypted) END AS email,
+             COALESCE(s.preferred_language, 'de') AS locale,
+             cu.id::text AS customer_id
+        FROM carts c
+        JOIN shoppers s ON s.id = c.shopper_id
+        JOIN customers cu ON cu.id = s.customer_id
+       WHERE c.order_number = ${orderNumber} LIMIT 1`)) as unknown as Array<{
+      order_number: string | null;
+      name: string | null;
+      email: string | null;
+      locale: string | null;
+      customer_id: string | null;
+    }>;
+    const r = rows[0];
+    if (!r) return null;
+    const usable = r.email && !r.email.endsWith('@gast.invalid') ? r.email : null;
+    return {
+      orderNumber: r.order_number,
+      name: r.name,
+      email: usable,
+      locale: r.locale ?? 'de',
+      customerId: r.customer_id,
+    };
+  }
+
   const transitionSchema = {
     tags: ['orders'],
     params: Type.Object({ orderNumber: Type.String({ maxLength: 32 }) }),
@@ -332,7 +388,7 @@ const ordersRoutes: FastifyPluginAsync = async (app) => {
   // OFFEN → ANGENOMMEN
   app.post<{ Params: { orderNumber: string } }>(
     '/api/orders/:orderNumber/approve',
-    { schema: { ...transitionSchema, summary: 'Reservierung annehmen (ADMIN + CASHIER).' } },
+    { schema: { ...readySchema, summary: 'Reservierung annehmen (ADMIN + CASHIER).' } },
     async (req, reply) => {
       requireAuth(req);
       requireRole(req, 'ADMIN', 'CASHIER');
@@ -345,7 +401,30 @@ const ordersRoutes: FastifyPluginAsync = async (app) => {
         true,
         'web_order.approved',
       );
-      return reply.status(200).send({ ok: true });
+
+      // Der einzige Brief zwischen Reservieren und Bereitliegen. Er sagt der
+      // Kundschaft, dass ein Mensch zugesagt hat. Best-effort wie die anderen,
+      // aber `mailed` verschweigt nichts: die Oberfläche erfährt, ob er
+      // wirklich eingereiht wurde.
+      let mailed = false;
+      try {
+        await app.withPii(async (tx) => {
+          const r = await orderRecipient(tx, req.params.orderNumber);
+          if (r?.email) {
+            await enqueueEmail(
+              tx,
+              r.email,
+              composeOrderAccepted(r.name, r.orderNumber ?? req.params.orderNumber, r.locale),
+              r.customerId,
+            );
+            mailed = true;
+          }
+        });
+      } catch (err) {
+        req.log.warn({ err }, 'Annahme-Brief konnte nicht eingereiht werden');
+      }
+
+      return reply.status(200).send({ ok: true, mailed });
     },
   );
 
@@ -426,6 +505,127 @@ const ordersRoutes: FastifyPluginAsync = async (app) => {
       }
 
       return reply.status(200).send({ ok: true, mailed });
+    },
+  );
+
+  // ── Ablehnen ──────────────────────────────────────────────────────────────
+  //
+  // Ablehnen ist bewusst KEIN weiterer Abholstand, sondern das Ende: die
+  // Stücke gehen zurück ins Regal und der Beleg wird CANCELLED, ein Zustand,
+  // den der Kundenshop bereits überall richtig anzeigt. Ein zusätzlicher Stand
+  // hätte jede Abfrage, jeden Filter und jede Bedingung angefasst, um dasselbe
+  // zu sagen.
+  //
+  // Erlaubt aus JEDEM laufenden Stand, auch aus „abholbereit": es kommt vor,
+  // dass ein Stück beim Vorbereiten als beschädigt auffällt, und dann muss man
+  // absagen dürfen, statt einen Menschen für nichts kommen zu lassen.
+  app.post<{ Params: { orderNumber: string }; Body: { reason?: string } }>(
+    '/api/orders/:orderNumber/reject',
+    {
+      schema: {
+        tags: ['orders'],
+        summary: 'Bestellung ablehnen und die Stücke freigeben (ADMIN + CASHIER).',
+        params: Type.Object({ orderNumber: Type.String({ maxLength: 32 }) }),
+        body: Type.Object({ reason: Type.Optional(Type.String({ maxLength: 500 })) }),
+        response: {
+          200: Type.Object({
+            ok: Type.Boolean(),
+            released: Type.Integer(),
+            mailed: Type.Boolean(),
+          }),
+          401: ErrorResponse,
+          403: ErrorResponse,
+          404: ErrorResponse,
+          409: ErrorResponse,
+        },
+      },
+    },
+    async (req, reply) => {
+      requireAuth(req);
+      requireRole(req, 'ADMIN', 'CASHIER');
+      const orderNumber = req.params.orderNumber;
+      const reason = req.body?.reason?.trim() || null;
+      const actorId = req.actor?.id ?? null;
+
+      // Der geschützte UPDATE und die Freigabe in EINEM Vorgang. Bräche die
+      // Freigabe nach dem Storno, läge ein Stück für immer auf RESERVED für
+      // eine Bestellung, die es nicht mehr gibt.
+      const result = await app.db.transaction(async (tx) => {
+        const cancelled = (await tx.execute<{ id: string; session: string | null }>(drizzleSql`
+          UPDATE carts
+             SET status               = 'CANCELLED',
+                 cancelled_at         = now(),
+                 cancelled_by_user_id = ${actorId}::uuid,
+                 cancelled_by_role    = 'STAFF',
+                 cancellation_reason  = ${reason},
+                 updated_at           = now()
+           WHERE order_number = ${orderNumber}
+             AND status       = 'RESERVED'
+          RETURNING id::text AS id, reservation_session_id::text AS session`)) as unknown as Array<{
+          id: string;
+          session: string | null;
+        }>;
+
+        if (cancelled.length === 0) {
+          const exists = (await tx.execute<{ status: string }>(drizzleSql`
+            SELECT status::text AS status FROM carts
+             WHERE order_number = ${orderNumber} LIMIT 1`)) as unknown as Array<{ status: string }>;
+          const found = exists[0];
+          if (!found) throw new OrderNotFoundError(`Bestellung ${orderNumber} nicht gefunden`);
+          throw new WrongStageError(
+            `Bestellung ${orderNumber} ist ${CART_STATUS_DE[found.status] ?? `im Zustand ${found.status}`} und kann nicht mehr abgelehnt werden.`,
+          );
+        }
+
+        // Die Stücke zurück ins Regal. Nur die, die dieser Halt wirklich hält.
+        const session = cancelled[0]!.session;
+        const freed = session
+          ? ((await tx.execute<{ id: string }>(drizzleSql`
+              UPDATE products
+                 SET status                 = 'AVAILABLE'::product_status,
+                     reserved_by_session_id = NULL,
+                     reserved_by_channel    = NULL,
+                     reserved_by_user_id    = NULL,
+                     reserved_at            = NULL,
+                     reservation_expires_at = NULL
+               WHERE reserved_by_session_id = ${session}::uuid
+                 AND status = 'RESERVED'::product_status
+              RETURNING id::text AS id`)) as unknown as Array<{ id: string }>)
+          : [];
+
+        await tx.insert(auditLog).values({
+          eventType: 'web_order.rejected',
+          actorUserId: actorId,
+          deviceId: req.deviceId ?? null,
+          ipAddress: req.ip ?? null,
+          userAgent: req.headers['user-agent'] ?? null,
+          payload: { orderNumber, reason, releasedCount: freed.length },
+        });
+
+        return { released: freed.length };
+      });
+
+      // Die Absage an die Kundschaft. Wie die anderen Briefe: best-effort,
+      // aber `mailed` sagt ehrlich, ob sie eingereiht wurde.
+      let mailed = false;
+      try {
+        await app.withPii(async (tx) => {
+          const r = await orderRecipient(tx, orderNumber);
+          if (r?.email) {
+            await enqueueEmail(
+              tx,
+              r.email,
+              composeReservationCancelled(r.name, r.orderNumber ?? orderNumber, r.locale),
+              r.customerId,
+            );
+            mailed = true;
+          }
+        });
+      } catch (err) {
+        req.log.warn({ err }, 'Absage-Brief konnte nicht eingereiht werden');
+      }
+
+      return reply.status(200).send({ ok: true, released: result.released, mailed });
     },
   );
 };

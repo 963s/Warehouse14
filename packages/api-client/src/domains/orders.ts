@@ -76,4 +76,25 @@ export const ordersApi = {
       `/api/orders/${encodeURIComponent(orderNumber)}/ready`,
     );
   },
+
+  /**
+   * Ablehnen und die Stücke freigeben. Aus JEDEM laufenden Stand erlaubt,
+   * auch aus „abholbereit": fällt ein Stück beim Vorbereiten als beschädigt
+   * auf, muss man absagen dürfen, statt jemanden für nichts kommen zu lassen.
+   *
+   * `released` sagt, wie viele Stücke wirklich ins Regal zurückgingen, und
+   * `mailed`, ob die Absage an die Kundschaft eingereiht wurde. Beide Zahlen
+   * kommen vom Server; die Oberfläche behauptet nichts von sich aus.
+   */
+  reject(
+    client: ApiClient,
+    orderNumber: string,
+    reason?: string,
+  ): Promise<{ ok: boolean; released: number; mailed: boolean }> {
+    return client.request<{ ok: boolean; released: number; mailed: boolean }>(
+      'POST',
+      `/api/orders/${encodeURIComponent(orderNumber)}/reject`,
+      reason ? { reason } : {},
+    );
+  },
 };
