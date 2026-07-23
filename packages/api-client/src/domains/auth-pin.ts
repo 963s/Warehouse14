@@ -134,6 +134,19 @@ export const authPin = {
   stepUp(client: ApiClient, body: PinStepUpRequest): Promise<PinStepUpResponse> {
     return client.request<PinStepUpResponse>('POST', '/api/auth/step-up', body);
   },
+  /**
+   * Nachbestätigen mit dem GERÄTECODE, also derselben Bildschirmsperre, die
+   * die Person am Tresen beim Öffnen der App eingibt.
+   *
+   * Der Code wird NICHT mitgeschickt und darf es nicht: er ist ein Geheimnis
+   * des Geräts, wird dort mit PBKDF2 geprüft und nach zehn Fehlversuchen
+   * gelöscht. Diese Anfrage sagt dem Server nur, dass die Prüfung bestanden
+   * wurde, damit er das Zeitfenster stempelt. Vorher MUSS der Aufrufer den
+   * Code lokal geprüft haben.
+   */
+  stepUpDevice(client: ApiClient): Promise<PinStepUpResponse> {
+    return client.request<PinStepUpResponse>('POST', '/api/auth/step-up/device');
+  },
   /** RAW session GET. Prefer `sessionSafe` for the cold-start probe. */
   session(client: ApiClient): Promise<AuthSessionResponse> {
     return client.request<AuthSessionResponse>('GET', '/api/auth/session', undefined, {

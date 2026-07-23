@@ -1,16 +1,19 @@
 /**
- * Step-up bridge — the paper-thin link between the api-client's
- * stepUpMiddleware (non-React) and the native PIN Dialog (React).
+ * Die Brücke zur Nachbestätigung — der hauchdünne Draht zwischen der
+ * Middleware im Bausatz (ohne React) und dem Dialog (mit React).
  *
- * Mirrors apps/tauri-pos/src/lib/stepUpService.ts: when a sensitive action
- * (e.g. relocate) 403s with STEP_UP_REQUIRED, the middleware calls
- * `requestStepUp`, which opens the PIN Dialog and awaits it. The Dialog host
- * verifies the PIN via authPin.stepUp (refreshing sessions.last_pin_step_up_at)
- * then resolves; the middleware replays the original request EXACTLY ONCE.
+ * Wie in apps/tauri-pos/src/lib/stepUpService.ts: antwortet eine empfindliche
+ * Handlung mit STEP_UP_REQUIRED, ruft die Middleware `requestStepUp`, was den
+ * Dialog öffnet und auf ihn wartet. Der Dialog verlangt die GERÄTESPERRE —
+ * denselben Code oder dieselbe Biometrie wie beim Öffnen der App —, prüft sie
+ * AUF DEM GERÄT und meldet dem Server erst danach, dass bestätigt wurde. Dann
+ * spielt die Middleware die ursprüngliche Anfrage GENAU EINMAL erneut ab.
  *
- * The returned token value is empty on purpose: the backend re-checks the
- * freshly-bumped session timestamp (auth-policy.requireStepUp), it does NOT
- * read the x-step-up-token header — identical to the Tauri POS contract.
+ * Bis zum 23.07.2026 verlangte er hier die vierstellige Kassen-PIN, die am
+ * 21.07. abgeschafft worden war.
+ *
+ * Der zurückgegebene Wert ist absichtlich leer: der Server prüft den frisch
+ * gestempelten Zeitstempel der Sitzung, er liest KEINEN Kopfzeilen-Schlüssel.
  */
 import type { StepUpDependencies, StepUpReason, StepUpToken } from "@warehouse14/api-client"
 

@@ -265,8 +265,16 @@ export const apiClient: ApiClient = createApiClient({
  * blip. A real answer (401 / PIN_LOCKED / …) is surfaced unchanged.
  */
 /** PIN step-up — refreshes the session's step-up window (used by the Dialog). */
-export function pinStepUp(pin: string): Promise<unknown> {
-  return authPin.stepUp(apiClient, { pin })
+/**
+ * Nachbestätigen mit dem GERÄTECODE oder der Biometrie dieses Telefons — also
+ * genau der Sperre, die beim Öffnen der App verlangt wird.
+ *
+ * Der Code wird NICHT mitgeschickt: er liegt verschlüsselt auf dem Gerät und
+ * wird dort geprüft. Diese Anfrage meldet dem Server nur, dass die Prüfung
+ * bestanden wurde, damit er sein Zehn-Minuten-Fenster stempelt.
+ */
+export function deviceStepUp(): Promise<unknown> {
+  return authPin.stepUpDevice(apiClient)
 }
 
 /** Revoke the current session on the SERVER (POST /api/auth/sign-out) before the

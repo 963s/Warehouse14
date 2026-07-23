@@ -539,6 +539,77 @@ const authPinRoutes: FastifyPluginAsync<{ env: Env }> = async (app, opts) => {
     },
   );
 
+  // ── POST /api/auth/step-up/device ──────────────────────────────────────────
+  //
+  // Dieselbe Bestätigung, aber mit dem Gerätecode statt der alten Kassen-PIN.
+  //
+  // WARUM ES DAS GEBEN MUSS
+  // Die vierstellige Kassen-PIN ist am 21.07.2026 abgeschafft worden. Die
+  // Anmeldung läuft nur noch über Google, und jedes Gerät hat einen eigenen
+  // Sperrcode, den die Person am Tresen selbst gesetzt hat. Trotzdem verlangte
+  // JEDE empfindliche Handlung — der DATEV-Export, ein Storno, der Z-Bon, eine
+  // Löschung — weiterhin die abgeschaffte Zahl. Basels Befund am 23.07.2026.
+  //
+  // Zwei Folgen, und die zweite ist die schlimmere:
+  //   1. Man wird nach einer Zahl gefragt, die es nicht mehr geben soll.
+  //   2. Wer KEINE alte PIN hinterlegt hat — und ein neu angelegter Mitarbeiter
+  //      hat keine — bekommt „PIN not set for this user" und kann die Handlung
+  //      NIE ausführen. Heute betrifft das niemanden, weil beide angelegten
+  //      Menschen noch einen alten Abdruck tragen; beim ersten echten
+  //      Mitarbeiter wäre der Steuerexport für ihn dauerhaft gesperrt.
+  //
+  // WAS DER SERVER HIER PRÜFEN KANN, UND WAS NICHT — ehrlich benannt
+  // Der Gerätecode verlässt das Gerät NIE. Genau das ist sein Sinn: würde er
+  // hier hinterlegt, wäre er wieder ein serverseitiges vierstelliges Geheimnis,
+  // das man über die Schnittstelle durchprobieren kann — also exakt das
+  // Problem, das mit der PIN abgeschafft wurde. Der Server prüft deshalb die
+  // SITZUNG (angemeldet, nicht widerrufen) und schreibt den Zeitstempel; die
+  // Prüfung des Codes selbst macht das Gerät, mit PBKDF2, eskalierender Sperre
+  // und Löschung nach zehn Fehlversuchen.
+  //
+  // Gegen die Gefahr, um die es bei einer Nachbestätigung wirklich geht — eine
+  // unbeaufsichtigte, bereits angemeldete Kasse, an die sich jemand setzt — ist
+  // das mindestens so stark wie vorher. Gegen einen gestohlenen Sitzungsschlüssel
+  // war die alte PIN ebenfalls kein Schutz; dafür gibt es Sitzungswiderruf und
+  // mTLS. Das Tagebuch nennt den Faktor beim Namen, damit später niemand eine
+  // Gerätebestätigung für eine PIN-Eingabe hält.
+  app.post(
+    '/api/auth/step-up/device',
+    {
+      schema: {
+        tags: ['auth'],
+        summary: 'Bestätigung mit dem Gerätecode (Bildschirmsperre) statt der alten PIN.',
+        response: { 200: StepUpResponse },
+      },
+    },
+    async (req) => {
+      requireAuth(req);
+
+      const now = new Date();
+      await app.db.transaction(async (tx) => {
+        await tx
+          .update(sessions)
+          .set({ lastPinStepUpAt: now })
+          .where(eq(sessions.id, req.session.sessionId));
+
+        await tx.insert(auditLog).values({
+          // Ein EIGENER Ereignisname, nicht `auth.step_up_success`. Wer das
+          // Tagebuch liest, muss sehen können, WELCHER Faktor bestätigt hat.
+          eventType: 'auth.step_up_device',
+          actorUserId: req.actor.id,
+          deviceId: req.deviceId,
+          ipAddress: req.ip || null,
+          payload: {
+            session_id: req.session.sessionId,
+            factor: 'device_lock',
+          },
+        });
+      });
+
+      return { ok: true as const, lastPinStepUpAt: now.toISOString() };
+    },
+  );
+
   // ────────────────────────────────────────────────────────────────────
   // POST /api/auth/pin/set — set or change the POS PIN (requires Full Login)
   // ────────────────────────────────────────────────────────────────────

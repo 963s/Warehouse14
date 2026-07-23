@@ -80,6 +80,12 @@ export const AUTHENTICATED_PATHS_UNDER_PUBLIC_PREFIX: ReadonlySet<string> = new 
   // otherwise it fails closed with "No active session".
   '/api/auth/sign-out-all',
   '/api/auth/step-up',
+  // Die Bestätigung mit dem Gerätecode (23.07.2026). Sie ruft requireAuth, also
+  // MUSS sie aus dem öffentlichen Vorsatz herausgezogen werden — sonst wäre
+  // req.actor nie gefüllt und der Weg antwortete für immer mit 401. Genau das
+  // hat der Wächter in tests/auth-public-routes.test.ts hier abgefangen,
+  // eine Stunde bevor es jemandem am Tresen aufgefallen wäre.
+  '/api/auth/step-up/device',
   // PIN login needs the mTLS preHandler to populate req.deviceId so it can
   // resolve which user is paired with this terminal. The route itself does
   // not call requireAuth (the actor doesn't exist yet) but it does require

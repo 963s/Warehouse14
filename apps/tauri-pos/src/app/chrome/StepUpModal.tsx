@@ -1,16 +1,30 @@
 /**
- * StepUpModal — global PIN re-confirmation modal.
+ * StepUpModal — die Nachbestätigung vor einer empfindlichen Handlung.
  *
- * Wired to `step-up-store` (memory.md #76). When the interceptor catches
- * `STEP_UP_REQUIRED`, the store flips `active = true` and the modal
- * renders. The operator types PIN → we call `POST /api/auth/step-up` →
- * on success the store resolves the pending promise and the interceptor
- * retries the original request transparently.
+ * SIE VERLANGT DEN GERÄTECODE, also GENAU dieselbe Bildschirmsperre, die die
+ * Person am Tresen beim Öffnen der App eingibt. Keine zweite Zahl, kein
+ * zweites Schloss.
  *
- * Reuses `<PinPad/>` so the keypad UX matches PinLogin exactly.
+ * WARUM SIE UMGEBAUT WURDE (Basels Befund, 23.07.2026)
+ * Die vierstellige Kassen-PIN ist am 21.07. abgeschafft worden — die Anmeldung
+ * ist Google, das Gerät hat seinen eigenen Sperrcode. Trotzdem fragte dieser
+ * Dialog weiter nach der abgeschafften Zahl, bei jedem DATEV-Export, jedem
+ * Storno, jedem Z-Bon, jeder Löschung. Man wurde nach etwas gefragt, das es
+ * nicht mehr geben soll, und ein neu angelegter Mitarbeiter ohne alten
+ * PIN-Abdruck hätte diese Handlungen NIE ausführen können.
  *
- * Esc / backdrop click cancels the step-up (the original API call then
- * receives back its `STEP_UP_REQUIRED` error for inline UI handling).
+ * WO GEPRÜFT WIRD
+ * Der Code wird HIER geprüft, mit `verifyLocalPin` — derselben Funktion wie am
+ * Sperrschirm, also mit PBKDF2, eskalierender Sperre und Löschung nach zehn
+ * Fehlversuchen. Er verlässt das Gerät nicht. Erst nach bestandener Prüfung
+ * meldet `stepUpDevice` dem Server, dass bestätigt wurde, damit er sein
+ * Zehn-Minuten-Fenster stempelt.
+ *
+ * Ist auf diesem Gerät noch gar kein Code gesetzt, sagt der Dialog das und
+ * schickt zum Sperrschirm, statt eine Bestätigung vorzutäuschen.
+ *
+ * Esc oder ein Klick daneben bricht ab; der ursprüngliche Aufruf bekommt dann
+ * seinen `STEP_UP_REQUIRED` zurück und die Fläche meldet „abgebrochen".
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -20,6 +34,14 @@ import { describeError } from '@warehouse14/i18n-de';
 import { Dialog, DiamondRule, PinPad, RomanIndex, Seal } from '@warehouse14/ui-kit';
 
 import { useApiClient } from '../../lib/api-context.js';
+import {
+  WIPE_AFTER,
+  clearAttempts,
+  hasLocalPin,
+  readAttempts,
+  recordFailedAttempt,
+  verifyLocalPin,
+} from '../../lib/local-lock.js';
 import { useSessionStore } from '../../state/session-store.js';
 import { useStepUpStore } from '../../state/step-up-store.js';
 
@@ -37,15 +59,21 @@ export function StepUpModal(): JSX.Element | null {
   const [failedAttempts, setFailedAttempts] = useState<number>(0);
   const [lockedUntilIso, setLockedUntilIso] = useState<string | null>(null);
   const [now, setNow] = useState<number>(() => Date.now());
+  /** Ob auf DIESEM Gerät überhaupt ein Sperrcode gesetzt ist. */
+  const [codeGesetzt, setCodeGesetzt] = useState<boolean>(true);
 
-  // Reset on open.
+  // Beim Öffnen: den ECHTEN Stand vom Gerät lesen, nicht bei null anfangen.
+  // Wer schon dreimal danebengelegen hat, darf das nicht durch Schliessen und
+  // erneutes Öffnen des Dialogs zurücksetzen — der Zähler liegt dauerhaft im
+  // Gerät, und genau darauf beruht der Schutz.
   useEffect(() => {
-    if (active) {
-      setPin('');
-      setErrorMsg(null);
-      setFailedAttempts(0);
-      setLockedUntilIso(null);
-    }
+    if (!active) return;
+    setPin('');
+    setErrorMsg(null);
+    setCodeGesetzt(hasLocalPin());
+    const a = readAttempts();
+    setFailedAttempts(a.fails);
+    setLockedUntilIso(a.lockedUntil > Date.now() ? new Date(a.lockedUntil).toISOString() : null);
   }, [active]);
 
   // Lockout countdown tick.
@@ -74,26 +102,41 @@ export function StepUpModal(): JSX.Element | null {
     setSubmitting(true);
     setErrorMsg(null);
     try {
-      const res = await authPin.stepUp(api, { pin });
+      // ERST lokal prüfen. Der Code geht nicht ans Netz.
+      const stimmt = await verifyLocalPin(pin);
+      if (!stimmt) {
+        const f = recordFailedAttempt();
+        setFailedAttempts(f.fails);
+        if (f.wiped) {
+          // Zehn Fehlversuche: der Gerätecode ist jetzt gelöscht. Das muss
+          // deutlich dastehen, sonst rätselt die Person, warum plötzlich
+          // nichts mehr geht.
+          setCodeGesetzt(false);
+          setErrorMsg(
+            `Nach ${WIPE_AFTER} Fehlversuchen wurde der Gerätecode gelöscht. ` +
+              'Bitte über den Sperrschirm einen neuen setzen.',
+          );
+        } else {
+          setLockedUntilIso(
+            f.lockedUntil > Date.now() ? new Date(f.lockedUntil).toISOString() : null,
+          );
+          setErrorMsg('Falscher Gerätecode.');
+        }
+        setPin('');
+        return;
+      }
+
+      // Bestanden: den Zähler zurücksetzen und dem Server das Fenster stempeln
+      // lassen. Erst wenn DAS gelingt, gilt die Bestätigung — sonst liefe der
+      // wiederholte Aufruf gleich wieder in dieselbe Nachfrage.
+      clearAttempts();
+      setFailedAttempts(0);
+      const res = await authPin.stepUpDevice(api);
       recordStepUp(res.lastPinStepUpAt);
       complete();
     } catch (err) {
       if (err instanceof ApiError) {
-        switch (err.code) {
-          case 'UNAUTHORIZED':
-            setFailedAttempts((n) => n + 1);
-            setErrorMsg('Falsche PIN.');
-            break;
-          case 'PIN_LOCKED':
-            {
-              const details = err.details as { lockedUntil?: string } | undefined;
-              if (details?.lockedUntil) setLockedUntilIso(details.lockedUntil);
-              setErrorMsg('Konto gesperrt. Bitte Geduld.');
-            }
-            break;
-          default:
-            setErrorMsg(describeError(err));
-        }
+        setErrorMsg(describeError(err));
       } else {
         setErrorMsg('Verbindung gestört. Netzwerk prüfen.');
       }
@@ -111,7 +154,7 @@ export function StepUpModal(): JSX.Element | null {
   }, [locked, lockoutSecondsLeft]);
 
   return (
-    <Dialog open={active} onClose={cancel} ariaLabel="PIN-Bestätigung" size="sm" showClose={false}>
+    <Dialog open={active} onClose={cancel} ariaLabel="Bestätigung mit dem Gerätecode" size="sm" showClose={false}>
       <div style={{ padding: 24, textAlign: 'center' }}>
         <div style={{ display: 'flex', justifyContent: 'center' }}>
           <Seal size="md" tone="gold" label="🔒" />
@@ -124,7 +167,7 @@ export function StepUpModal(): JSX.Element | null {
             margin: '14px 0 2px',
           }}
         >
-          PIN bestätigen
+          Gerätecode bestätigen
         </h2>
         <p
           style={{
@@ -135,7 +178,9 @@ export function StepUpModal(): JSX.Element | null {
             fontSize: '0.92rem',
           }}
         >
-          Dieser Schritt erfordert eine frische Bestätigung.
+          {codeGesetzt
+            ? 'Derselbe Code wie beim Entsperren der Kasse.'
+            : 'Auf diesem Gerät ist noch kein Code gesetzt. Bitte die Kasse einmal sperren und einen setzen.'}
         </p>
         <DiamondRule />
 
