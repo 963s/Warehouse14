@@ -21,6 +21,13 @@
 
 export * from './client.js';
 export { devicesApi, type PushApp, type PushPlatform } from './domains/devices.js';
+export {
+  broadcastsApi,
+  type SendBroadcastBody,
+  type SendBroadcastResult,
+  type BroadcastHistoryItem,
+  type BroadcastLocaleContent,
+} from './domains/broadcasts.js';
 export * from './errors.js';
 export * from './types.js';
 export * from './validation.js';

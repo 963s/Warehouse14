@@ -37,6 +37,9 @@ export interface OrderView {
   /** ABHOLUNG oder VERSAND: `PICKUP` oder `SHIPPING`. */
   fulfilmentMethod: string;
   fulfilmentStatus: string;
+  /** Woher die Bestellung kam: `APP` (Handy-App des Kunden) oder `WEBSHOP`
+   *  (Browser). Der Tresen sieht so das Gesicht der Bestellung (0105). */
+  orderOrigin: string;
   /**
    * Die mehrzeilige Lieferanschrift, oder null bei einer Abholung. Sie ist der
    * Inhalt der Versandmarke; ohne sie darf keine gedruckt werden.

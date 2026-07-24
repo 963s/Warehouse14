@@ -366,6 +366,17 @@ const storefrontReserveRoutes: FastifyPluginAsync = async (app) => {
         UPDATE carts SET pickup_stage = 'OFFEN'
          WHERE id = ${cart.id} AND fulfilment_method = 'PICKUP' AND pickup_stage IS NULL`);
 
+      // HERKUNFT festhalten (0105). Der Kunden-App-Client sendet den Kopf
+      // `x-w14-client: app`; ein Browser sendet ihn nicht. So sieht der Tresen
+      // spaeter, ob die Bestellung aus der Handy-App oder aus dem Webshop kam.
+      // Nur diese eine Spalte, ueber rohes SQL wie die anderen 0098/0099-Felder.
+      const clientHeader = req.headers['x-w14-client'];
+      const isApp = (Array.isArray(clientHeader) ? clientHeader[0] : clientHeader) === 'app';
+      if (isApp) {
+        await app.db.execute(drizzleSql`
+          UPDATE carts SET order_origin = 'APP' WHERE id = ${cart.id}`);
+      }
+
       // Confirmation letter with the reservation number — best-effort, never
       // blocks the reservation. Recipient: the pickup contact's email when
       // given, else the account email (guests without an email get none —

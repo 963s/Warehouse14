@@ -93,6 +93,7 @@ interface OrderRow {
   contact_email: string | null;
   fulfilment_method: string;
   fulfilment_status: string;
+  order_origin: string;
   shipping_address: string | null;
   shipping_country: string | null;
   item_count: number;
@@ -113,6 +114,8 @@ interface OrderShape {
   /** ABHOLUNG oder VERSAND. Entscheidet, welche Arbeit ansteht. */
   fulfilmentMethod: string;
   fulfilmentStatus: string;
+  /** APP (Handy-App des Kunden) oder WEBSHOP (Browser). Die Herkunft. */
+  orderOrigin: string;
   /**
    * Die Lieferanschrift als mehrzeiliger Text, oder null bei einer Abholung.
    * Sie ist der Inhalt der Versandmarke.
@@ -144,6 +147,7 @@ function shape(r: OrderRow): OrderShape {
     contactEmail: r.contact_email,
     fulfilmentMethod: r.fulfilment_method,
     fulfilmentStatus: r.fulfilment_status,
+    orderOrigin: r.order_origin,
     shippingAddress: r.shipping_address,
     shippingCountry: r.shipping_country,
     itemCount: r.item_count,
@@ -174,6 +178,7 @@ const ORDER_SELECT = drizzleSql`
          decrypt_pii(cu.email_encrypted)     AS contact_email,
          c.fulfilment_method::text           AS fulfilment_method,
          c.fulfilment_status::text           AS fulfilment_status,
+         c.order_origin::text                AS order_origin,
          -- Die Lieferanschrift, entschlüsselt INNERHALB von withPii. Sie ist
          -- der Inhalt der Versandmarke: ohne sie kann niemand ein Paket
          -- adressieren. Bei einer Abholung ist sie NULL, und das ist richtig.
@@ -202,7 +207,7 @@ const ORDER_SELECT = drizzleSql`
 const ORDER_GROUP_BY = drizzleSql`
   GROUP BY c.id, c.order_number, c.pickup_stage, c.reservation_session_id,
            c.reserved_at, c.created_at,
-           c.fulfilment_method, c.fulfilment_status,
+           c.fulfilment_method, c.fulfilment_status, c.order_origin,
            c.shipping_address_encrypted, c.shipping_country,
            cu.full_name_encrypted, cu.phone_encrypted, cu.email_encrypted`;
 

@@ -220,6 +220,45 @@ export function composeWelcome(name: string | null, locale?: string | null): Com
 }
 
 /**
+ * Ein Rundschreiben an die Kundschaft (0105) — der freie Text aus dem
+ * Benachrichtigungszentrum, gegossen in denselben Briefkopf wie jeder andere
+ * Brief, damit ein Dank oder ein Feiertagsgruss nicht wie eine fremde
+ * Massenmail aussieht, sondern wie ein Brief aus DIESEM Laden.
+ *
+ * `title` und `body` kommen fertig in der Sprache des Empfaengers herein (der
+ * Absender hat sie je Sprache verfasst oder auf Deutsch zurueckfallen lassen);
+ * diese Funktion uebersetzt nichts, sie kleidet nur ein. Absaetze trennt eine
+ * Leerzeile, ein einfacher Zeilenumbruch bleibt einer.
+ */
+export function composeBroadcast(
+  title: string,
+  body: string,
+  name: string | null,
+  locale?: string | null,
+): ComposedEmail {
+  const c = emailCopy(locale);
+  const g = greet(c, name);
+  const paras = body
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const text = `${g}\n\n${paras.join('\n\n')}\n\n${textFooter(c)}`;
+  const html = htmlWrap(
+    c,
+    para(g) +
+      paras.map((p) => para(escapeHtml(p).replace(/\n/g, '<br>'))).join(''),
+    escapeHtml(title),
+  );
+  return {
+    template: 'broadcast',
+    subject: title,
+    text,
+    html,
+    locale: normalizeEmailLocale(locale),
+  };
+}
+
+/**
  * Reservation confirmation — the order number is the pickup reference.
  *
  * `orderNumber` is `BST-2026-000009` (0097), NOT the cart UUID. Before that
