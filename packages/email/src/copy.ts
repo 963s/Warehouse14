@@ -35,33 +35,35 @@ export const EMAIL_LOCALES = [
 export type EmailLocale = (typeof EMAIL_LOCALES)[number];
 
 /**
- * The languages LETTERS are written in — German and English only.
+ * The languages LETTERS are written in — ALL THIRTEEN the storefront ships.
  *
- * The storefront still ships all thirteen: a customer browses and reserves in
- * their own language and nothing about that changes. But a letter is a
- * business document that may be read aloud at the counter, forwarded to the
- * Steuerberater, or quoted back in a dispute, and every extra language is
- * another copy that can quietly drift out of step with the German original
- * without anyone noticing.
+ * BASELS ENTSCHEIDUNG, 24.07.2026
+ * „اي عمليه تصير بلغة عربية يوصل ايميل للزبون بلغته العربيه وهاكذا على جميع
+ * الغات بشكل تلقائي بدون تدخل" — wer den Laden auf Arabisch benutzt, soll
+ * seinen Brief auf Arabisch bekommen, und so für jede Sprache.
  *
- * German is the house language and the binding one; English is the
- * international fallback. The other eleven tables below are deliberately KEPT
- * rather than deleted, so widening again later is one line here and not a
- * translation project.
+ * Bis heute waren die Briefe auf Deutsch und Englisch beschränkt, obwohl die
+ * vollständigen Tabellen für alle dreizehn Sprachen längst unten stehen. Die
+ * Beschränkung war eine einzige Engstelle, kein Übersetzungsmangel. Sie ist
+ * jetzt aufgehoben: der Brief folgt der GESPEICHERTEN Wahl des Menschen.
+ *
+ * Deutsch bleibt die Vertragssprache, und jeder nicht-deutsche Brief sagt das
+ * mit einer Zeile (`courtesyNote`). Ein Geschäftsbrief, der laut am Tresen
+ * vorgelesen oder dem Steuerberater weitergereicht wird, trägt also weiter die
+ * verbindliche deutsche Grundlage in sich — nur eben in der Sprache, die der
+ * Empfänger versteht.
  */
-export const MAIL_LOCALES = ['de', 'en'] as const;
-export type MailLocale = (typeof MAIL_LOCALES)[number];
-
-/** German for German speakers and for silence, English for everyone else. */
-function narrowToMailLocale(code: string): MailLocale {
-  return code === 'de' ? 'de' : 'en';
-}
+export const MAIL_LOCALES = EMAIL_LOCALES;
+export type MailLocale = EmailLocale;
 
 /**
  * Best language guess from the browser or app's Accept Language header. Used
  * ONLY for readers who have not stored a preference, above all guests, who
  * reserve without ever creating an account. A stored preference is a choice
  * and always outranks this.
+ *
+ * Trifft eine Sprache, die der Laden führt, wird sie GENOMMEN — nicht mehr auf
+ * Englisch zusammengefaltet. Nur Unbekanntes fällt auf Deutsch zurück.
  */
 export function localeFromAcceptLanguage(header: string | string[] | undefined): EmailLocale {
   const raw = Array.isArray(header) ? header[0] : header;
@@ -72,21 +74,23 @@ export function localeFromAcceptLanguage(header: string | string[] | undefined):
   for (const part of raw.split(',')) {
     const tag = part.split(';')[0]?.trim() ?? '';
     const code = tag.slice(0, 2).toLowerCase();
-    if ((EMAIL_LOCALES as readonly string[]).includes(code)) return narrowToMailLocale(code);
+    if ((EMAIL_LOCALES as readonly string[]).includes(code)) return code as EmailLocale;
   }
   return 'de';
 }
 
 /**
- * Anything unknown, malformed or absent reads as German; anything else the
- * shop recognises reads as English. This is the single gate: a stored
- * preference of `ar` or `tr` reaches here and leaves as `en`, so no caller
- * has to remember the rule.
+ * Die gespeicherte Sprachwahl eines Menschen auf eine Briefsprache abbilden.
+ * Führt der Laden die Sprache, wird sie genommen; alles Unbekannte, Fehlende
+ * oder Verstümmelte liest sich als Deutsch, die Haussprache.
+ *
+ * Frühere Fassung faltete `ar`/`tr`/… auf Englisch — genau das war der Bug,
+ * den Basel gemeldet hat. Jetzt bleibt `ar` `ar`.
  */
 export function normalizeEmailLocale(raw: string | null | undefined): EmailLocale {
   const code = (raw ?? '').trim().slice(0, 2).toLowerCase();
   if (!code) return 'de';
-  return (EMAIL_LOCALES as readonly string[]).includes(code) ? narrowToMailLocale(code) : 'de';
+  return (EMAIL_LOCALES as readonly string[]).includes(code) ? (code as EmailLocale) : 'de';
 }
 
 export interface EmailCopy {
