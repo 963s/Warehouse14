@@ -126,6 +126,52 @@ h1{font-size:1.3rem;margin:0 0 .4rem}p{color:#7a7061;margin:.2rem 0;font-size:.9
 <h1>Angemeldet</h1><p>Sie k&ouml;nnen dieses Fenster schlie&szlig;en und zu Warehouse14 zur&uuml;ckkehren.</p>
 </div></body></html>`;
 
+/**
+ * Rücksprung-Seite zum App-Schema, mit sichtbarem Knopf.
+ *
+ * Ein nacktes 302 auf `warehouse14://…` klemmt auf Android: Chrome (Custom
+ * Tabs) blockiert eine AUTOMATISCHE Navigation zu einem App-Schema ohne
+ * Nutzergeste, der Tab bleibt auf einer leeren Seite stehen und die Anmeldung
+ * „hängt" (Basels Befund am 24.07.2026, zwei Updates in Folge). Diese Seite
+ * VERSUCHT die automatische Weiterleitung (meta refresh + location.replace,
+ * beide greifen dort, wo die Richtlinie es zulässt, z. B. iOS) und trägt IMMER
+ * einen großen Knopf: das Tippen ist eine Geste, die nie blockiert wird.
+ *
+ * Der Token steht ausschließlich im URL-FRAGMENT des Sprungziels (wie zuvor
+ * beim 302), taucht also in keinem Zugriffprotokoll auf. Das Ziel ist durch
+ * `sanitizeReturnTo` auf das App-Schema begrenzt; fürs HTML-Attribut wird es
+ * zusätzlich escaped.
+ */
+function sendAppReturnPage(
+  reply: FastifyReply,
+  target: string,
+  title: string,
+  line: string,
+): FastifyReply {
+  const href = target.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  const js = JSON.stringify(target);
+  reply.header('content-type', 'text/html; charset=utf-8');
+  reply.header('cache-control', 'no-store');
+  return reply.send(`<!doctype html><html lang="de"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="0;url=${href}">
+<title>${title}</title><style>
+:root{color-scheme:light dark}
+body{margin:0;height:100vh;display:grid;place-items:center;font-family:system-ui,-apple-system,sans-serif;
+background:#faf8f3;color:#1c1813}
+@media(prefers-color-scheme:dark){body{background:#151310;color:#f1ebde}}
+.c{text-align:center;max-width:22rem;padding:2rem}
+h1{font-size:1.3rem;margin:0 0 .4rem}p{color:#7a7061;margin:.2rem 0 1.2rem;font-size:.95rem}
+@media(prefers-color-scheme:dark){p{color:#a79d89}}
+a.b{display:inline-block;padding:.85rem 1.6rem;border-radius:.75rem;background:#a3823b;color:#fff;
+text-decoration:none;font-weight:600;font-size:1rem}
+</style></head><body><div class="c">
+<h1>${title}</h1><p>${line}</p>
+<a class="b" href="${href}">Zur&uuml;ck zur App</a>
+<script>location.replace(${js})</script>
+</div></body></html>`);
+}
+
 /** Random URL-safe token. */
 function randomToken(): string {
   return randomBytes(32).toString('base64url');
@@ -305,9 +351,18 @@ const adminGoogleAuthRoutes: FastifyPluginAsync<{ env: Env }> = async (app, opts
       const st = verifyState(raw, env.AUTH_SECRET);
       const returnTo = st ? sanitizeReturnTo(st.returnTo) : null;
 
-      /** Deny: redirect to returnTo with an error fragment, else a JSON status. */
+      /** Deny: return-to-app page with an error fragment, else a JSON status.
+       *  Dieselbe Knopf-Seite wie der Erfolgsweg, aus demselben Grund: ein
+       *  automatischer Sprung zum App-Schema wird ohne Geste blockiert. */
       const deny = (status: number, code: string, message: string) => {
-        if (returnTo) return reply.redirect(withFragment(returnTo, { error: code }));
+        if (returnTo) {
+          return sendAppReturnPage(
+            reply,
+            withFragment(returnTo, { error: code }),
+            'Anmeldung nicht m&ouml;glich',
+            'Die Anmeldung wurde nicht abgeschlossen. Zur&uuml;ck zur App:',
+          );
+        }
         return reply.status(status).send({ error: { code, message } });
       };
 
@@ -428,20 +483,36 @@ const adminGoogleAuthRoutes: FastifyPluginAsync<{ env: Env }> = async (app, opts
         typeof claims.picture === 'string' && claims.picture.trim() ? claims.picture.trim() : null;
       const profile = { email, displayName, avatarUrl };
 
-      // (1) Native device-handoff: park the session under the nonce and show a
-      // friendly "return to the app" page. The app retrieves it via POST /claim.
+      // (1) Native device-handoff: park the session under the nonce so the app
+      // can retrieve it via POST /claim. NOT exclusive with the deep link below:
+      // a mobile client may send BOTH (nonce as the robust path, returnTo as the
+      // fast path) — park first, then fall through to the redirect page.
       if (st.deviceNonce) {
         const now = Date.now();
         sweepHandoffs(now);
         handoffs.set(st.deviceNonce, { token, actor, profile, sessionExpiresAt, createdAt: now });
-        reply.header('content-type', 'text/html; charset=utf-8');
-        return reply.send(SUCCESS_PAGE);
+        if (!returnTo) {
+          reply.header('content-type', 'text/html; charset=utf-8');
+          return reply.send(SUCCESS_PAGE);
+        }
       }
 
-      // (2) Browser-redirect handoff (e.g. a mobile deep link): token in the URL
+      // (2) Browser-redirect handoff (a mobile deep link): token in the URL
       // fragment (never the query string, so it is not written to any access log).
+      //
+      // NICHT als nacktes 302: Chrome auf Android blockiert eine automatische
+      // Navigation zu einem App-Schema ohne Nutzergeste — der Custom Tab blieb
+      // auf einer leeren Seite haengen und die Anmeldung "klemmte" (Basels
+      // Befund, 24.07.2026, zwei Updates in Folge). Stattdessen eine Seite, die
+      // die automatische Weiterleitung VERSUCHT und immer einen sichtbaren
+      // Knopf traegt: das Tippen ist die Geste, die Chrome nie blockiert.
       if (returnTo) {
-        return reply.redirect(withFragment(returnTo, { token, expiresAt: sessionExpiresAt }));
+        return sendAppReturnPage(
+          reply,
+          withFragment(returnTo, { token, expiresAt: sessionExpiresAt }),
+          'Angemeldet',
+          'Sie sind angemeldet. Zur&uuml;ck zur App:',
+        );
       }
 
       // (3) Plain browser test: the same JSON shape as pin-login.

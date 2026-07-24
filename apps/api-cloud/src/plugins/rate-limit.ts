@@ -144,12 +144,24 @@ const rateLimitPlugin: FastifyPluginAsync<RateLimitPluginOpts> = async (app, opt
     // Key: per-actor when authenticated, per-IP otherwise. For /api/auth/* and
     // public webhooks `req.actor` is null, so the key correctly falls back to
     // IP — which is what brute-force / flood defense needs.
+    //
+    // The key ALSO carries the matched prefix. @fastify/rate-limit keeps ONE
+    // counter per key across ALL routes; without the prefix in the key, a
+    // shopper's ordinary browsing (catalog, images, cart reads — easily more
+    // than 12 requests in a minute) fills the shared counter, and the moment
+    // they tap "reserve" the 12/min reserve rule reads that full counter and
+    // 429s an innocent first attempt. Live-hit 2026-07-24: a brand-new account
+    // was told "too many attempts" on its first reservation. With the prefix in
+    // the key, each strict rule gets its own bucket (only reserve calls count
+    // against the reserve limit), and everything else shares the default one.
     keyGenerator: (req: FastifyRequest): string => {
       const actor = (
         req as FastifyRequest & { actor?: { id: string; apiKeyId?: string } | null }
       ).actor;
       // Per-API-key bucket when a key is presented, else per-actor, else per-IP.
-      return actor?.apiKeyId ?? actor?.id ?? req.ip ?? 'unknown';
+      const who = actor?.apiKeyId ?? actor?.id ?? req.ip ?? 'unknown';
+      const bucket = matchPrefixLimit(pathOf(req))?.prefix ?? 'default';
+      return `${bucket}|${who}`;
     },
 
     // Error message is replaced by our error-handler's RATE_LIMITED code;
