@@ -121,6 +121,7 @@ import storefrontGuestRoutes from './routes/storefront-guest.js';
 import storefrontAccountRightsRoutes from './routes/storefront-account-rights.js';
 import supportTicketRoutes from './routes/support-tickets.js';
 import storefrontOrdersRoutes from './routes/storefront-orders.js';
+import storefrontPushRoutes from './routes/storefront-push.js';
 import storefrontReserveRoutes from './routes/storefront-reserve.js';
 import storefrontWebhookRoutes from './routes/storefront-webhook.js';
 // Day 25 — Single-Operator Assistance
@@ -287,6 +288,7 @@ export async function buildApp(opts: BuildAppOpts): Promise<FastifyInstance> {
   await app.register(storefrontCartRoutes, { env: opts.env });
   await app.register(storefrontReserveRoutes);
   await app.register(storefrontOrdersRoutes);
+  await app.register(storefrontPushRoutes);
   await app.register(storefrontAccountRightsRoutes, { env: opts.env });
   // 0097: the staff side of the customer conversation.
   await app.register(supportTicketRoutes);

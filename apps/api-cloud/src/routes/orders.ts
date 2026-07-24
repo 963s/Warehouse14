@@ -38,8 +38,11 @@ import {
   composeDeadlineExtended,
   composeItemRemoved,
   composeReservationCancelled,
+  customerPushCopy,
   enqueueEmail,
+  type CustomerPushKind,
 } from '@warehouse14/email';
+import { enqueuePushShopper, shopperDeviceTokens } from '../lib/push-outbox.js';
 import { type ApiErrorCode, DomainError } from '../plugins/error-handler.js';
 
 class OrderNotFoundError extends DomainError {
@@ -384,6 +387,53 @@ const ordersRoutes: FastifyPluginAsync = async (app) => {
     };
   }
 
+  /**
+   * Den KUNDEN benachrichtigen, dass sich sein Stand geändert hat — in SEINER
+   * Sprache, auf SEIN Gerät (0105). Das Gegenstück zum Brief: der Brief trägt
+   * die Einzelheiten, die Benachrichtigung den Anstoß.
+   *
+   * Kein PII nötig: Bestellnummer, Sprache und die Marken des Kunden stehen
+   * unverschlüsselt. Deshalb läuft es über `app.db`, nicht über `withPii`.
+   *
+   * IMMER best-effort und NIE blockierend: ob eine Benachrichtigung hinausgeht,
+   * darf über den Erfolg der eigentlichen Handlung (annehmen, bereit, absagen)
+   * nicht entscheiden. Hat der Kunde kein Gerät angemeldet, ist das kein
+   * Fehler — es wird schlicht nichts eingereiht, und keine Zahl behauptet etwas.
+   */
+  async function pushShopperForOrder(orderNumber: string, kind: CustomerPushKind): Promise<void> {
+    try {
+      const rows = (await app.db.execute(drizzleSql`
+        SELECT c.shopper_id::text AS shopper_id,
+               COALESCE(s.preferred_language, 'de') AS locale,
+               c.order_number
+          FROM carts c
+          JOIN shoppers s ON s.id = c.shopper_id
+         WHERE c.order_number = ${orderNumber} LIMIT 1`)) as unknown as Array<{
+        shopper_id: string | null;
+        locale: string | null;
+        order_number: string | null;
+      }>;
+      const r = rows[0];
+      if (!r?.shopper_id) return;
+      const tokens = await shopperDeviceTokens(app.db, r.shopper_id);
+      if (tokens.length === 0) return;
+      const ref = r.order_number ?? orderNumber;
+      const msg = customerPushCopy(kind, r.locale).ref(ref);
+      await enqueuePushShopper(app.db, tokens, {
+        title: msg.title,
+        body: msg.body,
+        data: { kind: 'order', orderNumber: ref },
+      });
+    } catch (err) {
+      req_log_warn(err);
+    }
+  }
+
+  // Ein schmaler Protokoll-Helfer, damit der try/catch oben ohne req auskommt.
+  function req_log_warn(err: unknown): void {
+    app.log.warn({ err }, 'Kunden-Benachrichtigung konnte nicht eingereiht werden (nicht blockierend)');
+  }
+
   const transitionSchema = {
     tags: ['orders'],
     params: Type.Object({ orderNumber: Type.String({ maxLength: 32 }) }),
@@ -451,6 +501,10 @@ const ordersRoutes: FastifyPluginAsync = async (app) => {
       } catch (err) {
         req.log.warn({ err }, 'Annahme-Brief konnte nicht eingereiht werden');
       }
+
+      // Und der Anstoß aufs Gerät, in der Sprache des Kunden. Basels Befund am
+      // 24.07.2026: der Kunde soll Benachrichtigungen bekommen, nicht nur Briefe.
+      await pushShopperForOrder(req.params.orderNumber, 'order_accepted');
 
       return reply.status(200).send({ ok: true, mailed });
     },
@@ -531,6 +585,10 @@ const ordersRoutes: FastifyPluginAsync = async (app) => {
       } catch (err) {
         req.log.warn({ err }, 'order-ready email enqueue failed (non-blocking)');
       }
+
+      // Der wichtigste Anstoß: „kommen Sie, es liegt bereit" — aufs Gerät, in
+      // der Sprache des Kunden.
+      await pushShopperForOrder(req.params.orderNumber, 'order_ready');
 
       return reply.status(200).send({ ok: true, mailed });
     },
@@ -652,6 +710,10 @@ const ordersRoutes: FastifyPluginAsync = async (app) => {
       } catch (err) {
         req.log.warn({ err }, 'Absage-Brief konnte nicht eingereiht werden');
       }
+
+      // Der Anstoß zur Absage: nicht kommen. Ein Mensch, der sonst umsonst zur
+      // Tür fährt, erfährt es so noch am selben Ort, an dem er reserviert hat.
+      await pushShopperForOrder(orderNumber, 'order_cancelled');
 
       return reply.status(200).send({ ok: true, released: result.released, mailed });
     },

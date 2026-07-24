@@ -94,3 +94,43 @@ export async function enqueuePush(
   }
   return queued;
 }
+
+/**
+ * Die Geräte EINES KUNDEN (0105). Ein Kunde hat sich im Shop angemeldet und die
+ * Erlaubnis erteilt; seine Marken tragen `app='shop'` und `shopper_id`.
+ *
+ * Wie beim Personal ist eine leere Liste kein Fehler, sondern eine Tatsache:
+ * der Kunde hat die App nicht, oder keine Benachrichtigungen erlaubt. Der
+ * Aufrufer meldet dann ehrlich nichts, statt etwas zu behaupten.
+ */
+export async function shopperDeviceTokens(
+  tx: SqlExecutor,
+  shopperId: string,
+): Promise<Array<{ token: string }>> {
+  return (await tx.execute(drizzleSql`
+    SELECT token FROM device_push_tokens
+     WHERE shopper_id = ${shopperId}::uuid
+       AND app = 'shop'
+       AND revoked_at IS NULL`)) as unknown as Array<{ token: string }>;
+}
+
+/**
+ * Eine Nachricht an Kundengeräte einreihen. `user_id` bleibt NULL — eine
+ * Kunden-Benachrichtigung gehört keinem Mitarbeiter, und das Feld darf nichts
+ * anderes behaupten. Gibt die Zahl der eingereihten Zeilen zurück.
+ */
+export async function enqueuePushShopper(
+  tx: SqlExecutor,
+  tokens: Array<{ token: string }>,
+  message: PushMessage,
+): Promise<number> {
+  let queued = 0;
+  for (const r of tokens) {
+    await tx.execute(drizzleSql`
+      INSERT INTO push_outbox (token, user_id, title, body, data)
+      VALUES (${r.token}, NULL, ${message.title}, ${message.body},
+              ${JSON.stringify(message.data)}::jsonb)`);
+    queued += 1;
+  }
+  return queued;
+}
