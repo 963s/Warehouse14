@@ -6,6 +6,12 @@ and the project adheres to [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-07-24
+
+- **Bestellungen sind eine echte Arbeitsfläche.** Die Online-Reservierungen öffnen sich jetzt als Meister-Detail: links die Warteschlange nach Fächern, rechts der ganze Vorgang mit Kundenname, Positionen, Herkunft (Laden oder Webshop) und den Schritten annehmen, vorbereiten, bereitstellen, übergeben. Kein schwebender Kasten mehr in der Mitte.
+- **Bestellungen steht jetzt direkt neben Ankauf** (Kartei-Ziffer 3), nicht mehr am Ende der Leiste, und die Ziffernfolge in der Leiste stimmt wieder von 1 bis 8.
+- **Vorläufige Rechnung für den Kunden, auch ohne TSE.** Ein klar als nicht-fiskalisch gekennzeichneter Beleg lässt sich für den Kunden drucken, bevor an der Kasse bei der Bezahlung der echte fiskalische Bon nach §146a AO entsteht.
+
 ## [0.7.1] - 2026-07-23
 
 - **Bestellungen sind jetzt ein sichtbarer Bereich, kein Suchtreffer.** Der Schirm war seit v0.7.0 vollständig gebaut, aber nur über die Suche erreichbar — es gab keinen Knopf an der Oberfläche, um eine Online-Reservierung anzunehmen, vorzubereiten oder zu übergeben. Bestellungen steht jetzt als eigener Bereich mit der Kartei-Ziffer 8 in der Hauptleiste. Der Leitstand, eine reine Blick-Fläche, ist dafür in die Suche gewandert (der Inhaber trägt ihn ohnehin in der Telefon-App).
