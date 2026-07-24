@@ -409,12 +409,14 @@ const ordersRoutes: FastifyPluginAsync = async (app) => {
     try {
       const rows = (await app.db.execute(drizzleSql`
         SELECT c.shopper_id::text AS shopper_id,
+               c.id::text AS cart_id,
                COALESCE(s.preferred_language, 'de') AS locale,
                c.order_number
           FROM carts c
           JOIN shoppers s ON s.id = c.shopper_id
          WHERE c.order_number = ${orderNumber} LIMIT 1`)) as unknown as Array<{
         shopper_id: string | null;
+        cart_id: string | null;
         locale: string | null;
         order_number: string | null;
       }>;
@@ -427,7 +429,15 @@ const ordersRoutes: FastifyPluginAsync = async (app) => {
       await enqueuePushShopper(app.db, tokens, {
         title: msg.title,
         body: msg.body,
-        data: { kind: 'order', orderNumber: ref },
+        // orderNumber ist die menschliche Referenz (Anzeige); orderId ist der
+        // Datensatz-Schluessel, den die Detailroute des Shops annimmt
+        // (`/konto/bestellung/<id>`), damit ein Tippen genau diese Reservierung
+        // oeffnet statt ins Leere zu laufen.
+        data: {
+          kind: 'order',
+          orderNumber: ref,
+          ...(r.cart_id ? { orderId: r.cart_id } : {}),
+        },
       });
     } catch (err) {
       req_log_warn(err);

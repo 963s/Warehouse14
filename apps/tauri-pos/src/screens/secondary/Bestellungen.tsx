@@ -645,7 +645,7 @@ export function Bestellungen(): JSX.Element {
               }}
             >
               <p style={{ fontFamily: 'var(--w14-font-display)', fontSize: '1rem' }}>
-                Waehlen Sie links eine Bestellung, um sie zu bearbeiten.
+                Wählen Sie links eine Bestellung, um sie zu bearbeiten.
               </p>
             </div>
           )}

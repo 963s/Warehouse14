@@ -176,6 +176,28 @@ export const SURFACES: readonly SurfaceDescriptor[] = [
     searchAliases: ['kauf', 'erwerb', 'einkauf', 'aml', 'bewertung', 'konvolut'],
   },
   {
+    path: '/bestellungen',
+    label: 'Bestellungen',
+    description: 'Online-Reservierungen zur Abholung annehmen, vorbereiten und übergeben.',
+    digit: 3,
+    // Primär, direkt neben Ankauf. Die Reihenfolge in der Leiste ist die
+    // Reihenfolge in diesem Array, darum steht der Block genau hier und nicht
+    // unten im Spotlight-Teil, sonst stünde die Ziffer 3 hinter der 7.
+    tier: 'primary',
+    component: Bestellungen,
+    searchAliases: [
+      'bestellung',
+      'bestellungen',
+      'abholung',
+      'reservierung',
+      'online',
+      'webshop',
+      'pickup',
+      'orders',
+      'reserve',
+    ],
+  },
+  {
     path: '/kasse',
     label: 'Tageskasse',
     description: 'Die Bargeld-Schublade des Tages: öffnen, Bargeld im Blick, Z-Bon.',
@@ -228,31 +250,6 @@ export const SURFACES: readonly SurfaceDescriptor[] = [
     tier: 'secondary',
     component: Anfragen,
     searchAliases: ['support', 'tickets', 'anfrage', 'mail', 'email', 'antworten'],
-  },
-  {
-    path: '/bestellungen',
-    label: 'Bestellungen',
-    description: 'Online-Reservierungen zur Abholung annehmen, vorbereiten und übergeben.',
-    digit: 3,
-    // PRIMAER, nicht mehr im Suchmenue vergraben. Basels Befund am 23.07.2026:
-    // „لسا مافي قسم طلبات اقدر اجهز طلب استلم اوفق اسلم" — es gab keinen
-    // sichtbaren Ort, um eine Bestellung anzunehmen, vorzubereiten, zu
-    // uebergeben. Der Schirm war vollstaendig gebaut und trotzdem nur ueber die
-    // Suche erreichbar. Was jeden Tag Arbeit macht, gehoert an die Oberflaeche,
-    // nicht hinter ein Suchfeld. Genau wie in der Inhaber-App am selben Tag.
-    tier: 'primary',
-    component: Bestellungen,
-    searchAliases: [
-      'bestellung',
-      'bestellungen',
-      'abholung',
-      'reservierung',
-      'online',
-      'webshop',
-      'pickup',
-      'orders',
-      'reserve',
-    ],
   },
   {
     path: '/inventur',

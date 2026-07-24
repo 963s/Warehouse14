@@ -109,7 +109,7 @@ export function rechnungHtml(absender: RechnungAbsender, order: OrderView): stri
     '</style></head><body>' +
     `<p class="wm">${escapeHtml(absender.name)}</p>` +
     `<p class="sub">${escapeHtml(absender.anschrift.join(', '))}</p>` +
-    '<div class="warn">Vorläufige Rechnung — kein steuerlicher Beleg. ' +
+    '<div class="warn">Vorläufige Rechnung. Kein steuerlicher Beleg. ' +
     'Dieses Dokument trägt keine Signatur nach §146a AO. Der fiskalische ' +
     'Kassenbon wird bei der Bezahlung im Geschäft erstellt.</div>' +
     '<div class="meta">' +

@@ -21,7 +21,7 @@
  *     Keine geschoente Gesamtzahl.
  */
 import { useCallback, useEffect, useState } from "react"
-import { ScrollView, View } from "react-native"
+import { Alert, ScrollView, View } from "react-native"
 
 import { Input } from "@/components/ui/input"
 import { Text } from "@/components/ui/text"
@@ -30,15 +30,16 @@ import { useW14Theme } from "@/warehouse14/theme"
 import { FormField, FormScreen, PressableScale, haptics } from "@/warehouse14/ui"
 import type { BroadcastHistoryItem } from "@warehouse14/api-client"
 
-type Audience = "ALL" | "MARKETING"
-
 export default function RundschreibenScreen() {
   const t = useW14Theme()
 
-  // Kanaele + Kreis
+  // Kanaele. Der Kreis ist fest auf Einwilligung (Basel, 24.07.2026): ein
+  // Marketing-Gruss erreicht ausschliesslich, wer der Werbung zugestimmt hat,
+  // per App-Benachrichtigung wie per E-Mail. Darum gibt es kein "an alle" mehr;
+  // der Server filtert die Audience "MARKETING" in BEIDEN Kanaelen auf
+  // marketing_consent = true.
   const [viaPush, setViaPush] = useState(true)
   const [viaEmail, setViaEmail] = useState(false)
-  const [audience, setAudience] = useState<Audience>("MARKETING")
 
   // Inhalt je Sprache. Deutsch Pflicht, Arabisch/Englisch freiwillig.
   const [titelDe, setTitelDe] = useState("")
@@ -76,9 +77,33 @@ export default function RundschreibenScreen() {
   const kanalOk = viaPush || viaEmail
   const bereit = titelOk && textOk && kanalOk
 
+  // Ein Rundschreiben geht an die ganze (einwilligende) Kundschaft und laesst
+  // sich nicht zurueckholen. Darum ein bewusster zweiter Griff, bevor es
+  // hinausgeht, mit den echten Kanaelen im Text.
+  const bestaetigen = useCallback((): Promise<boolean> => {
+    const kanaele = [viaPush ? "App-Benachrichtigung" : null, viaEmail ? "E-Mail" : null]
+      .filter(Boolean)
+      .join(" und ")
+    return new Promise((resolve) => {
+      Alert.alert(
+        "An die Kundschaft senden?",
+        `Dieser Gruss geht per ${kanaele} an alle, die der Werbung zugestimmt haben. Das laesst sich nicht zurueckholen.`,
+        [
+          { text: "Abbrechen", style: "cancel", onPress: () => resolve(false) },
+          { text: "Senden", style: "default", onPress: () => resolve(true) },
+        ],
+        { cancelable: true, onDismiss: () => resolve(false) },
+      )
+    })
+  }, [viaPush, viaEmail])
+
   const senden = useCallback(async (): Promise<void | boolean> => {
     if (!bereit) {
       // Client-seitige Pruefung, die Meldung steht schon am Feld.
+      return false
+    }
+    if (!(await bestaetigen())) {
+      // Der Inhaber hat abgebrochen. Kein Versand, kein Fehler.
       return false
     }
     const content: Record<string, { title: string; body: string }> = {
@@ -93,15 +118,18 @@ export default function RundschreibenScreen() {
       }
     }
     try {
-      const r = await sendBroadcast({ viaPush, viaEmail, audience, content })
+      // Audience fest "MARKETING": der Server gewaehrt beide Kanaele nur der
+      // einwilligenden Kundschaft. Kein "an alle".
+      const r = await sendBroadcast({ viaPush, viaEmail, audience: "MARKETING", content })
       setErgebnis({
         queuedPush: r.queuedPush,
         queuedEmail: r.queuedEmail,
         skippedNoConsent: r.skippedNoConsent,
       })
-      haptics.success()
+      // Kein eigenes haptics.success() hier: FormScreen gibt den Erfolgston
+      // beim Aufloesen selbst, sonst brummt es zweimal.
       // Felder leeren, damit derselbe Gruss nicht versehentlich zweimal
-      // hinausgeht. Kanal + Kreis bleiben, das ist eine Einstellung.
+      // hinausgeht. Kanal bleibt, das ist eine Einstellung.
       setTitelDe("")
       setTextDe("")
       setTitelAr("")
@@ -114,8 +142,8 @@ export default function RundschreibenScreen() {
       throw new Error(describeError(e))
     }
   }, [
-    bereit, titelDe, textDe, mehrSprachen, titelAr, textAr, titelEn, textEn,
-    viaPush, viaEmail, audience, ladeVerlauf,
+    bereit, bestaetigen, titelDe, textDe, mehrSprachen, titelAr, textAr, titelEn, textEn,
+    viaPush, viaEmail, ladeVerlauf,
   ])
 
   const chip = (aktiv: boolean) => ({
@@ -126,7 +154,7 @@ export default function RundschreibenScreen() {
   return (
     <FormScreen
       title="Rundschreiben"
-      subtitle="Ein Gruss an die Kundschaft — App-Benachrichtigung, E-Mail oder beides."
+      subtitle="Ein Gruss an die Kundschaft, per App-Benachrichtigung, E-Mail oder beides."
       onSubmit={senden}
       submitLabel="Senden"
       submitBusyLabel="Wird gesendet…"
@@ -161,31 +189,14 @@ export default function RundschreibenScreen() {
         </View>
       </FormField>
 
-      {/* Kreis */}
-      <FormField
-        label="Kreis"
-        hint={
-          viaEmail
-            ? "E-Mail erreicht immer nur, wer der Werbung zugestimmt hat."
-            : "Alle: jedes Gerät mit erlaubten Benachrichtigungen."
-        }
-      >
-        <View className="flex-row gap-2">
-          {(["MARKETING", "ALL"] as const).map((a) => (
-            <PressableScale
-              key={a}
-              onPress={() => {
-                haptics.selection()
-                setAudience(a)
-              }}
-              className="flex-1 rounded-xl border px-3 py-3"
-              style={chip(audience === a)}
-            >
-              <Text className="text-sm font-medium">
-                {a === "MARKETING" ? "Nur mit Einwilligung" : "Alle Erreichbaren"}
-              </Text>
-            </PressableScale>
-          ))}
+      {/* Kreis: fest auf Einwilligung, kein "an alle" mehr (Basel, 24.07.2026). */}
+      <FormField label="Kreis">
+        <View className="rounded-xl border p-3.5 gap-1" style={{ borderColor: t.colors.border }}>
+          <Text className="text-sm font-medium">Nur mit Einwilligung</Text>
+          <Text className="text-muted-foreground text-xs">
+            Dieser Gruss erreicht ausschliesslich Kundschaft, die der Werbung zugestimmt hat, per
+            App-Benachrichtigung wie per E-Mail. Wer nicht zugestimmt hat, bleibt aussen vor.
+          </Text>
         </View>
       </FormField>
 
@@ -269,7 +280,7 @@ export default function RundschreibenScreen() {
           </Text>
           {ergebnis.skippedNoConsent > 0 ? (
             <Text className="text-xs" style={{ color: t.colors.mutedForeground }}>
-              {ergebnis.skippedNoConsent} nicht erreicht — keine Einwilligung zur Werbung.
+              {ergebnis.skippedNoConsent} nicht erreicht, keine Einwilligung zur Werbung.
             </Text>
           ) : null}
         </View>

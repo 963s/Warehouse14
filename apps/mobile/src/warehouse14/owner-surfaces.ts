@@ -150,7 +150,7 @@ export const OWNER_SURFACES: readonly OwnerSurface[] = [
     id: "rundschreiben",
     route: "/rundschreiben",
     label: "Rundschreiben",
-    description: "Gruss oder Neuigkeit an die Kundschaft senden — App oder E-Mail.",
+    description: "Gruss oder Neuigkeit an die Kundschaft senden, per App oder E-Mail.",
     icon: Megaphone,
     group: "system",
     available: true,
