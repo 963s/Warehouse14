@@ -517,6 +517,7 @@ function FeedSkeleton() {
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 export default function BenachrichtigungenScreen() {
+  const router = useRouter()
   const t = useW14Theme()
   const navigation = useNavigation()
   const insets = useScreenInsets()
@@ -548,26 +549,43 @@ export default function BenachrichtigungenScreen() {
     return filter == null ? feed.items : feed.items.filter((i) => i.channel === filter)
   }, [feed.items, filter])
 
-  // Header „Alles gelesen"-action — only meaningful while something is unread.
+  // Header-Aktionen: SENDEN (ein Rundschreiben verfassen — Basels Wunsch, dass
+  // dieses Zentrum auch hinausschickt, nicht nur empfängt) und „Alles gelesen"
+  // (nur solange etwas ungelesen ist).
   useLayoutEffect(() => {
     navigation.setOptions({
-      headerRight: () =>
-        feed.unread > 0 ? (
+      headerRight: () => (
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
           <Pressable
             onPress={() => {
-              haptics.success()
-              feed.markAllRead()
+              haptics.selection()
+              router.push("/rundschreiben")
             }}
             accessibilityRole="button"
-            accessibilityLabel="Alle als gelesen markieren"
+            accessibilityLabel="Rundschreiben an die Kundschaft verfassen"
             hitSlop={12}
-            style={{ paddingHorizontal: 12, flexDirection: "row", alignItems: "center", gap: 4 }}
+            style={{ paddingHorizontal: 12, flexDirection: "row", alignItems: "center" }}
           >
-            <CheckCheck color={t.colors.primary} size={t.icon.lg} />
+            <Megaphone color={t.colors.primary} size={t.icon.lg} />
           </Pressable>
-        ) : null,
+          {feed.unread > 0 ? (
+            <Pressable
+              onPress={() => {
+                haptics.success()
+                feed.markAllRead()
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Alle als gelesen markieren"
+              hitSlop={12}
+              style={{ paddingHorizontal: 12, flexDirection: "row", alignItems: "center", gap: 4 }}
+            >
+              <CheckCheck color={t.colors.primary} size={t.icon.lg} />
+            </Pressable>
+          ) : null}
+        </View>
+      ),
     })
-  }, [navigation, feed, t.colors.primary, t.icon.lg])
+  }, [navigation, feed, router, t.colors.primary, t.icon.lg])
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true)

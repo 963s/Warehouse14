@@ -18,7 +18,11 @@ import {
   ApiError,
   appraisalsApi,
   authPin,
+  broadcastsApi,
+  type BroadcastHistoryItem,
   devicesApi,
+  type SendBroadcastBody,
+  type SendBroadcastResult,
   belegtextApi,
   bridgeApi,
   categoriesApi,
@@ -292,6 +296,21 @@ export function registerPushToken(
 /** Die Marke widerrufen, damit ein abgemeldetes Gerät nichts mehr bekommt. */
 export function revokePushToken(token: string): Promise<{ ok: boolean; revoked: number }> {
   return devicesApi.revokePushToken(apiClient, token)
+}
+
+/**
+ * Ein Rundschreiben an die Kundschaft senden (0105). Nur der Inhaber. Der Server
+ * traegt es aus — App-Benachrichtigung und/oder E-Mail, jeden in seiner Sprache —
+ * und antwortet mit den ehrlichen Zahlen: wie viele je Kanal, wie viele mangels
+ * Einwilligung uebersprungen.
+ */
+export function sendBroadcast(body: SendBroadcastBody): Promise<SendBroadcastResult> {
+  return broadcastsApi.send(apiClient, body)
+}
+
+/** Was zuletzt hinausging — das ehrliche Gedaechtnis des Versands. */
+export function broadcastHistory(): Promise<{ items: BroadcastHistoryItem[] }> {
+  return broadcastsApi.history(apiClient)
 }
 
 /** Revoke the current session on the SERVER (POST /api/auth/sign-out) before the
