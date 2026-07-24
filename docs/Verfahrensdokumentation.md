@@ -386,20 +386,34 @@ Reservierungs-Sweeper u. a.) sichern den ordnungsgemäßen Betrieb.
 
 ### 4.3 Zugriffsschutz
 
-- **PIN + Sperre:** persönliche PIN je Mitarbeiter, argon2id-Hash, Blacklist gegen schwache PINs,
-  Sperre nach 5 Fehlversuchen.
-- **Rollen (RBAC):** ADMIN / CASHIER / READONLY (siehe 2.7).
-- **Geräte-Bindung (mTLS):** Kassenvorgänge (Verkauf/Ankauf/Storno/TSE-Signatur) setzen ein
-  **gepaartes Gerät** mit eindeutigem Zertifikat voraus (`devices.cert_serial`, Status active/revoked/
-  expired). Ein widerrufenes Gerät wird am API-Eingang abgewiesen.
-- **Step-up:** sensible Einzelvorgänge (z. B. fiskalische Exporte) erfordern eine frische
-  PIN-Bestätigung; der Zugriff wird protokolliert.
+- **Identität (Google-Only):** Die Anmeldung erfolgt ausschließlich über Google als
+  Identitätsanbieter; die 4-stellige PIN ist zurückgezogen (`DISABLE_PIN_AUTH=true`). Die Rolle
+  wird stets **serverseitig** vergeben (RBAC), niemals von Google übernommen. Eine Google-Identität,
+  zwei Türen (Inhaber/Kasse) mit getrennten Sitzungstabellen.
+- **Rollen (RBAC):** ADMIN / CASHIER / READONLY (siehe 2.7); die Rechte werden am API-Eingang je
+  Route geprüft.
+- **Sitzungen (undurchsichtige Server-Token):** Kein JWT. Der Token ist ein Zufallswert, der auf
+  eine Datenbankzeile zeigt; nur der Server kann ihn auflösen. Die Lebenszeit ist knapp bemessen
+  (Inhaber/Kasse 8 Std., Kunde 30 Tage) und **gleitet** bei Nutzung nach (gedrosselt, kein
+  Schreib-Sturm). Sitzungen sind **widerrufbar** (`sessions.revoked_at`,
+  `shopper_sessions.revoked_at`); ein Widerruf wirkt sofort am nächsten Request.
+- **Geräte-Bindung:** Beim Login wird die Gerätekennung an die Sitzung gebunden
+  (`sessions.device_id`). Wird ein Token von einem anderen Gerät vorgezeigt, wird das erkannt und
+  protokolliert; die **Abweisung** wird mit Einführung von mTLS scharf geschaltet
+  (`ENFORCE_DEVICE_BINDING`). Bis dahin trägt Cloudflare Access die Transport-Bindung.
+- **Step-up (Gerätesperre):** Sensible Einzelvorgänge werden durch eine frische **Gerätesperre**
+  (Biometrie/Geräte-Code) bestätigt statt durch eine PIN; jeder Zugriff wird protokolliert.
 - **2FA (TOTP):** für ADMIN/READONLY vorgesehen.
-- **Drei-Rollen-Datenbankmodell:** `warehouse14_migrator` (nur Migrationen), `warehouse14_app`
-  (Laufzeit, kein DELETE, spaltenbeschränkte Rechte), `warehouse14_security` (NOLOGIN, Eigentümer der
-  sicherheitskritischen Trigger/Funktionen). Default-deny auf dem Schema.
-- **Netzabsicherung:** Zugang ausschließlich über Cloudflare-Tunnel (keine offenen Ports); TLS auf allen
-  Verbindungen; Rate-Limiting an den Authentifizierungs-Endpunkten.
+- **Drei-Rollen-Datenbankmodell:** `warehouse14_migrator` (nur DDL/Migrationen), `warehouse14_app`
+  (Laufzeit, NOINHERIT, kein DELETE, spaltenbeschränkte Rechte), `warehouse14_security` (NOLOGIN,
+  Eigentümer der sicherheitskritischen Trigger/Funktionen). Default-deny auf dem Schema; der Dienst
+  verweigert den Start, wenn er nicht als `warehouse14_app` verbunden ist.
+- **Fälschungssichere Kennungen:** Die internen Primärschlüssel sind zufällige UUID; nach außen
+  können sie als undurchsichtige, präfigierte, mengen-verschweigende Kennungen (nach Stripe-Art,
+  z. B. `cus_…`, `ord_…`) getragen werden — eine reine Formatschicht über dem stabilen Schlüssel.
+- **Netzabsicherung:** Zugang ausschließlich über Cloudflare-Tunnel (keine offenen Ports); TLS auf
+  allen Verbindungen; Rate-Limiting und lokale Sperre nach wiederholten Fehlversuchen an den
+  Authentifizierungs-Endpunkten.
 
 ### 4.4 Änderungsmanagement und Versionierung
 
@@ -407,8 +421,10 @@ Reservierungs-Sweeper u. a.) sichern den ordnungsgemäßen Betrieb.
   versioniert ausgeliefert (aktuell v0.4.0). Releases werden über die CI signiert und als
   GitHub-Release veröffentlicht; die App aktualisiert sich gegen `latest.json`.
 - **Datenbankschema:** Änderungen erfolgen ausschließlich über **nummerierte, transaktionale,
-  idempotente Migrationen** (aktueller Stand 0057), die als eigenes Migrations-Image versioniert und
-  beim Deploy automatisch angewendet werden. Migrationen sind im Versionskontrollsystem nachvollziehbar.
+  idempotente Migrationen** (aktueller Stand 0106), die als eigenes Migrations-Image versioniert und
+  beim Deploy automatisch angewendet werden. Eine eigene Migrations-Ledger-Tabelle
+  (`_w14_schema_migrations`) hält den angewendeten Stand fest; Migrationen sind im
+  Versionskontrollsystem nachvollziehbar.
 - **Server-Images:** API/Worker/Migrate werden als versionierte Container-Images ausgeliefert.
 - **Nachvollziehbarkeit:** Quellcode und Migrationen liegen unter Versionskontrolle; jede
   Konfigurationsänderung (`system_settings`) wird automatisch im `audit_log` protokolliert.

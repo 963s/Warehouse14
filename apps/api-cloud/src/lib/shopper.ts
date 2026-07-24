@@ -99,8 +99,11 @@ export async function loadShopperBySession(
     .from(shopperSessions)
     .innerJoin(shoppers, eq(shoppers.id, shopperSessions.shopperId))
     .where(
+      // Widerrufene Sitzungen (0106) fallen hier heraus — der Stempel tötet die
+      // Sitzung beim nächsten Request, ohne die Zeile zu löschen.
       drizzleSql`${shopperSessions.token} = ${token}
                  AND ${shopperSessions.expiresAt} > now()
+                 AND ${shopperSessions.revokedAt} IS NULL
                  AND ${shoppers.softDeletedAt} IS NULL`,
     )
     .limit(1);

@@ -23,6 +23,12 @@ export const shopperSessions = pgTable(
     userAgent: text('user_agent'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().default(sql`now()`),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().default(sql`now()`),
+    /**
+     * Soft kill-switch (0106), mirroring staff `sessions.revoked_at` (0089).
+     * Stamped → the resolver drops the session on the next request, WITHOUT
+     * deleting the row (so a revoke stays auditable). Null = live.
+     */
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
   },
   (table) => ({
     shopperIdx: index('shopper_sessions_shopper_idx').on(table.shopperId),

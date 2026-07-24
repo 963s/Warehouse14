@@ -28,12 +28,13 @@ import pg from 'pg';
 
 const { Pool } = pg;
 
-import { apiKeys } from '@warehouse14/db/schema';
+import { apiKeys, sessions } from '@warehouse14/db/schema';
 
 import type { Env } from '../config/env.js';
 import { loadActorByApiKey, loadActorBySession } from '../lib/actor.js';
 import { hashApiKey, isApiKeyToken } from '../lib/api-key.js';
 import { ForbiddenError } from '../lib/auth-policy.js';
+import { sessionTtlMs, shouldSlide } from '../lib/session-ttl.js';
 import { isPublicRoute } from '../lib/public-routes.js';
 
 declare module 'fastify' {
@@ -47,6 +48,9 @@ export interface AuthPluginOpts {
 }
 
 const authPlugin: FastifyPluginAsync<AuthPluginOpts> = async (app, opts) => {
+  // Geräte-Bindung (0106): standardmäßig NUR protokollieren, bei „true" abweisen.
+  // Scharf schalten erst bei mTLS-Go-live, wenn der Fingerprint-Bypass fällt.
+  const enforceDeviceBinding = opts.env.ENFORCE_DEVICE_BINDING?.trim().toLowerCase() === 'true';
   // ──────────────────────────────────────────────────────────────────────
   // 1. Construct the better-auth instance.
   //
@@ -177,6 +181,7 @@ const authPlugin: FastifyPluginAsync<AuthPluginOpts> = async (app, opts) => {
         sessionId: principal.actor.apiKeyId ?? 'api-key',
         lastPinStepUpAt: null,
         sessionExpiresAt: principal.sessionExpiresAt,
+        sessionDeviceId: null,
       };
       // Throttled last-used stamp (at most once a minute), fire-and-forget.
       const keyId = principal.actor.apiKeyId;
@@ -205,8 +210,50 @@ const authPlugin: FastifyPluginAsync<AuthPluginOpts> = async (app, opts) => {
     const bundle = await loadActorBySession(app.db, result.id);
     if (!bundle) return;
 
+    // ── Geräte-zu-Token-Bindung (0106) ──────────────────────────────────────
+    // Der Token wurde bei der Anmeldung an ein Gerät gebunden
+    // (`sessions.device_id`). Wird er von einem ANDEREN Gerät vorgezeigt, ist es
+    // ein Wiedereinspielen und wird abgewiesen. Nur wenn BEIDE Seiten ein echtes
+    // Gerät tragen: unter dem Vor-mTLS-Bypass fehlt entweder die Bindung oder
+    // beide tragen dieselbe Seed-Kennung, also bleibt es dann durchlässig —
+    // scharf wird es automatisch, sobald echte Client-Zertifikate da sind.
+    if (
+      bundle.sessionDeviceId &&
+      req.deviceId &&
+      bundle.sessionDeviceId !== req.deviceId
+    ) {
+      // Auf einem LIVE-Fiskalsystem wird nicht blind scharf geschaltet. Solange
+      // der Vor-mTLS-Bypass läuft, würde ein echtes Abweisen niemandem helfen
+      // (alle tragen dieselbe Seed-Kennung) und könnte im Randfall aussperren.
+      // Das Flag ENFORCE_DEVICE_BINDING entscheidet: standardmäßig wird der
+      // Fund NUR protokolliert; bei mTLS-Go-live (Flag „true") weist er ab.
+      req.log.warn(
+        { sessionDevice: bundle.sessionDeviceId, presentedDevice: req.deviceId },
+        enforceDeviceBinding
+          ? 'Sitzungstoken von fremdem Gerät — abgewiesen (0106)'
+          : 'Sitzungstoken von fremdem Gerät — protokolliert (0106, Bindung noch nicht scharf)',
+      );
+      if (enforceDeviceBinding) return; // unauthenticated; route helpers throw 401.
+    }
+
     req.actor = bundle.actor;
     req.session = bundle;
+
+    // ── Gleitende Erneuerung (0106) ─────────────────────────────────────────
+    // Bei Nutzung das Ablaufdatum nachführen, aber gedrosselt: erst wenn die
+    // Sitzung mindestens einen Takt (SESSION_SLIDE_GAP_MS) ihrer Lebenszeit
+    // verbraucht hat. So bleibt eine kurze Grund-TTL bequem, ohne bei jedem
+    // Request zu schreiben. Fire-and-forget — ein Schreibfehler darf den
+    // Request nie aufhalten.
+    const now = Date.now();
+    const ttl = sessionTtlMs(bundle.actor.isOwner);
+    if (shouldSlide(bundle.sessionExpiresAt, ttl, now)) {
+      void app.db
+        .update(sessions)
+        .set({ expiresAt: new Date(now + ttl) })
+        .where(eq(sessions.id, bundle.sessionId))
+        .catch(() => undefined);
+    }
   });
 };
 

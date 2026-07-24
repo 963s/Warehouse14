@@ -479,6 +479,17 @@ const EnvSchema = Type.Object({
       'OpenAI vision model for analyze_inbox_photos (dealer-grade item identification from the ' +
       'photo inbox). Small + cheap by default; thumbs only, detail low.',
   }),
+  ENFORCE_DEVICE_BINDING: Type.String({
+    default: '',
+    description:
+      'Security audit 2026-07-24. "true" turns the device-to-token binding (0106) from ' +
+      'recorded-only into ENFORCED: a session token presented from a device other than the one ' +
+      'it was bound to at login is refused. Keep EMPTY until Cloudflare Access mTLS is provisioned ' +
+      '(TEST_DEVICE_FINGERPRINT dropped), because under the bypass every request resolves to the ' +
+      'same seeded device and the binding would be a trivial no-op anyway. Flip to "true" at ' +
+      'mTLS go-live, together with dropping the fingerprint bypass. The binding code is always ' +
+      'present; this flag only decides whether a mismatch REJECTS or is merely logged.',
+  }),
   ENFORCE_PIN_BLACKLIST_ON_LOGIN: Type.String({
     default: '',
     description:

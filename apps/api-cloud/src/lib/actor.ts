@@ -38,6 +38,14 @@ export interface ActorWithSession {
    */
   lastPinStepUpAt: Date | null;
   sessionExpiresAt: Date;
+  /**
+   * The device this session was bound to at login (`sessions.device_id`), or
+   * null. The auth preHandler compares it to the presenting `req.deviceId`
+   * (0106 device-to-token binding): if BOTH are set and they differ, the token
+   * is being replayed from a foreign device and is refused. Null on either side
+   * = no binding to enforce (the pre-mTLS bypass path leaves it permissive).
+   */
+  sessionDeviceId: string | null;
 }
 
 /**
@@ -59,6 +67,7 @@ export async function loadActorBySession(
       sessionId: sessions.id,
       lastPinStepUpAt: sessions.lastPinStepUpAt,
       sessionExpiresAt: sessions.expiresAt,
+      sessionDeviceId: sessions.deviceId,
     })
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
@@ -84,6 +93,7 @@ export async function loadActorBySession(
     sessionId: r.sessionId,
     lastPinStepUpAt: r.lastPinStepUpAt,
     sessionExpiresAt: r.sessionExpiresAt,
+    sessionDeviceId: r.sessionDeviceId,
   };
 }
 

@@ -16,10 +16,13 @@
  * Everything else under `/api/storefront/` requires `req.shopper`.
  */
 
+import { eq } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 import fastifyPlugin from 'fastify-plugin';
 
+import { shopperSessions } from '@warehouse14/db/schema';
 import { loadShopperBySession } from '../lib/shopper.js';
+import { SHOPPER_SESSION_TTL_MS, shouldSlide } from '../lib/session-ttl.js';
 
 export const STOREFRONT_COOKIE_NAME = 'warehouse14.shopper_session';
 
@@ -69,9 +72,21 @@ const storefrontSessionPlugin: FastifyPluginAsync = async (app) => {
     }
 
     const resolved = await loadShopperBySession(app.db, token);
-    if (!resolved) return; // bad/expired token treated as anonymous
+    if (!resolved) return; // bad/expired/revoked token treated as anonymous
     req.shopper = resolved.shopper;
     req.shopperSession = resolved.session;
+
+    // Gleitende Erneuerung (0106): „30 Tage rollend" wird jetzt wirklich
+    // rollend — bei Nutzung wird das Ablaufdatum nachgeführt, gedrosselt über
+    // SESSION_SLIDE_GAP_MS, damit nicht jeder Request schreibt. Fire-and-forget.
+    const now = Date.now();
+    if (shouldSlide(resolved.session.expiresAt, SHOPPER_SESSION_TTL_MS, now)) {
+      void app.db
+        .update(shopperSessions)
+        .set({ expiresAt: new Date(now + SHOPPER_SESSION_TTL_MS) })
+        .where(eq(shopperSessions.id, resolved.session.id))
+        .catch(() => undefined);
+    }
   });
 
   // Defensive: log when a route under /api/storefront/ is reached without
