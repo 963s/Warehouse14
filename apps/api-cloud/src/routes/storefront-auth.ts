@@ -12,7 +12,7 @@
 
 import { randomBytes } from 'node:crypto';
 import { Type } from '@sinclair/typebox';
-import { sql as drizzleSql, eq } from 'drizzle-orm';
+import { sql as drizzleSql, and, eq, isNull } from 'drizzle-orm';
 import type { FastifyPluginAsync, FastifyReply } from 'fastify';
 
 import {
@@ -419,7 +419,15 @@ const storefrontAuthRoutes: FastifyPluginAsync = async (app) => {
       // No requireShopper — silent no-op if already signed out.
       const token = (req.cookies as Record<string, string | undefined>)?.[STOREFRONT_COOKIE_NAME];
       if (token) {
-        await app.db.delete(shopperSessions).where(eq(shopperSessions.token, token));
+        // Weicher Widerruf statt Löschung (0106): die Zeile bleibt, trägt aber
+        // `revoked_at`. loadShopperBySession weist sie ab dem nächsten Request
+        // ab, und ein später vorgezeigter, längst widerrufener Token ist als
+        // Wiederholung nachweisbar statt spurlos. Die Retention-Kehr im Worker
+        // räumt sie nach Ablauf weg — kein unbegrenztes Wachstum.
+        await app.db
+          .update(shopperSessions)
+          .set({ revokedAt: new Date() })
+          .where(and(eq(shopperSessions.token, token), isNull(shopperSessions.revokedAt)));
       }
       reply.clearCookie(STOREFRONT_COOKIE_NAME, { path: '/' });
       return reply.status(200).send({ ok: true });

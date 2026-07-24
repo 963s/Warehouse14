@@ -284,11 +284,12 @@ const storefrontAccountRightsRoutes: FastifyPluginAsync<
                   ${JSON.stringify({ customerId, initiatedBy: 'customer' })}::jsonb)`);
 
         // Every session dies with the account, including the one making this
-        // request. shopper_sessions has no revoked_at (that belongs to the
-        // staff sessions table), and a shopper session is a bearer token with
-        // an expiry and nothing else, so the rows go entirely. erase_customer
-        // does this too; doing it here as well is harmless and keeps the
-        // route's own guarantee true even if the function is changed.
+        // request. Sign-out only SOFT-revokes (revoked_at, 0106) to keep a
+        // forensic trail; an ERASURE is the opposite intent — the person is
+        // gone, so their session rows must leave entirely, not linger revoked.
+        // Hence a hard DELETE here. erase_customer does this too; doing it here
+        // as well is harmless and keeps the route's own guarantee true even if
+        // the function is changed.
         await tx.execute(drizzleSql`
           DELETE FROM shopper_sessions WHERE shopper_id = ${shopperId}`);
 
