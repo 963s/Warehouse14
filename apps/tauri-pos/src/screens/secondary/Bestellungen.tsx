@@ -28,10 +28,10 @@
  * Fläche (Design-System).
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import { Button, DiamondRule, MoneyAmount, ParchmentCard } from '@warehouse14/ui-kit';
+import { Button, DiamondRule, MoneyAmount } from '@warehouse14/ui-kit';
 import { describeError } from '@warehouse14/i18n-de';
 import { type OrderView, type ProductDetail, ordersApi, productsApi } from '@warehouse14/api-client';
 
@@ -40,6 +40,7 @@ import { useApiClient } from '../../lib/api-context.js';
 import { classifyCartProductTax } from '../../lib/cart-math.js';
 import { type ShopInfoApi, resolveShopInfo, useShopInfo } from '../../hooks/useShopInfo.js';
 import { fehlendeAngaben, versandmarkeHtml } from '../../lib/versandmarke.js';
+import { fehltFuerRechnung, rechnungHtml } from '../../lib/rechnung.js';
 import { type CartLine, useCartStore } from '../../state/cart-store.js';
 import { useLedgerFeed } from '../../state/ledger-feed-store.js';
 
@@ -98,10 +99,63 @@ function markeDrucken(order: OrderView, shopApi: ShopInfoApi | undefined): strin
   return null;
 }
 
+/**
+ * Die VORLÄUFIGE Rechnung drucken. Wie die Marke: eigenes leeres Fenster, damit
+ * die Bildschirmfarben nicht mit aufs Papier geraten. Basels Wunsch: dem Kunden
+ * auch ohne TSE eine Rechnung geben können. Das Dokument sagt selbst gross, dass
+ * es kein steuerlicher Beleg ist (rechnung.ts).
+ */
+function rechnungDrucken(order: OrderView, shopApi: ShopInfoApi | undefined): string | null {
+  const fehlt = fehltFuerRechnung(order);
+  if (fehlt.length > 0) return fehlt.join(' ');
+  const shop = resolveShopInfo(shopApi);
+  const html = rechnungHtml({ name: shop.name, anschrift: shop.address }, order);
+  const fenster = window.open('', '_blank', 'width=560,height=760');
+  if (!fenster) {
+    return 'Das Druckfenster wurde blockiert. Bitte Fenster für diese App erlauben.';
+  }
+  fenster.document.write(html);
+  fenster.document.close();
+  fenster.onload = () => {
+    fenster.focus();
+    fenster.print();
+  };
+  return null;
+}
+
 /** Ein unbekannter Stand degradiert zu einem deutschen Wort, nie zum rohen Token. */
 function stageLabel(stage: string | null): string {
   if (!stage) return 'Unbekannter Stand';
   return STAGE_LABEL[stage] ?? 'Unbekannter Stand';
+}
+
+/** Die Reihenfolge der Stufen — für den Fortschrittsbalken im Detail. */
+const STAGE_ORDER = ['OFFEN', 'ANGENOMMEN', 'IN_VORBEREITUNG', 'ABHOLBEREIT'] as const;
+
+/**
+ * Woher kam die Bestellung (0105). Ein ruhiges Abzeichen, Gold nur als Kante.
+ * „App" fürs Handy, „Webshop" fürs Browserfenster — der Tresen sieht das Gesicht
+ * der Bestellung auf einen Blick.
+ */
+function OriginBadge({ origin }: { origin: string }): JSX.Element {
+  const istApp = origin === 'APP';
+  return (
+    <span
+      className="w14-smallcaps"
+      title={istApp ? 'Aus der Handy-App des Kunden' : 'Aus dem Webshop (Browser)'}
+      style={{
+        fontSize: '0.68rem',
+        letterSpacing: '0.08em',
+        color: 'var(--w14-ink-faded)',
+        border: '1px solid var(--w14-rule)',
+        borderRadius: 999,
+        padding: '1px 7px',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {istApp ? 'App' : 'Webshop'}
+    </span>
+  );
 }
 
 const BUCKETS = ['ALLE', 'OFFEN', 'ANGENOMMEN', 'IN_VORBEREITUNG', 'ABHOLBEREIT'] as const;
@@ -142,6 +196,9 @@ export function Bestellungen(): JSX.Element {
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [err, setErr] = useState<Record<string, string | null>>({});
   const [note, setNote] = useState<Record<string, string | null>>({});
+  // Welche Bestellung im rechten Bereich offen liegt (Meister-Detail). Null =
+  // noch keine gewählt; dann wählt der Effekt unten die erste.
+  const [selected, setSelected] = useState<string | null>(null);
 
   const listQ = useCachedQuery<{ items: OrderView[] }>({
     queryKey: ['orders', 'list', bucket],
@@ -455,47 +512,56 @@ export function Bestellungen(): JSX.Element {
     [api, busy, navigate, setBusyFor],
   );
 
+  // Die gewaehlte Bestellung aus der Liste (das Listen-Query traegt die
+  // Positionen schon mit, das Detail braucht also keinen zweiten Abruf). Faellt
+  // die Wahl aus dem Fach, rueckt die erste nach.
+  const selectedOrder = useMemo(
+    () => orders.find((o) => o.orderNumber === selected) ?? null,
+    [orders, selected],
+  );
+  useEffect(() => {
+    if (orders.length === 0) return;
+    if (!selectedOrder) setSelected(orders[0]?.orderNumber ?? null);
+  }, [orders, selectedOrder]);
+
   return (
-    <div style={{ display: 'grid', gap: '1rem', padding: '1rem', maxWidth: 1100, margin: '0 auto' }}>
-      <ParchmentCard>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'baseline',
-            justifyContent: 'space-between',
-            gap: '1rem',
-          }}
-        >
-          <h1 style={{ fontFamily: 'var(--w14-font-display)', fontSize: '1.5rem', margin: 0 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+      {/* Kopfleiste: Titel, Zahl, Faecher — volle Breite, kein zentrierter Kasten */}
+      <header
+        style={{ padding: '0.9rem 1.1rem 0.7rem', borderBottom: '1px solid var(--w14-rule)' }}
+      >
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.9rem', flexWrap: 'wrap' }}>
+          <h1 style={{ fontFamily: 'var(--w14-font-display)', fontSize: '1.4rem', margin: 0 }}>
             Bestellungen
           </h1>
+          <span style={{ color: 'var(--w14-ink-faded)', fontSize: '0.85rem' }}>
+            {listFailed
+              ? 'Stand gerade unbekannt'
+              : bucket === 'ALLE'
+                ? orders.length > 0
+                  ? `${orders.length} offene ${orders.length === 1 ? 'Abholung' : 'Abholungen'}`
+                  : 'Keine offene Abholung'
+                : `${orders.length} im Fach ${bucketLabel(bucket)}`}
+          </span>
+          <span style={{ flex: 1 }} />
           <StaleBadge cachedAt={listQ.cachedAt} stale={listQ.isStale} />
         </div>
-        <p style={{ color: 'var(--w14-ink-faded)', fontSize: '0.9rem', marginTop: 4 }}>
-          {listFailed
-            ? 'Der Stand ist gerade unbekannt.'
-            : bucket === 'ALLE'
-              ? orders.length > 0
-                ? `${orders.length} offene ${orders.length === 1 ? 'Abholung' : 'Abholungen'}.`
-                : 'Keine offene Abholung.'
-              : `${orders.length} im Fach ${bucketLabel(bucket)}.`}
-        </p>
-        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.6rem', flexWrap: 'wrap' }}>
           {BUCKETS.map((b) => (
             <button
               key={b}
               type="button"
               onClick={() => setBucket(b)}
               style={{
-                padding: '0.4rem 0.9rem',
-                minHeight: 40,
+                padding: '0.35rem 0.85rem',
+                minHeight: 36,
                 borderRadius: 999,
-                // Gold ist die KANTE des gewählten Chips, nie seine Fläche.
+                // Gold ist die KANTE des gewaehlten Chips, nie seine Flaeche.
                 border: bucket === b ? '1px solid var(--w14-gilt)' : '1px solid var(--w14-rule)',
                 background: bucket === b ? 'var(--w14-parchment-deep)' : 'transparent',
                 color: bucket === b ? 'var(--w14-ink)' : 'var(--w14-ink-faded)',
                 cursor: 'pointer',
-                fontSize: '0.85rem',
+                fontSize: '0.82rem',
                 fontWeight: bucket === b ? 600 : 400,
               }}
             >
@@ -503,54 +569,273 @@ export function Bestellungen(): JSX.Element {
             </button>
           ))}
         </div>
-      </ParchmentCard>
+      </header>
 
-      <ParchmentCard>
-        {listFailed ? (
-          <div style={{ display: 'grid', gap: '0.6rem' }}>
-            <p style={{ color: 'var(--w14-wax-red)', fontSize: '0.9rem', margin: 0 }}>
-              Die Bestellungen konnten nicht geladen werden. Ob welche zur Abholung warten, ist
-              gerade nicht bekannt.
+      {/* Der Arbeitsplatz: links die Warteschlange, rechts die offene Bestellung.
+          Voll hoch, voll breit — kein 1100px-Kasten mehr, der in der Mitte
+          schwebt. Das war Basels Befund: „مزروعة بل منتصف مزعج". */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'minmax(320px, 0.85fr) minmax(0, 1.5fr)',
+          flex: 1,
+          minHeight: 0,
+        }}
+      >
+        {/* Linke Schiene: die scrollbare Warteschlange */}
+        <aside
+          style={{ overflowY: 'auto', borderRight: '1px solid var(--w14-rule)', minHeight: 0 }}
+        >
+          {listFailed ? (
+            <div style={{ padding: '1rem', display: 'grid', gap: '0.6rem' }}>
+              <p style={{ color: 'var(--w14-wax-red)', fontSize: '0.9rem', margin: 0 }}>
+                Die Bestellungen konnten nicht geladen werden. Ob welche zur Abholung warten, ist
+                gerade nicht bekannt.
+              </p>
+              <div>
+                <Button variant="ghost" size="sm" onClick={() => listQ.refetch()}>
+                  Erneut versuchen
+                </Button>
+              </div>
+            </div>
+          ) : listQ.isLoading && orders.length === 0 ? (
+            <p style={{ padding: '1rem', color: 'var(--w14-ink-faded)' }}>
+              Bestellungen werden geladen …
             </p>
-            <div>
-              <Button variant="ghost" size="sm" onClick={() => listQ.refetch()}>
-                Erneut versuchen
-              </Button>
-            </div>
-          </div>
-        ) : listQ.isLoading && orders.length === 0 ? (
-          <p style={{ color: 'var(--w14-ink-faded)' }}>Bestellungen werden geladen …</p>
-        ) : orders.length === 0 ? (
-          <p style={{ color: 'var(--w14-ink-faded)' }}>
-            Keine Bestellungen in diesem Fach. Neue Online-Reservierungen erscheinen hier
-            automatisch.
-          </p>
-        ) : (
-          orders.map((order, i) => (
-            <div key={order.id}>
-              {i > 0 && <DiamondRule />}
-              <OrderRow
+          ) : orders.length === 0 ? (
+            <p style={{ padding: '1rem', color: 'var(--w14-ink-faded)' }}>
+              Keine Bestellungen in diesem Fach. Neue Online-Reservierungen erscheinen hier
+              automatisch.
+            </p>
+          ) : (
+            orders.map((order) => (
+              <OrderListRow
+                key={order.id}
                 order={order}
+                selected={order.orderNumber === selected}
                 busy={order.orderNumber ? !!busy[order.orderNumber] : false}
-                error={order.orderNumber ? (err[order.orderNumber] ?? null) : null}
-                note={order.orderNumber ? (note[order.orderNumber] ?? null) : null}
-                onTransition={runTransition}
-                onHandover={runHandover}
-                onReject={runReject}
-                onRemoveItem={runRemoveItem}
-                onExtend={runExtend}
+                onSelect={() => setSelected(order.orderNumber ?? null)}
               />
+            ))
+          )}
+        </aside>
+
+        {/* Rechter Bereich: die offene Bestellung, voll und mit Tiefe */}
+        <main style={{ overflowY: 'auto', minHeight: 0 }}>
+          {selectedOrder ? (
+            <OrderDetail
+              order={selectedOrder}
+              busy={selectedOrder.orderNumber ? !!busy[selectedOrder.orderNumber] : false}
+              error={
+                selectedOrder.orderNumber ? (err[selectedOrder.orderNumber] ?? null) : null
+              }
+              note={selectedOrder.orderNumber ? (note[selectedOrder.orderNumber] ?? null) : null}
+              onTransition={runTransition}
+              onHandover={runHandover}
+              onReject={runReject}
+              onRemoveItem={runRemoveItem}
+              onExtend={runExtend}
+            />
+          ) : (
+            <div
+              style={{
+                padding: '2.5rem 1.5rem',
+                color: 'var(--w14-ink-faded)',
+                textAlign: 'center',
+              }}
+            >
+              <p style={{ fontFamily: 'var(--w14-font-display)', fontSize: '1rem' }}>
+                Waehlen Sie links eine Bestellung, um sie zu bearbeiten.
+              </p>
             </div>
-          ))
-        )}
-      </ParchmentCard>
+          )}
+        </main>
+      </div>
     </div>
   );
 }
 
-// ── Eine Bestellzeile ─────────────────────────────────────────────────────────
+/** Gemeinsamer Stil fuer die leisen Text-Knoepfe (Drucken, Ablehnen). */
+const linkBtn: CSSProperties = {
+  background: 'none',
+  border: 'none',
+  padding: 0,
+  font: 'inherit',
+  fontSize: '0.84rem',
+  color: 'var(--w14-ink-faded)',
+  textDecoration: 'underline',
+  textUnderlineOffset: '3px',
+  cursor: 'pointer',
+};
 
-function OrderRow({
+// ── Eine Zeile in der linken Warteschlange ───────────────────────────────────
+
+function OrderListRow({
+  order,
+  selected,
+  busy,
+  onSelect,
+}: {
+  order: OrderView;
+  selected: boolean;
+  busy: boolean;
+  onSelect: () => void;
+}): JSX.Element {
+  const deadline = deadlineLabel(order.expiresAt);
+  const versand = order.fulfilmentMethod === 'SHIPPING';
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      style={{
+        display: 'block',
+        width: '100%',
+        textAlign: 'left',
+        cursor: 'pointer',
+        padding: '0.7rem 0.9rem',
+        border: 'none',
+        // Gold als schmale Kante des gewaehlten Eintrags, nie als Flaeche.
+        borderLeft: selected ? '3px solid var(--w14-gilt)' : '3px solid transparent',
+        borderBottom: '1px solid var(--w14-rule)',
+        background: selected ? 'var(--w14-parchment-deep)' : 'transparent',
+        font: 'inherit',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
+        <span
+          className="w14-tabular"
+          style={{
+            fontFamily: 'var(--w14-font-mono)',
+            fontSize: '0.78rem',
+            color: 'var(--w14-ink-faded)',
+          }}
+        >
+          {order.orderNumber ?? 'ohne Nummer'}
+        </span>
+        <span style={{ flex: 1 }} />
+        <OriginBadge origin={order.orderOrigin} />
+      </div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginTop: 2 }}>
+        <span
+          style={{
+            fontFamily: 'var(--w14-font-display)',
+            fontSize: '0.95rem',
+            color: 'var(--w14-ink)',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {order.contactName ?? 'Unbekannt'}
+        </span>
+        <span style={{ flex: 1 }} />
+        <MoneyAmount valueEur={order.totalEur} />
+      </div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginTop: 4 }}>
+        <span
+          className="w14-smallcaps"
+          style={{
+            fontSize: '0.68rem',
+            letterSpacing: '0.06em',
+            color: 'var(--w14-gilt)',
+            border: '1px solid var(--w14-rule)',
+            borderRadius: 999,
+            padding: '1px 7px',
+          }}
+        >
+          {versand ? 'Versand' : stageLabel(order.pickupStage)}
+        </span>
+        <span style={{ flex: 1 }} />
+        <span
+          style={{
+            fontSize: '0.76rem',
+            color: deadline
+              ? deadline.urgent
+                ? 'var(--w14-wax-red)'
+                : 'var(--w14-ink-faded)'
+              : 'var(--w14-ink-faded)',
+          }}
+        >
+          {deadline ? deadline.text : 'Frist unbekannt'}
+        </span>
+      </div>
+      {busy && (
+        <span style={{ fontSize: '0.72rem', color: 'var(--w14-ink-faded)' }}>
+          … wird bearbeitet
+        </span>
+      )}
+    </button>
+  );
+}
+
+// ── Der Fortschrittsbalken der Abholstufen ───────────────────────────────────
+
+function StageStepper({ current }: { current: string | null }): JSX.Element {
+  const idx = STAGE_ORDER.indexOf((current ?? '') as (typeof STAGE_ORDER)[number]);
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 0, marginTop: '0.2rem' }}>
+      {STAGE_ORDER.map((s, i) => {
+        const done = idx >= 0 && i < idx;
+        const active = i === idx;
+        return (
+          <div
+            key={s}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              flex: i < STAGE_ORDER.length - 1 ? 1 : 'none',
+            }}
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+              <span
+                style={{
+                  width: 14,
+                  height: 14,
+                  borderRadius: 999,
+                  border: active
+                    ? '2px solid var(--w14-gilt)'
+                    : done
+                      ? '2px solid var(--w14-verdigris)'
+                      : '2px solid var(--w14-rule)',
+                  background: done
+                    ? 'var(--w14-verdigris)'
+                    : active
+                      ? 'var(--w14-gilt)'
+                      : 'transparent',
+                }}
+              />
+              <span
+                className="w14-smallcaps"
+                style={{
+                  fontSize: '0.62rem',
+                  letterSpacing: '0.04em',
+                  color: active ? 'var(--w14-ink)' : 'var(--w14-ink-faded)',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {stageLabel(s)}
+              </span>
+            </div>
+            {i < STAGE_ORDER.length - 1 && (
+              <span
+                style={{
+                  flex: 1,
+                  height: 2,
+                  margin: '7px 6px 0',
+                  background: done ? 'var(--w14-verdigris)' : 'var(--w14-rule)',
+                }}
+              />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Der rechte Bereich: die offene Bestellung, voll und mit Tiefe ────────────
+
+function OrderDetail({
   order,
   busy,
   error,
@@ -568,121 +853,135 @@ function OrderRow({
   onTransition: (order: OrderView, kind: StageKind) => void;
   onHandover: (order: OrderView) => void;
   onReject: (order: OrderView, reason: string) => void;
-  onRemoveItem?: (order: OrderView, productId: string, name: string) => void;
-  onExtend?: (order: OrderView, days: number) => void;
+  onRemoveItem: (order: OrderView, productId: string, name: string) => void;
+  onExtend: (order: OrderView, days: number) => void;
 }): JSX.Element {
   const deadline = deadlineLabel(order.expiresAt);
-  // Zweistufig und nie aus Versehen: der erste Klick klappt das Feld für den
-  // Grund auf, erst der zweite lehnt wirklich ab. Eine Ablehnung gibt Ware
-  // frei und schreibt der Kundschaft, das darf kein Fehlgriff sein.
+  const versand = order.fulfilmentMethod === 'SHIPPING';
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState('');
-  /** Was beim Drucken der Marke schiefging. Null heisst: nichts. */
-  const [markenFehler, setMarkenFehler] = useState<string | null>(null);
+  const [druckFehler, setDruckFehler] = useState<string | null>(null);
   const { data: shopApi } = useShopInfo();
   const telHref = order.contactPhone ? `tel:${order.contactPhone.replace(/[^+\d]/g, '')}` : null;
+  // Wechselt die Bestellung, den lokalen Zustand zuruecksetzen — sonst haengt
+  // ein aufgeklapptes Grund-Feld an der falschen Bestellung.
+  useEffect(() => {
+    setRejecting(false);
+    setReason('');
+    setDruckFehler(null);
+  }, [order.orderNumber]);
 
   return (
-    <div style={{ padding: '0.85rem 0', display: 'grid', gap: '0.5rem' }}>
-      {/* Kopf: Bestellnummer, Stand, Frist */}
-      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'baseline', flexWrap: 'wrap' }}>
-        <span
-          className="w14-tabular"
-          style={{
-            fontFamily: 'var(--w14-font-mono)',
-            fontSize: '0.82rem',
-            color: 'var(--w14-ink-faded)',
-          }}
-        >
-          {order.orderNumber ?? 'Ohne Bestellnummer'}
-        </span>
-        <span
-          className="w14-smallcaps"
-          style={{
-            fontSize: '0.74rem',
-            letterSpacing: '0.08em',
-            color: 'var(--w14-gilt)',
-            border: '1px solid var(--w14-rule)',
-            borderRadius: 999,
-            padding: '1px 8px',
-          }}
-        >
-          {order.fulfilmentMethod === 'SHIPPING' ? 'Versand' : stageLabel(order.pickupStage)}
-        </span>
-        <span style={{ flex: 1 }} />
-        <span
-          style={{
-            fontFamily: 'var(--w14-font-display)',
-            fontSize: '0.82rem',
-            color: deadline
-              ? deadline.urgent
-                ? 'var(--w14-wax-red)'
-                : 'var(--w14-gilt)'
-              : 'var(--w14-ink-faded)',
-          }}
-        >
-          {deadline ? deadline.text : 'Abholfrist unbekannt'}
-        </span>
+    <div style={{ padding: '1.1rem 1.3rem', display: 'grid', gap: '0.9rem', maxWidth: 760 }}>
+      {/* Kopf: Nummer, Herkunft, Stand, Frist, dann der Fortschrittsbalken */}
+      <div style={{ display: 'grid', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem', flexWrap: 'wrap' }}>
+          <span
+            className="w14-tabular"
+            style={{ fontFamily: 'var(--w14-font-mono)', fontSize: '1rem', color: 'var(--w14-ink)' }}
+          >
+            {order.orderNumber ?? 'Ohne Bestellnummer'}
+          </span>
+          <OriginBadge origin={order.orderOrigin} />
+          <span
+            className="w14-smallcaps"
+            style={{
+              fontSize: '0.72rem',
+              letterSpacing: '0.08em',
+              color: 'var(--w14-gilt)',
+              border: '1px solid var(--w14-rule)',
+              borderRadius: 999,
+              padding: '1px 8px',
+            }}
+          >
+            {versand ? 'Versand' : stageLabel(order.pickupStage)}
+          </span>
+          <span style={{ flex: 1 }} />
+          <span
+            style={{
+              fontFamily: 'var(--w14-font-display)',
+              fontSize: '0.85rem',
+              color: deadline
+                ? deadline.urgent
+                  ? 'var(--w14-wax-red)'
+                  : 'var(--w14-gilt)'
+                : 'var(--w14-ink-faded)',
+            }}
+          >
+            {deadline ? deadline.text : 'Abholfrist unbekannt'}
+          </span>
+        </div>
+        {!versand && <StageStepper current={order.pickupStage} />}
       </div>
 
-      {/* Kundschaft: Name + antippbare Telefon-/Mail-Verknüpfung */}
-      <div
-        style={{
-          display: 'flex',
-          gap: '0.75rem',
-          alignItems: 'baseline',
-          flexWrap: 'wrap',
-          fontSize: '0.9rem',
-        }}
-      >
-        <span style={{ fontFamily: 'var(--w14-font-display)', color: 'var(--w14-ink)' }}>
+      {/* Kundschaft: Name + antippbare Verknuepfungen, bei Versand die Anschrift */}
+      <div style={{ display: 'grid', gap: '0.25rem' }}>
+        <span
+          style={{ fontFamily: 'var(--w14-font-display)', fontSize: '1.05rem', color: 'var(--w14-ink)' }}
+        >
           {order.contactName ?? 'Unbekannt'}
         </span>
-        {telHref && (
-          <a href={telHref} style={{ color: 'var(--w14-ink-faded)' }}>
-            {order.contactPhone}
-          </a>
-        )}
-        {order.contactEmail && (
-          <a href={`mailto:${order.contactEmail}`} style={{ color: 'var(--w14-ink-faded)' }}>
-            {order.contactEmail}
-          </a>
+        <div style={{ display: 'flex', gap: '0.9rem', flexWrap: 'wrap', fontSize: '0.88rem' }}>
+          {telHref && (
+            <a href={telHref} style={{ color: 'var(--w14-ink-faded)' }}>
+              {order.contactPhone}
+            </a>
+          )}
+          {order.contactEmail && (
+            <a href={`mailto:${order.contactEmail}`} style={{ color: 'var(--w14-ink-faded)' }}>
+              {order.contactEmail}
+            </a>
+          )}
+        </div>
+        {versand && order.shippingAddress && (
+          <p
+            style={{
+              margin: '0.2rem 0 0',
+              fontSize: '0.85rem',
+              color: 'var(--w14-ink-aged)',
+              whiteSpace: 'pre-line',
+            }}
+          >
+            {order.shippingAddress}
+          </p>
         )}
       </div>
 
-      {/* Die Stücke: Artikelnummer, Name, Preis */}
-      <div style={{ display: 'grid', gap: 2 }}>
+      <DiamondRule />
+
+      {/* Die Stuecke */}
+      <div style={{ display: 'grid', gap: 8 }}>
         {order.lines.map((line, idx) => (
           <div
             key={`${order.id}:${line.productId ?? idx}`}
             style={{
               display: 'grid',
-              gridTemplateColumns: 'auto 1fr auto auto',
-              gap: 10,
+              gridTemplateColumns: '1fr auto auto',
+              gap: 12,
               alignItems: 'baseline',
-              fontSize: '0.86rem',
+              fontSize: '0.92rem',
               color: 'var(--w14-ink-aged)',
             }}
           >
-            <span
-              className="w14-tabular"
-              style={{
-                fontFamily: 'var(--w14-font-mono)',
-                fontSize: '0.76rem',
-                color: 'var(--w14-ink-faded)',
-              }}
-            >
-              {line.sku ?? 'ohne Nummer'}
-            </span>
-            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {line.quantity > 1 ? `${line.quantity} × ` : ''}
-              {line.name}
+            <span style={{ minWidth: 0 }}>
+              <span
+                style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+              >
+                {line.quantity > 1 ? `${line.quantity} × ` : ''}
+                {line.name}
+              </span>
+              <span
+                className="w14-tabular"
+                style={{
+                  fontFamily: 'var(--w14-font-mono)',
+                  fontSize: '0.72rem',
+                  color: 'var(--w14-ink-faded)',
+                }}
+              >
+                {line.sku ?? 'ohne Nummer'}
+              </span>
             </span>
             <MoneyAmount valueEur={line.unitPriceEur} />
-            {/* Eine EINZELNE Position herausnehmen. Der Fall, der vorher die
-                ganze Bestellung kostete: ein Stück ist beschädigt, die anderen
-                sind tadellos. Bei nur einer Position bleibt der Knopf weg —
-                das wäre eine Absage, und die gehört zum Grund-Feld unten. */}
             {order.lines.length > 1 && line.productId && onRemoveItem ? (
               <button
                 type="button"
@@ -696,7 +995,7 @@ function OrderRow({
                   padding: '0 2px',
                   cursor: busy ? 'default' : 'pointer',
                   color: 'var(--w14-ink-faded)',
-                  fontSize: '1rem',
+                  fontSize: '1.05rem',
                   lineHeight: 1,
                   opacity: busy ? 0.4 : 1,
                 }}
@@ -718,13 +1017,14 @@ function OrderRow({
           justifyContent: 'space-between',
           gap: '0.75rem',
           flexWrap: 'wrap',
-          marginTop: 2,
+          borderTop: '1px solid var(--w14-rule)',
+          paddingTop: '0.7rem',
         }}
       >
         <span style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
           <span
             className="w14-smallcaps"
-            style={{ fontSize: '0.7rem', letterSpacing: '0.1em', color: 'var(--w14-ink-faded)' }}
+            style={{ fontSize: '0.72rem', letterSpacing: '0.1em', color: 'var(--w14-ink-faded)' }}
           >
             Gesamt
           </span>
@@ -734,23 +1034,16 @@ function OrderRow({
       </div>
 
       {error && (
-        <p style={{ color: 'var(--w14-wax-red)', fontSize: '0.82rem', margin: '0.2rem 0 0' }}>
-          {error}
-        </p>
+        <p style={{ color: 'var(--w14-wax-red)', fontSize: '0.85rem', margin: 0 }}>{error}</p>
       )}
       {note && (
-        <p style={{ color: 'var(--w14-verdigris)', fontSize: '0.82rem', margin: '0.2rem 0 0' }}>
-          {note}
-        </p>
+        <p style={{ color: 'var(--w14-verdigris)', fontSize: '0.85rem', margin: 0 }}>{note}</p>
       )}
 
-      {/* Mehr Zeit geben. Ruft jemand an und sagt, er kommt erst Samstag, war
-          bisher NICHTS zu machen: die Reservierung verfiel, die Stücke gingen
-          zurück in den Verkauf, und die Vertrauensstufe zählte es als
-          Nichtabholung — der Mensch wurde also bestraft, weil er angerufen hat. */}
-      {order.orderNumber && onExtend && order.pickupStage !== 'ABGEHOLT' ? (
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginTop: '0.3rem' }}>
-          <span style={{ fontSize: '0.82rem', color: 'var(--w14-ink-faded)' }}>Mehr Zeit geben:</span>
+      {/* Mehr Zeit geben */}
+      {order.orderNumber && order.pickupStage !== 'ABGEHOLT' && (
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '0.84rem', color: 'var(--w14-ink-faded)' }}>Mehr Zeit geben:</span>
           {[3, 7, 14].map((tage) => (
             <button
               key={tage}
@@ -761,9 +1054,9 @@ function OrderRow({
                 background: 'none',
                 border: '1px solid var(--w14-rule)',
                 borderRadius: 999,
-                padding: '1px 9px',
+                padding: '2px 10px',
                 font: 'inherit',
-                fontSize: '0.8rem',
+                fontSize: '0.82rem',
                 color: 'var(--w14-ink-aged)',
                 cursor: busy ? 'default' : 'pointer',
                 opacity: busy ? 0.5 : 1,
@@ -773,52 +1066,49 @@ function OrderRow({
             </button>
           ))}
         </div>
-      ) : null}
-
-      {/* Die Marke. Bei einem Versand ist sie das Adressetikett fürs Paket, bei
-          einer Abholung der Zettel fürs Regal — dieselbe Bestellnummer, derselbe
-          Strichcode, damit ein Handscanner das Paket am Tresen sofort findet.
-          KEINE Sendungsnummer: solange kein Zusteller angebunden ist, gibt es
-          keine, und eine erfundene wäre der teuerste Fehler dieses Hauses. */}
-      {order.orderNumber && (
-        <div style={{ marginTop: '0.3rem' }}>
-          <button
-            type="button"
-            onClick={() => setMarkenFehler(markeDrucken(order, shopApi))}
-            style={{
-              background: 'none',
-              border: 'none',
-              padding: 0,
-              font: 'inherit',
-              fontSize: '0.82rem',
-              color: 'var(--w14-ink-faded)',
-              textDecoration: 'underline',
-              textUnderlineOffset: '3px',
-              cursor: 'pointer',
-            }}
-          >
-            {order.fulfilmentMethod === 'SHIPPING'
-              ? 'Versandmarke drucken'
-              : 'Regalzettel drucken'}
-          </button>
-          {markenFehler && (
-            <p style={{ color: 'var(--w14-wax-red)', fontSize: '0.8rem', margin: '0.25rem 0 0' }}>
-              {markenFehler}
-            </p>
-          )}
-        </div>
       )}
 
-      {/* Ablehnen: bewusst leise, ein Textknopf statt einer zweiten Schaltfläche,
-          damit er neben dem eigentlichen Schritt nicht um Aufmerksamkeit ringt.
-          Nach der Übergabe (ABGEHOLT) und nach einem Storno gibt es nichts mehr
-          abzulehnen; solange ein Stand läuft, muss es gehen. */}
-      {order.orderNumber && order.pickupStage !== 'ABGEHOLT' && (
-        rejecting ? (
-          <div style={{ display: 'grid', gap: '0.4rem', marginTop: '0.3rem' }}>
+      {/* Drucken: der Regalzettel/die Versandmarke, und die VORLAEUFIGE Rechnung.
+          Letztere ist Basels Wunsch: dem Kunden auch ohne TSE eine Rechnung
+          geben, freiwillig. Das Dokument sagt selbst gross, dass es kein
+          steuerlicher Beleg ist. */}
+      {order.orderNumber && (
+        <div style={{ display: 'flex', gap: '1.2rem', flexWrap: 'wrap', alignItems: 'baseline' }}>
+          <button
+            type="button"
+            onClick={() => setDruckFehler(markeDrucken(order, shopApi))}
+            style={linkBtn}
+          >
+            {order.fulfilmentMethod === 'SHIPPING' ? 'Versandmarke drucken' : 'Regalzettel drucken'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setDruckFehler(rechnungDrucken(order, shopApi))}
+            style={linkBtn}
+          >
+            Vorläufige Rechnung drucken
+          </button>
+        </div>
+      )}
+      {druckFehler && (
+        <p style={{ color: 'var(--w14-wax-red)', fontSize: '0.82rem', margin: 0 }}>{druckFehler}</p>
+      )}
+
+      {/* Ablehnen: zweistufig, bewusst leise */}
+      {order.orderNumber &&
+        order.pickupStage !== 'ABGEHOLT' &&
+        (rejecting ? (
+          <div
+            style={{
+              display: 'grid',
+              gap: '0.5rem',
+              borderTop: '1px solid var(--w14-rule)',
+              paddingTop: '0.7rem',
+            }}
+          >
             <label
               htmlFor={`grund-${order.id}`}
-              style={{ fontSize: '0.78rem', color: 'var(--w14-ink-faded)' }}
+              style={{ fontSize: '0.8rem', color: 'var(--w14-ink-faded)' }}
             >
               Grund, freiwillig. Er steht später im Beleg und im Tagebuch.
             </label>
@@ -831,7 +1121,7 @@ function OrderRow({
               style={{
                 font: 'inherit',
                 fontSize: '0.9rem',
-                padding: '0.45rem 0.6rem',
+                padding: '0.5rem 0.65rem',
                 borderRadius: 8,
                 border: '1px solid var(--w14-rule)',
                 background: 'var(--w14-paper-2)',
@@ -864,23 +1154,11 @@ function OrderRow({
           <button
             type="button"
             onClick={() => setRejecting(true)}
-            style={{
-              justifySelf: 'start',
-              background: 'none',
-              border: 'none',
-              padding: '0.2rem 0',
-              cursor: 'pointer',
-              font: 'inherit',
-              fontSize: '0.8rem',
-              color: 'var(--w14-ink-faded)',
-              textDecoration: 'underline',
-              textUnderlineOffset: '3px',
-            }}
+            style={{ ...linkBtn, justifySelf: 'start' }}
           >
             Ablehnen und Stücke freigeben
           </button>
-        )
-      )}
+        ))}
     </div>
   );
 }
